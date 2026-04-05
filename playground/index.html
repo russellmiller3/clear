@@ -1,158 +1,394 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="midnight">
+<html lang="en" data-theme="light">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Clear -- Write readable code, compile to production apps</title>
-  <meta name="description" content="Try the Clear programming language in your browser. Write plain English, get production JavaScript, HTML, and Python.">
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-  <style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Clear — Playground</title>
+<meta name="description" content="Try the Clear programming language in your browser. Write plain English, get production JavaScript, HTML, and Python.">
+
+<link href="daisyui.min.css" rel="stylesheet" type="text/css"/>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet"/>
+
+<style>
+/* ── Arctic tokens ─────────────────────────────────────── */
 :root {
-  --font-display: 'Syne', system-ui, sans-serif;
-  --font-body: 'DM Sans', system-ui, sans-serif;
+  --bg:       #f0f5fa;
+  --sb:       #e2ecf4;
+  --surf2:    #d4e4f0;
+  --surf3:    #c4d8e8;
+  --bd:       rgba(18,48,68,.08);
+  --bd2:      rgba(18,48,68,.14);
+  --tx:       #1a3a4a;
+  --tx2:      #2a5a70;
+  --tx3:      #4a7a90;
+  --tx4:      #80a8bc;
+  --green:    #1e6a8a;
+  --green-lt: #e4f2f8;
+  --green-bd: #a0cce0;
+  --red:      #a04040;
+  --red-lt:   #fdf0f0;
+  --red-bd:   #e0b0b0;
+  --amber:    #7a6010;
+  --amber-lt: #f8f4e4;
+  --amber-bd: #d8c898;
   --font-mono: 'Geist Mono', 'JetBrains Mono', monospace;
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 0 0 1px rgba(240,246,252,0.08);
-  --shadow-accent: 0 0 24px rgba(88,166,255,0.25);
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
-::selection { background: rgba(88,166,255,0.25); }
 
-.tab-active { background: oklch(65% 0.196 250); color: #0D1117; font-weight: 600; }
-.example-btn-active { background: rgba(88,166,255,0.12); color: #58A6FF; border-color: rgba(88,166,255,0.3); }
+html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%; background: var(--bg); color: var(--tx); }
+#shell { display: flex; height: 100vh; overflow: hidden; }
 
-[data-theme="midnight"] {
-  color-scheme: dark;
-  --color-base-100: oklch(8.2% 0.025 264);
-  --color-base-200: oklch(10.8% 0.025 264);
-  --color-base-300: oklch(14.8% 0.020 264);
-  --color-base-content: oklch(93% 0.01 264);
-  --color-primary: oklch(65% 0.196 250);
-  --color-primary-content: oklch(8% 0.02 264);
-  --color-secondary: oklch(65% 0.196 250);
-  --color-secondary-content: oklch(8% 0.02 264);
-  --color-accent: oklch(65% 0.196 250);
-  --color-accent-content: oklch(8% 0.02 264);
-  --color-neutral: oklch(18% 0.015 264);
-  --color-neutral-content: oklch(93% 0.01 264);
-  --color-info: oklch(65% 0.15 250);
-  --color-info-content: oklch(0% 0 0);
-  --color-success: oklch(55% 0.17 145);
-  --color-success-content: oklch(0% 0 0);
-  --color-warning: oklch(60% 0.14 80);
-  --color-warning-content: oklch(0% 0 0);
-  --color-error: oklch(58% 0.2 25);
-  --color-error-content: oklch(95% 0.01 264);
-  --radius-selector: 1.9rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
+/* ── Sidebar ─────────────────────────────────────────────── */
+#sidebar {
+  width: 260px; min-width: 260px;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--sb); border-right: 1px solid var(--bd);
 }
-  </style>
+#sb-logo { padding: 20px 18px 16px; border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+.logo-word { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -0.4px; color: var(--tx); line-height: 1; }
+.logo-chip { font-family: var(--font-mono); font-size: 9.5px; font-weight: 500; color: var(--green); background: var(--green-lt); border: 1px solid var(--green-bd); border-radius: 4px; padding: 2px 6px; }
+.logo-sub { font-size: 11.5px; color: var(--tx3); line-height: 1.5; margin-top: 8px; }
+#sb-menu { flex: 1; overflow-y: auto; padding: 12px 8px; scrollbar-width: thin; scrollbar-color: var(--surf3) transparent; }
+.menu-lbl { font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tx4); padding: 0 10px; margin-bottom: 6px; display: block; }
+.ex { display: block; padding: 8px 10px 8px 12px; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; cursor: pointer; margin-bottom: 1px; text-decoration: none; transition: background 0.1s; }
+.ex:hover { background: var(--surf2); }
+.ex.on { background: var(--green-lt); border-left-color: var(--green); }
+.ex-name { display: block; font-size: 13px; font-weight: 600; color: var(--tx3); line-height: 1.3; }
+.ex.on .ex-name, .ex:hover .ex-name { color: var(--tx); }
+.ex-desc { display: block; font-size: 11px; color: var(--tx4); margin-top: 2px; line-height: 1.4; }
+#sb-foot { padding: 14px 18px 16px; border-top: 1px solid var(--bd); flex-shrink: 0; }
+.foot-lbl { font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tx4); margin-bottom: 7px; display: block; }
+.tip { font-size: 11px; color: var(--tx3); margin-bottom: 3px; }
+.stats { font-family: var(--font-mono); font-size: 9.5px; color: var(--tx4); margin-top: 10px; }
+
+/* ── Main ────────────────────────────────────────────────── */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* ── Toolbar ─────────────────────────────────────────────── */
+#toolbar { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 46px; background: var(--bg); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+.file-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 8px; background: var(--sb); border: 1px solid var(--bd2); border-radius: 6px; font-family: var(--font-mono); font-size: 12px; color: var(--tx2); }
+#statusBadge { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; border-radius: 5px; padding: 3px 9px; white-space: nowrap; transition: all 0.15s; }
+.status-ok { color: var(--green); background: var(--green-lt); border: 1px solid var(--green-bd); }
+.status-err { color: var(--red); background: var(--red-lt); border: 1px solid var(--red-bd); }
+.status-warn { color: var(--amber); background: var(--amber-lt); border: 1px solid var(--amber-bd); }
+.ok-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Workspace ───────────────────────────────────────────── */
+#workspace { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+/* ── Editor pane ─────────────────────────────────────────── */
+#ed-pane { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--bd); background: #fdfbf7; overflow: hidden; }
+#ed-scroll { flex: 1; display: flex; overflow: auto; padding: 16px 0; scrollbar-width: thin; scrollbar-color: var(--surf3) transparent; }
+#lnums { flex-shrink: 0; padding: 0 10px 0 16px; display: flex; flex-direction: column; user-select: none; }
+.ln { font-family: var(--font-mono); font-size: 12.5px; line-height: 21px; color: var(--tx4); text-align: right; min-width: 20px; }
+#gut { width: 1px; background: var(--surf3); flex-shrink: 0; margin-right: 14px; }
+#ed-body { flex: 1; position: relative; min-width: 0; padding-right: 16px; }
+#hl, #ed-ta { font-family: var(--font-mono); font-size: 12.5px; line-height: 21px; white-space: pre-wrap; word-break: break-word; tab-size: 2; padding: 0; margin: 0; border: none; width: 100%; }
+#hl { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; min-height: 100%; color: var(--tx2); }
+#ed-ta { position: relative; display: block; z-index: 1; background: transparent; outline: none; resize: none; color: transparent; caret-color: #1e6a8a; height: 100%; min-height: 480px; overflow: hidden; }
+#ed-ta::selection { background: rgba(30,106,138,.15); }
+
+/* ── Syntax highlighting ────────────────────────────────── */
+.kw  { color: #1a5a8a; font-weight: 500; }
+.str { color: #1a7a58; }
+.val { color: #7a6010; }
+.pth { color: #5a3a8a; }
+.cmt { color: var(--tx4); font-style: italic; }
+.op  { color: var(--tx3); }
+
+/* ── Output pane ─────────────────────────────────────────── */
+#out-pane { flex: 1; display: flex; flex-direction: column; background: var(--sb); overflow: hidden; }
+#tab-bar { display: flex; align-items: flex-end; padding: 0 16px; border-bottom: 1px solid var(--bd); background: var(--bg); flex-shrink: 0; }
+.tab { padding: 12px 13px 11px; font-size: 12.5px; font-weight: 500; font-family: 'DM Sans', sans-serif; color: var(--tx3); background: transparent; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: color 0.1s; white-space: nowrap; }
+.tab:hover { color: var(--tx2); }
+.tab.on { color: var(--tx); border-bottom-color: var(--green); font-weight: 600; }
+.tab-sp { flex: 1; }
+.tab.guide { color: var(--tx4); font-size: 12px; }
+#prev-wrap { flex: 1; padding: 14px; overflow: auto; scrollbar-width: thin; }
+
+/* ── Browser mockup ──────────────────────────────────────── */
+.browser-mock { border: 1px solid var(--bd2); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; height: 100%; min-height: 360px; box-shadow: 0 2px 12px rgba(18,48,68,.08); background: var(--bg); }
+.br-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surf2); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+.dots { display: flex; gap: 5px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+.dr { background: #e8805a; } .dy { background: #d4a832; } .dg { background: #5aaa72; }
+.url-box { flex: 1; max-width: 220px; margin: 0 auto; background: var(--bg); border: 1px solid var(--bd2); border-radius: 5px; padding: 4px 10px; text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--tx3); }
+
+/* ── Code output ─────────────────────────────────────────── */
+.code-out { padding: 16px; font-family: var(--font-mono); font-size: 12px; line-height: 1.65; color: var(--tx2); white-space: pre; overflow: auto; height: 100%; background: #fdfbf7; }
+
+/* ── Guide code blocks ───────────────────────────────────── */
+.guide-code { background: #fdfbf7; padding: 0.75rem 1rem; border-radius: 6px; font-family: var(--font-mono); font-size: 12px; line-height: 1.65; color: var(--tx2); overflow-x: auto; border: 1px solid var(--bd); }
+
+/* ── Backend preview ─────────────────────────────────────── */
+.ep-card { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--bd2); border-radius: 8px; }
+.ep-method { font-family: var(--font-mono); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; }
+.ep-GET { background: var(--green-lt); color: var(--green); border: 1px solid var(--green-bd); }
+.ep-POST { background: #e8f0ff; color: #3060a0; border: 1px solid #a0c0e0; }
+.ep-DELETE { background: var(--red-lt); color: var(--red); border: 1px solid var(--red-bd); }
+.ep-PUT { background: var(--amber-lt); color: var(--amber); border: 1px solid var(--amber-bd); }
+.ep-path { font-family: var(--font-mono); font-size: 12.5px; color: var(--tx2); }
+.section-lbl { font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tx4); margin-bottom: 8px; display: block; }
+.feat-chip { font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border-radius: 4px; background: var(--surf2); color: var(--tx3); border: 1px solid var(--bd2); }
+.agent-chip { font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f0e8ff; color: #6040a0; border: 1px solid #c8b8e8; }
+.table-chip { font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border-radius: 4px; background: var(--green-lt); color: var(--green); border: 1px solid var(--green-bd); }
+
+/* ── Error display ───────────────────────────────────────── */
+.err-card { padding: 10px 14px; background: var(--red-lt); border: 1px solid var(--red-bd); border-radius: 8px; display: flex; gap: 8px; align-items: baseline; }
+.err-line { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--red); }
+.err-msg { font-size: 13px; color: var(--tx2); }
+
+/* ── Compile animation ───────────────────────────────────── */
+@keyframes scan { 0% { top: 0; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+.compile-scan {
+  position: absolute; left: 0; right: 0; height: 2px; z-index: 5;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+  animation: scan 0.4s ease-out forwards;
+  pointer-events: none;
+  box-shadow: 0 0 8px var(--green), 0 0 20px rgba(30,106,138,0.2);
+}
+@keyframes pulse-badge { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.compiling-pulse { animation: pulse-badge 0.3s ease-in-out 2; }
+</style>
 </head>
-<body class="h-screen overflow-hidden bg-base-100">
-  <div class="h-screen flex">
+<body>
+<div id="shell">
 
-    <!-- Sidebar -->
-    <div class="w-64 bg-base-200 border-r border-base-300/50 flex flex-col overflow-y-auto shrink-0">
-      <!-- Logo + tagline -->
-      <div class="p-5 pb-3">
-        <h1 style="font-family:var(--font-display); font-size:1.75rem; font-weight:800; letter-spacing:-0.03em; color:#58A6FF;">Clear</h1>
-        <p class="mt-1 text-sm" style="color:#8B949E; line-height:1.5;">Write readable code.<br>Compile to production apps.</p>
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside id="sidebar">
+    <div id="sb-logo">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span class="logo-word">Clear</span>
+        <span class="logo-chip">v1.0</span>
       </div>
+      <p class="logo-sub">Write plain English. Compile to production JavaScript, Python, and HTML.</p>
+    </div>
+    <div id="sb-menu">
+      <span class="menu-lbl">Examples</span>
+      <div id="exampleButtons"></div>
+    </div>
+    <div id="sb-foot">
+      <span class="foot-lbl">Try This</span>
+      <p class="tip">&rarr; Type a todo and click Add</p>
+      <p class="tip">&rarr; Switch 'midnight' to 'ivory'</p>
+      <p class="tip">&rarr; Check the JavaScript tab</p>
+      <p class="stats">1005 tests &middot; 0 deps &middot; Browser-only</p>
+    </div>
+  </aside>
 
-      <div class="px-5"><div class="border-t border-base-300/50"></div></div>
-
-      <!-- Examples -->
-      <div class="p-5 pt-3">
-        <h2 class="text-xs font-semibold uppercase mb-3" style="letter-spacing:0.1em; color:#484F58;">Examples</h2>
-        <div class="flex flex-col gap-1" id="exampleButtons"></div>
+  <!-- ═══ MAIN ═══ -->
+  <div id="main">
+    <div id="toolbar">
+      <div class="file-pill">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        main.clear
       </div>
-
-      <div class="px-5"><div class="border-t border-base-300/50"></div></div>
-
-      <!-- Try This -->
-      <div class="p-5 pt-3">
-        <h2 class="text-xs font-semibold uppercase mb-3" style="letter-spacing:0.1em; color:#484F58;">Try This</h2>
-        <ul class="space-y-1.5" style="color:#8B949E; font-size:0.8rem; line-height:1.5;">
-          <li>Change a heading text</li>
-          <li>Add a new field to a table</li>
-          <li>Switch theme 'midnight' to 'ivory'</li>
-          <li>Add a button with an action</li>
-        </ul>
+      <div id="statusBadge" class="status-ok">
+        <span class="ok-dot" style="background:var(--green)"></span>
+        <span id="statusText"></span>
       </div>
-
-      <!-- Footer stats -->
-      <div class="mt-auto p-5 pt-3" style="color:#484F58; font-size:0.7rem; line-height:1.7;">
-        <div class="border-t border-base-300/50 pt-3 mb-1"></div>
-        1005 compiler tests<br>
-        0 external dependencies<br>
-        Runs entirely in your browser
-      </div>
+      <div style="flex:1"></div>
+      <button id="compileBtn" class="btn btn-sm gap-1.5" style="font-family:'DM Sans',sans-serif;font-weight:700;background:#1e6a8a;color:#fff;border-color:#155878;">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Compile
+      </button>
     </div>
 
-    <!-- Main area -->
-    <div class="flex flex-col flex-1 min-w-0">
-
-      <!-- Header bar -->
-      <div class="h-11 bg-base-200 border-b border-base-300/50 px-4 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-3">
-          <span style="font-family:var(--font-mono); font-size:0.8rem; font-weight:600; color:#E6EDF3;">main.clear</span>
-          <span style="font-family:var(--font-mono); font-size:0.7rem; color:#3FB950;" id="statusText"></span>
+    <div id="workspace">
+      <!-- Editor -->
+      <div id="ed-pane">
+        <div id="ed-scroll">
+          <div id="lnums"></div>
+          <div id="gut"></div>
+          <div id="ed-body">
+            <div id="hl" aria-hidden="true"></div>
+            <textarea id="ed-ta" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+          </div>
         </div>
-        <button id="compileBtn" style="font-family:var(--font-mono); font-size:0.75rem; font-weight:600; padding:0.3rem 1rem; background:#238636; color:#fff; border:1px solid #2EA043; border-radius:6px; cursor:pointer;">Compile</button>
       </div>
 
-      <!-- Editor + Output split -->
-      <div class="flex flex-1 min-h-0">
-
-        <!-- Editor pane -->
-        <div class="flex-1 flex flex-col border-r border-base-300/50 min-w-0">
-          <textarea
-            id="editor"
-            spellcheck="false"
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-            placeholder="Write Clear code here..."
-            style="flex:1; resize:none; border:none; outline:none; background:#0D1117; color:#E6EDF3; font-family:var(--font-mono); font-size:0.82rem; line-height:1.65; padding:1rem 1.25rem; tab-size:2;"
-          ></textarea>
+      <!-- Output -->
+      <div id="out-pane">
+        <div id="tab-bar">
+          <button class="tab on" data-tab="preview">Preview</button>
+          <button class="tab" data-tab="js">JavaScript</button>
+          <button class="tab" data-tab="html">HTML</button>
+          <button class="tab" data-tab="css">CSS</button>
+          <div class="tab-sp"></div>
+          <button class="tab guide" data-tab="guide">Guide</button>
         </div>
-
-        <!-- Output pane -->
-        <div class="flex-1 flex flex-col min-w-0">
-          <!-- Output tabs -->
-          <div class="h-9 bg-base-200 border-b border-base-300/30 flex items-center gap-1 px-2 shrink-0">
-            <button class="tab-btn tab-active" data-tab="preview" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; border:none; border-radius:4px; cursor:pointer;">Preview</button>
-            <button class="tab-btn" data-tab="js" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; background:transparent; color:#8B949E; border:none; border-radius:4px; cursor:pointer;">JavaScript</button>
-            <button class="tab-btn" data-tab="html" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; background:transparent; color:#8B949E; border:none; border-radius:4px; cursor:pointer;">HTML</button>
-            <button class="tab-btn" data-tab="css" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; background:transparent; color:#8B949E; border:none; border-radius:4px; cursor:pointer;">CSS</button>
-            <div class="flex-1"></div>
-            <button class="tab-btn" data-tab="guide" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; background:transparent; color:#8B949E; border:none; border-radius:4px; cursor:pointer;">Guide</button>
-          </div>
-          <!-- Output content -->
-          <div class="flex-1 overflow-auto min-h-0 bg-base-100" id="outputArea">
-            <div class="p-8 text-center" style="color:#484F58; font-size:0.9rem;">Pick an example or start typing</div>
-          </div>
-        </div>
-
+        <div id="prev-wrap"></div>
       </div>
     </div>
   </div>
+</div>
 
-  <script type="module">
+<script type="module">
 const clear = await import("./clear-compiler.min.js");
 
-// Examples
+// Load DaisyUI CSS for iframe injection (CDN gets ORB-blocked in sandbox)
+let _daisyCSS = '';
+try { const r = await fetch('./daisyui.min.css'); _daisyCSS = await r.text(); } catch(e) {}
+
+// ─── Examples ──────────────────────────────────────────────
 const EXAMPLES = {
+  'Sales Dashboard': `build for web
+theme 'midnight'
+
+page 'Sales Dashboard' at '/':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Acme Inc'
+      divider
+      text 'Dashboard'
+      text 'Customers'
+      text 'Invoices'
+      text 'Settings'
+
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Sales Dashboard'
+        small text 'Q4 2026'
+
+      section 'Body' with style app_content:
+        section 'Metrics' as two column layout:
+          section 'Revenue' with style metric_card:
+            small text 'Monthly Revenue'
+            heading '$42,300'
+            text '+12.4% from last month'
+          section 'Deals' with style metric_card:
+            small text 'Active Deals'
+            heading '23'
+            text '8 closing this week'
+          section 'Pipeline' with style metric_card:
+            small text 'Pipeline Value'
+            heading '$284k'
+            text '47 qualified leads'
+          section 'Win Rate' with style metric_card:
+            small text 'Win Rate'
+            heading '34%'
+            text '+5% from Q3'
+
+        section 'Recent' with style card_bordered:
+          heading 'Recent Activity'
+          text 'Acme Corp signed $12k annual contract'
+          text 'Beta Inc moved to negotiation stage'
+          text 'Gamma Ltd requested a demo for next week'`,
+
+  'Contact Manager': `build for web and javascript backend
+theme 'arctic'
+database is local memory
+
+create a Contacts table:
+  name, required
+  email, required, unique
+  company
+  status, default 'new'
+  created_at_date, auto
+
+# Allow the frontend to talk to the backend
+allow cross-origin requests
+
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+
+when user calls POST /api/contacts sending contact_data:
+  validate contact_data:
+    name is text, required, min 1, max 100
+    email is text, required, matches email
+  new_contact = save contact_data as new Contact
+  send back new_contact with success message
+
+page 'Contact Manager' at '/':
+  on page load get contacts from '/api/contacts'
+
+  section 'Form' with style card_bordered:
+    heading 'Add Contact'
+    'Full Name' is a text input saved as a name
+    'Email Address' is a text input saved as an email
+    'Company' is a text input saved as a company
+    button 'Save Contact':
+      send name and email and company to '/api/contacts'
+      get contacts from '/api/contacts'
+      name is ''
+      email is ''
+      company is ''
+
+  display contacts as table showing name, email, company, status`,
+
+  'Invoice Manager': `build for web and javascript backend
+theme 'moss'
+database is local memory
+
+create an Invoices table:
+  client, required
+  amount (number), required
+  status, default 'draft'
+  due_date
+  created_at_date, auto
+
+allow cross-origin requests
+
+when user calls GET /api/invoices:
+  all_invoices = get all Invoices
+  send back all_invoices
+
+when user calls POST /api/invoices sending invoice_data:
+  validate invoice_data:
+    client is text, required
+    amount is number, required, min 1
+  new_invoice = save invoice_data as new Invoice
+  send back new_invoice with success message
+
+page 'Invoices' at '/':
+  on page load get invoices from '/api/invoices'
+
+  section 'Create' with style card_bordered:
+    heading 'New Invoice'
+    'Client Name' is a text input saved as a client
+    'Amount (USD)' is a number input saved as an amount
+    'Due Date' is a text input saved as a due_date
+    button 'Create Invoice':
+      send client and amount and due_date to '/api/invoices'
+      get invoices from '/api/invoices'
+      client is ''
+      amount is ''
+      due_date is ''
+
+  display invoices as table showing client, amount, status, due_date`,
+
+  'SaaS Landing': `build for web
+theme 'ivory'
+
+page 'Clear Language' at '/':
+  section 'Hero' with style page_hero:
+    small text 'Now in public beta'
+    heading 'Write English. Ship apps.'
+    subheading 'Clear compiles plain English to production JavaScript, Python, and HTML. No framework. No config.'
+    link 'Start Building Free' to '/playground'
+
+  section 'Features' with style page_section_dark:
+    heading 'Why developers switch to Clear'
+    section 'Grid' as three column layout:
+      section 'F1' with style card:
+        heading '8ms compile'
+        text 'From source to running app in under 8 milliseconds. No build step, no bundler.'
+      section 'F2' with style card:
+        heading 'Readable output'
+        text 'The compiled JavaScript is clean, readable, and yours. Not minified garbage.'
+      section 'F3' with style card:
+        heading 'AI-native'
+        text 'Built-in AI agents with structured output. Write an agent in 5 lines.'
+
+  section 'CTA' with style page_hero:
+    heading 'Your next app starts with one sentence.'
+    text 'No sign-up required. No credit card. Just write.'
+    link 'Try the Playground' to '/playground'`,
+
   'Lead Scorer': `build for javascript backend
 database is local memory
 
@@ -161,21 +397,23 @@ create a Leads table:
   email, required
   score (number), default 0
   reasoning
+  qualified, default false
 
 agent 'Lead Scorer' receiving lead:
   check lead's company is not missing, otherwise error 'Company required'
-  set result to ask ai 'Rate this company 1-10 for enterprise potential' with lead returning:
+  set result to ask ai 'Rate this company 1-10 for enterprise potential. Consider company size, industry, and likely budget.' with lead returning:
     score (number)
     reasoning
     qualified (boolean)
   lead's score is result's score
   lead's reasoning is result's reasoning
+  lead's qualified is result's qualified
   send back lead
 
 when user calls POST /api/leads sending lead_data:
   validate lead_data:
     company is text, required
-    email is text, required
+    email is text, required, matches email
   set scored to call 'Lead Scorer' with lead_data
   set saved to save scored as new Lead
   send back saved with success message
@@ -183,124 +421,6 @@ when user calls POST /api/leads sending lead_data:
 when user calls GET /api/leads:
   all_leads = get all Leads
   send back all_leads`,
-
-  'Todo App': `build for web and javascript backend
-database is local memory
-
-create a Todos table:
-  task, required
-  done, default false
-  created_at_date, auto
-
-allow cross-origin requests
-
-when user calls GET /api/todos:
-  all_todos = get all Todos
-  send back all_todos
-
-when user calls POST /api/todos sending todo_data:
-  validate todo_data:
-    task is text, required, min 1, max 200
-  new_todo = save todo_data as new Todo
-  send back new_todo with success message
-
-page 'Todo App' at '/':
-  on page load get todos from '/api/todos'
-
-  section 'Add' with style app_card:
-    heading 'My Todos'
-    'What needs to be done?' is a text input saved as a task
-    button 'Add':
-      send task as a new todo to '/api/todos'
-      get todos from '/api/todos'
-      task is ''
-
-  display todos as table showing task, done`,
-
-  'Dashboard': `build for web
-theme 'midnight'
-
-page 'Dashboard' at '/':
-  section 'Layout' with style app_layout:
-    section 'Nav' with style app_sidebar:
-      heading 'Acme Inc'
-      divider
-      text 'Dashboard'
-      text 'Analytics'
-      text 'Settings'
-
-    section 'Right' with style app_main:
-      section 'Top' with style app_header:
-        heading 'Revenue Dashboard'
-        text 'Q4 2026'
-
-      section 'Body' with style app_content:
-        section 'KPIs' as two column layout:
-          section 'MRR' with style app_card:
-            heading '$42,300'
-            text 'Monthly Recurring Revenue'
-          section 'Growth' with style app_card:
-            heading '+12.4%'
-            text 'Month over Month'
-          section 'Customers' with style app_card:
-            heading '847'
-            text 'Active Customers'
-          section 'Churn' with style app_card:
-            heading '2.1%'
-            text 'Churn Rate'`,
-
-  'Invoice API': `build for javascript backend
-database is local memory
-
-create an Invoices table:
-  client is text, required
-  amount (number), required
-  status, default 'draft'
-  due_date
-  created_at_date, auto
-
-allow cross-origin requests
-log every request
-
-when user calls POST /api/invoices sending invoice:
-  requires auth
-  validate invoice:
-    client is text, required
-    amount is number, required, min 1
-  set saved to save invoice as new Invoice
-  send back saved with success message
-
-when user calls GET /api/invoices:
-  requires auth
-  all_invoices = get all Invoices
-  send back all_invoices
-
-when user calls DELETE /api/invoices/:id:
-  requires auth
-  requires role 'admin'
-  remove Invoice with this id
-  send back 'deleted' with success message`,
-
-  'Landing Page': `build for web
-theme 'ivory'
-
-page 'My Product' at '/':
-  section 'Hero' with style page_hero:
-    heading 'Build faster. Ship sooner.'
-    subheading 'The tool that gets out of your way.'
-    text 'No configuration. No boilerplate. Just build.'
-    link 'Get Started' to '/start'
-
-  section 'Features' with style section_light:
-    heading 'Why teams choose us'
-    text 'Zero setup. Write your idea, compile, deploy.'
-    text 'Readable output. Every line of generated code is yours.'
-    text 'Battle-tested templates. Start from proven patterns.'
-
-  section 'CTA' with style hero:
-    heading 'Ready to ship?'
-    text 'Start building in 30 seconds.'
-    link 'Try it Free' to '/start'`,
 
   'Hiring Pipeline': `build for javascript backend
 database is local memory
@@ -310,367 +430,395 @@ create a Candidates table:
   email, required
   resume, required
   score (number), default 0
+  strengths
+  concerns
   summary
 
 agent 'Screener' receiving candidate:
-  check candidate's resume is not missing, otherwise error 'Resume required'
+  check candidate's resume is not missing, otherwise error 'Resume is required'
   send back candidate
 
 agent 'Scorer' receiving candidate:
-  set result to ask ai 'Rate 1-10 for senior engineering fit' with candidate's resume returning:
+  set result to ask ai 'Rate this candidate 1-10 for senior engineering. Be specific about strengths and red flags.' with candidate's resume returning:
     score (number)
     strengths
     concerns
   candidate's score is result's score
+  candidate's strengths is result's strengths
+  candidate's concerns is result's concerns
   send back candidate
 
 agent 'Pipeline' receiving candidate:
   set screened to call 'Screener' with candidate
   set scored to call 'Scorer' with screened
-  set candidate's summary to ask ai 'Write a 2-sentence hiring summary' with scored's resume
+  set candidate's summary to ask ai 'Write a 2-sentence hiring recommendation based on the evaluation.' with scored
   send back scored
 
 when user calls POST /api/evaluate sending data:
   validate data:
     name is text, required
-    email is text, required
-    resume is text, required
+    email is text, required, matches email
+    resume is text, required, min 10
   set result to call 'Pipeline' with data
   set saved to save result as new Candidate
-  send back saved with success message`
+  send back saved with success message
+
+when user calls GET /api/candidates:
+  all_candidates = get all Candidates
+  send back all_candidates`
 };
 
-// State
-let compiled = null;
-let activeTab = 'preview';
-const editor = document.getElementById('editor');
-const outputArea = document.getElementById('outputArea');
+const DESC = {
+  'Sales Dashboard': 'Dark theme with sidebar + metric cards',
+  'Contact Manager': 'Full-stack CRUD \u2014 arctic theme',
+  'Invoice Manager': 'Create invoices, track status \u2014 moss theme',
+  'SaaS Landing': 'Hero + features + CTA \u2014 ivory theme',
+  'Lead Scorer': 'AI agent with structured output',
+  'Hiring Pipeline': '3-agent chain: screen \u2192 score \u2192 summarize',
+};
+
+// ─── Syntax highlighting ───────────────────────────────────
+const KW = new Set(['build','for','web','javascript','backend','theme','page','at','section','with','style','as','two','three','column','layout','heading','text','divider','subheading','link','to','button','display','showing','table','on','load','get','from','send','save','new','create','a','an','database','is','local','memory','allow','cross-origin','requests','when','user','calls','sending','validate','required','min','max','number','default','false','true','auto','requires','auth','role','log','every','request','remove','agent','receiving','check','not','missing','otherwise','error','set','result','ask','ai','returning','score','reasoning','qualified','boolean','call','scored','saved','define','all','delete','if','then','increase','by','repeat','times','each','in','list','while','less','than','greater','try','add','show','bold','italic','small','divider','unique','comment','test','expect']);
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function tokenizeLine(line) {
+  let out = '', i = 0;
+  while (i < line.length) {
+    if (line[i] === '#') { out += '<span class="cmt">' + esc(line.slice(i)) + '</span>'; break; }
+    if (line[i] === "'") {
+      let j = i + 1; while (j < line.length && line[j] !== "'") j++;
+      const s = line.slice(i, j + 1);
+      out += '<span class="' + (s.startsWith("'/") ? 'pth' : 'str') + '">' + esc(s) + '</span>';
+      i = j + 1; continue;
+    }
+    if (line[i] === ':') { out += '<span class="op">:</span>'; i++; continue; }
+    if (/[a-zA-Z_$+\-0-9%.,]/.test(line[i])) {
+      let j = i; while (j < line.length && /[a-zA-Z_$+\-0-9%.,]/.test(line[j])) j++;
+      const w = line.slice(i, j);
+      if (KW.has(w)) out += '<span class="kw">' + esc(w) + '</span>';
+      else if (/^[$+\-]?[0-9]/.test(w)) out += '<span class="val">' + esc(w) + '</span>';
+      else out += esc(w);
+      i = j; continue;
+    }
+    out += esc(line[i]); i++;
+  }
+  return out;
+}
+
+// ─── State ─────────────────────────────────────────────────
+let compiled = null, activeTab = 'preview', activeExample = '';
+const ta = document.getElementById('ed-ta');
+const hl = document.getElementById('hl');
+const lnums = document.getElementById('lnums');
+const prevWrap = document.getElementById('prev-wrap');
+const statusBadge = document.getElementById('statusBadge');
 const statusText = document.getElementById('statusText');
 
-// Build example buttons
-const btnContainer = document.getElementById('exampleButtons');
+// ─── Editor sync ───────────────────────────────────────────
+function sync() {
+  const val = ta.value;
+  hl.innerHTML = val.split('\n').map(tokenizeLine).join('\n');
+  const count = val.split('\n').length;
+  lnums.innerHTML = Array.from({length: count}, (_, i) => '<div class="ln">' + (i+1) + '</div>').join('');
+}
+
+// ─── Build sidebar ─────────────────────────────────────────
+const exBtns = document.getElementById('exampleButtons');
 Object.keys(EXAMPLES).forEach(name => {
-  const btn = document.createElement('button');
-  btn.style.cssText = 'display:block; width:100%; text-align:left; padding:0.35rem 0.6rem; font-family:var(--font-body); font-size:0.8rem; color:#8B949E; background:transparent; border:1px solid transparent; border-radius:6px; cursor:pointer; transition:all 0.15s;';
-  btn.textContent = name;
-  btn.onmouseenter = () => { if (!btn.classList.contains('example-btn-active')) btn.style.color = '#E6EDF3'; };
-  btn.onmouseleave = () => { if (!btn.classList.contains('example-btn-active')) btn.style.color = '#8B949E'; };
-  btn.onclick = () => loadExample(name);
-  btnContainer.appendChild(btn);
+  const a = document.createElement('a');
+  a.className = 'ex';
+  a.innerHTML = '<span class="ex-name">' + name + '</span><span class="ex-desc">' + (DESC[name]||'') + '</span>';
+  a.onclick = () => loadExample(name);
+  exBtns.appendChild(a);
 });
 
-// Compile
-function doCompile() {
+// ─── Compile ───────────────────────────────────────────────
+let _isManualCompile = false;
+
+function doCompile(manual) {
+  _isManualCompile = !!manual;
+  const t0 = performance.now();
+  statusBadge.className = 'status-warn compiling-pulse'; statusBadge.querySelector('.ok-dot').style.background = 'var(--amber)';
+  statusText.textContent = 'Compiling\u2026';
+
+  // Add scan line to editor
+  const scanEl = document.createElement('div');
+  scanEl.className = 'compile-scan';
+  document.getElementById('ed-body').appendChild(scanEl);
+  scanEl.addEventListener('animationend', () => scanEl.remove());
+
   try {
-    compiled = clear.compileProgram(editor.value);
+    compiled = clear.compileProgram(ta.value);
+    const ms = Math.round(performance.now() - t0);
     if (compiled.errors.length > 0) {
+      statusBadge.className = 'status-err'; statusBadge.querySelector('.ok-dot').style.background = 'var(--red)';
       statusText.textContent = compiled.errors.length + ' error' + (compiled.errors.length === 1 ? '' : 's');
-      statusText.style.color = '#F85149';
     } else {
-      const src = editor.value.split('\n').length;
-      const out = (compiled.javascript || compiled.html || '').split('\n').length;
-      statusText.textContent = src + ' lines Clear -> ' + out + ' lines output';
-      statusText.style.color = '#3FB950';
+      const src = ta.value.split('\n').length, out = (compiled.javascript || compiled.html || '').split('\n').length;
+      statusBadge.className = 'status-ok'; statusBadge.querySelector('.ok-dot').style.background = 'var(--green)';
+      statusText.textContent = src + ' \u2192 ' + out + ' lines \u00b7 ' + ms + 'ms';
     }
   } catch (e) {
     compiled = { errors: [{ line: 0, message: e.message }], javascript: '', html: '', css: '' };
+    statusBadge.className = 'status-err'; statusBadge.querySelector('.ok-dot').style.background = 'var(--red)';
     statusText.textContent = 'Error';
-    statusText.style.color = '#F85149';
+  }
+
+  // On manual compile with JS tab, stream the output line by line
+  if (_isManualCompile && compiled && !compiled.errors.length && compiled.javascript) {
+    showTab('js');
+    streamCode(compiled.javascript);
+    return;
   }
   showTab(activeTab);
 }
 
-// Show tab
+// ─── Show tab ──────────────────────────────────────────────
 function showTab(tab) {
   activeTab = tab;
-  document.querySelectorAll('.tab-btn').forEach(b => {
-    b.classList.toggle('tab-active', b.dataset.tab === tab);
-  });
-  if (!compiled) {
-    outputArea.innerHTML = '<div class="p-8 text-center text-base-content/30">Pick an example or start typing</div>';
-    return;
-  }
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === tab));
+
+  if (!compiled) { prevWrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx4);font-size:13px;">Pick an example or start typing</div>'; return; }
+
   if (compiled.errors.length > 0 && tab !== 'html' && tab !== 'js' && tab !== 'css') {
-    outputArea.innerHTML = '<div class="p-4 flex flex-col gap-2">' +
-      compiled.errors.map(e =>
-        '<div class="p-3 bg-error/10 border border-error/30 rounded-lg text-sm">' +
-        '<span class="font-mono font-bold text-error">Line ' + e.line + '</span> ' +
-        '<span class="text-base-content">' + escHtml(e.message) + '</span></div>'
-      ).join('') + '</div>';
+    prevWrap.innerHTML = '<div style="padding:14px;display:flex;flex-direction:column;gap:8px;">' +
+      compiled.errors.map(e => '<div class="err-card"><span class="err-line">Line ' + e.line + '</span><span class="err-msg">' + esc(e.message) + '</span></div>').join('') + '</div>';
     return;
   }
-  if (tab === 'guide') {
-    outputArea.innerHTML = renderGuide();
-    return;
-  }
+
+  if (tab === 'guide') { prevWrap.innerHTML = renderGuide(); return; }
+
   if (tab === 'preview') {
     if (compiled.html) {
       let html = compiled.html;
-      // Inject browser server if available (full-stack apps)
-      if (compiled.browserServer) {
-        html = html.replace('</head>', '<script>' + compiled.browserServer + '<\/script></head>');
-      }
-      outputArea.innerHTML = '<iframe sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:#fff;"></iframe>';
-      outputArea.querySelector('iframe').srcdoc = html;
+      if (_daisyCSS) html = html.replace(/<link[^>]*daisyui[^>]*>/i, '<style>' + _daisyCSS + '</style>');
+      if (compiled.browserServer) html = html.replace('</head>', '<script>' + compiled.browserServer + '<\/script></head>');
+      prevWrap.innerHTML = '<div class="browser-mock"><div class="br-bar"><div class="dots"><div class="dot dr"></div><div class="dot dy"></div><div class="dot dg"></div></div><div class="url-box">localhost:3000</div><div style="width:52px"></div></div><div style="flex:1;overflow:auto;background:#fff;"><iframe sandbox="allow-scripts allow-same-origin" style="width:100%;height:100%;border:none;"></iframe></div></div>';
+      prevWrap.querySelector('iframe').srcdoc = html;
     } else if (compiled.javascript) {
-      outputArea.innerHTML = renderBackendPreview(compiled.javascript, editor.value);
+      renderBackendPreview(compiled.javascript, ta.value, compiled.browserServer);
     } else {
-      outputArea.innerHTML = '<div class="p-8 text-center text-base-content/30">Write some Clear code and hit Compile</div>';
+      prevWrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx4);font-size:13px;">No preview available</div>';
     }
   } else {
     const code = tab === 'js' ? compiled.javascript : tab === 'html' ? compiled.html : compiled.css;
-    outputArea.innerHTML = '<pre style="padding:1rem 1.25rem; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#8B949E; white-space:pre; overflow:auto; height:100%;">' + escHtml(code || 'No ' + tab + ' output for this example.') + '</pre>';
+    prevWrap.innerHTML = '<pre class="code-out">' + esc(code || 'No ' + tab + ' output.') + '</pre>';
   }
 }
 
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// ─── Backend preview (interactive API tester) ──────────────
+let _apiFrame = null;
 
-// Backend preview: extract routes, schemas, agents from compiled JS
-function renderBackendPreview(js, source) {
-  const routes = [];
-  const routeRe = /app\.(get|post|put|delete|patch)\('([^']+)'/gi;
-  let m;
-  while ((m = routeRe.exec(js)) !== null) {
-    routes.push({ method: m[1].toUpperCase(), path: m[2] });
-  }
-  const tables = [];
-  const tableRe = /create a (\w+) table/gi;
-  while ((m = tableRe.exec(source)) !== null) {
-    tables.push(m[1]);
-  }
-  const agents = [];
-  const agentRe = /agent '([^']+)'/g;
-  while ((m = agentRe.exec(source)) !== null) {
-    agents.push(m[1]);
-  }
-  const scheduled = [];
-  const schedRe = /agent '([^']+)' runs every ([^:]+)/g;
-  while ((m = schedRe.exec(source)) !== null) {
-    scheduled.push({ name: m[1], schedule: m[2].trim() });
-  }
-  const methodColors = { GET: 'badge-success', POST: 'badge-info', PUT: 'badge-warning', DELETE: 'badge-error', PATCH: 'badge-accent' };
+function renderBackendPreview(js, source, browserServer) {
+  const routes = []; let m;
+  const rr = /app\.(get|post|put|delete|patch)\('([^']+)'/gi;
+  while ((m = rr.exec(js)) !== null) routes.push({ method: m[1].toUpperCase(), path: m[2] });
+  const tables = []; const tr2 = /create a (\w+) table/gi;
+  while ((m = tr2.exec(source)) !== null) tables.push(m[1]);
+  const agents = []; const ar = /agent '([^']+)'/g;
+  while ((m = ar.exec(source)) !== null) agents.push(m[1]);
 
-  let html = '<div class="p-6 space-y-6">';
-  html += '<div><h2 class="text-lg font-bold mb-1">API Server Preview</h2>';
-  html += '<p class="text-xs text-base-content/50 mb-4">This compiles to a Node.js Express server. Run it with: node server.js</p></div>';
+  // Generate example body from table fields
+  function exampleBody(path) {
+    const tableMatch = source.match(/create an? (\w+) table:\n((?:  .+\n?)*)/);
+    if (!tableMatch) return '{}';
+    const fields = tableMatch[2].split('\n').filter(l => l.trim()).map(l => {
+      const parts = l.trim().split(',').map(p => p.trim());
+      const name = parts[0].replace(/ is text| \(number\)| \(boolean\)/g, '');
+      const isNum = l.includes('(number)');
+      return { name, isNum };
+    }).filter(f => f.name && f.name !== 'created_at_date');
+    const obj = {};
+    fields.forEach(f => { obj[f.name] = f.isNum ? 0 : ''; });
+    return JSON.stringify(obj, null, 2);
+  }
 
-  if (routes.length > 0) {
-    html += '<div><h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Endpoints</h3>';
-    html += '<div class="space-y-1">';
-    routes.forEach(r => {
-      html += '<div class="flex items-center gap-2 p-2 bg-base-200 rounded-lg">';
-      html += '<span class="badge badge-sm ' + (methodColors[r.method] || 'badge-ghost') + ' font-mono">' + r.method + '</span>';
-      html += '<span class="font-mono text-sm">' + escHtml(r.path) + '</span>';
-      html += '</div>';
+  let h = '<div style="padding:18px;display:flex;flex-direction:column;gap:16px;overflow:auto;height:100%;">';
+  h += '<div><div style="font-size:15px;font-weight:700;color:var(--tx);margin-bottom:4px;">API Tester</div>';
+  h += '<div style="font-size:11px;color:var(--tx3);">Live in-browser server. Send real requests below.</div></div>';
+
+  if (routes.length) {
+    h += '<div><span class="section-lbl">Endpoints</span><div style="display:flex;flex-direction:column;gap:8px;">';
+    routes.forEach((r, i) => {
+      const needsBody = r.method === 'POST' || r.method === 'PUT';
+      const needsId = r.path.includes(':id');
+      h += '<div class="ep-card" style="flex-direction:column;align-items:stretch;gap:8px;" id="ep-' + i + '">';
+      h += '<div style="display:flex;align-items:center;gap:10px;">';
+      h += '<span class="ep-method ep-' + r.method + '">' + r.method + '</span>';
+      h += '<span class="ep-path">' + esc(r.path) + '</span>';
+      h += '<div style="flex:1"></div>';
+      h += '<button onclick="apiSend(' + i + ')" style="font-family:var(--font-mono);font-size:10px;font-weight:600;padding:3px 12px;background:var(--green);color:#fff;border:none;border-radius:4px;cursor:pointer;">Send</button>';
+      h += '</div>';
+      if (needsBody) {
+        h += '<textarea id="ep-body-' + i + '" style="font-family:var(--font-mono);font-size:11px;line-height:1.5;padding:8px 10px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);color:var(--tx2);resize:vertical;min-height:60px;width:100%;" spellcheck="false">' + esc(exampleBody(r.path)) + '</textarea>';
+      }
+      if (needsId) {
+        h += '<input id="ep-id-' + i + '" placeholder="ID (e.g. 1)" style="font-family:var(--font-mono);font-size:11px;padding:5px 10px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);color:var(--tx2);width:120px;" value="1"/>';
+      }
+      h += '<pre id="ep-res-' + i + '" style="display:none;font-family:var(--font-mono);font-size:11px;line-height:1.5;padding:8px 10px;border-radius:6px;background:#fdfbf7;border:1px solid var(--bd);color:var(--tx2);white-space:pre-wrap;max-height:200px;overflow:auto;"></pre>';
+      h += '</div>';
     });
-    html += '</div></div>';
+    h += '</div></div>';
   }
 
-  if (tables.length > 0) {
-    html += '<div><h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Data Tables</h3>';
-    html += '<div class="flex gap-2 flex-wrap">';
-    tables.forEach(t => { html += '<span class="badge badge-outline badge-sm font-mono">' + escHtml(t) + '</span>'; });
-    html += '</div></div>';
+  if (tables.length) {
+    h += '<div><span class="section-lbl">Data Tables</span><div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    tables.forEach(t => { h += '<span class="table-chip">' + esc(t) + '</span>'; });
+    h += '</div></div>';
+  }
+  if (agents.length) {
+    h += '<div><span class="section-lbl">AI Agents</span><div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    agents.forEach(a => { h += '<span class="agent-chip">' + esc(a) + '</span>'; });
+    h += '</div></div>';
   }
 
-  if (agents.length > 0) {
-    html += '<div><h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">AI Agents</h3>';
-    html += '<div class="space-y-1">';
-    agents.forEach(a => {
-      const sched = scheduled.find(s => s.name === a);
-      html += '<div class="flex items-center gap-2 p-2 bg-base-200 rounded-lg">';
-      html += '<span class="badge badge-sm badge-accent font-mono">AGENT</span>';
-      html += '<span class="text-sm">' + escHtml(a) + '</span>';
-      if (sched) html += '<span class="text-xs text-base-content/40">runs every ' + escHtml(sched.schedule) + '</span>';
-      html += '</div>';
-    });
-    html += '</div></div>';
+  const feats = [];
+  if (js.includes('auth')) feats.push('JWT Auth');
+  if (js.includes('rateLimit')) feats.push('Rate Limit');
+  if (source.includes('log every request')) feats.push('Logging');
+  if (source.includes('allow cross-origin')) feats.push('CORS');
+  if (js.includes('_askAI')) feats.push('AI (BYOK)');
+  if (js.includes('_validate')) feats.push('Validation');
+  if (feats.length) {
+    h += '<div><span class="section-lbl">Features</span><div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    feats.forEach(f => { h += '<span class="feat-chip">' + f + '</span>'; });
+    h += '</div></div>';
   }
 
-  const features = [];
-  if (js.includes('require("./clear-runtime/auth")')) features.push('JWT Auth');
-  if (js.includes('rateLimit')) features.push('Rate Limiting');
-  if (source.includes('log every request')) features.push('Request Logging');
-  if (source.includes('allow cross-origin')) features.push('CORS');
-  if (js.includes('_askAI')) features.push('AI Integration (BYOK)');
-  if (js.includes('_validate')) features.push('Input Validation');
+  h += '<div style="font-family:var(--font-mono);font-size:10px;color:var(--tx4);padding-top:12px;border-top:1px solid var(--bd);">' + js.split('\n').length + ' lines compiled JavaScript</div>';
+  h += '</div>';
 
-  if (features.length > 0) {
-    html += '<div><h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Features</h3>';
-    html += '<div class="flex gap-2 flex-wrap">';
-    features.forEach(f => { html += '<span class="badge badge-ghost badge-sm">' + f + '</span>'; });
-    html += '</div></div>';
+  // Inject hidden iframe with browser server for API execution
+  if (browserServer) {
+    h += '<iframe id="api-frame" sandbox="allow-scripts allow-same-origin" style="display:none;" srcdoc="<html><head></head><body><script>' + browserServer.replace(/"/g, '&quot;').replace(/</g, '&lt;') + '&lt;/script></body></html>"></iframe>';
   }
 
-  const jsLines = js.split('\n').length;
-  html += '<div class="text-xs text-base-content/40 pt-4 border-t border-base-300/30">';
-  html += 'Compiled to ' + jsLines + ' lines of JavaScript with Express, validation, error handling, and graceful shutdown.';
-  html += '</div>';
+  prevWrap.innerHTML = h;
 
-  html += '</div>';
-  return html;
+  // Re-inject the iframe srcdoc properly (escaping was tricky above)
+  if (browserServer) {
+    const frame = document.createElement('iframe');
+    frame.id = 'api-frame';
+    frame.sandbox = 'allow-scripts allow-same-origin';
+    frame.style.display = 'none';
+    frame.srcdoc = '<html><head></head><body><script>' + browserServer + '<\/script></body></html>';
+    prevWrap.appendChild(frame);
+    _apiFrame = frame;
+  }
+
+  // Store routes for apiSend
+  window._apiRoutes = routes;
 }
 
-// Syntax guide
+// Send API request via hidden iframe
+window.apiSend = async function(idx) {
+  const route = window._apiRoutes[idx];
+  if (!route || !_apiFrame?.contentWindow) return;
+  const resEl = document.getElementById('ep-res-' + idx);
+  resEl.style.display = 'block';
+  resEl.textContent = 'Sending...';
+  resEl.style.borderColor = 'var(--bd)';
+  resEl.style.color = 'var(--tx3)';
+
+  try {
+    let path = route.path;
+    const idInput = document.getElementById('ep-id-' + idx);
+    if (idInput) path = path.replace(':id', idInput.value || '1');
+
+    const opts = { method: route.method, headers: { 'Content-Type': 'application/json' } };
+    const bodyEl = document.getElementById('ep-body-' + idx);
+    if (bodyEl) opts.body = bodyEl.value;
+
+    const res = await _apiFrame.contentWindow.fetch(path, opts);
+    const data = await res.json();
+    const statusCode = res.status;
+    const ok = statusCode >= 200 && statusCode < 400;
+
+    resEl.style.borderColor = ok ? 'var(--green-bd)' : 'var(--red-bd)';
+    resEl.style.color = ok ? 'var(--green)' : 'var(--red)';
+    resEl.textContent = statusCode + ' ' + (ok ? 'OK' : 'Error') + '\n' + JSON.stringify(data, null, 2);
+  } catch (e) {
+    resEl.style.borderColor = 'var(--red-bd)';
+    resEl.style.color = 'var(--red)';
+    resEl.textContent = 'Error: ' + e.message;
+  }
+};
+
+// ─── Guide ─────────────────────────────────────────────────
 function renderGuide() {
-  return `<div style="padding:1.5rem; font-family:var(--font-body); font-size:0.875rem; overflow:auto; height:100%; display:flex; flex-direction:column; gap:1.5rem;">
-  <div>
-    <h2 class="text-lg font-bold mb-2">Clear Syntax Guide</h2>
-    <p class="text-base-content/60 mb-4">Clear compiles plain English to production JavaScript, Python, or HTML. Each line does one thing.</p>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Variables</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">name is 'Alice'
-price = 9.99
-active is true
-items is an empty list</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Data Tables</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">create a Users table:
-  name, required
-  email, required, unique
-  age (number), default 0
-  created_at_date, auto</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">API Endpoints</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">when user calls GET /api/users:
-  all_users = get all Users
-  send back all_users
-
-when user calls POST /api/users sending user_data:
-  requires auth
-  validate user_data:
-    name is text, required
-    email is text, required
-  set saved to save user_data as new User
-  send back saved with success message</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Web Pages</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">page 'My App' at '/':
-  heading 'Welcome'
-  text 'This is a Clear app.'
-  'Your Name' is a text input saved as name
-  button 'Greet':
-    show 'Hello, ' + name</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Themes and Layout</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">theme 'midnight'    # dark
-theme 'ivory'       # light (default)
-theme 'nova'        # warm
-
-section 'Layout' with style app_layout:
-  section 'Nav' with style app_sidebar:
-  section 'Main' with style app_main:
-    section 'Top' with style app_header:
-    section 'Body' with style app_content:</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">AI Agents</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">agent 'Scorer' receiving lead:
-  set result to ask ai 'Rate 1-10' with lead returning:
-    score (number)
-    reasoning
-  lead's score is result's score
-  send back lead
-
-# Call from an endpoint:
-set scored to call 'Scorer' with data</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Scheduled Agents</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">agent 'Cleanup' runs every 1 hour:
-  remove old Sessions</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Browser Storage</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">restore settings         # load on page open
-button 'Save':
-  store settings           # persist across reloads</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Build Targets</h3>
-    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">build for web                              # frontend only
-build for javascript backend               # Express server
-build for python backend                   # FastAPI server
-build for web and javascript backend       # both</pre>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Things to Try</h3>
-    <ul class="list-disc list-inside text-base-content/60 space-y-1 text-xs">
-      <li>Load the Dashboard example, change 'midnight' to 'ivory', see the theme switch live</li>
-      <li>Add a new field to any table: <code class="bg-base-200 px-1 rounded">phone, required</code></li>
-      <li>Add a new endpoint: <code class="bg-base-200 px-1 rounded">when user calls GET /api/health:</code> + <code class="bg-base-200 px-1 rounded">send back 'ok'</code></li>
-      <li>Change a heading text and watch the Preview update</li>
-      <li>Add <code class="bg-base-200 px-1 rounded">requires auth</code> inside an endpoint to add JWT protection</li>
-      <li>Add validation: <code class="bg-base-200 px-1 rounded">validate data:</code> + <code class="bg-base-200 px-1 rounded">name is text, required, min 1</code></li>
-    </ul>
-  </div>
-</div>`;
+  const s = [
+    ['Variables', "name is 'Alice'\nprice = 9.99\nactive is true\nitems is an empty list"],
+    ['Data Tables', "create a Users table:\n  name, required\n  email, required, unique\n  age (number), default 0\n  created_at_date, auto"],
+    ['API Endpoints', "when user calls GET /api/users:\n  all_users = get all Users\n  send back all_users\n\nwhen user calls POST /api/users sending user_data:\n  requires auth\n  validate user_data:\n    name is text, required\n  set saved to save user_data as new User\n  send back saved with success message"],
+    ['Web Pages', "page 'My App' at '/':\n  heading 'Welcome'\n  'Your Name' is a text input saved as name\n  button 'Greet':\n    show 'Hello, ' + name"],
+    ['AI Agents', "agent 'Scorer' receiving lead:\n  set result to ask ai 'Rate 1-10' with lead returning:\n    score (number)\n    reasoning\n  lead's score is result's score\n  send back lead"],
+    ['Build Targets', "build for web                         # frontend\nbuild for javascript backend          # Express\nbuild for web and javascript backend  # both"],
+  ];
+  let h = '<div style="padding:18px;display:flex;flex-direction:column;gap:16px;overflow:auto;height:100%;">';
+  h += '<div><div style="font-size:15px;font-weight:700;color:var(--tx);">Clear Syntax Guide</div><div style="font-size:12px;color:var(--tx3);margin-top:4px;">Each line does one thing. Plain English in, production code out.</div></div>';
+  s.forEach(([title, code]) => { h += '<div><span class="section-lbl">' + title + '</span><pre class="guide-code">' + esc(code) + '</pre></div>'; });
+  h += '</div>';
+  return h;
 }
 
-// Load example
+// ─── Load example ──────────────────────────────────────────
 function loadExample(name) {
-  editor.value = EXAMPLES[name];
-  // Highlight active example button
-  btnContainer.querySelectorAll('button').forEach(b => {
-    if (b.textContent === name) {
-      b.style.background = 'rgba(88,166,255,0.12)';
-      b.style.color = '#58A6FF';
-      b.style.borderColor = 'rgba(88,166,255,0.3)';
-      b.classList.add('example-btn-active');
-    } else {
-      b.style.background = 'transparent';
-      b.style.color = '#8B949E';
-      b.style.borderColor = 'transparent';
-      b.classList.remove('example-btn-active');
-    }
+  activeExample = name;
+  ta.value = EXAMPLES[name];
+  ta.scrollTop = 0;
+  document.querySelectorAll('.ex').forEach(a => {
+    a.classList.toggle('on', a.querySelector('.ex-name')?.textContent === name);
   });
+  sync();
   doCompile();
 }
 
-// Auto-compile
+// ─── Events ────────────────────────────────────────────────
 let timer;
-editor.addEventListener('input', () => {
-  clearTimeout(timer);
-  timer = setTimeout(doCompile, 400);
+ta.addEventListener('input', () => { sync(); clearTimeout(timer); timer = setTimeout(doCompile, 400); });
+ta.addEventListener('scroll', () => { hl.scrollTop = ta.scrollTop; });
+ta.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return;
+  e.preventDefault();
+  const s = ta.selectionStart;
+  ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(ta.selectionEnd);
+  ta.selectionStart = ta.selectionEnd = s + 2;
+  sync();
+  clearTimeout(timer); timer = setTimeout(doCompile, 400);
 });
 
-// Tab key
-editor.addEventListener('keydown', (e) => {
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    const s = editor.selectionStart;
-    editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(editor.selectionEnd);
-    editor.selectionStart = editor.selectionEnd = s + 2;
-    clearTimeout(timer);
-    timer = setTimeout(doCompile, 400);
-  }
-});
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
+document.getElementById('compileBtn').addEventListener('click', () => doCompile(true));
 
-// Tab clicks
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => showTab(btn.dataset.tab));
-});
+// ─── Stream code output (line-by-line reveal) ──────────────
+function streamCode(code) {
+  const lines = code.split('\n');
+  const pre = document.createElement('pre');
+  pre.className = 'code-out';
+  pre.style.whiteSpace = 'pre';
+  prevWrap.innerHTML = '';
+  prevWrap.appendChild(pre);
 
-// Compile button
-document.getElementById('compileBtn').addEventListener('click', doCompile);
+  // Switch to JS tab visually
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'js'));
+  activeTab = 'js';
 
-// Init
-loadExample('Dashboard');
-  </script>
+  let i = 0;
+  const interval = Math.max(8, Math.min(30, 800 / lines.length)); // 800ms total, adaptive
+  const timer = setInterval(() => {
+    if (i >= lines.length) { clearInterval(timer); return; }
+    // Add batch of lines for speed
+    const batch = Math.ceil(lines.length / 40);
+    for (let b = 0; b < batch && i < lines.length; b++, i++) {
+      pre.textContent += (i > 0 ? '\n' : '') + lines[i];
+    }
+    pre.scrollTop = pre.scrollHeight;
+  }, interval);
+}
+
+// ─── Init ──────────────────────────────────────────────────
+loadExample('Sales Dashboard');
+</script>
 </body>
 </html>

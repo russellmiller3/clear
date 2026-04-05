@@ -4,7 +4,7 @@
 // Run: npx vite-node clear/clear.test.js
 // =============================================================================
 
-import { describe, it, expect, run } from '../src/lib/testUtils.js';
+import { describe, it, expect, run } from './lib/testUtils.js';
 import { tokenizeLine, TokenType } from './tokenizer.js';
 import { parse, NodeType } from './parser.js';
 import { compile, compileNode, exprToCode } from './compiler.js';
@@ -1286,7 +1286,7 @@ page 'App' at '/':
     text 'Hello'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('h-screen flex bg-base-100');
+    expect(result.html).toContain('flex h-screen overflow-hidden');
   });
 
   it('app_sidebar preset produces menu with fixed width', () => {
@@ -1297,7 +1297,7 @@ page 'App' at '/':
       text 'Menu'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('w-60 min-h-full');
+    expect(result.html).toContain('w-64 shrink-0');
   });
 
   it('app_main preset produces flex column', () => {
@@ -1308,7 +1308,7 @@ page 'App' at '/':
       text 'Content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('flex flex-col flex-1 min-w-0');
+    expect(result.html).toContain('flex-1 flex flex-col overflow-hidden min-w-0');
   });
 
   it('app_header preset produces sticky navbar', () => {
@@ -1320,8 +1320,7 @@ page 'App' at '/':
         heading 'Dashboard'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('navbar');
-    expect(result.html).toContain('sticky top-0');
+    expect(result.html).toContain('sticky top-0 z-20');
   });
 
   it('app_content preset produces scrollable area', () => {
@@ -1343,7 +1342,7 @@ page 'App' at '/':
     text 'Card content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('rounded-xl p-5');
+    expect(result.html).toContain('rounded-box p-6');
   });
 
   it('app presets skip max-width wrapper', () => {
@@ -1353,7 +1352,7 @@ page 'App' at '/':
     text 'Menu'`;
     const result = compileProgram(source);
     // app_sidebar should NOT have max-w-5xl wrapper
-    const sidebarIdx = result.html.indexOf('w-60 min-h-full');
+    const sidebarIdx = result.html.indexOf('w-64 shrink-0');
     const nearbyHtml = result.html.slice(sidebarIdx - 100, sidebarIdx + 200);
     expect(nearbyHtml).not.toContain('max-w-5xl');
   });
@@ -1384,11 +1383,11 @@ page 'Dashboard' at '/':
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('data-theme="midnight"');
-    expect(result.html).toContain('h-screen flex');
-    expect(result.html).toContain('w-60');
-    expect(result.html).toContain('navbar');
+    expect(result.html).toContain('flex h-screen');
+    expect(result.html).toContain('w-64');
+    expect(result.html).toContain('sticky top-0');
     expect(result.html).toContain('overflow-y-auto');
-    expect(result.html).toContain('rounded-xl p-5');
+    expect(result.html).toContain('rounded-box p-6');
   });
 });
 

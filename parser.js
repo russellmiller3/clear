@@ -1070,7 +1070,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         } else {
           const nameToken = tokens[1];
           const themeName = nameToken.value.replace(/^['"]|['"]$/g, '');
-          const validThemes = ['midnight', 'ivory', 'nova'];
+          const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss'];
           if (!validThemes.includes(themeName)) {
             errors.push({ line, message: `'${themeName}' isn't a theme Clear knows — try: ${validThemes.join(', ')}` });
           } else {

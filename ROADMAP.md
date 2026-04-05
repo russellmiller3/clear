@@ -26,7 +26,7 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 ## What's Built (Phases 1-28 -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-854 tests, all passing.
+1005 tests, all passing.
 
 ### Core Language (Phase 1-3)
 | Feature | Status | Canonical Syntax |
@@ -1072,3 +1072,149 @@ The platform succeeds if:
 - They can make a business rule change ("require approval over $5,000") without help
 - They can read their app's blueprint and understand what it does
 - When something breaks, they can describe the problem precisely because they can read the code
+
+---
+
+## What's Built (Phase 29 -- Playground & Design System)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Playground redesign (arctic theme) | Done | Syntax highlighting, line numbers, browser mockup preview |
+| Interactive API tester | Done | Backend examples have live Send buttons, real responses |
+| Browser server variable binding | Done | `receiving` var + `process.env` shim for auth |
+| Design-system-v2 | Done | 5 themes (midnight/ivory/nova/arctic/moss), all component patterns |
+| Compiler updated to v2 presets | Done | New preset classes, fieldset inputs, proper table/card/heading patterns |
+| Compile animation | Done | Scan line + streaming code output on manual compile |
+| DaisyUI v5 CDN fix | Done | Correct path (`/daisyui.css`), local CSS for iframe injection |
+| Google Fonts + Tailwind v4 browser CDN | Done | Proper font loading in compiled output |
+
+---
+
+## Part 2: From Demo to Shippable
+
+Every item has:
+- **UNLOCKS**: What you can build once this works
+- **TEST**: One-line spec that proves it's done
+
+---
+
+### Phase 30: Clear Apps Can Accept Input (The Big 4)
+
+Without these, Clear's frontend is a display. It can show data but can't collect it.
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 1 | Form submit to endpoint | Signup forms, todo creation, contact pages, any write operation | Compile form + button + POST endpoint; generated HTML contains `fetch('/api/...', { method: 'POST', body: ... })` wired to button click |
+| 2 | Client-side validation before fetch | Instant "required" feedback without server round-trip | Compile endpoint with `validate incoming: name is text, required`; generated HTML has JS check that prevents fetch if empty |
+| 3 | Loading state during fetch | Users know the app is working, not frozen | Compile form submit; generated JS disables button and shows "Loading..." between fetch send and response |
+| 4 | Display API errors in UI | "Email already taken" shown on screen instead of silently swallowed | Compile form + endpoint; generated JS has `!response.ok` branch that shows server error message |
+
+**Phase 30 complete = Clear generates a working form. Single biggest unlock.**
+
+---
+
+### Phase 31: Clear Apps Respond to What You're Doing
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 5 | Conditional fetch based on input | Search-as-you-type, filtered lists, dependent dropdowns | Compile `when user changes search_input: call GET /api/search?q={search_input}`; generated JS only fetches when input non-empty |
+| 6 | Debounced input handler | Live search without hammering server per keystroke | Compile search input with debounce; generated JS wraps fetch in `setTimeout`/`clearTimeout` with 250ms delay |
+
+**Phase 31 complete = search pages, filtered lists, dependent dropdowns, auto-suggest.**
+
+---
+
+### Phase 32: Clear Apps Can Accept More Than Text
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 7 | File upload compiles | Profile photos, CSV imports, document uploads | Compile `accept file: photo`; generated HTML has `<input type="file">`, endpoint uses multer |
+
+---
+
+### Phase 33: Clear Apps Look Like Apps
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 8 | Hover/focus/active states | Buttons look clickable, inputs highlight on focus | Compile `style button: hover background = blue`; generated CSS contains `:hover` |
+| 9 | CSS transitions | Smooth color changes, fading panels | Compile `style card: transition = background 0.2s`; generated CSS contains `transition` |
+| 10 | Responsive breakpoints | Apps work on phones | Compile `style sidebar: hidden on small screens`; generated CSS has `@media` query |
+| 11 | CSS animations | Loading spinners, attention pulses | Compile `style spinner: animate = spin 1s infinite`; generated CSS has `@keyframes` |
+
+**Phase 33 complete = Clear apps look and feel like real apps, including on mobile.**
+
+---
+
+### Phase 34: Clear Apps Can Handle Real Data
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 12 | Pagination | Any list with 50+ items | Compile `get Items page 2, 25 per page`; generated SQL has `LIMIT 25 OFFSET 25` |
+| 13 | GROUP BY output | "Sales by region," dashboards, reports | Compile `totals = sum of Orders' amount grouped by region`; produces array of `{ region, total }` |
+| 14 | Compound unique constraints | "One vote per user per poll" | Compile `unique together Student and Course`; generated SQL has `UNIQUE(student_id, course_id)` |
+| 15 | Database transactions | E-commerce (order + stock), banking (debit + credit) | Compile multi-step endpoint; generated code has `BEGIN`/`COMMIT`/`ROLLBACK` |
+
+**Phase 34 complete = Clear apps handle production data volumes and keep data consistent.**
+
+---
+
+### Phase 35: Clear Apps Can Run a Business
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 16 | Background jobs | Reminder emails, stale token cleanup, daily reports | Compile background job; generated server has `setInterval` or `node-cron` |
+| 17 | OAuth redirect + token exchange | "Sign in with Google/GitHub/Slack" | Compile `oauth github:`; generated server has redirect + callback routes |
+| 18 | Email sending | Welcome emails, password resets, notifications | Compile `send email to X`; generated code has `nodemailer` or email API call |
+
+**Phase 35 complete = scheduled tasks, third-party auth, email communication.**
+
+---
+
+### Phase 36: Real-Time
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 19 | WebSocket runtime | Chat, multiplayer, collaborative editing, live notifications | Compile WebSocket channel; server has `WebSocket.Server`, HTML has `new WebSocket()` |
+| 20 | SSE runtime | Live dashboards, progress bars, activity feeds | Compile `stream:` endpoint; server writes `text/event-stream`, HTML has `new EventSource()` |
+
+**Phase 36 complete = real-time chat, dashboards, notifications.**
+
+---
+
+### Phase 37: The Compiler Gets Smarter
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 21 | Correct error line numbers | Debugging anything over 20 lines | Syntax error on line 15; compiler says "line 15" |
+| 22 | "Did you mean?" for fields | Beginners not stuck on typos | Reference `emial`; compiler suggests `email` |
+| 23 | "Did you mean?" for endpoints | Route typos caught at compile time | Declare `GET /api/users`, reference `/api/user`; compiler suggests correct path |
+| 24 | Type mismatch detection | Confidence app won't crash on line 1 | Compile `price + 'hello'`; compiler emits type error |
+| 25 | FK inference opt-out | Tables with `Type`, `Status` fields that aren't FKs | Compile `Type is text`; compiler does NOT treat as FK |
+
+**Phase 37 complete = compiler catches mistakes before deploy.**
+
+---
+
+### Phase 38: Ecosystem
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 26 | Python target end-to-end | Data science teams, ML engineers, Django shops | Compile todo-v2 to Python; `uvicorn` serves; E2E tests pass |
+| 27 | Namespaced imports | Utility libraries without name collisions | Compile `use 'helpers' as h`; `h.double(5)` works |
+| 28 | Circular dependency detection | Safe refactoring into modules | A uses B, B uses A; compiler errors |
+| 29 | E2E tests seed data | Tests prove app works, not just starts | Generated tests create user, log in, create data, then verify |
+
+**Phase 38 complete = multi-language, composable modules, tests that prove correctness.**
+
+---
+
+### Remaining Playground Work
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Chart syntax (`chart X as line/bar/donut`) | Not started | ECharts integration, native Clear syntax |
+| Download compiled output as zip | Not started | JSZip, package.json, README |
+| BYOK key input for AI examples | Not started | sessionStorage, text input for Anthropic key |
+| GAN compiled output quality | In progress | Compiler HTML matches design-system-v2 patterns |
+| Mobile responsive playground | Not started | Sidebar collapses, editor/output stack vertically |
+| Share button (URL hash encoding) | Not started | Encode source in URL for sharing |

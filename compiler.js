@@ -3287,27 +3287,28 @@ function buildHTML(body) {
         case NodeType.ASK_FOR: {
           const ui = node.ui;
           if (ui.htmlType === 'checkbox') {
-            parts.push(`    <div class="form-control mb-3">
-      <label class="label cursor-pointer gap-2"><input id="${ui.id}" type="checkbox" class="checkbox checkbox-sm"> <span class="text-sm">${ui.label}</span></label>
+            parts.push(`    <div class="flex items-center gap-3 mb-3">
+      <input id="${ui.id}" type="checkbox" class="checkbox checkbox-primary">
+      <label for="${ui.id}" class="text-sm text-base-content/70">${ui.label}</label>
     </div>`);
           } else if (ui.htmlType === 'textarea') {
-            parts.push(`    <div class="form-control mb-4">
-      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="${ui.id}">${ui.label}</label>
-      <textarea id="${ui.id}" class="textarea textarea-bordered w-full bg-base-200 font-mono text-sm" placeholder="${ui.label}" rows="16"></textarea>
-    </div>`);
+            parts.push(`    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <textarea id="${ui.id}" class="textarea textarea-bordered w-full" placeholder="${ui.label}" rows="6"></textarea>
+    </fieldset>`);
           } else if (ui.htmlType === 'select' && ui.choices) {
             const options = ui.choices.map(c => `        <option value="${c}">${c}</option>`).join('\n');
-            parts.push(`    <div class="form-control mb-4">
-      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="${ui.id}">${ui.label}</label>
-      <select id="${ui.id}" class="select select-bordered w-full bg-base-200">
+            parts.push(`    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <select id="${ui.id}" class="select select-bordered w-full">
 ${options}
       </select>
-    </div>`);
+    </fieldset>`);
           } else {
-            parts.push(`    <div class="form-control mb-4">
-      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="${ui.id}">${ui.label}</label>
-      <input id="${ui.id}" class="input input-bordered w-full bg-base-200" type="${ui.htmlType}" placeholder="${ui.label}">
-    </div>`);
+            parts.push(`    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <input id="${ui.id}" class="input input-bordered w-full" type="${ui.htmlType}" placeholder="${ui.label}">
+    </fieldset>`);
           }
           break;
         }
@@ -3325,17 +3326,21 @@ ${options}
           // Store the deduplicated ID back on the node for the reactive compiler
           node.ui._resolvedId = displayId;
           if (ui.tag === 'table') {
-            parts.push(`    <div class="overflow-hidden rounded-xl border border-base-300/50 bg-base-200 mb-4" id="${displayId}">
-      <div class="text-xs font-medium text-base-content/50 uppercase tracking-wide px-4 pt-3">${ui.label}</div>
-      <table class="table table-sm" id="${displayId}_table">
-        <thead><tr class="bg-base-300/30 text-xs uppercase tracking-wide text-base-content/40"></tr></thead>
-        <tbody class="text-sm"></tbody>
-      </table>
+            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden mb-4" id="${displayId}">
+      <div class="px-6 py-3 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="${displayId}_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>`);
           } else {
-            parts.push(`    <div class="stat bg-base-200 border border-base-300/50 rounded-xl mb-4" id="${displayId}">
-      <div class="stat-title text-xs uppercase tracking-wide">${ui.label}</div>
-      <div class="stat-value font-mono text-2xl tabular-nums" id="${displayId}_value"></div>
+            parts.push(`    <div class="bg-base-200 rounded-box p-6 mb-4" id="${displayId}">
+      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/50 mb-2">${ui.label}</p>
+      <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>
     </div>`);
           }
           break;
@@ -3354,31 +3359,31 @@ ${options}
           const formatted = formatInlineText(ui.text);
           switch (ui.contentType) {
             case 'heading':
-              parts.push(`    <h1 class="text-3xl font-bold tracking-tight mb-6">${formatted}</h1>`);
+              parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
               break;
             case 'subheading':
-              parts.push(`    <h2 class="text-xl font-semibold mt-6 mb-3">${formatted}</h2>`);
+              parts.push(`    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">${formatted}</h2>`);
               break;
             case 'text':
-              parts.push(`    <p class="text-base text-base-content/80 leading-relaxed mb-3">${formatted}</p>`);
+              parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3">${formatted}</p>`);
               break;
             case 'bold':
-              parts.push(`    <p class="text-base text-base-content/80 leading-relaxed mb-3"><strong>${formatted}</strong></p>`);
+              parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><strong class="text-base-content font-semibold">${formatted}</strong></p>`);
               break;
             case 'italic':
-              parts.push(`    <p class="text-base text-base-content/80 leading-relaxed mb-3"><em>${formatted}</em></p>`);
+              parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><em>${formatted}</em></p>`);
               break;
             case 'small':
-              parts.push(`    <span class="text-xs font-medium text-base-content/50 uppercase tracking-wide block mb-2">${formatted}</span>`);
+              parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">${formatted}</span>`);
               break;
             case 'link':
-              parts.push(`    <a class="inline-flex items-center justify-center h-10 px-6 bg-primary text-primary-content rounded-lg font-semibold text-sm transition-all duration-200 hover:opacity-90 mr-3 mb-2" href="${ui.href || '#'}">${formatted}</a>`);
+              parts.push(`    <a class="btn btn-primary" href="${ui.href || '#'}">${formatted}</a>`);
               break;
             case 'code':
-              parts.push(`    <pre class="bg-neutral text-neutral-content rounded-xl p-5 text-sm font-mono leading-relaxed overflow-x-auto mb-4"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre>`);
+              parts.push(`    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
               break;
             case 'divider':
-              parts.push(`    <div class="divider my-8"></div>`);
+              parts.push(`    <div class="divider my-4"></div>`);
               break;
           }
           break;
@@ -3509,11 +3514,14 @@ _router();`;
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"><\/script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <style>${css}</style>
 </head>
-<body class="${hasStyledSections ? 'min-h-screen bg-base-100' : 'bg-base-200 min-h-screen'}">
+<body class="min-h-screen bg-base-100">
   <main id="app" class="${appClass}">
 ${htmlBody}
   </main>
@@ -3653,6 +3661,8 @@ function compileToBrowserServer(body, errors) {
   const lines = [];
   lines.push('// --- Clear Browser Server (in-memory, fetch-intercepted) ---');
   lines.push('(function() {');
+  // Shim process.env for browser (auth, env() calls reference it)
+  lines.push('if (typeof process === "undefined") { window.process = { env: { CLEAR_AUTH_SECRET: "browser-dev-secret" } }; }');
 
   // Inline DB runtime (browser-compatible, no fs/path)
   lines.push('const _tables = {};');
@@ -3719,6 +3729,16 @@ function compileToBrowserServer(body, errors) {
 
       lines.push(`_routes.push({ method: '${method}', path: '${path}', handler: async function(req, res) {`);
       lines.push('  try {');
+      // Bind receiving variable and incoming (same as Express compiler)
+      const bodyUsesIncoming = endpointBodyUsesIncoming(node.body);
+      if (node.receivingVar) {
+        lines.push(`  const ${sanitizeName(node.receivingVar)} = req.body;`);
+        if (bodyUsesIncoming) {
+          lines.push('  const incoming = req.params;');
+        }
+      } else if (bodyUsesIncoming) {
+        lines.push('  const incoming = { ...req.body, ...req.params };');
+      }
       lines.push(handlerBody);
       lines.push('  } catch(err) { res.status(500).json({ error: err.message }); }');
       lines.push('}});');
@@ -3943,26 +3963,30 @@ function friendlyPropToCSS(name, value) {
 // No custom CSS is generated for built-in presets.
 // User-defined styles (via `style X:` blocks) still compile to custom CSS.
 const BUILTIN_PRESET_CLASSES = {
-  // --- Landing page presets ---
-  page_hero:         'bg-neutral text-neutral-content py-20 px-4 text-center',
-  page_section:      'py-16 px-4 bg-base-100',
-  page_section_dark: 'py-16 px-4 bg-neutral text-neutral-content',
-  page_card:         'card bg-base-200 border border-base-300/50 rounded-2xl p-8 mb-6',
+  // --- Landing page presets (design-system-v2) ---
+  page_hero:         'bg-base-100 py-24 px-6 text-center',
+  page_section:      'bg-base-100 py-20 px-6',
+  page_section_dark: 'bg-base-200 py-20 px-6',
+  page_card:         'bg-base-100 rounded-box p-6 hover:scale-[1.02] transition-transform duration-200',
+  page_cta:          'bg-primary py-20 px-6 text-center',
 
-  // --- App/dashboard presets (DaisyUI drawer/navbar/menu patterns) ---
-  app_layout:        'h-screen flex bg-base-100',
-  app_sidebar:       'menu p-4 w-60 min-h-full bg-base-200 border-r border-base-300/50 text-sm',
-  app_main:          'flex flex-col flex-1 min-w-0',
-  app_content:       'flex-1 p-6 bg-base-100 overflow-y-auto',
-  app_header:        'navbar bg-base-200 border-b border-base-300/50 px-4 h-14 sticky top-0 z-30',
-  app_card:          'card bg-base-200 border border-base-300/50 rounded-xl p-5',
+  // --- App/dashboard presets (design-system-v2) ---
+  app_layout:        'flex h-screen overflow-hidden',
+  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden',
+  app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
+  app_content:       'flex-1 overflow-y-auto bg-base-100 p-8',
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-8 bg-base-100 border-b border-base-300 shrink-0',
+  app_card:          'bg-base-200 rounded-box p-6',
 
   // --- Generic section styles ---
-  hero:              'bg-neutral text-neutral-content py-20 px-4 text-center',
-  section_light:     'py-16 px-4 bg-base-100',
-  section_dark:      'py-16 px-4 bg-neutral text-neutral-content',
-  card:              'card bg-base-200 border border-base-300/50 rounded-xl p-6',
-  code_box:          'bg-neutral text-neutral-content p-6 rounded-xl font-mono text-sm',
+  hero:              'bg-base-100 py-24 px-6 text-center',
+  section_light:     'bg-base-100 py-20 px-6',
+  section_dark:      'bg-base-200 py-20 px-6',
+  card:              'bg-base-100 rounded-box p-6',
+  card_bordered:     'bg-base-100 border border-base-300 rounded-box p-6',
+  metric_card:       'bg-base-200 rounded-box p-6',
+  code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
+  form:              'bg-base-100 rounded-box border border-base-300 p-8 max-w-lg flex flex-col gap-5',
 };
 
 // Legacy BUILTIN_STYLES array -- only used as fallback when user doesn't override.
@@ -4036,107 +4060,143 @@ function stylesToCSS(styles, vars = {}) {
 // Inspired by Linear/Vercel/Raycast aesthetic: clean, muted, professional
 // =============================================================================
 
-const CSS_BASE = `/* Clear design system */
+const CSS_BASE = `/* Clear design system v2 */
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { -webkit-font-smoothing: antialiased; }
-#app { max-width: 640px; margin: 0 auto; padding: 3rem 1.5rem; }
-::selection { background: oklch(var(--p) / 0.15); }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
 
-/* Custom themes for DaisyUI v5 */
+/* Themes — design-system-v2 */
 [data-theme="midnight"] {
   color-scheme: dark;
-  --color-base-100: oklch(8.2% 0.025 264);
-  --color-base-200: oklch(10.8% 0.025 264);
-  --color-base-300: oklch(14.8% 0.020 264);
-  --color-base-content: oklch(93% 0.01 264);
+  --color-base-100: oklch(10% 0.02 264);
+  --color-base-200: oklch(13% 0.022 264);
+  --color-base-300: oklch(17% 0.018 264);
+  --color-base-content: oklch(92% 0.01 240);
   --color-primary: oklch(65% 0.196 250);
-  --color-primary-content: oklch(8% 0.02 264);
-  --color-secondary: oklch(65% 0.196 250);
-  --color-secondary-content: oklch(8% 0.02 264);
-  --color-accent: oklch(65% 0.196 250);
-  --color-accent-content: oklch(8% 0.02 264);
-  --color-neutral: oklch(18% 0.015 264);
-  --color-neutral-content: oklch(93% 0.01 264);
-  --color-info: oklch(65% 0.15 250);
-  --color-info-content: oklch(0% 0 0);
+  --color-primary-content: oklch(98% 0.005 264);
+  --color-secondary: oklch(58% 0.17 145);
+  --color-secondary-content: oklch(10% 0.02 145);
+  --color-accent: oklch(68% 0.18 28);
+  --color-accent-content: oklch(10% 0.02 28);
+  --color-neutral: oklch(20% 0.015 264);
+  --color-neutral-content: oklch(80% 0.01 264);
+  --color-info: oklch(62% 0.15 245);
+  --color-info-content: oklch(10% 0.02 245);
   --color-success: oklch(55% 0.17 145);
-  --color-success-content: oklch(0% 0 0);
-  --color-warning: oklch(60% 0.14 80);
-  --color-warning-content: oklch(0% 0 0);
-  --color-error: oklch(58% 0.2 25);
-  --color-error-content: oklch(95% 0.01 264);
-  --radius-selector: 1.9rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
+  --color-success-content: oklch(10% 0.02 145);
+  --color-warning: oklch(72% 0.14 85);
+  --color-warning-content: oklch(15% 0.02 85);
+  --color-error: oklch(60% 0.2 25);
+  --color-error-content: oklch(10% 0.02 25);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
 }
 
 [data-theme="ivory"] {
   color-scheme: light;
   --color-base-100: oklch(100% 0 0);
-  --color-base-200: oklch(97% 0.005 240);
-  --color-base-300: oklch(93% 0.008 240);
-  --color-base-content: oklch(15% 0.02 264);
-  --color-primary: oklch(50% 0.16 250);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
   --color-primary-content: oklch(100% 0 0);
-  --color-secondary: oklch(50% 0.16 250);
+  --color-secondary: oklch(55% 0.15 200);
   --color-secondary-content: oklch(100% 0 0);
-  --color-accent: oklch(50% 0.16 250);
+  --color-accent: oklch(60% 0.18 25);
   --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(93% 0.008 240);
-  --color-neutral-content: oklch(15% 0.02 264);
-  --color-info: oklch(45% 0.16 250);
-  --color-info-content: oklch(100% 0 0);
-  --color-success: oklch(42% 0.17 145);
-  --color-success-content: oklch(100% 0 0);
-  --color-warning: oklch(48% 0.12 80);
-  --color-warning-content: oklch(100% 0 0);
-  --color-error: oklch(45% 0.2 25);
-  --color-error-content: oklch(100% 0 0);
-  --radius-selector: 1.9rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 1;
-  --noise: 0;
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
 }
 
 [data-theme="nova"] {
   color-scheme: light;
-  --color-base-100: oklch(98% 0.005 60);
-  --color-base-200: oklch(100% 0 0);
-  --color-base-300: oklch(96% 0.015 60);
-  --color-base-content: oklch(14% 0.02 50);
-  --color-primary: oklch(55% 0.18 30);
-  --color-primary-content: oklch(100% 0 0);
-  --color-secondary: oklch(55% 0.18 30);
-  --color-secondary-content: oklch(100% 0 0);
-  --color-accent: oklch(55% 0.18 30);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(96% 0.015 60);
-  --color-neutral-content: oklch(14% 0.02 50);
-  --color-info: oklch(55% 0.18 30);
-  --color-info-content: oklch(100% 0 0);
-  --color-success: oklch(42% 0.12 145);
-  --color-success-content: oklch(100% 0 0);
-  --color-warning: oklch(55% 0.12 80);
-  --color-warning-content: oklch(100% 0 0);
-  --color-error: oklch(45% 0.2 25);
-  --color-error-content: oklch(100% 0 0);
-  --radius-selector: 1.9rem;
-  --radius-field: 0.5rem;
-  --radius-box: 1rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 1;
-  --noise: 0;
+  --color-base-100: oklch(99% 0.008 80);
+  --color-base-200: oklch(96% 0.012 78);
+  --color-base-300: oklch(92% 0.016 75);
+  --color-base-content: oklch(20% 0.025 65);
+  --color-primary: oklch(63% 0.21 38);
+  --color-primary-content: oklch(99% 0.005 38);
+  --color-secondary: oklch(58% 0.18 285);
+  --color-secondary-content: oklch(99% 0.005 285);
+  --color-accent: oklch(65% 0.16 165);
+  --color-accent-content: oklch(15% 0.02 165);
+  --color-neutral: oklch(30% 0.02 65);
+  --color-neutral-content: oklch(95% 0.008 80);
+  --color-info: oklch(60% 0.16 240);
+  --color-info-content: oklch(99% 0.005 240);
+  --color-success: oklch(58% 0.16 155);
+  --color-success-content: oklch(99% 0.005 155);
+  --color-warning: oklch(70% 0.14 80);
+  --color-warning-content: oklch(18% 0.02 80);
+  --color-error: oklch(60% 0.2 25);
+  --color-error-content: oklch(99% 0.005 25);
+  --radius-box: 1rem; --radius-field: 0.75rem; --radius-selector: 0.5rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+[data-theme="arctic"] {
+  color-scheme: light;
+  --color-base-100: oklch(97% 0.01 220);
+  --color-base-200: oklch(93% 0.016 220);
+  --color-base-300: oklch(88% 0.022 220);
+  --color-base-content: oklch(22% 0.04 225);
+  --color-primary: oklch(48% 0.14 220);
+  --color-primary-content: oklch(98% 0.005 220);
+  --color-secondary: oklch(52% 0.12 175);
+  --color-secondary-content: oklch(98% 0.005 175);
+  --color-accent: oklch(65% 0.14 80);
+  --color-accent-content: oklch(15% 0.02 80);
+  --color-neutral: oklch(30% 0.03 225);
+  --color-neutral-content: oklch(95% 0.01 220);
+  --color-info: oklch(52% 0.16 220);
+  --color-info-content: oklch(98% 0.005 220);
+  --color-success: oklch(50% 0.14 160);
+  --color-success-content: oklch(98% 0.005 160);
+  --color-warning: oklch(65% 0.13 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.18 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+[data-theme="moss"] {
+  color-scheme: light;
+  --color-base-100: oklch(95.5% 0.01 150);
+  --color-base-200: oklch(92% 0.014 148);
+  --color-base-300: oklch(87% 0.018 145);
+  --color-base-content: oklch(18% 0.025 155);
+  --color-primary: oklch(44% 0.1 155);
+  --color-primary-content: oklch(97% 0.005 155);
+  --color-secondary: oklch(45% 0.09 280);
+  --color-secondary-content: oklch(97% 0.005 280);
+  --color-accent: oklch(48% 0.1 75);
+  --color-accent-content: oklch(97% 0.005 75);
+  --color-neutral: oklch(28% 0.02 155);
+  --color-neutral-content: oklch(94% 0.01 150);
+  --color-info: oklch(48% 0.12 220);
+  --color-info-content: oklch(97% 0.005 220);
+  --color-success: oklch(48% 0.12 155);
+  --color-success-content: oklch(97% 0.005 155);
+  --color-warning: oklch(60% 0.12 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(52% 0.16 25);
+  --color-error-content: oklch(97% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
 }`;
 
 const CSS_COMPONENTS = [
