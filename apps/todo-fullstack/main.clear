@@ -1,0 +1,49 @@
+build for web and javascript backend
+
+# Todo App — Full Stack
+# Frontend: page with input, button, table
+# Backend: CRUD API with validation
+
+# --- Data ---
+
+create a Todos table:
+  title, required
+  completed, default false
+  created_at, auto
+
+# --- Config ---
+
+log every request
+allow cross-origin requests
+
+# --- Backend ---
+
+when user calls GET /api/todos:
+  define all_todos as: look up all records in Todos table
+  send back all_todos
+
+when user calls POST /api/todos receiving post_data:
+  validate post_data:
+    title is text, required, min 1, max 500
+  define new_todo as: save post_data as Todo
+  send back new_todo status 201
+
+when user calls DELETE /api/todos/:id:
+  this endpoint requires auth
+  remove from Todos where id is incoming's id
+  send back 'deleted'
+
+# --- Frontend ---
+
+page 'Todo App':
+  heading 'Todos'
+  'What needs to be done?' is a text input that saves to title
+  button 'Add':
+    send title to '/api/todos'
+    get from '/api/todos'
+    title is ''
+  button 'Refresh':
+    get from '/api/todos'
+  display response as table called 'My Todos'
+  on page load:
+    get from '/api/todos'

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cast Results</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-base-200 min-h-screen">
+  <main id="app" class="h-screen">
+    <div class="clear-section style-app_layout">
+    <div class="clear-section style-sidebar">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Models</h1>
+    <p class="clear-text">Your trained models and results.</p>
+    <hr class="divider clear-divider">
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_search"><span class="label-text">Search models</span></label>
+      <input id="input_search" class="input input-bordered w-full" type="text" placeholder="Search models">
+    </div>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Recent</h2>
+    <div class="overflow-x-auto clear-table-container" id="output_Models">
+      <div class="stat-title clear-output-label">Models</div>
+      <table class="table table-zebra clear-table" id="output_Models_table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    </div>
+    <div class="clear-section style-main_area">
+    <div class="clear-section style-top_bar">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Results Dashboard</h1>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_model_name"><span class="label-text">Model Name</span></label>
+      <input id="input_model_name" class="input input-bordered w-full" type="text" placeholder="Model Name">
+    </div>
+    </div>
+    <div class="clear-section style-tab_bar">
+    <button class="btn btn-neutral clear-button" id="btn_Overview">Overview</button>
+    <button class="btn btn-neutral clear-button" id="btn_Details">Details</button>
+    <button class="btn btn-neutral clear-button" id="btn_Add_Model">Add Model</button>
+    </div>
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-content_scroll">
+    <div class="clear-section style-results_grid">
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-metric_card">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">92.4%</h1>
+    <p class="clear-text">Model Accuracy</p>
+    </div>
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-metric_card">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">89.1%</h1>
+    <p class="clear-text">Precision Score</p>
+    </div>
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-metric_card">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">94.7%</h1>
+    <p class="clear-text">Recall Score</p>
+    </div>
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-metric_card">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">91.8%</h1>
+    <p class="clear-text">F1 Score</p>
+    </div>
+    </div>
+    <hr class="divider clear-divider">
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-card">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Training Status</h2>
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-status_good">
+    <p class="clear-text"><strong>Revenue Model: Training complete</strong></p>
+    </div>
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-status_pending">
+    <p class="clear-text"><strong>Churn Model: Training in progress...</strong></p>
+    </div>
+    </div>
+    <hr class="divider clear-divider">
+    <div class="card bg-base-100 shadow-sm border border-base-300 p-6 mb-4 clear-section style-card">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">All Models</h2>
+    <div class="overflow-x-auto clear-table-container" id="output_Models">
+      <div class="stat-title clear-output-label">Models</div>
+      <table class="table table-zebra clear-table" id="output_Models_table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <button class="btn btn-neutral clear-button" id="btn_Refresh">Refresh</button>
+    </div>
+    </div>
+    </div>
+    </div>
+  </main>
+
+  <script>
+// --- Runtime ---
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "Cast Results";
+
+// --- State ---
+let _state = {
+  search: "",
+  model_name: "",
+  models: null,
+  results: null,
+  primary: "#2563eb",
+  surface: "#ffffff",
+  dark_bg: "#0f172a"
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:4
+  // Database: local memory (JSON file backup)
+  {
+    const _tableEl = document.getElementById('output_Models_table');
+    const _data = _state.models;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","status"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Models_table');
+    const _data = _state.models;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","accuracy","status"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_search').value = _state.search;
+  document.getElementById('input_model_name').value = _state.model_name;
+}
+
+// --- Input listeners ---
+document.getElementById('input_search').addEventListener('input', function(e) {
+  _state.search = e.target.value;
+  _recompute();
+});
+document.getElementById('input_model_name').addEventListener('input', function(e) {
+  _state.model_name = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Overview').addEventListener('click', async function() {
+  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  _recompute();
+});
+document.getElementById('btn_Details').addEventListener('click', async function() {
+  _state.results = await fetch("/api/results").then(r => r.json()).catch(e => { console.error(e); return _state.results; });
+  _recompute();
+});
+document.getElementById('btn_Add_Model').addEventListener('click', async function() {
+  await fetch("/api/models", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_name: _state.model_name }) }).catch(e => console.error(e));
+  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  _state.model_name = "";
+  _recompute();
+});
+document.getElementById('btn_Refresh').addEventListener('click', async function() {
+  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  _recompute();
+});
+
+// --- On Page Load ---
+(async () => {
+  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

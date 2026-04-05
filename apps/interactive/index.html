@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Patterns</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-base-200 min-h-screen">
+  <main id="app" class="max-w-2xl mx-auto p-8">
+    <div class="section-tabs_demo clear-section" id="panel-tabs_demo">
+    <div class="tabs tabs-bordered" role="tablist">
+      <button class="tab tab-active" data-tab="overview" onclick="document.querySelectorAll('#panel-tabs_demo .tab').forEach(t=>t.classList.remove('tab-active'));this.classList.add('tab-active');document.querySelectorAll('#panel-tabs_demo .tab-panel').forEach(p=>p.style.display='none');document.getElementById('tabpanel-overview').style.display=''">Overview</button>
+      <button class="tab" data-tab="details" onclick="document.querySelectorAll('#panel-tabs_demo .tab').forEach(t=>t.classList.remove('tab-active'));this.classList.add('tab-active');document.querySelectorAll('#panel-tabs_demo .tab-panel').forEach(p=>p.style.display='none');document.getElementById('tabpanel-details').style.display=''">Details</button>
+      <button class="tab" data-tab="settings" onclick="document.querySelectorAll('#panel-tabs_demo .tab').forEach(t=>t.classList.remove('tab-active'));this.classList.add('tab-active');document.querySelectorAll('#panel-tabs_demo .tab-panel').forEach(p=>p.style.display='none');document.getElementById('tabpanel-settings').style.display=''">Settings</button>
+    </div>
+    <div class="tab-panel p-4" id="tabpanel-overview" style="">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Overview</h1>
+    <p class="clear-text">This is the overview tab.</p>
+    </div>
+    <div class="tab-panel p-4" id="tabpanel-details" style="display:none">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Details</h1>
+    <p class="clear-text">This is the details tab.</p>
+    </div>
+    <div class="tab-panel p-4" id="tabpanel-settings" style="display:none">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Settings</h1>
+    <p class="clear-text">This is the settings tab.</p>
+    </div>
+    </div>
+    <hr class="divider clear-divider">
+    <div class="clear-section section-advanced_options" id="panel-advanced_options">
+      <h2 class="cursor-pointer select-none" onclick="const c=this.nextElementSibling;c.style.display=c.style.display==='none'?'block':'none'">Advanced Options <span class="text-sm opacity-50">&#9662;</span></h2>
+      <div class="collapsible-content" style="display:none">
+    <p class="clear-text">These options are hidden by default.</p>
+    <p class="clear-text">Click the header to expand.</p>
+      </div>
+    </div>
+    <div class="clear-section section-faq" id="panel-faq">
+      <h2 class="cursor-pointer select-none" onclick="const c=this.nextElementSibling;c.style.display=c.style.display==='none'?'block':'none'">FAQ <span class="text-sm opacity-50">&#9662;</span></h2>
+      <div class="collapsible-content" style="display:block">
+    <p class="clear-text">This section starts open but can be collapsed.</p>
+      </div>
+    </div>
+    <hr class="divider clear-divider">
+    <div class="clear-section section-help" id="panel-help" style="display:none">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Help Panel</h1>
+    <p class="clear-text">This is a slide-in help panel.</p>
+    <p class="clear-text">Click the button to toggle it.</p>
+    </div>
+    <button class="btn btn-neutral clear-button" id="btn_Toggle_Help">Toggle Help</button>
+    <hr class="divider clear-divider">
+    <dialog class="modal" id="panel-confirm_delete">
+    <div class="modal-box">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Are you sure?</h1>
+    <p class="clear-text">This action cannot be undone.</p>
+    <button class="btn btn-neutral clear-button" id="btn_Cancel">Cancel</button>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+    <button class="btn btn-neutral clear-button" id="btn_Delete_Item">Delete Item</button>
+  </main>
+
+  <script>
+document.title = "Interactive Patterns";
+
+// --- State ---
+let _state = {
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+}
+
+// --- Input listeners ---
+
+// --- Button handlers ---
+document.getElementById('btn_Toggle_Help').addEventListener('click', function() {
+  { const _p = document.getElementById('panel-help'); if (_p) { if (_p.style.display === 'none') _p.style.display = ''; else _p.style.display = 'none'; } }
+  _recompute();
+});
+document.getElementById('btn_Cancel').addEventListener('click', function() {
+  { const _d = this.closest('dialog'); if (_d) _d.close(); }
+  _recompute();
+});
+document.getElementById('btn_Delete_Item').addEventListener('click', function() {
+  { const _p = document.getElementById('panel-confirm_delete'); if (_p) { if (_p.tagName === 'DIALOG') _p.showModal(); else _p.style.display = ''; } }
+  _recompute();
+});
+
+_recompute();
+
+  </script>
+</body>
+</html>

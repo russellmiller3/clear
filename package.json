@@ -1,0 +1,9 @@
+{
+  "name": "clear-lang",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node clear.test.js"
+  },
+  "private": true
+}

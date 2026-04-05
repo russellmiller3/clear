@@ -1,0 +1,66 @@
+build for javascript backend
+
+# SaaS Billing Service -- Stress Test App #5
+# Tests: subscriptions, usage metering, tiered limits, upgrade/downgrade
+
+# --- Data ---
+
+create data shape User:
+  email is text, required, unique
+  name is text, required
+  plan is text, default 'free'
+  created_at is timestamp, auto
+
+create data shape Usage:
+  user_id is text, required
+  feature is text, required
+  count (number), default 0
+  period is text, required
+  created_at is timestamp, auto
+
+# --- Billing Config ---
+
+checkout 'Pro Plan':
+  price is 'price_pro_monthly'
+  mode is 'subscription'
+  success_url is '/billing/success'
+  cancel_url is '/billing'
+
+checkout 'Enterprise Plan':
+  price is 'price_enterprise_monthly'
+  mode is 'subscription'
+  success_url is '/billing/success'
+  cancel_url is '/billing'
+
+# --- Usage Limits ---
+
+limit 'api_calls':
+  free allows 100 per month
+  pro allows 10000 per month
+  enterprise allows unlimited
+
+limit 'file_uploads':
+  free allows 5 per month
+  pro allows 100 per month
+  enterprise allows unlimited
+
+# --- Endpoints ---
+
+when user calls GET /api/billing/plans:
+  send back 'plans'
+
+when user calls GET /api/billing/usage:
+  this endpoint requires auth
+  define user_usage as: look up all records in Usage table
+  send back user_usage
+
+when user calls POST /api/billing/subscribe receiving subscription_data:
+  this endpoint requires auth
+  validate subscription_data:
+    plan is text, required
+  send back 'subscribed'
+
+# --- Webhook ---
+
+webhook '/stripe/billing-events' signed with env('STRIPE_BILLING_SECRET'):
+  send back 'ok'

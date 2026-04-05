@@ -1,0 +1,44 @@
+build for web
+
+page 'Interactive Patterns':
+
+  section 'Tabs Demo' as tabs:
+    tab 'Overview':
+      heading 'Overview'
+      text 'This is the overview tab.'
+    tab 'Details':
+      heading 'Details'
+      text 'This is the details tab.'
+    tab 'Settings':
+      heading 'Settings'
+      text 'This is the settings tab.'
+
+  divider
+
+  section 'Advanced Options' collapsible, starts closed:
+    text 'These options are hidden by default.'
+    text 'Click the header to expand.'
+
+  section 'FAQ' collapsible:
+    text 'This section starts open but can be collapsed.'
+
+  divider
+
+  section 'Help' slides in from right:
+    heading 'Help Panel'
+    text 'This is a slide-in help panel.'
+    text 'Click the button to toggle it.'
+
+  button 'Toggle Help':
+    toggle the Help panel
+
+  divider
+
+  section 'Confirm Delete' as modal:
+    heading 'Are you sure?'
+    text 'This action cannot be undone.'
+    button 'Cancel':
+      close modal
+
+  button 'Delete Item':
+    open the Confirm Delete modal

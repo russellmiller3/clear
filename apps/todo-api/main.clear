@@ -1,0 +1,44 @@
+build for javascript backend
+
+# Todo API — Stress Test App #1 (v2, new syntax)
+# Uses: define-as, receiving, this-endpoint, records-in, collection ops
+
+# --- Data ---
+
+create a Todos table:
+  title, required
+  completed, default false
+  created_at, auto
+
+# --- Config ---
+
+log every request
+allow cross-origin requests
+
+# --- Endpoints ---
+
+when user calls GET /api/todos:
+  define all_todos as: look up all records in Todos table
+  define total as: count of all_todos
+  send back all_todos
+
+when user calls GET /api/todos/:id:
+  define todo as: look up records in Todos table where id is incoming's id
+  send back todo
+
+when user calls POST /api/todos receiving post_data:
+  validate post_data:
+    title is text, required, min 1, max 500
+  define new_todo as: save post_data as Todo
+  send back new_todo status 201
+
+when user calls PUT /api/todos/:id receiving update_data:
+  validate update_data:
+    title is text, min 1, max 500
+  save update_data to Todos
+  send back 'updated'
+
+when user calls DELETE /api/todos/:id:
+  this endpoint requires auth
+  remove from Todos where id is incoming's id
+  send back 'deleted'

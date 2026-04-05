@@ -1,0 +1,38 @@
+/* Clear design system -- DaisyUI ivory theme */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { -webkit-font-smoothing: antialiased; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--p) / 0.15); }
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- User Styles --- */
+.style-metric_card {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.style-card {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+/* --- Inline Layout --- */
+.section-app { display: flex; flex-direction: row; height: 100vh; }
+.section-sidebar { background: #0f172a; color: #f8fafc; overflow-y: auto; width: 280px; flex-shrink: 0; }
+.section-main { flex: 1; display: flex; flex-direction: column; }
+.section-header { position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); padding: 1.5rem; }
+.section-tabs { padding: 1.5rem; }
+.section-content { overflow-y: auto; padding: 1.5rem; }
+.section-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }

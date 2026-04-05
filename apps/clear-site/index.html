@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="nova">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear -- Build client apps in minutes</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            // Autumn coffee shop palette
+            bark:    '#3D2B1F',   // deep wood brown -- headlines
+            ember:   '#C4542A',   // burnt orange -- primary CTA
+            maple:   '#D4763C',   // warm maple leaf -- secondary
+            cream:   '#FAF5EF',   // warm cream -- page bg
+            latte:   '#F0E6D8',   // latte foam -- card bg
+            branch:  '#8B7355',   // branch brown -- muted text
+            leaf:    '#A67B4B',   // golden leaf -- borders
+            forest:  '#2D5016',   // deep forest green -- success
+            amber:   '#B8860B',   // amber glow -- warning
+            moss:    '#6B7C4E',   // moss green -- code keywords
+            // Leaf colors -- the full autumn spectrum
+            crimson: '#8B2500',   // deep red maple
+            rust:    '#A0522D',   // rust/sienna
+            gold:    '#DAA520',   // golden aspen
+            ochre:   '#CC7722',   // yellow-orange oak
+            wine:    '#722F37',   // wine-dark sumac
+            sage:    '#87A96B',   // late-season sage
+          },
+          fontFamily: {
+            display: ['Fraunces', 'Georgia', 'serif'],
+            body: ['DM Sans', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen" style="background-color: #FAF5EF;">
+
+  <!-- Nav -->
+  <nav id="nav" class="fixed top-0 inset-x-0 z-50 h-16 flex items-center px-6 transition-all duration-300">
+    <span class="font-display font-bold text-xl text-bark">Clear</span>
+    <div class="ml-auto flex items-center gap-4">
+      <a href="#examples" class="text-sm font-medium text-branch hover:text-bark transition-colors duration-150">Examples</a>
+      <a href="#agents" class="text-sm font-medium text-branch hover:text-bark transition-colors duration-150">Agents</a>
+      <a href="#start" class="inline-flex items-center justify-center h-8 px-4 border border-leaf/30 bg-transparent text-bark text-sm rounded-md hover:bg-latte font-medium transition-colors duration-150">Get Started</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="pt-32 pb-20 px-4">
+    <div class="max-w-3xl mx-auto text-center">
+      <span class="inline-block text-xs font-medium tracking-widest uppercase text-ember bg-ember/10 border border-ember/20 rounded-full px-4 py-1.5 mb-8">
+        Tested templates + AI agents
+      </span>
+      <h1 class="font-display font-black text-5xl md:text-6xl tracking-tight leading-tight text-bark mb-6">
+        Build client apps in minutes, not weeks.
+      </h1>
+      <p class="text-lg text-branch leading-relaxed max-w-xl mx-auto mb-10">
+        Pick a tested template. Customize it in plain English. Deploy it.
+        The compiler handles auth, validation, and security. You handle the invoice.
+      </p>
+      <div class="flex items-center justify-center gap-3 flex-wrap">
+        <a href="#start" class="inline-flex items-center justify-center h-12 px-8 bg-ember text-white rounded-lg font-semibold tracking-tight transition-all duration-200 hover:bg-ember/85 hover:scale-[1.02] shadow-lg shadow-ember/20">
+          Get Started Free
+        </a>
+        <a href="#examples" class="inline-flex items-center justify-center h-12 px-6 text-branch hover:text-bark font-medium transition-colors duration-150">
+          See examples &rarr;
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Code example -->
+  <section class="pb-20 px-4">
+    <div class="max-w-2xl mx-auto">
+      <div class="rounded-2xl overflow-hidden shadow-xl shadow-bark/10 border border-leaf/15">
+        <div class="bg-bark/95 px-5 py-3 flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-ember/60"></span>
+          <span class="w-3 h-3 rounded-full bg-maple/60"></span>
+          <span class="w-3 h-3 rounded-full bg-forest/60"></span>
+          <span class="text-xs text-latte/50 ml-2 font-mono">invoice-app.clear</span>
+        </div>
+        <pre class="bg-bark text-latte/90 px-6 py-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-moss">build for javascript backend</span>
+
+<span class="text-branch/60"># Data</span>
+<span class="text-maple">create an Invoices table:</span>
+  client is text, required
+  amount (number), required
+  status, default <span class="text-ember">'draft'</span>
+
+<span class="text-branch/60"># Endpoints</span>
+<span class="text-maple">when user calls POST /api/invoices sending invoice:</span>
+  requires auth
+  validate invoice:
+    client is text, required
+    amount is number, required
+  set saved to save invoice as new Invoice
+  send back saved with success message
+
+<span class="text-maple">when user calls GET /api/invoices:</span>
+  requires auth
+  set all_invoices to get all Invoices
+  send back all_invoices</code></pre>
+      </div>
+      <p class="text-center text-sm text-branch/60 mt-4">
+        This compiles to a production Express.js server with auth, validation, CRUD, and error handling.
+      </p>
+    </div>
+  </section>
+
+  <!-- Problem -->
+  <section class="py-20 px-4 bg-latte/50">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="font-display font-bold text-3xl tracking-tight text-bark mb-6">
+        You build the same 5 apps over and over.
+      </h2>
+      <p class="text-base text-branch leading-relaxed max-w-2xl mx-auto mb-4">
+        CRM. Client portal. Dashboard. Booking system. Invoice tool. Every client wants a version of the same thing.
+      </p>
+      <p class="text-base text-branch leading-relaxed max-w-2xl mx-auto mb-4">
+        You spend two weeks on boilerplate -- auth, validation, CRUD endpoints, error handling. The client-specific part takes two hours.
+      </p>
+      <p class="text-base text-branch leading-relaxed max-w-2xl mx-auto">
+        Then something breaks in production and you spend the weekend debugging code you wrote six months ago.
+      </p>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="py-20 px-4">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="font-display font-bold text-3xl tracking-tight text-bark text-center mb-14">
+        Start from a tested template. Ship in an afternoon.
+      </h2>
+      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="bg-latte/40 border border-leaf/10 rounded-2xl p-6 transition-colors duration-200 hover:border-crimson/20">
+          <div class="text-2xl font-display font-bold text-crimson mb-3">1</div>
+          <h3 class="font-semibold text-bark mb-2">Pick a template</h3>
+          <p class="text-sm text-branch leading-relaxed">Invoice engine, project manager, CRM, ecommerce, SaaS billing. All tested.</p>
+        </div>
+        <div class="bg-latte/40 border border-leaf/10 rounded-2xl p-6 transition-colors duration-200 hover:border-ember/20">
+          <div class="text-2xl font-display font-bold text-ember mb-3">2</div>
+          <h3 class="font-semibold text-bark mb-2">Customize</h3>
+          <p class="text-sm text-branch leading-relaxed">Change field names, add endpoints, modify rules. Each line does one thing.</p>
+        </div>
+        <div class="bg-latte/40 border border-leaf/10 rounded-2xl p-6 transition-colors duration-200 hover:border-gold/20">
+          <div class="text-2xl font-display font-bold text-ochre mb-3">3</div>
+          <h3 class="font-semibold text-bark mb-2">Compile and deploy</h3>
+          <p class="text-sm text-branch leading-relaxed">One command generates a production server with auth, validation, and CRUD.</p>
+        </div>
+        <div class="bg-latte/40 border border-leaf/10 rounded-2xl p-6 transition-colors duration-200 hover:border-moss/20">
+          <div class="text-2xl font-display font-bold text-forest mb-3">4</div>
+          <h3 class="font-semibold text-bark mb-2">Charge the client</h3>
+          <p class="text-sm text-branch leading-relaxed">They get a working app. You get paid. Changes take minutes, not days.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AI Agents -->
+  <section id="agents" class="py-20 px-4 bg-bark text-latte">
+    <div class="max-w-3xl mx-auto">
+      <span class="inline-block text-xs font-medium tracking-widest uppercase text-maple bg-maple/10 border border-maple/20 rounded-full px-4 py-1.5 mb-6">
+        AI agents built in
+      </span>
+      <h2 class="font-display font-bold text-3xl tracking-tight mb-4">
+        Your apps can think.
+      </h2>
+      <p class="text-branch text-base leading-relaxed mb-10 max-w-xl">
+        Score leads, classify tickets, moderate content, summarize documents. The prompt is visible in the source -- auditable, not black-box.
+      </p>
+      <div class="rounded-2xl overflow-hidden border border-latte/10">
+        <div class="bg-bark/80 px-5 py-3 flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-ember/60"></span>
+          <span class="w-3 h-3 rounded-full bg-maple/60"></span>
+          <span class="w-3 h-3 rounded-full bg-forest/60"></span>
+          <span class="text-xs text-latte/40 ml-2 font-mono">lead-scorer.clear</span>
+        </div>
+        <pre class="bg-bark/60 text-latte/85 px-6 py-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-maple">agent 'Lead Scorer' receiving lead:</span>
+  <span class="text-moss">check</span> lead's company is not missing, <span class="text-moss">otherwise error</span> <span class="text-ember">'Company is required'</span>
+  <span class="text-moss">set</span> lead's score <span class="text-moss">to ask ai</span> <span class="text-ember">'Rate 1-10 for enterprise potential.'</span> with lead's company
+  send back lead
+
+<span class="text-maple">when user calls POST /api/score sending lead_data:</span>
+  validate lead_data:
+    company is text, required
+    email is text, required
+  <span class="text-moss">set</span> scored <span class="text-moss">to call</span> <span class="text-ember">'Lead Scorer'</span> with lead_data
+  set saved to save scored as new Lead
+  send back saved with success message</code></pre>
+      </div>
+      <p class="text-sm text-branch/70 mt-4">
+        Chain agents into pipelines: screen, then score, then summarize, then save. Each agent is a readable block -- no hidden logic.
+      </p>
+    </div>
+  </section>
+
+  <!-- Compiler catches -->
+  <section class="py-20 px-4">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="font-display font-bold text-3xl tracking-tight text-bark mb-10">
+        Bugs the compiler catches for you.
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4 text-left">
+        <div class="bg-latte/40 border border-leaf/10 rounded-xl p-5">
+          <p class="text-sm text-bark font-medium mb-1">Auth missing on a DELETE endpoint?</p>
+          <p class="text-xs text-ember font-mono">Compiler error.</p>
+        </div>
+        <div class="bg-latte/40 border border-leaf/10 rounded-xl p-5">
+          <p class="text-sm text-bark font-medium mb-1">Validation skipping a required field?</p>
+          <p class="text-xs text-ember font-mono">Compiler error.</p>
+        </div>
+        <div class="bg-latte/40 border border-leaf/10 rounded-xl p-5">
+          <p class="text-sm text-bark font-medium mb-1">User data exposed without RLS?</p>
+          <p class="text-xs text-ember font-mono">Compiler error.</p>
+        </div>
+        <div class="bg-latte/40 border border-leaf/10 rounded-xl p-5">
+          <p class="text-sm text-bark font-medium mb-1">Every fix improves every app.</p>
+          <p class="text-xs text-moss font-mono">Compiler gets smarter.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="py-16 px-4 bg-latte/50">
+    <div class="max-w-4xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
+      <div>
+        <div class="font-display font-black text-4xl text-crimson mb-1">931</div>
+        <div class="text-xs text-branch uppercase tracking-wide">Compiler tests</div>
+      </div>
+      <div>
+        <div class="font-display font-black text-4xl text-ember mb-1">16</div>
+        <div class="text-xs text-branch uppercase tracking-wide">Deployed apps</div>
+      </div>
+      <div>
+        <div class="font-display font-black text-4xl text-forest mb-1">0</div>
+        <div class="text-xs text-branch uppercase tracking-wide">Failing tests</div>
+      </div>
+      <div>
+        <div class="font-display font-black text-4xl text-ochre mb-1">30s</div>
+        <div class="text-xs text-branch uppercase tracking-wide">App to server</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- vs alternatives -->
+  <section class="py-20 px-4">
+    <div class="max-w-3xl mx-auto">
+      <h2 class="font-display font-bold text-3xl tracking-tight text-bark text-center mb-12">
+        Clear vs the alternatives.
+      </h2>
+      <div class="space-y-6">
+        <div class="bg-latte/40 border border-leaf/10 rounded-xl p-6">
+          <h3 class="font-semibold text-bark mb-2">vs Lovable / Bolt / v0</h3>
+          <p class="text-sm text-branch leading-relaxed">They generate code you can't read. When it breaks, you're stuck. Clear gives you a readable blueprint and readable output. You own both.</p>
+        </div>
+        <div class="bg-latte/40 border border-leaf/10 rounded-xl p-6">
+          <h3 class="font-semibold text-bark mb-2">vs hiring a developer</h3>
+          <p class="text-sm text-branch leading-relaxed">A developer builds one app at a time. Clear templates let you ship five apps a week with the same quality -- tested, secure, production-ready.</p>
+        </div>
+        <div class="bg-latte/40 border border-leaf/10 rounded-xl p-6">
+          <h3 class="font-semibold text-bark mb-2">vs doing it yourself in Express / Next.js</h3>
+          <p class="text-sm text-branch leading-relaxed">You already know how. But auth, validation, error handling, and security take 80% of the time. The compiler does that part.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Examples -->
+  <section id="examples" class="py-20 px-4 bg-latte/50">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="font-display font-bold text-3xl tracking-tight text-bark text-center mb-12">
+        Deployed apps built with Clear.
+      </h2>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="bg-cream border border-leaf/10 rounded-xl p-5">
+          <h3 class="font-semibold text-bark text-sm mb-1">Invoice Engine</h3>
+          <p class="text-xs text-branch mb-2">CRUD, auth, FK, computed fields</p>
+          <span class="text-xs font-mono text-moss">27 E2E tests</span>
+        </div>
+        <div class="bg-cream border border-leaf/10 rounded-xl p-5">
+          <h3 class="font-semibold text-bark text-sm mb-1">Project Manager</h3>
+          <p class="text-xs text-branch mb-2">Projects, tasks, teams, status</p>
+          <span class="text-xs font-mono text-moss">36 E2E tests</span>
+        </div>
+        <div class="bg-cream border border-leaf/10 rounded-xl p-5">
+          <h3 class="font-semibold text-bark text-sm mb-1">Ecommerce API</h3>
+          <p class="text-xs text-branch mb-2">Products, orders, inventory</p>
+          <span class="text-xs font-mono text-moss">16 E2E tests</span>
+        </div>
+        <div class="bg-cream border border-leaf/10 rounded-xl p-5">
+          <h3 class="font-semibold text-bark text-sm mb-1">Lead Scorer</h3>
+          <p class="text-xs text-branch mb-2">AI rates companies, saves scores</p>
+          <span class="text-xs font-mono text-ember">agent + ask ai</span>
+        </div>
+        <div class="bg-cream border border-leaf/10 rounded-xl p-5">
+          <h3 class="font-semibold text-bark text-sm mb-1">Hiring Pipeline</h3>
+          <p class="text-xs text-branch mb-2">3-agent chain: screen, score, summarize</p>
+          <span class="text-xs font-mono text-ember">multi-agent</span>
+        </div>
+        <div class="bg-cream border border-leaf/10 rounded-xl p-5">
+          <h3 class="font-semibold text-bark text-sm mb-1">Content Moderator</h3>
+          <p class="text-xs text-branch mb-2">AI classifies safe/unsafe</p>
+          <span class="text-xs font-mono text-ember">agent + ask ai</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section id="start" class="py-24 px-4 bg-bark text-center">
+    <div class="max-w-2xl mx-auto">
+      <h2 class="font-display font-bold text-3xl tracking-tight text-latte mb-4">
+        Ship your next client app this week.
+      </h2>
+      <p class="text-branch text-base mb-8">
+        Pick a template. Customize it. Deploy it. Your clients get tested, secure apps. You get your weekends back.
+      </p>
+      <a href="#" class="inline-flex items-center justify-center h-12 px-8 bg-ember text-white rounded-lg font-semibold tracking-tight transition-all duration-200 hover:bg-ember/85 hover:scale-[1.02] shadow-lg shadow-ember/30">
+        Get Started Free
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-8 px-4 text-center">
+    <p class="text-xs text-branch/50">Clear Language -- 931 tests, 0 failing. Built with Clear.</p>
+  </footer>
+
+  <!-- Scroll nav effect -->
+  <script>
+    window.addEventListener('scroll', () => {
+      const nav = document.getElementById('nav');
+      if (window.scrollY > 40) {
+        nav.style.backgroundColor = 'rgba(250,245,239,0.9)';
+        nav.style.backdropFilter = 'blur(12px)';
+        nav.style.borderBottom = '1px solid rgba(166,123,75,0.15)';
+      } else {
+        nav.style.backgroundColor = 'transparent';
+        nav.style.backdropFilter = 'none';
+        nav.style.borderBottom = '1px solid transparent';
+      }
+    });
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+  </script>
+
+</body>
+</html>

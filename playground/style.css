@@ -1,0 +1,5 @@
+/* Clear design system -- DaisyUI ivory theme */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { -webkit-font-smoothing: antialiased; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--p) / 0.15); }

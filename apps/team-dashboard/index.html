@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="h-screen flex bg-base-100">
+    <div class="menu p-4 w-60 min-h-full bg-base-200 border-r border-base-300/50 text-sm">
+    <h1 class="text-3xl font-bold tracking-tight mb-6">Projects</h1>
+    <div class="divider my-8"></div>
+    <div class="overflow-hidden rounded-xl border border-base-300/50 bg-base-200 mb-4" id="output_Projects">
+      <div class="text-xs font-medium text-base-content/50 uppercase tracking-wide px-4 pt-3">Projects</div>
+      <table class="table table-sm" id="output_Projects_table">
+        <thead><tr class="bg-base-300/30 text-xs uppercase tracking-wide text-base-content/40"></tr></thead>
+        <tbody class="text-sm"></tbody>
+      </table>
+    </div>
+    <div class="divider my-8"></div>
+    <h2 class="text-xl font-semibold mt-6 mb-3">New Project</h2>
+    <div class="form-control mb-4">
+      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="input_project_name">Name</label>
+      <input id="input_project_name" class="input input-bordered w-full bg-base-200" type="text" placeholder="Name">
+    </div>
+    <div class="form-control mb-4">
+      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="input_project_owner">Owner</label>
+      <input id="input_project_owner" class="input input-bordered w-full bg-base-200" type="text" placeholder="Owner">
+    </div>
+    <button class="btn btn-primary btn-sm" id="btn_Add_Project">Add Project</button>
+    </div>
+    <div class="flex flex-col flex-1 min-w-0">
+    <div class="navbar bg-base-200 border-b border-base-300/50 px-4 h-14 sticky top-0 z-30">
+    <h1 class="text-3xl font-bold tracking-tight mb-6">Team Dashboard</h1>
+    <p class="text-base text-base-content/80 leading-relaxed mb-3">Track projects and tasks</p>
+    </div>
+    <div class="flex-1 p-6 bg-base-100 overflow-y-auto">
+    <div class="clear-section section-metrics">
+    <div class="card bg-base-200 border border-base-300/50 rounded-xl p-5">
+    <h1 class="text-3xl font-bold tracking-tight mb-6">Projects</h1>
+    <div class="overflow-hidden rounded-xl border border-base-300/50 bg-base-200 mb-4" id="output_Projects_2">
+      <div class="text-xs font-medium text-base-content/50 uppercase tracking-wide px-4 pt-3">Projects</div>
+      <table class="table table-sm" id="output_Projects_2_table">
+        <thead><tr class="bg-base-300/30 text-xs uppercase tracking-wide text-base-content/40"></tr></thead>
+        <tbody class="text-sm"></tbody>
+      </table>
+    </div>
+    </div>
+    <div class="card bg-base-200 border border-base-300/50 rounded-xl p-5">
+    <h1 class="text-3xl font-bold tracking-tight mb-6">Tasks</h1>
+    <div class="overflow-hidden rounded-xl border border-base-300/50 bg-base-200 mb-4" id="output_Tasks">
+      <div class="text-xs font-medium text-base-content/50 uppercase tracking-wide px-4 pt-3">Tasks</div>
+      <table class="table table-sm" id="output_Tasks_table">
+        <thead><tr class="bg-base-300/30 text-xs uppercase tracking-wide text-base-content/40"></tr></thead>
+        <tbody class="text-sm"></tbody>
+      </table>
+    </div>
+    </div>
+    </div>
+    <div class="divider my-8"></div>
+    <div class="card bg-base-200 border border-base-300/50 rounded-xl p-5">
+    <h2 class="text-xl font-semibold mt-6 mb-3">New Task</h2>
+    <div class="form-control mb-4">
+      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="input_task_title">Title</label>
+      <input id="input_task_title" class="input input-bordered w-full bg-base-200" type="text" placeholder="Title">
+    </div>
+    <div class="form-control mb-4">
+      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="input_task_project">Project</label>
+      <input id="input_task_project" class="input input-bordered w-full bg-base-200" type="text" placeholder="Project">
+    </div>
+    <div class="form-control mb-4">
+      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="input_task_assignee">Assignee</label>
+      <input id="input_task_assignee" class="input input-bordered w-full bg-base-200" type="text" placeholder="Assignee">
+    </div>
+    <button class="btn btn-primary btn-sm" id="btn_Add_Task">Add Task</button>
+    </div>
+    </div>
+    </div>
+    </div>
+  </main>
+
+  <script>
+// --- Runtime ---
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "Team Dashboard";
+
+// --- State ---
+let _state = {
+  project_name: "",
+  project_owner: "",
+  task_title: "",
+  task_project: "",
+  task_assignee: "",
+  projects: null,
+  tasks: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  {
+    const _tableEl = document.getElementById('output_Projects_table');
+    const _data = _state.projects;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","status"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Projects_table');
+    const _data = _state.projects;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","owner","status"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Tasks_table');
+    const _data = _state.tasks;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["title","project","assignee","status"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_project_name').value = _state.project_name;
+  document.getElementById('input_project_owner').value = _state.project_owner;
+  document.getElementById('input_task_title').value = _state.task_title;
+  document.getElementById('input_task_project').value = _state.task_project;
+  document.getElementById('input_task_assignee').value = _state.task_assignee;
+}
+
+// --- Input listeners ---
+document.getElementById('input_project_name').addEventListener('input', function(e) {
+  _state.project_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_project_owner').addEventListener('input', function(e) {
+  _state.project_owner = e.target.value;
+  _recompute();
+});
+document.getElementById('input_task_title').addEventListener('input', function(e) {
+  _state.task_title = e.target.value;
+  _recompute();
+});
+document.getElementById('input_task_project').addEventListener('input', function(e) {
+  _state.task_project = e.target.value;
+  _recompute();
+});
+document.getElementById('input_task_assignee').addEventListener('input', function(e) {
+  _state.task_assignee = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Add_Project').addEventListener('click', async function() {
+  await fetch("/api/projects", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_name: _state.project_name, project_owner: _state.project_owner }) }).catch(e => console.error(e));
+  _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
+  _state.project_name = "";
+  _state.project_owner = "";
+  _recompute();
+});
+document.getElementById('btn_Add_Task').addEventListener('click', async function() {
+  await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_title: _state.task_title, task_project: _state.task_project, task_assignee: _state.task_assignee }) }).catch(e => console.error(e));
+  _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+  _state.task_title = "";
+  _state.task_project = "";
+  _state.task_assignee = "";
+  _recompute();
+});
+
+// --- On Page Load ---
+(async () => {
+  _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
+  _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

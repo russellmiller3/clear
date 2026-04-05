@@ -1,0 +1,164 @@
+build for web and javascript backend
+
+# Database
+database is local memory
+
+create a Models table:
+  name, required
+  accuracy (number), default 0
+  status, default 'pending'
+  created_at_date, auto
+
+create a Results table:
+  model_id (number), required
+  metric, required
+  value (number), required
+
+# Backend
+
+# Allow the frontend to talk to the backend
+allow cross-origin requests
+log every request
+
+when user calls GET /api/models:
+  all_models = get all Models
+  send back all_models
+
+when user calls GET /api/results:
+  all_results = get all Results
+  send back all_results
+
+when user calls POST /api/models sending model_data:
+  validate model_data:
+    name is text, required, min 1, max 100
+  new_model = save model_data as new Model
+  send back new_model with success message
+
+# Frontend
+
+primary is '#2563eb'
+surface is '#ffffff'
+dark_bg is '#0f172a'
+
+style app_layout:
+  full_height
+  two column layout
+
+style sidebar:
+  background is dark_bg
+  color is 'white'
+  padding = 24
+  scrollable
+  width is '280px'
+  no_shrink
+
+style main_area:
+  fills remaining space
+  stacked
+
+style top_bar:
+  sticky at top
+  background is surface
+  padding = 16
+  shadow is 'small'
+  two column layout
+
+style card:
+  background is surface
+  padding = 20
+  rounded = 12
+  shadow is 'medium'
+
+style results_grid:
+  two column layout
+
+style metric_card:
+  background is '#f8fafc'
+  padding = 16
+  rounded = 8
+  text centered
+
+style tab_bar:
+  background is '#f1f5f9'
+  padding = 8
+  rounded = 8
+
+style content_scroll:
+  scrollable
+  fills remaining space
+  padding = 24
+
+style status_good:
+  background is '#dcfce7'
+  color is '#166534'
+  padding = 8
+  rounded = 8
+
+style status_pending:
+  background is '#fef9c3'
+  color is '#854d0e'
+  padding = 8
+  rounded = 8
+
+page 'Cast Results' at '/':
+  on page load get models from '/api/models'
+
+  section 'App' with style app_layout:
+
+    section 'Sidebar' with style sidebar:
+      heading 'Models'
+      text 'Your trained models and results.'
+      divider
+      'Search models' is a text input saved as a search
+      divider
+      subheading 'Recent'
+      display models as table showing name, status
+
+    section 'Main' with style main_area:
+
+      section 'Header' with style top_bar:
+        heading 'Results Dashboard'
+        'Model Name' is a text input saved as a model_name
+
+      section 'Tabs' with style tab_bar:
+        button 'Overview':
+          get models from '/api/models'
+        button 'Details':
+          get results from '/api/results'
+        button 'Add Model':
+          send model_name as a new model to '/api/models'
+          get models from '/api/models'
+          model_name is ''
+
+      section 'Content' with style content_scroll:
+
+        section 'Metrics' with style results_grid:
+          section 'Accuracy' with style metric_card:
+            heading '92.4%'
+            text 'Model Accuracy'
+          section 'Precision' with style metric_card:
+            heading '89.1%'
+            text 'Precision Score'
+          section 'Recall' with style metric_card:
+            heading '94.7%'
+            text 'Recall Score'
+          section 'F1' with style metric_card:
+            heading '91.8%'
+            text 'F1 Score'
+
+        divider
+
+        section 'Model Status' with style card:
+          subheading 'Training Status'
+          section 'Good' with style status_good:
+            bold text 'Revenue Model: Training complete'
+          section 'Pending' with style status_pending:
+            bold text 'Churn Model: Training in progress...'
+
+        divider
+
+        section 'Results Table' with style card:
+          subheading 'All Models'
+          display models as table showing name, accuracy, status
+          button 'Refresh':
+            get models from '/api/models'

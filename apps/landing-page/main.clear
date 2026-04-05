@@ -1,0 +1,57 @@
+build for web
+
+# Landing Page + Signup — Stress Test App #11
+# Tests: multi-page routing, forms, sections, styles, content elements
+
+# --- Styles ---
+
+style hero:
+  background is '#1a1a2e'
+  color is 'white'
+  padding = 64
+  centered
+
+style card:
+  background is 'white'
+  padding = 24
+  rounded = 12
+  shadow is 'medium'
+
+# --- Home Page ---
+
+page 'Clear Language' at '/':
+  section 'Hero' with style hero:
+    heading 'Clear: AI writes it, humans read it'
+    subheading 'A programming language designed for the AI age'
+    text 'Write once in Clear. Compile to JavaScript, Python, or both.'
+    link 'Get Started' to '/signup'
+
+  section 'Features' with style card:
+    heading 'Why Clear?'
+    text 'One operation per line. No nesting. Verbosity beats cleverness.'
+    text 'The compiler accumulates quality. Every fix helps every future app.'
+    divider
+    text 'Clear is the readable contract between AI and human.'
+
+# --- Signup Page ---
+
+page 'Sign Up' at '/signup':
+  section 'Signup Form' with style card:
+    heading 'Create your account'
+    'Email' is a text input
+    'Password' is a text input
+    'Name' is a text input
+    button 'Sign Up':
+      show 'Signing up...'
+
+# --- Pricing Page ---
+
+page 'Pricing' at '/pricing':
+  section 'Plans' with style card:
+    heading 'Simple pricing'
+    subheading 'Free tier'
+    text '100 API calls per month. 5 file uploads.'
+    divider
+    subheading 'Pro tier'
+    text '10,000 API calls per month. 100 file uploads.'
+    text '$29/month'

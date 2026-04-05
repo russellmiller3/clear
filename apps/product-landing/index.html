@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compare</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="clear-page-landing min-h-screen">
+  <main id="app" class="">
+    <div class="clear-section style-page_hero">
+      <div class="clear-section-inner">
+    <small class="text-sm opacity-60 clear-small">Business Apps, Built By AI</small>
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Your app is already built. Just tell us what to change.</h1>
+    <p class="clear-text">Clear comes with production-ready business apps -- invoicing, project management, CRM, ecommerce, and more. Describe what makes yours different. We handle the rest.</p>
+    <hr class="divider clear-divider">
+    <a class="link link-primary clear-link" href="/apps">See the Apps</a>
+    <a class="link link-primary clear-link" href="/how">How It Works</a>
+    <a class="link link-primary clear-link" href="/compare">Why Not Lovable</a>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">You Do Not Need An App Built From Scratch</h1>
+    <p class="clear-text">Every invoice system has invoices. Every project tracker has tasks. Every CRM has contacts. You are not unique in what you need -- you are unique in how you need it.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text">Other AI app builders start from zero every time. "Build me an invoice system" generates 2,000 lines of code from scratch, with all the bugs that come from writing something for the first time.</p>
+    <p class="clear-text">Clear starts from a tested, deployed invoice system that already works. You say "add a 30-day payment term" or "require manager approval over $5,000" and we modify the one that already passes 27 automated tests.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>Starting from working is faster than starting from zero.</strong></p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section_dark">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Apps Ready Today</h1>
+    <p class="clear-text">Each app is deployed, tested, and ready to customize. Pick one and make it yours.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Invoicing</h2>
+    <p class="clear-text">Clients, invoices, line items, payments. Status tracking: draft, sent, paid, cancelled. Role-based access. Admin audit log. 27 automated tests passing.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Project Management</h2>
+    <p class="clear-text">Teams, members, projects, tasks, comments. Priority levels, assignment, hour tracking. Sidebar layout with live data. 36 automated tests passing.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Ecommerce</h2>
+    <p class="clear-text">Product catalog, orders, inventory guards. Stripe checkout. Webhook verification. Stock management. 16 automated tests passing.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Customer Portal</h2>
+    <p class="clear-text">User accounts, support tickets, knowledge base. Auth with roles. Email notifications. Rate limiting on public endpoints.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Team Chat</h2>
+    <p class="clear-text">Rooms, messages, real-time updates. User presence. Message history. Auth required for posting.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Job Queue</h2>
+    <p class="clear-text">Background tasks with scheduling. Status tracking, retry logic. Admin dashboard. Role-based access.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">And More</h2>
+    <p class="clear-text">URL shortener. Blog with admin panel. SaaS billing. Webhook relay. Live metrics dashboard. Or describe something new -- Clear builds it from scratch too.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Make It Yours In Plain English</h1>
+    <p class="clear-text">You do not write code. You describe changes.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Add a business rule</h2>
+    <p class="clear-text"><em>"Invoices over $10,000 need director approval before sending."</em></p>
+    <p class="clear-text">Clear adds the rule, the validation, the role check, and the test. One sentence from you.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Change a workflow</h2>
+    <p class="clear-text"><em>"Orders should go through a review step before fulfillment."</em></p>
+    <p class="clear-text">Clear adds the status, the transition guard, and updates the test suite.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Add a field</h2>
+    <p class="clear-text"><em>"I need a purchase order number on every invoice."</em></p>
+    <p class="clear-text">Clear adds the field to the database, the form, the API validation, and the display.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Tweak the UI</h2>
+    <p class="clear-text"><em>"Put the sidebar on the right and add a search bar at the top."</em></p>
+    <p class="clear-text">Clear regenerates the layout. Same data, same logic, new arrangement.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section_dark">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">You Can Read Every Line</h1>
+    <p class="clear-text">This is what your invoice app actually looks like under the hood:</p>
+    <hr class="divider clear-divider">
+    <pre class="mockup-code clear-code"><code>when user calls PUT /api/invoices/:id/send:
+  requires auth
+  define invoice as: look up the Invoice with this id
+  guard invoice is not nothing or "Invoice not found"
+  guard invoice`s status is "draft" or "Only drafts can be sent"
+  invoice`s status is "sent"
+  save invoice to Invoices
+  send back "sent" with success message</code></pre>
+    <hr class="divider clear-divider">
+    <p class="clear-text">Eight lines. You can read every one. "Require login, find the invoice, check it is a draft, change the status, save it." No React hooks. No middleware chains. No mysteries.</p>
+    <p class="clear-text">You will probably never need to read this. But knowing you can is the difference between renting your software and owning it.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Security You Do Not Have To Think About</h1>
+    <p class="clear-text">Every app we ship has security built into the compiler. Not checked after the fact -- enforced before your app can run.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>No delete endpoint works without login. Ever.</strong></p>
+    <p class="clear-text">The compiler blocks it. It is not a setting you can forget to turn on.</p>
+    <p class="clear-text"><strong>No API returns another user`s private data.</strong></p>
+    <p class="clear-text">The compiler detects it and refuses to build.</p>
+    <p class="clear-text"><strong>Every form input is validated.</strong></p>
+    <p class="clear-text">Required fields, length limits, email format, type checks -- all generated from your data model.</p>
+    <p class="clear-text"><strong>Every app has automated tests.</strong></p>
+    <p class="clear-text">Auth, validation, error handling, edge cases -- tested before you ever see it.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section_dark">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Why Not Just Use Lovable?</h1>
+    <p class="clear-text">Lovable is impressive. So are Bolt and v0. But they all have the same problem.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>They start from scratch every time.</strong></p>
+    <p class="clear-text">Your invoice app is generated fresh. Every bug is a new bug. Every security hole is a new security hole. Nothing is tested until you find the problem.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>They generate code you cannot read.</strong></p>
+    <p class="clear-text">2,400 lines of React and TypeScript. When it breaks, you ask the AI to fix it and hope. When you want a small change, you ask the AI to change it and hope.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>They lock you into their platform.</strong></p>
+    <p class="clear-text">Supabase for data. Vercel for hosting. Their editor for changes. Leave and you take a pile of generated React with you.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Clear is different.</h2>
+    <p class="clear-text">Your app starts from one that already works and already has tests. Changes are described in English, applied to a readable blueprint, verified by automated tests. Export your app and host it anywhere -- standard Node.js, no vendor lock-in.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Pricing</h1>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Starter -- Free</h2>
+    <p class="clear-text">One app. Hosted by Clear. Custom domain. Community support.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Business -- $49/month</h2>
+    <p class="clear-text">Unlimited apps. Priority support. Custom integrations. Export source code anytime.</p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Enterprise -- Contact Us</h2>
+    <p class="clear-text">On-premise deployment. SSO. Audit logging. Dedicated support. SLA.</p>
+    <hr class="divider clear-divider">
+    <small class="text-sm opacity-60 clear-small">All plans include: automated tests, security enforcement, daily backups, SSL.</small>
+      </div>
+    </div>
+    <div class="clear-section style-page_hero">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Your app is already built.</h1>
+    <p class="clear-text">Pick a template. Describe your changes. Ship today.</p>
+    <a class="link link-primary clear-link" href="/apps">See the Apps</a>
+      </div>
+    </div>
+    <div class="clear-section style-page_hero">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Pick Your Starting Point</h1>
+    <p class="clear-text">Every app below is deployed, tested, and ready to customize. Click to see the blueprint.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Invoicing System</h2>
+    <p class="clear-text">5 tables: Clients, Invoices, Line Items, Payments, Audit Log. Status machine with guards. Role-based access. 27 tests.</p>
+    <p class="clear-text"><em>Good for: freelancers, agencies, small businesses that outgrew spreadsheet invoicing.</em></p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Project Manager</h2>
+    <p class="clear-text">6 tables: Teams, Members, Projects, Tasks, Comments, Activity. Priority tracking, assignment, hour estimates. Sidebar layout. 36 tests.</p>
+    <p class="clear-text"><em>Good for: teams that need something simpler than Jira but more structured than a shared doc.</em></p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Ecommerce Backend</h2>
+    <p class="clear-text">Products, orders, inventory guards. Stripe checkout. Webhook signature verification. Admin-only product management. 16 tests.</p>
+    <p class="clear-text"><em>Good for: shops, marketplaces, any business selling products online.</em></p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Blog with Admin</h2>
+    <p class="clear-text">Posts, users, roles. Public reading, authenticated writing. Admin-only user management. Email validation. 14 tests.</p>
+    <p class="clear-text"><em>Good for: content marketing, company blogs, knowledge bases.</em></p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Team Chat</h2>
+    <p class="clear-text">Rooms, messages, real-time delivery. Auth for posting. Message history per room. 12 tests.</p>
+    <p class="clear-text"><em>Good for: internal communication, customer support chat, community forums.</em></p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">SaaS Billing</h2>
+    <p class="clear-text">Subscription plans, usage tracking, tier limits. Webhook for payment events. 6 tests.</p>
+    <p class="clear-text"><em>Good for: any SaaS product that needs subscription management.</em></p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">URL Shortener</h2>
+    <p class="clear-text">Short links with hit counting. Rate limiting. Unique code generation. 7 tests.</p>
+    <p class="clear-text"><em>Good for: marketing teams, link tracking, branded short URLs.</em></p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Live Dashboard</h2>
+    <p class="clear-text">Real-time metrics via server-sent events. Data aggregation jobs. REST API for posting metrics. 8 tests.</p>
+    <p class="clear-text"><em>Good for: ops teams, monitoring, KPI dashboards.</em></p>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Something Else?</h2>
+    <p class="clear-text">Describe what you need. If it has a database, an API, and a user interface, Clear can build it. Most custom apps are ready in minutes, not weeks.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_hero">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Pick one and make it yours.</h1>
+    <a class="link link-primary clear-link" href="/">Back to Home</a>
+      </div>
+    </div>
+    <div class="clear-section style-page_hero">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Three Steps to Your App</h1>
+    <p class="clear-text">No coding. No waiting. Full ownership.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Step 1: Pick a Template</h1>
+    <p class="clear-text">Browse the app catalog. Find the closest match to what you need. Every template is a real, tested, deployed application -- not a wireframe or a mockup.</p>
+    <p class="clear-text">The invoice system already handles clients, invoices, line items, payments, and status tracking. If that is 80% of what you need, start there.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section_dark">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Step 2: Describe Your Changes</h1>
+    <p class="clear-text">Tell Clear how your business is different. Use plain English.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><em>"Add a purchase order field to invoices. Make it required. Show it in the table."</em></p>
+    <p class="clear-text"><em>"Add a discount field. If the invoice total is over $5,000, allow up to 15% discount."</em></p>
+    <p class="clear-text"><em>"Add an export button that generates a PDF of the invoice."</em></p>
+    <hr class="divider clear-divider">
+    <p class="clear-text">Clear updates the blueprint, the database, the API, the validation, the forms, and the tests. You verify the changes in the readable blueprint and approve.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Step 3: Ship</h1>
+    <p class="clear-text">Your app is compiled, tested, and deployed. You get a URL, a custom domain option, and a dashboard to manage your data.</p>
+    <p class="clear-text">Every change runs through automated tests before it goes live. If a change breaks something, you see it before your users do.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>Average time from "I need this change" to live in production: under 5 minutes.</strong></p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section_dark">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">After Launch</h1>
+    <p class="clear-text">Your app keeps getting better without you doing anything.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>We improve the compiler weekly.</strong></p>
+    <p class="clear-text">Better error handling, faster performance, new security checks. Your app benefits automatically on the next deploy.</p>
+    <p class="clear-text"><strong>You own the blueprint.</strong></p>
+    <p class="clear-text">Export it anytime. It is 37-250 lines of readable text. Take it to any developer, any platform, any host. No lock-in.</p>
+    <p class="clear-text"><strong>Support that understands your app.</strong></p>
+    <p class="clear-text">Because we can read your blueprint, our support team knows exactly what your app does. No "send us your codebase" -- we already see it.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_hero">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Five minutes to your first app.</h1>
+    <a class="link link-primary clear-link" href="/apps">See the Apps</a>
+    <a class="link link-primary clear-link" href="/">Back to Home</a>
+      </div>
+    </div>
+    <div class="clear-section style-page_hero">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Clear vs Other AI App Builders</h1>
+    <p class="clear-text">Honest comparison. You decide.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Clear vs Lovable</h1>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>Lovable: starts from scratch every time.</strong></p>
+    <p class="clear-text">You describe an invoice system. Lovable generates 2,400 lines of React, Tailwind, Supabase, and TypeScript. Fresh code, untested, with whatever bugs this particular generation happens to have.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>Clear: starts from a tested invoice system.</strong></p>
+    <p class="clear-text">You pick the invoice template (27 automated tests already passing) and describe your customizations. Your app inherits months of battle-tested logic.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>When something breaks:</strong></p>
+    <p class="clear-text">Lovable: you ask the AI to fix it and wait. You cannot read the code to verify the fix.</p>
+    <p class="clear-text">Clear: you read the blueprint (8 lines for the send-invoice endpoint), see the problem, describe the fix. Or just fix line 14 yourself.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section_dark">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Clear vs Bolt</h1>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>Bolt is fast. Clear is fast and tested.</strong></p>
+    <p class="clear-text">Bolt generates a full-stack app in seconds. Impressive. But it generates it fresh every time, with no tests, no security enforcement, and code you need a developer to maintain.</p>
+    <p class="clear-text">Clear generates from tested templates with 6 to 36 automated tests per app. Security is enforced by the compiler. The readable blueprint means a non-developer can maintain it.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Clear vs v0</h1>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>v0 does frontend beautifully. Clear does everything.</strong></p>
+    <p class="clear-text">v0 generates React components. Beautiful ones. But you still need a backend, a database, auth, validation, deployment, and tests. That is 80% of the work.</p>
+    <p class="clear-text">Clear generates the full stack from one description. Frontend, backend, database, auth, validation, tests, deployment. One tool, complete app.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section_dark">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Clear vs Hiring a Developer</h1>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>A developer costs $10,000-50,000 for a custom business app.</strong></p>
+    <p class="clear-text">Timeline: 2-6 months. You get exactly what you asked for -- 3 months ago. Changes cost more time and money.</p>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>Clear costs $49/month.</strong></p>
+    <p class="clear-text">Timeline: today. Changes take 5 minutes. And if you ever outgrow Clear, export your blueprint and hand it to a developer. They will understand it in 30 seconds.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_section">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Feature Comparison</h1>
+    <hr class="divider clear-divider">
+    <p class="clear-text"><strong>Starts from tested templates</strong></p>
+    <p class="clear-text">Clear: Yes. Lovable: No. Bolt: No. v0: No.</p>
+    <p class="clear-text"><strong>Readable source code</strong></p>
+    <p class="clear-text">Clear: Yes (37-250 lines). Lovable: No (2,400+ lines). Bolt: No. v0: Frontend only.</p>
+    <p class="clear-text"><strong>Automated tests included</strong></p>
+    <p class="clear-text">Clear: Yes (6-36 per app). Lovable: No. Bolt: No. v0: No.</p>
+    <p class="clear-text"><strong>Security enforced at build time</strong></p>
+    <p class="clear-text">Clear: Yes (compiler blocks insecure code). Lovable: No. Bolt: No. v0: No.</p>
+    <p class="clear-text"><strong>Full-stack (frontend + backend + database)</strong></p>
+    <p class="clear-text">Clear: Yes. Lovable: Yes. Bolt: Yes. v0: Frontend only.</p>
+    <p class="clear-text"><strong>Export and self-host</strong></p>
+    <p class="clear-text">Clear: Yes (standard Node.js). Lovable: Partial (Supabase dependency). Bolt: Yes. v0: Yes (frontend only).</p>
+    <p class="clear-text"><strong>Non-developer can make changes</strong></p>
+    <p class="clear-text">Clear: Yes (plain English or edit blueprint). Lovable: Ask the AI. Bolt: Ask the AI. v0: Ask the AI.</p>
+      </div>
+    </div>
+    <div class="clear-section style-page_hero">
+      <div class="clear-section-inner">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Try it yourself. Pick an app and customize it.</h1>
+    <a class="link link-primary clear-link" href="/apps">See the Apps</a>
+    <a class="link link-primary clear-link" href="/">Back to Home</a>
+      </div>
+    </div>
+  </main>
+
+  <script>
+// Generated by Clear v1.0
+
+// Product Landing Page -- Clear as hosted AI app platform for business users
+// Built-in business apps you customize, not code you write from scratch
+// Uses built-in page presets: page_hero, page_section, page_section_dark, page_card
+// Override any preset by redefining it here. These are the defaults.
+// --- Home Page ---
+// Page: Clear
+document.title = "Clear";
+// Section: Hero
+
+// Section: Problem
+
+// Section: Apps
+
+// Section: Customize
+
+// Section: Trust
+
+// Section: Security
+
+// Section: Compare
+
+// Section: Pricing
+
+// Section: CTA
+
+// --- Apps Catalog Page ---
+// Page: Apps
+document.title = "Apps";
+// Section: CatalogHero
+
+// Section: Catalog
+
+// Section: CatalogCTA
+
+// --- How It Works Page ---
+// Page: How It Works
+document.title = "How It Works";
+// Section: HowHero
+
+// Section: Pick
+
+// Section: Describe
+
+// Section: Ship
+
+// Section: Ongoing
+
+// Section: HowCTA
+
+// --- Compare Page ---
+// Page: Compare
+document.title = "Compare";
+// Section: CompareHero
+
+// Section: VsLovable
+
+// Section: VsBolt
+
+// Section: VsV0
+
+// Section: VsTraditional
+
+// Section: Table
+
+// Section: CompareCTA
+
+
+// --- Hash Router ---
+const _routes = {
+  '/': 'Clear',
+  '/apps': 'Apps',
+  '/how': 'How_It_Works',
+  '/compare': 'Compare'
+};
+function _router() {
+  const hash = location.hash.slice(1) || '/';
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (hash === route) ? 'block' : 'none';
+  }
+}
+window.addEventListener('hashchange', _router);
+_router();
+  </script>
+</body>
+</html>

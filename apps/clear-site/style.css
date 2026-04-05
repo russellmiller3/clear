@@ -1,0 +1,13 @@
+/* Clear site -- autumn coffee shop theme */
+html { scroll-behavior: smooth; }
+
+/* Selection color */
+::selection {
+  background: rgba(196, 84, 42, 0.2);
+  color: #3D2B1F;
+}
+
+/* Code block scrollbar */
+pre::-webkit-scrollbar { height: 6px; }
+pre::-webkit-scrollbar-track { background: transparent; }
+pre::-webkit-scrollbar-thumb { background: rgba(240,230,216,0.2); border-radius: 3px; }

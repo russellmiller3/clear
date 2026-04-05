@@ -1,0 +1,90 @@
+build for web and javascript backend
+
+# Database
+database is local memory
+
+create a Models table:
+  name, required
+  accuracy (number), default 0
+  status, default 'pending'
+  created_at_date, auto
+
+# Backend
+allow cross-origin requests
+log every request
+
+when user calls GET /api/models:
+  all_models = get all Models
+  send back all_models
+
+when user calls POST /api/models sending model_data:
+  validate model_data:
+    name is text, required, min 1, max 100
+  new_model = save model_data as new Model
+  send back new_model with success message
+
+# Frontend
+
+style metric_card:
+  background is '#f8fafc'
+  padding = 16
+  rounded = 8
+  text centered
+
+style card:
+  background is '#ffffff'
+  padding = 20
+  rounded = 12
+  shadow is 'medium'
+
+page 'Results Dashboard':
+  on page load get models from '/api/models'
+
+  section 'App' full height, side by side:
+
+    section 'Sidebar' dark background, 280px wide, scrollable:
+      heading 'Models'
+      text 'Your trained models and results.'
+      divider
+      'Search' is a text input saved as a search
+      divider
+      subheading 'Recent'
+      display models as table showing name, status
+
+    section 'Main' fills remaining space, stacked:
+
+      section 'Header' sticky at top, with shadow, padded:
+        heading 'Results Dashboard'
+        'Model Name' is a text input saved as a model_name
+
+      section 'Tabs' padded:
+        button 'Overview':
+          get models from '/api/models'
+        button 'Add Model':
+          send model_name as a new model to '/api/models'
+          get models from '/api/models'
+          model_name is ''
+
+      section 'Content' scrollable, padded:
+
+        section 'Metrics' as two column layout:
+          section 'Accuracy' with style metric_card:
+            heading '92.4%'
+            text 'Model Accuracy'
+          section 'Precision' with style metric_card:
+            heading '89.1%'
+            text 'Precision Score'
+          section 'Recall' with style metric_card:
+            heading '94.7%'
+            text 'Recall Score'
+          section 'F1' with style metric_card:
+            heading '91.8%'
+            text 'F1 Score'
+
+        divider
+
+        section 'All Models' with style card:
+          subheading 'All Models'
+          display models as table showing name, accuracy, status
+          button 'Refresh':
+            get models from '/api/models'

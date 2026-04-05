@@ -1,0 +1,29 @@
+build for javascript backend
+
+database is local memory
+
+create a Reviews table:
+  content is text, required
+  author
+  verdict
+  reason
+  reviewed_at_date, auto
+
+agent 'Moderator' receiving review:
+  check review's content is not missing, otherwise error 'Content is required'
+  set review's verdict to ask ai 'Is this content safe? Reply SAFE or UNSAFE on line 1, then a one-sentence reason on line 2.' with review's content
+  send back review
+
+when user calls POST /api/moderate sending review_data:
+  validate review_data:
+    content is text, required
+  set moderated to call 'Moderator' with review_data
+  set saved to save moderated as new Review
+  send back saved with success message
+
+when user calls GET /api/reviews:
+  all_reviews = get all Reviews
+  send back all_reviews
+
+when user calls GET /api/health:
+  send back 'ok'

@@ -1,0 +1,253 @@
+build for web and javascript backend
+
+# Project Manager -- the hardest app in Clear
+# Tests: deep FK chains, role-based access, business logic guards,
+# status transitions, multi-table CRUD, full-stack with data grid
+
+# ============================================================
+# Database
+# ============================================================
+
+database is local memory
+
+create a Teams table:
+  name, required
+  description
+  created_at_date, auto
+
+create a Members table:
+  team_id, required
+  user_name, required
+  role, default 'member'
+  email, required
+  created_at_date, auto
+
+create a Projects table:
+  team_id, required
+  name, required
+  description
+  status, default 'planning'
+  deadline
+  created_at_date, auto
+
+create a Tasks table:
+  project_id, required
+  title, required
+  description
+  status, default 'todo'
+  priority, default 'medium'
+  assigned_to
+  estimated_hours (number), default 0
+  actual_hours (number), default 0
+  created_at_date, auto
+
+create a Comments table:
+  task_id, required
+  author, required
+  body, required
+  created_at_date, auto
+
+create a ActivityLog table:
+  team_id, required
+  action, required
+  detail
+  created_at_date, auto
+
+# ============================================================
+# Backend
+# ============================================================
+
+# Allow the frontend to talk to the backend
+allow cross-origin requests
+
+# Print every request to the console for debugging
+log every request
+
+# --- Teams ---
+
+when user calls GET /api/teams:
+  all_teams = get all Teams
+  send back all_teams
+
+when user calls POST /api/teams sending team_data:
+  requires auth
+  validate team_data:
+    name is text, required, min 1, max 100
+  new_team = save team_data as new Team
+  send back new_team with success message
+
+when user calls GET /api/teams/:id:
+  team = get all Teams
+  send back team
+
+# --- Members ---
+
+when user calls GET /api/members:
+  all_members = get all Members
+  send back all_members
+
+when user calls POST /api/members sending member_data:
+  requires auth
+  validate member_data:
+    team_id is text, required
+    user_name is text, required, min 1, max 100
+    email is text, required, matches email
+    role is text
+  new_member = save member_data as new Member
+  send back new_member with success message
+
+# --- Projects ---
+
+when user calls GET /api/projects:
+  all_projects = get all Projects
+  send back all_projects
+
+when user calls POST /api/projects sending project_data:
+  requires auth
+  validate project_data:
+    team_id is text, required
+    name is text, required, min 1, max 200
+    description is text
+    status is text
+    deadline is text
+  new_project = save project_data as new Project
+  send back new_project with success message
+
+when user calls PUT /api/projects/:id sending update_data:
+  requires auth
+  validate update_data:
+    status is text
+    name is text
+    description is text
+    deadline is text
+  save update_data to Projects
+  send back 'updated' with success message
+
+when user calls DELETE /api/projects/:id:
+  requires auth
+  requires role 'admin'
+  delete the Project with this id
+  send back 'deleted' with success message
+
+# --- Tasks ---
+
+when user calls GET /api/tasks:
+  all_tasks = get all Tasks
+  send back all_tasks
+
+when user calls POST /api/tasks sending task_data:
+  requires auth
+  validate task_data:
+    project_id is text, required
+    title is text, required, min 1, max 300
+    description is text
+    priority is text
+    assigned_to is text
+    estimated_hours is number
+  new_task = save task_data as new Task
+  send back new_task with success message
+
+when user calls PUT /api/tasks/:id sending update_data:
+  requires auth
+  validate update_data:
+    status is text
+    title is text
+    priority is text
+    assigned_to is text
+    actual_hours is number
+  save update_data to Tasks
+  send back 'updated' with success message
+
+when user calls DELETE /api/tasks/:id:
+  requires auth
+  delete the Task with this id
+  send back 'deleted' with success message
+
+# --- Comments ---
+
+when user calls GET /api/comments:
+  all_comments = get all Comments
+  send back all_comments
+
+when user calls POST /api/comments sending comment_data:
+  requires auth
+  validate comment_data:
+    task_id is text, required
+    author is text, required, min 1, max 100
+    body is text, required, min 1, max 2000
+  new_comment = save comment_data as new Comment
+  send back new_comment with success message
+
+# --- Activity Log ---
+
+when user calls GET /api/activity:
+  requires auth
+  all_activity = get all ActivityLog
+  send back all_activity
+
+# --- Health ---
+
+when user calls GET /api/health:
+  send back 'ok'
+
+# ============================================================
+# Frontend
+# ============================================================
+
+page 'Project Manager' at '/':
+
+  on page load:
+    get teams from '/api/teams'
+    get projects from '/api/projects'
+    get tasks from '/api/tasks'
+
+  # --- Header ---
+  section 'Header' padded, with shadow:
+    heading 'Project Manager'
+    small text 'Track teams, projects, and tasks'
+
+  # --- Main Layout ---
+  section 'App' side by side:
+
+    # --- Left panel: Teams and Projects ---
+    section 'Sidebar' 320px wide, scrollable, padded:
+
+      subheading 'Teams'
+      'Team name' is a text input saved as a team_name
+      button 'Add Team':
+        send team_name as a new team to '/api/teams'
+        get teams from '/api/teams'
+        team_name is ''
+      display teams as table showing name
+
+      divider
+
+      subheading 'Projects'
+      'Project name' is a text input saved as a project_name
+      'Team ID' is a text input saved as a project_team_id
+      'Status' is a dropdown with ['planning', 'active', 'completed', 'on-hold']
+      button 'Add Project':
+        send project_name and project_team_id and status to '/api/projects'
+        get projects from '/api/projects'
+        project_name is ''
+      display projects as table showing name, status
+
+    # --- Right panel: Tasks ---
+    section 'Main' fills remaining space, scrollable, padded:
+
+      subheading 'Tasks'
+
+      section 'Add Task' padded:
+        'Task title' is a text input saved as a task_title
+        'Project ID' is a text input saved as a task_project_id
+        'Priority' is a dropdown with ['low', 'medium', 'high', 'critical']
+        'Assigned to' is a text input saved as an assigned_to
+        'Estimated hours' is a number input saved as an estimated_hours
+        button 'Add Task':
+          send task_title and task_project_id and priority and assigned_to and estimated_hours to '/api/tasks'
+          get tasks from '/api/tasks'
+          task_title is ''
+
+      divider
+
+      display tasks as table showing title, status, priority, assigned_to, estimated_hours

@@ -1,0 +1,118 @@
+build for web and javascript backend
+
+# Cast Editor — Acid Test: Rebuild Cast's core UI in Clear
+# Two-column layout: editor (left) + results/chat (right)
+
+# --- Theme ---
+brand is '#2563eb'
+dark is '#0f172a'
+surface is '#f1f5f9'
+
+style app_layout:
+  two column layout
+  full_height
+
+style editor_pane:
+  stacked
+  background is '#1e293b'
+  color is '#e2e8f0'
+
+style editor_header:
+  sticky at top
+  padding = 12
+  background is dark
+
+style editor_body:
+  scrollable
+  fills remaining space
+  padding = 16
+
+style results_pane:
+  stacked
+  background is surface
+
+style results_header:
+  sticky at top
+  padding = 12
+  background is '#ffffff'
+
+style results_body:
+  scrollable
+  fills remaining space
+  padding = 16
+
+style chat_section:
+  background is '#ffffff'
+  padding = 16
+  rounded = 8
+  shadow is 'small'
+
+# --- Backend ---
+create a Sheets table:
+  title, required
+  code, required
+  created_at, auto
+
+create a Messages table:
+  role, required
+  content, required
+  sheet_id, required
+  created_at, auto
+
+log every request
+allow cross-origin requests
+
+when user calls GET /api/sheets:
+  define all_sheets as: look up all records in Sheets table
+  send back all_sheets
+
+when user calls POST /api/sheets receiving sheet:
+  validate sheet:
+    title is text, required
+    code is text, required
+  define new_sheet as: save sheet as Sheet
+  send back new_sheet status 201
+
+when user calls POST /api/chat receiving message:
+  validate message:
+    content is text, required
+  define new_message as: save message as Message
+  send back new_message status 201
+
+when user calls GET /api/chat:
+  define all_messages as: look up all records in Messages table
+  send back all_messages
+
+# --- Frontend ---
+page 'Cast' at '/':
+  section 'App' with style app_layout:
+
+    section 'Editor' with style editor_pane:
+      section 'Editor Header' with style editor_header:
+        heading 'Cast Editor'
+      section 'Editor Body' with style editor_body:
+        'Sheet Title' is a text input that saves to title
+        'Code' is a text area that saves to code
+        button 'Run':
+          send title and code to '/api/sheets'
+
+    section 'Results' with style results_pane:
+      section 'Results Header' with style results_header:
+        tab = 1
+        button 'Results':
+          tab = 1
+        button 'Chat':
+          tab = 2
+      section 'Results Body' with style results_body:
+        if tab is 1:
+          heading 'Output'
+          display response as table called 'Sheets'
+          on page load:
+            get from '/api/sheets'
+        if tab is 2:
+          section 'Chat' with style chat_section:
+            heading 'AI Assistant'
+            'Ask a question...' is a text input that saves to chat_input
+            button 'Send':
+              send chat_input to '/api/chat'
+              chat_input is ''

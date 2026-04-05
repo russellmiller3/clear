@@ -1,0 +1,90 @@
+build for javascript backend
+
+# Blog API — Stress Test App #2 (v2, new syntax)
+# Tests: auth, roles, relations, if/then branching, new syntax forms
+
+# --- Data ---
+
+create a Users table:
+  name, required
+  email, required, unique
+  role, default 'reader'
+  created_at, auto
+
+create a Posts table:
+  title, required
+  body, required
+  author
+  published, default false
+  created_at, auto
+
+# --- Config ---
+
+log every request
+allow cross-origin requests
+
+# --- Auth Roles ---
+
+define role 'admin':
+  can manage posts
+  can manage users
+
+define role 'author':
+  can create posts
+  can edit own posts
+
+# --- Public Endpoints ---
+
+when user calls GET /api/posts:
+  define all_posts as: look up all records in Posts table
+  send back all_posts
+
+when user calls GET /api/posts/:id:
+  define post as: look up records in Posts table where id is incoming's id
+  if post is nothing then send back 'Post not found' status 404
+  send back post
+
+# --- Protected Endpoints ---
+
+when user calls POST /api/posts receiving post_data:
+  this endpoint requires auth
+  validate post_data:
+    title is text, required, min 1, max 200
+    body is text, required, min 1
+  define new_post as: save post_data as Post
+  send back new_post status 201
+
+when user calls PUT /api/posts/:id receiving update_data:
+  this endpoint requires auth
+  validate update_data:
+    title is text, min 1, max 200
+  save update_data to Posts
+  send back 'updated'
+
+when user calls DELETE /api/posts/:id:
+  this endpoint requires auth
+  this endpoint requires role 'admin'
+  remove from Posts where id is incoming's id
+  send back 'deleted'
+
+# --- User Management (admin only) ---
+
+when user calls GET /api/users:
+  this endpoint requires auth
+  this endpoint requires role 'admin'
+  define all_users as: look up all records in Users table
+  send back all_users
+
+when user calls POST /api/users receiving user_data:
+  this endpoint requires auth
+  this endpoint requires role 'admin'
+  validate user_data:
+    name is text, required
+    email is text, required, matches email
+  define new_user as: save user_data as User
+  send back new_user status 201
+
+# --- Health ---
+
+when user calls GET /api/health:
+  send back 'ok'

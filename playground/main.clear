@@ -1,0 +1,158 @@
+build for web
+theme 'midnight'
+
+# Clear Playground -- try the language in your browser
+
+use 'clear' from './clear-compiler.min.js'
+
+page 'Clear Playground' at '/':
+
+  source_code is ''
+  compiled_js is ''
+  status_text is 'Pick an example or start typing'
+
+  section 'Layout' with style app_layout:
+
+    section 'Sidebar' with style app_sidebar:
+      heading 'Clear'
+      small text 'Write readable code.'
+      small text 'Compile to production apps.'
+      divider
+      subheading 'Examples'
+      button 'Lead Scorer':
+        script:
+          _loadExample('Lead Scorer');
+      button 'Todo App':
+        script:
+          _loadExample('Todo App');
+      button 'Dashboard':
+        script:
+          _loadExample('Dashboard');
+      button 'Invoice API':
+        script:
+          _loadExample('Invoice API');
+      button 'Landing Page':
+        script:
+          _loadExample('Landing Page');
+      button 'Hiring Pipeline':
+        script:
+          _loadExample('Hiring Pipeline');
+      divider
+      small text '983 compiler tests'
+      small text '0 dependencies'
+      small text 'Runs in your browser'
+
+    section 'Main' with style app_main:
+
+      section 'Header' with style app_header:
+        bold text 'main.clear'
+        button 'Compile':
+          script:
+            _doCompile(); _recompute(); _fixOutput();
+
+      section 'Editor Area' with style app_content:
+
+        'Write Clear code here' is a text area saved as source_code
+
+        section 'Output Bar':
+          button 'Preview':
+            script:
+              _showTab('preview');
+          button 'JavaScript':
+            script:
+              _showTab('js');
+          button 'HTML':
+            script:
+              _showTab('html');
+          button 'CSS':
+            script:
+              _showTab('css');
+          display status_text
+
+        section 'Code Output':
+          display compiled_js called 'Output'
+
+  # Compiler bridge
+  script:
+    const _examples = {
+      'Lead Scorer': "build for javascript backend\ndatabase is local memory\n\ncreate a Leads table:\n  company, required\n  email, required\n  score (number), default 0\n  reasoning\n\nagent 'Lead Scorer' receiving lead:\n  check lead's company is not missing, otherwise error 'Company required'\n  set result to ask ai 'Rate this company 1-10 for enterprise potential' with lead returning:\n    score (number)\n    reasoning\n    qualified (boolean)\n  lead's score is result's score\n  lead's reasoning is result's reasoning\n  send back lead\n\nwhen user calls POST /api/leads sending lead_data:\n  validate lead_data:\n    company is text, required\n    email is text, required\n  set scored to call 'Lead Scorer' with lead_data\n  set saved to save scored as new Lead\n  send back saved with success message\n\nwhen user calls GET /api/leads:\n  all_leads = get all Leads\n  send back all_leads",
+      'Todo App': "build for web and javascript backend\ndatabase is local memory\n\ncreate a Todos table:\n  task, required\n  done, default false\n  created_at_date, auto\n\nallow cross-origin requests\n\nwhen user calls GET /api/todos:\n  all_todos = get all Todos\n  send back all_todos\n\nwhen user calls POST /api/todos sending todo_data:\n  validate todo_data:\n    task is text, required, min 1, max 200\n  new_todo = save todo_data as new Todo\n  send back new_todo with success message\n\npage 'Todo App' at '/':\n  on page load get todos from '/api/todos'\n\n  section 'Add' with style app_card:\n    heading 'My Todos'\n    'What needs to be done?' is a text input saved as a task\n    button 'Add':\n      send task as a new todo to '/api/todos'\n      get todos from '/api/todos'\n      task is ''",
+      'Dashboard': "build for web\ntheme 'midnight'\n\npage 'Dashboard' at '/':\n  section 'Layout' with style app_layout:\n    section 'Nav' with style app_sidebar:\n      heading 'Acme Inc'\n      divider\n      text 'Dashboard'\n      text 'Analytics'\n      text 'Settings'\n\n    section 'Right' with style app_main:\n      section 'Top' with style app_header:\n        heading 'Revenue Dashboard'\n        text 'Q4 2026'\n\n      section 'Body' with style app_content:\n        section 'KPIs' as two column layout:\n          section 'MRR' with style app_card:\n            heading '$42,300'\n            text 'Monthly Recurring Revenue'\n          section 'Growth' with style app_card:\n            heading '+12.4%'\n            text 'Month over Month'\n          section 'Customers' with style app_card:\n            heading '847'\n            text 'Active Customers'\n          section 'Churn' with style app_card:\n            heading '2.1%'\n            text 'Churn Rate'",
+      'Invoice API': "build for javascript backend\ndatabase is local memory\n\ncreate an Invoices table:\n  client is text, required\n  amount (number), required\n  status, default 'draft'\n  due_date\n  created_at_date, auto\n\nallow cross-origin requests\nlog every request\n\nwhen user calls POST /api/invoices sending invoice:\n  requires auth\n  validate invoice:\n    client is text, required\n    amount is number, required, min 1\n  set saved to save invoice as new Invoice\n  send back saved with success message\n\nwhen user calls GET /api/invoices:\n  requires auth\n  all_invoices = get all Invoices\n  send back all_invoices\n\nwhen user calls PUT /api/invoices/:id sending updates:\n  requires auth\n  set updated to update Invoice with this id using updates\n  send back updated\n\nwhen user calls DELETE /api/invoices/:id:\n  requires auth\n  requires role 'admin'\n  remove Invoice with this id\n  send back 'deleted' with success message",
+      'Landing Page': "build for web\ntheme 'ivory'\n\npage 'My Product' at '/':\n  section 'Hero' with style page_hero:\n    heading 'Build faster. Ship sooner.'\n    subheading 'The tool that gets out of your way.'\n    text 'No configuration. No boilerplate. Just build.'\n    link 'Get Started' to '/start'\n\n  section 'Features' with style section_light:\n    heading 'Why teams choose us'\n    text 'Zero setup. Write your idea, compile, deploy. That is the whole workflow.'\n    text 'Readable output. Every line of generated code is inspectable and yours.'\n    text 'Battle-tested templates. Start from proven patterns, not blank pages.'\n\n  section 'CTA' with style hero:\n    heading 'Ready to ship?'\n    text 'Start building in 30 seconds. No credit card required.'\n    link 'Try it Free' to '/start'",
+      'Hiring Pipeline': "build for javascript backend\ndatabase is local memory\n\ncreate a Candidates table:\n  name, required\n  email, required\n  resume, required\n  score (number), default 0\n  summary\n\nagent 'Screener' receiving candidate:\n  check candidate's resume is not missing, otherwise error 'Resume required'\n  send back candidate\n\nagent 'Scorer' receiving candidate:\n  set result to ask ai 'Rate 1-10 for senior engineering fit' with candidate's resume returning:\n    score (number)\n    strengths\n    concerns\n  candidate's score is result's score\n  send back candidate\n\nagent 'Pipeline' receiving candidate:\n  set screened to call 'Screener' with candidate\n  set scored to call 'Scorer' with screened\n  set candidate's summary to ask ai 'Write a 2-sentence hiring summary' with scored's resume\n  send back scored\n\nwhen user calls POST /api/evaluate sending data:\n  validate data:\n    name is text, required\n    email is text, required\n    resume is text, required\n  set result to call 'Pipeline' with data\n  set saved to save result as new Candidate\n  send back saved with success message"
+    };
+    let _activeTab = 'js';
+    function _loadExample(name) {
+      _state.source_code = _examples[name];
+      document.getElementById('input_source_code').value = _state.source_code;
+      _doCompile(); _recompute(); _fixOutput();
+    }
+    function _showTab(tab) {
+      _activeTab = tab;
+      const outputCard = document.getElementById('output_Output');
+      if (!outputCard) return;
+      if (tab === 'preview') {
+        if (_compiled_html) {
+          outputCard.innerHTML = '<iframe srcdoc="" sandbox="allow-scripts" style="width:100%;height:60vh;border:1px solid oklch(var(--b3)/0.5);border-radius:0.5rem;background:#fff;"></iframe>';
+          outputCard.querySelector('iframe').srcdoc = _compiled_html;
+        } else {
+          outputCard.innerHTML = '<div style="padding:2rem;text-align:center;color:oklch(var(--bc)/0.4);">No HTML output -- this example compiles to a backend server, not a web page. Try the Dashboard or Landing Page example.</div>';
+        }
+        return;
+      }
+      const content = tab === 'js' ? _compiled_js : tab === 'html' ? _compiled_html : _compiled_css;
+      outputCard.innerHTML = '<div class="stat-title text-xs uppercase tracking-wide">' + tab.toUpperCase() + '</div><div class="stat-value font-mono text-2xl tabular-nums" id="output_Output_value"></div>';
+      const el = document.getElementById('output_Output_value');
+      if (el) el.textContent = content || '';
+      _fixOutput();
+    }
+    let _compiled_js = '', _compiled_html = '', _compiled_css = '';
+    function _doCompile() {
+      try {
+        const result = clear.compileProgram(_state.source_code);
+        _compiled_js = result.javascript || '';
+        _compiled_html = result.html || '';
+        _compiled_css = result.css || '';
+        if (result.errors.length > 0) {
+          const errText = result.errors.map(e => 'Line ' + e.line + ': ' + e.message).join('\n');
+          _state.status_text = result.errors.length + ' error' + (result.errors.length === 1 ? '' : 's');
+          _state.compiled_js = errText;
+        } else {
+          const srcLines = _state.source_code.split('\n').length;
+          const outLines = (_compiled_js || _compiled_html).split('\n').length;
+          _state.status_text = srcLines + ' lines Clear -> ' + outLines + ' lines output';
+          _state.compiled_js = _activeTab === 'html' ? _compiled_html : _activeTab === 'css' ? _compiled_css : _compiled_js;
+        }
+      } catch (e) {
+        _state.status_text = 'Compile error';
+        _state.compiled_js = 'Error: ' + e.message;
+      }
+    }
+    function _fixOutput() {
+      const el = document.getElementById('output_Output_value');
+      if (el) el.style.cssText = 'font-size:0.72rem; white-space:pre; overflow-x:auto; max-height:60vh; line-height:1.5; font-weight:normal;';
+      const card = document.getElementById('output_Output');
+      if (card) card.style.cssText = 'padding:0.75rem; background:oklch(var(--b2)); border:1px solid oklch(var(--b3)/0.5); border-radius:0.75rem;';
+    }
+    const _editor = document.getElementById('input_source_code');
+    let _compileTimer;
+    if (_editor) {
+      _editor.style.minHeight = '35vh';
+      _editor.addEventListener('input', () => {
+        _state.source_code = _editor.value;
+        clearTimeout(_compileTimer);
+        _compileTimer = setTimeout(() => { _doCompile(); _recompute(); _fixOutput(); }, 400);
+      });
+      _editor.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const s = _editor.selectionStart;
+          _editor.value = _editor.value.substring(0, s) + '  ' + _editor.value.substring(_editor.selectionEnd);
+          _editor.selectionStart = _editor.selectionEnd = s + 2;
+          _editor.dispatchEvent(new Event('input'));
+        }
+      });
+    }
+    _loadExample('Lead Scorer');
+    setTimeout(_fixOutput, 100);

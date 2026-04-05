@@ -1,0 +1,30 @@
+build for javascript backend
+
+database is local memory
+
+create a Pages table:
+  url, required
+  title
+  link_count (number), default 0
+  analyzed_at_date, auto
+
+agent 'Page Analyzer' receiving page_data:
+  guard page_data's url is not nothing or 'URL is required'
+  page_data's title is 'Analyzed'
+  page_data's link_count is 42
+  send back page_data
+
+when user calls POST /api/analyze sending page_data:
+  requires auth
+  validate page_data:
+    url is text, required
+  analyzed = call 'Page Analyzer' with page_data
+  saved = save analyzed as new Page
+  send back saved with success message
+
+when user calls GET /api/pages:
+  all_pages = get all Pages
+  send back all_pages
+
+when user calls GET /api/health:
+  send back 'ok'

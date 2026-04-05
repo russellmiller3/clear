@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear -- Write readable code, compile to production apps</title>
+  <meta name="description" content="Try the Clear programming language in your browser. Write plain English, get production JavaScript, HTML, and Python.">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+:root {
+  --font-display: 'Syne', system-ui, sans-serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', monospace;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 0 0 1px rgba(240,246,252,0.08);
+  --shadow-accent: 0 0 24px rgba(88,166,255,0.25);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+::selection { background: rgba(88,166,255,0.25); }
+
+.tab-active { background: oklch(65% 0.196 250); color: #0D1117; font-weight: 600; }
+.example-btn-active { background: rgba(88,166,255,0.12); color: #58A6FF; border-color: rgba(88,166,255,0.3); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(8.2% 0.025 264);
+  --color-base-200: oklch(10.8% 0.025 264);
+  --color-base-300: oklch(14.8% 0.020 264);
+  --color-base-content: oklch(93% 0.01 264);
+  --color-primary: oklch(65% 0.196 250);
+  --color-primary-content: oklch(8% 0.02 264);
+  --color-secondary: oklch(65% 0.196 250);
+  --color-secondary-content: oklch(8% 0.02 264);
+  --color-accent: oklch(65% 0.196 250);
+  --color-accent-content: oklch(8% 0.02 264);
+  --color-neutral: oklch(18% 0.015 264);
+  --color-neutral-content: oklch(93% 0.01 264);
+  --color-info: oklch(65% 0.15 250);
+  --color-info-content: oklch(0% 0 0);
+  --color-success: oklch(55% 0.17 145);
+  --color-success-content: oklch(0% 0 0);
+  --color-warning: oklch(60% 0.14 80);
+  --color-warning-content: oklch(0% 0 0);
+  --color-error: oklch(58% 0.2 25);
+  --color-error-content: oklch(95% 0.01 264);
+  --radius-selector: 1.9rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+  </style>
+</head>
+<body class="h-screen overflow-hidden bg-base-100">
+  <div class="h-screen flex">
+
+    <!-- Sidebar -->
+    <div class="w-64 bg-base-200 border-r border-base-300/50 flex flex-col overflow-y-auto shrink-0">
+      <!-- Logo + tagline -->
+      <div class="p-5 pb-3">
+        <h1 style="font-family:var(--font-display); font-size:1.75rem; font-weight:800; letter-spacing:-0.03em; color:#58A6FF;">Clear</h1>
+        <p class="mt-1 text-sm" style="color:#8B949E; line-height:1.5;">Write readable code.<br>Compile to production apps.</p>
+      </div>
+
+      <div class="px-5"><div class="border-t border-base-300/50"></div></div>
+
+      <!-- Examples -->
+      <div class="p-5 pt-3">
+        <h2 class="text-xs font-semibold uppercase mb-3" style="letter-spacing:0.1em; color:#484F58;">Examples</h2>
+        <div class="flex flex-col gap-1" id="exampleButtons"></div>
+      </div>
+
+      <div class="px-5"><div class="border-t border-base-300/50"></div></div>
+
+      <!-- Try This -->
+      <div class="p-5 pt-3">
+        <h2 class="text-xs font-semibold uppercase mb-3" style="letter-spacing:0.1em; color:#484F58;">Try This</h2>
+        <ul class="space-y-1.5" style="color:#8B949E; font-size:0.8rem; line-height:1.5;">
+          <li>Change a heading text</li>
+          <li>Add a new field to a table</li>
+          <li>Switch theme 'midnight' to 'ivory'</li>
+          <li>Add a button with an action</li>
+        </ul>
+      </div>
+
+      <!-- Footer stats -->
+      <div class="mt-auto p-5 pt-3" style="color:#484F58; font-size:0.7rem; line-height:1.7;">
+        <div class="border-t border-base-300/50 pt-3 mb-1"></div>
+        1005 compiler tests<br>
+        0 external dependencies<br>
+        Runs entirely in your browser
+      </div>
+    </div>
+
+    <!-- Main area -->
+    <div class="flex flex-col flex-1 min-w-0">
+
+      <!-- Header bar -->
+      <div class="h-11 bg-base-200 border-b border-base-300/50 px-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+          <span style="font-family:var(--font-mono); font-size:0.8rem; font-weight:600; color:#E6EDF3;">main.clear</span>
+          <span style="font-family:var(--font-mono); font-size:0.7rem; color:#3FB950;" id="statusText"></span>
+        </div>
+        <button id="compileBtn" style="font-family:var(--font-mono); font-size:0.75rem; font-weight:600; padding:0.3rem 1rem; background:#238636; color:#fff; border:1px solid #2EA043; border-radius:6px; cursor:pointer;">Compile</button>
+      </div>
+
+      <!-- Editor + Output split -->
+      <div class="flex flex-1 min-h-0">
+
+        <!-- Editor pane -->
+        <div class="flex-1 flex flex-col border-r border-base-300/50 min-w-0">
+          <textarea
+            id="editor"
+            spellcheck="false"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            placeholder="Write Clear code here..."
+            style="flex:1; resize:none; border:none; outline:none; background:#0D1117; color:#E6EDF3; font-family:var(--font-mono); font-size:0.82rem; line-height:1.65; padding:1rem 1.25rem; tab-size:2;"
+          ></textarea>
+        </div>
+
+        <!-- Output pane -->
+        <div class="flex-1 flex flex-col min-w-0">
+          <!-- Output tabs -->
+          <div class="h-9 bg-base-200 border-b border-base-300/30 flex items-center gap-1 px-2 shrink-0">
+            <button class="tab-btn tab-active" data-tab="preview" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; border:none; border-radius:4px; cursor:pointer;">Preview</button>
+            <button class="tab-btn" data-tab="js" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; background:transparent; color:#8B949E; border:none; border-radius:4px; cursor:pointer;">JavaScript</button>
+            <button class="tab-btn" data-tab="html" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; background:transparent; color:#8B949E; border:none; border-radius:4px; cursor:pointer;">HTML</button>
+            <button class="tab-btn" data-tab="css" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; background:transparent; color:#8B949E; border:none; border-radius:4px; cursor:pointer;">CSS</button>
+            <div class="flex-1"></div>
+            <button class="tab-btn" data-tab="guide" style="font-family:var(--font-body); font-size:0.7rem; font-weight:500; padding:0.2rem 0.65rem; background:transparent; color:#8B949E; border:none; border-radius:4px; cursor:pointer;">Guide</button>
+          </div>
+          <!-- Output content -->
+          <div class="flex-1 overflow-auto min-h-0 bg-base-100" id="outputArea">
+            <div class="p-8 text-center" style="color:#484F58; font-size:0.9rem;">Pick an example or start typing</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+const clear = await import("./clear-compiler.min.js");
+
+// Examples
+const EXAMPLES = {
+  'Lead Scorer': `build for javascript backend
+database is local memory
+
+create a Leads table:
+  company, required
+  email, required
+  score (number), default 0
+  reasoning
+
+agent 'Lead Scorer' receiving lead:
+  check lead's company is not missing, otherwise error 'Company required'
+  set result to ask ai 'Rate this company 1-10 for enterprise potential' with lead returning:
+    score (number)
+    reasoning
+    qualified (boolean)
+  lead's score is result's score
+  lead's reasoning is result's reasoning
+  send back lead
+
+when user calls POST /api/leads sending lead_data:
+  validate lead_data:
+    company is text, required
+    email is text, required
+  set scored to call 'Lead Scorer' with lead_data
+  set saved to save scored as new Lead
+  send back saved with success message
+
+when user calls GET /api/leads:
+  all_leads = get all Leads
+  send back all_leads`,
+
+  'Todo App': `build for web and javascript backend
+database is local memory
+
+create a Todos table:
+  task, required
+  done, default false
+  created_at_date, auto
+
+allow cross-origin requests
+
+when user calls GET /api/todos:
+  all_todos = get all Todos
+  send back all_todos
+
+when user calls POST /api/todos sending todo_data:
+  validate todo_data:
+    task is text, required, min 1, max 200
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+
+page 'Todo App' at '/':
+  on page load get todos from '/api/todos'
+
+  section 'Add' with style app_card:
+    heading 'My Todos'
+    'What needs to be done?' is a text input saved as a task
+    button 'Add':
+      send task as a new todo to '/api/todos'
+      get todos from '/api/todos'
+      task is ''
+
+  display todos as table showing task, done`,
+
+  'Dashboard': `build for web
+theme 'midnight'
+
+page 'Dashboard' at '/':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Acme Inc'
+      divider
+      text 'Dashboard'
+      text 'Analytics'
+      text 'Settings'
+
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Revenue Dashboard'
+        text 'Q4 2026'
+
+      section 'Body' with style app_content:
+        section 'KPIs' as two column layout:
+          section 'MRR' with style app_card:
+            heading '$42,300'
+            text 'Monthly Recurring Revenue'
+          section 'Growth' with style app_card:
+            heading '+12.4%'
+            text 'Month over Month'
+          section 'Customers' with style app_card:
+            heading '847'
+            text 'Active Customers'
+          section 'Churn' with style app_card:
+            heading '2.1%'
+            text 'Churn Rate'`,
+
+  'Invoice API': `build for javascript backend
+database is local memory
+
+create an Invoices table:
+  client is text, required
+  amount (number), required
+  status, default 'draft'
+  due_date
+  created_at_date, auto
+
+allow cross-origin requests
+log every request
+
+when user calls POST /api/invoices sending invoice:
+  requires auth
+  validate invoice:
+    client is text, required
+    amount is number, required, min 1
+  set saved to save invoice as new Invoice
+  send back saved with success message
+
+when user calls GET /api/invoices:
+  requires auth
+  all_invoices = get all Invoices
+  send back all_invoices
+
+when user calls DELETE /api/invoices/:id:
+  requires auth
+  requires role 'admin'
+  remove Invoice with this id
+  send back 'deleted' with success message`,
+
+  'Landing Page': `build for web
+theme 'ivory'
+
+page 'My Product' at '/':
+  section 'Hero' with style page_hero:
+    heading 'Build faster. Ship sooner.'
+    subheading 'The tool that gets out of your way.'
+    text 'No configuration. No boilerplate. Just build.'
+    link 'Get Started' to '/start'
+
+  section 'Features' with style section_light:
+    heading 'Why teams choose us'
+    text 'Zero setup. Write your idea, compile, deploy.'
+    text 'Readable output. Every line of generated code is yours.'
+    text 'Battle-tested templates. Start from proven patterns.'
+
+  section 'CTA' with style hero:
+    heading 'Ready to ship?'
+    text 'Start building in 30 seconds.'
+    link 'Try it Free' to '/start'`,
+
+  'Hiring Pipeline': `build for javascript backend
+database is local memory
+
+create a Candidates table:
+  name, required
+  email, required
+  resume, required
+  score (number), default 0
+  summary
+
+agent 'Screener' receiving candidate:
+  check candidate's resume is not missing, otherwise error 'Resume required'
+  send back candidate
+
+agent 'Scorer' receiving candidate:
+  set result to ask ai 'Rate 1-10 for senior engineering fit' with candidate's resume returning:
+    score (number)
+    strengths
+    concerns
+  candidate's score is result's score
+  send back candidate
+
+agent 'Pipeline' receiving candidate:
+  set screened to call 'Screener' with candidate
+  set scored to call 'Scorer' with screened
+  set candidate's summary to ask ai 'Write a 2-sentence hiring summary' with scored's resume
+  send back scored
+
+when user calls POST /api/evaluate sending data:
+  validate data:
+    name is text, required
+    email is text, required
+    resume is text, required
+  set result to call 'Pipeline' with data
+  set saved to save result as new Candidate
+  send back saved with success message`
+};
+
+// State
+let compiled = null;
+let activeTab = 'preview';
+const editor = document.getElementById('editor');
+const outputArea = document.getElementById('outputArea');
+const statusText = document.getElementById('statusText');
+
+// Build example buttons
+const btnContainer = document.getElementById('exampleButtons');
+Object.keys(EXAMPLES).forEach(name => {
+  const btn = document.createElement('button');
+  btn.style.cssText = 'display:block; width:100%; text-align:left; padding:0.35rem 0.6rem; font-family:var(--font-body); font-size:0.8rem; color:#8B949E; background:transparent; border:1px solid transparent; border-radius:6px; cursor:pointer; transition:all 0.15s;';
+  btn.textContent = name;
+  btn.onmouseenter = () => { if (!btn.classList.contains('example-btn-active')) btn.style.color = '#E6EDF3'; };
+  btn.onmouseleave = () => { if (!btn.classList.contains('example-btn-active')) btn.style.color = '#8B949E'; };
+  btn.onclick = () => loadExample(name);
+  btnContainer.appendChild(btn);
+});
+
+// Compile
+function doCompile() {
+  try {
+    compiled = clear.compileProgram(editor.value);
+    if (compiled.errors.length > 0) {
+      statusText.textContent = compiled.errors.length + ' error' + (compiled.errors.length === 1 ? '' : 's');
+      statusText.style.color = '#F85149';
+    } else {
+      const src = editor.value.split('\n').length;
+      const out = (compiled.javascript || compiled.html || '').split('\n').length;
+      statusText.textContent = src + ' lines Clear -> ' + out + ' lines output';
+      statusText.style.color = '#3FB950';
+    }
+  } catch (e) {
+    compiled = { errors: [{ line: 0, message: e.message }], javascript: '', html: '', css: '' };
+    statusText.textContent = 'Error';
+    statusText.style.color = '#F85149';
+  }
+  showTab(activeTab);
+}
+
+// Show tab
+function showTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('tab-active', b.dataset.tab === tab);
+  });
+  if (!compiled) {
+    outputArea.innerHTML = '<div class="p-8 text-center text-base-content/30">Pick an example or start typing</div>';
+    return;
+  }
+  if (compiled.errors.length > 0 && tab !== 'html' && tab !== 'js' && tab !== 'css') {
+    outputArea.innerHTML = '<div class="p-4 flex flex-col gap-2">' +
+      compiled.errors.map(e =>
+        '<div class="p-3 bg-error/10 border border-error/30 rounded-lg text-sm">' +
+        '<span class="font-mono font-bold text-error">Line ' + e.line + '</span> ' +
+        '<span class="text-base-content">' + escHtml(e.message) + '</span></div>'
+      ).join('') + '</div>';
+    return;
+  }
+  if (tab === 'guide') {
+    outputArea.innerHTML = renderGuide();
+    return;
+  }
+  if (tab === 'preview') {
+    if (compiled.html) {
+      let html = compiled.html;
+      // Inject browser server if available (full-stack apps)
+      if (compiled.browserServer) {
+        html = html.replace('</head>', '<script>' + compiled.browserServer + '<\/script></head>');
+      }
+      outputArea.innerHTML = '<iframe sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:#fff;"></iframe>';
+      outputArea.querySelector('iframe').srcdoc = html;
+    } else if (compiled.javascript) {
+      outputArea.innerHTML = renderBackendPreview(compiled.javascript, editor.value);
+    } else {
+      outputArea.innerHTML = '<div class="p-8 text-center text-base-content/30">Write some Clear code and hit Compile</div>';
+    }
+  } else {
+    const code = tab === 'js' ? compiled.javascript : tab === 'html' ? compiled.html : compiled.css;
+    outputArea.innerHTML = '<pre style="padding:1rem 1.25rem; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#8B949E; white-space:pre; overflow:auto; height:100%;">' + escHtml(code || 'No ' + tab + ' output for this example.') + '</pre>';
+  }
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Backend preview: extract routes, schemas, agents from compiled JS
+function renderBackendPreview(js, source) {
+  const routes = [];
+  const routeRe = /app\.(get|post|put|delete|patch)\('([^']+)'/gi;
+  let m;
+  while ((m = routeRe.exec(js)) !== null) {
+    routes.push({ method: m[1].toUpperCase(), path: m[2] });
+  }
+  const tables = [];
+  const tableRe = /create a (\w+) table/gi;
+  while ((m = tableRe.exec(source)) !== null) {
+    tables.push(m[1]);
+  }
+  const agents = [];
+  const agentRe = /agent '([^']+)'/g;
+  while ((m = agentRe.exec(source)) !== null) {
+    agents.push(m[1]);
+  }
+  const scheduled = [];
+  const schedRe = /agent '([^']+)' runs every ([^:]+)/g;
+  while ((m = schedRe.exec(source)) !== null) {
+    scheduled.push({ name: m[1], schedule: m[2].trim() });
+  }
+  const methodColors = { GET: 'badge-success', POST: 'badge-info', PUT: 'badge-warning', DELETE: 'badge-error', PATCH: 'badge-accent' };
+
+  let html = '<div class="p-6 space-y-6">';
+  html += '<div><h2 class="text-lg font-bold mb-1">API Server Preview</h2>';
+  html += '<p class="text-xs text-base-content/50 mb-4">This compiles to a Node.js Express server. Run it with: node server.js</p></div>';
+
+  if (routes.length > 0) {
+    html += '<div><h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Endpoints</h3>';
+    html += '<div class="space-y-1">';
+    routes.forEach(r => {
+      html += '<div class="flex items-center gap-2 p-2 bg-base-200 rounded-lg">';
+      html += '<span class="badge badge-sm ' + (methodColors[r.method] || 'badge-ghost') + ' font-mono">' + r.method + '</span>';
+      html += '<span class="font-mono text-sm">' + escHtml(r.path) + '</span>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  if (tables.length > 0) {
+    html += '<div><h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Data Tables</h3>';
+    html += '<div class="flex gap-2 flex-wrap">';
+    tables.forEach(t => { html += '<span class="badge badge-outline badge-sm font-mono">' + escHtml(t) + '</span>'; });
+    html += '</div></div>';
+  }
+
+  if (agents.length > 0) {
+    html += '<div><h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">AI Agents</h3>';
+    html += '<div class="space-y-1">';
+    agents.forEach(a => {
+      const sched = scheduled.find(s => s.name === a);
+      html += '<div class="flex items-center gap-2 p-2 bg-base-200 rounded-lg">';
+      html += '<span class="badge badge-sm badge-accent font-mono">AGENT</span>';
+      html += '<span class="text-sm">' + escHtml(a) + '</span>';
+      if (sched) html += '<span class="text-xs text-base-content/40">runs every ' + escHtml(sched.schedule) + '</span>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  const features = [];
+  if (js.includes('require("./clear-runtime/auth")')) features.push('JWT Auth');
+  if (js.includes('rateLimit')) features.push('Rate Limiting');
+  if (source.includes('log every request')) features.push('Request Logging');
+  if (source.includes('allow cross-origin')) features.push('CORS');
+  if (js.includes('_askAI')) features.push('AI Integration (BYOK)');
+  if (js.includes('_validate')) features.push('Input Validation');
+
+  if (features.length > 0) {
+    html += '<div><h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Features</h3>';
+    html += '<div class="flex gap-2 flex-wrap">';
+    features.forEach(f => { html += '<span class="badge badge-ghost badge-sm">' + f + '</span>'; });
+    html += '</div></div>';
+  }
+
+  const jsLines = js.split('\n').length;
+  html += '<div class="text-xs text-base-content/40 pt-4 border-t border-base-300/30">';
+  html += 'Compiled to ' + jsLines + ' lines of JavaScript with Express, validation, error handling, and graceful shutdown.';
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+// Syntax guide
+function renderGuide() {
+  return `<div style="padding:1.5rem; font-family:var(--font-body); font-size:0.875rem; overflow:auto; height:100%; display:flex; flex-direction:column; gap:1.5rem;">
+  <div>
+    <h2 class="text-lg font-bold mb-2">Clear Syntax Guide</h2>
+    <p class="text-base-content/60 mb-4">Clear compiles plain English to production JavaScript, Python, or HTML. Each line does one thing.</p>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Variables</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">name is 'Alice'
+price = 9.99
+active is true
+items is an empty list</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Data Tables</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">create a Users table:
+  name, required
+  email, required, unique
+  age (number), default 0
+  created_at_date, auto</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">API Endpoints</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">when user calls GET /api/users:
+  all_users = get all Users
+  send back all_users
+
+when user calls POST /api/users sending user_data:
+  requires auth
+  validate user_data:
+    name is text, required
+    email is text, required
+  set saved to save user_data as new User
+  send back saved with success message</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Web Pages</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">page 'My App' at '/':
+  heading 'Welcome'
+  text 'This is a Clear app.'
+  'Your Name' is a text input saved as name
+  button 'Greet':
+    show 'Hello, ' + name</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Themes and Layout</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">theme 'midnight'    # dark
+theme 'ivory'       # light (default)
+theme 'nova'        # warm
+
+section 'Layout' with style app_layout:
+  section 'Nav' with style app_sidebar:
+  section 'Main' with style app_main:
+    section 'Top' with style app_header:
+    section 'Body' with style app_content:</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">AI Agents</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">agent 'Scorer' receiving lead:
+  set result to ask ai 'Rate 1-10' with lead returning:
+    score (number)
+    reasoning
+  lead's score is result's score
+  send back lead
+
+# Call from an endpoint:
+set scored to call 'Scorer' with data</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Scheduled Agents</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">agent 'Cleanup' runs every 1 hour:
+  remove old Sessions</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Browser Storage</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">restore settings         # load on page open
+button 'Save':
+  store settings           # persist across reloads</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Build Targets</h3>
+    <pre style="background:#161B22; padding:0.75rem 1rem; border-radius:8px; font-family:var(--font-mono); font-size:0.78rem; line-height:1.65; color:#E6EDF3; overflow-x:auto;">build for web                              # frontend only
+build for javascript backend               # Express server
+build for python backend                   # FastAPI server
+build for web and javascript backend       # both</pre>
+  </div>
+
+  <div>
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-2">Things to Try</h3>
+    <ul class="list-disc list-inside text-base-content/60 space-y-1 text-xs">
+      <li>Load the Dashboard example, change 'midnight' to 'ivory', see the theme switch live</li>
+      <li>Add a new field to any table: <code class="bg-base-200 px-1 rounded">phone, required</code></li>
+      <li>Add a new endpoint: <code class="bg-base-200 px-1 rounded">when user calls GET /api/health:</code> + <code class="bg-base-200 px-1 rounded">send back 'ok'</code></li>
+      <li>Change a heading text and watch the Preview update</li>
+      <li>Add <code class="bg-base-200 px-1 rounded">requires auth</code> inside an endpoint to add JWT protection</li>
+      <li>Add validation: <code class="bg-base-200 px-1 rounded">validate data:</code> + <code class="bg-base-200 px-1 rounded">name is text, required, min 1</code></li>
+    </ul>
+  </div>
+</div>`;
+}
+
+// Load example
+function loadExample(name) {
+  editor.value = EXAMPLES[name];
+  // Highlight active example button
+  btnContainer.querySelectorAll('button').forEach(b => {
+    if (b.textContent === name) {
+      b.style.background = 'rgba(88,166,255,0.12)';
+      b.style.color = '#58A6FF';
+      b.style.borderColor = 'rgba(88,166,255,0.3)';
+      b.classList.add('example-btn-active');
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = '#8B949E';
+      b.style.borderColor = 'transparent';
+      b.classList.remove('example-btn-active');
+    }
+  });
+  doCompile();
+}
+
+// Auto-compile
+let timer;
+editor.addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(doCompile, 400);
+});
+
+// Tab key
+editor.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart;
+    editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(editor.selectionEnd);
+    editor.selectionStart = editor.selectionEnd = s + 2;
+    clearTimeout(timer);
+    timer = setTimeout(doCompile, 400);
+  }
+});
+
+// Tab clicks
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => showTab(btn.dataset.tab));
+});
+
+// Compile button
+document.getElementById('compileBtn').addEventListener('click', doCompile);
+
+// Init
+loadExample('Dashboard');
+  </script>
+</body>
+</html>

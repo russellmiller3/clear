@@ -1,0 +1,604 @@
+# Cast Expression Evaluator -- Written in Clear
+# Proves Clear can express a recursive tree-walking interpreter
+# Handles: numbers, variables, +, -, *, /, %, parentheses, unary minus,
+#          comparisons (>, <, >=, <=, ==, !=), function calls, strings
+
+build for web
+
+# ============================================================
+# Tokenizer -- breaks expression text into a list of tokens
+# ============================================================
+
+define function make_token(kind, val):
+  create tok:
+    type is kind
+    value = val
+  return tok
+
+define function tokenize(input):
+  tokens is an empty list
+  pos = 0
+  len = length(input)
+  while pos is less than len:
+    ch = character(input, pos)
+    if ch is ' ':
+      increase pos by 1
+    otherwise if is_digit(ch):
+      start = pos
+      while pos is less than len and is_digit(character(input, pos)):
+        increase pos by 1
+      if pos is less than len and character(input, pos) is '.':
+        increase pos by 1
+        while pos is less than len and is_digit(character(input, pos)):
+          increase pos by 1
+      num_text = substring(input, start, pos)
+      add make_token('number', num_text) to tokens
+    otherwise if is_letter(ch) or ch is '_':
+      start = pos
+      done = false
+      while pos is less than len and not done:
+        cc = character(input, pos)
+        if is_letter(cc) or is_digit(cc) or cc is '_':
+          increase pos by 1
+        otherwise:
+          done = true
+      word = substring(input, start, pos)
+      add make_token('identifier', word) to tokens
+    otherwise if ch is "'":
+      increase pos by 1
+      start = pos
+      while pos is less than len and character(input, pos) is not "'":
+        increase pos by 1
+      str_val = substring(input, start, pos)
+      if pos is less than len:
+        increase pos by 1
+      add make_token('string', str_val) to tokens
+    otherwise if ch is '"':
+      increase pos by 1
+      start = pos
+      while pos is less than len and character(input, pos) is not '"':
+        increase pos by 1
+      str_val = substring(input, start, pos)
+      if pos is less than len:
+        increase pos by 1
+      add make_token('string', str_val) to tokens
+    otherwise if ch is '>' and pos + 1 is less than len and character(input, pos + 1) is '=':
+      add make_token('operator', '>=') to tokens
+      increase pos by 2
+    otherwise if ch is '<' and pos + 1 is less than len and character(input, pos + 1) is '=':
+      add make_token('operator', '<=') to tokens
+      increase pos by 2
+    otherwise if ch is '=' and pos + 1 is less than len and character(input, pos + 1) is '=':
+      add make_token('operator', '==') to tokens
+      increase pos by 2
+    otherwise if ch is '!' and pos + 1 is less than len and character(input, pos + 1) is '=':
+      add make_token('operator', '!=') to tokens
+      increase pos by 2
+    otherwise if ch is '+':
+      add make_token('operator', '+') to tokens
+      increase pos by 1
+    otherwise if ch is '-':
+      add make_token('operator', '-') to tokens
+      increase pos by 1
+    otherwise if ch is '*':
+      add make_token('operator', '*') to tokens
+      increase pos by 1
+    otherwise if ch is '/':
+      add make_token('operator', '/') to tokens
+      increase pos by 1
+    otherwise if ch is '%':
+      add make_token('operator', '%') to tokens
+      increase pos by 1
+    otherwise if ch is '(':
+      add make_token('lparen', '(') to tokens
+      increase pos by 1
+    otherwise if ch is ')':
+      add make_token('rparen', ')') to tokens
+      increase pos by 1
+    otherwise if ch is ',':
+      add make_token('comma', ',') to tokens
+      increase pos by 1
+    otherwise if ch is '>':
+      add make_token('operator', '>') to tokens
+      increase pos by 1
+    otherwise if ch is '<':
+      add make_token('operator', '<') to tokens
+      increase pos by 1
+    otherwise:
+      increase pos by 1
+  add make_token('end', '') to tokens
+  return tokens
+
+
+# ============================================================
+# AST Node Constructors
+# ============================================================
+
+define function number_node(val):
+  create node:
+    type is 'number'
+    value = val
+  return node
+
+define function string_node(val):
+  create node:
+    type is 'string'
+    value = val
+  return node
+
+define function variable_node(var_name):
+  create node:
+    type is 'variable'
+    name = var_name
+  return node
+
+define function binary_node(op, left_side, right_side):
+  create node:
+    type is 'binary'
+    operator = op
+    left = left_side
+    right = right_side
+  return node
+
+define function unary_node(op, inner):
+  create node:
+    type is 'unary'
+    operator = op
+    operand = inner
+  return node
+
+define function call_node(fn_name, fn_args):
+  create node:
+    type is 'call'
+    name = fn_name
+    args = fn_args
+  return node
+
+
+# ============================================================
+# Parser -- recursive descent with operator precedence
+# Precedence (low to high):
+#   1. Comparisons: >, <, >=, <=, ==, !=
+#   2. Addition/Subtraction: +, -
+#   3. Multiplication/Division/Modulo: *, /, %
+#   4. Unary: -x
+#   5. Primary: numbers, strings, variables, (expr), function calls
+# ============================================================
+
+define function make_parser(tokens):
+  create state:
+    tokens = tokens
+    pos = 0
+  return state
+
+define function current_token(state):
+  toks = state's tokens
+  idx = state's pos
+  return get idx from toks
+
+define function advance(state):
+  state's pos = state's pos + 1
+
+define function consume(state, kind):
+  tok = current_token(state)
+  if tok's type is not kind:
+    show 'Parse error: expected ' + kind + ' but got ' + tok's type
+  _ = advance(state)
+  return tok
+
+
+# --- Primary: numbers, strings, variables, (expr), function calls ---
+
+define function parse_primary(state):
+  tok = current_token(state)
+  if tok's type is 'number':
+    _ = advance(state)
+    return number_node(tok's value)
+  if tok's type is 'string':
+    _ = advance(state)
+    return string_node(tok's value)
+  if tok's type is 'lparen':
+    _ = advance(state)
+    inner = parse_comparison(state)
+    result = consume(state, 'rparen')
+    return inner
+  if tok's type is 'identifier':
+    fn_name = tok's value
+    _ = advance(state)
+    next_tok = current_token(state)
+    if next_tok's type is 'lparen':
+      _ = advance(state)
+      fn_args is an empty list
+      check_tok = current_token(state)
+      if check_tok's type is not 'rparen':
+        first_arg = parse_comparison(state)
+        add first_arg to fn_args
+        loop_tok = current_token(state)
+        while loop_tok's type is 'comma':
+          _ = advance(state)
+          next_arg = parse_comparison(state)
+          add next_arg to fn_args
+          loop_tok = current_token(state)
+      result = consume(state, 'rparen')
+      return call_node(fn_name, fn_args)
+    return variable_node(fn_name)
+  _ = advance(state)
+  return number_node('0')
+
+
+# --- Unary: -x ---
+
+define function parse_unary(state):
+  tok = current_token(state)
+  if tok's type is 'operator' and tok's value is '-':
+    _ = advance(state)
+    inner = parse_unary(state)
+    return unary_node('-', inner)
+  return parse_primary(state)
+
+
+# --- Multiplicative: *, /, % ---
+
+define function parse_multiplicative(state):
+  left = parse_unary(state)
+  tok = current_token(state)
+  while tok's type is 'operator' and (tok's value is '*' or tok's value is '/' or tok's value is '%'):
+    op = tok's value
+    _ = advance(state)
+    right = parse_unary(state)
+    left = binary_node(op, left, right)
+    tok = current_token(state)
+  return left
+
+
+# --- Additive: +, - ---
+
+define function parse_additive(state):
+  left = parse_multiplicative(state)
+  tok = current_token(state)
+  while tok's type is 'operator' and (tok's value is '+' or tok's value is '-'):
+    op = tok's value
+    _ = advance(state)
+    right = parse_multiplicative(state)
+    left = binary_node(op, left, right)
+    tok = current_token(state)
+  return left
+
+
+# --- Comparison: >, <, >=, <=, ==, != ---
+
+define function parse_comparison(state):
+  left = parse_additive(state)
+  tok = current_token(state)
+  if tok's type is 'operator' and (tok's value is '>' or tok's value is '<' or tok's value is '>=' or tok's value is '<=' or tok's value is '==' or tok's value is '!='):
+    op = tok's value
+    _ = advance(state)
+    right = parse_additive(state)
+    left = binary_node(op, left, right)
+  return left
+
+
+# --- Top-level parse entry point ---
+
+define function parse_expression(input):
+  tokens = tokenize(input)
+  state = make_parser(tokens)
+  return parse_comparison(state)
+
+
+# ============================================================
+# Evaluator -- walks AST nodes, computes values
+# ============================================================
+
+# Built-in function: if(condition, true_val, false_val)
+define function builtin_if(fn_args, scope):
+  idx_0 = 0
+  idx_1 = 1
+  idx_2 = 2
+  cond_node = get idx_0 from fn_args
+  true_node = get idx_1 from fn_args
+  false_node = get idx_2 from fn_args
+  condition = evaluate_node(cond_node, scope)
+  if condition:
+    return evaluate_node(true_node, scope)
+  return evaluate_node(false_node, scope)
+
+# Built-in: sum(a, b, c, ...)
+define function builtin_sum(fn_args, scope):
+  total = 0
+  for each arg in fn_args list:
+    val = evaluate_node(arg, scope)
+    total = total + val
+  return total
+
+# Built-in: avg(a, b, c, ...)
+define function builtin_avg(fn_args, scope):
+  total = 0
+  num_args = count of fn_args
+  for each arg in fn_args list:
+    val = evaluate_node(arg, scope)
+    total = total + val
+  return total / num_args
+
+# Built-in: min(a, b)
+define function builtin_min(fn_args, scope):
+  idx_0 = 0
+  idx_1 = 1
+  first_node = get idx_0 from fn_args
+  second_node = get idx_1 from fn_args
+  first_val = evaluate_node(first_node, scope)
+  second_val = evaluate_node(second_node, scope)
+  if first_val is less than second_val:
+    return first_val
+  return second_val
+
+# Built-in: max(a, b)
+define function builtin_max(fn_args, scope):
+  idx_0 = 0
+  idx_1 = 1
+  first_node = get idx_0 from fn_args
+  second_node = get idx_1 from fn_args
+  first_val = evaluate_node(first_node, scope)
+  second_val = evaluate_node(second_node, scope)
+  if first_val is greater than second_val:
+    return first_val
+  return second_val
+
+# Built-in: abs(x)
+define function builtin_abs(fn_args, scope):
+  idx_0 = 0
+  arg_node = get idx_0 from fn_args
+  val = evaluate_node(arg_node, scope)
+  if val is less than 0:
+    return 0 - val
+  return val
+
+# Built-in: round(x) or round(x, decimals)
+define function builtin_round(fn_args, scope):
+  idx_0 = 0
+  idx_1 = 1
+  arg_node = get idx_0 from fn_args
+  val = evaluate_node(arg_node, scope)
+  num_args = count of fn_args
+  if num_args is greater than 1:
+    dec_node = get idx_1 from fn_args
+    decimals = evaluate_node(dec_node, scope)
+    factor = 10 ^ decimals
+    return round(val * factor) / factor
+  return round(val)
+
+# Built-in: sqrt(x)
+define function builtin_sqrt(fn_args, scope):
+  idx_0 = 0
+  arg_node = get idx_0 from fn_args
+  val = evaluate_node(arg_node, scope)
+  return sqrt(val)
+
+# Built-in: pow(base, exponent)
+define function builtin_pow(fn_args, scope):
+  idx_0 = 0
+  idx_1 = 1
+  base_node = get idx_0 from fn_args
+  exp_node = get idx_1 from fn_args
+  base_val = evaluate_node(base_node, scope)
+  exp_val = evaluate_node(exp_node, scope)
+  return base_val ^ exp_val
+
+# Built-in: concat(a, b, ...)
+define function builtin_concat(fn_args, scope):
+  result is ''
+  for each arg in fn_args list:
+    val = evaluate_node(arg, scope)
+    result = result + val
+  return result
+
+
+# --- Main evaluate function ---
+
+define function evaluate_node(node, scope):
+  match node's type:
+    when 'number':
+      return node's value * 1
+    when 'string':
+      return node's value
+    when 'variable':
+      var_name = node's name
+      return get var_name from scope
+    when 'unary':
+      val = evaluate_node(node's operand, scope)
+      if node's operator is '-':
+        return 0 - val
+      return val
+    when 'binary':
+      left_val = evaluate_node(node's left, scope)
+      right_val = evaluate_node(node's right, scope)
+      match node's operator:
+        when '+':
+          return left_val + right_val
+        when '-':
+          return left_val - right_val
+        when '*':
+          return left_val * right_val
+        when '/':
+          return left_val / right_val
+        when '%':
+          return left_val modulo right_val
+        when '>':
+          return left_val > right_val
+        when '<':
+          return left_val < right_val
+        when '>=':
+          return left_val >= right_val
+        when '<=':
+          return left_val <= right_val
+        when '==':
+          return left_val == right_val
+        when '!=':
+          return left_val != right_val
+        otherwise:
+          return 0
+    when 'call':
+      fn_name = node's name
+      if fn_name is 'if':
+        return builtin_if(node's args, scope)
+      if fn_name is 'sum':
+        return builtin_sum(node's args, scope)
+      if fn_name is 'avg':
+        return builtin_avg(node's args, scope)
+      if fn_name is 'min':
+        return builtin_min(node's args, scope)
+      if fn_name is 'max':
+        return builtin_max(node's args, scope)
+      if fn_name is 'abs':
+        return builtin_abs(node's args, scope)
+      if fn_name is 'round':
+        return builtin_round(node's args, scope)
+      if fn_name is 'sqrt':
+        return builtin_sqrt(node's args, scope)
+      if fn_name is 'pow':
+        return builtin_pow(node's args, scope)
+      if fn_name is 'concat':
+        return builtin_concat(node's args, scope)
+      show 'Unknown function: ' + fn_name
+      return 0
+    otherwise:
+      return 0
+
+
+# ============================================================
+# Model Evaluator -- processes Cast variable definitions
+# Parses lines like "price = 100" and "total = price * (1 + tax)"
+# Evaluates them in order, building up a scope
+# ============================================================
+
+define function evaluate_model(code):
+  create scope:
+    _empty = 0
+  lines = split(code, ';')
+  results is an empty list
+  for each line in lines list:
+    trimmed = trim(line)
+    if length(trimmed) is greater than 0 and not starts_with(trimmed, '#'):
+      eq_pos = index_of(trimmed, '=')
+      if eq_pos is greater than 0:
+        var_name = trim(substring(trimmed, 0, eq_pos))
+        expression = trim(substring(trimmed, eq_pos + 1, length(trimmed)))
+        ast = parse_expression(expression)
+        value = evaluate_node(ast, scope)
+        set var_name in scope to value
+        create entry:
+          name = var_name
+          expression = expression
+          value = value
+        add entry to results
+  return results
+
+
+# ============================================================
+# Test Suite -- exercise every expression type
+# ============================================================
+
+show '--- Cast Evaluator Test Suite ---'
+show ''
+
+# Test 1: Simple number
+create empty_scope:
+  _empty = 0
+
+show 'Test 1: number literal'
+result = evaluate_node(parse_expression('42'), empty_scope)
+show '  42 --> ' + result
+
+show 'Test 2: addition'
+result = evaluate_node(parse_expression('3 + 5'), empty_scope)
+show '  3 + 5 --> ' + result
+
+show 'Test 3: precedence (2 + 3 * 4 = 14)'
+result = evaluate_node(parse_expression('2 + 3 * 4'), empty_scope)
+show '  2 + 3 * 4 --> ' + result
+
+show 'Test 4: parentheses ((2 + 3) * 4 = 20)'
+result = evaluate_node(parse_expression('(2 + 3) * 4'), empty_scope)
+show '  (2 + 3) * 4 --> ' + result
+
+show 'Test 5: variables (price * (1 + tax_rate) = 108)'
+create var_scope:
+  price = 100
+  tax_rate = 0.08
+result = evaluate_node(parse_expression('price * (1 + tax_rate)'), var_scope)
+show '  price * (1 + tax_rate) --> ' + result
+
+show 'Test 6: subtraction and division'
+result = evaluate_node(parse_expression('10 - 3'), empty_scope)
+show '  10 - 3 --> ' + result
+result = evaluate_node(parse_expression('20 / 4'), empty_scope)
+show '  20 / 4 --> ' + result
+
+show 'Test 7: unary minus (-5 + 8 = 3)'
+result = evaluate_node(parse_expression('-5 + 8'), empty_scope)
+show '  -5 + 8 --> ' + result
+
+show 'Test 8: modulo (17 % 5 = 2)'
+result = evaluate_node(parse_expression('17 % 5'), empty_scope)
+show '  17 % 5 --> ' + result
+
+show 'Test 9: comparison (5 > 3 = true)'
+result = evaluate_node(parse_expression('5 > 3'), empty_scope)
+show '  5 > 3 --> ' + result
+
+show 'Test 10: sum(10, 20, 30) = 60'
+result = evaluate_node(parse_expression('sum(10, 20, 30)'), empty_scope)
+show '  sum(10, 20, 30) --> ' + result
+
+show 'Test 11: avg(10, 20, 30) = 20'
+result = evaluate_node(parse_expression('avg(10, 20, 30)'), empty_scope)
+show '  avg(10, 20, 30) --> ' + result
+
+show 'Test 12: if(5 > 3, 100, 200) = 100'
+result = evaluate_node(parse_expression('if(5 > 3, 100, 200)'), empty_scope)
+show '  if(5 > 3, 100, 200) --> ' + result
+
+show 'Test 13: nested calls max(abs(-7), 3) = 7'
+result = evaluate_node(parse_expression('max(abs(-7), 3)'), empty_scope)
+show '  max(abs(-7), 3) --> ' + result
+
+show 'Test 14: sqrt and pow'
+result = evaluate_node(parse_expression('sqrt(144)'), empty_scope)
+show '  sqrt(144) --> ' + result
+result = evaluate_node(parse_expression('pow(2, 10)'), empty_scope)
+show '  pow(2, 10) --> ' + result
+
+# Test 15: LBO model
+show ''
+show 'Test 15: LBO model snippet'
+create lbo_scope:
+  enterprise_value = 500000000
+  equity_pct = 0.40
+  debt_pct = 0.60
+  interest_rate = 0.05
+  ebitda = 75000000
+
+equity = evaluate_node(parse_expression('enterprise_value * equity_pct'), lbo_scope)
+set 'equity' in lbo_scope to equity
+debt = evaluate_node(parse_expression('enterprise_value * debt_pct'), lbo_scope)
+set 'debt' in lbo_scope to debt
+interest = evaluate_node(parse_expression('debt * interest_rate'), lbo_scope)
+set 'interest' in lbo_scope to interest
+coverage = evaluate_node(parse_expression('ebitda / interest'), lbo_scope)
+show '  Equity: ' + equity
+show '  Debt: ' + debt
+show '  Interest: ' + interest
+show '  Coverage ratio: ' + coverage
+
+# Test 16: Full model evaluation
+show ''
+show 'Test 16: full model evaluation'
+
+model_code is 'price = 100;tax_rate = 0.08;tax = price * tax_rate;subtotal = price + tax;discount = subtotal * 0.1;total = subtotal - discount;is_expensive = total > 50'
+
+model_results = evaluate_model(model_code)
+for each entry in model_results list:
+  show '  ' + entry's name + ' = ' + entry's expression + ' --> ' + entry's value
+
+show ''
+show '--- All tests complete ---'

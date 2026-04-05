@@ -1,0 +1,99 @@
+build for web and javascript backend
+theme 'midnight'
+
+# Team Dashboard -- uses DaisyUI app presets for sidebar + header + content layout
+
+database is local memory
+
+create a Projects table:
+  name, required
+  status, default 'active'
+  owner, required
+  priority, default 'medium'
+  created_at_date, auto
+
+create a Tasks table:
+  title, required
+  project, required
+  assignee
+  status, default 'todo'
+  created_at_date, auto
+
+# Backend
+
+allow cross-origin requests
+log every request
+
+when user calls GET /api/projects:
+  all_projects = get all Projects
+  send back all_projects
+
+when user calls POST /api/projects sending project_data:
+  validate project_data:
+    name is text, required, min 1, max 100
+    owner is text, required
+  new_project = save project_data as new Project
+  send back new_project with success message
+
+when user calls GET /api/tasks:
+  all_tasks = get all Tasks
+  send back all_tasks
+
+when user calls POST /api/tasks sending task_data:
+  validate task_data:
+    title is text, required, min 1, max 200
+    project is text, required
+  new_task = save task_data as new Task
+  send back new_task with success message
+
+# Frontend
+
+page 'Team Dashboard' at '/':
+  on page load get projects from '/api/projects'
+  on page load get tasks from '/api/tasks'
+
+  section 'Layout' with style app_layout:
+
+    section 'Sidebar' with style app_sidebar:
+      heading 'Projects'
+      divider
+      display projects as table showing name, status
+      divider
+      subheading 'New Project'
+      'Name' is a text input saved as a project_name
+      'Owner' is a text input saved as a project_owner
+      button 'Add Project':
+        send project_name and project_owner as a new project to '/api/projects'
+        get projects from '/api/projects'
+        project_name is ''
+        project_owner is ''
+
+    section 'Right' with style app_main:
+
+      section 'Header' with style app_header:
+        heading 'Team Dashboard'
+        text 'Track projects and tasks'
+
+      section 'Content' with style app_content:
+
+        section 'Metrics' as two column layout:
+          section 'Projects' with style app_card:
+            heading 'Projects'
+            display projects as table showing name, owner, status
+          section 'Tasks' with style app_card:
+            heading 'Tasks'
+            display tasks as table showing title, project, assignee, status
+
+        divider
+
+        section 'Add Task' with style app_card:
+          subheading 'New Task'
+          'Title' is a text input saved as a task_title
+          'Project' is a text input saved as a task_project
+          'Assignee' is a text input saved as a task_assignee
+          button 'Add Task':
+            send task_title and task_project and task_assignee as a new task to '/api/tasks'
+            get tasks from '/api/tasks'
+            task_title is ''
+            task_project is ''
+            task_assignee is ''

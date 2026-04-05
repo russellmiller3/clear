@@ -1,0 +1,32 @@
+build for javascript backend
+
+database is local memory
+
+create a Leads table:
+  company, required
+  email, required
+  score (number), default 0
+  analysis
+  scored_at_date, auto
+
+agent 'Lead Scorer' receiving lead:
+  check lead's company is not missing, otherwise error 'Company is required'
+  set lead's score to ask ai 'Rate this company 1-10 for enterprise sales potential. Reply with just the number.' with lead's company
+  set lead's analysis to ask ai 'Write one sentence about this company.' with lead's company
+  send back lead
+
+when user calls POST /api/score sending lead_data:
+  requires auth
+  validate lead_data:
+    company is text, required
+    email is text, required
+  set scored to call 'Lead Scorer' with lead_data
+  set saved to save scored as new Lead
+  send back saved with success message
+
+when user calls GET /api/leads:
+  all_leads = get all Leads
+  send back all_leads
+
+when user calls GET /api/health:
+  send back 'ok'

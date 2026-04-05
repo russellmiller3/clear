@@ -1,0 +1,98 @@
+build for javascript backend
+
+# Ecommerce API -- Stress Test App #4 (v2, with business logic)
+# Tests: product catalog, orders, inventory guards, auth, webhooks
+
+# --- Data ---
+
+create a Products table:
+  name, required
+  description
+  price (number), required
+  stock (number), default 100
+  created_at, auto
+
+create a Orders table:
+  user_id, required
+  product_id, required
+  quantity (number), required
+  total (number), required
+  status, default 'pending'
+  created_at, auto
+
+# --- Stripe Config ---
+
+checkout 'Standard Purchase':
+  price is 'price_auto'
+  mode is 'payment'
+  success_url is '/order/success'
+  cancel_url is '/cart'
+
+# --- Config ---
+
+log every request
+allow cross-origin requests
+
+# --- Public: Product Catalog ---
+
+when user calls GET /api/products:
+  define all_products as: look up all records in Products table
+  send back all_products
+
+when user calls GET /api/products/:id:
+  define product as: look up records in Products table where id is incoming's id
+  if product is nothing then send back 'Product not found' status 404
+  send back product
+
+# --- Protected: Orders ---
+
+when user calls POST /api/orders receiving order_data:
+  this endpoint requires auth
+  validate order_data:
+    product_id is text, required
+    quantity is number, required, min 1
+    user_id is text, required
+    total is number, required, min 0
+  define product as: look up records in Products table where id is order_data's product_id
+  guard product is not nothing or 'Product not found'
+  guard product's stock is greater than 0 or 'Out of stock'
+  define new_order as: save order_data as Order
+  send back new_order status 201
+
+when user calls GET /api/orders:
+  this endpoint requires auth
+  define all_orders as: look up all records in Orders table
+  send back all_orders
+
+when user calls GET /api/orders/:id:
+  this endpoint requires auth
+  define order as: look up records in Orders table where id is incoming's id
+  if order is nothing then send back 'Order not found' status 404
+  send back order
+
+# --- Admin: Product Management ---
+
+when user calls POST /api/products receiving product_data:
+  this endpoint requires auth
+  this endpoint requires role 'admin'
+  validate product_data:
+    name is text, required, min 1, max 200
+    price is number, required
+  define new_product as: save product_data as Product
+  send back new_product status 201
+
+when user calls DELETE /api/products/:id:
+  this endpoint requires auth
+  this endpoint requires role 'admin'
+  remove from Products where id is incoming's id
+  send back 'deleted'
+
+# --- Webhook ---
+
+webhook '/stripe/events' signed with env('STRIPE_WEBHOOK_SECRET'):
+  send back 'ok'
+
+# --- Health ---
+
+when user calls GET /api/health:
+  send back 'ok'

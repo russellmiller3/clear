@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Manager</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-base-200 min-h-screen">
+  <main id="app" class="max-w-2xl mx-auto p-8">
+    <div class="clear-section section-header">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Project Manager</h1>
+    <small class="text-sm opacity-60 clear-small">Track teams, projects, and tasks</small>
+    </div>
+    <div class="clear-section section-app">
+    <div class="clear-section section-sidebar">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Teams</h2>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_team_name"><span class="label-text">Team name</span></label>
+      <input id="input_team_name" class="input input-bordered w-full" type="text" placeholder="Team name">
+    </div>
+    <button class="btn btn-neutral clear-button" id="btn_Add_Team">Add Team</button>
+    <div class="overflow-x-auto clear-table-container" id="output_Teams">
+      <div class="stat-title clear-output-label">Teams</div>
+      <table class="table table-zebra clear-table" id="output_Teams_table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <hr class="divider clear-divider">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Projects</h2>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_project_name"><span class="label-text">Project name</span></label>
+      <input id="input_project_name" class="input input-bordered w-full" type="text" placeholder="Project name">
+    </div>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_project_team_id"><span class="label-text">Team ID</span></label>
+      <input id="input_project_team_id" class="input input-bordered w-full" type="text" placeholder="Team ID">
+    </div>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_status"><span class="label-text">Status</span></label>
+      <input id="input_status" class="input input-bordered w-full" type="select" placeholder="Status">
+    </div>
+    <button class="btn btn-neutral clear-button" id="btn_Add_Project">Add Project</button>
+    <div class="overflow-x-auto clear-table-container" id="output_Projects">
+      <div class="stat-title clear-output-label">Projects</div>
+      <table class="table table-zebra clear-table" id="output_Projects_table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    </div>
+    <div class="clear-section section-main">
+    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Tasks</h2>
+    <div class="clear-section section-add_task">
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_task_title"><span class="label-text">Task title</span></label>
+      <input id="input_task_title" class="input input-bordered w-full" type="text" placeholder="Task title">
+    </div>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_task_project_id"><span class="label-text">Project ID</span></label>
+      <input id="input_task_project_id" class="input input-bordered w-full" type="text" placeholder="Project ID">
+    </div>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_priority"><span class="label-text">Priority</span></label>
+      <input id="input_priority" class="input input-bordered w-full" type="select" placeholder="Priority">
+    </div>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_assigned_to"><span class="label-text">Assigned to</span></label>
+      <input id="input_assigned_to" class="input input-bordered w-full" type="text" placeholder="Assigned to">
+    </div>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_estimated_hours"><span class="label-text">Estimated hours</span></label>
+      <input id="input_estimated_hours" class="input input-bordered w-full" type="number" placeholder="Estimated hours">
+    </div>
+    <button class="btn btn-neutral clear-button" id="btn_Add_Task">Add Task</button>
+    </div>
+    <hr class="divider clear-divider">
+    <div class="overflow-x-auto clear-table-container" id="output_Tasks">
+      <div class="stat-title clear-output-label">Tasks</div>
+      <table class="table table-zebra clear-table" id="output_Tasks_table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    </div>
+    </div>
+  </main>
+
+  <script>
+// --- Runtime ---
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "Project Manager";
+
+// --- State ---
+let _state = {
+  team_name: "",
+  project_name: "",
+  project_team_id: "",
+  status: "",
+  task_title: "",
+  task_project_id: "",
+  priority: "",
+  assigned_to: "",
+  estimated_hours: 0,
+  teams: null,
+  projects: null,
+  tasks: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  {
+    const _tableEl = document.getElementById('output_Teams_table');
+    const _data = _state.teams;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Projects_table');
+    const _data = _state.projects;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","status"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Tasks_table');
+    const _data = _state.tasks;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["title","status","priority","assigned_to","estimated_hours"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_team_name').value = _state.team_name;
+  document.getElementById('input_project_name').value = _state.project_name;
+  document.getElementById('input_project_team_id').value = _state.project_team_id;
+  document.getElementById('input_status').value = _state.status;
+  document.getElementById('input_task_title').value = _state.task_title;
+  document.getElementById('input_task_project_id').value = _state.task_project_id;
+  document.getElementById('input_priority').value = _state.priority;
+  document.getElementById('input_assigned_to').value = _state.assigned_to;
+  document.getElementById('input_estimated_hours').value = _state.estimated_hours;
+}
+
+// --- Input listeners ---
+document.getElementById('input_team_name').addEventListener('input', function(e) {
+  _state.team_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_project_name').addEventListener('input', function(e) {
+  _state.project_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_project_team_id').addEventListener('input', function(e) {
+  _state.project_team_id = e.target.value;
+  _recompute();
+});
+document.getElementById('input_status').addEventListener('input', function(e) {
+  _state.status = e.target.value;
+  _recompute();
+});
+document.getElementById('input_task_title').addEventListener('input', function(e) {
+  _state.task_title = e.target.value;
+  _recompute();
+});
+document.getElementById('input_task_project_id').addEventListener('input', function(e) {
+  _state.task_project_id = e.target.value;
+  _recompute();
+});
+document.getElementById('input_priority').addEventListener('input', function(e) {
+  _state.priority = e.target.value;
+  _recompute();
+});
+document.getElementById('input_assigned_to').addEventListener('input', function(e) {
+  _state.assigned_to = e.target.value;
+  _recompute();
+});
+document.getElementById('input_estimated_hours').addEventListener('input', function(e) {
+  _state.estimated_hours = Number(e.target.value) || 0;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Add_Team').addEventListener('click', async function() {
+  await fetch("/api/teams", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ team_name: _state.team_name }) }).catch(e => console.error(e));
+  _state.teams = await fetch("/api/teams").then(r => r.json()).catch(e => { console.error(e); return _state.teams; });
+  _state.team_name = "";
+  _recompute();
+});
+document.getElementById('btn_Add_Project').addEventListener('click', async function() {
+  await fetch("/api/projects", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_name: _state.project_name, project_team_id: _state.project_team_id, status: _state.status }) }).catch(e => console.error(e));
+  _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
+  _state.project_name = "";
+  _recompute();
+});
+document.getElementById('btn_Add_Task').addEventListener('click', async function() {
+  await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_title: _state.task_title, task_project_id: _state.task_project_id, priority: _state.priority, assigned_to: _state.assigned_to, estimated_hours: _state.estimated_hours }) }).catch(e => console.error(e));
+  _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+  _state.task_title = "";
+  _recompute();
+});
+
+// --- On Page Load ---
+(async () => {
+  _state.teams = await fetch("/api/teams").then(r => r.json()).catch(e => { console.error(e); return _state.teams; });
+  _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
+  _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

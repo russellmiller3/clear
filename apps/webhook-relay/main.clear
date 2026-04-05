@@ -1,0 +1,62 @@
+build for javascript backend
+
+# Webhook Relay -- Stress Test App #6
+# Tests: multi-provider webhooks, signature verification, fan-out, retry
+
+# --- Data ---
+
+create data shape Destination:
+  name is text, required
+  url is text, required
+  secret is text
+  active is boolean, default true
+  created_at is timestamp, auto
+
+create data shape Delivery:
+  webhook_id is text, required
+  destination_id is text, required
+  status is text, default 'pending'
+  attempts (number), default 0
+  last_error is text
+  created_at is timestamp, auto
+
+# --- Webhook Receivers ---
+
+webhook '/webhooks/stripe' signed with env('STRIPE_SECRET'):
+  send back 'received'
+
+webhook '/webhooks/github' signed with env('GITHUB_SECRET'):
+  send back 'received'
+
+# --- Management Endpoints ---
+
+when user calls GET /api/destinations:
+  this endpoint requires auth
+  define all_destinations as: look up all records in Destination table
+  send back all_destinations
+
+when user calls POST /api/destinations receiving dest_data:
+  this endpoint requires auth
+  validate dest_data:
+    name is text, required
+    url is text, required
+  define new_dest as: save dest_data as Destination
+  send back new_dest status 201
+
+when user calls DELETE /api/destinations/:id:
+  this endpoint requires auth
+  this endpoint requires role 'admin'
+  remove from Destinations where id is incoming's id
+  send back 'deleted'
+
+# --- Delivery Status ---
+
+when user calls GET /api/deliveries:
+  this endpoint requires auth
+  define all_deliveries as: look up all records in Delivery table
+  send back all_deliveries
+
+# --- Retry Job ---
+
+background 'retry-failed-deliveries':
+  runs every 5 minutes

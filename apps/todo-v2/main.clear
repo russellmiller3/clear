@@ -1,0 +1,36 @@
+build for web and javascript backend
+
+create a Todos table:
+  todo, required
+  completed, default false
+  created_at_date, auto
+
+log every request
+allow cross-origin requests
+
+when user calls GET /api/todos:
+  all_todos = get all Todos
+  send back all_todos
+
+when user calls POST /api/todos sending post_data:
+  validate post_data:
+    todo is text, required, min 1, max 500
+  new_todo = save post_data as new Todo
+  send back new_todo with success message
+
+when user calls DELETE /api/todos/:id:
+  requires auth
+  delete the Todo with this id
+  send back 'deleted' with success message
+
+page 'Todo App':
+  on page load get todos from '/api/todos'
+  heading 'Todos'
+  'What needs to be done?' is a text input saved as a todo
+  button 'Add':
+    send todo as a new todo to '/api/todos'
+    get todos from '/api/todos'
+    todo is ''
+  button 'Refresh':
+    get todos from '/api/todos'
+  display todos as table showing todo, completed

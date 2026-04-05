@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todo App</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-base-200 min-h-screen">
+  <main id="app" class="max-w-2xl mx-auto p-8">
+    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Todos</h1>
+    <div class="form-control clear-input-group">
+      <label class="label" for="input_title"><span class="label-text">What needs to be done?</span></label>
+      <input id="input_title" class="input input-bordered w-full" type="text" placeholder="What needs to be done?">
+    </div>
+    <button class="btn btn-neutral clear-button" id="btn_Add">Add</button>
+    <button class="btn btn-neutral clear-button" id="btn_Refresh">Refresh</button>
+    <div class="overflow-x-auto clear-table-container" id="output_My_Todos">
+      <div class="stat-title clear-output-label">My Todos</div>
+      <table class="table table-zebra clear-table" id="output_My_Todos_table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+// --- Runtime ---
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "Todo App";
+
+// --- State ---
+let _state = {
+  title: "",
+  response: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  {
+    const _tableEl = document.getElementById('output_My_Todos_table');
+    const _data = _state.response;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = Object.keys(_data[0]);
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_title').value = _state.title;
+}
+
+// --- Input listeners ---
+document.getElementById('input_title').addEventListener('input', function(e) {
+  _state.title = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Add').addEventListener('click', async function() {
+  await fetch("/api/todos", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: _state.title }) }).catch(e => console.error(e));
+  _state.response = await fetch("/api/todos").then(r => r.json()).catch(e => { console.error(e); return _state.response; });
+  _state.title = "";
+  _recompute();
+});
+document.getElementById('btn_Refresh').addEventListener('click', async function() {
+  _state.response = await fetch("/api/todos").then(r => r.json()).catch(e => { console.error(e); return _state.response; });
+  _recompute();
+});
+
+// --- On Page Load ---
+(async () => {
+  _state.response = await fetch("/api/todos").then(r => r.json()).catch(e => { console.error(e); return _state.response; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

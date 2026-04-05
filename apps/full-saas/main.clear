@@ -1,0 +1,134 @@
+build for web and javascript backend
+
+# Full SaaS App — Stress Test App #12 (The Final Boss)
+# Tests: frontend + backend + billing + auth + real-time
+# This is the "Can Clear replace a SvelteKit app?" test
+
+# --- Data ---
+
+create data shape User:
+  email is text, required, unique
+  name is text, required
+  plan is text, default 'free'
+  created_at is timestamp, auto
+
+create data shape Project:
+  name is text, required
+  owner_id is text, required
+  description is text
+  created_at is timestamp, auto
+
+create data shape ApiKey:
+  key is text, required, unique
+  project_id is text, required
+  created_at is timestamp, auto
+
+# --- Billing ---
+
+checkout 'Pro Plan':
+  price is 'price_pro_monthly'
+  mode is 'subscription'
+  success_url is '/billing/success'
+  cancel_url is '/pricing'
+
+limit 'api_requests':
+  free allows 100 per month
+  pro allows 10000 per month
+
+# --- Styles ---
+
+style navbar:
+  background is '#111827'
+  color is 'white'
+  padding = 16
+
+style card:
+  background is 'white'
+  padding = 24
+  rounded = 12
+  shadow is 'medium'
+
+style hero:
+  background is '#1e293b'
+  color is 'white'
+  padding = 64
+  centered
+
+# --- Frontend: Marketing ---
+
+page 'Home' at '/':
+  section 'Hero' with style hero:
+    heading 'Build faster with Clear'
+    text 'The programming language AI writes and humans read.'
+    link 'Get Started' to '/signup'
+    link 'View Pricing' to '/pricing'
+
+page 'Pricing' at '/pricing':
+  section 'Pricing' with style card:
+    heading 'Simple, transparent pricing'
+    subheading 'Free'
+    text '100 API requests per month. Perfect for getting started.'
+    divider
+    subheading 'Pro — $29/month'
+    text '10,000 API requests per month. Priority support.'
+
+page 'Sign Up' at '/signup':
+  section 'Signup' with style card:
+    heading 'Create your account'
+    'Email' is a text input
+    'Password' is a text input
+    'Name' is a text input
+    button 'Create Account':
+      send email and password and name to '/api/auth/signup'
+
+# --- Backend: Auth ---
+
+when user calls POST /api/auth/signup receiving signup_data:
+  validate signup_data:
+    email is text, required, matches email
+    name is text, required, min 1
+  define new_user as: save signup_data as User
+  send back new_user status 201
+
+when user calls POST /api/auth/login receiving login_data:
+  validate login_data:
+    email is text, required
+  send back 'token'
+
+# --- Backend: Projects ---
+
+when user calls GET /api/projects:
+  this endpoint requires auth
+  define all_projects as: look up all records in Project table
+  send back all_projects
+
+when user calls POST /api/projects receiving project_data:
+  this endpoint requires auth
+  validate project_data:
+    name is text, required, min 1, max 100
+  define new_project as: save project_data as Project
+  send back new_project status 201
+
+when user calls DELETE /api/projects/:id:
+  this endpoint requires auth
+  remove from Projects where id is incoming's id
+  send back 'deleted'
+
+# --- Backend: API Keys ---
+
+when user calls POST /api/keys receiving key_data:
+  this endpoint requires auth
+  validate key_data:
+    project_id is text, required
+  define new_key as: save key_data as ApiKey
+  send back new_key status 201
+
+# --- Backend: Billing Webhook ---
+
+webhook '/stripe/events' signed with env('STRIPE_SECRET'):
+  send back 'ok'
+
+# --- Backend: Health ---
+
+when user calls GET /api/health:
+  send back 'ok'

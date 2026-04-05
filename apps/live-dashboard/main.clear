@@ -1,0 +1,46 @@
+build for javascript backend
+
+# Live Dashboard -- Stress Test App #9
+# Tests: SSE streaming, data aggregation, real-time updates
+
+# --- Data ---
+
+create data shape Metric:
+  name is text, required
+  value (number), required
+  source is text
+  created_at is timestamp, auto
+
+# --- Config ---
+
+log every request
+allow cross-origin requests
+
+# --- REST Endpoints ---
+
+when user calls POST /api/metrics receiving metric_data:
+  validate metric_data:
+    name is text, required
+    value is number, required
+  define new_metric as: save metric_data as Metric
+  send back new_metric status 201
+
+when user calls GET /api/metrics:
+  define all_metrics as: look up all records in Metric table
+  send back all_metrics
+
+when user calls GET /api/metrics/latest:
+  define latest as: look up all records in Metric table
+  send back latest
+
+# --- SSE Stream ---
+
+when user calls GET /api/metrics/stream:
+  stream:
+    send back 'heartbeat'
+    wait 5 seconds
+
+# --- Aggregation Job ---
+
+background 'aggregate-metrics':
+  runs every 1 minute

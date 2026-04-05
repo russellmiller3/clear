@@ -1,0 +1,34 @@
+build for javascript backend
+
+# URL Shortener — Stress Test App #3
+# Tests: redirect logic, hit counting, rate limiting, random code generation
+
+# --- Data ---
+
+create data shape Link:
+  code is text, unique
+  url is text, required
+  hits is number, default 0
+  created_at is timestamp, auto
+
+# --- Endpoints ---
+
+when user calls POST /api/shorten receiving link_data:
+  validate link_data:
+    url is text, required, min 1
+  rate limit 10 per minute
+  define new_link as: save link_data as Link
+  send back new_link status 201
+
+when user calls GET /api/links:
+  define all_links as: look up all records in Link table
+  send back all_links
+
+when user calls GET /api/links/:code:
+  define found as: look up records in Link table where code is incoming's code
+  send back found
+
+when user calls DELETE /api/links/:code:
+  this endpoint requires auth
+  remove from Links where code is incoming's code
+  send back 'deleted'

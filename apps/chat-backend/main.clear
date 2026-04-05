@@ -1,0 +1,58 @@
+build for javascript backend
+
+# Chat Backend -- Stress Test App #7
+# Tests: WebSocket, message persistence, presence, rooms
+
+# --- Data ---
+
+create data shape Message:
+  room is text, required
+  sender is text, required
+  content is text, required
+  created_at is timestamp, auto
+
+create data shape Room:
+  name is text, required, unique
+  description is text
+  created_at is timestamp, auto
+
+# --- Config ---
+
+log every request
+allow cross-origin requests
+
+# --- REST Endpoints ---
+
+when user calls GET /api/rooms:
+  define all_rooms as: look up all records in Room table
+  send back all_rooms
+
+when user calls POST /api/rooms receiving room_data:
+  this endpoint requires auth
+  validate room_data:
+    name is text, required, min 1, max 100
+  define new_room as: save room_data as Room
+  send back new_room status 201
+
+when user calls GET /api/rooms/:id/messages:
+  define room_messages as: look up all records in Message table
+  send back room_messages
+
+when user calls POST /api/messages receiving msg_data:
+  this endpoint requires auth
+  validate msg_data:
+    room is text, required
+    sender is text, required
+    content is text, required, min 1
+  define new_message as: save msg_data as Message
+  send back new_message status 201
+
+# --- WebSocket ---
+
+subscribe to 'chat':
+  show 'message received'
+
+# --- Health ---
+
+when user calls GET /api/health:
+  send back 'ok'
