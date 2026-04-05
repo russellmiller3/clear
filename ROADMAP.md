@@ -1104,12 +1104,12 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 1 | Form submit to endpoint | Signup forms, todo creation, contact pages, any write operation | Compile form + button + POST endpoint; generated HTML contains `fetch('/api/...', { method: 'POST', body: ... })` wired to button click |
-| 2 | Client-side validation before fetch | Instant "required" feedback without server round-trip | Compile endpoint with `validate incoming: name is text, required`; generated HTML has JS check that prevents fetch if empty |
-| 3 | Loading state during fetch | Users know the app is working, not frozen | Compile form submit; generated JS disables button and shows "Loading..." between fetch send and response |
-| 4 | Display API errors in UI | "Email already taken" shown on screen instead of silently swallowed | Compile form + endpoint; generated JS has `!response.ok` branch that shows server error message |
+| 1 | Form submit to endpoint | Signup forms, todo creation, contact pages, any write operation | **DONE.** Reactive compiler generates `fetch('/api/...', { method: 'POST', body: ... })` wired to button click. Tested: Contact Manager, Invoice Manager, Todo App all POST and render results. |
+| 2 | Client-side validation before fetch | Instant "required" feedback without server round-trip | Not started. Currently only server-side validation. Need JS check that prevents fetch if empty and shows inline error. |
+| 3 | Loading state during fetch | Users know the app is working, not frozen | Not started. Button stays enabled during fetch, no visual feedback. |
+| 4 | Display API errors in UI | "Email already taken" shown on screen instead of silently swallowed | Not started. Server errors are caught but not shown to user. |
 
-**Phase 30 complete = Clear generates a working form. Single biggest unlock.**
+**Phase 30 status: item 1 done, items 2-4 need compiler work.**
 
 ---
 

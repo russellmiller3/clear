@@ -28,8 +28,8 @@
 - All 1005 tests passing
 
 ## What's In Progress
-- **Compiled app output quality** — compiler emits correct DaisyUI classes now but apps still look plain. Need to GAN the compiler HTML output against design-system-v2 component patterns (especially metric cards, tables, nav menus inside compiled apps)
-- **Playground mock vs real** — `playground/mock.html` is the visual target. `playground/index.html` matches structurally but needs visual comparison pass
+- **Phase 30 (form submit):** Item 1 (button → fetch → render) is DONE. The reactive compiler generates fetch calls, state management, input listeners, table re-rendering. Verified working: Contact Manager, Invoice Manager, Todo App all do full CRUD in the browser. Items 2-4 (client-side validation, loading state, error display) need compiler work.
+- **Compiled app visual quality** — compiler emits correct DaisyUI classes but apps still look plain. Sidebar nav uses `<p>` tags not `menu menu-sm`. Metric card numbers lack `font-mono`. Tables need v2 styling. GAN against design-system-v2.md component patterns.
 
 ## Key Decisions Made
 1. **GAN Design Method is mandatory** — never edit compiler output directly. Design a static HTML mock first, use it as acceptance criteria, then fix compiler until output matches. Added to CLAUDE.md.
@@ -46,11 +46,11 @@
 - Compiled app metric cards lack `font-mono` on numbers
 
 ## Next Steps (Priority Order)
-1. **GAN compiled app output** — metric cards need `font-mono text-3xl`, sidebar nav needs `menu menu-sm`, tables need proper v2 styling. Compare compiler output to design-system-v2 patterns section by section.
-2. **Phase 30: Form submit to endpoint** — the single biggest unlock. Button click collects inputs and POSTs. Client-side validation. Loading states. Error display in UI.
+1. **GAN compiled app output** — metric cards need `font-mono text-3xl`, sidebar nav needs `menu menu-sm`, tables need v2 header styling. Compare compiler buildHTML() output to design-system-v2.md section by section.
+2. **Phase 30 items 2-4** — client-side validation before fetch, loading state on button during fetch, error display in UI when server returns error. All in compiler.js reactive compiler.
 3. **Chart syntax** — `chart 'Revenue' as line showing data` compiles to ECharts with `getBaseConfig(theme)` from design-system-v2
 4. **Download button** — JSZip export with package.json + README
-5. **BYOK key input** — text input for Anthropic API key, stored in sessionStorage, passed to browser server
+5. **BYOK key input** — text input for Anthropic API key, stored in sessionStorage, for AI agent examples
 
 ## Files to Read First
 | File | Why |
