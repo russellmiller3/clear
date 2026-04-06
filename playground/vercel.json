@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/ai-proxy.js": {
+      "runtime": "@vercel/node@3"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/ai-proxy", "destination": "/api/ai-proxy" }
+  ]
+}

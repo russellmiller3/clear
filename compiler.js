@@ -4068,6 +4068,19 @@ function compileToBrowserServer(body, errors) {
   lines.push('  return new Response(JSON.stringify({ error: "Not found: " + method + " " + path }), { status: 404, headers: { "Content-Type": "application/json" }});');
   lines.push('};');
 
+  // Override _askAI for browser: route through proxy endpoint instead of direct Anthropic call
+  lines.push('');
+  lines.push('// Browser AI proxy — calls /api/ai-proxy instead of Anthropic directly');
+  lines.push('async function _askAI(prompt, context, schema) {');
+  lines.push('  const proxyUrl = window._clearAIProxy || "/api/ai-proxy";');
+  lines.push('  const schemaObj = schema ? Object.fromEntries(schema.map(f => [f.name, f.type || "text"])) : null;');
+  lines.push('  const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, context, schema: schemaObj }) });');
+  lines.push('  const data = await r.json();');
+  lines.push('  if (!r.ok) throw new Error(data.error || "AI request failed");');
+  lines.push('  if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
+  lines.push('  return data.result;');
+  lines.push('}');
+
   lines.push('})();');
   return lines.join('\n');
 }
