@@ -3239,9 +3239,9 @@ function compileToPython(body, errors, sourceMap = false) {
  */
 // Inline layout modifier map (shared between parser and compiler)
 const INLINE_LAYOUT_MODIFIERS = {
-  'two column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr', gap: '1.5rem' } },
-  'three column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr', gap: '1.5rem' } },
-  'four column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr 1fr', gap: '1.5rem' } },
+  'two column layout': { tailwind: 'grid grid-cols-2 gap-6' },
+  'three column layout': { tailwind: 'grid grid-cols-3 gap-6' },
+  'four column layout': { tailwind: 'grid grid-cols-4 gap-6' },
   'full height': { prop: 'height', val: '100vh' },
   'scrollable': { prop: 'overflow-y', val: 'auto' },
   'fills remaining space': { prop: 'flex', val: '1' },
@@ -3291,21 +3291,32 @@ function buildHTML(body) {
 
           // Generate inline modifier CSS class if needed
           let inlineClass = '';
+          let tailwindClasses = '';
           if (hasInline) {
             const slug = sanitizeName(node.title.replace(/\s+/g, '_').toLowerCase());
             inlineClass = `section-${slug}`;
             const cssProps = [];
+            const twClasses = [];
             for (const mod of node.inlineModifiers) {
               if (typeof mod === 'string' && INLINE_LAYOUT_MODIFIERS[mod]) {
                 const m = INLINE_LAYOUT_MODIFIERS[mod];
-                cssProps.push(`${m.prop}: ${m.val}`);
-                if (m.extra) Object.entries(m.extra).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
+                if (m.tailwind) {
+                  twClasses.push(m.tailwind);
+                } else {
+                  cssProps.push(`${m.prop}: ${m.val}`);
+                  if (m.extra) Object.entries(m.extra).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
+                }
               } else if (mod && mod.custom && mod.props) {
                 Object.entries(mod.props).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
               }
             }
             if (cssProps.length > 0) {
               inlineStyleBlocks.push(`.${inlineClass} { ${cssProps.join('; ')}; }`);
+            } else {
+              inlineClass = ''; // No custom CSS needed
+            }
+            if (twClasses.length > 0) {
+              tailwindClasses = twClasses.join(' ');
             }
           }
 
@@ -3322,7 +3333,7 @@ function buildHTML(body) {
             // Tabs: generate tab bar + content panels
             const tabs = node.body.filter(n => n.type === NodeType.TAB);
             const otherContent = node.body.filter(n => n.type !== NodeType.TAB);
-            parts.push(`    <div class="${inlineClass} clear-section" id="${panelId}">`);
+            parts.push(`    <div class="${[inlineClass, tailwindClasses, 'clear-section'].filter(Boolean).join(' ')}" id="${panelId}">`);
             // Tab buttons
             parts.push(`    <div class="tabs tabs-bordered" role="tablist">`);
             tabs.forEach((tab, i) => {
@@ -3358,7 +3369,7 @@ function buildHTML(body) {
           if (isSlideIn) {
             const dir = mods.find(m => typeof m === 'string' && m.startsWith('__slidein_'))?.replace('__slidein_', '') || 'right';
             const translateStart = dir === 'left' ? '-100%' : '100%';
-            parts.push(`    <div class="clear-section ${inlineClass}" id="${panelId}" style="display:none">`);
+            parts.push(`    <div class="${['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ')}" id="${panelId}" style="display:none">`);
             walk(node.body);
             parts.push(`    </div>`);
             // Slide-in CSS
@@ -3368,7 +3379,7 @@ function buildHTML(body) {
 
           if (isCollapsible) {
             const display = startsClosed ? 'none' : 'block';
-            parts.push(`    <div class="clear-section ${inlineClass}" id="${panelId}">`);
+            parts.push(`    <div class="${['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ')}" id="${panelId}">`);
             parts.push(`      <h2 class="cursor-pointer select-none" onclick="const c=this.nextElementSibling;c.style.display=c.style.display==='none'?'block':'none'">${node.title} <span class="text-sm opacity-50">&#9662;</span></h2>`);
             parts.push(`      <div class="collapsible-content" style="display:${display}">`);
             walk(node.body);
@@ -3384,7 +3395,7 @@ function buildHTML(body) {
 
           if (presetClasses) {
             // Built-in preset: use Tailwind/DaisyUI classes directly, no custom CSS
-            const cls = [presetClasses, inlineClass].filter(Boolean).join(' ');
+            const cls = [presetClasses, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             // Only full-width landing page sections get the max-w-5xl inner wrapper.
             // App presets (flex layout) and card-type presets (already constrained) skip it.
             const isAppPreset = node.styleName && node.styleName.startsWith('app_');
@@ -3433,7 +3444,7 @@ function buildHTML(body) {
             parts.push(`    </div>`);
           } else if (hasUserStyle || hasInline) {
             // User-defined style (custom CSS): full-width outer, contained inner
-            const allClasses = [node.ui.cssClass, inlineClass].filter(Boolean).join(' ');
+            const allClasses = [node.ui.cssClass, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             parts.push(`    <div class="${allClasses}">`);
             if (hasUserStyle && !hasInline) {
               parts.push(`      <div class="max-w-5xl mx-auto px-4">`);
@@ -3445,7 +3456,7 @@ function buildHTML(body) {
             parts.push(`    </div>`);
           } else {
             // No style: default card section using DaisyUI utilities
-            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass].filter(Boolean).join(' ');
+            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass, tailwindClasses].filter(Boolean).join(' ');
             parts.push(`    <div class="${allClasses}">
       <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">${node.ui.title}</h2>`);
             walk(node.body);
@@ -4158,9 +4169,9 @@ const FRIENDLY_CSS = {
   stacked: { css: null, expand: 'display: flex; flex-direction: column' },
   wraps: { css: null, expand: 'flex-wrap: wrap' },
   // Column layouts: "two column layout", "3 column layout", etc.
-  two_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px' },
-  three_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px' },
-  four_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px' },
+  two_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem' },
+  three_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem' },
+  four_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1.5rem' },
   // Row layouts: "two row layout", "3 row layout", etc.
   two_row_layout: { css: null, expand: 'display: grid; grid-template-rows: 1fr 1fr; gap: 16px' },
   three_row_layout: { css: null, expand: 'display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 16px' },
