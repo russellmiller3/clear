@@ -10928,4 +10928,99 @@ page 'App' at '/':
   });
 });
 
+// =============================================================================
+// PHASE 30: CLIENT VALIDATION, LOADING STATE, ERROR DISPLAY
+// =============================================================================
+
+describe('Phase 30 - client-side validation before fetch', () => {
+  it('adds validation checks for POST fields', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("_toast('todo is required'");
+    expect(result.javascript).toContain("return;");
+  });
+
+  it('does not add validation for buttons without POST', () => {
+    const src = `build for web
+page 'App' at '/':
+  count = 0
+  button 'Inc':
+    increase count by 1`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_toast');
+  });
+});
+
+describe('Phase 30 - loading state on buttons', () => {
+  it('disables button and shows Loading during async', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls GET /api/todos:
+  all_todos = get all Todos
+  send back all_todos
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'
+    get todos from '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_btn.disabled = true');
+    expect(result.javascript).toContain("_btn.textContent = 'Loading...'");
+    expect(result.javascript).toContain('_btn.disabled = false');
+  });
+});
+
+describe('Phase 30 - error display on fetch failure', () => {
+  it('checks response status and throws on error', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('if (!_r.ok)');
+    expect(result.javascript).toContain('throw new Error');
+  });
+
+  it('wraps async button body in try/catch with toast', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("catch(_err)");
+    expect(result.javascript).toContain("_toast(_err.message");
+  });
+});
+
 run();
