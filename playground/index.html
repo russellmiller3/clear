@@ -133,6 +133,8 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
 .ep-PUT { background: var(--amber-lt); color: var(--amber); border: 1px solid var(--amber-bd); }
 .ep-path { font-family: var(--font-mono); font-size: 12.5px; color: var(--tx2); }
 .section-lbl { font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tx4); margin-bottom: 8px; display: block; }
+.guide-divider { border: none; border-top: 1px solid var(--bd); margin: 4px 0; }
+.guide-heading { font-size: 13px; font-weight: 700; color: var(--tx); margin-top: 4px; }
 .feat-chip { font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border-radius: 4px; background: var(--surf2); color: var(--tx3); border: 1px solid var(--bd2); }
 .agent-chip { font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f0e8ff; color: #6040a0; border: 1px solid #c8b8e8; }
 .table-chip { font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border-radius: 4px; background: var(--green-lt); color: var(--green); border: 1px solid var(--green-bd); }
@@ -302,6 +304,7 @@ page 'Sales Dashboard' at '/':
 #
 # page load --> GET    --> render table
 # [Save]    --> POST   --> save row --> refresh
+# [Edit]    --> PUT    --> update row --> refresh
 # [Delete]  --> DELETE --> remove row --> refresh
 
 build for web and javascript backend
@@ -332,6 +335,11 @@ when user calls POST /api/contacts sending contact_data:
   new_contact = save contact_data as new Contact
   send back new_contact with success message
 
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+
 when user calls DELETE /api/contacts/:id:
   requires auth
   delete the Contact with this id
@@ -352,7 +360,7 @@ page 'Contact Manager' at '/':
       email is ''
       company is ''
 
-  display contacts as table showing name, email, company, status with delete`,
+  display contacts as table showing name, email, company, status with delete and edit`,
 
   'Invoice Manager': `# DATAFLOW:
 # ┌──────────┐  POST /api/invoices  ┌──────────┐  save   ┌──────────┐
@@ -394,6 +402,11 @@ when user calls POST /api/invoices sending invoice_data:
   new_invoice = save invoice_data as new Invoice
   send back new_invoice with success message
 
+when user calls DELETE /api/invoices/:id:
+  requires auth
+  delete the Invoice with this id
+  send back 'deleted' with success message
+
 page 'Invoices' at '/':
   on page load get invoices from '/api/invoices'
 
@@ -409,7 +422,7 @@ page 'Invoices' at '/':
       amount is ''
       due_date is ''
 
-  display invoices as table showing client, amount, status, due_date`,
+  display invoices as table showing client, amount, status, due_date with delete`,
 
   'SaaS Landing': `# LAYOUT:
 # ┌─────────────────────────────────────────┐
@@ -839,17 +852,72 @@ window.apiSend = async function(idx) {
 
 // ─── Guide ─────────────────────────────────────────────────
 function renderGuide() {
+  const D = '---'; // divider marker
   const s = [
-    ['Variables', "name is 'Alice'\nprice = 9.99\nactive is true\nitems is an empty list"],
-    ['Data Tables', "create a Users table:\n  name, required\n  email, required, unique\n  age (number), default 0\n  created_at_date, auto"],
-    ['API Endpoints', "when user calls GET /api/users:\n  all_users = get all Users\n  send back all_users\n\nwhen user calls POST /api/users sending user_data:\n  requires auth\n  validate user_data:\n    name is text, required\n  set saved to save user_data as new User\n  send back saved with success message"],
-    ['Web Pages', "page 'My App' at '/':\n  heading 'Welcome'\n  'Your Name' is a text input saved as name\n  button 'Greet':\n    show 'Hello, ' + name"],
-    ['AI Agents', "agent 'Scorer' receiving lead:\n  set result to ask ai 'Rate 1-10' with lead returning:\n    score (number)\n    reasoning\n  lead's score is result's score\n  send back lead"],
-    ['Build Targets', "build for web                         # frontend\nbuild for javascript backend          # Express\nbuild for web and javascript backend  # both"],
+    // ── Values & Variables ──
+    ['Values & Variables', "# Numbers use =\nprice = 9.99\ncount = 0\n\n# Strings and booleans use 'is'\nname is 'Alice'\nactive is true\n\n# Named assignment\ndefine total as: price + tax\n\n# Empty list\nitems is an empty list"],
+    ['Math', "total = price + tax\ndiscount = total * 0.10\ntax = price * rate / 100\nremainder = count % 3"],
+    ['Strings', "# Interpolation\ngreeting is 'Hello, {name}!'\n\n# Operations\nupper = uppercase(name)\nfound = contains(text, 'search')\npart = substring(text, 0, 5)\npieces = split(text, ',')"],
+    ['Objects', "create person:\n  name is 'Alice'\n  age = 30\n\n# Read (possessive)\nshow person's name\n\n# Set\nperson's age = 31"],
+    ['Lists', "items is an empty list\nadd 'hello' to items\nremove 'hello' from items\nsort items by name\nsort items by price descending"],
+    ['Collections', "total = sum of prices\naverage = avg of scores\nbiggest = max of values\nhow_many = count of items\nfirst_item = first of items\nall_names = each user's name in users"],
+
+    D,
+
+    // ── Logic & Control ──
+    ['Functions', "# One-liner\ndouble(x) = x * 2\ntax(price, rate) = price * rate / 100\n\n# Block\ndefine function greet(name):\n  message = 'Hello, ' + name\n  return message"],
+    ['Conditionals', "# Inline\nif x is 5 then show 'yes'\n\n# Block\nif x is 5:\n  show 'five'\notherwise:\n  show 'other'"],
+    ['Loops', "# Count\nrepeat 5 times:\n  show 'hello'\n\n# Each\nfor each item in items list:\n  show item\n\n# While\nwhile count is less than 10:\n  increase count by 1"],
+    ['Pattern Matching', "match status:\n  when 'active':\n    show 'Running'\n  when 'paused':\n    show 'Paused'\n  otherwise:\n    show 'Unknown'"],
+    ['Error Handling', "try:\n  risky_operation()\nif there's an error:\n  show 'Something went wrong'"],
+    ['Comparisons', "x is 5                    # equals\nx is not 5                # not equals\nx is greater than 10      # >\nx is less than 10         # <\nx is at least 10          # >=\nx is at most 10           # <="],
+
+    D,
+
+    // ── Web Frontend ──
+    ['Pages & Content', "build for web\n\npage 'My App' at '/':\n  heading 'Welcome'\n  text 'Hello world'\n  subheading 'Details'\n  bold text 'Important'\n  small text 'Fine print'\n  link 'Learn more' to '/about'\n  divider"],
+    ['Inputs', "'Name' is a text input saved as a name\n'Price' is a number input saved as a price\n'Notes' is a text area saved as a note\n'Gift Wrap' is a checkbox\n'Color' is a dropdown with ['Red', 'Green', 'Blue']"],
+    ['Buttons & Actions', "button 'Save':\n  send name and email to '/api/signup'\n\nbutton 'Add':\n  send todo to '/api/todos'\n  get todos from '/api/todos'\n  todo is ''"],
+    ['Display & Tables', "display total as dollars called 'Total'\ndisplay todos as table showing name, status\n\n# With action buttons (auto-wired)\ndisplay contacts as table showing name, email with delete\ndisplay contacts as table showing name, email with edit\ndisplay contacts as table showing name, email with delete and edit"],
+    ['On Page Load', "# Inline\non page load get todos from '/api/todos'\n\n# Block\non page load:\n  get todos from '/api/todos'\n  get users from '/api/users'"],
+
+    D,
+
+    // ── Layout & Styles ──
+    ['Built-in Presets', "# Landing page\nsection 'Hero' with style page_hero:\nsection 'Features' with style page_section:\nsection 'CTA' with style section_dark:\nsection 'Pricing' with style card:\n\n# App / dashboard\nsection 'Nav' with style app_sidebar:\nsection 'Main' with style app_content:\nsection 'Top' with style app_header:\nsection 'Widget' with style metric_card:"],
+    ['Inline Modifiers', "section 'App' full height, side by side:\n  section 'Sidebar' dark background, 280px wide:\n    heading 'Nav'\n  section 'Main' fills remaining space:\n    heading 'Content'\n\n# Grid layouts\nsection 'Grid' as two column layout:\nsection 'Grid' as three column layout:"],
+    ['Tabs & Panels', "section 'Views' as tabs:\n  tab 'Overview':\n    text 'First tab'\n  tab 'Details':\n    text 'Second tab'\n\n# Modal\nsection 'Confirm' as modal:\n  heading 'Are you sure?'\n  button 'Yes':\n    close modal\n\nbutton 'Delete':\n  open the Confirm modal\n\n# Slide-in\nsection 'Help' slides in from right:\n  text 'Help content'\n\nbutton 'Help':\n  toggle the Help panel"],
+    ['Custom Styles', "style card:\n  background is '#f8fafc'\n  padding = 24\n  rounded = 12\n  shadow is 'medium'\n\nsection 'Info' with style card:\n  heading 'Details'"],
+    ['Themes', "theme 'ivory'     # light (default)\ntheme 'midnight'   # dark\ntheme 'nova'       # warm/creative"],
+
+    D,
+
+    // ── Backend ──
+    ['Data Tables', "database is local memory\n\ncreate a Users table:\n  name, required\n  email, required, unique\n  role, default 'member'\n  age (number), default 0\n  created_at_date, auto"],
+    ['API Endpoints', "when user calls GET /api/users:\n  all_users = get all Users\n  send back all_users\n\nwhen user calls POST /api/users sending user_data:\n  requires auth\n  validate user_data:\n    name is text, required, min 1, max 100\n    email is text, required, matches email\n  new_user = save user_data as new User\n  send back new_user with success message\n\nwhen user calls PUT /api/users/:id sending data:\n  requires auth\n  save data to Users\n  send back 'updated'\n\nwhen user calls DELETE /api/users/:id:\n  requires auth\n  delete the User with this id\n  send back 'deleted' with success message"],
+    ['Auth & Guards', "requires auth\nrequires role 'admin'\nguard stock is greater than 0 or 'Out of stock'\n\n# Access current user\nuser_id = current user's id"],
+    ['Production', "log every request\nallow cross-origin requests\nrate limit 10 per minute\napi_key is env('API_KEY')"],
+
+    D,
+
+    // ── AI Agents ──
+    ['AI Agents', "agent 'Lead Scorer' receiving lead:\n  check lead's company is not missing,\n    otherwise error 'Company required'\n  set result to ask ai 'Rate 1-10 for\n    enterprise potential' with lead returning:\n    score (number)\n    reasoning\n    qualified (boolean)\n  lead's score is result's score\n  send back lead"],
+    ['Agent Chains', "# Chain agents: screen -> score -> summarize\nagent 'Pipeline' receiving candidate:\n  set screened to call 'Screener' with candidate\n  set scored to call 'Scorer' with screened\n  send back scored"],
+
+    D,
+
+    // ── Build Targets ──
+    ['Build Targets', "build for web                         # frontend only\nbuild for javascript backend          # Express server\nbuild for python backend              # FastAPI server\nbuild for web and javascript backend  # full-stack"],
+    ['Components', "define component Card receiving content:\n  heading 'Card'\n  show content\n  divider\n\nshow Card:\n  text 'Inside the card'"],
+    ['Modules', "# main.clear\nuse 'helpers'\nresult = double(100)\n\n# helpers.clear\ndouble(x) = x * 2"],
   ];
-  let h = '<div style="padding:18px;display:flex;flex-direction:column;gap:16px;overflow:auto;height:100%;">';
+  let h = '<div style="padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto;height:100%;">';
   h += '<div><div style="font-size:15px;font-weight:700;color:var(--tx);">Clear Syntax Guide</div><div style="font-size:12px;color:var(--tx3);margin-top:4px;">Each line does one thing. Plain English in, production code out.</div></div>';
-  s.forEach(([title, code]) => { h += '<div><span class="section-lbl">' + title + '</span><pre class="guide-code">' + esc(code) + '</pre></div>'; });
+  s.forEach(item => {
+    if (item === D) { h += '<hr class="guide-divider">'; return; }
+    const [title, code] = item;
+    h += '<div><span class="section-lbl">' + title + '</span><pre class="guide-code">' + esc(code) + '</pre></div>';
+  });
   h += '</div>';
   return h;
 }
