@@ -76,11 +76,12 @@ const UTILITY_FUNCTIONS = [
   { name: '_clear_format', code: "function _clear_format(v, f) {\n  if (v === null || v === undefined) return '';\n  if (f === 'dollars') return '$' + Number(v).toFixed(2);\n  if (f === 'percent') return (Number(v) * 100).toFixed(1) + '%';\n  return String(v);\n}", deps: [] },
   { name: '_clear_fetch', code: "async function _clear_fetch(url) {\n  const r = await fetch(url);\n  if (!r.ok) throw new Error('Could not load data from ' + url + ' (status ' + r.status + ')');\n  return await r.json();\n}", deps: [] },
   { name: '_clear_env', code: "function _clear_env(name) {\n  if (typeof process !== 'undefined' && process.env) return process.env[name] || '';\n  return '';\n}", deps: [] },
-  { name: '_toast', code: `function _toast(msg, cls) {
+  { name: '_toast', code: `function _toast(msg, type) {
   let c = document.getElementById('_toast_container');
   if (!c) { c = document.createElement('div'); c.id = '_toast_container'; c.className = 'toast toast-end'; c.style.cssText = 'position:fixed;bottom:1rem;right:1rem;z-index:100'; document.body.appendChild(c); }
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
   const el = document.createElement('div'); el.className = 'alert ' + cls + ' shadow-lg'; el.innerHTML = '<span>' + msg + '</span>';
-  c.appendChild(el); setTimeout(() => { el.remove(); }, 3000);
+  c.appendChild(el); setTimeout(() => { el.remove(); }, 4000);
 }`, deps: [] },
   { name: '_esc', code: "function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }", deps: [] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema)); }', deps: [] },
@@ -2195,6 +2196,13 @@ function _compileNodeInner(node, ctx) {
       } else {
         bodyExpr = '_state';
       }
+      // Helper: compile a fetch call with error checking
+      const fetchWithErrorCheck = (fetchUrl, method, body) => {
+        const lines = [];
+        lines.push(`${pad}{ const _r = await fetch(${fetchUrl}, { method: '${method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${body}) });`);
+        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || '${method} failed'); } }`);
+        return lines.join('\n');
+      };
       // Auto-upsert: if this is a POST and a matching PUT/PATCH endpoint exists,
       // check _editing_id to decide whether to create or update
       if (node.method === 'POST' && ctx.updateEndpoints) {
@@ -2205,16 +2213,16 @@ function _compileNodeInner(node, ctx) {
           if (upInfo) {
             const lines = [];
             lines.push(`${pad}if (_state._editing_id) {`);
-            lines.push(`${pad}  await fetch(${JSON.stringify(upInfo.url)} + _state._editing_id, { method: '${upInfo.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).catch(e => console.error(e));`);
+            lines.push(fetchWithErrorCheck(JSON.stringify(upInfo.url) + ' + _state._editing_id', upInfo.method, bodyExpr));
             lines.push(`${pad}  _state._editing_id = null;`);
             lines.push(`${pad}} else {`);
-            lines.push(`${pad}  await fetch(${url}, { method: '${node.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).catch(e => console.error(e));`);
+            lines.push(fetchWithErrorCheck(url, node.method, bodyExpr));
             lines.push(`${pad}}`);
             return lines.join('\n');
           }
         }
       }
-      return `${pad}await fetch(${url}, { method: '${node.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).catch(e => console.error(e));`;
+      return fetchWithErrorCheck(url, node.method, bodyExpr);
     }
 
     case NodeType.COMPONENT_DEF: {
@@ -3136,8 +3144,39 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
       const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL);
       const asyncKw = hasApiCall ? 'async ' : '';
+
+      // Find POST/PUT API calls to determine which fields need validation
+      const postCalls = btn.body.filter(n => n.type === NodeType.API_CALL && (n.method === 'POST' || n.method === 'PUT'));
+      const fieldsToValidate = new Set();
+      for (const call of postCalls) {
+        if (call.fields) call.fields.forEach(f => fieldsToValidate.add(sanitizeName(f)));
+      }
+
       lines.push(`document.getElementById('${btnId}').addEventListener('click', ${asyncKw}function() {`);
-      lines.push(bodyCode);
+
+      // Client-side validation: check required fields aren't empty
+      if (fieldsToValidate.size > 0) {
+        const checks = [...fieldsToValidate].map(f =>
+          `    if (_state.${f} === '' || _state.${f} == null) { _toast('${f.replace(/_/g, ' ')} is required', 'error'); return; }`
+        );
+        lines.push(checks.join('\n'));
+      }
+
+      // Loading state: disable button + show loading text during async work
+      if (hasApiCall) {
+        lines.push(`  const _btn = document.getElementById('${btnId}');`);
+        lines.push(`  const _btnText = _btn.textContent;`);
+        lines.push(`  _btn.disabled = true;`);
+        lines.push(`  _btn.textContent = 'Loading...';`);
+        lines.push(`  try {`);
+        lines.push(bodyCode.split('\n').map(l => '  ' + l).join('\n'));
+        lines.push(`  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }`);
+        lines.push(`  _btn.disabled = false;`);
+        lines.push(`  _btn.textContent = _btnText;`);
+      } else {
+        lines.push(bodyCode);
+      }
+
       lines.push(`  _recompute();`);
       lines.push(`});`);
     }
