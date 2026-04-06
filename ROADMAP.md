@@ -1208,6 +1208,44 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 ---
 
+### Phase 39: Desktop Apps via Tauri
+
+Clear already compiles to a single HTML file with inline JS/CSS. Tauri wraps a single HTML file into a native desktop app (macOS, Windows, Linux) with a ~3MB binary. This is a natural fit — no Electron bloat, no Node runtime, just the compiled HTML inside a native webview.
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 30 | `build for desktop` target | Native desktop apps from Clear source | Compile todo app; `cargo tauri build` produces .exe/.app/.deb |
+| 31 | System tray / menu bar | Desktop-native UX (tray icon, native menus) | Clear syntax for `tray icon:` and `menu bar:` compiles to Tauri config |
+| 32 | File system access (native) | Desktop apps that read/write local files | `read file` / `write file` use Tauri fs API instead of browser shims |
+| 33 | Auto-update | Ship updates without manual reinstall | `auto update from 'https://releases.myapp.com'` compiles to Tauri updater config |
+
+**Phase 39 complete = `build for desktop` produces a native app. One Clear file → one binary.**
+
+---
+
+### Phase 40: Production Database Connectors
+
+`database is local memory` works for dev. For production, swap one line:
+
+```clear
+database is supabase              # Supabase (Postgres)
+database is planetscale           # PlanetScale (MySQL)
+database is turso                 # Turso (SQLite edge)
+```
+
+The compiler generates the same CRUD calls (`get all`, `save`, `delete`) but emits Supabase JS client / PlanetScale SDK / Turso client instead of the in-memory runtime. Zero code changes — just swap the database line.
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 34 | `database is supabase` | Production Postgres via Supabase JS | Contact Manager works with real Supabase project |
+| 35 | `database is planetscale` | Production MySQL via PlanetScale SDK | Same app, PlanetScale backend |
+| 36 | `database is turso` | Edge SQLite via Turso client | Same app, Turso backend |
+| 37 | Connection string from env | `database is supabase with env('SUPABASE_URL')` | Config-driven, no hardcoded keys |
+
+**Phase 40 complete = one-line database swap from dev to production.**
+
+---
+
 ### Remaining Playground Work
 
 | Feature | Status | Notes |

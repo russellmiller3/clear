@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Clear — Playground</title>
 <meta name="description" content="Try the Clear programming language in your browser. Write plain English, get production JavaScript, HTML, and Python.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%234ab8d8'/%3E%3Cstop offset='100%25' stop-color='%231a6a85'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M16 2L4 10v12l12 8 12-8V10L16 2z' fill='url(%23g)' opacity='0.9'/%3E%3Cpath d='M16 2L4 10l12 8 12-8L16 2z' fill='white' opacity='0.25'/%3E%3Cpath d='M4 10l12 8v12L4 22V10z' fill='%23000' opacity='0.1'/%3E%3C/svg%3E"/>
 
 <link href="daisyui.min.css" rel="stylesheet" type="text/css"/>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -92,9 +93,9 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
 #ed-ta::selection { background: rgba(30,106,138,.15); }
 
 /* ── Syntax highlighting ────────────────────────────────── */
-.kw  { color: #1a5a8a; font-weight: 500; }
-.str { color: #1a7a58; }
-.val { color: #7a6010; }
+.kw  { color: #145080; font-weight: 500; }
+.str { color: #0f5a3a; }
+.val { color: #6a5010; }
 .pth { color: #5a3a8a; }
 .cmt { color: var(--tx4); font-style: italic; }
 .op  { color: var(--tx3); }
@@ -161,6 +162,7 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
   <aside id="sidebar">
     <div id="sb-logo">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <svg width="20" height="20" viewBox="0 0 32 32" style="flex-shrink:0;"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4ab8d8"/><stop offset="100%" stop-color="#1a6a85"/></linearGradient></defs><path d="M16 2L4 10v12l12 8 12-8V10L16 2z" fill="url(#lg)" opacity="0.9"/><path d="M16 2L4 10l12 8 12-8L16 2z" fill="white" opacity="0.25"/><path d="M4 10l12 8v12L4 22V10z" fill="#000" opacity="0.1"/></svg>
         <span class="logo-word">Clear</span>
         <span class="logo-chip">v1.0</span>
       </div>
@@ -191,8 +193,8 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
         <span id="statusText"></span>
       </div>
       <div style="flex:1"></div>
-      <button id="compileBtn" class="btn btn-sm gap-1.5" style="font-family:'DM Sans',sans-serif;font-weight:700;background:#1e6a8a;color:#fff;border-color:#155878;">
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <button id="compileBtn" style="display:inline-flex;align-items:center;gap:6px;padding:6px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;letter-spacing:0.01em;background:linear-gradient(180deg,#2a7a9a 0%,#1a6a85 100%);color:#fff;border:1px solid #155a70;border-radius:6px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.1),inset 0 1px 0 rgba(255,255,255,0.12);transition:all 0.15s;">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.9"><polygon points="6 3 20 12 6 21 6 3"/></svg>
         Compile
       </button>
     </div>
@@ -214,11 +216,12 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
       <div id="out-pane">
         <div id="tab-bar">
           <button class="tab on" data-tab="preview">Preview</button>
-          <button class="tab" data-tab="js">JavaScript</button>
-          <button class="tab" data-tab="html">HTML</button>
-          <button class="tab" data-tab="css">CSS</button>
+          <button class="tab" data-tab="source">Source</button>
           <div class="tab-sp"></div>
           <button class="tab guide" data-tab="guide">Guide</button>
+          <button id="downloadBtn" class="tab" title="Download compiled HTML" style="display:none;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
         </div>
         <div id="prev-wrap"></div>
       </div>
@@ -235,8 +238,21 @@ try { const r = await fetch('./daisyui.min.css'); _daisyCSS = await r.text(); } 
 
 // ─── Examples ──────────────────────────────────────────────
 const EXAMPLES = {
-  'Sales Dashboard': `build for web
-theme 'midnight'
+  'Sales Dashboard': `# LAYOUT:
+# ┌─────────────┬──────────────────────────┐
+# │ Sidebar     │ Header        [Q4 2026]  │
+# │             ├──────────────────────────┤
+# │ Dashboard   │ ┌──────────┐ ┌─────────┐ │
+# │ Customers   │ │ Revenue  │ │ Deals   │ │
+# │ Invoices    │ │ $42,300  │ │  23     │ │
+# │ Settings    │ └──────────┘ └─────────┘ │
+# │             │ ┌──────────────────────┐ │
+# │             │ │ Recent Activity      │ │
+# │             │ └──────────────────────┘ │
+# └─────────────┴──────────────────────────┘
+
+build for web
+theme 'ivory'
 
 page 'Sales Dashboard' at '/':
   section 'Layout' with style app_layout:
@@ -278,9 +294,23 @@ page 'Sales Dashboard' at '/':
           text 'Beta Inc moved to negotiation stage'
           text 'Gamma Ltd requested a demo for next week'`,
 
-  'Contact Manager': `build for web and javascript backend
+  'Contact Manager': `# DATAFLOW:
+# ┌──────────┐  POST /api/contacts  ┌──────────┐  save  ┌──────────┐
+# │ Frontend │  ────────────────►  │ Backend  │  ───►  │    DB    │
+# │  (form)  │  ◄────────────────  │ (server) │  ◄───  │ (memory) │
+# └──────────┘  GET /api/contacts   └──────────┘  query └──────────┘
+#
+# page load ──► GET    ──► render table
+# [Save]    ──► POST   ──► save row ──► refresh
+# [Delete]  ──► DELETE ──► remove row ──► refresh
+
+build for web and javascript backend
 theme 'arctic'
 database is local memory
+
+# Full-stack CRUD app. Every button hits a real
+# API endpoint backed by an in-memory database.
+# Swap 'local memory' to 'supabase' for production.
 
 create a Contacts table:
   name, required
@@ -289,7 +319,6 @@ create a Contacts table:
   status, default 'new'
   created_at_date, auto
 
-# Allow the frontend to talk to the backend
 allow cross-origin requests
 
 when user calls GET /api/contacts:
@@ -302,6 +331,11 @@ when user calls POST /api/contacts sending contact_data:
     email is text, required, matches email
   new_contact = save contact_data as new Contact
   send back new_contact with success message
+
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
 
 page 'Contact Manager' at '/':
   on page load get contacts from '/api/contacts'
@@ -320,7 +354,23 @@ page 'Contact Manager' at '/':
 
   display contacts as table showing name, email, company, status`,
 
-  'Invoice Manager': `build for web and javascript backend
+  'Invoice Manager': `# DATAFLOW:
+# ┌──────────┐  POST /api/invoices  ┌──────────┐  save   ┌──────────┐
+# │  Form    │ ──────────────────► │ Backend  │ ──────► │    DB    │
+# │ (inputs) │ ◄────────────────── │ (server) │ ◄────── │ (memory) │
+# └──────────┘  GET /api/invoices   └──────────┘  query  └──────────┘
+#
+# LAYOUT:
+# ┌───────────────────────────────┐
+# │  New Invoice (card)           │
+# │  client · amount · due_date   │
+# │  [Create Invoice]             │
+# ├───────────────────────────────┤
+# │  Invoices (table)             │
+# │  client | amount | status     │
+# └───────────────────────────────┘
+
+build for web and javascript backend
 theme 'moss'
 database is local memory
 
@@ -361,7 +411,19 @@ page 'Invoices' at '/':
 
   display invoices as table showing client, amount, status, due_date`,
 
-  'SaaS Landing': `build for web
+  'SaaS Landing': `# LAYOUT:
+# ┌─────────────────────────────────────────┐
+# │            HERO (centered)              │
+# │  badge · headline · subhead · [CTA]     │
+# ├─────────────────────────────────────────┤
+# │       FEATURES (3-col grid, dark)       │
+# │  [8ms compile] [Readable] [AI-native]   │
+# ├─────────────────────────────────────────┤
+# │            CTA (centered)               │
+# │      headline · text · [button]         │
+# └─────────────────────────────────────────┘
+
+build for web
 theme 'ivory'
 
 page 'Clear Language' at '/':
@@ -389,7 +451,17 @@ page 'Clear Language' at '/':
     text 'No sign-up required. No credit card. Just write.'
     link 'Try the Playground' to '/playground'`,
 
-  'Lead Scorer': `build for javascript backend
+  'Lead Scorer': `# DATAFLOW:
+# ┌──────────┐ POST /api/leads ┌──────────────┐ ask ai ┌──────┐
+# │  Client  │ ──────────────► │ Lead Scorer  │ ─────► │  AI  │
+# └──────────┘                 │    (agent)   │ ◄───── │      │
+#                              └──────┬───────┘        └──────┘
+#                                     │ save
+#                              ┌──────▼───────┐
+#                              │   Leads DB   │
+#                              └──────────────┘
+
+build for javascript backend
 database is local memory
 
 create a Leads table:
@@ -422,7 +494,19 @@ when user calls GET /api/leads:
   all_leads = get all Leads
   send back all_leads`,
 
-  'Hiring Pipeline': `build for javascript backend
+  'Hiring Pipeline': `# DATAFLOW (3-agent chain):
+#
+# POST /api/evaluate
+# ┌──────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+# │  Client  │ ─► │   Screener   │ ─► │    Scorer    │ ─► │   Pipeline   │
+# └──────────┘    │  (validate)  │    │   (AI rate)  │    │ (AI summary) │
+#                 └──────────────┘    └──────────────┘    └──────┬───────┘
+#                                                                │ save
+#                                                         ┌──────▼───────┐
+#                                                         │ Candidates DB│
+#                                                         └──────────────┘
+
+build for javascript backend
 database is local memory
 
 create a Candidates table:
@@ -469,8 +553,8 @@ when user calls GET /api/candidates:
 };
 
 const DESC = {
-  'Sales Dashboard': 'Dark theme with sidebar + metric cards',
-  'Contact Manager': 'Full-stack CRUD \u2014 arctic theme',
+  'Sales Dashboard': 'Sidebar + metric cards \u2014 ivory theme',
+  'Contact Manager': 'Full-stack app with local database \u2014 real API, not just HTML',
   'Invoice Manager': 'Create invoices, track status \u2014 moss theme',
   'SaaS Landing': 'Hero + features + CTA \u2014 ivory theme',
   'Lead Scorer': 'AI agent with structured output',
@@ -555,7 +639,7 @@ function doCompile(manual) {
       statusBadge.className = 'status-err'; statusBadge.querySelector('.ok-dot').style.background = 'var(--red)';
       statusText.textContent = compiled.errors.length + ' error' + (compiled.errors.length === 1 ? '' : 's');
     } else {
-      const src = ta.value.split('\n').length, out = (compiled.javascript || compiled.html || '').split('\n').length;
+      const src = ta.value.split('\n').length, out = (compiled.html || compiled.javascript || '').split('\n').length;
       statusBadge.className = 'status-ok'; statusBadge.querySelector('.ok-dot').style.background = 'var(--green)';
       statusText.textContent = src + ' \u2192 ' + out + ' lines \u00b7 ' + ms + 'ms';
     }
@@ -565,10 +649,10 @@ function doCompile(manual) {
     statusText.textContent = 'Error';
   }
 
-  // On manual compile with JS tab, stream the output line by line
-  if (_isManualCompile && compiled && !compiled.errors.length && compiled.javascript) {
-    showTab('js');
-    streamCode(compiled.javascript);
+  // On manual compile, stream the compiled output line by line
+  if (_isManualCompile && compiled && !compiled.errors.length && (compiled.html || compiled.javascript)) {
+    showTab('source');
+    streamCode(compiled.html || compiled.javascript);
     return;
   }
   showTab(activeTab);
@@ -589,6 +673,10 @@ function showTab(tab) {
 
   if (tab === 'guide') { prevWrap.innerHTML = renderGuide(); return; }
 
+  // Show/hide download button
+  const dlBtn = document.getElementById('downloadBtn');
+  dlBtn.style.display = (compiled.html && !compiled.errors.length) ? '' : 'none';
+
   if (tab === 'preview') {
     if (compiled.html) {
       let html = compiled.html;
@@ -601,9 +689,13 @@ function showTab(tab) {
     } else {
       prevWrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx4);font-size:13px;">No preview available</div>';
     }
+  } else if (tab === 'source') {
+    // Single compiled HTML file — the actual build output
+    const source = compiled.html || compiled.javascript || '';
+    prevWrap.innerHTML = '<pre class="code-out">' + esc(source || 'No output.') + '</pre>';
   } else {
-    const code = tab === 'js' ? compiled.javascript : tab === 'html' ? compiled.html : compiled.css;
-    prevWrap.innerHTML = '<pre class="code-out">' + esc(code || 'No ' + tab + ' output.') + '</pre>';
+    const code = '';
+    prevWrap.innerHTML = '<pre class="code-out">' + esc(code || 'No output.') + '</pre>';
   }
 }
 
@@ -771,12 +863,12 @@ function loadExample(name) {
     a.classList.toggle('on', a.querySelector('.ex-name')?.textContent === name);
   });
   sync();
-  doCompile();
+  compiled = null;
+  showTab('preview');
 }
 
 // ─── Events ────────────────────────────────────────────────
-let timer;
-ta.addEventListener('input', () => { sync(); clearTimeout(timer); timer = setTimeout(doCompile, 400); });
+ta.addEventListener('input', () => { sync(); });
 ta.addEventListener('scroll', () => { hl.scrollTop = ta.scrollTop; });
 ta.addEventListener('keydown', e => {
   if (e.key !== 'Tab') return;
@@ -790,6 +882,16 @@ ta.addEventListener('keydown', e => {
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 document.getElementById('compileBtn').addEventListener('click', () => doCompile(true));
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  if (!compiled || !compiled.html) return;
+  const blob = new Blob([compiled.html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (activeExample || 'app').toLowerCase().replace(/\s+/g, '-') + '.html';
+  a.click();
+  URL.revokeObjectURL(url);
+});
 
 // ─── Stream code output (line-by-line reveal) ──────────────
 function streamCode(code) {
@@ -800,16 +902,16 @@ function streamCode(code) {
   prevWrap.innerHTML = '';
   prevWrap.appendChild(pre);
 
-  // Switch to JS tab visually
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'js'));
-  activeTab = 'js';
+  // Switch to Source tab visually
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'source'));
+  activeTab = 'source';
 
   let i = 0;
-  const interval = Math.max(8, Math.min(30, 800 / lines.length)); // 800ms total, adaptive
+  // Slower animation: ~3 seconds total, 1-2 lines at a time so users can watch it build
+  const interval = Math.max(20, Math.min(60, 3000 / lines.length));
+  const batch = Math.max(1, Math.ceil(lines.length / 150));
   const timer = setInterval(() => {
     if (i >= lines.length) { clearInterval(timer); return; }
-    // Add batch of lines for speed
-    const batch = Math.ceil(lines.length / 40);
     for (let b = 0; b < batch && i < lines.length; b++, i++) {
       pre.textContent += (i > 0 ? '\n' : '') + lines[i];
     }
