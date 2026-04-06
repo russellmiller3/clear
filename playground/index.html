@@ -169,6 +169,7 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
         <span class="logo-chip">v1.0</span>
       </div>
       <p class="logo-sub">Write plain English. Compile to production JavaScript, Python, and HTML.</p>
+      <p class="logo-sub" style="margin-top:6px;font-size:11px;line-height:1.5;color:var(--tx3);">AI-native language with built-in agents. Write <code style="font-size:10px;background:var(--surf2);padding:1px 4px;border-radius:3px;">ask ai</code> and ship.</p>
     </div>
     <div id="sb-menu">
       <span class="menu-lbl">Examples</span>
@@ -179,7 +180,11 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
       <p class="tip">&rarr; Type a todo and click Add</p>
       <p class="tip">&rarr; Switch 'midnight' to 'ivory'</p>
       <p class="tip">&rarr; Check the JavaScript tab</p>
-      <p class="stats">1005 tests &middot; 0 deps &middot; Browser-only</p>
+      <p class="stats">1019 tests &middot; 0 deps &middot; Browser-only</p>
+      <div id="aiCounter" style="margin-top:8px;font-size:10px;color:var(--tx4);display:none;">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:4px;vertical-align:middle;"></span>
+        AI demo: <strong id="aiRemaining">3</strong> calls left
+      </div>
     </div>
   </aside>
 
@@ -612,12 +617,34 @@ const prevWrap = document.getElementById('prev-wrap');
 const statusBadge = document.getElementById('statusBadge');
 const statusText = document.getElementById('statusText');
 
+// ─── AI demo counter ──────────────────────────────────────
+const aiCounterEl = document.getElementById('aiCounter');
+const aiRemainingEl = document.getElementById('aiRemaining');
+let aiCallsRemaining = 3;
+
+// Show counter when an agent example is loaded
+function updateAICounterVisibility() {
+  const code = ta.value || '';
+  const hasAgent = code.includes('agent ') || code.includes('ask ai');
+  aiCounterEl.style.display = hasAgent ? 'block' : 'none';
+}
+
+// Called by browser server when an AI proxy call completes
+window._onAICallUsed = function(remaining) {
+  aiCallsRemaining = remaining;
+  aiRemainingEl.textContent = remaining;
+  if (remaining <= 0) {
+    aiCounterEl.innerHTML = '<span style="color:var(--red);">AI demo limit reached.</span> <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent);text-decoration:underline;font-size:10px;">Get your own key</a>';
+  }
+};
+
 // ─── Editor sync ───────────────────────────────────────────
 function sync() {
   const val = ta.value;
   hl.innerHTML = val.split('\n').map(tokenizeLine).join('\n');
   const count = val.split('\n').length;
   lnums.innerHTML = Array.from({length: count}, (_, i) => '<div class="ln">' + (i+1) + '</div>').join('');
+  updateAICounterVisibility();
 }
 
 // ─── Build sidebar ─────────────────────────────────────────
