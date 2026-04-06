@@ -2167,6 +2167,25 @@ function _compileNodeInner(node, ctx) {
       } else {
         bodyExpr = '_state';
       }
+      // Auto-upsert: if this is a POST and a matching PUT/PATCH endpoint exists,
+      // check _editing_id to decide whether to create or update
+      if (node.method === 'POST' && ctx.updateEndpoints) {
+        const postMatch = node.url.match(/\/api\/(\w+)$/);
+        if (postMatch) {
+          const resource = postMatch[1].toLowerCase();
+          const upInfo = ctx.updateEndpoints[resource];
+          if (upInfo) {
+            const lines = [];
+            lines.push(`${pad}if (_state._editing_id) {`);
+            lines.push(`${pad}  await fetch(${JSON.stringify(upInfo.url)} + _state._editing_id, { method: '${upInfo.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).catch(e => console.error(e));`);
+            lines.push(`${pad}  _state._editing_id = null;`);
+            lines.push(`${pad}} else {`);
+            lines.push(`${pad}  await fetch(${url}, { method: '${node.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).catch(e => console.error(e));`);
+            lines.push(`${pad}}`);
+            return lines.join('\n');
+          }
+        }
+      }
       return `${pad}await fetch(${url}, { method: '${node.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).catch(e => console.error(e));`;
     }
 
@@ -2855,6 +2874,34 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     !(n.type === NodeType.ASSIGN && n.expression && literalTypes.has(n.expression.type))
   );
 
+  // Detect DELETE, PUT, and GET endpoints for auto-generating per-row action buttons
+  const deleteEndpoints = {};
+  const updateEndpoints = {};
+  const getRefreshUrls = {};
+  function scanForEndpoints(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.ENDPOINT && n.path) {
+        const match = n.path.match(/\/api\/(\w+)\/:id/);
+        if (match) {
+          const resource = match[1].toLowerCase();
+          if (n.method === 'DELETE') deleteEndpoints[resource] = n.path.replace('/:id', '/');
+          if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method };
+        }
+      }
+      if (n.type === NodeType.API_CALL && n.method === 'GET' && n.targetVar) {
+        getRefreshUrls[sanitizeName(n.targetVar).toLowerCase()] = { url: n.url, varName: sanitizeName(n.targetVar) };
+      }
+      if (n.body) scanForEndpoints(n.body);
+    }
+  }
+  scanForEndpoints(body);
+  scanForEndpoints(flatNodes);
+
+  // Add _editing_id to state when update endpoints exist
+  if (Object.keys(updateEndpoints).length > 0) {
+    stateDefaults['_editing_id'] = 'null';
+  }
+
   const stateEntries = Object.entries(stateDefaults).map(([k, v]) => `  ${k}: ${v}`).join(',\n');
   lines.push(`let _state = {`);
   if (stateEntries) lines.push(stateEntries);
@@ -2968,30 +3015,20 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     }
   }
 
-  // Detect DELETE endpoints for auto-generating per-row delete buttons
-  const deleteEndpoints = {};
-  function scanForEndpoints(nodes) {
-    for (const n of nodes) {
-      if (n.type === NodeType.ENDPOINT && n.method === 'DELETE' && n.path) {
-        // Extract resource name from path like /api/contacts/:id
-        const match = n.path.match(/\/api\/(\w+)\/:id/);
-        if (match) deleteEndpoints[match[1].toLowerCase()] = n.path.replace('/:id', '/');
-      }
-      if (n.body) scanForEndpoints(n.body);
-    }
-  }
-  scanForEndpoints(body);
-
   // Display updates
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
   for (const disp of displayNodes) {
     const outputId = disp.ui._resolvedId || disp.ui.id;
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
-      // Check if this table's data source has a matching DELETE endpoint
+      // Check if this table's data source has matching CRUD endpoints
       const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
-      const deleteUrl = deleteEndpoints[varName.toLowerCase()];
+      const resourceKey = varName.toLowerCase();
+      const deleteUrl = deleteEndpoints[resourceKey];
+      const updateInfo = updateEndpoints[resourceKey];
       const hasDelete = !!deleteUrl;
+      const hasUpdate = !!updateInfo;
+      const hasActions = hasDelete || hasUpdate;
 
       // Reactive table: render array of objects as HTML table
       lines.push(`  {`);
@@ -3002,12 +3039,25 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         : 'Object.keys(_data[0])';
       lines.push(`    if (_tableEl && Array.isArray(_data) && _data.length > 0) {`);
       lines.push(`      const _keys = ${colsCode};`);
-      if (hasDelete) {
-        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';`);
-        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td><button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button></td>' + '</tr>').join('');`);
+      const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
+      const tdClass = 'text-sm text-base-content';
+      const trClass = 'border-base-300 hover:bg-base-200 transition-colors';
+      const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
+      const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
+      if (hasActions) {
+        let actionBtns = '';
+        if (hasUpdate) {
+          actionBtns += `'<button class="btn btn-ghost btn-xs" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`;
+        }
+        if (hasDelete) {
+          if (actionBtns) actionBtns += ` + ' ' + `;
+          actionBtns += `'<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>'`;
+        }
+        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = ${headCols} + '<th class="${thClass}"></th>';`);
+        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="${trClass}">' + ${dataCols} + '<td class="text-right">' + ${actionBtns} + '</td>' + '</tr>').join('');`);
       } else {
-        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');`);
-        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');`);
+        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = ${headCols};`);
+        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="${trClass}">' + ${dataCols} + '</tr>').join('');`);
       }
       lines.push(`    } else if (_tableEl) {`);
       lines.push(`      _tableEl.querySelector('thead tr').innerHTML = '';`);
@@ -3051,7 +3101,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     for (const btn of buttonNodes) {
       const btnId = `btn_${sanitizeName(btn.label.replace(/\s+/g, '_'))}`;
       const btnDeclared = new Set(recomputeDeclared);
-      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web' };
+      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
       const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL);
       const asyncKw = hasApiCall ? 'async ' : '';
@@ -3060,6 +3110,56 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`  _recompute();`);
       lines.push(`});`);
     }
+  }
+
+  // 6b. Table action button handlers (delete/edit via event delegation)
+  for (const disp of displayNodes) {
+    if (disp.format !== 'table') continue;
+    const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
+    const resourceKey = varName.toLowerCase();
+    const deleteUrl = deleteEndpoints[resourceKey];
+    const updateInfo = updateEndpoints[resourceKey];
+    const refreshInfo = getRefreshUrls[resourceKey];
+    const outputId = disp.ui._resolvedId || disp.ui.id;
+    if (!deleteUrl && !updateInfo) continue;
+
+    lines.push('');
+    lines.push(`// --- Table action handlers for ${varName} ---`);
+    lines.push(`document.getElementById('${outputId}_table').addEventListener('click', async function(e) {`);
+
+    if (deleteUrl) {
+      lines.push(`  const deleteBtn = e.target.closest('[data-delete-id]');`);
+      lines.push(`  if (deleteBtn) {`);
+      lines.push(`    const id = deleteBtn.dataset.deleteId;`);
+      lines.push(`    await fetch(${JSON.stringify(deleteUrl)} + id, { method: 'DELETE' }).catch(e => console.error(e));`);
+      if (refreshInfo) {
+        lines.push(`    _state.${refreshInfo.varName} = await fetch(${JSON.stringify(refreshInfo.url)}).then(r => r.json()).catch(e => { console.error(e); return _state.${refreshInfo.varName}; });`);
+      }
+      lines.push(`    _recompute();`);
+      lines.push(`    return;`);
+      lines.push(`  }`);
+    }
+
+    if (updateInfo) {
+      lines.push(`  const editBtn = e.target.closest('[data-edit-id]');`);
+      lines.push(`  if (editBtn) {`);
+      lines.push(`    const id = editBtn.dataset.editId;`);
+      lines.push(`    const row = JSON.parse(editBtn.dataset.editRow);`);
+      // Populate the form inputs with the row data for editing
+      const colsForEdit = disp.columns || [];
+      for (const col of colsForEdit) {
+        const sName = sanitizeName(col);
+        if (stateVarNames.has(sName)) {
+          lines.push(`    _state.${sName} = row.${sName} != null ? row.${sName} : '';`);
+        }
+      }
+      lines.push(`    _state._editing_id = id;`);
+      lines.push(`    _recompute();`);
+      lines.push(`    return;`);
+      lines.push(`  }`);
+    }
+
+    lines.push(`});`);
   }
 
   // 7. On page load handlers (if any, these call _recompute at the end)
