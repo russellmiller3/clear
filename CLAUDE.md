@@ -37,6 +37,12 @@ Compiles plain English to JavaScript, Python, and HTML.
 - **Deterministic.** Same input = same output. No AI in the compile step.
 - **Compiler accumulates quality.** Fix a bug once, every app gets the fix on recompile.
 
+## File TOC Rule (MANDATORY)
+Both `parser.js` and `compiler.js` have a TABLE OF CONTENTS at the top.
+**Every time you change either file** — adding, removing, or moving a section —
+update the TOC to match. Use section names, not line numbers (lines drift).
+Read the TOC before working in the file so you know where things are.
+
 ## Compiler Architecture
 - **4 passes:** tokenize -> parse -> validate -> compile
 - **Context object:** `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
