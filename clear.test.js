@@ -1364,7 +1364,7 @@ page 'App' at '/':
     heading 'Welcome'`;
     const result = compileProgram(source);
     expect(result.html).toContain('flex flex-col items-center');
-    expect(result.html).toContain('font-display text-5xl');
+    expect(result.html).toContain('font-display text-6xl');
   });
 
   it('full dashboard layout compiles end-to-end', () => {

@@ -432,10 +432,15 @@ page 'Invoices' at '/':
   'SaaS Landing': `# LAYOUT:
 # ┌─────────────────────────────────────────┐
 # │            HERO (centered)              │
-# │  badge · headline · subhead · [CTA]     │
+# │  badge · headline · subhead             │
+# │  [CTA primary] [CTA ghost]             │
 # ├─────────────────────────────────────────┤
-# │       FEATURES (3-col grid, dark)       │
-# │  [8ms compile] [Readable] [AI-native]   │
+# │       FEATURES (3-col, dark bg)         │
+# │  centered heading + subtitle            │
+# │  [Speed] [Readable] [AI-native]         │
+# ├─────────────────────────────────────────┤
+# │         STATS (3-col, light)            │
+# │  1031 tests · 0 deps · 8ms compile      │
 # ├─────────────────────────────────────────┤
 # │            CTA (centered)               │
 # │      headline · text · [button]         │
@@ -448,25 +453,38 @@ page 'Clear Language' at '/':
   section 'Hero' with style page_hero:
     small text 'Now in public beta'
     heading 'Write English. Ship apps.'
-    subheading 'Clear compiles plain English to production JavaScript, Python, and HTML. No framework. No config.'
+    subheading 'Clear compiles plain English to production JavaScript, Python, and HTML. No framework. No config. No learning curve.'
     link 'Start Building Free' to '/playground'
 
   section 'Features' with style page_section_dark:
     heading 'Why developers switch to Clear'
+    subheading 'Every feature exists to eliminate busywork between your idea and a running app.'
     section 'Grid' as three column layout:
-      section 'F1' with style card:
+      section 'Speed' with style card:
         heading '8ms compile'
-        text 'From source to running app in under 8 milliseconds. No build step, no bundler.'
-      section 'F2' with style card:
+        text 'From source to running app in under 8 milliseconds. No build step, no bundler, no waiting.'
+      section 'Output' with style card:
         heading 'Readable output'
-        text 'The compiled JavaScript is clean, readable, and yours. Not minified garbage.'
-      section 'F3' with style card:
-        heading 'AI-native'
-        text 'Built-in AI agents with structured output. Write an agent in 5 lines.'
+        text 'The compiled JavaScript is clean, readable, and yours. Not minified garbage you cannot debug.'
+      section 'Agents' with style card:
+        heading 'AI-native agents'
+        text 'Built-in AI agents with structured output. Write an agent in 5 lines, deploy immediately.'
+
+  section 'Stats' with style page_stats:
+    section 'Numbers' as three column layout:
+      section 'S1' text centered:
+        heading '1,031'
+        small text 'Tests passing'
+      section 'S2' text centered:
+        heading '0'
+        small text 'Dependencies'
+      section 'S3' text centered:
+        heading '8ms'
+        small text 'Compile time'
 
   section 'CTA' with style page_hero:
     heading 'Your next app starts with one sentence.'
-    text 'No sign-up required. No credit card. Just write.'
+    text 'No sign-up. No credit card. No config file. Just write what you want and hit compile.'
     link 'Try the Playground' to '/playground'`,
 
   'Lead Scorer': `# DATAFLOW:
