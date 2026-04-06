@@ -61,13 +61,17 @@ Compiles plain English to JavaScript, Python, and HTML.
 - **Built-in presets:** `page_hero`, `page_section`, `page_section_dark`, `page_card`, `app_layout`, `app_sidebar`, `app_main`, `app_content`, `app_header`, `app_card`
 - **10 hard rules:** One accent color, one btn-primary per section, hero <= 10 words, 8pt grid, cards bg OR border not both, etc.
 
-## Before Adding New Syntax
-1. Write 3+ example programs using the proposed syntax
-2. Say each line out loud (phone test)
-3. Check synonyms.js for collisions
-4. Check if multi-word phrase appears inside any existing pattern
-5. Write failing tests
-6. Then implement
+## Before Adding New Features or Syntax (MANDATORY)
+1. Use `/write-plan` to create an implementation plan
+2. Use `/red-team-plan` to stress-test the plan before coding
+3. Write 3+ example programs using the proposed syntax
+4. Say each line out loud (phone test)
+5. Check synonyms.js for collisions
+6. Check if multi-word phrase appears inside any existing pattern
+7. Write failing tests
+8. Then implement
+
+Always use these skills — never jump straight to coding a new feature.
 
 ## Compiler is Closed Source
 Do not make this repo public. The playground uses an obfuscated bundle
