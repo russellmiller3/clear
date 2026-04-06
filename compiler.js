@@ -235,9 +235,15 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
     for (const err of nestedErrors) {
       errors.push({ line: node.line, message: `In module '${moduleName}': ${err.message}` });
     }
-    const importedNodes = moduleAst.body.filter(n =>
-      n.type === NodeType.FUNCTION_DEF || n.type === NodeType.ASSIGN || n.type === NodeType.COMPONENT_DEF
-    );
+    // For inline-all (use everything from), import ALL node types.
+    // For selective/namespaced imports, only functions/assigns/components.
+    const importedNodes = node.importAll
+      ? moduleAst.body.filter(n =>
+          n.type !== NodeType.TARGET && n.type !== NodeType.THEME && n.type !== NodeType.DATABASE_DECL
+        )
+      : moduleAst.body.filter(n =>
+          n.type === NodeType.FUNCTION_DEF || n.type === NodeType.ASSIGN || n.type === NodeType.COMPONENT_DEF
+        );
 
     // Inline-all import: use everything from 'helpers'
     if (node.importAll) {

@@ -11112,4 +11112,80 @@ page 'App' at '/':
   });
 });
 
+// =============================================================================
+// MULTI-FILE APP ARCHITECTURE
+// =============================================================================
+
+describe('Multi-file app - full-stack split', () => {
+  const resolver = (name) => {
+    if (name === 'backend') return `when user calls GET /api/users:
+  all_users = get all Users
+  send back all_users
+
+when user calls POST /api/users sending user_data:
+  requires auth
+  validate user_data:
+    name is text, required
+  new_user = save user_data as new User
+  send back new_user with success message`;
+    if (name === 'frontend') return `page 'Users' at '/':
+  on page load get users from '/api/users'
+  'Name' is a text input saved as a name
+  button 'Add User':
+    send name to '/api/users'
+    get users from '/api/users'
+    name is ''
+  display users as table showing name`;
+    return null;
+  };
+
+  it('compiles a multi-file full-stack app', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Users table:
+  name, required
+allow cross-origin requests
+use everything from 'backend'
+use everything from 'frontend'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    // Backend endpoints in serverJS (full-stack splits backend from frontend)
+    expect(result.serverJS).toContain("app.get('/api/users'");
+    expect(result.serverJS).toContain("app.post('/api/users'");
+    // Frontend compiled into HTML
+    expect(result.html).toContain('input');
+    expect(result.html).toContain('btn_Add_User');
+  });
+
+  it('compiles backend-only module import', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+use everything from 'backend'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS || result.javascript).toContain("app.get('/api/users'");
+  });
+
+  it('detects missing module with helpful error', () => {
+    const src = `build for javascript backend\nuse everything from 'nonexistent'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('Could not find module');
+  });
+
+  it('detects circular imports', () => {
+    const circularResolver = (name) => {
+      if (name === 'a') return "use everything from 'b'\ndouble(x) = x * 2";
+      if (name === 'b') return "use everything from 'a'\ntriple(x) = x * 3";
+      return null;
+    };
+    const src = `build for javascript backend\nuse everything from 'a'`;
+    const result = compileProgram(src, { moduleResolver: circularResolver });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('Circular');
+  });
+});
+
 run();
