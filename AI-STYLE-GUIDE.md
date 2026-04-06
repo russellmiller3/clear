@@ -286,6 +286,85 @@ If the program uses a database adapter, add a Database section at the top.
 If there's no backend, skip the Backend section. The comments are for the
 human reading the file -- the compiler ignores them.
 
+## Multi-File Architecture (When Apps Get Complex)
+
+**First decision: is this a simple or complex app?**
+
+| Simple (one file) | Complex (multiple files) |
+|-------------------|------------------------|
+| 1 page | 3+ pages |
+| 1-2 database tables | 4+ tables |
+| < 100 lines | > 150 lines |
+| No reusable components | Shared components across pages |
+| 1 agent or none | Multiple agents |
+
+**If simple, keep everything in one file.** One file is always easier to read,
+debug, and hand to someone new. Don't split prematurely.
+
+**If complex, use this file structure:**
+
+```
+my-app/
+  main.clear           # Build target, database, shared config
+  backend.clear         # All API endpoints
+  frontend.clear        # All pages and UI
+  components.clear      # Reusable UI components (if needed)
+  agents.clear          # AI agents (if needed)
+```
+
+**Rules for splitting:**
+
+1. **`main.clear` is the entry point.** It has `build for`, `database is`,
+   `create a X table`, `allow cross-origin requests`, and `use` imports.
+   It's the table of contents for the whole app.
+
+2. **Split by concern, not by page.** All endpoints go in `backend.clear`,
+   all pages go in `frontend.clear`. Don't make one file per page — that
+   scatters related code.
+
+3. **Extract a component when it's used 3+ times.** Not before. Three
+   similar sections of HTML is better than a premature abstraction. When
+   you do extract, put it in `components.clear`.
+
+4. **Agents get their own file when there are 2+.** One agent can live
+   in `backend.clear`. Multiple agents go in `agents.clear`.
+
+5. **Never split a table definition from its endpoints.** If `backend.clear`
+   has `when user calls GET /api/users`, then `main.clear` must have
+   `create a Users table`. The reader finds the schema in main, the
+   logic in backend.
+
+**Example main.clear for a complex app:**
+```clear
+build for web and javascript backend
+
+# Database
+database is local memory
+
+create a Users table:
+  name, required
+  email, required, unique
+  role, default 'member'
+
+create a Projects table:
+  title, required
+  owner, required
+  status, default 'active'
+
+# Config
+allow cross-origin requests
+log every request
+
+# Import modules
+use 'backend'
+use 'frontend'
+```
+
+**When in doubt, keep it in one file.** Splitting adds navigation overhead.
+A 200-line file with clear section comments is better than 5 files with
+40 lines each where the reader has to jump between files to understand
+the flow.
+
 ## Infrastructure Lines
 
 **Always explain infrastructure lines with a comment.**
