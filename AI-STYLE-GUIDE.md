@@ -35,12 +35,12 @@ to match. If the code disagrees with the diagram, the diagram wins.
 ```
 # DATAFLOW:
 # ┌──────────┐    POST /api/contacts    ┌──────────┐    save    ┌────────┐
-# │ Frontend │ ──────────────────────► │ Backend  │ ────────► │   DB   │
-# │  (form)  │ ◄────────────────────── │ (server) │ ◄──────── │(memory)│
-# └──────────┘    GET /api/contacts     └──────────┘   query   └────────┘
+# │ Frontend │ ──────────────────────> │ Backend  │ ────────> │   DB   │
+# │  (form)  │ <────────────────────── │ (server) │ <──────── │(memory)│
+# └──────────┘    GET /api/contacts    └──────────┘   query   └────────┘
 #      │                                     │
-#      │  on page load ──► GET ──► table     │  DELETE /api/contacts/:id
-#      │  button click ──► POST ──► refresh  │  ──► remove row ──► refresh
+#      │  on page load --> GET --> table      │  DELETE /api/contacts/:id
+#      │  button click --> POST --> refresh   │  --> remove row --> refresh
 ```
 
 **Landing page section diagram** — for marketing/content pages:
@@ -62,11 +62,11 @@ to match. If the code disagrees with the diagram, the diagram wins.
 ```
 # DATAFLOW:
 # ┌────────┐  POST /api/leads  ┌───────────────┐  ask ai  ┌──────┐
-# │ Client │ ────────────────► │ Lead Scorer   │ ───────► │  AI  │
-# └────────┘                   │   (agent)     │ ◄─────── │      │
+# │ Client │ ────────────────> │ Lead Scorer   │ ───────> │  AI  │
+# └────────┘                   │   (agent)     │ <─────── │      │
 #                              └───────┬───────┘          └──────┘
 #                                      │ save
-#                              ┌───────▼───────┐
+#                              ┌───────v───────┐
 #                              │   Leads DB    │
 #                              └───────────────┘
 ```
@@ -91,7 +91,7 @@ before committing.
 #
 # Step 4: Arrows between boxes — use consistent spacing
 #   ┌────────┐  label  ┌───────────────┐
-#   │ Client │ ──────► │ Lead Scorer   │
+#   │ Client │ ──────> │ Lead Scorer   │
 #   └────────┘         └───────────────┘
 ```
 
@@ -101,7 +101,7 @@ before committing.
 3. **Every row inside a box must be the same character width.** Count characters. Pad with spaces.
 4. Preview in monospace before committing — if edges don't line up, fix the padding
 5. Label every section, data source, and API endpoint
-6. Show the direction of data flow with arrows (`──►`, `◄──`, `─►`, `▼`)
+6. Show the direction of data flow with arrows (`──>`, `<──`, `->`, `v`). Use plain ASCII `>`, `<`, `v` — never Unicode arrows (`►`, `◄`, `▼`) which cause width mismatches.
 7. Keep it under 15 lines — this is a map, not documentation
 8. **The diagram is the source of truth.** Update it before changing code
 

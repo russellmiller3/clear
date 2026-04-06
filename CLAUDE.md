@@ -112,4 +112,33 @@ Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
 - DaisyUI v5 themes use `--color-base-100: oklch(%)` format, not old v4 vars
 - `ui's Card()` in web target crashes buildHTML (namespaced component calls)
 
+## Explain Your Thinking Rule
+When making compiler changes, write plain English explanations of what you're doing and why inline with the work. Don't just code silently. The human reviewing this needs to follow the reasoning, not reverse-engineer it from diffs.
+
+## Current Work: CRUD Table Action Buttons (Delete + Edit/Upsert)
+
+### What we're building
+When a Clear app defines a table (`display contacts as table`) AND has DELETE or PUT endpoints for that resource, the compiler should automatically add action buttons (Delete, Edit) to each table row. No extra Clear syntax needed — the compiler infers it from the endpoints that already exist.
+
+### Why this design
+Clear's philosophy is "write the obvious thing, compiler does the wiring." A user who writes a DELETE endpoint and a table displaying that data obviously wants delete buttons on the rows. Making them write extra UI code for that would be un-Clear.
+
+### How it works (the pipeline)
+
+1. **Endpoint scanning** (`compiler.js`, before state init): We scan all parsed nodes looking for DELETE, PUT, and PATCH endpoints that match the pattern `/api/{resource}/:id`. We also scan for GET API calls to know the refresh URL for each resource. This runs before state initialization so we can add `_editing_id` to the state object when update endpoints exist.
+
+2. **Table rendering** (inside `_recompute()`): When rendering a table for variable `contacts`, we check if `deleteEndpoints['contacts']` or `updateEndpoints['contacts']` exist. If so, we add an actions column with Delete and/or Edit buttons. Delete buttons get `data-delete-id`, Edit buttons get `data-edit-id` and `data-edit-row` (the full row as JSON).
+
+3. **Event delegation** (after button handlers): Instead of attaching listeners to each button (which would break on re-render since innerHTML replaces them), we use event delegation on the table element. One listener catches all clicks and checks `e.target.closest('[data-delete-id]')` or `[data-edit-id]`.
+
+4. **Delete flow**: Click delete button → fetch DELETE to `/api/contacts/{id}` → re-fetch GET `/api/contacts` → `_recompute()` to refresh the table.
+
+5. **Edit/Upsert flow**: Click edit button → populate form inputs from row data via `_state` → set `_editing_id`. When the Save button fires its POST, the API_CALL compiler checks `_state._editing_id`. If set, it sends PUT to `/api/contacts/{id}` instead of POST to `/api/contacts`, then clears `_editing_id`. This turns any POST button into an upsert button automatically when a PUT endpoint exists.
+
+### Key decisions
+- **Event delegation over per-button listeners**: innerHTML replaces the DOM on every recompute, so individual listeners would be lost. Delegation on the parent table survives re-renders.
+- **Auto-upsert via context**: We pass `updateEndpoints` through the compiler context (`ctx.updateEndpoints`) so the generic `API_CALL` case can check it. This avoids special-casing button compilation.
+- **Endpoint scan moved before state init**: We need to know about update endpoints before emitting `_state = {...}` so we can include `_editing_id: null` in the initial state.
+- **Refresh via GET re-fetch**: After delete/edit, we re-fetch the full list rather than optimistically removing the row. Simpler, correct, matches how the existing button handlers work (they also re-fetch after POST).
+
 That's it. The compiler has no build step, no config files, no framework. `node clear.test.js` runs everything.
