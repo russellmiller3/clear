@@ -11188,4 +11188,85 @@ use everything from 'backend'`;
   });
 });
 
+describe('Supabase adapter - parsing and scaffold', () => {
+  it('parses database is supabase', () => {
+    const ast = parse("database is supabase");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.DATABASE_DECL);
+    expect(ast.body[0].backend).toBe('supabase');
+  });
+
+  it('emits createClient import for supabase backend', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('createClient');
+    expect(result.javascript).toContain('SUPABASE_URL');
+    expect(result.javascript).toContain('SUPABASE_ANON_KEY');
+  });
+
+  it('does not require db runtime for supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain("require('./clear-runtime/db')");
+  });
+});
+
+describe('Supabase adapter - CRUD compilation', () => {
+  it('compiles get all to supabase.from().select()', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').select('*')");
+  });
+
+  it('compiles find one by id to .eq().single()', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts/:id:\n  define contact as: look up records in Contacts table where id is incoming's id\n  send back contact`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain(".eq('id'");
+    expect(result.javascript).toContain('.single()');
+  });
+
+  it('compiles save as insert to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls POST /api/contacts sending contact_data:\n  new_contact = save contact_data as new Contact\n  send back new_contact with success message`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').insert");
+    expect(result.javascript).toContain('.select().single()');
+  });
+
+  it('compiles update to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls PUT /api/contacts/:id sending update_data:\n  requires auth\n  save update_data to Contacts\n  send back 'updated'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').update");
+  });
+
+  it('compiles delete to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls DELETE /api/contacts/:id:\n  requires auth\n  delete the Contact with this id\n  send back 'deleted' with success message`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').delete()");
+    expect(result.javascript).toContain(".eq('id'");
+  });
+
+  it('compiles data shape as comment for supabase (no db.createTable)', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('must exist in Supabase');
+    expect(result.javascript).not.toContain('db.createTable');
+  });
+
+  it('does not affect local memory compilation', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('db.findAll');
+    expect(result.javascript).not.toContain('supabase');
+  });
+});
+
 run();
