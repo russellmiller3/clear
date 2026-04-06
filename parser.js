@@ -12,6 +12,48 @@
 // Errors are first-class: every error message tells the user what to DO,
 // not what they did wrong. Every error includes an example.
 //
+// !! MAINTENANCE RULE: Update this TOC whenever you add, remove, or move
+// !! a section. Use section names (not line numbers) since lines drift.
+//
+// TABLE OF CONTENTS:
+//   AST NODE TYPES ..................... NodeType enum + builder helpers
+//   PARSER ............................ parse(), parseConfigBlock(), parseBlock()
+//   BLOCK-LEVEL PARSERS ............... parseComponentDef, parseFunctionDef, parseAgent,
+//                                      parseMatch, parseIfBlock, parseRepeatLoop,
+//                                      parseForEachLoop, parseWhileLoop
+//   USE / IMPORT MODULES .............. parseUse()
+//   PAGE DECLARATION .................. parsePage()
+//   SECTION ........................... parseSection()
+//   STYLE DEF ......................... parseStyleDef()
+//   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
+//   STATIC CONTENT ELEMENTS ........... parseContent()
+//   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
+//   CRUD OPERATIONS ................... parseSave, parseRemoveFrom, parseDefineAs,
+//                                      parseLookUpAssignment, parseSaveAssignment
+//   TEST BLOCKS ....................... parseTestDef(), parseExpect()
+//   ASK FOR (legacy) .................. parseAskFor()
+//   DISPLAY ........................... parseDisplay() — includes "with delete/edit"
+//   BUTTON ............................ parseButton()
+//   ENDPOINT .......................... parseEndpoint()
+//   ADVANCED FEATURES ................. parseStream, parseBackground, parseSubscribe,
+//                                      parseUpdateDatabase, parseMigration, parseWait
+//   FILE UPLOADS & EXTERNAL APIS ...... parseAcceptFile, parseExternalFetch
+//   BILLING & PAYMENTS ................ parseCheckout, parseUsageLimit
+//   WEBHOOKS & OAUTH .................. parseWebhook, parseOAuthConfig
+//   INPUT VALIDATION .................. parseValidateBlock, parseFieldRule,
+//                                      parseRespondsWithBlock, parseRateLimit
+//   RESPOND ........................... parseRespond()
+//   MATH-STYLE FUNCTION DEFS .......... parseMathStyleFunction()
+//   TRY / HANDLE ...................... parseTryHandle()
+//   INCREASE / DECREASE ............... parseIncDec()
+//   OBJECT DEFINITION ................. tryParseObjectDef()
+//   LINE-LEVEL PARSERS ................ parseTarget, parseAssignment, parseIfThen,
+//                                      parseStatementInline
+//   EXPRESSION PARSER ................. parseExpression, parseExprPrec, parsePrimary,
+//                                      parseListLiteral, parseEachExpression,
+//                                      parseFunctionCall
+//   OPERATOR HELPERS .................. getOperatorKey, normalizeOperator, findCanonical
+//
 // =============================================================================
 
 import { tokenize, TokenType } from './tokenizer.js';

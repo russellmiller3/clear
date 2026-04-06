@@ -7,6 +7,34 @@
 // JavaScript, Python, or both. Same input ALWAYS produces the same output.
 // No AI in the compile step — it's a pure function.
 //
+// !! MAINTENANCE RULE: Update this TOC whenever you add, remove, or move
+// !! a section. Use section names (not line numbers) since lines drift.
+//
+// TABLE OF CONTENTS:
+//   PUBLIC API ........................ compileProgram(), compile(), resolveModules()
+//   E2E TEST GENERATION .............. generateE2ETests()
+//   DEPLOY CONFIG .................... generateDeployConfig()
+//   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
+//     Node compilers ................. compileEndpoint, compileCrud, compileRespond,
+//                                     compileAgent, compileValidate, compileDataShape,
+//                                     compileExternalFetch, compileWebhook, compilePdf
+//     _compileNodeInner .............. Main switch over all NodeTypes
+//     exprToCode ..................... Expression-to-code for all expression nodes
+//   RLS POLICY COMPILER .............. compileRLSPolicy()
+//   JAVASCRIPT COMPILER .............. compileToJS(), isReactiveApp()
+//   REACTIVE JS COMPILER ............. compileToReactiveJS() — state, _recompute,
+//                                     inputs, buttons, table action buttons,
+//                                     event delegation, on-page-load
+//   PYTHON COMPILER .................. compileToPython()
+//   HTML SCAFFOLD .................... INLINE_LAYOUT_MODIFIERS, buildHTML(),
+//                                     formatInlineText(), compileToHTML()
+//   BACKEND SCAFFOLD ................. compileToJSBackend(), compileToBrowserServer(),
+//                                     compileToPythonBackend()
+//   STYLE BLOCK CSS .................. friendlyPropToCSS(), extractStyles(), stylesToCSS()
+//   RUNTIME & CSS .................... CSS_RESET, THEME_CSS, _buildCSS(),
+//                                     _clear_* utility functions
+//   NAME & OPERATOR MAPPING .......... sanitizeName(), operatorToCode()
+//
 // =============================================================================
 
 import { NodeType, parse } from './parser.js';
