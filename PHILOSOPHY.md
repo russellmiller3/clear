@@ -638,6 +638,7 @@ The reader knows what data exists, what the API does, and what the user sees.
 | Display (auto-label) | `display subtotal as dollars` |
 | Display (custom label) | `display tax as dollars called 'Sales Tax'` |
 | Display table | `display todos as table showing name, status` |
+| Table with actions | `display todos as table showing name, status with delete` |
 | Button | `button 'Click Me':` |
 | Send data | `send todo as a new todo to '/api/todos'` |
 | Named fetch | `get todos from '/api/todos'` |
