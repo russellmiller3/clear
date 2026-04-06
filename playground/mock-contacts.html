@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="arctic">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Manager — Mock Target</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    [data-theme="arctic"] {
+      color-scheme: light;
+      --color-base-100: oklch(97% 0.01 220);
+      --color-base-200: oklch(93% 0.016 220);
+      --color-base-300: oklch(88% 0.022 220);
+      --color-base-content: oklch(22% 0.04 225);
+      --color-primary: oklch(48% 0.14 220);
+      --color-primary-content: oklch(98% 0.005 220);
+      --color-secondary: oklch(52% 0.12 175);
+      --color-secondary-content: oklch(98% 0.005 175);
+      --color-accent: oklch(65% 0.14 80);
+      --color-accent-content: oklch(15% 0.02 80);
+      --color-neutral: oklch(30% 0.03 225);
+      --color-neutral-content: oklch(95% 0.01 220);
+      --color-info: oklch(52% 0.16 220);
+      --color-success: oklch(50% 0.14 160);
+      --color-warning: oklch(65% 0.13 80);
+      --color-error: oklch(55% 0.18 25);
+      --radius-box: 0.75rem;
+      --radius-field: 0.5rem;
+      --radius-selector: 0.375rem;
+      --border: 1px;
+      --depth: 0;
+      --noise: 0;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+    .font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+    ::selection { background: oklch(48% 0.14 220 / 0.15); }
+  </style>
+</head>
+<body class="min-h-screen bg-base-100">
+
+  <!--
+    MOCK TARGET: Contact Manager
+    This is what the compiler should produce for:
+
+    build for web and javascript backend
+    theme 'arctic'
+    database is local memory
+
+    create a Contacts table: ...
+
+    page 'Contact Manager' at '/':
+      on page load get contacts from '/api/contacts'
+      section 'Form' with style card_bordered:
+        heading 'Add Contact'
+        'Full Name' is a text input saved as a name
+        'Email Address' is a text input saved as an email
+        'Company' is a text input saved as a company
+        button 'Save Contact':
+          send name and email and company to '/api/contacts'
+          get contacts from '/api/contacts'
+          ...
+      display contacts as table showing name, email, company, status
+  -->
+
+  <main id="app" class="max-w-2xl mx-auto p-8 flex flex-col gap-6">
+
+    <!-- card_bordered: Form -->
+    <div class="bg-base-100 border border-base-300 rounded-box p-6 flex flex-col gap-4">
+      <h2 class="text-lg font-semibold text-base-content">Add Contact</h2>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Full Name</legend>
+        <input type="text" class="input input-bordered w-full" placeholder="Full Name">
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email Address</legend>
+        <input type="text" class="input input-bordered w-full" placeholder="Email Address">
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</legend>
+        <input type="text" class="input input-bordered w-full" placeholder="Company">
+      </fieldset>
+
+      <button class="btn btn-primary w-full">Save Contact</button>
+    </div>
+
+    <!-- Table display -->
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Contacts</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full">
+          <thead>
+            <tr class="border-base-300">
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">Name</th>
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</th>
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</th>
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-base-300 hover:bg-base-200 transition-colors">
+              <td class="text-sm text-base-content font-medium">Alice Johnson</td>
+              <td class="font-mono text-sm text-base-content">alice@acme.com</td>
+              <td class="text-sm text-base-content">Acme Corp</td>
+              <td><span class="badge badge-success badge-sm">new</span></td>
+            </tr>
+            <tr class="border-base-300 hover:bg-base-200 transition-colors">
+              <td class="text-sm text-base-content font-medium">Bob Smith</td>
+              <td class="font-mono text-sm text-base-content">bob@globex.io</td>
+              <td class="text-sm text-base-content">Globex LLC</td>
+              <td><span class="badge badge-success badge-sm">new</span></td>
+            </tr>
+            <tr class="border-base-300 hover:bg-base-200 transition-colors">
+              <td class="text-sm text-base-content font-medium">Carol Chen</td>
+              <td class="font-mono text-sm text-base-content">carol@initech.co</td>
+              <td class="text-sm text-base-content">Initech</td>
+              <td><span class="badge badge-success badge-sm">new</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+</body>
+</html>

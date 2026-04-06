@@ -1357,13 +1357,14 @@ page 'App' at '/':
     expect(nearbyHtml).not.toContain('max-w-5xl');
   });
 
-  it('page presets still get max-width wrapper', () => {
+  it('hero presets use centered flex layout without max-width wrapper', () => {
     const source = `build for web
 page 'App' at '/':
   section 'Hero' with style page_hero:
     heading 'Welcome'`;
     const result = compileProgram(source);
-    expect(result.html).toContain('max-w-5xl');
+    expect(result.html).toContain('flex flex-col items-center');
+    expect(result.html).toContain('font-display text-5xl');
   });
 
   it('full dashboard layout compiles end-to-end', () => {

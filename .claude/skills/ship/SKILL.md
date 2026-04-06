@@ -1,6 +1,6 @@
 ---
-allowed-tools: Bash(git *), Read, Glob, Grep
-description: Commit, push, merge to main, and delete the feature branch. Solo dev ship-it workflow.
+allowed-tools: Bash(git *), Bash(node *), Read, Glob, Grep, Edit, Write, Agent
+description: Ship a Clear feature: update all docs, commit, merge to main, push. Updates learnings, roadmap, philosophy, syntax, handoff, and readme.
 ---
 
 ## Context
@@ -8,59 +8,90 @@ description: Commit, push, merge to main, and delete the feature branch. Solo de
 - Current branch: !`git branch --show-current`
 - Git status: !`git status`
 - Recent commits on this branch: !`git log --oneline main..HEAD`
+- Changed files: !`git diff --name-only main..HEAD`
 
 ## Your task
 
-Ship the current feature branch: commit any remaining changes, merge to main, delete the branch, deploy.
+Ship the current feature branch. This is a comprehensive ship process for the Clear language project — not just a git merge, but a full documentation update.
 
-**NOTE:** This project pushes to `origin` (GitHub). Vercel auto-deploys from GitHub on push to main — no manual `vercel --prod` needed.
+### Step 0: Update documentation files
 
-### Step 0: Pre-ship checks
+Review every changed file and update these docs as needed:
 
-1. Run the `update-learnings` skill to capture any lessons from this work
-2. Check if `intent.md` needs updates (new shapes, actions, env vars, auth rules)
-3. If changes were made to learnings or intent, stage and commit them
+- **`learnings.md`** — Add lessons learned: tricky bugs, compiler gotchas, design decisions, things that didn't work
+- **`ROADMAP.md`** — Mark completed items, update line counts, add new phases if needed
+- **`PHILOSOPHY.md`** — Add new design principles if any emerged
+- **`SYNTAX.md`** — Document any new or changed syntax with examples
+- **`design-system-v2.md`** — Reflect theme color changes, new presets, updated component patterns
+- **`AI-STYLE-GUIDE.md`** — Add new coding conventions, update examples
+- **`HANDOFF.md`** — Rewrite: what was done, what's next, key decisions, known issues, resume prompt
+- **`CLAUDE.md`** — Verify new rules are present, update test count if tests were added
 
-### Step 1: Commit any uncommitted changes
+### Step 1: Rebuild playground bundle
 
-If there are staged or unstaged changes:
-1. Stage relevant files (prefer specific names over `git add -A`)
-2. Create a commit with an appropriate message
-3. Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>`
+If compiler.js or any compiler file changed:
+```
+npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-compiler.min.js
+```
 
-If working tree is clean, skip to Step 2.
+### Step 2: Run tests (GATE — must pass to continue)
 
-### Step 2: Merge to main
+```
+node clear.test.js
+```
+
+If tests fail, stop and fix them. Do not ship broken code.
+
+### Step 3: Commit all changes
+
+Stage all modified files (prefer specific names over `git add -A`):
+```
+git add [changed files]
+```
+
+Create a commit:
+```
+git commit -m "$(cat <<'EOF'
+[description of what was shipped]
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+### Step 4: Merge to main
 
 ```
 git checkout main
 git merge <feature-branch> --no-ff -m "Merge <feature-branch>"
 ```
 
-Use `--no-ff` to preserve the branch history in the merge commit.
-
-### Step 3: Delete the feature branch
+### Step 5: Delete the feature branch
 
 ```
 git branch -d <feature-branch>
 ```
 
-### Step 4: Push to origin
+### Step 6: Push to origin
 
 ```
 git push origin main
 ```
 
 If push fails due to divergence, pull with `--no-rebase --no-edit` first, then push again.
-Retry up to 4 times with exponential backoff on network errors.
 
-### Step 5: Backup (if backup remote exists)
+### Step 7: Report
 
-If a `backup` remote is configured:
-```
-git push backup main
-```
+Tell the user:
+- What was shipped (summary of changes)
+- How many commits on the branch
+- Test count (should be 1005+)
+- Which docs were updated
+- Branch deleted confirmation
 
-### Step 6: Report
+### Step 8: Big Picture
 
-Tell the user what was merged, how many commits, confirm branch deleted, and that Vercel will auto-deploy.
+End with a "What We Accomplished" section that:
+1. Summarizes today's work in plain language (not technical jargon)
+2. Explains how it connects to the bigger picture — where Clear is going, what this unlocks
+3. Lists what's next (Open Claw Rule — suggest next tasks with priority order)

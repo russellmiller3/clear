@@ -61,28 +61,28 @@ These are compiler-enforced constraints, not suggestions.
 
 Place inside `<style>` before DaisyUI loads, or in your compiled CSS. Set `data-theme` on `<html>`.
 
-### `midnight` — Dark SaaS (Linear / Vercel / Retool)
+### `midnight` — Tokyo Night (deep navy, electric blue accent)
 
 ```css
 [data-theme="midnight"] {
   color-scheme: dark;
-  --color-base-100: oklch(10% 0.02 264);
-  --color-base-200: oklch(13% 0.022 264);
-  --color-base-300: oklch(17% 0.018 264);
-  --color-base-content: oklch(92% 0.01 240);
-  --color-primary: oklch(65% 0.196 250);
-  --color-primary-content: oklch(98% 0.005 264);
-  --color-secondary: oklch(58% 0.17 145);
-  --color-secondary-content: oklch(10% 0.02 145);
-  --color-accent: oklch(68% 0.18 28);
-  --color-accent-content: oklch(10% 0.02 28);
-  --color-neutral: oklch(20% 0.015 264);
-  --color-neutral-content: oklch(80% 0.01 264);
-  --color-info: oklch(62% 0.15 245);
+  --color-base-100: oklch(13% 0.02 250);     /* #0d1117 deep navy bg */
+  --color-base-200: oklch(10% 0.02 255);     /* #090d14 sidebar/darker */
+  --color-base-300: oklch(18% 0.015 250);    /* #161b22 borders/surfaces */
+  --color-base-content: oklch(88% 0.025 240); /* #c8d8f0 light blue text */
+  --color-primary: oklch(62% 0.18 250);      /* #4a8cff electric blue */
+  --color-primary-content: oklch(98% 0.005 250);
+  --color-secondary: oklch(58% 0.12 155);    /* #5dbb7a green */
+  --color-secondary-content: oklch(10% 0.02 155);
+  --color-accent: oklch(78% 0.14 85);        /* #ffbb44 warm yellow */
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(20% 0.015 250);
+  --color-neutral-content: oklch(80% 0.02 240);
+  --color-info: oklch(68% 0.12 245);         /* #7ab4ff light blue */
   --color-info-content: oklch(10% 0.02 245);
-  --color-success: oklch(55% 0.17 145);
-  --color-success-content: oklch(10% 0.02 145);
-  --color-warning: oklch(72% 0.14 85);
+  --color-success: oklch(62% 0.14 155);      /* #5dbb7a green */
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(78% 0.14 85);       /* #ffbb44 yellow */
   --color-warning-content: oklch(15% 0.02 85);
   --color-error: oklch(60% 0.2 25);
   --color-error-content: oklch(10% 0.02 25);

@@ -4,6 +4,107 @@ This file tells Claude HOW to write Clear code. The compiler is permissive
 (accepts aliases, both quote styles, etc.) but Claude should always write
 the canonical form for maximum readability.
 
+## ASCII Diagrams First (MANDATORY — Source of Truth)
+
+**Every Clear program must start with an ASCII diagram.** No exceptions.
+The diagram is the source of truth for the app's structure. When changing
+an app's layout or logic, update the diagram FIRST, then change the code
+to match. If the code disagrees with the diagram, the diagram wins.
+
+**When AI updates a program:**
+1. Read the existing diagram to understand current structure
+2. Update the diagram to reflect the planned changes
+3. Then modify the code to match the new diagram
+
+**Layout diagram** — for any app with sections, sidebar, header, content areas:
+```
+# ┌─────────────┬──────────────────────────┐
+# │  Sidebar    │  Header        [Q4 2026] │
+# │             ├──────────────────────────┤
+# │  Dashboard  │  ┌─────────┐ ┌────────┐ │
+# │  Customers  │  │ Revenue │ │ Deals  │ │
+# │  Invoices   │  │ $42,300 │ │   23   │ │
+# │  Settings   │  └─────────┘ └────────┘ │
+# │             │  ┌──────────────────────┐│
+# │             │  │ Recent Activity      ││
+# │             │  └──────────────────────┘│
+# └─────────────┴──────────────────────────┘
+```
+
+**Dataflow diagram** — for any app with frontend → backend → database:
+```
+# DATAFLOW:
+# ┌──────────┐    POST /api/contacts    ┌──────────┐    save    ┌────────┐
+# │ Frontend │ ──────────────────────► │ Backend  │ ────────► │   DB   │
+# │  (form)  │ ◄────────────────────── │ (server) │ ◄──────── │(memory)│
+# └──────────┘    GET /api/contacts     └──────────┘   query   └────────┘
+#      │                                     │
+#      │  on page load ──► GET ──► table     │  DELETE /api/contacts/:id
+#      │  button click ──► POST ──► refresh  │  ──► remove row ──► refresh
+```
+
+**Landing page section diagram** — for marketing/content pages:
+```
+# LAYOUT:
+# ┌──────────────────────────────────────┐
+# │           HERO (centered)            │
+# │  badge · headline · subhead · CTA    │
+# ├──────────────────────────────────────┤
+# │      FEATURES (3-col grid)          │
+# │  [Card 1]  [Card 2]  [Card 3]      │
+# ├──────────────────────────────────────┤
+# │           CTA (centered)            │
+# │       headline · text · button       │
+# └──────────────────────────────────────┘
+```
+
+**Dataflow diagram** — for backend-only apps with agents or API chains:
+```
+# DATAFLOW:
+# ┌────────┐  POST /api/leads  ┌───────────────┐  ask ai  ┌──────┐
+# │ Client │ ────────────────► │ Lead Scorer   │ ───────► │  AI  │
+# └────────┘                   │   (agent)     │ ◄─────── │      │
+#                              └───────┬───────┘          └──────┘
+#                                      │ save
+#                              ┌───────▼───────┐
+#                              │   Leads DB    │
+#                              └───────────────┘
+```
+
+**How to draw aligned boxes:**
+
+Every box is a fixed-width rectangle. Pick the width first (widest content + 2 padding),
+then pad every interior line to that width. Preview the diagram in a monospace font
+before committing.
+
+```
+# Step 1: Pick box width (widest content + 2 chars padding)
+#   "Lead Scorer" = 11 chars → box interior = 15 chars
+#
+# Step 2: Draw top/bottom with exact width
+#   ┌───────────────┐    (15 dashes)
+#   └───────────────┘
+#
+# Step 3: Fill rows — pad content with spaces to hit the width
+#   │ Lead Scorer   │    ("Lead Scorer" + 3 spaces = 15)
+#   │   (agent)     │    ("  (agent)" + 5 spaces = 15)
+#
+# Step 4: Arrows between boxes — use consistent spacing
+#   ┌────────┐  label  ┌───────────────┐
+#   │ Client │ ──────► │ Lead Scorer   │
+#   └────────┘         └───────────────┘
+```
+
+**Rules:**
+1. Always put the diagram at the very top of the file, before `build for`
+2. Use box-drawing characters (`┌─┐│└─┘├┤┬┴┼`) for clean lines
+3. **Every row inside a box must be the same character width.** Count characters. Pad with spaces.
+4. Preview in monospace before committing — if edges don't line up, fix the padding
+5. Label every section, data source, and API endpoint
+6. Show the direction of data flow with arrows (`──►`, `◄──`, `─►`, `▼`)
+7. Keep it under 15 lines — this is a map, not documentation
+8. **The diagram is the source of truth.** Update it before changing code
+
 ## Minimize Cognitive Load (First Principle)
 
 Every Clear program should be readable in one pass without backtracking.

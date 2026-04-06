@@ -1,69 +1,87 @@
-# Handoff — 2026-04-05
+# Handoff — 2026-04-06
 
 ## Current State
-- **Branch:** main
-- **Last commit:** 49bf252 (Clear language: compiler, runtime, playground, 1005 tests)
-- **Working tree:** Dirty — significant uncommitted changes across compiler, playground, parser, tests, and new files
-
-### Uncommitted changes
-| File | What changed |
-|------|-------------|
-| `compiler.js` | Design-system-v2 themes (5 themes: midnight/ivory/nova/arctic/moss), new preset classes, DaisyUI v5 component patterns (fieldset inputs, rounded-box cards, proper headings/text), correct CDN links (daisyui.css + @tailwindcss/browser@4), Google Fonts, browser server `receiving` var binding fix, `process.env` shim |
-| `parser.js` | Added `arctic` and `moss` to valid themes list (line ~1073) |
-| `clear.test.js` | Fixed import path (`./lib/testUtils.js`), updated 6 preset tests to match new class strings |
-| `playground/index.html` | Full rewrite — arctic theme, syntax highlighting with line numbers, browser mockup preview, interactive API tester, compile animation (scan line + streaming code), 6 new examples using different themes |
-| `playground/clear-compiler.min.js` | Rebuilt bundle |
-| `playground/daisyui.min.css` | Downloaded locally (969KB) for iframe injection |
-| `playground/mock.html` | Design mock (arctic theme) — the GAN target |
-| `ROADMAP.md` | Added Phase 29 (playground work) + Phases 30-38 (Part 2 roadmap) |
-| `CLAUDE.md` | Added startup reading order, GAN Design Method, Ross Perot Rule, Open Claw Rule |
-| `design-system-v2.md` | Full design token system — 5 themes, all component patterns, ECharts config |
-| `learnings.md` | 12 new lessons from this session |
+- **Branch:** main (after merge of feature/app-output-quality)
+- **Tests:** 1005 passing
+- **Working tree:** Clean
 
 ## What Was Done This Session
-- Fixed 3 compiler bugs: DaisyUI CDN path, browser server `receiving` variable binding, browser server `process.env` crash
-- Playground redesigned with arctic palette, syntax highlighting, line numbers, browser mockup preview, interactive API tester (live Send buttons that execute real requests via hidden iframe)
-- Compiler updated to design-system-v2: 5 themes, new preset classes, fieldset inputs, proper card/table/heading patterns, Google Fonts
-- 6 new examples: Sales Dashboard (midnight), Contact Manager (arctic), Invoice Manager (moss), SaaS Landing (ivory), Lead Scorer, Hiring Pipeline
-- All 1005 tests passing
 
-## What's In Progress
-- **Phase 30 (form submit):** Item 1 (button → fetch → render) is DONE. The reactive compiler generates fetch calls, state management, input listeners, table re-rendering. Verified working: Contact Manager, Invoice Manager, Todo App all do full CRUD in the browser. Items 2-4 (client-side validation, loading state, error display) need compiler work.
-- **Compiled app visual quality** — compiler emits correct DaisyUI classes but apps still look plain. Sidebar nav uses `<p>` tags not `menu menu-sm`. Metric card numbers lack `font-mono`. Tables need v2 styling. GAN against design-system-v2.md component patterns.
+### Compiled App Output Quality (Major)
+- **Root cause fix:** `* { margin: 0; padding: 0; }` in CSS_BASE was overriding every Tailwind utility class. All padding, margin, gap, flex properties rendered as 0px. Fixed to `*, *::before, *::after { box-sizing: border-box; }`.
+- **Context-aware rendering:** `buildHTML()` now tracks parent section presets via `sectionStack`. Headings, text, buttons, links, and small text all adapt based on whether they're inside `app_header`, `metric_card`, `card_bordered`, `page_hero`, `app_sidebar`, etc.
+- **Landing page patterns:** Hero sections use `font-display text-5xl`, centered flex layout, eyebrow badges, `btn btn-primary btn-lg` for CTAs. Section headings use `text-3xl font-bold`. Subheadings use `text-lg text-base-content/60`.
+- **Sidebar nav:** Static text nodes in `app_sidebar` render as `<li><a>` menu items. Brand heading gets `px-5 py-4 border-b` wrapper. Sidebar splits children into brand/nav/other groups.
+- **Flex containers:** Cards (`card`, `card_bordered`, `metric_card`) have `flex flex-col gap-*`. `app_content` has `flex flex-col gap-6`. Form inputs drop `mb-4` when inside flex containers.
+- **Single theme CSS:** Compiler only emits the active theme, not all 5. Split `CSS_BASE` into `CSS_RESET` + `THEME_CSS` map.
+- **Empty section comments suppressed:** JS output no longer has `// Section: Nav` when section body produces no JS.
+- **Table runtime classes:** `<th>` gets uppercase tracking, `<tr>` gets hover states, `<td>` gets proper text sizing.
+- **Per-row delete buttons:** (Started, not finished) Auto-detect DELETE endpoints and add delete buttons to table rows.
+
+### Midnight Theme → Tokyo Night
+- Redesigned `midnight` theme: deep navy `#0d1117` bg, electric blue `#4a8cff` accent, light blue text `#c8d8f0`, green `#5dbb7a` for success, warm yellow `#ffbb44` for accent/warning.
+
+### Playground Overhaul
+- **Single Source tab:** Merged JS/HTML/CSS tabs into one "Source" tab showing the full compiled HTML file.
+- **Download button:** Downloads compiled app as `{name}.html`.
+- **No auto-compile:** Loading examples and typing no longer trigger compilation. Must click Compile.
+- **Slower animation:** Stream animation runs ~3 seconds instead of ~800ms so users can watch it build.
+- **Favicon + logo:** Crystal/prism SVG icon in browser tab and sidebar.
+- **Compile button:** Subtle gradient, proper styling.
+- **Sales Dashboard → ivory:** Default example now uses ivory theme instead of midnight.
+
+### ASCII Diagrams
+- All 6 playground examples have ASCII diagrams at the top.
+- Added "ASCII Diagrams First (MANDATORY)" section to AI-STYLE-GUIDE.md with step-by-step box-drawing technique.
+- Diagrams are source of truth — update before code changes.
+- **Known issue:** Arrow characters (`►`, `◄`) cause character count mismatches with label text. Need simpler arrow syntax (e.g., `=>` instead of `►`). This is the next thing to fix.
+
+### Documentation Updates
+- **CLAUDE.md:** Added Strong Opinion Rule.
+- **AI-STYLE-GUIDE.md:** ASCII diagrams mandatory, box-drawing technique, source of truth rule.
+- **ROADMAP.md:** Added Phase 39 (Desktop Apps via Tauri), Phase 40 (Production Database Connectors — Supabase/PlanetScale/Turso).
+- **design-system-v2.md:** Updated midnight theme to Tokyo Night colors.
+- **Ship skill:** Comprehensive `/ship` with doc updates, bundle rebuild, test gate, merge, push.
+
+## What's NOT Done (Priority Order)
+
+1. **ASCII diagram arrows** — The `►`/`◄` characters cause `.length` mismatches vs label text between boxes. Need to step back and find a simpler approach — maybe `=>` instead of `►`. All 6 diagrams need fixing once the approach is settled.
+
+2. **Per-row delete buttons (CRUD)** — Started in compiler.js (auto-detect DELETE endpoints, add delete column to tables) but not finished. The event delegation handler is not wired up yet. Contact Manager example has the DELETE endpoint but no delete buttons appear in the UI.
+
+3. **GAN grid alignment** — The `section 'Metrics' as two column layout` uses inline CSS `display: grid` instead of Tailwind `grid grid-cols-2 gap-6` classes. Should use Tailwind for consistency.
+
+4. **Phase 30 items 2-4** — Client-side validation before fetch, loading state on buttons during fetch, error display when server returns error.
+
+5. **Chart syntax** — `chart 'Revenue' as line showing data` → ECharts.
+
+6. **Supabase connector** — `database is supabase` compile target (Phase 40, planned).
 
 ## Key Decisions Made
-1. **GAN Design Method is mandatory** — never edit compiler output directly. Design a static HTML mock first, use it as acceptance criteria, then fix compiler until output matches. Added to CLAUDE.md.
-2. **5 themes not 3** — added `arctic` (ice-blue light) and `moss` (sage green light) alongside midnight/ivory/nova. User preferred arctic for the playground.
-3. **Interactive API tester, not static route list** — backend examples show a mini Postman with Send buttons that execute real requests via the browser server. This proves the compiler works.
-4. **DaisyUI v5 + Tailwind v4 browser CDN** — correct combo is `daisyui@5/daisyui.css` + `@tailwindcss/browser@4`. The old `cdn.tailwindcss.com` still works but causes preview tool timeouts.
-5. **Compile animation is honest** — scan line across editor + streaming code output showing real compiled JS line by line. Not fake progress bars.
-6. **Ross Perot Rule** — proactively do what makes sense, don't wait to be told. **Open Claw Rule** — at end of every task, suggest next tasks.
+1. **Single HTML file output** — Compiled apps are one file with inline CSS/JS. No separate files. This is the right call for Clear's "compile and it works" philosophy.
+2. **GAN Design Method** — Create static HTML mock first, use as acceptance criteria, fix compiler until output matches. The mock is the discriminator, the compiler is the generator.
+3. **Strong Opinion Rule** — Always have an opinionated take backed by facts. Don't hedge.
+4. **ASCII diagrams are source of truth** — Update diagram before changing code. Diagram wins if code disagrees.
+5. **No auto-compile in playground** — User must click Compile explicitly.
+6. **No husky/pre-commit hooks** — Test gate lives in `/ship` skill. Zero npm dependencies preserved.
 
-## Known Issues / Bugs
-- Preview screenshots timeout in Claude Preview tool (Tailwind CDN is heavy) — works fine in real browser
-- AI agent examples (Lead Scorer, Hiring Pipeline) fail with "Set CLEAR_AI_KEY" — expected, needs BYOK key input
-- Compiled app sidebar nav items don't use DaisyUI `menu` component — still plain `<p>` tags
-- Compiled app metric cards lack `font-mono` on numbers
-
-## Next Steps (Priority Order)
-1. **GAN compiled app output** — metric cards need `font-mono text-3xl`, sidebar nav needs `menu menu-sm`, tables need v2 header styling. Compare compiler buildHTML() output to design-system-v2.md section by section.
-2. **Phase 30 items 2-4** — client-side validation before fetch, loading state on button during fetch, error display in UI when server returns error. All in compiler.js reactive compiler.
-3. **Chart syntax** — `chart 'Revenue' as line showing data` compiles to ECharts with `getBaseConfig(theme)` from design-system-v2
-4. **Download button** — JSZip export with package.json + README
-5. **BYOK key input** — text input for Anthropic API key, stored in sessionStorage, for AI agent examples
+## Known Issues
+- ASCII diagram right edges don't perfectly align due to `►` character counting
+- Preview screenshots timeout with Tailwind CDN (works fine in real browser)
+- Browser server auth is hard-coded `{ id: 1, role: "admin" }` for dev mode
+- `page_cta` preset has `text-primary-content` which may not work on all themes
 
 ## Files to Read First
 | File | Why |
 |------|-----|
-| `CLAUDE.md` | Startup reading order, design rules, GAN method |
-| `design-system-v2.md` | Visual target — all component patterns the compiler should emit |
-| `learnings.md` | Gotchas from this session (DaisyUI paths, browser server bugs, theme validation) |
-| `ROADMAP.md` | Phases 30-38 are the implementation roadmap |
-| `playground/mock.html` | The GAN target for the playground design |
-| `playground/index.html` | Working playground with all compiler logic |
-| `compiler.js:3506` | `compileToHTML()` — where compiled app HTML is generated |
-| `compiler.js:3955` | `BUILTIN_PRESET_CLASSES` — preset name → CSS class mapping |
-| `compiler.js:4055` | `CSS_BASE` — all theme CSS variables |
+| `CLAUDE.md` | Startup reading order, design rules, GAN method, Strong Opinion Rule |
+| `AI-STYLE-GUIDE.md` | ASCII diagrams, assignment conventions, presets |
+| `design-system-v2.md` | All component patterns, 5 themes (midnight is Tokyo Night now) |
+| `learnings.md` | Scan TOC — new session "App Output Quality" at bottom |
+| `compiler.js:3129` | `buildHTML()` with sectionStack context tracking |
+| `compiler.js:3412` | Context-aware CONTENT rendering (headings/text/buttons/links) |
+| `compiler.js:4172` | `CSS_RESET` + `THEME_CSS` (split theme system) |
+| `playground/index.html:241` | All 6 example sources with ASCII diagrams |
 
 ## Resume Prompt
-> Read HANDOFF.md, CLAUDE.md, and design-system-v2.md. Start by creating a branch: `git checkout -b feature/app-output-quality`. The playground is redesigned and working (6 examples, all compile, interactive API tester). The compiler was updated to design-system-v2 (5 themes, new presets, fieldset inputs, DaisyUI v5). Next priority: GAN the compiled app output quality — the compiler's HTML for metric cards, sidebar nav, tables, and headings needs to match the component patterns in design-system-v2.md. Then start Phase 30 (form submit to endpoint). Run `npx http-server ./playground -p 8080 -c-1` to see the playground. Run `node clear.test.js` to verify (1005 tests, all should pass).
+> Read HANDOFF.md, CLAUDE.md, and AI-STYLE-GUIDE.md. The big issue: ASCII diagram arrows (`►`/`◄`) cause character count mismatches — step back and find a simpler approach (maybe `=>` instead of `►`, or just use `-->` and `<--`). Fix all 6 playground example diagrams. Then finish the per-row delete buttons for CRUD (compiler.js auto-detects DELETE endpoints, adds delete column to table rows with event delegation). Then GAN the grid layout (Tailwind grid classes instead of inline CSS). Run `node clear.test.js` to verify (1005 tests). Serve playground with `npx http-server ./playground -p 8181 -c-1`.

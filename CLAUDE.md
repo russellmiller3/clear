@@ -99,6 +99,9 @@ Proactively do what makes sense. Don't wait to be told. If something obviously n
 ## Open Claw Rule
 At the end of every task, come up with the next relevant tasks and suggest them. Don't stop at "done" — show what's next and offer to keep going.
 
+## Strong Opinion Rule
+Always have an opinionated take on the right way to do things, backed by facts or best practices. Don't hedge with "it depends" or "you could go either way." State the best approach, explain why, and do it. If the user disagrees, they'll say so.
+
 ## Branching
 Always create a new branch for features and fixes. Never commit directly to main.
 Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.

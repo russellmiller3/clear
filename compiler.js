@@ -1618,6 +1618,7 @@ function _compileNodeInner(node, ctx) {
     case NodeType.SECTION: {
       if (ctx.mode === 'backend') return null; // frontend-only
       const bodyCode = node.body.map(n => compileNode(n, ctx)).filter(Boolean).join('\n');
+      if (!bodyCode.trim()) return null; // No JS output — skip empty section comment
       if (ctx.lang === 'python') return `${pad}# Section: ${node.title}\n${bodyCode}`;
       return `${pad}// Section: ${node.title}\n${bodyCode}`;
     }
@@ -2909,7 +2910,8 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         }
       }
       const bodyExpr = bodyParts.length > 0 ? bodyParts.join(' + ') : `'<div>' + ${itemVar} + '</div>'`;
-      lines.push(`        return '<div class="clear-list-item">' + ${bodyExpr} + '</div>';`);
+      lines.push(`        const _isMenu = _container.tagName === 'UL' && _container.classList.contains('menu');`);
+      lines.push(`        return _isMenu ? '<li><a>' + ${bodyExpr} + '</a></li>' : '<div class="clear-list-item">' + ${bodyExpr} + '</div>';`);
       lines.push(`      }).join('');`);
       lines.push(`    }`);
       lines.push(`  }`);
@@ -2966,12 +2968,31 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     }
   }
 
+  // Detect DELETE endpoints for auto-generating per-row delete buttons
+  const deleteEndpoints = {};
+  function scanForEndpoints(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.ENDPOINT && n.method === 'DELETE' && n.path) {
+        // Extract resource name from path like /api/contacts/:id
+        const match = n.path.match(/\/api\/(\w+)\/:id/);
+        if (match) deleteEndpoints[match[1].toLowerCase()] = n.path.replace('/:id', '/');
+      }
+      if (n.body) scanForEndpoints(n.body);
+    }
+  }
+  scanForEndpoints(body);
+
   // Display updates
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
   for (const disp of displayNodes) {
     const outputId = disp.ui._resolvedId || disp.ui.id;
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
+      // Check if this table's data source has a matching DELETE endpoint
+      const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
+      const deleteUrl = deleteEndpoints[varName.toLowerCase()];
+      const hasDelete = !!deleteUrl;
+
       // Reactive table: render array of objects as HTML table
       lines.push(`  {`);
       lines.push(`    const _tableEl = document.getElementById('${outputId}_table');`);
@@ -2981,8 +3002,13 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         : 'Object.keys(_data[0])';
       lines.push(`    if (_tableEl && Array.isArray(_data) && _data.length > 0) {`);
       lines.push(`      const _keys = ${colsCode};`);
-      lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');`);
-      lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');`);
+      if (hasDelete) {
+        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';`);
+        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td><button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button></td>' + '</tr>').join('');`);
+      } else {
+        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');`);
+        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');`);
+      }
       lines.push(`    } else if (_tableEl) {`);
       lines.push(`      _tableEl.querySelector('thead tr').innerHTML = '';`);
       lines.push(`      _tableEl.querySelector('tbody').innerHTML = '';`);
@@ -3132,6 +3158,7 @@ function buildHTML(body) {
   const usedIds = new Set(); // Track element IDs to prevent duplicates
   let pageTitle = 'Clear App';
   const pages = [];
+  const sectionStack = []; // Track parent section presets for context-aware rendering
 
   function walk(nodes) {
     for (const node of nodes) {
@@ -3253,13 +3280,51 @@ function buildHTML(body) {
           if (presetClasses) {
             // Built-in preset: use Tailwind/DaisyUI classes directly, no custom CSS
             const cls = [presetClasses, inlineClass].filter(Boolean).join(' ');
-            // App presets (app_sidebar, app_content, etc.) skip the max-width wrapper
-            // since they participate in flex layout
+            // Only full-width landing page sections get the max-w-5xl inner wrapper.
+            // App presets (flex layout) and card-type presets (already constrained) skip it.
             const isAppPreset = node.styleName && node.styleName.startsWith('app_');
+            const isCardPreset = ['metric_card', 'card', 'card_bordered', 'form', 'code_box'].includes(node.styleName);
+            const isHeroPreset = ['page_hero', 'hero', 'page_cta'].includes(node.styleName);
+            const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset;
             parts.push(`    <div class="${cls}">`);
-            if (!isAppPreset) parts.push(`      <div class="max-w-5xl mx-auto">`);
-            walk(node.body);
-            if (!isAppPreset) parts.push(`      </div>`);
+            if (needsWrapper) parts.push(`      <div class="max-w-5xl mx-auto">`);
+            sectionStack.push(node.styleName);
+            if (node.styleName === 'app_sidebar') {
+              // Sidebar: split children into brand (heading), nav items, and other
+              const brandNodes = [];
+              const navNodes = [];
+              const otherNodes = [];
+              for (const child of node.body) {
+                if (child.type === NodeType.CONTENT && (child.contentType === 'heading' || child.ui?.contentType === 'heading')) {
+                  brandNodes.push(child);
+                } else if (child.type === NodeType.CONTENT && (child.contentType === 'divider' || child.ui?.contentType === 'divider')) {
+                  // Skip dividers in sidebar — the brand border-b replaces them
+                } else if (child.type === NodeType.CONTENT &&
+                  ['text', 'bold', 'link'].includes(child.contentType || child.ui?.contentType)) {
+                  navNodes.push(child);
+                } else if (child.type === NodeType.FOR_EACH) {
+                  navNodes.push(child);
+                } else {
+                  otherNodes.push(child);
+                }
+              }
+              // Emit brand heading(s)
+              walk(brandNodes);
+              // Emit nav items wrapped in menu
+              if (navNodes.length > 0) {
+                parts.push(`    <nav class="flex-1 overflow-y-auto py-3 px-3">`);
+                parts.push(`      <ul class="menu menu-sm gap-0.5 p-0">`);
+                walk(navNodes);
+                parts.push(`      </ul>`);
+                parts.push(`    </nav>`);
+              }
+              // Emit remaining children
+              if (otherNodes.length > 0) walk(otherNodes);
+            } else {
+              walk(node.body);
+            }
+            sectionStack.pop();
+            if (needsWrapper) parts.push(`      </div>`);
             parts.push(`    </div>`);
           } else if (hasUserStyle || hasInline) {
             // User-defined style (custom CSS): full-width outer, contained inner
@@ -3274,10 +3339,10 @@ function buildHTML(body) {
             }
             parts.push(`    </div>`);
           } else {
-            // No style: default card section
-            const allClasses = ['clear-section-card', inlineClass].filter(Boolean).join(' ');
-            parts.push(`    <div class="${allClasses} py-12 px-4">
-      <h2 class="text-2xl font-bold tracking-tight mb-6">${node.ui.title}</h2>`);
+            // No style: default card section using DaisyUI utilities
+            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass].filter(Boolean).join(' ');
+            parts.push(`    <div class="${allClasses}">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">${node.ui.title}</h2>`);
             walk(node.body);
             parts.push(`    </div>`);
           }
@@ -3286,26 +3351,30 @@ function buildHTML(body) {
 
         case NodeType.ASK_FOR: {
           const ui = node.ui;
+          // Inside flex containers (card, form), gap handles spacing — no margin needed
+          const inputParent = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
+          const inputInFlex = ['card', 'card_bordered', 'form', 'metric_card'].includes(inputParent);
+          const fieldsetCls = inputInFlex ? 'fieldset' : 'fieldset mb-4';
           if (ui.htmlType === 'checkbox') {
-            parts.push(`    <div class="flex items-center gap-3 mb-3">
+            parts.push(`    <div class="flex items-center gap-3${inputInFlex ? '' : ' mb-3'}">
       <input id="${ui.id}" type="checkbox" class="checkbox checkbox-primary">
       <label for="${ui.id}" class="text-sm text-base-content/70">${ui.label}</label>
     </div>`);
           } else if (ui.htmlType === 'textarea') {
-            parts.push(`    <fieldset class="fieldset mb-4">
+            parts.push(`    <fieldset class="${fieldsetCls}">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <textarea id="${ui.id}" class="textarea textarea-bordered w-full" placeholder="${ui.label}" rows="6"></textarea>
     </fieldset>`);
           } else if (ui.htmlType === 'select' && ui.choices) {
             const options = ui.choices.map(c => `        <option value="${c}">${c}</option>`).join('\n');
-            parts.push(`    <fieldset class="fieldset mb-4">
+            parts.push(`    <fieldset class="${fieldsetCls}">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <select id="${ui.id}" class="select select-bordered w-full">
 ${options}
       </select>
     </fieldset>`);
           } else {
-            parts.push(`    <fieldset class="fieldset mb-4">
+            parts.push(`    <fieldset class="${fieldsetCls}">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <input id="${ui.id}" class="input input-bordered w-full" type="${ui.htmlType}" placeholder="${ui.label}">
     </fieldset>`);
@@ -3326,8 +3395,8 @@ ${options}
           // Store the deduplicated ID back on the node for the reactive compiler
           node.ui._resolvedId = displayId;
           if (ui.tag === 'table') {
-            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden mb-4" id="${displayId}">
-      <div class="px-6 py-3 border-b border-base-300">
+            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="${displayId}">
+      <div class="px-6 py-4 border-b border-base-300">
         <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
       </div>
       <div class="overflow-x-auto">
@@ -3338,34 +3407,86 @@ ${options}
       </div>
     </div>`);
           } else {
-            parts.push(`    <div class="bg-base-200 rounded-box p-6 mb-4" id="${displayId}">
-      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/50 mb-2">${ui.label}</p>
+            parts.push(`    <div class="bg-base-200 rounded-box p-6 flex flex-col gap-1" id="${displayId}">
+      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/50">${ui.label}</p>
       <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>
     </div>`);
           }
           break;
         }
 
-        case NodeType.BUTTON:
-          parts.push(`    <button class="btn btn-primary btn-sm" id="${node.ui.id}">${node.ui.label}</button>`);
+        case NodeType.BUTTON: {
+          const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
+          const btnInHeader = btnPreset === 'app_header';
+          const btnInForm = ['card_bordered', 'card', 'form'].includes(btnPreset);
+          const btnCls = btnInHeader ? 'btn btn-primary btn-sm' : btnInForm ? 'btn btn-primary w-full' : 'btn btn-primary';
+          parts.push(`    <button class="${btnCls}" id="${node.ui.id}">${node.ui.label}</button>`);
           break;
+        }
 
-        case NodeType.FOR_EACH:
-          parts.push(`    <div class="menu bg-base-100 rounded-box clear-list" id="list_${sanitizeName(node.variable)}"></div>`);
+        case NodeType.FOR_EACH: {
+          const inSidebar = sectionStack.includes('app_sidebar');
+          if (inSidebar) {
+            // Sidebar already wraps in <nav><ul class="menu">, just emit the list container
+            parts.push(`    <ul class="menu menu-sm gap-0.5 p-0 clear-list" id="list_${sanitizeName(node.variable)}"></ul>`);
+          } else {
+            parts.push(`    <div class="clear-list" id="list_${sanitizeName(node.variable)}"></div>`);
+          }
           break;
+        }
 
         case NodeType.CONTENT: {
           const ui = node.ui;
           const formatted = formatInlineText(ui.text);
+          // Context-aware rendering: check parent section preset
+          const parentPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
+          const inSidebar = sectionStack.includes('app_sidebar');
+          const inHeader = parentPreset === 'app_header';
+          const inMetricCard = parentPreset === 'metric_card';
+          const inCard = ['card', 'card_bordered', 'form'].includes(parentPreset);
+          const inHero = ['page_hero', 'hero', 'page_cta'].includes(parentPreset);
+          const inPageSection = ['page_section', 'page_section_dark', 'section_light', 'section_dark'].includes(parentPreset);
           switch (ui.contentType) {
             case 'heading':
-              parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
+              if (inHero) {
+                // Hero/CTA: big display headline
+                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-tight text-base-content">${formatted}</h1>`);
+              } else if (inHeader) {
+                parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
+              } else if (inMetricCard) {
+                parts.push(`    <p class="font-mono text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
+              } else if (inSidebar) {
+                parts.push(`    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
+              } else if (inCard) {
+                parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
+              } else if (inPageSection) {
+                // Section heading in landing page
+                parts.push(`    <h2 class="text-3xl font-bold text-base-content tracking-tight mb-8">${formatted}</h2>`);
+              } else {
+                parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
+              }
               break;
             case 'subheading':
-              parts.push(`    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">${formatted}</h2>`);
+              if (inHero) {
+                // Hero subheading: lighter, wider
+                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-xl">${formatted}</p>`);
+              } else {
+                parts.push(`    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">${formatted}</h2>`);
+              }
               break;
             case 'text':
-              parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3">${formatted}</p>`);
+              if (inSidebar) {
+                parts.push(`    <li><a class="text-sm">${formatted}</a></li>`);
+              } else if (inMetricCard) {
+                parts.push(`    <p class="text-xs text-base-content/40 font-mono">${formatted}</p>`);
+              } else if (inHero) {
+                // Hero/CTA body text
+                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed">${formatted}</p>`);
+              } else if (inCard || inPageSection) {
+                parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed">${formatted}</p>`);
+              } else {
+                parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3">${formatted}</p>`);
+              }
               break;
             case 'bold':
               parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><strong class="text-base-content font-semibold">${formatted}</strong></p>`);
@@ -3374,10 +3495,22 @@ ${options}
               parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><em>${formatted}</em></p>`);
               break;
             case 'small':
-              parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">${formatted}</span>`);
+              if (inHeader) {
+                parts.push(`    <span class="badge badge-ghost badge-sm font-mono">${formatted}</span>`);
+              } else if (inHero) {
+                // Hero eyebrow badge
+                parts.push(`    <span class="badge badge-outline badge-sm font-mono tracking-wide uppercase">${formatted}</span>`);
+              } else {
+                parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">${formatted}</span>`);
+              }
               break;
             case 'link':
-              parts.push(`    <a class="btn btn-primary" href="${ui.href || '#'}">${formatted}</a>`);
+              if (inHero) {
+                // Hero CTA: big primary button
+                parts.push(`    <a class="btn btn-primary btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
+              } else {
+                parts.push(`    <a class="link link-primary text-sm" href="${ui.href || '#'}">${formatted}</a>`);
+              }
               break;
             case 'code':
               parts.push(`    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
@@ -3498,12 +3631,13 @@ _router();`;
   const hasStyledSections = usesAppPresets || usesPagePresets || (userCSS.length > 0 && htmlBody.includes('clear-section style-'));
 
   // Tree-shake CSS based on what's actually in the HTML
-  const css = _buildCSS(htmlBody, userCSS, { fullWidth: hasStyledSections });
+  const css = _buildCSS(htmlBody, userCSS, { fullWidth: hasStyledSections, theme: themeName });
 
   // Detect if page uses full-width layout
   const hasFullLayout = usesAppPresets || htmlBody.includes('style-app_layout') ||
     css.includes('full_height') || css.includes('column_layout') || css.includes('grid');
-  const appClass = usesAppPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-2xl mx-auto p-8';
+  const usesLandingPresets = htmlBody.includes('py-24') || htmlBody.includes('py-20');
+  const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-2xl mx-auto p-8 flex flex-col gap-6';
 
   // Use module script if compiled code uses dynamic import (await import)
   const scriptType = compiledJS.includes('await import(') ? ' type="module"' : '';
@@ -3964,17 +4098,17 @@ function friendlyPropToCSS(name, value) {
 // User-defined styles (via `style X:` blocks) still compile to custom CSS.
 const BUILTIN_PRESET_CLASSES = {
   // --- Landing page presets (design-system-v2) ---
-  page_hero:         'bg-base-100 py-24 px-6 text-center',
+  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6',
   page_section:      'bg-base-100 py-20 px-6',
   page_section_dark: 'bg-base-200 py-20 px-6',
-  page_card:         'bg-base-100 rounded-box p-6 hover:scale-[1.02] transition-transform duration-200',
-  page_cta:          'bg-primary py-20 px-6 text-center',
+  page_card:         'bg-base-100 rounded-box p-6 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3',
+  page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
 
   // --- App/dashboard presets (design-system-v2) ---
   app_layout:        'flex h-screen overflow-hidden',
   app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-100 p-8',
+  app_content:       'flex-1 overflow-y-auto bg-base-100 p-8 flex flex-col gap-6',
   app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-8 bg-base-100 border-b border-base-300 shrink-0',
   app_card:          'bg-base-200 rounded-box p-6',
 
@@ -3982,9 +4116,9 @@ const BUILTIN_PRESET_CLASSES = {
   hero:              'bg-base-100 py-24 px-6 text-center',
   section_light:     'bg-base-100 py-20 px-6',
   section_dark:      'bg-base-200 py-20 px-6',
-  card:              'bg-base-100 rounded-box p-6',
-  card_bordered:     'bg-base-100 border border-base-300 rounded-box p-6',
-  metric_card:       'bg-base-200 rounded-box p-6',
+  card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
+  card_bordered:     'bg-base-100 border border-base-300 rounded-box p-6 flex flex-col gap-4',
+  metric_card:       'bg-base-200 rounded-box p-6 flex flex-col gap-1',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
   form:              'bg-base-100 rounded-box border border-base-300 p-8 max-w-lg flex flex-col gap-5',
 };
@@ -4060,42 +4194,41 @@ function stylesToCSS(styles, vars = {}) {
 // Inspired by Linear/Vercel/Raycast aesthetic: clean, muted, professional
 // =============================================================================
 
-const CSS_BASE = `/* Clear design system v2 */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+const CSS_RESET = `/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
 .font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
 .font-mono, code, pre { font-family: 'Geist Mono', monospace; }
 #app { margin: 0 auto; }
-::selection { background: oklch(var(--color-primary) / 0.15); }
+::selection { background: oklch(var(--color-primary) / 0.15); }`;
 
-/* Themes — design-system-v2 */
-[data-theme="midnight"] {
+const THEME_CSS = {
+  midnight: `[data-theme="midnight"] {
   color-scheme: dark;
-  --color-base-100: oklch(10% 0.02 264);
-  --color-base-200: oklch(13% 0.022 264);
-  --color-base-300: oklch(17% 0.018 264);
-  --color-base-content: oklch(92% 0.01 240);
-  --color-primary: oklch(65% 0.196 250);
-  --color-primary-content: oklch(98% 0.005 264);
-  --color-secondary: oklch(58% 0.17 145);
-  --color-secondary-content: oklch(10% 0.02 145);
-  --color-accent: oklch(68% 0.18 28);
-  --color-accent-content: oklch(10% 0.02 28);
-  --color-neutral: oklch(20% 0.015 264);
-  --color-neutral-content: oklch(80% 0.01 264);
-  --color-info: oklch(62% 0.15 245);
+  --color-base-100: oklch(13% 0.02 250);
+  --color-base-200: oklch(10% 0.02 255);
+  --color-base-300: oklch(18% 0.015 250);
+  --color-base-content: oklch(88% 0.025 240);
+  --color-primary: oklch(62% 0.18 250);
+  --color-primary-content: oklch(98% 0.005 250);
+  --color-secondary: oklch(58% 0.12 155);
+  --color-secondary-content: oklch(10% 0.02 155);
+  --color-accent: oklch(78% 0.14 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(20% 0.015 250);
+  --color-neutral-content: oklch(80% 0.02 240);
+  --color-info: oklch(68% 0.12 245);
   --color-info-content: oklch(10% 0.02 245);
-  --color-success: oklch(55% 0.17 145);
-  --color-success-content: oklch(10% 0.02 145);
-  --color-warning: oklch(72% 0.14 85);
+  --color-success: oklch(62% 0.14 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(78% 0.14 85);
   --color-warning-content: oklch(15% 0.02 85);
   --color-error: oklch(60% 0.2 25);
   --color-error-content: oklch(10% 0.02 25);
   --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
   --border: 1px; --depth: 0; --noise: 0;
-}
-
-[data-theme="ivory"] {
+}`,
+  ivory: `[data-theme="ivory"] {
   color-scheme: light;
   --color-base-100: oklch(100% 0 0);
   --color-base-200: oklch(97.5% 0.004 240);
@@ -4119,9 +4252,8 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
   --color-error-content: oklch(98% 0.005 25);
   --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
   --border: 1px; --depth: 0; --noise: 0;
-}
-
-[data-theme="nova"] {
+}`,
+  nova: `[data-theme="nova"] {
   color-scheme: light;
   --color-base-100: oklch(99% 0.008 80);
   --color-base-200: oklch(96% 0.012 78);
@@ -4145,9 +4277,8 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
   --color-error-content: oklch(99% 0.005 25);
   --radius-box: 1rem; --radius-field: 0.75rem; --radius-selector: 0.5rem;
   --border: 1px; --depth: 0; --noise: 0;
-}
-
-[data-theme="arctic"] {
+}`,
+  arctic: `[data-theme="arctic"] {
   color-scheme: light;
   --color-base-100: oklch(97% 0.01 220);
   --color-base-200: oklch(93% 0.016 220);
@@ -4171,9 +4302,8 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
   --color-error-content: oklch(98% 0.005 25);
   --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
   --border: 1px; --depth: 0; --noise: 0;
-}
-
-[data-theme="moss"] {
+}`,
+  moss: `[data-theme="moss"] {
   color-scheme: light;
   --color-base-100: oklch(95.5% 0.01 150);
   --color-base-200: oklch(92% 0.014 148);
@@ -4197,7 +4327,8 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
   --color-error-content: oklch(97% 0.005 25);
   --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
   --border: 1px; --depth: 0; --noise: 0;
-}`;
+}`
+};
 
 const CSS_COMPONENTS = [
   { class: 'clear-section', css: `.clear-section { padding: 1.5rem; }
@@ -4212,18 +4343,13 @@ const CSS_COMPONENTS = [
 
 // Tree-shake CSS: scan HTML for used classes, return base + used component CSS
 function _buildCSS(htmlBody, customCSS, opts = {}) {
-  let base = CSS_BASE;
-  // For full-width pages (landing pages with styled sections), remove the narrow #app constraint
-  if (opts.fullWidth) {
-    base = base.replace(
-      /#app \{ max-width: 640px;[^}]+\}/,
-      '#app { margin: 0 auto; }'
-    );
+  const parts = [CSS_RESET];
+  // Only include the active theme, not all 5
+  const themeName = opts.theme || 'ivory';
+  if (THEME_CSS[themeName]) {
+    parts.push(THEME_CSS[themeName]);
   }
-  const parts = [base];
   for (const comp of CSS_COMPONENTS) {
-    // Tree-shake: only include CSS for classes that appear in the HTML
-    // Special case: clear-page-landing is on <body>, not in htmlBody
     if (htmlBody.includes(comp.class) || (opts.fullWidth && comp.class === 'clear-page-landing')) {
       parts.push(comp.css);
     }
