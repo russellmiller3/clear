@@ -260,6 +260,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `DATABASE_DECL` | `database is local memory` | Comment only (default) |
+| `DATABASE_DECL` | `database is supabase` | @supabase/supabase-js client (SUPABASE_URL + SUPABASE_ANON_KEY) |
 | `DATABASE_DECL` | `database is PostgreSQL at env('URL')` | pg.Pool / asyncpg |
 | `DATABASE_DECL` | `database is SQLite at 'file.db'` | sqlite3 connection |
 

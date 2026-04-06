@@ -543,13 +543,18 @@ This tells the reader where data lives and makes it easy to change later:
 
 ```
 # Database
-database is local memory                    # default: in-memory with JSON file backup
-database is SQLite at 'todos.db'            # file-based
-database is PostgreSQL at env('DATABASE_URL') # production
+database is local memory                    # default: in-memory, JSON file backup
+database is supabase                        # production: Supabase (recommended)
+database is PostgreSQL at env('DATABASE_URL') # raw PostgreSQL
 ```
 
+**Use `local memory` for prototyping** — zero setup, data persists to a JSON file.
+**Use `supabase` for production** — real database, auth, and RLS out of the box.
+Switching is one line: change `local memory` to `supabase` and create the tables
+in your Supabase dashboard. All CRUD operations compile to Supabase SDK calls
+automatically. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars.
+
 If no `database is` declaration is present, the compiler uses local memory.
-This is fine for development but the reader should know that's what's happening.
 
 ## Data Tables
 

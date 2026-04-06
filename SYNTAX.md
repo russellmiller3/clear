@@ -553,9 +553,17 @@ button 'Delete':
 ```clear
 # Explicit storage backend (at top of file)
 database is local memory                        # default: in-memory with JSON backup
+database is supabase                            # production: Supabase (set SUPABASE_URL + SUPABASE_ANON_KEY)
 database is SQLite at 'todos.db'                # file-based
-database is PostgreSQL at env('DATABASE_URL')   # production
+database is PostgreSQL at env('DATABASE_URL')   # raw PostgreSQL
 ```
+
+When using Supabase, CRUD operations compile to Supabase SDK calls:
+- `get all Contacts` → `supabase.from('contacts').select('*')`
+- `save X as new Contact` → `supabase.from('contacts').insert(X).select().single()`
+- `delete the Contact with this id` → `supabase.from('contacts').delete().eq('id', id)`
+
+Tables must exist in your Supabase dashboard — the compiler doesn't create them.
 
 ## Backend
 
