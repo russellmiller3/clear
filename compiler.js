@@ -3527,7 +3527,14 @@ function buildHTML(body) {
 
           if (presetClasses) {
             // Built-in preset: use Tailwind/DaisyUI classes directly, no custom CSS
-            const cls = [presetClasses, inlineClass, tailwindClasses].filter(Boolean).join(' ');
+            // Context-aware: cards inside dark sections get dark card styling
+            let resolvedPreset = presetClasses;
+            const parentPresetName = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
+            const inDarkSection = ['page_section_dark', 'section_dark'].includes(parentPresetName);
+            if (inDarkSection && ['card', 'page_card'].includes(node.styleName)) {
+              resolvedPreset = 'bg-neutral-focus/50 rounded-2xl p-8 flex flex-col gap-3 border border-neutral-content/10';
+            }
+            const cls = [resolvedPreset, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             // Only full-width landing page sections get the max-w-5xl inner wrapper.
             // App presets (flex layout) and card-type presets (already constrained) skip it.
             const isAppPreset = node.styleName && node.styleName.startsWith('app_');
@@ -3707,8 +3714,8 @@ ${options}
           switch (ui.contentType) {
             case 'heading':
               if (inHero) {
-                // Hero/CTA: big display headline
-                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-tight text-base-content">${formatted}</h1>`);
+                // Hero/CTA: massive display headline (Stripe-style)
+                parts.push(`    <h1 class="font-display text-6xl font-extrabold tracking-tight leading-[1.1] text-base-content max-w-3xl">${formatted}</h1>`);
               } else if (inHeader) {
                 parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
@@ -3718,8 +3725,9 @@ ${options}
               } else if (inCard) {
                 parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
               } else if (inPageSection) {
-                // Section heading in landing page
-                parts.push(`    <h2 class="text-3xl font-bold text-base-content tracking-tight mb-8">${formatted}</h2>`);
+                // Section heading in landing page (dark sections use neutral-content)
+                const textColor = parentPreset === 'page_section_dark' || parentPreset === 'section_dark' ? 'text-neutral-content' : 'text-base-content';
+                parts.push(`    <h2 class="font-display text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
               } else {
                 parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
               }
@@ -4370,11 +4378,12 @@ function friendlyPropToCSS(name, value) {
 // User-defined styles (via `style X:` blocks) still compile to custom CSS.
 const BUILTIN_PRESET_CLASSES = {
   // --- Landing page presets (design-system-v2) ---
-  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6',
-  page_section:      'bg-base-100 py-20 px-6',
-  page_section_dark: 'bg-base-200 py-20 px-6',
-  page_card:         'bg-base-100 rounded-box p-6 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3',
+  page_hero:         'bg-base-100 py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
+  page_section:      'bg-base-100 py-24 px-6',
+  page_section_dark: 'bg-neutral text-neutral-content py-24 px-6',
+  page_card:         'bg-base-100 rounded-2xl p-8 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3 border border-base-300/50',
   page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
+  page_stats:        'bg-base-200 py-16 px-6',
 
   // --- App/dashboard presets (design-system-v2) ---
   app_layout:        'flex h-screen overflow-hidden',
