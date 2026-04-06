@@ -36,6 +36,9 @@ npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-c
 
 ### Step 2: Run tests (GATE — must pass to continue)
 
+**Skip this step if the branch only changed documentation files** (`.md` files, no `.js` changes). Doc-only ships don't need a test run.
+
+Otherwise:
 ```
 node clear.test.js
 ```
