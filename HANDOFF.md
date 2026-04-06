@@ -1,11 +1,16 @@
 # Handoff — 2026-04-06
 
 ## Current State
-- **Branch:** main (after merge of feature/app-output-quality)
+- **Branch:** main (after merge of claude/typescript-vs-javascript-NyjK3)
 - **Tests:** 1005 passing
 - **Working tree:** Clean
 
 ## What Was Done This Session
+
+### TypeScript vs JavaScript Decision
+- Evaluated whether to migrate the compiler from JavaScript to TypeScript.
+- **Decision: Stay with JavaScript.** The zero-dependency, zero-build-step simplicity is an asset. 1,009 tests + validator pass already provide the safety TypeScript would add.
+- Added **JSDoc typedefs + `@ts-check`** to ROADMAP.md as a "Nice to Have (developer experience)" item — the lightweight alternative that gives 80% of TypeScript's benefits (IDE autocomplete, type checking) with no build step.
 
 ### Compiled App Output Quality (Major)
 - **Root cause fix:** `* { margin: 0; padding: 0; }` in CSS_BASE was overriding every Tailwind utility class. All padding, margin, gap, flex properties rendered as 0px. Fixed to `*, *::before, *::after { box-sizing: border-box; }`.
