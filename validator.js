@@ -42,6 +42,7 @@ export function validate(ast) {
   validateEndpointURLs(ast.body, warnings);
   validateSecurity(ast.body, errors, warnings);
   validateDuplicateEndpoints(ast.body, warnings);
+  validateDisplayActions(ast.body, warnings);
   return { errors, warnings };
 }
 
@@ -741,4 +742,48 @@ function validateDuplicateEndpoints(body, warnings) {
     }
   }
   walk(body);
+}
+
+/**
+ * DISPLAY ACTION VALIDATION: Warn when a table has "with delete" but no
+ * DELETE endpoint, or "with edit" but no PUT/PATCH endpoint.
+ */
+function validateDisplayActions(body, warnings) {
+  const endpoints = new Map();
+  function collectEndpoints(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.ENDPOINT && node.path) {
+        const match = node.path.match(/\/api\/(\w+)\/:id/);
+        if (match) {
+          endpoints.set(`${node.method} ${match[1].toLowerCase()}`, node.line);
+        }
+      }
+      if (node.body) collectEndpoints(node.body);
+    }
+  }
+  collectEndpoints(body);
+
+  function checkDisplays(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.DISPLAY && node.actions) {
+        const varName = node.expression && node.expression.name ? node.expression.name.toLowerCase() : '';
+        for (const action of node.actions) {
+          if (action === 'delete' && !endpoints.has(`DELETE ${varName}`)) {
+            warnings.push(
+              `Line ${node.line}: Table has "with delete" but no DELETE endpoint found for ${varName}. ` +
+              `Add: when user calls DELETE /api/${varName}/:id`
+            );
+          }
+          if (action === 'edit' && !endpoints.has(`PUT ${varName}`) && !endpoints.has(`PATCH ${varName}`)) {
+            warnings.push(
+              `Line ${node.line}: Table has "with edit" but no PUT or PATCH endpoint found for ${varName}. ` +
+              `Add: when user calls PUT /api/${varName}/:id`
+            );
+          }
+        }
+      }
+      if (node.body) checkDisplays(node.body);
+    }
+  }
+  checkDisplays(body);
 }

@@ -3518,6 +3518,7 @@ function parseDisplay(tokens, line) {
     pos++;
     columns = [];
     while (pos < tokens.length) {
+      if (tokens[pos].canonical === 'with') break;
       if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
         columns.push(tokens[pos].value);
       }
@@ -3527,8 +3528,26 @@ function parseDisplay(tokens, line) {
     }
   }
 
+  // Optional: with delete / with edit / with delete and edit
+  let actions = null;
+  if (pos < tokens.length && tokens[pos].canonical === 'with') {
+    pos++;
+    actions = [];
+    while (pos < tokens.length) {
+      const canon = tokens[pos].canonical;
+      if (canon === 'remove') {
+        actions.push('delete');
+      } else if (tokens[pos].value.toLowerCase() === 'edit') {
+        actions.push('edit');
+      }
+      pos++;
+      if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+    }
+  }
+
   const node = displayNode(expr.node, format, label, line);
-  if (columns) node.columns = columns;
+  node.columns = columns;
+  if (actions && actions.length > 0) node.actions = actions;
   return { node };
 }
 

@@ -2748,6 +2748,7 @@ function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
       if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON) return true;
+      if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
       }
@@ -2897,8 +2898,9 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   scanForEndpoints(body);
   scanForEndpoints(flatNodes);
 
-  // Add _editing_id to state when update endpoints exist
-  if (Object.keys(updateEndpoints).length > 0) {
+  // Add _editing_id to state only when a display table explicitly requests edit actions
+  const hasEditAction = displayNodes.some(d => d.actions && d.actions.includes('edit'));
+  if (hasEditAction) {
     stateDefaults['_editing_id'] = 'null';
   }
 
@@ -3021,14 +3023,15 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     const outputId = disp.ui._resolvedId || disp.ui.id;
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
-      // Check if this table's data source has matching CRUD endpoints
+      // Check if user explicitly requested action buttons via "with delete" / "with edit"
       const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
       const resourceKey = varName.toLowerCase();
-      const deleteUrl = deleteEndpoints[resourceKey];
-      const updateInfo = updateEndpoints[resourceKey];
-      const hasDelete = !!deleteUrl;
-      const hasUpdate = !!updateInfo;
+      const actions = disp.actions || [];
+      const hasDelete = actions.includes('delete');
+      const hasUpdate = actions.includes('edit');
       const hasActions = hasDelete || hasUpdate;
+      const deleteUrl = hasDelete ? deleteEndpoints[resourceKey] : null;
+      const updateInfo = hasUpdate ? updateEndpoints[resourceKey] : null;
 
       // Reactive table: render array of objects as HTML table
       lines.push(`  {`);
@@ -3101,7 +3104,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     for (const btn of buttonNodes) {
       const btnId = `btn_${sanitizeName(btn.label.replace(/\s+/g, '_'))}`;
       const btnDeclared = new Set(recomputeDeclared);
-      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints };
+      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
       const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL);
       const asyncKw = hasApiCall ? 'async ' : '';
@@ -3115,10 +3118,12 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   // 6b. Table action button handlers (delete/edit via event delegation)
   for (const disp of displayNodes) {
     if (disp.format !== 'table') continue;
+    const actions = disp.actions || [];
+    if (actions.length === 0) continue;
     const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
     const resourceKey = varName.toLowerCase();
-    const deleteUrl = deleteEndpoints[resourceKey];
-    const updateInfo = updateEndpoints[resourceKey];
+    const deleteUrl = actions.includes('delete') ? deleteEndpoints[resourceKey] : null;
+    const updateInfo = actions.includes('edit') ? updateEndpoints[resourceKey] : null;
     const refreshInfo = getRefreshUrls[resourceKey];
     const outputId = disp.ui._resolvedId || disp.ui.id;
     if (!deleteUrl && !updateInfo) continue;
