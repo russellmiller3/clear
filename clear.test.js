@@ -10980,7 +10980,7 @@ page 'App' at '/':
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('_btn.disabled = true');
-    expect(result.javascript).toContain("_btn.textContent = 'Loading...'");
+    expect(result.javascript).toContain('loading loading-spinner');
     expect(result.javascript).toContain('_btn.disabled = false');
   });
 });
@@ -11020,6 +11020,95 @@ page 'App' at '/':
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain("catch(_err)");
     expect(result.javascript).toContain("_toast(_err.message");
+  });
+});
+
+// =============================================================================
+// CHART SYNTAX (ECharts)
+// =============================================================================
+
+describe('Chart syntax - parsing', () => {
+  it('parses chart as line showing data', () => {
+    const ast = parse("page 'App':\n  chart 'Revenue' as line showing sales");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.type).toBe(NodeType.CHART);
+    expect(chart.title).toBe('Revenue');
+    expect(chart.chartType).toBe('line');
+    expect(chart.dataVar).toBe('sales');
+  });
+
+  it('parses chart as pie showing data by field', () => {
+    const ast = parse("page 'App':\n  chart 'Status' as pie showing tasks by status");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.chartType).toBe('pie');
+    expect(chart.groupBy).toBe('status');
+  });
+
+  it('parses chart as bar and area types', () => {
+    const ast = parse("page 'App':\n  chart 'Sales' as bar showing data");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].body[0].chartType).toBe('bar');
+
+    const ast2 = parse("page 'App':\n  chart 'Trend' as area showing data");
+    expect(ast2.errors).toHaveLength(0);
+    expect(ast2.body[0].body[0].chartType).toBe('area');
+  });
+
+  it('rejects unknown chart type', () => {
+    const ast = parse("page 'App':\n  chart 'X' as donut showing data");
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('Unknown chart type');
+  });
+});
+
+describe('Chart syntax - compilation', () => {
+  it('compiles chart to ECharts init + option', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Sales table:
+  region, required
+  revenue (number), required
+when user calls GET /api/sales:
+  all_sales = get all Sales
+  send back all_sales
+page 'App' at '/':
+  on page load get sales from '/api/sales'
+  chart 'Revenue' as bar showing sales`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('echarts');
+    expect(result.html).toContain('chart_Revenue');
+    expect(result.javascript).toContain('echarts.init');
+    expect(result.javascript).toContain("type: 'bar'");
+  });
+
+  it('compiles pie chart with groupBy', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+  status, default 'todo'
+when user calls GET /api/tasks:
+  all_tasks = get all Tasks
+  send back all_tasks
+page 'App' at '/':
+  on page load get tasks from '/api/tasks'
+  chart 'Status' as pie showing tasks by status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("type: 'pie'");
+    expect(result.javascript).toContain('_counts');
+  });
+
+  it('does not include ECharts CDN when no chart nodes', () => {
+    const src = `build for web
+page 'App' at '/':
+  heading 'Hello'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).not.toContain('echarts');
   });
 });
 

@@ -261,6 +261,26 @@ display contacts as table showing name, email with delete and edit
 # "with edit" adds an Edit button that populates the form (needs PUT /api/contacts/:id)
 ```
 
+## Charts (ECharts)
+
+```clear
+# Line chart — auto-detects x (string field) and y (number fields)
+chart 'Revenue' as line showing sales
+
+# Bar chart
+chart 'Sales by Region' as bar showing sales
+
+# Area chart (line with fill)
+chart 'Trend' as area showing monthly_data
+
+# Pie chart — groups by field and counts
+chart 'Status Breakdown' as pie showing tasks by status
+```
+
+Chart types: `line`, `bar`, `pie`, `area`. Data comes from a state variable (array of objects).
+For line/bar/area, the compiler auto-detects x-axis (first string field) and y-axis (number fields).
+For pie, use `by <field>` to group and count. ECharts CDN is only included when charts are used.
+
 ## Conditional UI
 
 ```clear
