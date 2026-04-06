@@ -252,6 +252,13 @@ display count called 'Items'
 display todos as table showing todo, completed        # column whitelist
 display users as table showing name, email, role      # only these columns shown
 display response as table called 'Results'            # all columns (no 'showing')
+
+# Action buttons — compiler auto-wires to matching endpoints
+display contacts as table showing name, email with delete
+display contacts as table showing name, email with edit
+display contacts as table showing name, email with delete and edit
+# "with delete" adds a Delete button per row (needs DELETE /api/contacts/:id)
+# "with edit" adds an Edit button that populates the form (needs PUT /api/contacts/:id)
 ```
 
 ## Conditional UI
