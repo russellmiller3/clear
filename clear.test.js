@@ -10710,4 +10710,222 @@ when user calls POST /api/score sending lead_data:
   });
 });
 
+describe('Table action buttons - parsing', () => {
+  it('parses "with delete" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toEqual(['name', 'email']);
+    expect(disp.actions).toEqual(['delete']);
+  });
+
+  it('parses "with edit" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['edit']);
+  });
+
+  it('parses "with delete and edit" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete and edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['delete', 'edit']);
+  });
+
+  it('no actions when "with" is absent', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toBe(undefined);
+  });
+
+  it('parses "with delete" without showing clause', () => {
+    const ast = parse("page 'App':\n  display contacts as table with delete");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toBe(null);
+    expect(disp.actions).toEqual(['delete']);
+  });
+
+  it('columns do not include with/delete/edit tokens', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete and edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toEqual(['name', 'email']);
+    expect(disp.columns).not.toContain('with');
+    expect(disp.columns).not.toContain('delete');
+    expect(disp.columns).not.toContain('edit');
+  });
+});
+
+describe('Table action buttons - compilation', () => {
+  it('renders delete buttons when "with delete" and DELETE endpoint exist', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name, email with delete`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('data-delete-id');
+    expect(result.javascript).toContain("method: 'DELETE'");
+  });
+
+  it('does NOT render delete buttons without "with delete"', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name, email`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('data-delete-id');
+  });
+
+  it('renders edit buttons when "with edit" and PUT endpoint exist', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  'Name' is a text input saved as a name
+  display contacts as table showing name, email with edit`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('data-edit-id');
+    expect(result.javascript).toContain('_editing_id');
+  });
+
+  it('auto-upserts POST to PUT when _editing_id is set', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls POST /api/contacts sending contact_data:
+  new_contact = save contact_data as new Contact
+  send back new_contact with success message
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  'Name' is a text input saved as a name
+  'Email' is a text input saved as an email
+  button 'Save':
+    send name and email to '/api/contacts'
+    get contacts from '/api/contacts'
+  display contacts as table showing name, email with edit`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_state._editing_id');
+    expect(result.javascript).toContain("method: 'PUT'");
+  });
+
+  it('does NOT add _editing_id to state without "with edit"', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_editing_id');
+  });
+});
+
+describe('Table action buttons - validation', () => {
+  it('warns when "with delete" but no DELETE endpoint', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with delete`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no DELETE endpoint'))).toBe(true);
+  });
+
+  it('warns when "with edit" but no PUT/PATCH endpoint', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with edit`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no PUT or PATCH endpoint'))).toBe(true);
+  });
+
+  it('no warning when endpoints match actions', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with delete`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('DELETE endpoint'))).toHaveLength(0);
+  });
+});
+
 run();
