@@ -33,6 +33,7 @@
 //   TEST BLOCKS ....................... parseTestDef(), parseExpect()
 //   ASK FOR (legacy) .................. parseAskFor()
 //   DISPLAY ........................... parseDisplay() — includes "with delete/edit"
+//   CHART ............................. parseChart() — ECharts (line, bar, pie, area)
 //   BUTTON ............................ parseButton()
 //   ENDPOINT .......................... parseEndpoint()
 //   ADVANCED FEATURES ................. parseStream, parseBackground, parseSubscribe,
@@ -118,6 +119,7 @@ export const NodeType = Object.freeze({
   PAGE: 'page',
   ASK_FOR: 'ask_for',
   DISPLAY: 'display',
+  CHART: 'chart',
   BUTTON: 'button',
 
   // Layout (Phase 7)
@@ -926,6 +928,18 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
           if (tPos < tokens.length) variant = tokens[tPos].value.toLowerCase();
         }
         body.push({ type: NodeType.TOAST, message, variant, line });
+        i++;
+        continue;
+      }
+
+      // chart 'Title' as line showing data
+      if (firstToken.value === 'chart' && tokens.length >= 4 && tokens[1].type === TokenType.STRING) {
+        const parsed = parseChart(tokens, line);
+        if (parsed.error) {
+          errors.push({ line, message: parsed.error });
+        } else {
+          body.push(parsed.node);
+        }
         i++;
         continue;
       }
@@ -3591,6 +3605,64 @@ function parseDisplay(tokens, line) {
   node.columns = columns;
   if (actions && actions.length > 0) node.actions = actions;
   return { node };
+}
+
+// =============================================================================
+// CHART (Phase 30)
+// =============================================================================
+// CANONICAL: chart 'Title' as line showing data_var
+// Also: chart 'Title' as bar showing data_var
+//        chart 'Title' as pie showing data_var by field_name
+//        chart 'Title' as area showing data_var
+
+function parseChart(tokens, line) {
+  let pos = 1; // skip "chart"
+
+  // Title (required, string)
+  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+    return { error: 'Chart needs a title in quotes. Example: chart \'Revenue\' as line showing sales' };
+  }
+  const title = tokens[pos].value;
+  pos++;
+
+  // "as" <chartType> (required)
+  if (pos >= tokens.length || tokens[pos].canonical !== 'as_format') {
+    return { error: 'Chart needs a type after "as". Example: chart \'Revenue\' as line showing sales' };
+  }
+  pos++;
+  if (pos >= tokens.length) {
+    return { error: 'Chart needs a type (line, bar, pie, area). Example: chart \'Revenue\' as line showing sales' };
+  }
+  const chartType = tokens[pos].value.toLowerCase();
+  if (!['line', 'bar', 'pie', 'area'].includes(chartType)) {
+    return { error: `Unknown chart type '${chartType}'. Use: line, bar, pie, or area.` };
+  }
+  pos++;
+
+  // "showing" <data_var> (required)
+  if (pos >= tokens.length || tokens[pos].value !== 'showing') {
+    return { error: 'Chart needs "showing" followed by your data variable. Example: chart \'Revenue\' as line showing sales' };
+  }
+  pos++;
+  if (pos >= tokens.length) {
+    return { error: 'Chart needs a data variable after "showing". Example: chart \'Revenue\' as line showing sales' };
+  }
+  const dataVar = tokens[pos].value;
+  pos++;
+
+  // Optional: "by" <field> (for pie charts — groups by this field)
+  let groupBy = null;
+  if (pos < tokens.length && tokens[pos].value === 'by') {
+    pos++;
+    if (pos < tokens.length) {
+      groupBy = tokens[pos].value;
+      pos++;
+    }
+  }
+
+  const slug = sanitizeForId(title.replace(/\s+/g, '_'));
+  const ui = { tag: 'chart', id: `chart_${slug}`, label: title };
+  return { node: { type: NodeType.CHART, title, chartType, dataVar, groupBy, line, ui } };
 }
 
 // =============================================================================

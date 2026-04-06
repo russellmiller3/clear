@@ -78,10 +78,30 @@ const UTILITY_FUNCTIONS = [
   { name: '_clear_env', code: "function _clear_env(name) {\n  if (typeof process !== 'undefined' && process.env) return process.env[name] || '';\n  return '';\n}", deps: [] },
   { name: '_toast', code: `function _toast(msg, type) {
   let c = document.getElementById('_toast_container');
-  if (!c) { c = document.createElement('div'); c.id = '_toast_container'; c.className = 'toast toast-end'; c.style.cssText = 'position:fixed;bottom:1rem;right:1rem;z-index:100'; document.body.appendChild(c); }
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
   const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
-  const el = document.createElement('div'); el.className = 'alert ' + cls + ' shadow-lg'; el.innerHTML = '<span>' + msg + '</span>';
-  c.appendChild(el); setTimeout(() => { el.remove(); }, 4000);
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
 }`, deps: [] },
   { name: '_esc', code: "function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }", deps: [] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema)); }', deps: [] },
@@ -2358,6 +2378,7 @@ function _compileNodeInner(node, ctx) {
     case NodeType.ON_PAGE_LOAD:
     case NodeType.ASK_FOR:
     case NodeType.DISPLAY:
+    case NodeType.CHART:
       return null;
 
     default:
@@ -2783,7 +2804,7 @@ function compileToJS(body, errors, sourceMap = false) {
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
-      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON) return true;
+      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART) return true;
       if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
@@ -2834,6 +2855,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     switch (node.type) {
       case NodeType.ASK_FOR: inputNodes.push(node); break;
       case NodeType.DISPLAY: displayNodes.push(node); break;
+      case NodeType.CHART: break; // Chart nodes handled separately below
       case NodeType.BUTTON: buttonNodes.push(node); break;
       case NodeType.COMMENT:
       case NodeType.TARGET:
@@ -3111,6 +3133,48 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     }
   }
 
+  // Chart updates (ECharts)
+  const chartNodes = flatNodes.filter(n => n.type === NodeType.CHART);
+  for (const chart of chartNodes) {
+    const chartId = chart.ui.id;
+    const dataExpr = `_state.${sanitizeName(chart.dataVar)}`;
+    const chartType = chart.chartType;
+    const groupBy = chart.groupBy;
+
+    lines.push(`  {`);
+    lines.push(`    const _chartEl = document.getElementById('${chartId}_canvas');`);
+    lines.push(`    const _data = ${dataExpr};`);
+    lines.push(`    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
+    lines.push(`      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);`);
+
+    if (chartType === 'pie') {
+      if (groupBy) {
+        // Group by field and count
+        lines.push(`      const _counts = {};`);
+        lines.push(`      _data.forEach(r => { const k = r.${sanitizeName(groupBy)} || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });`);
+        lines.push(`      const _pieData = Object.entries(_counts).map(([name, value]) => ({ name, value }));`);
+      } else {
+        // Assume data is already [{name, value}]
+        lines.push(`      const _pieData = _data.map(r => { const keys = Object.keys(r).filter(k => k !== 'id'); return { name: String(r[keys[0]] || ''), value: Number(r[keys[1]] || 0) }; });`);
+      }
+      lines.push(`      _chart.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: '65%', data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } } }] }, true);`);
+    } else {
+      // line, bar, area — auto-detect x (first string field) and y (first number field)
+      const seriesType = chartType === 'area' ? 'line' : chartType;
+      const areaStyle = chartType === 'area' ? ', areaStyle: {}' : '';
+      lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
+      lines.push(`      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];`);
+      lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
+      lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[1]);`);
+      lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
+      lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}, smooth: true }));`);
+      lines.push(`      _chart.setOption({ tooltip: { trigger: 'axis' }, legend: _yKeys.length > 1 ? { data: _yKeys } : undefined, xAxis: { type: 'category', data: _xData }, yAxis: { type: 'value' }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true } }, true);`);
+    }
+
+    lines.push(`    }`);
+    lines.push(`  }`);
+  }
+
   // Sync input DOM values with state (so clearing state also clears the input)
   for (const inp of inputNodes) {
     const inputId = `input_${sanitizeName(inp.variable)}`;
@@ -3162,17 +3226,17 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         lines.push(checks.join('\n'));
       }
 
-      // Loading state: disable button + show loading text during async work
+      // Loading state: disable button + show spinner during async work
       if (hasApiCall) {
         lines.push(`  const _btn = document.getElementById('${btnId}');`);
-        lines.push(`  const _btnText = _btn.textContent;`);
+        lines.push(`  const _btnHTML = _btn.innerHTML;`);
         lines.push(`  _btn.disabled = true;`);
-        lines.push(`  _btn.textContent = 'Loading...';`);
+        lines.push(`  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';`);
         lines.push(`  try {`);
         lines.push(bodyCode.split('\n').map(l => '  ' + l).join('\n'));
         lines.push(`  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }`);
         lines.push(`  _btn.disabled = false;`);
-        lines.push(`  _btn.textContent = _btnText;`);
+        lines.push(`  _btn.innerHTML = _btnHTML;`);
       } else {
         lines.push(bodyCode);
       }
@@ -3329,6 +3393,7 @@ function buildHTML(body) {
   const inlineStyleBlocks = []; // CSS generated from inline section modifiers
   const usedIds = new Set(); // Track element IDs to prevent duplicates
   let pageTitle = 'Clear App';
+  let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
   const pages = [];
   const sectionStack = []; // Track parent section presets for context-aware rendering
 
@@ -3598,6 +3663,16 @@ ${options}
           break;
         }
 
+        case NodeType.CHART: {
+          const chartId = node.ui.id;
+          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden p-4" id="${chartId}">
+      <h3 class="text-sm font-semibold text-base-content mb-2">${node.title}</h3>
+      <div id="${chartId}_canvas" style="width:100%;height:320px;"></div>
+    </div>`);
+          hasChart = true;
+          break;
+        }
+
         case NodeType.BUTTON: {
           const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
           const btnInHeader = btnPreset === 'app_header';
@@ -3740,7 +3815,7 @@ ${options}
   let condCounter = 0;
   let compRenderCounter = 0;
   walk(body);
-  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks };
+  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks, hasChart };
 }
 
 /**
@@ -3759,7 +3834,7 @@ function formatInlineText(text) {
  * Compile a Clear AST + compiled JS into a complete, runnable index.html.
  */
 function compileToHTML(body, compiledJS) {
-  const { pageTitle, htmlBody, pages, inlineStyleBlocks } = buildHTML(body);
+  const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart } = buildHTML(body);
   const styles = extractStyles(body);
   // Collect top-level variables for style resolution (e.g. primary_color is '#2563eb')
   const styleVars = {};
@@ -3833,6 +3908,7 @@ _router();`;
   <title>${pageTitle}</title>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
+${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\\/script>' : ''}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">

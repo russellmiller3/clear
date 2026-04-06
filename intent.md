@@ -94,6 +94,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `PAGE` | `page 'Title' at '/route':` | `<title>` + hash router |
 | `ASK_FOR` | `'Label' is a text input that saves to var` | `<input>` with label |
 | `DISPLAY` | `display x as dollars called 'Label'` / `display x as table showing a, b with delete` | `<output>` or `<table>` with action buttons |
+| `CHART` | `chart 'Title' as line showing data` / `chart 'Status' as pie showing data by field` | ECharts `<div>` with auto-configured option |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |
 | `SECTION` | `section 'Name' with style card:` | `<div>` with CSS class |
 | `CONTENT` | `heading 'X'` / `text 'X'` / `bold text 'X'` / `divider` | `<h1>` / `<p>` / `<hr>` |
