@@ -1364,7 +1364,7 @@ page 'App' at '/':
     heading 'Welcome'`;
     const result = compileProgram(source);
     expect(result.html).toContain('flex flex-col items-center');
-    expect(result.html).toContain('font-display text-5xl');
+    expect(result.html).toContain('font-display text-6xl');
   });
 
   it('full dashboard layout compiles end-to-end', () => {
@@ -4282,10 +4282,11 @@ describe('Compiler - rate limit', () => {
     expect(result.javascript).toContain('max: 10');
   });
 
-  it('compiles rate limit to Python decorator', () => {
+  it('compiles rate limit to Python slowapi setup', () => {
     const result = compileProgram("target: python backend\non GET '/api':\n  rate limit 10 per minute\n  send back 'ok'");
-    expect(result.python).toContain('limiter');
-    expect(result.python).toContain('10/minute');
+    expect(result.python).toContain('Limiter');
+    expect(result.python).toContain('slowapi');
+    expect(result.python).toContain('10 per minute');
   });
 });
 
@@ -10710,4 +10711,987 @@ when user calls POST /api/score sending lead_data:
   });
 });
 
+describe('Table action buttons - parsing', () => {
+  it('parses "with delete" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toEqual(['name', 'email']);
+    expect(disp.actions).toEqual(['delete']);
+  });
+
+  it('parses "with edit" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['edit']);
+  });
+
+  it('parses "with delete and edit" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete and edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['delete', 'edit']);
+  });
+
+  it('no actions when "with" is absent', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toBe(undefined);
+  });
+
+  it('parses "with delete" without showing clause', () => {
+    const ast = parse("page 'App':\n  display contacts as table with delete");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toBe(null);
+    expect(disp.actions).toEqual(['delete']);
+  });
+
+  it('columns do not include with/delete/edit tokens', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete and edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toEqual(['name', 'email']);
+    expect(disp.columns).not.toContain('with');
+    expect(disp.columns).not.toContain('delete');
+    expect(disp.columns).not.toContain('edit');
+  });
+});
+
+describe('Table action buttons - compilation', () => {
+  it('renders delete buttons when "with delete" and DELETE endpoint exist', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name, email with delete`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('data-delete-id');
+    expect(result.javascript).toContain("method: 'DELETE'");
+  });
+
+  it('does NOT render delete buttons without "with delete"', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name, email`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('data-delete-id');
+  });
+
+  it('renders edit buttons when "with edit" and PUT endpoint exist', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  'Name' is a text input saved as a name
+  display contacts as table showing name, email with edit`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('data-edit-id');
+    expect(result.javascript).toContain('_editing_id');
+  });
+
+  it('auto-upserts POST to PUT when _editing_id is set', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls POST /api/contacts sending contact_data:
+  new_contact = save contact_data as new Contact
+  send back new_contact with success message
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  'Name' is a text input saved as a name
+  'Email' is a text input saved as an email
+  button 'Save':
+    send name and email to '/api/contacts'
+    get contacts from '/api/contacts'
+  display contacts as table showing name, email with edit`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_state._editing_id');
+    expect(result.javascript).toContain("method: 'PUT'");
+  });
+
+  it('does NOT add _editing_id to state without "with edit"', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_editing_id');
+  });
+});
+
+describe('Table action buttons - validation', () => {
+  it('warns when "with delete" but no DELETE endpoint', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with delete`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no DELETE endpoint'))).toBe(true);
+  });
+
+  it('warns when "with edit" but no PUT/PATCH endpoint', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with edit`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no PUT or PATCH endpoint'))).toBe(true);
+  });
+
+  it('no warning when endpoints match actions', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with delete`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('DELETE endpoint'))).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// PHASE 30: CLIENT VALIDATION, LOADING STATE, ERROR DISPLAY
+// =============================================================================
+
+describe('Phase 30 - client-side validation before fetch', () => {
+  it('adds validation checks for POST fields', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("_toast('todo is required'");
+    expect(result.javascript).toContain("return;");
+  });
+
+  it('does not add validation for buttons without POST', () => {
+    const src = `build for web
+page 'App' at '/':
+  count = 0
+  button 'Inc':
+    increase count by 1`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_toast');
+  });
+});
+
+describe('Phase 30 - loading state on buttons', () => {
+  it('disables button and shows Loading during async', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls GET /api/todos:
+  all_todos = get all Todos
+  send back all_todos
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'
+    get todos from '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_btn.disabled = true');
+    expect(result.javascript).toContain('loading loading-spinner');
+    expect(result.javascript).toContain('_btn.disabled = false');
+  });
+});
+
+describe('Phase 30 - error display on fetch failure', () => {
+  it('checks response status and throws on error', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('if (!_r.ok)');
+    expect(result.javascript).toContain('throw new Error');
+  });
+
+  it('wraps async button body in try/catch with toast', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("catch(_err)");
+    expect(result.javascript).toContain("_toast(_err.message");
+  });
+});
+
+// =============================================================================
+// CHART SYNTAX (ECharts)
+// =============================================================================
+
+describe('Chart syntax - parsing', () => {
+  it('parses chart as line showing data', () => {
+    const ast = parse("page 'App':\n  chart 'Revenue' as line showing sales");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.type).toBe(NodeType.CHART);
+    expect(chart.title).toBe('Revenue');
+    expect(chart.chartType).toBe('line');
+    expect(chart.dataVar).toBe('sales');
+  });
+
+  it('parses chart as pie showing data by field', () => {
+    const ast = parse("page 'App':\n  chart 'Status' as pie showing tasks by status");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.chartType).toBe('pie');
+    expect(chart.groupBy).toBe('status');
+  });
+
+  it('parses chart as bar and area types', () => {
+    const ast = parse("page 'App':\n  chart 'Sales' as bar showing data");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].body[0].chartType).toBe('bar');
+
+    const ast2 = parse("page 'App':\n  chart 'Trend' as area showing data");
+    expect(ast2.errors).toHaveLength(0);
+    expect(ast2.body[0].body[0].chartType).toBe('area');
+  });
+
+  it('rejects unknown chart type', () => {
+    const ast = parse("page 'App':\n  chart 'X' as donut showing data");
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('Unknown chart type');
+  });
+});
+
+describe('Chart syntax - compilation', () => {
+  it('compiles chart to ECharts init + option', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Sales table:
+  region, required
+  revenue (number), required
+when user calls GET /api/sales:
+  all_sales = get all Sales
+  send back all_sales
+page 'App' at '/':
+  on page load get sales from '/api/sales'
+  chart 'Revenue' as bar showing sales`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('echarts');
+    expect(result.html).toContain('chart_Revenue');
+    expect(result.javascript).toContain('echarts.init');
+    expect(result.javascript).toContain("type: 'bar'");
+  });
+
+  it('compiles pie chart with groupBy', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+  status, default 'todo'
+when user calls GET /api/tasks:
+  all_tasks = get all Tasks
+  send back all_tasks
+page 'App' at '/':
+  on page load get tasks from '/api/tasks'
+  chart 'Status' as pie showing tasks by status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("type: 'pie'");
+    expect(result.javascript).toContain('_counts');
+  });
+
+  it('does not include ECharts CDN when no chart nodes', () => {
+    const src = `build for web
+page 'App' at '/':
+  heading 'Hello'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).not.toContain('echarts');
+  });
+});
+
+// =============================================================================
+// MULTI-FILE APP ARCHITECTURE
+// =============================================================================
+
+describe('Multi-file app - full-stack split', () => {
+  const resolver = (name) => {
+    if (name === 'backend') return `when user calls GET /api/users:
+  all_users = get all Users
+  send back all_users
+
+when user calls POST /api/users sending user_data:
+  requires auth
+  validate user_data:
+    name is text, required
+  new_user = save user_data as new User
+  send back new_user with success message`;
+    if (name === 'frontend') return `page 'Users' at '/':
+  on page load get users from '/api/users'
+  'Name' is a text input saved as a name
+  button 'Add User':
+    send name to '/api/users'
+    get users from '/api/users'
+    name is ''
+  display users as table showing name`;
+    return null;
+  };
+
+  it('compiles a multi-file full-stack app', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Users table:
+  name, required
+allow cross-origin requests
+use everything from 'backend'
+use everything from 'frontend'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    // Backend endpoints in serverJS (full-stack splits backend from frontend)
+    expect(result.serverJS).toContain("app.get('/api/users'");
+    expect(result.serverJS).toContain("app.post('/api/users'");
+    // Frontend compiled into HTML
+    expect(result.html).toContain('input');
+    expect(result.html).toContain('btn_Add_User');
+  });
+
+  it('compiles backend-only module import', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+use everything from 'backend'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS || result.javascript).toContain("app.get('/api/users'");
+  });
+
+  it('detects missing module with helpful error', () => {
+    const src = `build for javascript backend\nuse everything from 'nonexistent'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('Could not find module');
+  });
+
+  it('detects circular imports', () => {
+    const circularResolver = (name) => {
+      if (name === 'a') return "use everything from 'b'\ndouble(x) = x * 2";
+      if (name === 'b') return "use everything from 'a'\ntriple(x) = x * 3";
+      return null;
+    };
+    const src = `build for javascript backend\nuse everything from 'a'`;
+    const result = compileProgram(src, { moduleResolver: circularResolver });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('Circular');
+  });
+});
+
+describe('Supabase adapter - parsing and scaffold', () => {
+  it('parses database is supabase', () => {
+    const ast = parse("database is supabase");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.DATABASE_DECL);
+    expect(ast.body[0].backend).toBe('supabase');
+  });
+
+  it('emits createClient import for supabase backend', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('createClient');
+    expect(result.javascript).toContain('SUPABASE_URL');
+    expect(result.javascript).toContain('SUPABASE_ANON_KEY');
+  });
+
+  it('does not require db runtime for supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain("require('./clear-runtime/db')");
+  });
+});
+
+describe('Supabase adapter - CRUD compilation', () => {
+  it('compiles get all to supabase.from().select()', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').select('*')");
+  });
+
+  it('compiles find one by id to .eq().single()', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts/:id:\n  define contact as: look up records in Contacts table where id is incoming's id\n  send back contact`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain(".eq('id'");
+    expect(result.javascript).toContain('.single()');
+  });
+
+  it('compiles save as insert to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls POST /api/contacts sending contact_data:\n  new_contact = save contact_data as new Contact\n  send back new_contact with success message`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').insert");
+    expect(result.javascript).toContain('.select().single()');
+  });
+
+  it('compiles update to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls PUT /api/contacts/:id sending update_data:\n  requires auth\n  save update_data to Contacts\n  send back 'updated'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').update");
+  });
+
+  it('compiles delete to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls DELETE /api/contacts/:id:\n  requires auth\n  delete the Contact with this id\n  send back 'deleted' with success message`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').delete()");
+    expect(result.javascript).toContain(".eq('id'");
+  });
+
+  it('compiles data shape as comment for supabase (no db.createTable)', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('must exist in Supabase');
+    expect(result.javascript).not.toContain('db.createTable');
+  });
+
+  it('does not affect local memory compilation', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('db.findAll');
+    expect(result.javascript).not.toContain('supabase');
+  });
+});
+
+// =============================================================================
+// PYTHON SUPABASE ADAPTER
+// =============================================================================
+
+describe('Python Supabase adapter', () => {
+  it('emits supabase-py import for Python backend', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('from supabase import create_client');
+    expect(result.python).toContain('SUPABASE_URL');
+  });
+
+  it('compiles Python CRUD to supabase-py calls', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('supabase.table("contacts").select("*")');
+    expect(result.python).toContain('.execute()');
+  });
+
+  it('Python data shape is comment for supabase', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('must exist in Supabase');
+    expect(result.python).not.toContain('CREATE TABLE');
+  });
+
+  it('Python local memory still uses db stub', () => {
+    const src = `build for python backend\ndatabase is local memory\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('class _DB');
+    expect(result.python).toContain('db.query');
+    expect(result.python).not.toContain('supabase');
+  });
+});
+
+// =============================================================================
+// PHASE 31: ON-CHANGE HANDLERS (REACTIVE INPUT WATCHERS)
+// =============================================================================
+
+describe('Phase 31 - when X changes', () => {
+  it('parses when variable changes block', () => {
+    const ast = parse("page 'App':\n  'Search' is a text input saved as a query\n  when query changes:\n    get results from '/api/search'");
+    expect(ast.errors).toHaveLength(0);
+    const onChange = ast.body[0].body.find(n => n.type === NodeType.ON_CHANGE);
+    expect(onChange).toBeDefined();
+    expect(onChange.variable).toBe('query');
+    expect(onChange.debounceMs).toBe(0);
+  });
+
+  it('parses debounce delay', () => {
+    const ast = parse("page 'App':\n  'Search' is a text input saved as a query\n  when query changes after 250ms:\n    get results from '/api/search'");
+    expect(ast.errors).toHaveLength(0);
+    const onChange = ast.body[0].body.find(n => n.type === NodeType.ON_CHANGE);
+    expect(onChange.debounceMs).toBe(250);
+  });
+
+  it('compiles to input event listener', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+page 'App' at '/':
+  'Search' is a text input saved as a query
+  when query changes:
+    get results from '/api/items'
+  display results as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("When query changes");
+    expect(result.javascript).toContain("addEventListener('input'");
+  });
+
+  it('compiles debounced handler with setTimeout', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+page 'App' at '/':
+  'Search' is a text input saved as a query
+  when query changes after 300ms:
+    get results from '/api/items'
+  display results as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('clearTimeout');
+    expect(result.javascript).toContain('setTimeout');
+    expect(result.javascript).toContain('300');
+  });
+});
+
+// =============================================================================
+// PHASE 37: SMARTER COMPILER ERRORS (DID-YOU-MEAN)
+// =============================================================================
+
+describe('Phase 37 - did-you-mean for variables', () => {
+  it('suggests correct variable name on typo', () => {
+    const src = `build for javascript backend\nemail is 'test@test.com'\nshow emial`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes("Did you mean 'email'"))).toBe(true);
+  });
+
+  it('suggests variable when names are close', () => {
+    const src = `build for javascript backend\ntotal_price = 100\nshow total_pric`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes("Did you mean 'total_price'"))).toBe(true);
+  });
+
+  it('does not suggest when variable exists', () => {
+    const src = `build for javascript backend\nemail is 'test@test.com'\nshow email`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// PHASE 32: FILE UPLOAD INPUT
+// =============================================================================
+
+describe('Phase 32 - file input', () => {
+  it('parses file input', () => {
+    const ast = parse("page 'App':\n  'Photo' is a file input saved as a photo");
+    expect(ast.errors).toHaveLength(0);
+    const inp = ast.body[0].body[0];
+    expect(inp.type).toBe(NodeType.ASK_FOR);
+    expect(inp.inputType).toBe('file');
+  });
+
+  it('compiles file input to HTML type=file', () => {
+    const src = `build for web\npage 'App' at '/':\n  'Photo' is a file input saved as a photo\n  button 'Upload':\n    show photo`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('type="file"');
+    expect(result.html).toContain('file-input');
+  });
+
+  it('uses change event for file input', () => {
+    const src = `build for web\npage 'App' at '/':\n  'Photo' is a file input saved as a photo\n  button 'Go':\n    show photo`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("'change'");
+    expect(result.javascript).toContain('files[0]');
+  });
+});
+
+// =============================================================================
+// PHASE 33: CSS STATES (HOVER, FOCUS, TRANSITIONS, RESPONSIVE)
+// =============================================================================
+
+describe('Phase 33 - CSS hover/focus/transition', () => {
+  it('compiles hover_ properties to :hover rule', () => {
+    const src = `build for web\nstyle card:\n  background is 'white'\n  hover_background is '#f0f0f0'\npage 'App' at '/':\n  section 'X' with style card:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain(':hover');
+    expect(result.css).toContain('#f0f0f0');
+  });
+
+  it('compiles focus_ properties to :focus-within rule', () => {
+    const src = `build for web\nstyle input_box:\n  border is '1px solid #ccc'\n  focus_border is '1px solid blue'\npage 'App' at '/':\n  section 'X' with style input_box:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain(':focus-within');
+  });
+
+  it('auto-adds transition when hover props exist', () => {
+    const src = `build for web\nstyle card:\n  background is 'white'\n  hover_background is 'blue'\npage 'App' at '/':\n  section 'X' with style card:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain('transition');
+  });
+
+  it('compiles responsive breakpoints', () => {
+    const src = `build for web\nstyle mobile:\n  for_screen is 'small'\n  padding = 8\npage 'App' at '/':\n  section 'X' with style mobile:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain('@media');
+    expect(result.css).toContain('max-width: 640px');
+  });
+});
+
+// =============================================================================
+// PHASE 37: BUG-PREVENTION VALIDATORS
+// =============================================================================
+
+describe('Phase 37 - endpoint must have response', () => {
+  it('warns when endpoint has no send back', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/health:\n  show 'alive'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no response'))).toBe(true);
+  });
+
+  it('no warning when endpoint has send back', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('no response'))).toHaveLength(0);
+  });
+});
+
+describe('Phase 37 - fetch URL matches endpoints', () => {
+  it('warns when fetch URL does not match any endpoint', () => {
+    const src = `build for web and javascript backend
+when user calls GET /api/users:
+  send back 'ok'
+page 'App' at '/':
+  on page load get items from '/api/user'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes("doesn't match any endpoint"))).toBe(true);
+  });
+
+  it('no warning when fetch URL matches endpoint', () => {
+    const src = `build for web and javascript backend
+when user calls GET /api/users:
+  send back 'ok'
+page 'App' at '/':
+  on page load get items from '/api/users'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes("doesn't match"))).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// SECURITY: ATTACK PREVENTION VALIDATORS
+// =============================================================================
+
+describe('Security - brute force prevention', () => {
+  it('warns when login endpoint has no rate limit', () => {
+    const src = `build for javascript backend\nwhen user calls POST /api/login sending credentials:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('rate limit'))).toBe(true);
+  });
+
+  it('no warning when login has rate limit', () => {
+    const src = `build for javascript backend\nwhen user calls POST /api/login sending credentials:\n  rate limit 10 per minute\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('login') && w.includes('rate limit'))).toHaveLength(0);
+  });
+});
+
+describe('Security - sensitive data exposure', () => {
+  it('warns when table has password field', () => {
+    const src = `build for javascript backend\ncreate a Users table:\n  email, required\n  password, required`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('sensitive') && w.includes('password'))).toBe(true);
+  });
+});
+
+describe('Security - open CORS without auth', () => {
+  it('warns when CORS enabled but no auth on any endpoint', () => {
+    const src = `build for javascript backend\nallow cross-origin requests\nwhen user calls GET /api/data:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('CORS') && w.includes('auth'))).toBe(true);
+  });
+
+  it('no warning when CORS + auth exist', () => {
+    const src = `build for javascript backend\nallow cross-origin requests\nwhen user calls GET /api/data:\n  requires auth\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('CORS') && w.includes('no endpoint'))).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// OWASP SECURITY VALIDATORS
+// =============================================================================
+
+describe('OWASP - SQL injection detection', () => {
+  it('warns on raw query with string interpolation', () => {
+    const src = `build for javascript backend\nresults = query 'SELECT * FROM users WHERE name = {name}'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('SQL injection'))).toBe(true);
+  });
+});
+
+describe('OWASP - CSRF on data-modifying POST', () => {
+  it('warns when POST modifies data without auth', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls POST /api/items sending item_data:\n  new_item = save item_data as new Item\n  send back new_item with success message`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('CSRF'))).toBe(true);
+  });
+
+  it('no CSRF warning when POST has auth', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls POST /api/items sending item_data:\n  requires auth\n  new_item = save item_data as new Item\n  send back new_item with success message`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('CSRF'))).toHaveLength(0);
+  });
+});
+
+describe('OWASP - security logging', () => {
+  it('warns when auth used but no logging', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/data:\n  requires auth\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('log'))).toBe(true);
+  });
+});
+
+describe('OWASP - PATCH without auth', () => {
+  it('errors on PATCH endpoint without auth', () => {
+    const src = `build for javascript backend\nwhen user calls PATCH /api/users/:id sending data:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes('PATCH') && e.message.includes('auth'))).toBe(true);
+  });
+});
+
+// =============================================================================
+// PHASE 34: PAGINATION
+// =============================================================================
+
+describe('Phase 34 - pagination', () => {
+  it('parses get all with page and per page', () => {
+    const ast = parse("all_items = get all Items page 1, 25 per page");
+    expect(ast.errors).toHaveLength(0);
+    const crud = ast.body[0];
+    expect(crud.type).toBe(NodeType.CRUD);
+    expect(crud.page).toBe(1);
+    expect(crud.perPage).toBe(25);
+  });
+
+  it('compiles pagination to array slice for local memory', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items page 1, 10 per page\n  send back items`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('.slice(');
+  });
+
+  it('compiles pagination to .range() for supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items page 1, 10 per page\n  send back items`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('.range(');
+  });
+});
+
+// =============================================================================
+// PHASE 37: FK INFERENCE OPT-OUT
+// =============================================================================
+
+describe('Phase 37 - FK inference opt-out', () => {
+  it('capitalized field without type hint is FK', () => {
+    const ast = parse("create a Tasks table:\n  Category, required");
+    expect(ast.body[0].fields[0].fieldType).toBe('fk');
+  });
+
+  it('capitalized field with (text) type hint is NOT FK', () => {
+    const ast = parse("create a Tasks table:\n  Category (text), required");
+    expect(ast.body[0].fields[0].fieldType).toBe('text');
+    expect(ast.body[0].fields[0].fk).toBe(null);
+  });
+
+  it('capitalized field with (number) type hint is NOT FK', () => {
+    const ast = parse("create a Tasks table:\n  Priority (number), default 0");
+    expect(ast.body[0].fields[0].fieldType).toBe('number');
+  });
+});
+
+// =============================================================================
+// PHASE 34: COMPOUND UNIQUE CONSTRAINTS
+// =============================================================================
+
+describe('Phase 34 - compound unique (one per)', () => {
+  it('parses one per field1 and field2', () => {
+    const ast = parse("create a Votes table:\n  user_id, required\n  poll_id, required\n  choice, required\n  one per user_id and poll_id");
+    expect(ast.errors).toHaveLength(0);
+    const shape = ast.body[0];
+    expect(shape.compoundUniques).toBeDefined();
+    expect(shape.compoundUniques[0]).toEqual(['user_id', 'poll_id']);
+  });
+
+  it('compiles to UNIQUE constraint in Python SQL', () => {
+    const src = `build for python backend\ncreate a Votes table:\n  user_id, required\n  poll_id, required\n  one per user_id and poll_id`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('UNIQUE(user_id, poll_id)');
+  });
+
+  it('does not treat one per as a field', () => {
+    const ast = parse("create a Votes table:\n  user_id, required\n  poll_id, required\n  one per user_id and poll_id");
+    expect(ast.errors).toHaveLength(0);
+    const shape = ast.body[0];
+    expect(shape.fields.length).toBe(2);
+    expect(shape.fields.map(f => f.name)).not.toContain('one');
+  });
+});
+
+// =============================================================================
+// PHASE 34: DATABASE TRANSACTIONS
+// =============================================================================
+
+describe('Phase 34 - transactions (as one operation)', () => {
+  it('parses as one operation block', () => {
+    const ast = parse("as one operation:\n  show 'a'\n  show 'b'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.TRANSACTION);
+    expect(ast.body[0].body.length).toBe(2);
+  });
+
+  it('compiles to BEGIN/COMMIT/ROLLBACK in JS', () => {
+    const src = `build for javascript backend\nas one operation:\n  show 'transfer'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('BEGIN');
+    expect(result.javascript).toContain('COMMIT');
+    expect(result.javascript).toContain('ROLLBACK');
+  });
+
+  it('compiles to BEGIN/COMMIT/ROLLBACK in Python', () => {
+    const src = `build for python backend\nas one operation:\n  show 'transfer'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('BEGIN');
+    expect(result.python).toContain('COMMIT');
+    expect(result.python).toContain('ROLLBACK');
+  });
+});
+
 run();
+

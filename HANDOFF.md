@@ -1,87 +1,64 @@
-# Handoff — 2026-04-06
+# Handoff — 2026-04-07
 
 ## Current State
-- **Branch:** main (after merge of feature/app-output-quality)
-- **Tests:** 1005 passing
+- **Branch:** main (after merge of claude/review-handoff-bT9dt)
+- **Tests:** 1089 passing
 - **Working tree:** Clean
 
 ## What Was Done This Session
 
-### Compiled App Output Quality (Major)
-- **Root cause fix:** `* { margin: 0; padding: 0; }` in CSS_BASE was overriding every Tailwind utility class. All padding, margin, gap, flex properties rendered as 0px. Fixed to `*, *::before, *::after { box-sizing: border-box; }`.
-- **Context-aware rendering:** `buildHTML()` now tracks parent section presets via `sectionStack`. Headings, text, buttons, links, and small text all adapt based on whether they're inside `app_header`, `metric_card`, `card_bordered`, `page_hero`, `app_sidebar`, etc.
-- **Landing page patterns:** Hero sections use `font-display text-5xl`, centered flex layout, eyebrow badges, `btn btn-primary btn-lg` for CTAs. Section headings use `text-3xl font-bold`. Subheadings use `text-lg text-base-content/60`.
-- **Sidebar nav:** Static text nodes in `app_sidebar` render as `<li><a>` menu items. Brand heading gets `px-5 py-4 border-b` wrapper. Sidebar splits children into brand/nav/other groups.
-- **Flex containers:** Cards (`card`, `card_bordered`, `metric_card`) have `flex flex-col gap-*`. `app_content` has `flex flex-col gap-6`. Form inputs drop `mb-4` when inside flex containers.
-- **Single theme CSS:** Compiler only emits the active theme, not all 5. Split `CSS_BASE` into `CSS_RESET` + `THEME_CSS` map.
-- **Empty section comments suppressed:** JS output no longer has `// Section: Nav` when section body produces no JS.
-- **Table runtime classes:** `<th>` gets uppercase tracking, `<tr>` gets hover states, `<td>` gets proper text sizing.
-- **Per-row delete buttons:** (Started, not finished) Auto-detect DELETE endpoints and add delete buttons to table rows.
+### New Language Features (10 new node types / syntax forms)
+- `with delete` / `with edit` on display tables — explicit opt-in CRUD buttons
+- `chart 'Title' as line/bar/pie/area showing data` — ECharts integration
+- `when X changes:` / `when X changes after 250ms:` — reactive input handlers
+- `'Photo' is a file input saved as photo` — file upload input type
+- `database is supabase` — Supabase adapter (JS + Python)
+- `as one operation:` — database transactions (BEGIN/COMMIT/ROLLBACK)
+- `one per field1 and field2` — compound unique constraints
+- `get all Items page 1, 25 per page` — pagination
 
-### Midnight Theme → Tokyo Night
-- Redesigned `midnight` theme: deep navy `#0d1117` bg, electric blue `#4a8cff` accent, light blue text `#c8d8f0`, green `#5dbb7a` for success, warm yellow `#ffbb44` for accent/warning.
+### Compiler Quality (18 security checks)
+- OWASP Top 10 validators: SQL injection, CSRF, path traversal, IDOR, brute force
+- Bug-prevention: endpoint without response, fetch URL typos, did-you-mean for variables
+- CSS states: hover_, focus_, transitions, responsive breakpoints, animations
+- DaisyUI toasts with icons, slide-in animation, progress bar
+- Loading spinner on async buttons, client-side validation before fetch
+- Multi-file `use everything from` fix (inlines ALL node types)
 
-### Playground Overhaul
-- **Single Source tab:** Merged JS/HTML/CSS tabs into one "Source" tab showing the full compiled HTML file.
-- **Download button:** Downloads compiled app as `{name}.html`.
-- **No auto-compile:** Loading examples and typing no longer trigger compilation. Must click Compile.
-- **Slower animation:** Stream animation runs ~3 seconds instead of ~800ms so users can watch it build.
-- **Favicon + logo:** Crystal/prism SVG icon in browser tab and sidebar.
-- **Compile button:** Subtle gradient, proper styling.
-- **Sales Dashboard → ivory:** Default example now uses ivory theme instead of midnight.
+### Infrastructure
+- AI proxy (Vercel serverless, 3 calls/IP)
+- Stripe-style landing page presets
+- Full syntax guide in playground (30+ sections)
+- Python parity: Supabase, rate limiting, proper comments
 
-### ASCII Diagrams
-- All 6 playground examples have ASCII diagrams at the top.
-- Added "ASCII Diagrams First (MANDATORY)" section to AI-STYLE-GUIDE.md with step-by-step box-drawing technique.
-- Diagrams are source of truth — update before code changes.
-- **Known issue:** Arrow characters (`►`, `◄`) cause character count mismatches with label text. Need simpler arrow syntax (e.g., `=>` instead of `►`). This is the next thing to fix.
+## What's NOT Done
 
-### Documentation Updates
-- **CLAUDE.md:** Added Strong Opinion Rule.
-- **AI-STYLE-GUIDE.md:** ASCII diagrams mandatory, box-drawing technique, source of truth rule.
-- **ROADMAP.md:** Added Phase 39 (Desktop Apps via Tauri), Phase 40 (Production Database Connectors — Supabase/PlanetScale/Turso).
-- **design-system-v2.md:** Updated midnight theme to Tokyo Night colors.
-- **Ship skill:** Comprehensive `/ship` with doc updates, bundle rebuild, test gate, merge, push.
+1. **Phase 39: Desktop apps via Tauri** — `build for desktop` target. Big project, separate effort.
+2. **Async patterns** — `race:`, `wait for:`, cancellation. Medium difficulty.
+3. **Streaming/iterators** — Process large files lazily. Medium difficulty.
+4. **Error recovery** — `retry 3 times:`, `with timeout 5 seconds:`, `fallback:`. Medium.
+5. **Namespaced component calls in web target** — `ui's Card()` crashes buildHTML.
 
-## What's NOT Done (Priority Order)
-
-1. **ASCII diagram arrows** — The `►`/`◄` characters cause `.length` mismatches vs label text between boxes. Need to step back and find a simpler approach — maybe `=>` instead of `►`. All 6 diagrams need fixing once the approach is settled.
-
-2. **Per-row delete buttons (CRUD)** — Started in compiler.js (auto-detect DELETE endpoints, add delete column to tables) but not finished. The event delegation handler is not wired up yet. Contact Manager example has the DELETE endpoint but no delete buttons appear in the UI.
-
-3. **GAN grid alignment** — The `section 'Metrics' as two column layout` uses inline CSS `display: grid` instead of Tailwind `grid grid-cols-2 gap-6` classes. Should use Tailwind for consistency.
-
-4. **Phase 30 items 2-4** — Client-side validation before fetch, loading state on buttons during fetch, error display when server returns error.
-
-5. **Chart syntax** — `chart 'Revenue' as line showing data` → ECharts.
-
-6. **Supabase connector** — `database is supabase` compile target (Phase 40, planned).
-
-## Key Decisions Made
-1. **Single HTML file output** — Compiled apps are one file with inline CSS/JS. No separate files. This is the right call for Clear's "compile and it works" philosophy.
-2. **GAN Design Method** — Create static HTML mock first, use as acceptance criteria, fix compiler until output matches. The mock is the discriminator, the compiler is the generator.
-3. **Strong Opinion Rule** — Always have an opinionated take backed by facts. Don't hedge.
-4. **ASCII diagrams are source of truth** — Update diagram before changing code. Diagram wins if code disagrees.
-5. **No auto-compile in playground** — User must click Compile explicitly.
-6. **No husky/pre-commit hooks** — Test gate lives in `/ship` skill. Zero npm dependencies preserved.
+## Key Decisions
+1. Clear Cloud = the Vercel model (compile+deploy, database pluggable)
+2. Supabase compiles directly to SDK, no db.* shim
+3. `with delete/edit` is explicit opt-in, not auto-inferred
+4. `one per X and Y` beats `unique together` (phone test)
+5. `as one operation:` beats `transaction:` (14-year-old test)
+6. Security validators are compile-time, not runtime
 
 ## Known Issues
-- ASCII diagram right edges don't perfectly align due to `►` character counting
-- Preview screenshots timeout with Tailwind CDN (works fine in real browser)
-- Browser server auth is hard-coded `{ id: 1, role: "admin" }` for dev mode
-- `page_cta` preset has `text-primary-content` which may not work on all themes
+- Browser server doesn't inline module endpoints from `use everything from`
+- `data from` synonym collision with variable name `data`
+- Auth in browser server hard-coded `{ id: 1, role: "admin" }`
 
 ## Files to Read First
 | File | Why |
 |------|-----|
-| `CLAUDE.md` | Startup reading order, design rules, GAN method, Strong Opinion Rule |
-| `AI-STYLE-GUIDE.md` | ASCII diagrams, assignment conventions, presets |
-| `design-system-v2.md` | All component patterns, 5 themes (midnight is Tokyo Night now) |
-| `learnings.md` | Scan TOC — new session "App Output Quality" at bottom |
-| `compiler.js:3129` | `buildHTML()` with sectionStack context tracking |
-| `compiler.js:3412` | Context-aware CONTENT rendering (headings/text/buttons/links) |
-| `compiler.js:4172` | `CSS_RESET` + `THEME_CSS` (split theme system) |
-| `playground/index.html:241` | All 6 example sources with ASCII diagrams |
+| `CLAUDE.md` | Startup reading order, all rules |
+| `intent.md` | Authoritative spec for all node types |
+| `learnings.md` | Scan TOC — Session 7 section has 13 new gotchas |
+| `ROADMAP.md` | Phases 30-38 complete, Phase 39 planned |
 
 ## Resume Prompt
-> Read HANDOFF.md, CLAUDE.md, and AI-STYLE-GUIDE.md. The big issue: ASCII diagram arrows (`►`/`◄`) cause character count mismatches — step back and find a simpler approach (maybe `=>` instead of `►`, or just use `-->` and `<--`). Fix all 6 playground example diagrams. Then finish the per-row delete buttons for CRUD (compiler.js auto-detects DELETE endpoints, adds delete column to table rows with event delegation). Then GAN the grid layout (Tailwind grid classes instead of inline CSS). Run `node clear.test.js` to verify (1005 tests). Serve playground with `npx http-server ./playground -p 8181 -c-1`.
+> Read HANDOFF.md, CLAUDE.md, ROADMAP.md. 1089 tests passing. Phases 30-38 all complete. Next: Phase 39 (Tauri desktop), async patterns (race/timeout/cancel), or streaming iterators. The compiler catches 18 categories of security vulnerabilities at compile time. Run `node clear.test.js` to verify.

@@ -165,6 +165,7 @@ const SYNONYM_TABLE = Object.freeze({
   // New input syntax (canonical): text input, number input, dropdown, checkbox, text area
   text_input: Object.freeze(['text input']),
   number_input: Object.freeze(['number input']),
+  file_input: Object.freeze(['file input', 'file upload']),
   dropdown: Object.freeze(['dropdown', 'select']),
   checkbox: Object.freeze(['checkbox', 'toggle']),
   text_area: Object.freeze(['text area', 'textarea']),

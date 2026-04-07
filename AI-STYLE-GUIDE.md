@@ -35,12 +35,12 @@ to match. If the code disagrees with the diagram, the diagram wins.
 ```
 # DATAFLOW:
 # ┌──────────┐    POST /api/contacts    ┌──────────┐    save    ┌────────┐
-# │ Frontend │ ──────────────────────► │ Backend  │ ────────► │   DB   │
-# │  (form)  │ ◄────────────────────── │ (server) │ ◄──────── │(memory)│
-# └──────────┘    GET /api/contacts     └──────────┘   query   └────────┘
+# │ Frontend │ ──────────────────────> │ Backend  │ ────────> │   DB   │
+# │  (form)  │ <────────────────────── │ (server) │ <──────── │(memory)│
+# └──────────┘    GET /api/contacts    └──────────┘   query   └────────┘
 #      │                                     │
-#      │  on page load ──► GET ──► table     │  DELETE /api/contacts/:id
-#      │  button click ──► POST ──► refresh  │  ──► remove row ──► refresh
+#      │  on page load --> GET --> table      │  DELETE /api/contacts/:id
+#      │  button click --> POST --> refresh   │  --> remove row --> refresh
 ```
 
 **Landing page section diagram** — for marketing/content pages:
@@ -62,11 +62,11 @@ to match. If the code disagrees with the diagram, the diagram wins.
 ```
 # DATAFLOW:
 # ┌────────┐  POST /api/leads  ┌───────────────┐  ask ai  ┌──────┐
-# │ Client │ ────────────────► │ Lead Scorer   │ ───────► │  AI  │
-# └────────┘                   │   (agent)     │ ◄─────── │      │
+# │ Client │ ────────────────> │ Lead Scorer   │ ───────> │  AI  │
+# └────────┘                   │   (agent)     │ <─────── │      │
 #                              └───────┬───────┘          └──────┘
 #                                      │ save
-#                              ┌───────▼───────┐
+#                              ┌───────v───────┐
 #                              │   Leads DB    │
 #                              └───────────────┘
 ```
@@ -91,7 +91,7 @@ before committing.
 #
 # Step 4: Arrows between boxes — use consistent spacing
 #   ┌────────┐  label  ┌───────────────┐
-#   │ Client │ ──────► │ Lead Scorer   │
+#   │ Client │ ──────> │ Lead Scorer   │
 #   └────────┘         └───────────────┘
 ```
 
@@ -101,7 +101,7 @@ before committing.
 3. **Every row inside a box must be the same character width.** Count characters. Pad with spaces.
 4. Preview in monospace before committing — if edges don't line up, fix the padding
 5. Label every section, data source, and API endpoint
-6. Show the direction of data flow with arrows (`──►`, `◄──`, `─►`, `▼`)
+6. Show the direction of data flow with arrows (`──>`, `<──`, `->`, `v`). Use plain ASCII `>`, `<`, `v` — never Unicode arrows (`►`, `◄`, `▼`) which cause width mismatches.
 7. Keep it under 15 lines — this is a map, not documentation
 8. **The diagram is the source of truth.** Update it before changing code
 
@@ -286,6 +286,85 @@ If the program uses a database adapter, add a Database section at the top.
 If there's no backend, skip the Backend section. The comments are for the
 human reading the file -- the compiler ignores them.
 
+## Multi-File Architecture (When Apps Get Complex)
+
+**First decision: is this a simple or complex app?**
+
+| Simple (one file) | Complex (multiple files) |
+|-------------------|------------------------|
+| 1 page | 3+ pages |
+| 1-2 database tables | 4+ tables |
+| < 100 lines | > 150 lines |
+| No reusable components | Shared components across pages |
+| 1 agent or none | Multiple agents |
+
+**If simple, keep everything in one file.** One file is always easier to read,
+debug, and hand to someone new. Don't split prematurely.
+
+**If complex, use this file structure:**
+
+```
+my-app/
+  main.clear           # Build target, database, shared config
+  backend.clear         # All API endpoints
+  frontend.clear        # All pages and UI
+  components.clear      # Reusable UI components (if needed)
+  agents.clear          # AI agents (if needed)
+```
+
+**Rules for splitting:**
+
+1. **`main.clear` is the entry point.** It has `build for`, `database is`,
+   `create a X table`, `allow cross-origin requests`, and `use` imports.
+   It's the table of contents for the whole app.
+
+2. **Split by concern, not by page.** All endpoints go in `backend.clear`,
+   all pages go in `frontend.clear`. Don't make one file per page — that
+   scatters related code.
+
+3. **Extract a component when it's used 3+ times.** Not before. Three
+   similar sections of HTML is better than a premature abstraction. When
+   you do extract, put it in `components.clear`.
+
+4. **Agents get their own file when there are 2+.** One agent can live
+   in `backend.clear`. Multiple agents go in `agents.clear`.
+
+5. **Never split a table definition from its endpoints.** If `backend.clear`
+   has `when user calls GET /api/users`, then `main.clear` must have
+   `create a Users table`. The reader finds the schema in main, the
+   logic in backend.
+
+**Example main.clear for a complex app:**
+```clear
+build for web and javascript backend
+
+# Database
+database is local memory
+
+create a Users table:
+  name, required
+  email, required, unique
+  role, default 'member'
+
+create a Projects table:
+  title, required
+  owner, required
+  status, default 'active'
+
+# Config
+allow cross-origin requests
+log every request
+
+# Import modules
+use 'backend'
+use 'frontend'
+```
+
+**When in doubt, keep it in one file.** Splitting adds navigation overhead.
+A 200-line file with clear section comments is better than 5 files with
+40 lines each where the reader has to jump between files to understand
+the flow.
+
 ## Infrastructure Lines
 
 **Always explain infrastructure lines with a comment.**
@@ -464,13 +543,18 @@ This tells the reader where data lives and makes it easy to change later:
 
 ```
 # Database
-database is local memory                    # default: in-memory with JSON file backup
-database is SQLite at 'todos.db'            # file-based
-database is PostgreSQL at env('DATABASE_URL') # production
+database is local memory                    # default: in-memory, JSON file backup
+database is supabase                        # production: Supabase (recommended)
+database is PostgreSQL at env('DATABASE_URL') # raw PostgreSQL
 ```
 
+**Use `local memory` for prototyping** — zero setup, data persists to a JSON file.
+**Use `supabase` for production** — real database, auth, and RLS out of the box.
+Switching is one line: change `local memory` to `supabase` and create the tables
+in your Supabase dashboard. All CRUD operations compile to Supabase SDK calls
+automatically. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars.
+
 If no `database is` declaration is present, the compiler uses local memory.
-This is fine for development but the reader should know that's what's happening.
 
 ## Data Tables
 
