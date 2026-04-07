@@ -13949,5 +13949,227 @@ when user calls PUT /api/items/:id sending data:
   });
 });
 
+// =============================================================================
+// MULTI-FILE, COMPONENTS, STREAMING STRESS TESTS
+// =============================================================================
+
+describe('Multi-file: use everything from inlines all node types', () => {
+  it('use everything from backend inlines endpoints and data shapes', () => {
+    const mainSrc = `build for web and javascript backend
+database is local memory
+use everything from 'backend'`;
+    const backendSrc = `create a Items table:
+  name, required
+allow cross-origin requests
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+when user calls POST /api/items sending item_data:
+  requires auth
+  new_item = save item_data as new Item
+  send back new_item with success message`;
+    const resolver = (name) => name === 'backend' ? backendSrc : null;
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.createTable('items'");
+    expect(r.serverJS).toContain("app.get('/api/items'");
+    expect(r.serverJS).toContain("app.post('/api/items'");
+    expect(r.serverJS).toContain("db.insert('items'");
+  });
+
+  it('use everything from frontend inlines pages and UI', () => {
+    const mainSrc = `build for web and javascript backend
+theme 'midnight'
+database is local memory
+use everything from 'backend'
+use everything from 'frontend'`;
+    const backendSrc = `create a Todos table:
+  title, required
+allow cross-origin requests
+when user calls GET /api/todos:
+  all_todos = get all Todos
+  send back all_todos`;
+    const frontendSrc = `page 'App' at '/':
+  on page load get todos from '/api/todos'
+  heading 'Todo App'
+  display todos as table showing title`;
+    const resolver = (name) => {
+      if (name === 'backend') return backendSrc;
+      if (name === 'frontend') return frontendSrc;
+      return null;
+    };
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("app.get('/api/todos'");
+    expect(r.html).toContain('Todo App');
+    expect(r.html).toContain('data-theme="midnight"');
+  });
+
+  it('three-level deep imports (main -> frontend -> components) resolve', () => {
+    const mainSrc = `build for web
+use everything from 'frontend'`;
+    const frontendSrc = `use everything from 'components'
+page 'App' at '/':
+  heading 'My App'`;
+    const componentsSrc = `define component Greeting receiving name:
+  text 'Hello'`;
+    const resolver = (name) => {
+      if (name === 'frontend') return frontendSrc;
+      if (name === 'components') return componentsSrc;
+      return null;
+    };
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('My App');
+  });
+});
+
+describe('Multi-file: use everything from does NOT double-compile', () => {
+  it('endpoints are not duplicated when imported via use everything from', () => {
+    const mainSrc = `build for web and javascript backend
+database is local memory
+use everything from 'backend'`;
+    const backendSrc = `create a Items table:
+  name, required
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items`;
+    const resolver = (name) => name === 'backend' ? backendSrc : null;
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    const getCount = (r.serverJS.match(/app\.get\('\/api\/items'/g) || []).length;
+    expect(getCount).toBe(1);
+  });
+});
+
+describe('Multi-page SPA with multi-file imports', () => {
+  it('multi-page app from imported frontend gets page wrappers', () => {
+    const mainSrc = `build for web
+use everything from 'frontend'`;
+    const frontendSrc = `page 'Home' at '/':
+  heading 'Welcome'
+page 'About' at '/about':
+  heading 'About'`;
+    const resolver = (name) => name === 'frontend' ? frontendSrc : null;
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('id="page_Home"');
+    expect(r.html).toContain('id="page_About"');
+    expect(r.html).toContain('_router');
+  });
+});
+
+describe('Components: define and show', () => {
+  it('component with inputs compiles to HTML fields', () => {
+    const src = `build for web
+define component SearchBox:
+  'Query' is a text input saved as a query
+page 'App' at '/':
+  show SearchBox()`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('Query');
+  });
+
+  it('component imported from file compiles correctly', () => {
+    const mainSrc = `build for web
+use everything from 'components'
+page 'App' at '/':
+  heading 'App'`;
+    const compSrc = `define component Badge receiving label:
+  bold text 'Badge'`;
+    const resolver = (name) => name === 'components' ? compSrc : null;
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('Streaming: SSE endpoint compilation', () => {
+  it('stream block compiles to SSE endpoint with event-stream headers', () => {
+    const src = `build for web and javascript backend
+when user calls GET /api/stream:
+  stream:
+    send back 'heartbeat'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain('text/event-stream');
+    expect(r.serverJS).toContain("app.get('/api/stream'");
+  });
+});
+
+describe('Complex SPA: tabs + modal + chart + debounce + multi-page', () => {
+  it('all interactive features compile together without conflicts', () => {
+    const src = `build for web and javascript backend
+theme 'midnight'
+database is local memory
+create a Items table:
+  name, required
+  status, default 'active'
+allow cross-origin requests
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+when user calls POST /api/items sending item_data:
+  requires auth
+  new_item = save item_data as new Item
+  send back new_item with success message
+when user calls PUT /api/items/:id sending update_data:
+  requires auth
+  save update_data to Items
+  send back 'updated'
+when user calls DELETE /api/items/:id:
+  requires auth
+  delete the Item with this id
+  send back 'deleted'
+page 'Dashboard' at '/':
+  on page load get items from '/api/items'
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'App'
+      'Search' is a text input saved as a query
+      when query changes after 250ms:
+        get items from '/api/items'
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+      section 'Body' with style app_content:
+        chart 'Items' as bar showing items
+        section 'Content' as tabs:
+          tab 'List':
+            display items as table showing name, status with delete and edit
+          tab 'Add':
+            'Name' is a text input saved as a name
+            button 'Add':
+              send name to '/api/items'
+              get items from '/api/items'
+        section 'Confirm' as modal:
+          heading 'Are you sure?'
+          button 'Yes':
+            close modal
+        section 'Help' slides in from right:
+          text 'Use the Dashboard'
+        button 'Help':
+          toggle the Help panel
+page 'Settings' at '/settings':
+  heading 'Settings'
+  text 'Coming soon'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Multi-page routing
+    expect(r.html).toContain('id="page_Dashboard"');
+    expect(r.html).toContain('id="page_Settings"');
+    // Tabs
+    expect(r.html).toContain('tab');
+    // Chart
+    expect(r.html).toContain('echarts');
+    // Server features
+    expect(r.serverJS).toContain("db.insert('items'");
+    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    // Layout
+    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).toContain('data-theme="midnight"');
+  });
+});
+
 run();
 

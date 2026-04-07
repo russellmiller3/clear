@@ -260,7 +260,10 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
       }
       node._resolved = true;
       if (!hasCollision) {
-        node._selectiveNodes = importedNodes;
+        // Splice imported nodes directly into the parent AST so all compile paths
+        // (server JS, reactive JS, HTML scaffold) can see pages, endpoints, etc.
+        ast.body.splice(i + 1, 0, ...importedNodes);
+        i += importedNodes.length; // skip past spliced nodes
       }
       continue;
     }
