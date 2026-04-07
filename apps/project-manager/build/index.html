@@ -153,6 +153,41 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
   </main>
 
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Teams: name*, description, created_at_date (line 13)
+   Members: team_id*, user_name*, role, email*, created_at_date (line 18)
+   Projects: team_id*, name*, description, status, deadline, created_at_date (line 25)
+   Tasks: project_id*, title*, description, status, priority, assigned_to, estimated_hours, actual_hours, created_at_date (line 33)
+   Comments: task_id*, author*, body*, created_at_date (line 44)
+   ActivityLog: team_id*, action*, detail, created_at_date (line 50)
+
+ ENDPOINTS:
+   GET /api/teams (line 68)
+   POST /api/teams [auth] (line 72)
+   GET /api/teams/:id (line 79)
+   GET /api/members (line 85)
+   POST /api/members [auth] (line 89)
+   GET /api/projects (line 101)
+   POST /api/projects [auth] (line 105)
+   PUT /api/projects/:id [auth] (line 116)
+   DELETE /api/projects/:id [auth] (line 126)
+   GET /api/tasks (line 134)
+   POST /api/tasks [auth] (line 138)
+   PUT /api/tasks/:id [auth] (line 150)
+   DELETE /api/tasks/:id [auth] (line 161)
+   GET /api/comments (line 168)
+   POST /api/comments [auth] (line 172)
+   GET /api/activity [auth] (line 183)
+   GET /api/health (line 190)
+
+ PAGES:
+   'Project Manager' at / (line 197)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
   <script>
 // --- Runtime ---
 function _toast(msg, type) {

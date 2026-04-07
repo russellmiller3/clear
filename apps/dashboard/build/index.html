@@ -111,6 +111,24 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
   </main>
 
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Models: name*, accuracy, status, created_at_date (line 18)
+
+ ENDPOINTS:
+   GET /api/models (line 28)
+   POST /api/models (line 32)
+   PUT /api/models/:id [auth] (line 38)
+   DELETE /api/models/:id [auth] (line 43)
+   POST /api/seed (line 48)
+
+ PAGES:
+   'ML Dashboard' at / (line 73)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
   <script>
 // --- Runtime ---
 function _toast(msg, type) {
