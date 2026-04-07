@@ -21,7 +21,7 @@ describe('Synonym Table', () => {
   });
 
   it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.9.0');
+    expect(SYNONYM_VERSION).toBe('0.10.0');
   });
 
   it('maps "create" to canonical "set"', () => {
@@ -9938,8 +9938,8 @@ when user calls GET /api/leads:
 
   it('includes _askAI utility with BYOK', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function _askAI(prompt, context, schema)');
-    expect(js).toContain('CLEAR_AI_KEY');
+    expect(js).toContain('async function _askAI(prompt, context, schema, model)');
+    expect(js).toContain('ANTHROPIC_API_KEY');
     expect(js).toContain('anthropic');
   });
 
@@ -10599,7 +10599,7 @@ agent 'T' receiving d:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const js = result.javascript;
-    expect(js).toContain('_askAI("Test", d, [{"name":"score","type":"number"},{"name":"reasoning","type":"text"}])');
+    expect(js).toContain('_askAI("Test", d, [{"name":"score","type":"number"},{"name":"reasoning","type":"text"}], null)');
   });
 
   it('allows accessing returned object properties', () => {
@@ -14168,6 +14168,237 @@ page 'Settings' at '/settings':
     // Layout
     expect(r.html).not.toContain('max-w-2xl');
     expect(r.html).toContain('data-theme="midnight"');
+  });
+});
+
+// =============================================================================
+// EXTERNAL API CALLS — Phase 45
+// =============================================================================
+
+describe('call api: generic HTTP requests', () => {
+  it('call api parses simple GET with URL', () => {
+    const src = `build for javascript backend
+when user calls GET /api/test:
+  result = call api 'https://api.github.com/users/octocat'
+  send back result`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('fetch(');
+    expect(r.javascript).toContain('api.github.com');
+  });
+
+  it('call api with headers and body compiles to fetch with options', () => {
+    const src = `build for javascript backend
+when user calls POST /api/charge:
+  requires auth
+  result = call api 'https://api.stripe.com/v1/charges':
+    method is 'POST'
+    header 'Authorization' is 'Bearer test'
+    body is incoming
+    timeout is 10 seconds
+  send back result`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("method: 'POST'");
+    expect(r.javascript).toContain('"Authorization"');
+    expect(r.javascript).toContain('AbortController');
+    expect(r.javascript).toContain('10000');
+  });
+
+  it('call api defaults to GET without body, POST with body', () => {
+    const src = `build for javascript backend
+when user calls GET /api/test:
+  data = call api 'https://example.com'
+  send back data`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("method: 'GET'");
+  });
+
+  it('standalone call api (no result var) compiles', () => {
+    const src = `build for javascript backend
+when user calls POST /api/notify:
+  requires auth
+  call api 'https://hooks.slack.com/services/xxx':
+    method is 'POST'
+    body is incoming
+  send back 'notified'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('hooks.slack.com');
+  });
+
+  it('call api handles non-JSON responses gracefully', () => {
+    const src = `build for javascript backend
+when user calls GET /api/test:
+  html = call api 'https://example.com'
+  send back html`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('content-type');
+    expect(r.javascript).toContain('_res.text()');
+  });
+
+  it('call api has 30s default timeout', () => {
+    const src = `build for javascript backend
+when user calls GET /api/test:
+  data = call api 'https://example.com'
+  send back data`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('30000');
+  });
+});
+
+describe('Service presets: Stripe, SendGrid, Twilio', () => {
+  it('charge via stripe compiles to Stripe API call', () => {
+    const src = `build for javascript backend
+when user calls POST /api/charge:
+  requires auth
+  charge via stripe:
+    amount = 2000
+    currency is 'usd'
+    token is 'tok_test'
+  send back 'charged'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('api.stripe.com/v1/charges');
+    expect(r.javascript).toContain('STRIPE_KEY');
+    expect(r.javascript).toContain('application/x-www-form-urlencoded');
+  });
+
+  it('send email via sendgrid compiles to SendGrid API call', () => {
+    const src = `build for javascript backend
+when user calls POST /api/notify:
+  requires auth
+  send email via sendgrid:
+    to is 'user@test.com'
+    from is 'team@app.com'
+    subject is 'Hello'
+    body is 'Welcome!'
+  send back 'sent'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('api.sendgrid.com/v3/mail/send');
+    expect(r.javascript).toContain('SENDGRID_KEY');
+    expect(r.javascript).toContain('application/json');
+  });
+
+  it('send sms via twilio compiles to Twilio API call', () => {
+    const src = `build for javascript backend
+when user calls POST /api/sms:
+  requires auth
+  send sms via twilio:
+    to is '+15551234567'
+    body is 'Your code is 1234'
+  send back 'sent'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('api.twilio.com');
+    expect(r.javascript).toContain('TWILIO_SID');
+    expect(r.javascript).toContain('TWILIO_TOKEN');
+    expect(r.javascript).toContain('Basic');
+  });
+});
+
+describe('ask claude: Anthropic API canonical form', () => {
+  it('ask claude parses as ASK_AI node', () => {
+    const src = `build for javascript backend
+agent 'Helper' receiving data:
+  answer = ask claude 'Summarize this' with data
+  send back answer`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_askAI("Summarize this"');
+  });
+
+  it('ask ai still works as alias', () => {
+    const src = `build for javascript backend
+agent 'Helper' receiving data:
+  answer = ask ai 'Summarize this' with data
+  send back answer`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_askAI("Summarize this"');
+  });
+
+  it('ask claude with model selection passes model to _askAI', () => {
+    const src = `build for javascript backend
+agent 'Helper' receiving data:
+  answer = ask claude 'Summarize' with data using 'claude-haiku-4-5-20251001'
+  send back answer`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('"claude-haiku-4-5-20251001"');
+  });
+
+  it('_askAI checks ANTHROPIC_API_KEY first, falls back to CLEAR_AI_KEY', () => {
+    const src = `build for javascript backend
+agent 'Helper' receiving data:
+  answer = ask claude 'Test' with data
+  send back answer`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('ANTHROPIC_API_KEY');
+    expect(r.javascript).toContain('CLEAR_AI_KEY');
+  });
+});
+
+describe('needs login: alias for requires auth', () => {
+  it('needs login compiles same as requires auth', () => {
+    const src = `build for javascript backend
+when user calls DELETE /api/items/:id:
+  needs login
+  delete the Item with this id
+  send back 'deleted'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('Authentication required');
+  });
+});
+
+describe('when X notifies: webhook syntax', () => {
+  it('when stripe notifies parses as webhook', () => {
+    const src = `build for javascript backend
+when stripe notifies '/stripe/events':
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('Full app with external APIs', () => {
+  it('CRM with Stripe + SendGrid + call api compiles', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Orders table:
+  amount (number), required
+  status, default 'pending'
+allow cross-origin requests
+when user calls POST /api/charge sending order:
+  requires auth
+  validate order:
+    amount is number, required
+  charge via stripe:
+    amount = 2000
+    currency is 'usd'
+    token is 'tok_test'
+  send email via sendgrid:
+    to is 'customer@test.com'
+    from is 'billing@app.com'
+    subject is 'Payment received'
+    body is 'Thanks for your order!'
+  new_order = save order as new Order
+  send back new_order with success message
+page 'App' at '/':
+  heading 'Store'
+  button 'Buy':
+    send nothing to '/api/charge'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain('api.stripe.com');
+    expect(r.serverJS).toContain('api.sendgrid.com');
+    expect(r.html).toContain('Store');
   });
 });
 
