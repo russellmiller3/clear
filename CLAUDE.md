@@ -53,6 +53,7 @@ Exit codes: 0=ok, 1=compile error, 2=runtime error, 3=file not found, 4=test fai
 - **1:1 mapping.** Every compiled output line traces to exactly one Clear line.
 - **Deterministic.** Same input = same output. No AI in the compile step.
 - **Compiler accumulates quality.** Fix a bug once, every app gets the fix on recompile.
+- **Compiled output is self-documenting.** Every compiled file starts with an auto-generated ASCII architecture diagram (tables, endpoints, pages, data flow). Regenerates on every build. The diagram IS the intent file for that app.
 
 ## File TOC Rule (MANDATORY)
 Both `parser.js` and `compiler.js` have a TABLE OF CONTENTS at the top.
