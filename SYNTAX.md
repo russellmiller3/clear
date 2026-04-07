@@ -1077,3 +1077,92 @@ node cli/clear.js package app.clear --out deploy/
 docker build -t myapp deploy/
 docker run -p 3000:3000 myapp
 ```
+
+## External API Calls
+
+Call any REST API with custom headers, body, and timeout:
+
+```clear
+# Simple GET
+data = call api 'https://api.github.com/users/octocat'
+
+# Full POST with headers and timeout
+result = call api 'https://api.example.com/data':
+  method is 'POST'
+  header 'Authorization' is 'Bearer ' + env('API_KEY')
+  header 'Content-Type' is 'application/json'
+  body is request_data
+  timeout is 10 seconds
+```
+
+Defaults: GET without body, POST with body. 30-second timeout if not specified.
+Compiles to `fetch()` with `AbortController`. Auto-detects JSON vs text responses.
+
+## Service Presets
+
+Zero-config wrappers for common services. Just set the env var.
+
+```clear
+# Stripe — charge a card (requires STRIPE_KEY)
+charge via stripe:
+  amount = 2000
+  currency is 'usd'
+  token is payment_token
+
+# SendGrid — send an email (requires SENDGRID_KEY)
+send email via sendgrid:
+  to is customer's email
+  from is 'team@myapp.com'
+  subject is 'Invoice sent'
+  body is email_body
+
+# Twilio — send SMS (requires TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM)
+send sms via twilio:
+  to is customer's phone
+  body is 'Your booking is confirmed'
+```
+
+## AI Integration
+
+```clear
+# Anthropic (canonical form)
+answer = ask claude 'Summarize this article' with article_text
+
+# With model selection
+answer = ask claude 'Write a poem' with topic using 'claude-haiku-4-5-20251001'
+
+# Structured output
+result = ask claude 'Analyze this lead' with lead_data returning:
+  score (number)
+  reasoning
+  qualified (boolean)
+
+# ask ai still works as an alias
+answer = ask ai 'Summarize this' with data
+```
+
+Requires `ANTHROPIC_API_KEY` (falls back to `CLEAR_AI_KEY`).
+
+## Webhooks (Natural Syntax)
+
+```clear
+# When a service sends events to your server
+when stripe notifies '/stripe/events':
+  if event is 'payment.succeeded':
+    update order's status to 'paid'
+
+when twilio notifies '/sms-received':
+  save message as new IncomingMessage
+
+# Legacy syntax still works:
+webhook '/stripe/events' signed with env('STRIPE_SECRET'):
+  send back 'ok'
+```
+
+## Auth Aliases
+
+```clear
+# Both work — needs login is the natural form
+needs login
+requires auth
+```
