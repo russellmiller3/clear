@@ -139,22 +139,95 @@ when user calls POST /api/score sending lead_data:
     </div>
     <div class="bg-base-200 py-20 px-6">
       <div class="max-w-5xl mx-auto">
-    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Bugs the compiler catches for you</h2>
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">The compiler catches bugs before your client does</h2>
     <p class="text-sm text-base-content/70 leading-relaxed">Auth missing on a DELETE endpoint? Compiler error.</p>
     <p class="text-sm text-base-content/70 leading-relaxed">Validation missing a required field? Compiler error.</p>
     <p class="text-sm text-base-content/70 leading-relaxed">User data exposed without row-level security? Compiler error.</p>
-    <p class="text-sm text-base-content/70 leading-relaxed">Every bug the compiler catches is a bug your client never sees. Every fix improves every app.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Inline API secret in your source code? Compiler error.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Every bug the compiler catches is a bug your client never sees. Every fix improves every app on the next build.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">When bugs happen, the AI fixes them</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">AI-generated code has 1.7x more bugs than human-written code (OWASP 2026). 86% of AI code fails basic XSS defense. 60% of bugs are invisible -- the code runs but produces wrong output.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Clear solves this with a runtime error translator. When compiled code throws an error, the app tells the AI exactly what went wrong, which Clear file and line caused it, and how to fix it.</p>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Three levels of context</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Level 1 (production): The user sees "Something went wrong." No database internals leaked.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Level 2 (development): The AI sees the Clear source line, a plain-English hint, and a suggested fix -- a minimal diff that solves the problem.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Level 3 (deep debug): Full schema context, sanitized request data, cross-file dependency map. PII is auto-redacted.</p>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">The AI reads the error. The AI writes the fix. You review it.</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">The error translator gives AI agents the same context a senior developer would have: what tables exist, what fields are required, which file defined the endpoint, and what the frontend is sending. No more guessing.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Every compiled file documents itself</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">The compiler auto-generates an architecture diagram at the top of every compiled file. Tables, endpoints, auth requirements, page routes, and data flow -- all visible at a glance.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">The diagram regenerates on every build. It cannot be stale. It is the intent file for your app.</p>
+    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>// TABLES:
+//   Contacts: name*, email*!, company, status (line 12)
+//   Deals: contact_id*, title*, value, stage (line 22)
+//
+// ENDPOINTS:
+//   GET /api/contacts (line 35)
+//   POST /api/contacts [auth] (line 40)
+//   PUT /api/contacts/:id [auth] (line 55)
+//
+// PAGES:
+//   'CRM Dashboard' at / (line 70)
+//
+// DATAFLOW: Frontend --> API --> Database</code></pre></div>
+    <p class="text-sm text-base-content/70 leading-relaxed">An AI agent opening any compiled file instantly understands the entire app without reading a single line of business logic.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Call any API. Stripe, SendGrid, Twilio built in.</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Connect to any REST API with call api -- custom headers, auth, body, timeout. Or use a service preset with zero config.</p>
+    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>charge via stripe:
+  amount = 2000
+  currency is 'usd'
+  token is payment_token
+
+send email via sendgrid:
+  to is customer's email
+  subject is 'Invoice sent'
+  body is email_body
+
+send sms via twilio:
+  to is customer's phone
+  body is 'Your booking is confirmed'</code></pre></div>
+    <p class="text-sm text-base-content/70 leading-relaxed">Set your API key as an environment variable. The compiler refuses to compile inline secrets.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Generic API calls work too -- call any URL with custom headers and auth for services we do not have presets for yet.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">First-class AI integration</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Call Claude directly from your backend. Structured output, model selection, and bring-your-own-key.</p>
+    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>answer = ask claude 'Summarize this article' with article_text
+
+result = ask claude 'Analyze this lead' with data returning:
+  score (number)
+  reasoning
+  qualified (boolean)
+
+answer = ask claude 'Quick answer' with data using 'claude-haiku-4-5-20251001'</code></pre></div>
+    <p class="text-sm text-base-content/70 leading-relaxed">The prompt is in the source code. Your client can read it. You can audit it. No black-box AI.</p>
       </div>
     </div>
     <div class="bg-base-100 py-20 px-6">
       <div class="max-w-5xl mx-auto">
     <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Clear vs the alternatives</h2>
     <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">vs Lovable / Bolt / v0</h2>
-    <p class="text-sm text-base-content/70 leading-relaxed">Those tools generate code you cannot read. When it breaks, you are stuck. Clear generates readable source from a readable blueprint. You own both.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Those tools generate code you cannot read. When it breaks, you are stuck. Clear generates readable source from a readable blueprint. When it breaks, the error tells you exactly which line to fix.</p>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">vs Cursor / Copilot / AI coding assistants</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">AI assistants write code with 1.7x more bugs and no way to trace errors back to intent. Clear compiles to self-documenting output with architecture diagrams, source line mapping, and suggested fixes. The AI assistant that wrote the bug can read the error and fix it autonomously.</p>
     <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">vs hiring a developer</h2>
-    <p class="text-sm text-base-content/70 leading-relaxed">A developer builds one app at a time. Clear templates let you build five apps a week with the same quality.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">A developer builds one app at a time. Clear templates let you build five apps a week with the same quality. And when the developer leaves, the code is still readable.</p>
     <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">vs doing it yourself in Express/Next.js</h2>
-    <p class="text-sm text-base-content/70 leading-relaxed">You already know how. But you also know that auth, validation, error handling, and security take 80% of the time. The compiler does that part.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">You already know how. But you also know that auth, validation, error handling, and security take 80% of the time. The compiler does that part -- and catches the OWASP Top 10 at compile time.</p>
       </div>
     </div>
     <div class="bg-base-100 py-24 px-6 text-center">
@@ -193,19 +266,23 @@ when user calls POST /api/score sending lead_data:
     </div>
     <div class="bg-base-200 py-20 px-6">
       <div class="max-w-5xl mx-auto">
-    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Full-Stack Apps</h2>
-    <p class="text-sm text-base-content/70 leading-relaxed">Todo app -- reactive frontend + REST backend, 37 lines total</p>
-    <p class="text-sm text-base-content/70 leading-relaxed">Project manager -- dashboard with tables, forms, status filters</p>
-    <p class="text-sm text-base-content/70 leading-relaxed">URL shortener -- create, redirect, track clicks</p>
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Full-Stack Apps (33 templates)</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">CRM -- contacts, deals, pipeline chart, debounced search, midnight theme</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">CRM Pro -- 5 tables, compound unique constraints, SSE streaming, multi-file with reusable components</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Invoice -- clients, invoices, line items, full CRUD with inline edit and delete</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Booking -- services, appointments, confirmations, ivory theme</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Project manager -- teams, projects, tasks, comments, role-based access</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Plus: todo, dashboard, URL shortener, ecommerce, SaaS billing, chat, and 20 more.</p>
       </div>
     </div>
     <div class="bg-base-100 py-20 px-6">
       <div class="max-w-5xl mx-auto">
-    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Infrastructure</h2>
-    <p class="text-sm text-base-content/70 leading-relaxed">Every compiled app includes: Express/FastAPI server, JSON body parsing, error handling, graceful shutdown.</p>
-    <p class="text-sm text-base-content/70 leading-relaxed">Auth: JWT tokens, role-based access, middleware. Database: local memory, PostgreSQL, SQLite.</p>
-    <p class="text-sm text-base-content/70 leading-relaxed">Rate limiting, CORS, request logging, webhook signature verification, file uploads.</p>
-    <p class="text-sm text-base-content/70 leading-relaxed">Auto-generated E2E test scripts for every endpoint.</p>
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Production infrastructure, zero config</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Every compiled app includes: Express/FastAPI server, error handling with source line mapping, graceful shutdown.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Auth: HMAC-signed tokens, role-based access, middleware. Database: local memory, PostgreSQL, Supabase.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">External APIs: Stripe payments, SendGrid email, Twilio SMS, plus generic call api for any REST endpoint.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Security: inline secret detection, SSRF blocking, auth enforcement on write endpoints, seed endpoint production guards.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Auto-generated architecture diagrams and E2E test scripts for every endpoint.</p>
       </div>
     </div>
 </div>
@@ -244,8 +321,8 @@ node server.js</code></pre></div>
 
  PAGES:
    'Clear Language' at / (line 10)
-   'Examples' at /examples (line 79)
-   'Get Started' at /start (line 115) -->
+   'Examples' at /examples (line 113)
+   'Get Started' at /start (line 153) -->
   <script>
 // Generated by Clear v1.0
 // ┌─────────────────────────────────────────────┐
@@ -254,8 +331,8 @@ node server.js</code></pre></div>
 //
 // PAGES:
 //   'Clear Language' at / (line 10)
-//   'Examples' at /examples (line 79)
-//   'Get Started' at /start (line 115)
+//   'Examples' at /examples (line 113)
+//   'Get Started' at /start (line 153)
 //
 
 
@@ -268,12 +345,12 @@ node server.js</code></pre></div>
 document.title = "Clear Language";
 
 // --- Examples Page ---
-// clear:79
+// clear:113
 // Page: Examples
 document.title = "Examples";
 
 // --- Get Started Page ---
-// clear:115
+// clear:153
 // Page: Get Started
 document.title = "Get Started";
 
