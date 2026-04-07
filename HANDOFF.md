@@ -30,6 +30,8 @@
 - Stripe-style landing page presets
 - Full syntax guide in playground (30+ sections)
 - Python parity: Supabase, rate limiting, proper comments
+- **Agent-friendly CLI** — 12 commands, all with `--json` output: build, check, info, fix, lint, serve, test, run, dev, init, package, help
+- **Renamed AI-STYLE-GUIDE.md → AI-INSTRUCTIONS.md** — it's an instruction manual for AI, not a style guide
 
 ## What's NOT Done
 
@@ -58,7 +60,8 @@
 | `CLAUDE.md` | Startup reading order, all rules |
 | `intent.md` | Authoritative spec for all node types |
 | `learnings.md` | Scan TOC — Session 7 section has 13 new gotchas |
-| `ROADMAP.md` | Phases 30-38 complete, Phase 39 planned |
+| `AI-INSTRUCTIONS.md` | How to write Clear code and use the CLI (renamed from AI-STYLE-GUIDE.md) |
+| `ROADMAP.md` | Phases 30-38 complete, Phases 40-45 planned |
 
 ## Resume Prompt
-> Read HANDOFF.md, CLAUDE.md, ROADMAP.md. 1089 tests passing. Phases 30-38 all complete. Next: Phase 39 (Tauri desktop), async patterns (race/timeout/cancel), or streaming iterators. The compiler catches 18 categories of security vulnerabilities at compile time. Run `node clear.test.js` to verify.
+> Read HANDOFF.md, CLAUDE.md, AI-INSTRUCTIONS.md, ROADMAP.md. 1089 tests passing. Phases 30-38 all complete. Agent-friendly CLI with 12 commands (all support --json). Next priorities: deploy playground to Vercel, build template apps (CRM, invoice, booking), then Phase 41 (clear deploy), Phase 44 (retry/timeout/race). The compiler catches 18 categories of security vulnerabilities at compile time. Run `node clear.test.js` to verify. Use `node cli/clear.js info <file> --json` to introspect any .clear file.
