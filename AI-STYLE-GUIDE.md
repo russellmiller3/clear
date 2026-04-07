@@ -939,3 +939,198 @@ set json_text to ask ai 'Return JSON with score and reasoning' with lead
 
 The compiler tells the AI to respond with JSON matching the schema.
 The runtime parses the JSON response into an object. No manual parsing needed.
+
+## CLI Workflow (How Agents Build Apps)
+
+When building a Clear app, use the CLI for fast feedback loops:
+
+```bash
+# 1. Scaffold
+clear init my-app
+
+# 2. Write main.clear (the agent writes this)
+
+# 3. Fast validation (no compilation, just parse + validate)
+clear check main.clear --json
+
+# 4. Security audit
+clear lint main.clear --json
+
+# 5. Auto-fix patchable errors (e.g. missing auth on DELETE)
+clear fix main.clear
+
+# 6. Compile
+clear build main.clear --out build/
+
+# 7. Introspect what was built
+clear info main.clear --json
+
+# 8. Serve locally for testing
+clear serve main.clear --port 3000
+
+# 9. Package for deployment
+clear package main.clear --out deploy/
+```
+
+**Always use `--json` when the agent is parsing output.** Human-readable output is
+for terminal display only. JSON output has structured errors, warnings, file lists,
+and metadata the agent can act on programmatically.
+
+**Use `check` before `build`.** `check` is faster — it validates without compiling.
+Use it in the tight edit loop. Use `build` when you need the output files.
+
+**Use `lint` before shipping.** It categorizes warnings into security, quality, and
+other. Zero security warnings is the bar for shipping.
+
+## Charts
+
+**Use charts for any numeric data from an API.** If you're displaying a table of
+numbers, add a chart above it for visual context:
+
+```
+chart 'Revenue Trend' as line showing sales
+chart 'Deals by Month' as bar showing sales
+chart 'Status Breakdown' as pie showing tasks by status
+chart 'Growth' as area showing monthly_data
+```
+
+**Chart types:** `line` (trends over time), `bar` (comparisons), `pie` (proportions),
+`area` (cumulative trends). The compiler auto-detects x-axis (first string field)
+and y-axis (number fields). For pie charts, use `by field` to group and count.
+
+**Always pair charts with seed data** so the chart has something to show on first load:
+
+```
+when user calls POST /api/seed:
+  create jan:
+    month is 'Jan'
+    revenue = 31200
+  save jan as new Sale
+  send back 'seeded'
+
+page 'Dashboard' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get sales from '/api/sales'
+  chart 'Revenue' as bar showing sales
+```
+
+## Table Action Buttons
+
+**Use `with delete` when the user should be able to remove rows.** Use `with edit`
+when they should be able to modify rows. Use both when appropriate:
+
+```
+display contacts as table showing name, email with delete
+display contacts as table showing name, email with edit
+display contacts as table showing name, email with delete and edit
+```
+
+The compiler auto-wires these to matching DELETE and PUT endpoints. The validator
+warns if you write `with delete` but have no DELETE endpoint. **This is explicit —
+the compiler never adds buttons the user didn't ask for.**
+
+## Reactive Input Handlers
+
+**Use `when X changes:` for search-as-you-type and live filtering.** Always debounce
+API calls to avoid hammering the server:
+
+```
+'Search' is a text input saved as a query
+
+# Without debounce (fires on every keystroke)
+when query changes:
+  get results from '/api/search?q={query}'
+
+# With debounce (waits 250ms after last keystroke — preferred)
+when query changes after 250ms:
+  get results from '/api/search?q={query}'
+```
+
+**Always use debounce for API calls.** 250ms is the right default. Without it,
+every keystroke fires a network request.
+
+## Transactions
+
+**Use `as one operation:` for multi-step database changes that must all succeed
+or all fail.** E-commerce checkouts, bank transfers, inventory updates:
+
+```
+when user calls POST /api/checkout sending order:
+  requires auth
+  as one operation:
+    decrease product's stock by order's quantity
+    save order as new Order
+    send email:
+      to is order's email
+      subject is 'Order confirmed'
+```
+
+This compiles to `BEGIN`/`COMMIT`/`ROLLBACK`. If any step fails, all changes
+are rolled back. Never do multi-step data changes without a transaction.
+
+## Compound Unique Constraints
+
+**Use `one per X and Y` to prevent duplicates on combinations:**
+
+```
+create a Votes table:
+  user_id, required
+  poll_id, required
+  choice, required
+  one per user_id and poll_id    # one vote per user per poll
+```
+
+This is clearer than `unique together` — say it out loud and a 14-year-old
+understands "one per user and poll."
+
+## Pagination
+
+**Use `page N, M per page` for any list that might have 50+ items:**
+
+```
+items = get all Items page 1, 25 per page
+```
+
+For Supabase, this compiles to `.range()`. For local memory, it compiles to
+array `.slice()`. Always paginate production endpoints.
+
+## File Uploads
+
+```
+'Profile Photo' is a file input saved as a photo
+```
+
+File inputs use `<input type="file">` with DaisyUI styling. The value is a
+`File` object in state, accessible in button handlers. Uses `change` event
+(not `input`).
+
+## CSS Hover, Focus, and Transitions
+
+**Use `hover_` and `focus_` prefixes in style blocks for interactive states:**
+
+```
+style card:
+  background is 'white'
+  hover_background is '#f0f0f0'
+  focus_border is '2px solid blue'
+  transition is 'all 0.2s ease'
+```
+
+The compiler auto-adds `transition: all 0.2s` when hover/focus props exist
+but no explicit transition is set. Use `for_screen is 'small'` for responsive.
+
+## Database: Local Memory vs Supabase
+
+```
+# Development (default) — data persists to JSON file
+database is local memory
+
+# Production — real Postgres via Supabase
+database is supabase
+```
+
+**Start with `local memory`.** Switch to `supabase` when deploying. It's a
+one-line change — all CRUD operations compile to Supabase SDK calls
+automatically. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars.
+
