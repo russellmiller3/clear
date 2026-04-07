@@ -728,6 +728,60 @@ function validateSecurity(body, errors, warnings) {
     }
   }
   checkEndpoints(body);
+
+  // Check 4: POST endpoints that handle login/signup without rate limiting
+  function checkBruteForce(nodes) {
+    for (const node of nodes) {
+      if (node.type !== NodeType.ENDPOINT) continue;
+      const method = node.method.toUpperCase();
+      const path = node.path.toLowerCase();
+      const isAuthEndpoint = path.includes('login') || path.includes('signin') ||
+        path.includes('signup') || path.includes('register') || path.includes('auth');
+      if (method === 'POST' && isAuthEndpoint) {
+        const hasRateLimit = node.body.some(n => n.type === NodeType.RATE_LIMIT);
+        if (!hasRateLimit) {
+          warnings.push(
+            `Line ${node.line}: ${method} ${node.path} looks like a login/signup endpoint but has no rate limit. ` +
+            `Without rate limiting, attackers can try thousands of passwords per second. Add: rate limit 10 per minute`
+          );
+        }
+      }
+    }
+  }
+  checkBruteForce(body);
+
+  // Check 5: Sensitive field names in GET responses (password, secret, token in schema)
+  function checkSensitiveFields(nodes) {
+    const sensitiveNames = ['password', 'password_hash', 'secret', 'api_key', 'token', 'private_key'];
+    for (const node of nodes) {
+      if (node.type !== NodeType.DATA_SHAPE) continue;
+      const tableName = node.name;
+      const sensitive = node.fields.filter(f => sensitiveNames.includes(f.name.toLowerCase()));
+      if (sensitive.length > 0) {
+        const fieldNames = sensitive.map(f => f.name).join(', ');
+        warnings.push(
+          `Line ${node.line}: Table '${tableName}' has sensitive field${sensitive.length > 1 ? 's' : ''}: ${fieldNames}. ` +
+          `Make sure GET endpoints don't return ${sensitive.length > 1 ? 'these fields' : 'this field'} to clients. ` +
+          `Consider removing ${fieldNames} from the 'showing' list or filtering server-side.`
+        );
+      }
+    }
+  }
+  checkSensitiveFields(body);
+
+  // Check 6: CORS enabled but no auth on any endpoint (wide-open API)
+  const hasCORS = body.some(n => n.type === NodeType.ALLOW_CORS);
+  const hasAnyAuth = body.some(n =>
+    n.type === NodeType.ENDPOINT && n.body &&
+    n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE)
+  );
+  const hasEndpoints = body.some(n => n.type === NodeType.ENDPOINT);
+  if (hasCORS && hasEndpoints && !hasAnyAuth) {
+    warnings.push(
+      `CORS is enabled but no endpoint requires auth. Any website can call your API and read the responses. ` +
+      `Add 'requires auth' to sensitive endpoints, or remove 'allow cross-origin requests' if this is an internal API.`
+    );
+  }
 }
 
 /**

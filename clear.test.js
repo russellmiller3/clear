@@ -11500,5 +11500,45 @@ page 'App' at '/':
   });
 });
 
+// =============================================================================
+// SECURITY: ATTACK PREVENTION VALIDATORS
+// =============================================================================
+
+describe('Security - brute force prevention', () => {
+  it('warns when login endpoint has no rate limit', () => {
+    const src = `build for javascript backend\nwhen user calls POST /api/login sending credentials:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('rate limit'))).toBe(true);
+  });
+
+  it('no warning when login has rate limit', () => {
+    const src = `build for javascript backend\nwhen user calls POST /api/login sending credentials:\n  rate limit 10 per minute\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('login') && w.includes('rate limit'))).toHaveLength(0);
+  });
+});
+
+describe('Security - sensitive data exposure', () => {
+  it('warns when table has password field', () => {
+    const src = `build for javascript backend\ncreate a Users table:\n  email, required\n  password, required`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('sensitive') && w.includes('password'))).toBe(true);
+  });
+});
+
+describe('Security - open CORS without auth', () => {
+  it('warns when CORS enabled but no auth on any endpoint', () => {
+    const src = `build for javascript backend\nallow cross-origin requests\nwhen user calls GET /api/data:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('CORS') && w.includes('auth'))).toBe(true);
+  });
+
+  it('no warning when CORS + auth exist', () => {
+    const src = `build for javascript backend\nallow cross-origin requests\nwhen user calls GET /api/data:\n  requires auth\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('CORS') && w.includes('no endpoint'))).toHaveLength(0);
+  });
+});
+
 run();
 
