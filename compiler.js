@@ -107,9 +107,10 @@ const UTILITY_FUNCTIONS = [
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema)); }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
   for (const r of rules) {
-    const v = body[r.field];
+    let v = body[r.field];
     if (r.required && (v == null || v === '')) return r.field + ' is required';
     if (v == null) continue;
+    if (r.type === 'number' && typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) { body[r.field] = Number(v); v = body[r.field]; }
     if (r.type === 'number' && typeof v !== 'number') return r.field + ' must be a number';
     if (r.type === 'boolean' && typeof v !== 'boolean') return r.field + ' must be true or false';
     if (r.min != null && r.type === 'text' && String(v).length < r.min) return r.field + ' must be at least ' + r.min + (r.min === 1 ? ' character' : ' characters');

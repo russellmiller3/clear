@@ -1,0 +1,53 @@
+build for web and javascript backend
+database is local memory
+
+create a Accounts table:
+  name, required
+  email, required, unique
+  balance (number), default 0
+
+create a Transactions table:
+  from_account_id, required
+  to_account_id, required
+  amount (number), required
+  memo
+
+when user calls GET /api/accounts:
+  accounts = look up all Accounts
+  send back accounts
+
+when user calls POST /api/accounts sending account:
+  needs login
+  new_account = save account as new Account
+  send back new_account
+
+when user calls POST /api/transfer sending transfer:
+  needs login
+  validate transfer:
+    amount is number, required, min 1
+  from_account = look up records in Accounts table where id is transfer's from_account_id
+  guard from_account's balance is at least transfer's amount or 'Insufficient funds'
+  to_account = look up records in Accounts table where id is transfer's to_account_id
+  from_account's balance = from_account's balance - transfer's amount
+  save from_account to Accounts
+  to_account's balance = to_account's balance + transfer's amount
+  save to_account to Accounts
+  new_transaction = save transfer as new Transaction
+  send back new_transaction
+
+when user calls POST /api/seed:
+  create a1:
+    name is 'Checking'
+    email is 'user@bank.com'
+    balance = 5000
+  save a1 as new Account
+  create a2:
+    name is 'Savings'
+    email is 'user-savings@bank.com'
+    balance = 12000
+  save a2 as new Account
+  send back 'seeded'
+
+page 'Banking' at '/':
+  on page load get accounts from '/api/accounts'
+  display accounts as table showing name, email, balance
