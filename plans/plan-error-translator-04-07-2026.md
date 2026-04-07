@@ -259,6 +259,324 @@ Everything is inlined in compiler output. The compiler emits `_clearTry`, `_clea
 
 ---
 
+## 🔥 ACCEPTANCE TESTS — "Can an AI Fix This From the Error Alone?"
+
+These are the real tests. The unit tests verify plumbing; these verify **outcomes**. Each test gives an AI agent ONLY the error JSON (no source files) and asks: can you produce a working patch?
+
+### Test Protocol
+
+For each test:
+1. Write a `.clear` app with a **known bug** baked in
+2. Compile it (`node cli/clear.js build`)
+3. Run the server (`CLEAR_DEBUG=true node build/server.js`)
+4. Hit the endpoint that triggers the bug
+5. Capture the error JSON response
+6. **Assert the error contains enough info to fix the bug:**
+   - `clear_file` points to the right file
+   - `clear_line` points to the right line (±2)
+   - `hint` describes the fix in plain English
+   - `technical` has the actual error details
+7. **Apply the suggested fix to the .clear source**
+8. Recompile, re-run, re-test — error gone
+
+---
+
+### DATABASE BUGS
+
+**AT-1: Missing required field**
+```clear
+# Bug: frontend sends { name } but table requires email
+create a Contacts table:
+  name, required
+  email, required, unique
+when user calls POST /api/contacts sending data:
+  needs login
+  new_contact = save data as new Contact
+  send back new_contact
+```
+- Trigger: `POST /api/contacts` with `{ "name": "Alice" }`
+- Assert error contains: `clear_line` for the save line, `hint` mentions "email is required", `hint` references the table definition line
+- Assert: an agent reading ONLY the error can add `validate data: email is text, required`
+
+**AT-2: Unique constraint violation**
+```clear
+# Bug: inserting duplicate email
+create a Contacts table:
+  email, required, unique
+when user calls POST /api/seed:
+  create c1:
+    email is 'alice@test.com'
+  save c1 as new Contact
+  create c2:
+    email is 'alice@test.com'
+  save c2 as new Contact
+  send back 'ok'
+```
+- Trigger: `POST /api/seed`
+- Assert: hint says "email must be unique — alice@test.com already exists", references the table `unique` constraint line
+
+**AT-3: Update non-existent record**
+```clear
+# Bug: PUT with ID that doesn't exist
+when user calls PUT /api/contacts/:id sending data:
+  needs login
+  save data to Contacts
+  send back 'updated'
+```
+- Trigger: `PUT /api/contacts/999` with `{ "name": "Ghost" }`
+- Assert: hint says "no Contact with id 999 found", references the save line
+
+**AT-4: Foreign key orphan**
+```clear
+# Bug: line item references non-existent invoice
+create a Invoices table:
+  title, required
+create a LineItems table:
+  invoice_id, required
+  description, required
+when user calls POST /api/line-items sending data:
+  needs login
+  new_item = save data as new LineItem
+  send back new_item
+```
+- Trigger: `POST /api/line-items` with `{ "invoice_id": "999", "description": "Widget" }`
+- Assert: hint warns about orphaned foreign key (invoice_id 999 doesn't exist)
+
+**AT-5: Type coercion — string where number expected**
+```clear
+create a Products table:
+  name, required
+  price (number), required
+when user calls POST /api/products sending data:
+  needs login
+  new_product = save data as new Product
+  send back new_product
+```
+- Trigger: `POST /api/products` with `{ "name": "Widget", "price": "fifty" }`
+- Assert: hint says "price expects a number but got 'fifty'"
+
+---
+
+### BACKEND / AUTH BUGS
+
+**AT-6: Missing auth on write endpoint**
+```clear
+# Bug: no auth guard on DELETE
+when user calls DELETE /api/contacts/:id:
+  delete the Contact with this id
+  send back 'deleted'
+```
+- This is a **compile-time** validator error (already caught). Verify the validator error message includes the line number and suggests `needs login`.
+
+**AT-7: Wrong role for endpoint**
+```clear
+when user calls DELETE /api/admin/users/:id:
+  needs login
+  needs role 'superadmin'
+  delete the User with this id
+  send back 'deleted'
+```
+- Trigger: DELETE with token that has `role: 'admin'` (not `superadmin`)
+- Assert: hint says "needs role 'superadmin'" and references the line
+
+**AT-8: Validation type mismatch**
+```clear
+when user calls POST /api/orders sending order:
+  needs login
+  validate order:
+    amount is number, required
+    email is text, required, matches email
+  new_order = save order as new Order
+  send back new_order
+```
+- Trigger: `POST /api/orders` with `{ "amount": "abc", "email": "not-an-email" }`
+- Assert: error lists ALL validation failures (both amount and email), not just the first
+
+---
+
+### ASYNC / RACE CONDITION BUGS
+
+**AT-9: Concurrent seed creates duplicates**
+```clear
+create a Tags table:
+  name, required, unique
+when user calls POST /api/seed:
+  create t1:
+    name is 'Enterprise'
+  save t1 as new Tag
+  send back 'ok'
+```
+- Trigger: Fire 5 concurrent `POST /api/seed` requests
+- Assert: at least 4 return unique constraint errors with hint about the duplicate name
+
+**AT-10: Timeout on external API**
+```clear
+when user calls POST /api/charge:
+  needs login
+  result = call api 'https://httpbin.org/delay/30':
+    timeout is 2 seconds
+    body is incoming
+  send back result
+```
+- Trigger: `POST /api/charge` (will timeout after 2s)
+- Assert: hint says "request timed out after 2 seconds" and suggests increasing timeout or checking service availability
+
+---
+
+### EXTERNAL API BUGS
+
+**AT-11: Missing Stripe API key**
+```clear
+when user calls POST /api/charge:
+  needs login
+  charge via stripe:
+    amount = 2000
+    currency is 'usd'
+    token is 'tok_test'
+  send back 'charged'
+```
+- Trigger: `POST /api/charge` without STRIPE_KEY env var set
+- Assert: hint says "Set STRIPE_KEY environment variable" and references the `charge via stripe` line
+
+**AT-12: SendGrid rejects request**
+```clear
+when user calls POST /api/notify:
+  needs login
+  send email via sendgrid:
+    to is 'test@example.com'
+    from is 'bad-from'
+    subject is 'Hello'
+    body is 'World'
+  send back 'sent'
+```
+- Trigger: `POST /api/notify` with invalid SENDGRID_KEY
+- Assert: hint includes "SendGrid error", status code, and suggests checking the API key
+
+---
+
+### MULTI-FILE / CROSS-FILE BUGS
+
+**AT-13: Frontend sends wrong fields for backend schema**
+```clear
+# main.clear
+build for web and javascript backend
+database is local memory
+use everything from 'backend'
+use everything from 'frontend'
+
+# backend.clear — expects name AND email
+create a Contacts table:
+  name, required
+  email, required
+when user calls POST /api/contacts sending data:
+  needs login
+  validate data:
+    name is text, required
+    email is text, required, matches email
+  new_contact = save data as new Contact
+  send back new_contact
+
+# frontend.clear — only sends name (missing email!)
+page 'App' at '/':
+  'Name' is a text input saved as a name
+  button 'Save':
+    send name to '/api/contacts'
+```
+- Trigger: Click "Save" with only name filled
+- Assert: error references BOTH `backend.clear` (validation line) AND `frontend.clear` (form line), hint says "the form at frontend.clear line X only sends 'name' but backend.clear line Y requires 'email'"
+
+**AT-14: Imported module has wrong table name**
+```clear
+# main.clear
+build for web and javascript backend
+database is local memory
+use everything from 'backend'
+
+# backend.clear — typo: 'Contact' singular but table is 'Contacts'
+create a Contacts table:
+  name, required
+when user calls POST /api/contacts sending data:
+  needs login
+  new_contact = save data as new Contac
+  send back new_contact
+```
+- Assert: compile error or runtime error references `backend.clear` line with hint about table name
+
+---
+
+### FRONTEND / UI BUGS
+
+**AT-15: Chart renders with empty data**
+```clear
+page 'Dashboard' at '/':
+  on page load get deals from '/api/deals'
+  chart 'Pipeline' as bar showing deals
+  display deals as table showing title, value
+```
+- Trigger: `GET /api/deals` returns `[]`
+- Assert: console.error warns "chart 'Pipeline' has no data — deals is empty (clear:LINE)"
+
+**AT-16: Edit mode collision between forms**
+```clear
+page 'App' at '/':
+  on page load:
+    get contacts from '/api/contacts'
+    get deals from '/api/deals'
+  display contacts as table showing name, email with edit
+  display deals as table showing title, value with edit
+```
+- This is a known limitation — single `_editing_id` shared across tables. 
+- Assert: when edit is clicked on one table while another is being edited, warn in console: "edit mode conflict — clear:LINE and clear:LINE both use _editing_id"
+
+**AT-17: Stale state after failed fetch**
+```clear
+page 'App' at '/':
+  on page load get items from '/api/items'
+  button 'Refresh':
+    get items from '/api/items'
+  display items as table showing name
+```
+- Trigger: Server is down, click "Refresh"
+- Assert: console.error includes `[GET /api/items]`, clear:LINE, and "Failed to load data — showing previous data"
+
+---
+
+### THE ULTIMATE TEST: Autonomous Fix Loop
+
+**AT-18: Full autonomous debug cycle**
+
+This is the money test. Steps:
+
+1. Start with CRM SPA app (4 files, most complex app)
+2. Introduce a bug: remove `email, required` from Contacts table in backend.clear
+3. Compile and run with `CLEAR_DEBUG=true`
+4. POST to `/api/contacts` with `{ "name": "Alice", "email": "alice@test.com" }`
+5. The save should succeed but now email isn't validated
+6. POST again with `{ "name": "Bob" }` (no email)
+7. Capture the error response
+8. **Feed ONLY the error JSON to an AI agent** (no access to source files)
+9. Agent must produce a patch: "Add `email, required` to Contacts table at backend.clear line 12"
+10. Apply patch, recompile, re-run — error gone
+
+**Pass criteria:** The agent produces the correct fix from the error response alone, without reading any `.clear` files.
+
+---
+
+## Grading the Error Translator
+
+After implementing, score each acceptance test:
+
+| Grade | Meaning |
+|-------|---------|
+| **A** | Error alone is sufficient — agent fixes without reading source |
+| **B** | Error + one file read needed — agent knows which file to check |
+| **C** | Error gives direction but agent needs to explore — 2+ file reads |
+| **F** | Error is useless — agent has to start from scratch |
+
+**Target: A or B on all 18 tests. No F grades allowed.**
+
+---
+
 ## 📎 RESUME PROMPT
 
-> Read `plans/plan-error-translator-04-07-2026.md`. Runtime error translator: maps compiled JS errors back to Clear source with hints. 7 phases, 16 cycles. All utilities inlined (no external files). _clearTry wraps CRUD/auth when CLEAR_DEBUG set. _clearMap embeds source map conditionally. PII auto-redacted. Python deferred. Branch: `feature/error-translator`. Run `node clear.test.js` after each phase.
+> Read `plans/plan-error-translator-04-07-2026.md`. Runtime error translator: maps compiled JS errors back to Clear source with hints. 7 phases, 16 TDD cycles + 18 acceptance tests. All utilities inlined (no external files). _clearTry wraps CRUD/auth when CLEAR_DEBUG set. _clearMap embeds source map conditionally. PII auto-redacted. Python deferred. Branch: `feature/error-translator`. Run `node clear.test.js` after each phase. Acceptance tests (AT-1 through AT-18) verify an AI agent can fix bugs from error responses alone.
