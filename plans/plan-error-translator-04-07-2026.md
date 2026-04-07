@@ -46,7 +46,7 @@ CLEAR_DEBUG=false → { error: "Something went wrong" }
 
 5. **Frontend uses `console.error` with context** — no `_clearTry` on frontend (no `res` object). Instead, fetch `.catch()` and button handlers log structured error context to browser console. No server dependency.
 
-6. **Python deferred** — Phase 1-7 are JS only. Python `_clear_try()` is documented as future work in intent.md.
+6. **Python is first-class** — every phase implements both JS and Python. `_clear_try()` Python equivalent uses the same context structure. FastAPI endpoints get the same `CLEAR_DEBUG` three-level output.
 
 7. **Performance: wrapping is zero-cost in production** — `_clearTry` only wraps when `CLEAR_DEBUG` is set. Production compilation emits bare `db.insert()` with no wrapper. Debug mode adds ~0.1ms per operation.
 
@@ -134,7 +134,7 @@ Everything is inlined in compiler output. The compiler emits `_clearTry`, `_clea
 | Production perf | `_clearTry` only emitted with CLEAR_DEBUG. Zero overhead in production |
 | Source map size | `_clearMap` only emitted with CLEAR_DEBUG. Zero bloat in production |
 | Frontend errors | Console.error with `[clear:LINE file.clear]` context. No `_clearTry`. |
-| Python backend | Deferred. JS-only in this plan. Documented as future work. |
+| Python backend | `_clear_try()` + `_clear_error()` Python equivalents in every phase |
 | External API returns HTML | Truncate to 200 chars, hint says "API returned non-JSON response" |
 | Cross-file bug (symptom in A, cause in B) | `_clearMap.endpoints` links endpoints to schemas → hint includes both files |
 | Stack trace noise | `_clearTry` strips its own frames from stack |
@@ -625,9 +625,76 @@ Every error response with `CLEAR_DEBUG=true` should include a `fix_scope` field 
 
 ---
 
+### WEB RESEARCH BUGS — AI Code Patterns (2025-2026 data)
+
+Based on OWASP 2026, IEEE, and Stack Overflow research: AI-generated code has 1.7x more bugs than human code. 86% fail to defend against XSS. 60% of errors are semantic (code runs but wrong output). These tests cover the gaps.
+
+**AT-22: XSS in generated HTML output**
+```clear
+# Bug: user input displayed without escaping
+page 'App' at '/':
+  'Name' is a text input saved as a name
+  text name
+```
+- Trigger: Enter `<script>alert('xss')</script>` in the name field
+- Assert: compiled output escapes HTML entities in `text name` display
+- If NOT escaped: compile-time warning "displaying raw user input — use `show` not `text` for dynamic values, or sanitize"
+
+**AT-23: Null/undefined access on missing API response field**
+```clear
+page 'App' at '/':
+  on page load get user from '/api/me'
+  text user's name
+  text user's email
+  text user's company's address
+```
+- Trigger: API returns `{ "name": "Alice" }` (no email, no company)
+- Assert: console.error warns "user's email is undefined (clear:LINE) — API response missing 'email' field"
+- Assert: `user's company's address` warns about deep null access chain
+
+**AT-24: Off-by-one / empty array boundary**
+```clear
+page 'App' at '/':
+  on page load get items from '/api/items'
+  text items's length + ' items found'
+  display items as table showing name
+```
+- Trigger: `/api/items` returns `[]`
+- Assert: table renders gracefully with "No data" message, not a crash
+- Assert: `items's length` works on empty array (returns 0, not error)
+
+**AT-25: Silent wrong output (runs but incorrect)**
+```clear
+# Bug: using = (number) instead of is (string) for a string field
+when user calls POST /api/contacts sending data:
+  needs login
+  data's status = 'active'
+  new_contact = save data as new Contact
+  send back new_contact
+```
+- This is the hardest category: the code compiles and runs, but `status = 'active'` might be interpreted as a numeric assignment rather than string. The error is semantic, not syntactic.
+- Assert: compile-time lint warning when `=` is used with a string literal (suggest `is` instead)
+
+**AT-26: Integration wiring gap (auth middleware not connected)**
+```clear
+# Bug: auth required on endpoint but frontend doesn't send token
+when user calls DELETE /api/contacts/:id:
+  needs login
+  delete the Contact with this id
+  send back 'deleted'
+
+page 'App' at '/':
+  button 'Delete':
+    send nothing to '/api/contacts/1' as DELETE
+```
+- Trigger: Click Delete — gets 401 because frontend fetch doesn't include auth header
+- Assert: error includes both the endpoint (needs login at line X) AND the frontend call (line Y), hint says "frontend call at line Y doesn't include auth — add auth token to the request"
+
+---
+
 ### THE ULTIMATE TEST: Autonomous Fix Loop
 
-**AT-22: Full autonomous debug cycle**
+**AT-27: Full autonomous debug cycle**
 
 This is the money test. Steps:
 
@@ -657,10 +724,10 @@ After implementing, score each acceptance test:
 | **C** | Error gives direction but agent needs to explore — 2+ file reads |
 | **F** | Error is useless — agent has to start from scratch |
 
-**Target: A or B on all 22 tests. No F grades allowed.**
+**Target: A or B on all 27 tests. No F grades allowed.**
 
 ---
 
 ## 📎 RESUME PROMPT
 
-> Read `plans/plan-error-translator-04-07-2026.md`. Runtime error translator: maps compiled JS errors back to Clear source with hints. 7 phases, 16 TDD cycles + 22 acceptance tests (incl. CSS inheritance, fix_scope deletion prevention, autonomous loop). All utilities inlined (no external files). _clearTry wraps CRUD/auth when CLEAR_DEBUG set. _clearMap embeds source map conditionally. PII auto-redacted. Python deferred. Branch: `feature/error-translator`. Run `node clear.test.js` after each phase. Acceptance tests (AT-1 through AT-18) verify an AI agent can fix bugs from error responses alone.
+> Read `plans/plan-error-translator-04-07-2026.md`. Runtime error translator: maps compiled JS/Python errors back to Clear source with hints. 7 phases, 16 TDD cycles + 27 acceptance tests (DB, auth, async, external API, multi-file, CSS, XSS, null access, off-by-one, silent semantic, fix_scope, autonomous loop). Python is first-class. All utilities inlined (no external files). _clearTry wraps CRUD/auth when CLEAR_DEBUG set. _clearMap embeds source map conditionally. PII auto-redacted. Python deferred. Branch: `feature/error-translator`. Run `node clear.test.js` after each phase. Acceptance tests (AT-1 through AT-18) verify an AI agent can fix bugs from error responses alone.
