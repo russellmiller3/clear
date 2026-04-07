@@ -2207,7 +2207,7 @@ function _compileNodeInner(node, ctx) {
           `${pad}  });\n` +
           `${pad}  if (!_res.ok) { const _e = new Error('Stripe API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'Stripe', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'charge via stripe' }; throw _e; }\n` +
           `${pad}  return _res.json();\n` +
-          `${pad})()`;
+          `${pad}})()`;
         return code;
       }
 
@@ -2220,7 +2220,7 @@ function _compileNodeInner(node, ctx) {
           `${pad}  });\n` +
           `${pad}  if (!_res.ok) { const _e = new Error('SendGrid API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'SendGrid', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'send email via sendgrid' }; throw _e; }\n` +
           `${pad}  return { ok: true, status: _res.status };\n` +
-          `${pad})()`;
+          `${pad}})()`;
         return code;
       }
 
@@ -2236,7 +2236,7 @@ function _compileNodeInner(node, ctx) {
           `${pad}  });\n` +
           `${pad}  if (!_res.ok) { const _e = new Error('Twilio API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'Twilio', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'send sms via twilio' }; throw _e; }\n` +
           `${pad}  return _res.json();\n` +
-          `${pad})()`;
+          `${pad}})()`;
         return code;
       }
 
@@ -2964,6 +2964,9 @@ export function exprToCode(expr, ctx) {
       code += `    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
       code += `    const _ct = _res.headers.get("content-type") || "";\n`;
       code += `    return _ct.includes("json") ? _res.json() : _res.text();\n`;
+      code += `  } catch (_err) {\n`;
+      code += `    if (!_err._clearCtx) { _err._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; }\n`;
+      code += `    throw _err;\n`;
       code += `  } finally { clearTimeout(_timer); }\n`;
       code += `})()`;
       return code;
@@ -5120,7 +5123,8 @@ function stylesToCSS(styles, vars = {}) {
     if ((hoverProps.length > 0 || focusProps.length > 0) && !hasTransition) {
       baseProps.push('  transition: all 0.2s ease;');
     }
-    let rule = `.${className} {\n${baseProps.join('\n')}\n}`;
+    const lineComment = style.line ? `/* clear:${style.line} */\n` : '';
+    let rule = `${lineComment}.${className} {\n${baseProps.join('\n')}\n}`;
     if (hoverProps.length > 0) {
       rule += `\n.${className}:hover {\n${hoverProps.join('\n')}\n}`;
     }

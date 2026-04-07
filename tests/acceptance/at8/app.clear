@@ -1,0 +1,14 @@
+build for javascript backend
+database is local memory
+
+create a Orders table:
+  amount (number), required
+  email, required
+
+when user calls POST /api/orders sending order:
+  needs login
+  validate order:
+    amount is number, required
+    email is text, required, matches email
+  new_order = save order as new Order
+  send back new_order
