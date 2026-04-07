@@ -1201,13 +1201,13 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 21 | Correct error line numbers | Debugging anything over 20 lines | Syntax error on line 15; compiler says "line 15" |
-| 22 | "Did you mean?" for fields | Beginners not stuck on typos | Reference `emial`; compiler suggests `email` |
-| 23 | "Did you mean?" for endpoints | Route typos caught at compile time | Declare `GET /api/users`, reference `/api/user`; compiler suggests correct path |
-| 24 | Type mismatch detection | Confidence app won't crash on line 1 | Compile `price + 'hello'`; compiler emits type error |
+| 21 | Correct error line numbers | Debugging anything over 20 lines | Existing — all errors include line numbers |
+| 22 | "Did you mean?" for fields | Beginners not stuck on typos | **DONE.** Levenshtein distance checks user variables + keywords. `emial` suggests `email`. |
+| 23 | "Did you mean?" for endpoints | Route typos caught at compile time | **DONE.** Fetch URLs validated against declared endpoints. `/api/user` warns when `/api/users` exists. |
+| 24 | Endpoint response validation | Every endpoint sends data back | **DONE.** Warns when endpoint has no `send back` statement. |
 | 25 | FK inference opt-out | Tables with `Type`, `Status` fields that aren't FKs | Compile `Type is text`; compiler does NOT treat as FK |
 
-**Phase 37 complete = compiler catches mistakes before deploy.**
+**Phase 37 status: items 21-24 done, item 25 pending.**
 
 ---
 

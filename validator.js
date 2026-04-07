@@ -43,6 +43,8 @@ export function validate(ast) {
   validateSecurity(ast.body, errors, warnings);
   validateDuplicateEndpoints(ast.body, warnings);
   validateDisplayActions(ast.body, warnings);
+  validateEndpointResponses(ast.body, warnings);
+  validateFetchURLsMatchEndpoints(ast.body, warnings);
   return { errors, warnings };
 }
 
@@ -796,3 +798,91 @@ function validateDisplayActions(body, warnings) {
   }
   checkDisplays(body);
 }
+
+/**
+ * ENDPOINT RESPONSES: Warn if an endpoint has no send back statement.
+ * An endpoint without a response is almost always a bug — the client
+ * gets no data back and the request hangs.
+ */
+function validateEndpointResponses(body, warnings) {
+  function hasResponse(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.RESPOND) return true;
+      if (n.body && hasResponse(n.body)) return true;
+    }
+    return false;
+  }
+  function walk(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.ENDPOINT) {
+        if (!hasResponse(node.body || [])) {
+          warnings.push(
+            `Line ${node.line}: ${node.method} ${node.path} has no response. ` +
+            `Add: send back data (or send back 'ok')`
+          );
+        }
+      }
+      if (node.body) walk(node.body);
+    }
+  }
+  walk(body);
+}
+
+/**
+ * FETCH URL MATCHING: Warn if a frontend fetch targets a URL that doesn't
+ * match any declared endpoint. Catches typos like '/api/user' when the
+ * endpoint is '/api/users'.
+ */
+function validateFetchURLsMatchEndpoints(body, warnings) {
+  // Collect all declared endpoint paths
+  const endpoints = new Map();
+  function collectEndpoints(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.ENDPOINT) {
+        // Normalize: strip :param segments for matching
+        const normalized = n.path.replace(/:[\w]+/g, ':id');
+        endpoints.set(`${n.method} ${normalized}`, n.line);
+        // Also store just the base path for GET matching
+        endpoints.set(`GET ${n.path.split('/:')[0]}`, n.line);
+      }
+      if (n.body) collectEndpoints(n.body);
+    }
+  }
+  collectEndpoints(body);
+
+  // If no endpoints declared, skip (frontend-only app)
+  if (endpoints.size === 0) return;
+
+  // Collect all fetch URLs from API_CALL nodes
+  function checkFetches(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.API_CALL && n.url && n.url.startsWith('/api/')) {
+        const method = n.method || 'GET';
+        const url = n.url.split('?')[0]; // strip query params
+        // Check if this URL matches any endpoint
+        const normalized = url.replace(/\/[\w-]+$/, '/:id'); // try with :id
+        const matchesExact = endpoints.has(`${method} ${url}`);
+        const matchesParam = endpoints.has(`${method} ${normalized}`);
+        const matchesBase = endpoints.has(`GET ${url}`);
+        if (!matchesExact && !matchesParam && !matchesBase) {
+          // Find closest endpoint for suggestion
+          let closest = null;
+          let closestDist = 999;
+          for (const [key] of endpoints) {
+            const epPath = key.split(' ')[1];
+            if (!epPath) continue;
+            const dist = Math.abs(epPath.length - url.length) + (epPath.includes(url.split('/').slice(0, -1).join('/')) ? 0 : 5);
+            if (dist < closestDist) { closestDist = dist; closest = key; }
+          }
+          const suggestion = closest ? ` Did you mean ${closest}?` : '';
+          warnings.push(
+            `Line ${n.line}: ${method} ${url} doesn't match any endpoint.${suggestion}`
+          );
+        }
+      }
+      if (n.body) checkFetches(n.body);
+    }
+  }
+  checkFetches(body);
+}
+
