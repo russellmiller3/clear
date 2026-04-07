@@ -4017,6 +4017,18 @@ ${options}
   let condCounter = 0;
   let compRenderCounter = 0;
   walk(body);
+
+  // Wrap multi-page content in routable divs (process in reverse to keep indices valid)
+  if (pages.length > 1) {
+    for (let i = pages.length - 1; i >= 0; i--) {
+      const p = pages[i];
+      const pageId = sanitizeName(p.title);
+      const hidden = i > 0 ? ' style="display:none"' : '';
+      parts.splice(p.endIdx, 0, `</div>`);
+      parts.splice(p.startIdx, 0, `<div id="page_${pageId}"${hidden}>`);
+    }
+  }
+
   return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks, hasChart };
 }
 
@@ -4093,9 +4105,10 @@ _router();`;
   // Tree-shake CSS based on what's actually in the HTML
   const css = _buildCSS(htmlBody, userCSS, { fullWidth: hasStyledSections, theme: themeName });
 
-  // Detect if page uses full-width layout
+  // Detect if page uses full-width layout (app presets, grids, flex row, or side-by-side)
   const hasFullLayout = usesAppPresets || htmlBody.includes('style-app_layout') ||
-    css.includes('full_height') || css.includes('column_layout') || css.includes('grid');
+    css.includes('full_height') || css.includes('column_layout') || css.includes('grid') ||
+    css.includes('flex-direction: row') || css.includes('side_by_side');
   const usesLandingPresets = htmlBody.includes('py-24') || htmlBody.includes('py-20');
   const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-2xl mx-auto p-8 flex flex-col gap-6';
 
@@ -4605,11 +4618,11 @@ const BUILTIN_PRESET_CLASSES = {
 
   // --- App/dashboard presets (design-system-v2) ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden',
+  app_sidebar:       'w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-100 p-8 flex flex-col gap-6',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-8 bg-base-100 border-b border-base-300 shrink-0',
-  app_card:          'bg-base-200 rounded-box p-6',
+  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0',
+  app_card:          'bg-base-200 rounded-box p-5',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 text-center',
