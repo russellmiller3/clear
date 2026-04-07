@@ -1144,7 +1144,7 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 7 | File upload compiles | Profile photos, CSV imports, document uploads | Compile `accept file: photo`; generated HTML has `<input type="file">`, endpoint uses multer |
+| 7 | File upload compiles | Profile photos, CSV imports, document uploads | **DONE.** `'Photo' is a file input saved as photo` → `<input type="file">` with DaisyUI styling. Backend `accept file:` uses multer. |
 
 ---
 
@@ -1152,12 +1152,12 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 8 | Hover/focus/active states | Buttons look clickable, inputs highlight on focus | Compile `style button: hover background = blue`; generated CSS contains `:hover` |
-| 9 | CSS transitions | Smooth color changes, fading panels | Compile `style card: transition = background 0.2s`; generated CSS contains `transition` |
-| 10 | Responsive breakpoints | Apps work on phones | Compile `style sidebar: hidden on small screens`; generated CSS has `@media` query |
-| 11 | CSS animations | Loading spinners, attention pulses | Compile `style spinner: animate = spin 1s infinite`; generated CSS has `@keyframes` |
+| 8 | Hover/focus/active states | Buttons look clickable, inputs highlight on focus | **DONE.** `hover_background is 'blue'` → `:hover` CSS rule. Auto-transition added. |
+| 9 | CSS transitions | Smooth color changes, fading panels | **DONE.** `transition is 'background 0.2s'` or auto-added with hover/focus props. |
+| 10 | Responsive breakpoints | Apps work on phones | **DONE.** `for_screen is 'small'` → `@media (max-width: 640px)`. |
+| 11 | CSS animations | Loading spinners, attention pulses | **DONE.** `animation is 'spin 1s infinite'` compiles to CSS animation property. |
 
-**Phase 33 complete = Clear apps look and feel like real apps, including on mobile.**
+**Phase 33: COMPLETE.**
 
 ---
 
@@ -1166,7 +1166,7 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
 | 12 | Pagination | Any list with 50+ items | **DONE.** `get all Items page 2, 25 per page` → array slice (local) or `.range()` (Supabase) |
-| 13 | GROUP BY output | "Sales by region," dashboards, reports | Compile `totals = sum of Orders' amount grouped by region`; produces array of `{ region, total }` |
+| 13 | GROUP BY output | "Sales by region," dashboards, reports | **DONE.** `by_region = group by region in sales` compiles to object grouping. Phase 22. |
 | 14 | Compound unique constraints | "One vote per user per poll" | Compile `unique together Student and Course`; generated SQL has `UNIQUE(student_id, course_id)` |
 | 15 | Database transactions | E-commerce (order + stock), banking (debit + credit) | Compile multi-step endpoint; generated code has `BEGIN`/`COMMIT`/`ROLLBACK` |
 
@@ -1178,11 +1178,11 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 16 | Background jobs | Reminder emails, stale token cleanup, daily reports | Compile background job; generated server has `setInterval` or `node-cron` |
-| 17 | OAuth redirect + token exchange | "Sign in with Google/GitHub/Slack" | Compile `oauth github:`; generated server has redirect + callback routes |
-| 18 | Email sending | Welcome emails, password resets, notifications | Compile `send email to X`; generated code has `nodemailer` or email API call |
+| 16 | Background jobs | Reminder emails, stale token cleanup, daily reports | **DONE.** `background 'cleanup': runs every 1 hour` compiles to `setInterval` (JS) / `asyncio.create_task` (Python). Phase 20. |
+| 17 | OAuth redirect + token exchange | "Sign in with Google/GitHub/Slack" | **DONE.** `oauth 'github':` compiles to redirect + callback routes. Phase 17. |
+| 18 | Email sending | Welcome emails, password resets, notifications | **DONE.** `send email:` compiles to nodemailer (JS) / smtplib (Python). Phase 27. |
 
-**Phase 35 complete = scheduled tasks, third-party auth, email communication.**
+**Phase 35: COMPLETE.** All features implemented in earlier phases (17, 20, 27).
 
 ---
 
@@ -1190,10 +1190,10 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 19 | WebSocket runtime | Chat, multiplayer, collaborative editing, live notifications | Compile WebSocket channel; server has `WebSocket.Server`, HTML has `new WebSocket()` |
-| 20 | SSE runtime | Live dashboards, progress bars, activity feeds | Compile `stream:` endpoint; server writes `text/event-stream`, HTML has `new EventSource()` |
+| 19 | WebSocket runtime | Chat, multiplayer, collaborative editing, live notifications | **DONE.** `subscribe to 'chat':` compiles to WebSocket.Server (JS) / FastAPI websocket (Python). Phase 20. |
+| 20 | SSE runtime | Live dashboards, progress bars, activity feeds | **DONE.** `stream:` compiles to text/event-stream with heartbeat. Phase 20. |
 
-**Phase 36 complete = real-time chat, dashboards, notifications.**
+**Phase 36: COMPLETE.** All features implemented in Phase 20.
 
 ---
 
