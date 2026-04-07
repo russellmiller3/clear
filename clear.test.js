@@ -11582,5 +11582,56 @@ describe('OWASP - PATCH without auth', () => {
   });
 });
 
+// =============================================================================
+// PHASE 34: PAGINATION
+// =============================================================================
+
+describe('Phase 34 - pagination', () => {
+  it('parses get all with page and per page', () => {
+    const ast = parse("all_items = get all Items page 1, 25 per page");
+    expect(ast.errors).toHaveLength(0);
+    const crud = ast.body[0];
+    expect(crud.type).toBe(NodeType.CRUD);
+    expect(crud.page).toBe(1);
+    expect(crud.perPage).toBe(25);
+  });
+
+  it('compiles pagination to array slice for local memory', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items page 1, 10 per page\n  send back items`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('.slice(');
+  });
+
+  it('compiles pagination to .range() for supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items page 1, 10 per page\n  send back items`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('.range(');
+  });
+});
+
+// =============================================================================
+// PHASE 37: FK INFERENCE OPT-OUT
+// =============================================================================
+
+describe('Phase 37 - FK inference opt-out', () => {
+  it('capitalized field without type hint is FK', () => {
+    const ast = parse("create a Tasks table:\n  Category, required");
+    expect(ast.body[0].fields[0].fieldType).toBe('fk');
+  });
+
+  it('capitalized field with (text) type hint is NOT FK', () => {
+    const ast = parse("create a Tasks table:\n  Category (text), required");
+    expect(ast.body[0].fields[0].fieldType).toBe('text');
+    expect(ast.body[0].fields[0].fk).toBe(null);
+  });
+
+  it('capitalized field with (number) type hint is NOT FK', () => {
+    const ast = parse("create a Tasks table:\n  Priority (number), default 0");
+    expect(ast.body[0].fields[0].fieldType).toBe('number');
+  });
+});
+
 run();
 

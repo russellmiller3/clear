@@ -3411,6 +3411,18 @@ function parseLookUpAssignment(name, tokens, pos, line) {
 
   const node = crudNode('lookup', name, target, condition, line);
   node.lookupAll = lookupAll;
+  // Optional pagination: "page N, M per page"
+  if (pos < tokens.length && tokens[pos].value === 'page') {
+    pos++;
+    if (pos < tokens.length) {
+      node.page = tokens[pos].type === TokenType.NUMBER ? tokens[pos].value : tokens[pos].value;
+      pos++;
+      if (pos < tokens.length && tokens[pos].value === ',') pos++;
+      if (pos < tokens.length && tokens[pos].type === TokenType.NUMBER) {
+        node.perPage = tokens[pos].value;
+      }
+    }
+  }
   return { name, isCrud: true, node };
 }
 
@@ -5237,13 +5249,27 @@ function parseAssignment(tokens, line) {
   }
 
   // Shorthand: "get all Todos" -> CRUD lookup all
-  // e.g. all_todos = get all Todos
+  // Also: "get all Todos page 2, 25 per page" -> paginated lookup
   if (pos < tokens.length && tokens[pos].canonical === 'get_key' &&
       pos + 1 < tokens.length && tokens[pos + 1].value === 'all' &&
       pos + 2 < tokens.length) {
     const tableName = tokens[pos + 2].value;
     const node = crudNode('lookup', name, tableName, null, line);
     node.lookupAll = true;
+    // Optional pagination: "page N, M per page"
+    let pPos = pos + 3;
+    if (pPos < tokens.length && tokens[pPos].value === 'page') {
+      pPos++;
+      if (pPos < tokens.length) {
+        node.page = tokens[pPos].type === TokenType.NUMBER ? tokens[pPos].value : tokens[pPos].value;
+        pPos++;
+        // Skip comma
+        if (pPos < tokens.length && tokens[pPos].value === ',') pPos++;
+        if (pPos < tokens.length && tokens[pPos].type === TokenType.NUMBER) {
+          node.perPage = tokens[pPos].value;
+        }
+      }
+    }
     return { name, isCrud: true, node };
   }
 

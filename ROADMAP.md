@@ -1165,7 +1165,7 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 12 | Pagination | Any list with 50+ items | Compile `get Items page 2, 25 per page`; generated SQL has `LIMIT 25 OFFSET 25` |
+| 12 | Pagination | Any list with 50+ items | **DONE.** `get all Items page 2, 25 per page` → array slice (local) or `.range()` (Supabase) |
 | 13 | GROUP BY output | "Sales by region," dashboards, reports | Compile `totals = sum of Orders' amount grouped by region`; produces array of `{ region, total }` |
 | 14 | Compound unique constraints | "One vote per user per poll" | Compile `unique together Student and Course`; generated SQL has `UNIQUE(student_id, course_id)` |
 | 15 | Database transactions | E-commerce (order + stock), banking (debit + credit) | Compile multi-step endpoint; generated code has `BEGIN`/`COMMIT`/`ROLLBACK` |
@@ -1205,9 +1205,9 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 | 22 | "Did you mean?" for fields | Beginners not stuck on typos | **DONE.** Levenshtein distance checks user variables + keywords. `emial` suggests `email`. |
 | 23 | "Did you mean?" for endpoints | Route typos caught at compile time | **DONE.** Fetch URLs validated against declared endpoints. `/api/user` warns when `/api/users` exists. |
 | 24 | Endpoint response validation | Every endpoint sends data back | **DONE.** Warns when endpoint has no `send back` statement. |
-| 25 | FK inference opt-out | Tables with `Type`, `Status` fields that aren't FKs | Compile `Type is text`; compiler does NOT treat as FK |
+| 25 | FK inference opt-out | Tables with `Type`, `Status` fields that aren't FKs | **DONE.** `Status (text)` explicit type hint overrides FK inference. Already worked via `explicitType` guard. |
 
-**Phase 37 status: items 21-24 done, item 25 pending.**
+**Phase 37: COMPLETE.** All 5 items done.
 
 ---
 
