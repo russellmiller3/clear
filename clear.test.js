@@ -11394,5 +11394,71 @@ describe('Phase 37 - did-you-mean for variables', () => {
   });
 });
 
+// =============================================================================
+// PHASE 32: FILE UPLOAD INPUT
+// =============================================================================
+
+describe('Phase 32 - file input', () => {
+  it('parses file input', () => {
+    const ast = parse("page 'App':\n  'Photo' is a file input saved as a photo");
+    expect(ast.errors).toHaveLength(0);
+    const inp = ast.body[0].body[0];
+    expect(inp.type).toBe(NodeType.ASK_FOR);
+    expect(inp.inputType).toBe('file');
+  });
+
+  it('compiles file input to HTML type=file', () => {
+    const src = `build for web\npage 'App' at '/':\n  'Photo' is a file input saved as a photo\n  button 'Upload':\n    show photo`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('type="file"');
+    expect(result.html).toContain('file-input');
+  });
+
+  it('uses change event for file input', () => {
+    const src = `build for web\npage 'App' at '/':\n  'Photo' is a file input saved as a photo\n  button 'Go':\n    show photo`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("'change'");
+    expect(result.javascript).toContain('files[0]');
+  });
+});
+
+// =============================================================================
+// PHASE 33: CSS STATES (HOVER, FOCUS, TRANSITIONS, RESPONSIVE)
+// =============================================================================
+
+describe('Phase 33 - CSS hover/focus/transition', () => {
+  it('compiles hover_ properties to :hover rule', () => {
+    const src = `build for web\nstyle card:\n  background is 'white'\n  hover_background is '#f0f0f0'\npage 'App' at '/':\n  section 'X' with style card:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain(':hover');
+    expect(result.css).toContain('#f0f0f0');
+  });
+
+  it('compiles focus_ properties to :focus-within rule', () => {
+    const src = `build for web\nstyle input_box:\n  border is '1px solid #ccc'\n  focus_border is '1px solid blue'\npage 'App' at '/':\n  section 'X' with style input_box:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain(':focus-within');
+  });
+
+  it('auto-adds transition when hover props exist', () => {
+    const src = `build for web\nstyle card:\n  background is 'white'\n  hover_background is 'blue'\npage 'App' at '/':\n  section 'X' with style card:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain('transition');
+  });
+
+  it('compiles responsive breakpoints', () => {
+    const src = `build for web\nstyle mobile:\n  for_screen is 'small'\n  padding = 8\npage 'App' at '/':\n  section 'X' with style mobile:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain('@media');
+    expect(result.css).toContain('max-width: 640px');
+  });
+});
+
 run();
 

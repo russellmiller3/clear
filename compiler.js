@@ -3253,8 +3253,9 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         lines.push(`      _data.forEach(r => { const k = r.${sanitizeName(groupBy)} || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });`);
         lines.push(`      const _pieData = Object.entries(_counts).map(([name, value]) => ({ name, value }));`);
       } else {
-        // Assume data is already [{name, value}]
-        lines.push(`      const _pieData = _data.map(r => { const keys = Object.keys(r).filter(k => k !== 'id'); return { name: String(r[keys[0]] || ''), value: Number(r[keys[1]] || 0) }; });`);
+        // Assume data has name/value-like fields — use first two non-id keys
+        lines.push(`      const _sKeys = Object.keys(_data[0]).filter(k => k !== 'id');`);
+        lines.push(`      const _pieData = _data.map(r => ({ name: String(r[_sKeys[0]] || ''), value: Number(r[_sKeys[1] || _sKeys[0]] || 0) }));`);
       }
       lines.push(`      _chart.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: '65%', data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } } }] }, true);`);
     } else {
@@ -3264,7 +3265,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
       lines.push(`      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];`);
       lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
-      lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[1]);`);
+      lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);`);
       lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
       lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}, smooth: true }));`);
       lines.push(`      _chart.setOption({ tooltip: { trigger: 'axis' }, legend: _yKeys.length > 1 ? { data: _yKeys } : undefined, xAxis: { type: 'category', data: _xData }, yAxis: { type: 'value' }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true } }, true);`);
@@ -3275,7 +3276,9 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   }
 
   // Sync input DOM values with state (so clearing state also clears the input)
+  // Skip file inputs — .value is read-only on file inputs
   for (const inp of inputNodes) {
+    if (inp.inputType === 'file') continue;
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
@@ -3290,8 +3293,11 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     const isNum = inp.inputType === 'number' || inp.inputType === 'percent';
-    lines.push(`document.getElementById('${inputId}').addEventListener('input', function(e) {`);
-    lines.push(`  _state.${name} = ${isNum ? 'Number(e.target.value) || 0' : 'e.target.value'};`);
+    const isFile = inp.inputType === 'file';
+    const eventType = isFile ? 'change' : 'input';
+    const valueExpr = isFile ? 'e.target.files[0] || null' : isNum ? 'Number(e.target.value) || 0' : 'e.target.value';
+    lines.push(`document.getElementById('${inputId}').addEventListener('${eventType}', function(e) {`);
+    lines.push(`  _state.${name} = ${valueExpr};`);
     lines.push(`  _recompute();`);
     lines.push(`});`);
   }
@@ -3755,6 +3761,11 @@ function buildHTML(body) {
       <select id="${ui.id}" class="select select-bordered w-full">
 ${options}
       </select>
+    </fieldset>`);
+          } else if (ui.htmlType === 'file') {
+            parts.push(`    <fieldset class="${fieldsetCls}">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <input id="${ui.id}" class="file-input file-input-bordered w-full" type="file">
     </fieldset>`);
           } else {
             parts.push(`    <fieldset class="${fieldsetCls}">
@@ -4592,14 +4603,41 @@ function stylesToCSS(styles, vars = {}) {
   const parts = [];
   for (const style of styles) {
     const className = `style-${sanitizeName(style.name)}`;
-    const props = style.properties.map(p => {
-      // Resolve variable references: if value is a string matching a variable name, use the variable's value
+    // Split properties into base, hover, focus, and transition
+    const baseProps = [];
+    const hoverProps = [];
+    const focusProps = [];
+    let hasTransition = false;
+    for (const p of style.properties) {
       let val = p.value;
       if (typeof val === 'string' && vars[val] !== undefined) val = vars[val];
-      return `  ${friendlyPropToCSS(p.name, val)};`;
-    }).join('\n');
-    let rule = `.${className} {\n${props}\n}`;
-    // If the style sets color, make children inherit it (overrides base CSS explicit colors)
+      if (p.name.startsWith('hover_')) {
+        const cssProp = p.name.slice(6); // strip 'hover_'
+        hoverProps.push(`  ${friendlyPropToCSS(cssProp, val)};`);
+      } else if (p.name.startsWith('focus_')) {
+        const cssProp = p.name.slice(6); // strip 'focus_'
+        focusProps.push(`  ${friendlyPropToCSS(cssProp, val)};`);
+      } else if (p.name === 'transition') {
+        hasTransition = true;
+        baseProps.push(`  transition: ${val};`);
+      } else if (p.name === 'animate' || p.name === 'animation') {
+        baseProps.push(`  animation: ${val};`);
+      } else {
+        baseProps.push(`  ${friendlyPropToCSS(p.name, val)};`);
+      }
+    }
+    // Auto-add transition if hover/focus props exist but no explicit transition
+    if ((hoverProps.length > 0 || focusProps.length > 0) && !hasTransition) {
+      baseProps.push('  transition: all 0.2s ease;');
+    }
+    let rule = `.${className} {\n${baseProps.join('\n')}\n}`;
+    if (hoverProps.length > 0) {
+      rule += `\n.${className}:hover {\n${hoverProps.join('\n')}\n}`;
+    }
+    if (focusProps.length > 0) {
+      rule += `\n.${className}:focus-within {\n${focusProps.join('\n')}\n}`;
+    }
+    // If the style sets color, make children inherit it
     const setsColor = style.properties.some(p => p.name === 'color');
     if (setsColor) {
       rule += `\n.${className} h1, .${className} h2, .${className} p, .${className} strong,\n.${className} .clear-text, .${className} .clear-heading, .${className} .clear-subheading,\n.${className} .clear-small { color: inherit; }`;
