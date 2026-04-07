@@ -1134,3 +1134,31 @@ database is supabase
 one-line change — all CRUD operations compile to Supabase SDK calls
 automatically. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars.
 
+## Retry, Timeout, and Race (Production Resilience)
+
+**Use `retry` for flaky external calls.** Exponential backoff is built in:
+
+```
+retry 3 times:
+  send order to '/api/payment'
+```
+
+**Use `with timeout` to prevent hanging operations:**
+
+```
+with timeout 5 seconds:
+  result = call 'Lead Scorer' with lead_data
+```
+
+**Use `first to finish` when you have redundant sources:**
+
+```
+first to finish:
+  fetch page 'https://api-east.example.com'
+  fetch page 'https://api-west.example.com'
+```
+
+These compile to `try/catch` with backoff (retry), `Promise.race` with reject
+timer (timeout), and `Promise.race` with concurrent tasks (race). All three
+work in both JS and Python.
+
