@@ -590,9 +590,9 @@ page 'App' at '/':
 
 ---
 
-### ACCIDENTAL DELETION PREVENTION (fix_scope)
+### SUGGESTED FIX (replaces fix_scope)
 
-Every error response with `CLEAR_DEBUG=true` should include a `fix_scope` field that tells the AI exactly what to change and what NOT to change:
+Instead of trying to list what NOT to touch (which is just "everything else"), the error gives the AI the **minimal diff** — the smallest possible change that fixes the bug. The compiler can generate this for schema-related errors because it has full knowledge of tables, fields, and constraints.
 
 ```json
 {
@@ -600,28 +600,37 @@ Every error response with `CLEAR_DEBUG=true` should include a `fix_scope` field 
   "clear_line": 45,
   "clear_file": "backend.clear",
   "hint": "Add 'email, required' to Contacts table...",
-  "fix_scope": {
-    "change": {
-      "file": "backend.clear",
-      "lines": "12-16",
-      "description": "Add email field to Contacts table definition"
-    },
-    "preserve": [
-      { "file": "backend.clear", "lines": "40-55", "description": "POST /api/contacts endpoint — do not modify" },
-      { "file": "backend.clear", "lines": "56-70", "description": "PUT /api/contacts endpoint — do not modify" },
-      { "file": "frontend.clear", "lines": "1-30", "description": "Page layout — do not modify" }
-    ]
+  "suggested_fix": {
+    "file": "backend.clear",
+    "line": 12,
+    "action": "add_line_after",
+    "content": "  email, required",
+    "explanation": "The Contacts table requires email but it's not defined. Add this field."
   }
 }
 ```
 
-**AT-21: Fix-scope prevents accidental deletion**
+The compiler can suggest fixes for:
+
+| Error Category | Suggested Fix |
+|----------------|---------------|
+| Missing required field | `"add_line_after"` — add field to table definition |
+| Missing auth | `"add_line_after"` — add `needs login` to endpoint |
+| Type mismatch (`=` vs `is`) | `"replace_line"` — swap `status = 'active'` to `status is 'active'` |
+| Wrong table name | `"replace_word"` — fix typo, e.g. `Contac` → `Contact` |
+| Missing validation | `"add_block_after"` — add validate block before save |
+
+For logic bugs, race conditions, CSS — no suggested fix, just `clear_line` + `hint`. Honest about what it knows.
+
+**AT-21: Suggested fix produces correct diff**
 - Start with CRM SPA (4 files)
-- Introduce bug: validation rule has wrong type (`amount is text` should be `amount is number`)
-- Error response must include `fix_scope` with:
-  - `change`: the validation block line range
-  - `preserve`: the CRUD operations below, the table definition above, and ALL other endpoints
-- Verify: the `preserve` list covers every function/endpoint in the same file that is NOT the bug
+- Introduce bug: remove `email, required` from Contacts table
+- Error response must include `suggested_fix` with:
+  - `file`: `backend.clear`
+  - `line`: correct table definition line
+  - `action`: `add_line_after`
+  - `content`: `  email, required`
+- Verify: applying the suggested fix and recompiling produces a working app
 
 ---
 
@@ -730,4 +739,4 @@ After implementing, score each acceptance test:
 
 ## 📎 RESUME PROMPT
 
-> Read `plans/plan-error-translator-04-07-2026.md`. Runtime error translator: maps compiled JS/Python errors back to Clear source with hints. 7 phases, 16 TDD cycles + 27 acceptance tests (DB, auth, async, external API, multi-file, CSS, XSS, null access, off-by-one, silent semantic, fix_scope, autonomous loop). Python is first-class. All utilities inlined (no external files). _clearTry wraps CRUD/auth when CLEAR_DEBUG set. _clearMap embeds source map conditionally. PII auto-redacted. Python deferred. Branch: `feature/error-translator`. Run `node clear.test.js` after each phase. Acceptance tests (AT-1 through AT-18) verify an AI agent can fix bugs from error responses alone.
+> Read `plans/plan-error-translator-04-07-2026.md`. Runtime error translator: maps compiled JS/Python errors back to Clear source with hints + suggested_fix diffs. 7 phases, 16 TDD cycles + 27 acceptance tests (DB, auth, async, external API, multi-file, CSS, XSS, null access, off-by-one, silent semantic, suggested_fix, autonomous loop). Python is first-class. All utilities inlined (no external files). _clearTry wraps CRUD/auth when CLEAR_DEBUG set. _clearMap embeds source map conditionally. PII auto-redacted. Branch: `feature/error-translator`. Run `node clear.test.js` after each phase.
