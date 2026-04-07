@@ -393,7 +393,7 @@ alternatives, explain trade-offs. Then implement what's decided.
 
 ## AI Style Guide
 
-See `AI-STYLE-GUIDE.md` for the full guide Claude follows when writing Clear code.
+See `AI-INSTRUCTIONS.md` for the full guide Claude follows when writing Clear code.
 Key rules: `=` for numbers, `is` for strings. Single quotes canonical. Numbers
 get px in styles. Name elements what they are (text input, dropdown, heading).
 

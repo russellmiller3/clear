@@ -371,7 +371,7 @@ describe('Supabase adapter - CRUD compilation', () => {
 - Update `intent.md` DATABASE_DECL table: add `| DATABASE_DECL | database is supabase | @supabase/supabase-js client |`
 - Update `SYNTAX.md` database section: add supabase example
 - Update playground guide: add supabase in build targets section
-- Update `AI-STYLE-GUIDE.md`: add guidance on supabase vs local memory
+- Update `AI-INSTRUCTIONS.md`: add guidance on supabase vs local memory
 
 **Commit:** `Document supabase adapter in intent, syntax, and style guide`
 
