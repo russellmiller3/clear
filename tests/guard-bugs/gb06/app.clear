@@ -13,7 +13,11 @@ create a Attendees table:
 
 when user calls POST /api/attendees sending attendee:
   needs login
+  conference = look up Conference where id is attendee's conference_id
+  check conference's registered_count is less than conference's capacity, otherwise error 'Conference is full'
   new_attendee = save attendee as new Attendee
+  conference's registered_count = conference's registered_count + 1
+  save conference to Conferences
   send back new_attendee
 
 when user calls POST /api/seed:

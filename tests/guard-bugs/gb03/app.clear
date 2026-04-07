@@ -6,9 +6,9 @@ create a Projects table:
   status, default 'active'
 
 create a Tasks table:
-  project_id, required
+  project_id (fk -> Projects), required
   title, required
-  done, default 'false'
+  done (boolean), default false
 
 when user calls POST /api/projects sending project:
   needs login
@@ -17,6 +17,8 @@ when user calls POST /api/projects sending project:
 
 when user calls POST /api/tasks sending task:
   needs login
+  project = look up Project where id is task's project_id
+  check project is not missing, otherwise error 'Project not found'
   new_task = save task as new Task
   send back new_task
 
