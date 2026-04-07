@@ -19,7 +19,7 @@ when user calls POST /api/appointments sending appt:
     patient_name is text, required
     doctor is text, required
     date is text, required
-    time is text, required
+    time is text, required, matches time
   new_appt = save appt as new Appointment
   send back new_appt
 
