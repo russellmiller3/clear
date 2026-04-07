@@ -5,8 +5,8 @@
 //
 // PAGES:
 //   'Clear Language' at / (line 10)
-//   'Examples' at /examples (line 79)
-//   'Get Started' at /start (line 115)
+//   'Examples' at /examples (line 113)
+//   'Get Started' at /start (line 153)
 //
 
 
@@ -19,11 +19,11 @@
 document.title = "Clear Language";
 
 // --- Examples Page ---
-// clear:79
+// clear:113
 // Page: Examples
 document.title = "Examples";
 
 // --- Get Started Page ---
-// clear:115
+// clear:153
 // Page: Get Started
 document.title = "Get Started";
