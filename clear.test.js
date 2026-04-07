@@ -15163,5 +15163,199 @@ when user calls POST /api/contacts sending data:
   });
 });
 
+// =============================================================================
+// Silent Bug Guards — Unit Tests
+// =============================================================================
+
+describe('Guard: type enforcement on insert', () => {
+  it('compiled app with number field rejects non-numeric string', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Products table:
+  name, required
+  price (number), required
+when user calls POST /api/products sending data:
+  needs login
+  new_product = save data as new Product
+  send back new_product`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Runtime guard: price: "fifty" → "price must be a number"
+    expect(r.javascript).toContain('type: "number"');
+  });
+
+  it('compiled app with boolean field in schema', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+  completed, default 'false'
+when user calls GET /api/tasks:
+  tasks = look up all Tasks
+  send back tasks`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('Guard: update-not-found', () => {
+  it('PUT endpoint compiles with _clearTry wrapping update', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Books table:
+  title, required
+  status, default 'available'
+when user calls PUT /api/books/:id sending book:
+  needs login
+  book's status is 'returned'
+  save book to Books
+  send back 'returned'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("_clearTry(() => db.update");
+  });
+});
+
+describe('Guard: FK reference check', () => {
+  it('compiled app with FK field has fk type in schema', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Projects table:
+  name, required
+create a Tasks table:
+  project_id, required
+  title, required
+when user calls POST /api/tasks sending task:
+  needs login
+  new_task = save task as new Task
+  send back new_task`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('type: "fk"');
+  });
+});
+
+describe('Guard: balance subtraction warning', () => {
+  it('warns on subtraction from balance without guard', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Accounts table:
+  name, required
+  balance (number), default 0
+when user calls POST /api/withdraw sending data:
+  needs login
+  account = look up Account where id is data's account_id
+  account's balance = account's balance - data's amount
+  save account to Accounts
+  send back 'done'`;
+    const r = compileProgram(src);
+    expect(r.warnings.some(w => w.includes('balance') && w.includes('guard'))).toBe(true);
+  });
+
+  it('does not warn on addition', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Accounts table:
+  name, required
+  balance (number), default 0
+when user calls POST /api/deposit sending data:
+  needs login
+  account = look up Account where id is data's account_id
+  account's balance = account's balance + data's amount
+  save account to Accounts
+  send back 'done'`;
+    const r = compileProgram(src);
+    expect(r.warnings.some(w => w.includes('balance') && w.includes('guard'))).toBe(false);
+  });
+});
+
+describe('Guard: field mismatch warning', () => {
+  it('warns when frontend field does not match table schema', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Teams table:
+  name, required
+when user calls POST /api/teams sending team:
+  needs login
+  new_team = save team as new Team
+  send back new_team
+page 'App' at '/':
+  'Team Name' is a text input saved as a team_name
+  button 'Create':
+    send team_name to '/api/teams'`;
+    const r = compileProgram(src);
+    expect(r.warnings.some(w => w.includes('team_name'))).toBe(true);
+  });
+
+  it('does not warn when fields match', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Teams table:
+  name, required
+when user calls POST /api/teams sending team:
+  needs login
+  new_team = save team as new Team
+  send back new_team
+page 'App' at '/':
+  'Name' is a text input saved as a name
+  button 'Create':
+    send name to '/api/teams'`;
+    const r = compileProgram(src);
+    expect(r.warnings.some(w => w.includes('name') && w.includes('no'))).toBe(false);
+  });
+});
+
+describe('Guard: capacity overflow warning', () => {
+  it('warns on insert into child of capacity table without guard', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Events table:
+  title, required
+  capacity (number), required
+  tickets_sold (number), default 0
+create a Registrations table:
+  event_id, required
+  name, required
+when user calls POST /api/registrations sending reg:
+  needs login
+  new_reg = save reg as new Registration
+  send back new_reg`;
+    const r = compileProgram(src);
+    expect(r.warnings.some(w => w.includes('capacity') || w.includes('events'))).toBe(true);
+  });
+});
+
+describe('Guard: seed idempotency', () => {
+  it('seed endpoint emits findOne before insert for unique fields', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Categories table:
+  name, required, unique
+when user calls POST /api/seed:
+  create c1:
+    name is 'Tech'
+  save c1 as new Category
+  send back 'seeded'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('findOne');
+    expect(r.javascript).toContain('_existing');
+  });
+
+  it('non-seed endpoint does not emit findOne guard', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Categories table:
+  name, required, unique
+when user calls POST /api/categories sending cat:
+  needs login
+  new_cat = save cat as new Category
+  send back new_cat`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).not.toContain('_existing');
+  });
+});
+
 run();
 

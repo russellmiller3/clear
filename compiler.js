@@ -1223,9 +1223,8 @@ function compileEndpoint(node, ctx, pad) {
 
   const epDeclared = new Set();
   const hasIdParam = node.path.includes(':id');
-  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam });
-  // Source line comment for debuggability
-  const isSeedEndpoint = node.path.includes('/seed');
+  const isSeedEndpoint = node.path.includes('/seed') || node.path.includes('/setup') || node.path.includes('/init');
+  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
   let epCode = `${pad}// clear:${node.line} — ${node.method.toUpperCase()} ${node.path}\n`;
   epCode += `${pad}app.${node.method.toLowerCase()}('${node.path}', async (req, res) => {\n`;
   epCode += `${pad}  try {\n`;
@@ -1271,6 +1270,26 @@ function pluralizeName(word) {
     return lower + 'es'; // address -> addresses (approx)
   }
   return lower + 's';
+}
+
+// Find the first unique field in a CRUD target's schema (for seed idempotency)
+function findUniqueField(node, ctx) {
+  if (!ctx.schemaNames) return null;
+  // Walk up to find the DATA_SHAPE for this CRUD target
+  // We can't access the AST here, but we can check the schemaNames set
+  // The actual unique info is in the compiled Schema variable, not available at compile time.
+  // Instead, check the AST body passed through context for DATA_SHAPE nodes.
+  if (!ctx._astBody) return null;
+  const target = node.target;
+  const targetPlural = target ? target[0].toUpperCase() + pluralizeName(target).slice(1) : '';
+  for (const n of ctx._astBody) {
+    if (n.type !== NodeType.DATA_SHAPE) continue;
+    if (n.name === target || n.name === targetPlural || n.name + 's' === target) {
+      const uniqueField = n.fields.find(f => f.unique);
+      return uniqueField ? uniqueField.name : null;
+    }
+  }
+  return null;
 }
 
 function compileCrud(node, ctx, pad) {
@@ -1396,6 +1415,21 @@ function compileCrud(node, ctx, pad) {
     else schemaName = node.target + 'Schema'; // fallback
     const srcFile = node._sourceFile || 'main.clear';
     const tryCtx = `{ op: 'insert', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    // Seed idempotency: for seed/setup/init endpoints, check if record exists before inserting
+    if (ctx.isSeedEndpoint) {
+      // Find unique fields in schema to use as dedup key
+      const uniqueField = findUniqueField(node, ctx);
+      if (uniqueField) {
+        const existingVar = `_existing_${sanitizeName(varCode)}`;
+        const dedupCheck = `${pad}const ${existingVar} = await db.findOne('${table}', { ${uniqueField}: ${varCode}.${uniqueField} });\n`;
+        if (node.resultVar) {
+          return dedupCheck +
+            `${pad}const ${sanitizeName(node.resultVar)} = ${existingVar} || await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+        }
+        return dedupCheck +
+          `${pad}if (!${existingVar}) await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+      }
+    }
     if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
     if (node.isInsert) return `${pad}await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
     // In PUT endpoints with :id, inject the URL param so db.update finds the right record
@@ -4639,7 +4673,7 @@ function compileToJSBackend(body, errors, sourceMap = false) {
 
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, dbBackend };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, dbBackend, _astBody: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
