@@ -133,6 +133,8 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
 .ep-PUT { background: var(--amber-lt); color: var(--amber); border: 1px solid var(--amber-bd); }
 .ep-path { font-family: var(--font-mono); font-size: 12.5px; color: var(--tx2); }
 .section-lbl { font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tx4); margin-bottom: 8px; display: block; }
+.guide-divider { border: none; border-top: 1px solid var(--bd); margin: 4px 0; }
+.guide-heading { font-size: 13px; font-weight: 700; color: var(--tx); margin-top: 4px; }
 .feat-chip { font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border-radius: 4px; background: var(--surf2); color: var(--tx3); border: 1px solid var(--bd2); }
 .agent-chip { font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f0e8ff; color: #6040a0; border: 1px solid #c8b8e8; }
 .table-chip { font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border-radius: 4px; background: var(--green-lt); color: var(--green); border: 1px solid var(--green-bd); }
@@ -167,17 +169,31 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
         <span class="logo-chip">v1.0</span>
       </div>
       <p class="logo-sub">Write plain English. Compile to production JavaScript, Python, and HTML.</p>
+      <p class="logo-sub" style="margin-top:6px;font-size:11px;line-height:1.5;color:var(--tx3);">AI-native language with built-in agents. Write <code style="font-size:10px;background:var(--surf2);padding:1px 4px;border-radius:3px;">ask ai</code> and ship.</p>
     </div>
     <div id="sb-menu">
       <span class="menu-lbl">Examples</span>
       <div id="exampleButtons"></div>
     </div>
+    <div style="padding:0 16px;margin-bottom:12px;">
+      <span class="menu-lbl" style="margin-bottom:8px;display:block;">How It Works</span>
+      <div style="font-size:11px;color:var(--tx3);line-height:1.6;">
+        <p style="margin-bottom:6px;"><strong style="color:var(--tx2);">1. Write</strong> — Describe your app in plain English</p>
+        <p style="margin-bottom:6px;"><strong style="color:var(--tx2);">2. Compile</strong> — Click compile, get production code</p>
+        <p><strong style="color:var(--tx2);">3. Ship</strong> — Deploy the output. It just works.</p>
+      </div>
+    </div>
     <div id="sb-foot">
-      <span class="foot-lbl">Try This</span>
-      <p class="tip">&rarr; Type a todo and click Add</p>
-      <p class="tip">&rarr; Switch 'midnight' to 'ivory'</p>
-      <p class="tip">&rarr; Check the JavaScript tab</p>
-      <p class="stats">1005 tests &middot; 0 deps &middot; Browser-only</p>
+      <span class="foot-lbl">What Makes Clear Different</span>
+      <p class="tip">&rarr; 30 lines = full-stack app with database</p>
+      <p class="tip">&rarr; AI agents in 5 lines, not 500</p>
+      <p class="tip">&rarr; Every line compiles to clean, debuggable code</p>
+      <p class="tip">&rarr; Zero dependencies. Runs anywhere.</p>
+      <p class="stats">1031 tests &middot; 0 deps &middot; 8ms compile</p>
+      <div id="aiCounter" style="margin-top:8px;font-size:10px;color:var(--tx4);display:none;">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:4px;vertical-align:middle;"></span>
+        AI demo: <strong id="aiRemaining">3</strong> calls left
+      </div>
     </div>
   </aside>
 
@@ -247,14 +263,61 @@ const EXAMPLES = {
 # │ Invoices    │ │ $42,300  │ │  23     │ │
 # │ Settings    │ └──────────┘ └─────────┘ │
 # │             │ ┌──────────────────────┐ │
-# │             │ │ Recent Activity      │ │
+# │             │ │ Revenue Trend (chart)│ │
 # │             │ └──────────────────────┘ │
 # └─────────────┴──────────────────────────┘
 
-build for web
+build for web and javascript backend
 theme 'ivory'
+database is local memory
+
+create a Sales table:
+  month, required
+  revenue (number), required
+  deals (number), required
+
+when user calls GET /api/sales:
+  all_sales = get all Sales
+  send back all_sales
+
+when user calls POST /api/seed:
+  create jan:
+    month is 'Jan'
+    revenue = 31200
+    deals = 14
+  save jan as new Sale
+  create feb:
+    month is 'Feb'
+    revenue = 28400
+    deals = 11
+  save feb as new Sale
+  create mar:
+    month is 'Mar'
+    revenue = 35600
+    deals = 18
+  save mar as new Sale
+  create apr:
+    month is 'Apr'
+    revenue = 33100
+    deals = 15
+  save apr as new Sale
+  create may:
+    month is 'May'
+    revenue = 38900
+    deals = 21
+  save may as new Sale
+  create jun:
+    month is 'Jun'
+    revenue = 42300
+    deals = 23
+  save jun as new Sale
+  send back 'seeded' with success message
 
 page 'Sales Dashboard' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get sales from '/api/sales'
+
   section 'Layout' with style app_layout:
     section 'Nav' with style app_sidebar:
       heading 'Acme Inc'
@@ -279,30 +342,20 @@ page 'Sales Dashboard' at '/':
             small text 'Active Deals'
             heading '23'
             text '8 closing this week'
-          section 'Pipeline' with style metric_card:
-            small text 'Pipeline Value'
-            heading '$284k'
-            text '47 qualified leads'
-          section 'Win Rate' with style metric_card:
-            small text 'Win Rate'
-            heading '34%'
-            text '+5% from Q3'
 
-        section 'Recent' with style card_bordered:
-          heading 'Recent Activity'
-          text 'Acme Corp signed $12k annual contract'
-          text 'Beta Inc moved to negotiation stage'
-          text 'Gamma Ltd requested a demo for next week'`,
+        chart 'Revenue Trend' as line showing sales
+        chart 'Deals by Month' as bar showing sales`,
 
   'Contact Manager': `# DATAFLOW:
 # ┌──────────┐  POST /api/contacts  ┌──────────┐  save  ┌──────────┐
-# │ Frontend │  ────────────────►  │ Backend  │  ───►  │    DB    │
-# │  (form)  │  ◄────────────────  │ (server) │  ◄───  │ (memory) │
-# └──────────┘  GET /api/contacts   └──────────┘  query └──────────┘
+# │ Frontend │ ──────────────────> │ Backend  │ ─────> │    DB    │
+# │  (form)  │ <────────────────── │ (server) │ <───── │ (memory) │
+# └──────────┘  GET /api/contacts  └──────────┘  query └──────────┘
 #
-# page load ──► GET    ──► render table
-# [Save]    ──► POST   ──► save row ──► refresh
-# [Delete]  ──► DELETE ──► remove row ──► refresh
+# page load --> GET    --> render table
+# [Save]    --> POST   --> save row --> refresh
+# [Edit]    --> PUT    --> update row --> refresh
+# [Delete]  --> DELETE --> remove row --> refresh
 
 build for web and javascript backend
 theme 'arctic'
@@ -332,6 +385,11 @@ when user calls POST /api/contacts sending contact_data:
   new_contact = save contact_data as new Contact
   send back new_contact with success message
 
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+
 when user calls DELETE /api/contacts/:id:
   requires auth
   delete the Contact with this id
@@ -352,13 +410,13 @@ page 'Contact Manager' at '/':
       email is ''
       company is ''
 
-  display contacts as table showing name, email, company, status`,
+  display contacts as table showing name, email, company, status with delete and edit`,
 
   'Invoice Manager': `# DATAFLOW:
 # ┌──────────┐  POST /api/invoices  ┌──────────┐  save   ┌──────────┐
-# │  Form    │ ──────────────────► │ Backend  │ ──────► │    DB    │
-# │ (inputs) │ ◄────────────────── │ (server) │ ◄────── │ (memory) │
-# └──────────┘  GET /api/invoices   └──────────┘  query  └──────────┘
+# │  Form    │ ──────────────────> │ Backend  │ ──────> │    DB    │
+# │ (inputs) │ <────────────────── │ (server) │ <────── │ (memory) │
+# └──────────┘  GET /api/invoices  └──────────┘  query  └──────────┘
 #
 # LAYOUT:
 # ┌───────────────────────────────┐
@@ -394,6 +452,11 @@ when user calls POST /api/invoices sending invoice_data:
   new_invoice = save invoice_data as new Invoice
   send back new_invoice with success message
 
+when user calls DELETE /api/invoices/:id:
+  requires auth
+  delete the Invoice with this id
+  send back 'deleted' with success message
+
 page 'Invoices' at '/':
   on page load get invoices from '/api/invoices'
 
@@ -409,15 +472,20 @@ page 'Invoices' at '/':
       amount is ''
       due_date is ''
 
-  display invoices as table showing client, amount, status, due_date`,
+  display invoices as table showing client, amount, status, due_date with delete`,
 
   'SaaS Landing': `# LAYOUT:
 # ┌─────────────────────────────────────────┐
 # │            HERO (centered)              │
-# │  badge · headline · subhead · [CTA]     │
+# │  badge · headline · subhead             │
+# │  [CTA primary] [CTA ghost]             │
 # ├─────────────────────────────────────────┤
-# │       FEATURES (3-col grid, dark)       │
-# │  [8ms compile] [Readable] [AI-native]   │
+# │       FEATURES (3-col, dark bg)         │
+# │  centered heading + subtitle            │
+# │  [Speed] [Readable] [AI-native]         │
+# ├─────────────────────────────────────────┤
+# │         STATS (3-col, light)            │
+# │  1031 tests · 0 deps · 8ms compile      │
 # ├─────────────────────────────────────────┤
 # │            CTA (centered)               │
 # │      headline · text · [button]         │
@@ -430,34 +498,47 @@ page 'Clear Language' at '/':
   section 'Hero' with style page_hero:
     small text 'Now in public beta'
     heading 'Write English. Ship apps.'
-    subheading 'Clear compiles plain English to production JavaScript, Python, and HTML. No framework. No config.'
+    subheading 'Clear compiles plain English to production JavaScript, Python, and HTML. No framework. No config. No learning curve.'
     link 'Start Building Free' to '/playground'
 
   section 'Features' with style page_section_dark:
     heading 'Why developers switch to Clear'
+    subheading 'Every feature exists to eliminate busywork between your idea and a running app.'
     section 'Grid' as three column layout:
-      section 'F1' with style card:
+      section 'Speed' with style card:
         heading '8ms compile'
-        text 'From source to running app in under 8 milliseconds. No build step, no bundler.'
-      section 'F2' with style card:
+        text 'From source to running app in under 8 milliseconds. No build step, no bundler, no waiting.'
+      section 'Output' with style card:
         heading 'Readable output'
-        text 'The compiled JavaScript is clean, readable, and yours. Not minified garbage.'
-      section 'F3' with style card:
-        heading 'AI-native'
-        text 'Built-in AI agents with structured output. Write an agent in 5 lines.'
+        text 'The compiled JavaScript is clean, readable, and yours. Not minified garbage you cannot debug.'
+      section 'Agents' with style card:
+        heading 'AI-native agents'
+        text 'Built-in AI agents with structured output. Write an agent in 5 lines, deploy immediately.'
+
+  section 'Stats' with style page_stats:
+    section 'Numbers' as three column layout:
+      section 'S1' text centered:
+        heading '1,031'
+        small text 'Tests passing'
+      section 'S2' text centered:
+        heading '0'
+        small text 'Dependencies'
+      section 'S3' text centered:
+        heading '8ms'
+        small text 'Compile time'
 
   section 'CTA' with style page_hero:
     heading 'Your next app starts with one sentence.'
-    text 'No sign-up required. No credit card. Just write.'
+    text 'No sign-up. No credit card. No config file. Just write what you want and hit compile.'
     link 'Try the Playground' to '/playground'`,
 
   'Lead Scorer': `# DATAFLOW:
 # ┌──────────┐ POST /api/leads ┌──────────────┐ ask ai ┌──────┐
-# │  Client  │ ──────────────► │ Lead Scorer  │ ─────► │  AI  │
-# └──────────┘                 │    (agent)   │ ◄───── │      │
+# │  Client  │ ──────────────> │ Lead Scorer  │ ─────> │  AI  │
+# └──────────┘                 │    (agent)   │ <───── │      │
 #                              └──────┬───────┘        └──────┘
 #                                     │ save
-#                              ┌──────▼───────┐
+#                              ┌──────v───────┐
 #                              │   Leads DB   │
 #                              └──────────────┘
 
@@ -498,11 +579,11 @@ when user calls GET /api/leads:
 #
 # POST /api/evaluate
 # ┌──────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-# │  Client  │ ─► │   Screener   │ ─► │    Scorer    │ ─► │   Pipeline   │
+# │  Client  │ -> │   Screener   │ -> │    Scorer    │ -> │   Pipeline   │
 # └──────────┘    │  (validate)  │    │   (AI rate)  │    │ (AI summary) │
 #                 └──────────────┘    └──────────────┘    └──────┬───────┘
 #                                                                │ save
-#                                                         ┌──────▼───────┐
+#                                                         ┌──────v───────┐
 #                                                         │ Candidates DB│
 #                                                         └──────────────┘
 
@@ -599,12 +680,34 @@ const prevWrap = document.getElementById('prev-wrap');
 const statusBadge = document.getElementById('statusBadge');
 const statusText = document.getElementById('statusText');
 
+// ─── AI demo counter ──────────────────────────────────────
+const aiCounterEl = document.getElementById('aiCounter');
+const aiRemainingEl = document.getElementById('aiRemaining');
+let aiCallsRemaining = 3;
+
+// Show counter when an agent example is loaded
+function updateAICounterVisibility() {
+  const code = ta.value || '';
+  const hasAgent = code.includes('agent ') || code.includes('ask ai');
+  aiCounterEl.style.display = hasAgent ? 'block' : 'none';
+}
+
+// Called by browser server when an AI proxy call completes
+window._onAICallUsed = function(remaining) {
+  aiCallsRemaining = remaining;
+  aiRemainingEl.textContent = remaining;
+  if (remaining <= 0) {
+    aiCounterEl.innerHTML = '<span style="color:var(--red);">AI demo limit reached.</span> <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent);text-decoration:underline;font-size:10px;">Get your own key</a>';
+  }
+};
+
 // ─── Editor sync ───────────────────────────────────────────
 function sync() {
   const val = ta.value;
   hl.innerHTML = val.split('\n').map(tokenizeLine).join('\n');
   const count = val.split('\n').length;
   lnums.innerHTML = Array.from({length: count}, (_, i) => '<div class="ln">' + (i+1) + '</div>').join('');
+  updateAICounterVisibility();
 }
 
 // ─── Build sidebar ─────────────────────────────────────────
@@ -839,17 +942,73 @@ window.apiSend = async function(idx) {
 
 // ─── Guide ─────────────────────────────────────────────────
 function renderGuide() {
+  const D = '---'; // divider marker
   const s = [
-    ['Variables', "name is 'Alice'\nprice = 9.99\nactive is true\nitems is an empty list"],
-    ['Data Tables', "create a Users table:\n  name, required\n  email, required, unique\n  age (number), default 0\n  created_at_date, auto"],
-    ['API Endpoints', "when user calls GET /api/users:\n  all_users = get all Users\n  send back all_users\n\nwhen user calls POST /api/users sending user_data:\n  requires auth\n  validate user_data:\n    name is text, required\n  set saved to save user_data as new User\n  send back saved with success message"],
-    ['Web Pages', "page 'My App' at '/':\n  heading 'Welcome'\n  'Your Name' is a text input saved as name\n  button 'Greet':\n    show 'Hello, ' + name"],
-    ['AI Agents', "agent 'Scorer' receiving lead:\n  set result to ask ai 'Rate 1-10' with lead returning:\n    score (number)\n    reasoning\n  lead's score is result's score\n  send back lead"],
-    ['Build Targets', "build for web                         # frontend\nbuild for javascript backend          # Express\nbuild for web and javascript backend  # both"],
+    // ── Values & Variables ──
+    ['Values & Variables', "# Numbers use =\nprice = 9.99\ncount = 0\n\n# Strings and booleans use 'is'\nname is 'Alice'\nactive is true\n\n# Named assignment\ndefine total as: price + tax\n\n# Empty list\nitems is an empty list"],
+    ['Math', "total = price + tax\ndiscount = total * 0.10\ntax = price * rate / 100\nremainder = count % 3"],
+    ['Strings', "# Interpolation\ngreeting is 'Hello, {name}!'\n\n# Operations\nupper = uppercase(name)\nfound = contains(text, 'search')\npart = substring(text, 0, 5)\npieces = split(text, ',')"],
+    ['Objects', "create person:\n  name is 'Alice'\n  age = 30\n\n# Read (possessive)\nshow person's name\n\n# Set\nperson's age = 31"],
+    ['Lists', "items is an empty list\nadd 'hello' to items\nremove 'hello' from items\nsort items by name\nsort items by price descending"],
+    ['Collections', "total = sum of prices\naverage = avg of scores\nbiggest = max of values\nhow_many = count of items\nfirst_item = first of items\nall_names = each user's name in users"],
+
+    D,
+
+    // ── Logic & Control ──
+    ['Functions', "# One-liner\ndouble(x) = x * 2\ntax(price, rate) = price * rate / 100\n\n# Block\ndefine function greet(name):\n  message = 'Hello, ' + name\n  return message"],
+    ['Conditionals', "# Inline\nif x is 5 then show 'yes'\n\n# Block\nif x is 5:\n  show 'five'\notherwise:\n  show 'other'"],
+    ['Loops', "# Count\nrepeat 5 times:\n  show 'hello'\n\n# Each\nfor each item in items list:\n  show item\n\n# While\nwhile count is less than 10:\n  increase count by 1"],
+    ['Pattern Matching', "match status:\n  when 'active':\n    show 'Running'\n  when 'paused':\n    show 'Paused'\n  otherwise:\n    show 'Unknown'"],
+    ['Error Handling', "try:\n  risky_operation()\nif there's an error:\n  show 'Something went wrong'"],
+    ['Comparisons', "x is 5                    # equals\nx is not 5                # not equals\nx is greater than 10      # >\nx is less than 10         # <\nx is at least 10          # >=\nx is at most 10           # <="],
+
+    D,
+
+    // ── Web Frontend ──
+    ['Pages & Content', "build for web\n\npage 'My App' at '/':\n  heading 'Welcome'\n  text 'Hello world'\n  subheading 'Details'\n  bold text 'Important'\n  small text 'Fine print'\n  link 'Learn more' to '/about'\n  divider"],
+    ['Inputs', "'Name' is a text input saved as a name\n'Price' is a number input saved as a price\n'Notes' is a text area saved as a note\n'Gift Wrap' is a checkbox\n'Color' is a dropdown with ['Red', 'Green', 'Blue']"],
+    ['Buttons & Actions', "button 'Save':\n  send name and email to '/api/signup'\n\nbutton 'Add':\n  send todo to '/api/todos'\n  get todos from '/api/todos'\n  todo is ''"],
+    ['Display & Tables', "display total as dollars called 'Total'\ndisplay todos as table showing name, status\n\n# With action buttons (auto-wired)\ndisplay contacts as table showing name, email with delete\ndisplay contacts as table showing name, email with edit\ndisplay contacts as table showing name, email with delete and edit"],
+    ['Charts (ECharts)', "# Line chart\nchart 'Revenue' as line showing sales\n\n# Bar chart\nchart 'Deals' as bar showing sales\n\n# Pie chart (groups by field)\nchart 'Status' as pie showing tasks by status\n\n# Area chart (line with fill)\nchart 'Trend' as area showing monthly_data"],
+    ['On Page Load', "# Inline\non page load get todos from '/api/todos'\n\n# Block\non page load:\n  get todos from '/api/todos'\n  get users from '/api/users'"],
+
+    D,
+
+    // ── Layout & Styles ──
+    ['Built-in Presets', "# Landing page\nsection 'Hero' with style page_hero:\nsection 'Features' with style page_section:\nsection 'CTA' with style section_dark:\nsection 'Pricing' with style card:\n\n# App / dashboard\nsection 'Nav' with style app_sidebar:\nsection 'Main' with style app_content:\nsection 'Top' with style app_header:\nsection 'Widget' with style metric_card:"],
+    ['Inline Modifiers', "section 'App' full height, side by side:\n  section 'Sidebar' dark background, 280px wide:\n    heading 'Nav'\n  section 'Main' fills remaining space:\n    heading 'Content'\n\n# Grid layouts\nsection 'Grid' as two column layout:\nsection 'Grid' as three column layout:"],
+    ['Tabs & Panels', "section 'Views' as tabs:\n  tab 'Overview':\n    text 'First tab'\n  tab 'Details':\n    text 'Second tab'\n\n# Modal\nsection 'Confirm' as modal:\n  heading 'Are you sure?'\n  button 'Yes':\n    close modal\n\nbutton 'Delete':\n  open the Confirm modal\n\n# Slide-in\nsection 'Help' slides in from right:\n  text 'Help content'\n\nbutton 'Help':\n  toggle the Help panel"],
+    ['Custom Styles', "style card:\n  background is '#f8fafc'\n  padding = 24\n  rounded = 12\n  shadow is 'medium'\n\nsection 'Info' with style card:\n  heading 'Details'"],
+    ['Themes', "theme 'ivory'     # light (default)\ntheme 'midnight'   # dark\ntheme 'nova'       # warm/creative"],
+
+    D,
+
+    // ── Backend ──
+    ['Data Tables', "database is local memory\n\ncreate a Users table:\n  name, required\n  email, required, unique\n  role, default 'member'\n  age (number), default 0\n  created_at_date, auto"],
+    ['API Endpoints', "when user calls GET /api/users:\n  all_users = get all Users\n  send back all_users\n\nwhen user calls POST /api/users sending user_data:\n  requires auth\n  validate user_data:\n    name is text, required, min 1, max 100\n    email is text, required, matches email\n  new_user = save user_data as new User\n  send back new_user with success message\n\nwhen user calls PUT /api/users/:id sending data:\n  requires auth\n  save data to Users\n  send back 'updated'\n\nwhen user calls DELETE /api/users/:id:\n  requires auth\n  delete the User with this id\n  send back 'deleted' with success message"],
+    ['Auth & Guards', "requires auth\nrequires role 'admin'\nguard stock is greater than 0 or 'Out of stock'\n\n# Access current user\nuser_id = current user's id"],
+    ['Production', "log every request\nallow cross-origin requests\nrate limit 10 per minute\napi_key is env('API_KEY')"],
+
+    D,
+
+    // ── AI Agents ──
+    ['AI Agents', "agent 'Lead Scorer' receiving lead:\n  check lead's company is not missing,\n    otherwise error 'Company required'\n  set result to ask ai 'Rate 1-10 for\n    enterprise potential' with lead returning:\n    score (number)\n    reasoning\n    qualified (boolean)\n  lead's score is result's score\n  send back lead"],
+    ['Agent Chains', "# Chain agents: screen -> score -> summarize\nagent 'Pipeline' receiving candidate:\n  set screened to call 'Screener' with candidate\n  set scored to call 'Scorer' with screened\n  send back scored"],
+
+    D,
+
+    // ── Build Targets ──
+    ['Build Targets', "build for web                         # frontend only\nbuild for javascript backend          # Express server\nbuild for python backend              # FastAPI server\nbuild for web and javascript backend  # full-stack"],
+    ['Components', "define component Card receiving content:\n  heading 'Card'\n  show content\n  divider\n\nshow Card:\n  text 'Inside the card'"],
+    ['Modules', "# main.clear\nuse 'helpers'\nresult = double(100)\n\n# helpers.clear\ndouble(x) = x * 2"],
   ];
-  let h = '<div style="padding:18px;display:flex;flex-direction:column;gap:16px;overflow:auto;height:100%;">';
+  let h = '<div style="padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto;height:100%;">';
   h += '<div><div style="font-size:15px;font-weight:700;color:var(--tx);">Clear Syntax Guide</div><div style="font-size:12px;color:var(--tx3);margin-top:4px;">Each line does one thing. Plain English in, production code out.</div></div>';
-  s.forEach(([title, code]) => { h += '<div><span class="section-lbl">' + title + '</span><pre class="guide-code">' + esc(code) + '</pre></div>'; });
+  s.forEach(item => {
+    if (item === D) { h += '<hr class="guide-divider">'; return; }
+    const [title, code] = item;
+    h += '<div><span class="section-lbl">' + title + '</span><pre class="guide-code">' + esc(code) + '</pre></div>';
+  });
   h += '</div>';
   return h;
 }

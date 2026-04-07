@@ -14,7 +14,7 @@ Compiles plain English to JavaScript, Python, and HTML.
 8. **`ROADMAP.md`** -- what's built (phases 1-28 complete), what's planned.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1005 tests)
+- Run all tests: `node clear.test.js` (1089 tests)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -36,6 +36,12 @@ Compiles plain English to JavaScript, Python, and HTML.
 - **1:1 mapping.** Every compiled output line traces to exactly one Clear line.
 - **Deterministic.** Same input = same output. No AI in the compile step.
 - **Compiler accumulates quality.** Fix a bug once, every app gets the fix on recompile.
+
+## File TOC Rule (MANDATORY)
+Both `parser.js` and `compiler.js` have a TABLE OF CONTENTS at the top.
+**Every time you change either file** — adding, removing, or moving a section —
+update the TOC to match. Use section names, not line numbers (lines drift).
+Read the TOC before working in the file so you know where things are.
 
 ## Compiler Architecture
 - **4 passes:** tokenize -> parse -> validate -> compile
@@ -61,13 +67,17 @@ Compiles plain English to JavaScript, Python, and HTML.
 - **Built-in presets:** `page_hero`, `page_section`, `page_section_dark`, `page_card`, `app_layout`, `app_sidebar`, `app_main`, `app_content`, `app_header`, `app_card`
 - **10 hard rules:** One accent color, one btn-primary per section, hero <= 10 words, 8pt grid, cards bg OR border not both, etc.
 
-## Before Adding New Syntax
-1. Write 3+ example programs using the proposed syntax
-2. Say each line out loud (phone test)
-3. Check synonyms.js for collisions
-4. Check if multi-word phrase appears inside any existing pattern
-5. Write failing tests
-6. Then implement
+## Before Adding New Features or Syntax (MANDATORY)
+1. Use `/write-plan` to create an implementation plan
+2. Use `/red-team-plan` to stress-test the plan before coding
+3. Write 3+ example programs using the proposed syntax
+4. Say each line out loud (phone test)
+5. Check synonyms.js for collisions
+6. Check if multi-word phrase appears inside any existing pattern
+7. Write failing tests
+8. Then implement
+
+Always use these skills — never jump straight to coding a new feature.
 
 ## Compiler is Closed Source
 Do not make this repo public. The playground uses an obfuscated bundle
@@ -111,5 +121,8 @@ Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
 - Playground styling needs visual verification
 - DaisyUI v5 themes use `--color-base-100: oklch(%)` format, not old v4 vars
 - `ui's Card()` in web target crashes buildHTML (namespaced component calls)
+
+## Explain Your Thinking Rule
+When making compiler changes, explain decisions in plain English in the chat as you go. Don't just code silently — the human needs to follow the reasoning, not reverse-engineer it from diffs.
 
 That's it. The compiler has no build step, no config files, no framework. `node clear.test.js` runs everything.

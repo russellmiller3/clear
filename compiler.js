@@ -7,6 +7,34 @@
 // JavaScript, Python, or both. Same input ALWAYS produces the same output.
 // No AI in the compile step — it's a pure function.
 //
+// !! MAINTENANCE RULE: Update this TOC whenever you add, remove, or move
+// !! a section. Use section names (not line numbers) since lines drift.
+//
+// TABLE OF CONTENTS:
+//   PUBLIC API ........................ compileProgram(), compile(), resolveModules()
+//   E2E TEST GENERATION .............. generateE2ETests()
+//   DEPLOY CONFIG .................... generateDeployConfig()
+//   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
+//     Node compilers ................. compileEndpoint, compileCrud, compileRespond,
+//                                     compileAgent, compileValidate, compileDataShape,
+//                                     compileExternalFetch, compileWebhook, compilePdf
+//     _compileNodeInner .............. Main switch over all NodeTypes
+//     exprToCode ..................... Expression-to-code for all expression nodes
+//   RLS POLICY COMPILER .............. compileRLSPolicy()
+//   JAVASCRIPT COMPILER .............. compileToJS(), isReactiveApp()
+//   REACTIVE JS COMPILER ............. compileToReactiveJS() — state, _recompute,
+//                                     inputs, buttons, table action buttons,
+//                                     event delegation, on-page-load
+//   PYTHON COMPILER .................. compileToPython()
+//   HTML SCAFFOLD .................... INLINE_LAYOUT_MODIFIERS, buildHTML(),
+//                                     formatInlineText(), compileToHTML()
+//   BACKEND SCAFFOLD ................. compileToJSBackend(), compileToBrowserServer(),
+//                                     compileToPythonBackend()
+//   STYLE BLOCK CSS .................. friendlyPropToCSS(), extractStyles(), stylesToCSS()
+//   RUNTIME & CSS .................... CSS_RESET, THEME_CSS, _buildCSS(),
+//                                     _clear_* utility functions
+//   NAME & OPERATOR MAPPING .......... sanitizeName(), operatorToCode()
+//
 // =============================================================================
 
 import { NodeType, parse } from './parser.js';
@@ -48,11 +76,32 @@ const UTILITY_FUNCTIONS = [
   { name: '_clear_format', code: "function _clear_format(v, f) {\n  if (v === null || v === undefined) return '';\n  if (f === 'dollars') return '$' + Number(v).toFixed(2);\n  if (f === 'percent') return (Number(v) * 100).toFixed(1) + '%';\n  return String(v);\n}", deps: [] },
   { name: '_clear_fetch', code: "async function _clear_fetch(url) {\n  const r = await fetch(url);\n  if (!r.ok) throw new Error('Could not load data from ' + url + ' (status ' + r.status + ')');\n  return await r.json();\n}", deps: [] },
   { name: '_clear_env', code: "function _clear_env(name) {\n  if (typeof process !== 'undefined' && process.env) return process.env[name] || '';\n  return '';\n}", deps: [] },
-  { name: '_toast', code: `function _toast(msg, cls) {
+  { name: '_toast', code: `function _toast(msg, type) {
   let c = document.getElementById('_toast_container');
-  if (!c) { c = document.createElement('div'); c.id = '_toast_container'; c.className = 'toast toast-end'; c.style.cssText = 'position:fixed;bottom:1rem;right:1rem;z-index:100'; document.body.appendChild(c); }
-  const el = document.createElement('div'); el.className = 'alert ' + cls + ' shadow-lg'; el.innerHTML = '<span>' + msg + '</span>';
-  c.appendChild(el); setTimeout(() => { el.remove(); }, 3000);
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
 }`, deps: [] },
   { name: '_esc', code: "function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }", deps: [] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema)); }', deps: [] },
@@ -186,9 +235,15 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
     for (const err of nestedErrors) {
       errors.push({ line: node.line, message: `In module '${moduleName}': ${err.message}` });
     }
-    const importedNodes = moduleAst.body.filter(n =>
-      n.type === NodeType.FUNCTION_DEF || n.type === NodeType.ASSIGN || n.type === NodeType.COMPONENT_DEF
-    );
+    // For inline-all (use everything from), import ALL node types.
+    // For selective/namespaced imports, only functions/assigns/components.
+    const importedNodes = node.importAll
+      ? moduleAst.body.filter(n =>
+          n.type !== NodeType.TARGET && n.type !== NodeType.THEME && n.type !== NodeType.DATABASE_DECL
+        )
+      : moduleAst.body.filter(n =>
+          n.type === NodeType.FUNCTION_DEF || n.type === NodeType.ASSIGN || n.type === NodeType.COMPONENT_DEF
+        );
 
     // Inline-all import: use everything from 'helpers'
     if (node.importAll) {
@@ -873,6 +928,20 @@ function extractFilterKey(expr, ctx) {
   return null;
 }
 
+// Extracts equality pairs from a condition for Supabase .eq() chaining
+function extractEqPairs(condExpr, ctx) {
+  const pairs = [];
+  if (condExpr.operator === '==' || condExpr.operator === '===') {
+    const key = extractFilterKey(condExpr.left, ctx);
+    const val = exprToCode(condExpr.right, ctx);
+    if (key) pairs.push([key, val]);
+  } else if (condExpr.operator === '&&') {
+    pairs.push(...extractEqPairs(condExpr.left, ctx));
+    pairs.push(...extractEqPairs(condExpr.right, ctx));
+  }
+  return pairs;
+}
+
 function extractAndPairs(expr, ctx) {
   if (expr.type === NodeType.BINARY_OP && expr.operator === '&&') {
     const left = extractAndPairs(expr.left, ctx);
@@ -1073,6 +1142,36 @@ function compileCrud(node, ctx, pad) {
   const table = node.target ? node.target.toLowerCase() + (node.target.toLowerCase().endsWith('s') ? '' : 's') : 'unknown';
 
   if (ctx.lang === 'python') {
+    // Supabase Python path (supabase-py SDK)
+    if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+      if (node.operation === 'lookup') {
+        const varName = sanitizeName(node.variable);
+        const isSingle = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
+        let query = `supabase.table("${table}").select("*")`;
+        if (node.condition) {
+          const pairs = extractEqPairs(node.condition, ctx);
+          for (const [k, v] of pairs) query += `.eq("${k}", ${v})`;
+        }
+        if (isSingle) query += '.single()';
+        return `${pad}_resp = ${query}.execute()\n${pad}${varName} = _resp.data`;
+      }
+      if (node.operation === 'save') {
+        const varCode = sanitizeName(node.variable);
+        if (node.resultVar) {
+          return `${pad}_resp = supabase.table("${table}").insert(${varCode}).execute()\n${pad}${sanitizeName(node.resultVar)} = _resp.data[0] if _resp.data else {}`;
+        }
+        return `${pad}supabase.table("${table}").update(${varCode}).eq("id", ${varCode}["id"]).execute()`;
+      }
+      if (node.operation === 'remove') {
+        let query = `supabase.table("${table}").delete()`;
+        if (node.condition) {
+          const pairs = extractEqPairs(node.condition, ctx);
+          for (const [k, v] of pairs) query += `.eq("${k}", ${v})`;
+        }
+        return `${pad}${query}.execute()`;
+      }
+    }
+    // Default Python path (in-memory db)
     if (node.operation === 'lookup') {
       const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
       const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
@@ -1089,10 +1188,60 @@ function compileCrud(node, ctx, pad) {
     return `${pad}# CRUD: ${node.operation}`;
   }
 
+  if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+    if (node.operation === 'lookup') {
+      const varName = sanitizeName(node.variable);
+      const isSingle = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
+      let query = `supabase.from('${table}').select('*')`;
+      if (node.condition) {
+        const pairs = extractEqPairs(node.condition, ctx);
+        for (const [k, v] of pairs) query += `.eq('${k}', ${v})`;
+      }
+      if (isSingle) query += '.single()';
+      // Pagination: .range(start, end)
+      if (node.page && node.perPage) {
+        const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
+        const page = typeof node.page === 'number' ? node.page : `(${exprToCode({ type: NodeType.VARIABLE_REF, name: String(node.page) }, ctx)})`;
+        query += `.range((${page} - 1) * ${perPage}, ${page} * ${perPage} - 1)`;
+      }
+      return `${pad}const { data: ${varName}, error: _err } = await ${query};\n${pad}if (_err) throw _err;`;
+    }
+    if (node.operation === 'save') {
+      const varCode = sanitizeName(node.variable);
+      const names = ctx.schemaNames || new Set();
+      let schemaName;
+      if (names.has(node.target)) schemaName = node.target + 'Schema';
+      else if (names.has(node.target + 's')) schemaName = node.target + 's' + 'Schema';
+      else if (names.has(node.target.replace(/s$/, ''))) schemaName = node.target.replace(/s$/, '') + 'Schema';
+      else schemaName = node.target + 'Schema';
+      if (node.resultVar) {
+        return `${pad}const { data: ${sanitizeName(node.resultVar)}, error: _err } = await supabase.from('${table}').insert(_pick(${varCode}, ${schemaName})).select().single();\n${pad}if (_err) throw _err;`;
+      }
+      return `${pad}const { error: _err } = await supabase.from('${table}').update(${varCode}).eq('id', ${varCode}.id);\n${pad}if (_err) throw _err;`;
+    }
+    if (node.operation === 'remove') {
+      let query = `supabase.from('${table}').delete()`;
+      if (node.condition) {
+        const pairs = extractEqPairs(node.condition, ctx);
+        for (const [k, v] of pairs) query += `.eq('${k}', ${v})`;
+      }
+      return `${pad}const { error: _err } = await ${query};\n${pad}if (_err) throw _err;`;
+    }
+  }
+
   if (node.operation === 'lookup') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
-    return `${pad}const ${sanitizeName(node.variable)} = await db.${isSingleLookup ? 'findOne' : 'findAll'}('${table}'${where});`;
+    let lookupCode = `${pad}const ${sanitizeName(node.variable)} = await db.${isSingleLookup ? 'findOne' : 'findAll'}('${table}'${where});`;
+    // Pagination: slice the result array
+    if (node.page && node.perPage && !isSingleLookup) {
+      const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
+      const varName = sanitizeName(node.variable);
+      const pageExpr = typeof node.page === 'number' ? node.page : sanitizeName(String(node.page));
+      lookupCode = `${pad}const _all_${varName} = await db.findAll('${table}'${where});\n`;
+      lookupCode += `${pad}const ${varName} = _all_${varName}.slice((${pageExpr} - 1) * ${perPage}, ${pageExpr} * ${perPage});`;
+    }
+    return lookupCode;
   }
   if (node.operation === 'save') {
     const varCode = sanitizeName(node.variable);
@@ -1230,6 +1379,11 @@ function compileValidate(node, ctx, pad) {
 
 function compileDataShape(node, ctx, pad) {
   if (ctx.lang === 'python') {
+    // Supabase: tables managed in dashboard, emit comment only
+    if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+      const tableName = node.name.toLowerCase() + (node.name.toLowerCase().endsWith('s') ? '' : 's');
+      return `${pad}# Data shape: ${node.name} (table '${tableName}' must exist in Supabase dashboard)`;
+    }
     const sqlTypes = { text: 'TEXT', number: 'INTEGER', boolean: 'BOOLEAN', timestamp: 'TIMESTAMP', fk: 'INTEGER' };
     const cols = node.fields.map(f => {
       let col = `${f.name} ${sqlTypes[f.fieldType] || 'TEXT'}`;
@@ -1241,7 +1395,11 @@ function compileDataShape(node, ctx, pad) {
       return col;
     }).join(', ');
     const tableName = node.name.toLowerCase() + 's';
-    let result = `${pad}# Data shape: ${node.name}\n${pad}db.execute("CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols})")`;
+    let uniqueConstraints = '';
+    if (node.compoundUniques) {
+      uniqueConstraints = node.compoundUniques.map(fields => `, UNIQUE(${fields.join(', ')})`).join('');
+    }
+    let result = `${pad}# Data shape: ${node.name}\n${pad}db.execute("CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols}${uniqueConstraints})")`;
     if (node.policies && node.policies.length > 0) {
       result += `\n${pad}db.execute("ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY")`;
       for (const policy of node.policies) {
@@ -1261,8 +1419,10 @@ function compileDataShape(node, ctx, pad) {
   }).join(',\n');
   const tableName = node.name.toLowerCase() + (node.name.toLowerCase().endsWith('s') ? '' : 's');
   let result = `${pad}// Data shape: ${node.name}\n${pad}const ${node.name}Schema = {\n${fields}\n${pad}};`;
-  if (ctx.mode === 'backend') {
+  if (ctx.mode === 'backend' && !(ctx.dbBackend && ctx.dbBackend.includes('supabase'))) {
     result += `\n${pad}db.createTable('${tableName}', ${node.name}Schema);`;
+  } else if (ctx.mode === 'backend' && ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+    result += `\n${pad}// Table '${tableName}' must exist in Supabase dashboard`;
   }
   return result;
 }
@@ -1575,6 +1735,14 @@ function _compileNodeInner(node, ctx) {
       return `${pad}try {\n${tryCode}\n${pad}} catch (${node.errorVar}) {\n${handleCode}\n${pad}}`;
     }
 
+    case NodeType.TRANSACTION: {
+      const txBody = compileBody(node.body, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}# As one operation (transaction)\n${pad}try:\n${pad}    await db.execute("BEGIN")\n${txBody}\n${pad}    await db.execute("COMMIT")\n${pad}except Exception as _tx_err:\n${pad}    await db.execute("ROLLBACK")\n${pad}    raise _tx_err`;
+      }
+      return `${pad}// As one operation (transaction)\n${pad}try {\n${pad}  await db.run('BEGIN');\n${txBody}\n${pad}  await db.run('COMMIT');\n${pad}} catch (_txErr) {\n${pad}  await db.run('ROLLBACK');\n${pad}  throw _txErr;\n${pad}}`;
+    }
+
     case NodeType.USE:
       if (node.source) {
         // External JS import: use 'name' from 'path'
@@ -1713,6 +1881,7 @@ function _compileNodeInner(node, ctx) {
     case NodeType.DATABASE_DECL: {
       const b = node.backend;
       if (b.includes('local') || b.includes('memory')) {
+        if (ctx.lang === 'python') return `${pad}# Database: local memory`;
         return `${pad}// Database: local memory (JSON file backup)`;
       }
       if (b.includes('sqlite')) {
@@ -1726,6 +1895,10 @@ function _compileNodeInner(node, ctx) {
           return `${pad}import asyncpg\n${pad}_db_pool = None\n${pad}async def _get_db():\n${pad}    global _db_pool\n${pad}    if not _db_pool:\n${pad}        _db_pool = await asyncpg.create_pool(${url})\n${pad}    return _db_pool`;
         }
         return `${pad}const { Pool } = require('pg');\n${pad}const _pool = new Pool({ connectionString: ${url} });`;
+      }
+      if (b.includes('supabase')) {
+        if (ctx.lang === 'python') return `${pad}# Database: Supabase (client initialized at top of file)`;
+        return `${pad}// Database: Supabase (client initialized at top of file)`;
       }
       return `${pad}// Database: ${node.backend}`;
     }
@@ -2104,7 +2277,8 @@ function _compileNodeInner(node, ctx) {
     case NodeType.RATE_LIMIT: {
       const ms = node.period === 'second' ? 1000 : node.period === 'minute' ? 60000 : node.period === 'hour' ? 3600000 : 60000;
       if (ctx.lang === 'python') {
-        return `${pad}# Rate limit: ${node.count} per ${node.period}\n${pad}@limiter.limit("${node.count}/${node.period}")`;
+        // slowapi rate limiting for FastAPI
+        return `${pad}# Rate limit: ${node.count} per ${node.period}\n${pad}from slowapi import Limiter\n${pad}from slowapi.util import get_remote_address\n${pad}_limiter = Limiter(key_func=get_remote_address)\n${pad}app.state.limiter = _limiter`;
       }
       return `${pad}// Rate limit: ${node.count} per ${node.period}\n${pad}app.use(rateLimit({ windowMs: ${ms}, max: ${node.count} }));`;
     }
@@ -2167,7 +2341,33 @@ function _compileNodeInner(node, ctx) {
       } else {
         bodyExpr = '_state';
       }
-      return `${pad}await fetch(${url}, { method: '${node.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).catch(e => console.error(e));`;
+      // Helper: compile a fetch call with error checking
+      const fetchWithErrorCheck = (fetchUrl, method, body) => {
+        const lines = [];
+        lines.push(`${pad}{ const _r = await fetch(${fetchUrl}, { method: '${method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${body}) });`);
+        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || '${method} failed'); } }`);
+        return lines.join('\n');
+      };
+      // Auto-upsert: if this is a POST and a matching PUT/PATCH endpoint exists,
+      // check _editing_id to decide whether to create or update
+      if (node.method === 'POST' && ctx.updateEndpoints) {
+        const postMatch = node.url.match(/\/api\/(\w+)$/);
+        if (postMatch) {
+          const resource = postMatch[1].toLowerCase();
+          const upInfo = ctx.updateEndpoints[resource];
+          if (upInfo) {
+            const lines = [];
+            lines.push(`${pad}if (_state._editing_id) {`);
+            lines.push(fetchWithErrorCheck(JSON.stringify(upInfo.url) + ' + _state._editing_id', upInfo.method, bodyExpr));
+            lines.push(`${pad}  _state._editing_id = null;`);
+            lines.push(`${pad}} else {`);
+            lines.push(fetchWithErrorCheck(url, node.method, bodyExpr));
+            lines.push(`${pad}}`);
+            return lines.join('\n');
+          }
+        }
+      }
+      return fetchWithErrorCheck(url, node.method, bodyExpr);
     }
 
     case NodeType.COMPONENT_DEF: {
@@ -2301,8 +2501,10 @@ function _compileNodeInner(node, ctx) {
 
     // Nodes handled by dedicated loops in the reactive compiler -- skip here
     case NodeType.ON_PAGE_LOAD:
+    case NodeType.ON_CHANGE:
     case NodeType.ASK_FOR:
     case NodeType.DISPLAY:
+    case NodeType.CHART:
       return null;
 
     default:
@@ -2728,7 +2930,8 @@ function compileToJS(body, errors, sourceMap = false) {
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
-      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON) return true;
+      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE) return true;
+      if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
       }
@@ -2778,6 +2981,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     switch (node.type) {
       case NodeType.ASK_FOR: inputNodes.push(node); break;
       case NodeType.DISPLAY: displayNodes.push(node); break;
+      case NodeType.CHART: break; // Chart nodes handled separately below
       case NodeType.BUTTON: buttonNodes.push(node); break;
       case NodeType.COMMENT:
       case NodeType.TARGET:
@@ -2854,6 +3058,35 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   const filteredCompute = computeNodes.filter(n =>
     !(n.type === NodeType.ASSIGN && n.expression && literalTypes.has(n.expression.type))
   );
+
+  // Detect DELETE, PUT, and GET endpoints for auto-generating per-row action buttons
+  const deleteEndpoints = {};
+  const updateEndpoints = {};
+  const getRefreshUrls = {};
+  function scanForEndpoints(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.ENDPOINT && n.path) {
+        const match = n.path.match(/\/api\/(\w+)\/:id/);
+        if (match) {
+          const resource = match[1].toLowerCase();
+          if (n.method === 'DELETE') deleteEndpoints[resource] = n.path.replace('/:id', '/');
+          if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method };
+        }
+      }
+      if (n.type === NodeType.API_CALL && n.method === 'GET' && n.targetVar) {
+        getRefreshUrls[sanitizeName(n.targetVar).toLowerCase()] = { url: n.url, varName: sanitizeName(n.targetVar) };
+      }
+      if (n.body) scanForEndpoints(n.body);
+    }
+  }
+  scanForEndpoints(body);
+  scanForEndpoints(flatNodes);
+
+  // Add _editing_id to state only when a display table explicitly requests edit actions
+  const hasEditAction = displayNodes.some(d => d.actions && d.actions.includes('edit'));
+  if (hasEditAction) {
+    stateDefaults['_editing_id'] = 'null';
+  }
 
   const stateEntries = Object.entries(stateDefaults).map(([k, v]) => `  ${k}: ${v}`).join(',\n');
   lines.push(`let _state = {`);
@@ -2968,30 +3201,21 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     }
   }
 
-  // Detect DELETE endpoints for auto-generating per-row delete buttons
-  const deleteEndpoints = {};
-  function scanForEndpoints(nodes) {
-    for (const n of nodes) {
-      if (n.type === NodeType.ENDPOINT && n.method === 'DELETE' && n.path) {
-        // Extract resource name from path like /api/contacts/:id
-        const match = n.path.match(/\/api\/(\w+)\/:id/);
-        if (match) deleteEndpoints[match[1].toLowerCase()] = n.path.replace('/:id', '/');
-      }
-      if (n.body) scanForEndpoints(n.body);
-    }
-  }
-  scanForEndpoints(body);
-
   // Display updates
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
   for (const disp of displayNodes) {
     const outputId = disp.ui._resolvedId || disp.ui.id;
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
-      // Check if this table's data source has a matching DELETE endpoint
+      // Check if user explicitly requested action buttons via "with delete" / "with edit"
       const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
-      const deleteUrl = deleteEndpoints[varName.toLowerCase()];
-      const hasDelete = !!deleteUrl;
+      const resourceKey = varName.toLowerCase();
+      const actions = disp.actions || [];
+      const hasDelete = actions.includes('delete');
+      const hasUpdate = actions.includes('edit');
+      const hasActions = hasDelete || hasUpdate;
+      const deleteUrl = hasDelete ? deleteEndpoints[resourceKey] : null;
+      const updateInfo = hasUpdate ? updateEndpoints[resourceKey] : null;
 
       // Reactive table: render array of objects as HTML table
       lines.push(`  {`);
@@ -3002,12 +3226,25 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         : 'Object.keys(_data[0])';
       lines.push(`    if (_tableEl && Array.isArray(_data) && _data.length > 0) {`);
       lines.push(`      const _keys = ${colsCode};`);
-      if (hasDelete) {
-        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';`);
-        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td><button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button></td>' + '</tr>').join('');`);
+      const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
+      const tdClass = 'text-sm text-base-content';
+      const trClass = 'border-base-300 hover:bg-base-200 transition-colors';
+      const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
+      const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
+      if (hasActions) {
+        let actionBtns = '';
+        if (hasUpdate) {
+          actionBtns += `'<button class="btn btn-ghost btn-xs" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`;
+        }
+        if (hasDelete) {
+          if (actionBtns) actionBtns += ` + ' ' + `;
+          actionBtns += `'<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>'`;
+        }
+        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = ${headCols} + '<th class="${thClass}"></th>';`);
+        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="${trClass}">' + ${dataCols} + '<td class="text-right">' + ${actionBtns} + '</td>' + '</tr>').join('');`);
       } else {
-        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');`);
-        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');`);
+        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = ${headCols};`);
+        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="${trClass}">' + ${dataCols} + '</tr>').join('');`);
       }
       lines.push(`    } else if (_tableEl) {`);
       lines.push(`      _tableEl.querySelector('thead tr').innerHTML = '';`);
@@ -3022,8 +3259,53 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     }
   }
 
+  // Chart updates (ECharts)
+  const chartNodes = flatNodes.filter(n => n.type === NodeType.CHART);
+  for (const chart of chartNodes) {
+    const chartId = chart.ui.id;
+    const dataExpr = `_state.${sanitizeName(chart.dataVar)}`;
+    const chartType = chart.chartType;
+    const groupBy = chart.groupBy;
+
+    lines.push(`  {`);
+    lines.push(`    const _chartEl = document.getElementById('${chartId}_canvas');`);
+    lines.push(`    const _data = ${dataExpr};`);
+    lines.push(`    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
+    lines.push(`      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);`);
+
+    if (chartType === 'pie') {
+      if (groupBy) {
+        // Group by field and count
+        lines.push(`      const _counts = {};`);
+        lines.push(`      _data.forEach(r => { const k = r.${sanitizeName(groupBy)} || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });`);
+        lines.push(`      const _pieData = Object.entries(_counts).map(([name, value]) => ({ name, value }));`);
+      } else {
+        // Assume data has name/value-like fields — use first two non-id keys
+        lines.push(`      const _sKeys = Object.keys(_data[0]).filter(k => k !== 'id');`);
+        lines.push(`      const _pieData = _data.map(r => ({ name: String(r[_sKeys[0]] || ''), value: Number(r[_sKeys[1] || _sKeys[0]] || 0) }));`);
+      }
+      lines.push(`      _chart.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: '65%', data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } } }] }, true);`);
+    } else {
+      // line, bar, area — auto-detect x (first string field) and y (first number field)
+      const seriesType = chartType === 'area' ? 'line' : chartType;
+      const areaStyle = chartType === 'area' ? ', areaStyle: {}' : '';
+      lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
+      lines.push(`      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];`);
+      lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
+      lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);`);
+      lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
+      lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}, smooth: true }));`);
+      lines.push(`      _chart.setOption({ tooltip: { trigger: 'axis' }, legend: _yKeys.length > 1 ? { data: _yKeys } : undefined, xAxis: { type: 'category', data: _xData }, yAxis: { type: 'value' }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true } }, true);`);
+    }
+
+    lines.push(`    }`);
+    lines.push(`  }`);
+  }
+
   // Sync input DOM values with state (so clearing state also clears the input)
+  // Skip file inputs — .value is read-only on file inputs
   for (const inp of inputNodes) {
+    if (inp.inputType === 'file') continue;
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
@@ -3038,8 +3320,11 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     const isNum = inp.inputType === 'number' || inp.inputType === 'percent';
-    lines.push(`document.getElementById('${inputId}').addEventListener('input', function(e) {`);
-    lines.push(`  _state.${name} = ${isNum ? 'Number(e.target.value) || 0' : 'e.target.value'};`);
+    const isFile = inp.inputType === 'file';
+    const eventType = isFile ? 'change' : 'input';
+    const valueExpr = isFile ? 'e.target.files[0] || null' : isNum ? 'Number(e.target.value) || 0' : 'e.target.value';
+    lines.push(`document.getElementById('${inputId}').addEventListener('${eventType}', function(e) {`);
+    lines.push(`  _state.${name} = ${valueExpr};`);
     lines.push(`  _recompute();`);
     lines.push(`});`);
   }
@@ -3051,15 +3336,98 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     for (const btn of buttonNodes) {
       const btnId = `btn_${sanitizeName(btn.label.replace(/\s+/g, '_'))}`;
       const btnDeclared = new Set(recomputeDeclared);
-      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web' };
+      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
       const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL);
       const asyncKw = hasApiCall ? 'async ' : '';
+
+      // Find POST/PUT API calls to determine which fields need validation
+      const postCalls = btn.body.filter(n => n.type === NodeType.API_CALL && (n.method === 'POST' || n.method === 'PUT'));
+      const fieldsToValidate = new Set();
+      for (const call of postCalls) {
+        if (call.fields) call.fields.forEach(f => fieldsToValidate.add(sanitizeName(f)));
+      }
+
       lines.push(`document.getElementById('${btnId}').addEventListener('click', ${asyncKw}function() {`);
-      lines.push(bodyCode);
+
+      // Client-side validation: check required fields aren't empty
+      if (fieldsToValidate.size > 0) {
+        const checks = [...fieldsToValidate].map(f =>
+          `    if (_state.${f} === '' || _state.${f} == null) { _toast('${f.replace(/_/g, ' ')} is required', 'error'); return; }`
+        );
+        lines.push(checks.join('\n'));
+      }
+
+      // Loading state: disable button + show spinner during async work
+      if (hasApiCall) {
+        lines.push(`  const _btn = document.getElementById('${btnId}');`);
+        lines.push(`  const _btnHTML = _btn.innerHTML;`);
+        lines.push(`  _btn.disabled = true;`);
+        lines.push(`  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';`);
+        lines.push(`  try {`);
+        lines.push(bodyCode.split('\n').map(l => '  ' + l).join('\n'));
+        lines.push(`  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }`);
+        lines.push(`  _btn.disabled = false;`);
+        lines.push(`  _btn.innerHTML = _btnHTML;`);
+      } else {
+        lines.push(bodyCode);
+      }
+
       lines.push(`  _recompute();`);
       lines.push(`});`);
     }
+  }
+
+  // 6b. Table action button handlers (delete/edit via event delegation)
+  for (const disp of displayNodes) {
+    if (disp.format !== 'table') continue;
+    const actions = disp.actions || [];
+    if (actions.length === 0) continue;
+    const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
+    const resourceKey = varName.toLowerCase();
+    const deleteUrl = actions.includes('delete') ? deleteEndpoints[resourceKey] : null;
+    const updateInfo = actions.includes('edit') ? updateEndpoints[resourceKey] : null;
+    const refreshInfo = getRefreshUrls[resourceKey];
+    const outputId = disp.ui._resolvedId || disp.ui.id;
+    if (!deleteUrl && !updateInfo) continue;
+
+    lines.push('');
+    lines.push(`// --- Table action handlers for ${varName} ---`);
+    lines.push(`document.getElementById('${outputId}_table').addEventListener('click', async function(e) {`);
+
+    if (deleteUrl) {
+      lines.push(`  const deleteBtn = e.target.closest('[data-delete-id]');`);
+      lines.push(`  if (deleteBtn) {`);
+      lines.push(`    const id = deleteBtn.dataset.deleteId;`);
+      lines.push(`    await fetch(${JSON.stringify(deleteUrl)} + id, { method: 'DELETE' }).catch(e => console.error(e));`);
+      if (refreshInfo) {
+        lines.push(`    _state.${refreshInfo.varName} = await fetch(${JSON.stringify(refreshInfo.url)}).then(r => r.json()).catch(e => { console.error(e); return _state.${refreshInfo.varName}; });`);
+      }
+      lines.push(`    _recompute();`);
+      lines.push(`    return;`);
+      lines.push(`  }`);
+    }
+
+    if (updateInfo) {
+      lines.push(`  const editBtn = e.target.closest('[data-edit-id]');`);
+      lines.push(`  if (editBtn) {`);
+      lines.push(`    const id = editBtn.dataset.editId;`);
+      lines.push(`    const row = JSON.parse(editBtn.dataset.editRow);`);
+      // Populate the form inputs with the row data for editing
+      const colsForEdit = disp.columns || [];
+      for (const col of colsForEdit) {
+        const sName = sanitizeName(col);
+        if (stateVarNames.has(sName)) {
+          lines.push(`    _state.${sName} = row.${sName} != null ? row.${sName} : '';`);
+        }
+      }
+      lines.push(`    _state._editing_id = id;`);
+      lines.push(`    _recompute();`);
+      lines.push(`    return;`);
+      lines.push(`  }`);
+    }
+
+    lines.push(`});`);
   }
 
   // 7. On page load handlers (if any, these call _recompute at the end)
@@ -3081,6 +3449,35 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     // No on-page-load: do initial render immediately
     lines.push('');
     lines.push('_recompute();');
+  }
+
+  // 8. On-change handlers (reactive input watchers with optional debounce)
+  const changeNodes = flatNodes.filter(n => n.type === NodeType.ON_CHANGE);
+  for (const cn of changeNodes) {
+    const inputId = `input_${sanitizeName(cn.variable)}`;
+    const changeCtx = { lang: 'js', indent: 1, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web' };
+    const bodyCode = cn.body.map(n => compileNode(n, changeCtx)).filter(Boolean).join('\n');
+    const hasApiCall = cn.body.some(n => n.type === NodeType.API_CALL);
+    const asyncKw = hasApiCall ? 'async ' : '';
+
+    lines.push('');
+    lines.push(`// --- When ${cn.variable} changes ---`);
+    if (cn.debounceMs > 0) {
+      const timerId = `_debounce_${sanitizeName(cn.variable)}`;
+      lines.push(`let ${timerId} = null;`);
+      lines.push(`document.getElementById('${inputId}').addEventListener('input', function() {`);
+      lines.push(`  clearTimeout(${timerId});`);
+      lines.push(`  ${timerId} = setTimeout(${asyncKw}function() {`);
+      lines.push(bodyCode);
+      lines.push(`    _recompute();`);
+      lines.push(`  }, ${cn.debounceMs});`);
+      lines.push(`});`);
+    } else {
+      lines.push(`document.getElementById('${inputId}').addEventListener('input', ${asyncKw}function() {`);
+      lines.push(bodyCode);
+      lines.push(`  _recompute();`);
+      lines.push(`});`);
+    }
   }
 
   return lines.join('\n');
@@ -3134,9 +3531,9 @@ function compileToPython(body, errors, sourceMap = false) {
  */
 // Inline layout modifier map (shared between parser and compiler)
 const INLINE_LAYOUT_MODIFIERS = {
-  'two column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr', gap: '1.5rem' } },
-  'three column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr', gap: '1.5rem' } },
-  'four column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr 1fr', gap: '1.5rem' } },
+  'two column layout': { tailwind: 'grid grid-cols-2 gap-6' },
+  'three column layout': { tailwind: 'grid grid-cols-3 gap-6' },
+  'four column layout': { tailwind: 'grid grid-cols-4 gap-6' },
   'full height': { prop: 'height', val: '100vh' },
   'scrollable': { prop: 'overflow-y', val: 'auto' },
   'fills remaining space': { prop: 'flex', val: '1' },
@@ -3157,6 +3554,7 @@ function buildHTML(body) {
   const inlineStyleBlocks = []; // CSS generated from inline section modifiers
   const usedIds = new Set(); // Track element IDs to prevent duplicates
   let pageTitle = 'Clear App';
+  let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
   const pages = [];
   const sectionStack = []; // Track parent section presets for context-aware rendering
 
@@ -3186,21 +3584,32 @@ function buildHTML(body) {
 
           // Generate inline modifier CSS class if needed
           let inlineClass = '';
+          let tailwindClasses = '';
           if (hasInline) {
             const slug = sanitizeName(node.title.replace(/\s+/g, '_').toLowerCase());
             inlineClass = `section-${slug}`;
             const cssProps = [];
+            const twClasses = [];
             for (const mod of node.inlineModifiers) {
               if (typeof mod === 'string' && INLINE_LAYOUT_MODIFIERS[mod]) {
                 const m = INLINE_LAYOUT_MODIFIERS[mod];
-                cssProps.push(`${m.prop}: ${m.val}`);
-                if (m.extra) Object.entries(m.extra).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
+                if (m.tailwind) {
+                  twClasses.push(m.tailwind);
+                } else {
+                  cssProps.push(`${m.prop}: ${m.val}`);
+                  if (m.extra) Object.entries(m.extra).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
+                }
               } else if (mod && mod.custom && mod.props) {
                 Object.entries(mod.props).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
               }
             }
             if (cssProps.length > 0) {
               inlineStyleBlocks.push(`.${inlineClass} { ${cssProps.join('; ')}; }`);
+            } else {
+              inlineClass = ''; // No custom CSS needed
+            }
+            if (twClasses.length > 0) {
+              tailwindClasses = twClasses.join(' ');
             }
           }
 
@@ -3217,7 +3626,7 @@ function buildHTML(body) {
             // Tabs: generate tab bar + content panels
             const tabs = node.body.filter(n => n.type === NodeType.TAB);
             const otherContent = node.body.filter(n => n.type !== NodeType.TAB);
-            parts.push(`    <div class="${inlineClass} clear-section" id="${panelId}">`);
+            parts.push(`    <div class="${[inlineClass, tailwindClasses, 'clear-section'].filter(Boolean).join(' ')}" id="${panelId}">`);
             // Tab buttons
             parts.push(`    <div class="tabs tabs-bordered" role="tablist">`);
             tabs.forEach((tab, i) => {
@@ -3253,7 +3662,7 @@ function buildHTML(body) {
           if (isSlideIn) {
             const dir = mods.find(m => typeof m === 'string' && m.startsWith('__slidein_'))?.replace('__slidein_', '') || 'right';
             const translateStart = dir === 'left' ? '-100%' : '100%';
-            parts.push(`    <div class="clear-section ${inlineClass}" id="${panelId}" style="display:none">`);
+            parts.push(`    <div class="${['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ')}" id="${panelId}" style="display:none">`);
             walk(node.body);
             parts.push(`    </div>`);
             // Slide-in CSS
@@ -3263,7 +3672,7 @@ function buildHTML(body) {
 
           if (isCollapsible) {
             const display = startsClosed ? 'none' : 'block';
-            parts.push(`    <div class="clear-section ${inlineClass}" id="${panelId}">`);
+            parts.push(`    <div class="${['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ')}" id="${panelId}">`);
             parts.push(`      <h2 class="cursor-pointer select-none" onclick="const c=this.nextElementSibling;c.style.display=c.style.display==='none'?'block':'none'">${node.title} <span class="text-sm opacity-50">&#9662;</span></h2>`);
             parts.push(`      <div class="collapsible-content" style="display:${display}">`);
             walk(node.body);
@@ -3279,7 +3688,14 @@ function buildHTML(body) {
 
           if (presetClasses) {
             // Built-in preset: use Tailwind/DaisyUI classes directly, no custom CSS
-            const cls = [presetClasses, inlineClass].filter(Boolean).join(' ');
+            // Context-aware: cards inside dark sections get dark card styling
+            let resolvedPreset = presetClasses;
+            const parentPresetName = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
+            const inDarkSection = ['page_section_dark', 'section_dark'].includes(parentPresetName);
+            if (inDarkSection && ['card', 'page_card'].includes(node.styleName)) {
+              resolvedPreset = 'bg-neutral-focus/50 rounded-2xl p-8 flex flex-col gap-3 border border-neutral-content/10';
+            }
+            const cls = [resolvedPreset, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             // Only full-width landing page sections get the max-w-5xl inner wrapper.
             // App presets (flex layout) and card-type presets (already constrained) skip it.
             const isAppPreset = node.styleName && node.styleName.startsWith('app_');
@@ -3328,7 +3744,7 @@ function buildHTML(body) {
             parts.push(`    </div>`);
           } else if (hasUserStyle || hasInline) {
             // User-defined style (custom CSS): full-width outer, contained inner
-            const allClasses = [node.ui.cssClass, inlineClass].filter(Boolean).join(' ');
+            const allClasses = [node.ui.cssClass, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             parts.push(`    <div class="${allClasses}">`);
             if (hasUserStyle && !hasInline) {
               parts.push(`      <div class="max-w-5xl mx-auto px-4">`);
@@ -3340,7 +3756,7 @@ function buildHTML(body) {
             parts.push(`    </div>`);
           } else {
             // No style: default card section using DaisyUI utilities
-            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass].filter(Boolean).join(' ');
+            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass, tailwindClasses].filter(Boolean).join(' ');
             parts.push(`    <div class="${allClasses}">
       <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">${node.ui.title}</h2>`);
             walk(node.body);
@@ -3372,6 +3788,11 @@ function buildHTML(body) {
       <select id="${ui.id}" class="select select-bordered w-full">
 ${options}
       </select>
+    </fieldset>`);
+          } else if (ui.htmlType === 'file') {
+            parts.push(`    <fieldset class="${fieldsetCls}">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <input id="${ui.id}" class="file-input file-input-bordered w-full" type="file">
     </fieldset>`);
           } else {
             parts.push(`    <fieldset class="${fieldsetCls}">
@@ -3415,6 +3836,16 @@ ${options}
           break;
         }
 
+        case NodeType.CHART: {
+          const chartId = node.ui.id;
+          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden p-4" id="${chartId}">
+      <h3 class="text-sm font-semibold text-base-content mb-2">${node.title}</h3>
+      <div id="${chartId}_canvas" style="width:100%;height:320px;"></div>
+    </div>`);
+          hasChart = true;
+          break;
+        }
+
         case NodeType.BUTTON: {
           const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
           const btnInHeader = btnPreset === 'app_header';
@@ -3449,8 +3880,8 @@ ${options}
           switch (ui.contentType) {
             case 'heading':
               if (inHero) {
-                // Hero/CTA: big display headline
-                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-tight text-base-content">${formatted}</h1>`);
+                // Hero/CTA: massive display headline (Stripe-style)
+                parts.push(`    <h1 class="font-display text-6xl font-extrabold tracking-tight leading-[1.1] text-base-content max-w-3xl">${formatted}</h1>`);
               } else if (inHeader) {
                 parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
@@ -3460,8 +3891,9 @@ ${options}
               } else if (inCard) {
                 parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
               } else if (inPageSection) {
-                // Section heading in landing page
-                parts.push(`    <h2 class="text-3xl font-bold text-base-content tracking-tight mb-8">${formatted}</h2>`);
+                // Section heading in landing page (dark sections use neutral-content)
+                const textColor = parentPreset === 'page_section_dark' || parentPreset === 'section_dark' ? 'text-neutral-content' : 'text-base-content';
+                parts.push(`    <h2 class="font-display text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
               } else {
                 parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
               }
@@ -3557,7 +3989,7 @@ ${options}
   let condCounter = 0;
   let compRenderCounter = 0;
   walk(body);
-  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks };
+  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks, hasChart };
 }
 
 /**
@@ -3576,7 +4008,7 @@ function formatInlineText(text) {
  * Compile a Clear AST + compiled JS into a complete, runnable index.html.
  */
 function compileToHTML(body, compiledJS) {
-  const { pageTitle, htmlBody, pages, inlineStyleBlocks } = buildHTML(body);
+  const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart } = buildHTML(body);
   const styles = extractStyles(body);
   // Collect top-level variables for style resolution (e.g. primary_color is '#2563eb')
   const styleVars = {};
@@ -3650,6 +4082,7 @@ _router();`;
   <title>${pageTitle}</title>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
+${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\\/script>' : ''}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
@@ -3686,11 +4119,18 @@ function compileToJSBackend(body, errors, sourceMap = false) {
     n.type === NodeType.ENDPOINT && n.body &&
     n.body.some(b => b.type === NodeType.RATE_LIMIT)
   );
+  const dbBackend = body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
+  const isSupabase = dbBackend.includes('supabase');
 
   const lines = [];
   lines.push(`// Generated by Clear v${CLEAR_VERSION}`);
   lines.push("const express = require('express');");
-  lines.push("const db = require('./clear-runtime/db');");
+  if (isSupabase) {
+    lines.push("const { createClient } = require('@supabase/supabase-js');");
+    lines.push("const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);");
+  } else {
+    lines.push("const db = require('./clear-runtime/db');");
+  }
   if (usesAuth) {
     lines.push("const auth = require('./clear-runtime/auth');");
   }
@@ -3743,7 +4183,7 @@ function compileToJSBackend(body, errors, sourceMap = false) {
 
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, dbBackend };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
@@ -3924,6 +4364,19 @@ function compileToBrowserServer(body, errors) {
   lines.push('  return new Response(JSON.stringify({ error: "Not found: " + method + " " + path }), { status: 404, headers: { "Content-Type": "application/json" }});');
   lines.push('};');
 
+  // Override _askAI for browser: route through proxy endpoint instead of direct Anthropic call
+  lines.push('');
+  lines.push('// Browser AI proxy — calls /api/ai-proxy instead of Anthropic directly');
+  lines.push('async function _askAI(prompt, context, schema) {');
+  lines.push('  const proxyUrl = window._clearAIProxy || "/api/ai-proxy";');
+  lines.push('  const schemaObj = schema ? Object.fromEntries(schema.map(f => [f.name, f.type || "text"])) : null;');
+  lines.push('  const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, context, schema: schemaObj }) });');
+  lines.push('  const data = await r.json();');
+  lines.push('  if (!r.ok) throw new Error(data.error || "AI request failed");');
+  lines.push('  if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
+  lines.push('  return data.result;');
+  lines.push('}');
+
   lines.push('})();');
   return lines.join('\n');
 }
@@ -3986,9 +4439,26 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('db = _DB()');
   lines.push('');
 
+  // Detect database backend for Supabase support
+  const pyDbBackend = body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
+  const pyIsSupabase = pyDbBackend.includes('supabase');
+  if (pyIsSupabase) {
+    // Replace in-memory db with Supabase client
+    // Clear the db stub lines and replace with supabase init
+    const dbStubStart = lines.findIndex(l => l.includes('# In-memory database'));
+    if (dbStubStart >= 0) {
+      // Remove from '# In-memory database' through 'db = _DB()'
+      const dbStubEnd = lines.findIndex((l, i) => i > dbStubStart && l.includes('db = _DB()'));
+      if (dbStubEnd >= 0) lines.splice(dbStubStart, dbStubEnd - dbStubStart + 2);
+    }
+    lines.push('from supabase import create_client');
+    lines.push('supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])');
+    lines.push('');
+  }
+
   const pySchemaNames = new Set();
   for (const node of body) { if (node.type === NodeType.DATA_SHAPE) pySchemaNames.add(node.name); }
-  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames };
+  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, dbBackend: pyDbBackend };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
@@ -4053,9 +4523,9 @@ const FRIENDLY_CSS = {
   stacked: { css: null, expand: 'display: flex; flex-direction: column' },
   wraps: { css: null, expand: 'flex-wrap: wrap' },
   // Column layouts: "two column layout", "3 column layout", etc.
-  two_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px' },
-  three_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px' },
-  four_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px' },
+  two_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem' },
+  three_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem' },
+  four_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1.5rem' },
   // Row layouts: "two row layout", "3 row layout", etc.
   two_row_layout: { css: null, expand: 'display: grid; grid-template-rows: 1fr 1fr; gap: 16px' },
   three_row_layout: { css: null, expand: 'display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 16px' },
@@ -4098,11 +4568,12 @@ function friendlyPropToCSS(name, value) {
 // User-defined styles (via `style X:` blocks) still compile to custom CSS.
 const BUILTIN_PRESET_CLASSES = {
   // --- Landing page presets (design-system-v2) ---
-  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6',
-  page_section:      'bg-base-100 py-20 px-6',
-  page_section_dark: 'bg-base-200 py-20 px-6',
-  page_card:         'bg-base-100 rounded-box p-6 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3',
+  page_hero:         'bg-base-100 py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
+  page_section:      'bg-base-100 py-24 px-6',
+  page_section_dark: 'bg-neutral text-neutral-content py-24 px-6',
+  page_card:         'bg-base-100 rounded-2xl p-8 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3 border border-base-300/50',
   page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
+  page_stats:        'bg-base-200 py-16 px-6',
 
   // --- App/dashboard presets (design-system-v2) ---
   app_layout:        'flex h-screen overflow-hidden',
@@ -4159,14 +4630,41 @@ function stylesToCSS(styles, vars = {}) {
   const parts = [];
   for (const style of styles) {
     const className = `style-${sanitizeName(style.name)}`;
-    const props = style.properties.map(p => {
-      // Resolve variable references: if value is a string matching a variable name, use the variable's value
+    // Split properties into base, hover, focus, and transition
+    const baseProps = [];
+    const hoverProps = [];
+    const focusProps = [];
+    let hasTransition = false;
+    for (const p of style.properties) {
       let val = p.value;
       if (typeof val === 'string' && vars[val] !== undefined) val = vars[val];
-      return `  ${friendlyPropToCSS(p.name, val)};`;
-    }).join('\n');
-    let rule = `.${className} {\n${props}\n}`;
-    // If the style sets color, make children inherit it (overrides base CSS explicit colors)
+      if (p.name.startsWith('hover_')) {
+        const cssProp = p.name.slice(6); // strip 'hover_'
+        hoverProps.push(`  ${friendlyPropToCSS(cssProp, val)};`);
+      } else if (p.name.startsWith('focus_')) {
+        const cssProp = p.name.slice(6); // strip 'focus_'
+        focusProps.push(`  ${friendlyPropToCSS(cssProp, val)};`);
+      } else if (p.name === 'transition') {
+        hasTransition = true;
+        baseProps.push(`  transition: ${val};`);
+      } else if (p.name === 'animate' || p.name === 'animation') {
+        baseProps.push(`  animation: ${val};`);
+      } else {
+        baseProps.push(`  ${friendlyPropToCSS(p.name, val)};`);
+      }
+    }
+    // Auto-add transition if hover/focus props exist but no explicit transition
+    if ((hoverProps.length > 0 || focusProps.length > 0) && !hasTransition) {
+      baseProps.push('  transition: all 0.2s ease;');
+    }
+    let rule = `.${className} {\n${baseProps.join('\n')}\n}`;
+    if (hoverProps.length > 0) {
+      rule += `\n.${className}:hover {\n${hoverProps.join('\n')}\n}`;
+    }
+    if (focusProps.length > 0) {
+      rule += `\n.${className}:focus-within {\n${focusProps.join('\n')}\n}`;
+    }
+    // If the style sets color, make children inherit it
     const setsColor = style.properties.some(p => p.name === 'color');
     if (setsColor) {
       rule += `\n.${className} h1, .${className} h2, .${className} p, .${className} strong,\n.${className} .clear-text, .${className} .clear-heading, .${className} .clear-subheading,\n.${className} .clear-small { color: inherit; }`;
