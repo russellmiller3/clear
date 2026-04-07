@@ -13438,5 +13438,516 @@ describe('Stress R2: Concurrent Feature Interactions', () => {
   });
 });
 
+// =============================================================================
+// E2E-DERIVED STRESS TESTS — Bugs found deploying template apps
+// =============================================================================
+
+describe('Seed blocks: save X as new Y (no result var)', () => {
+  it('save X as new Model compiles to db.insert, not db.update', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Models table:
+  name, required
+when user calls POST /api/seed:
+  create m1:
+    name is 'Test'
+  save m1 as new Model
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('models'");
+    expect(r.serverJS).not.toContain("db.update('as'");
+  });
+
+  it('multiple seed saves all compile to db.insert', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Users table:
+  name, required
+  email, required
+when user calls POST /api/seed:
+  create u1:
+    name is 'Alice'
+    email is 'alice@test.com'
+  save u1 as new User
+  create u2:
+    name is 'Bob'
+    email is 'bob@test.com'
+  save u2 as new User
+  send back 'seeded'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const insertCount = (r.serverJS.match(/db\.insert/g) || []).length;
+    expect(insertCount).toBe(2);
+    expect(r.serverJS).not.toContain("db.update('as'");
+  });
+
+  it('save X to Y still compiles to db.update (not insert)', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Models table:
+  name, required
+when user calls PUT /api/models/:id sending update_data:
+  requires auth
+  save update_data to Models
+  send back 'updated'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.update('models'");
+  });
+});
+
+describe('PUT endpoints: ID injection from URL params', () => {
+  it('save to X in PUT /:id injects req.params.id', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+  status, default 'todo'
+when user calls PUT /api/tasks/:id sending update_data:
+  requires auth
+  save update_data to Tasks
+  send back 'updated'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    expect(r.serverJS).toContain("db.update('tasks'");
+  });
+
+  it('save to X in POST (no :id) does NOT inject params.id', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+when user calls POST /api/tasks sending task_data:
+  requires auth
+  new_task = save task_data as new Task
+  send back new_task with success message`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).not.toContain('params.id');
+    expect(r.serverJS).toContain("db.insert('tasks'");
+  });
+});
+
+describe('Multi-page routing: page wrapper divs', () => {
+  it('multi-page app wraps each page in div with id', () => {
+    const src = `build for web
+page 'Home' at '/':
+  heading 'Welcome'
+page 'About' at '/about':
+  heading 'About Us'
+page 'Contact' at '/contact':
+  heading 'Contact'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('id="page_Home"');
+    expect(r.html).toContain('id="page_About"');
+    expect(r.html).toContain('id="page_Contact"');
+  });
+
+  it('second+ pages start hidden (display:none)', () => {
+    const src = `build for web
+page 'Home' at '/':
+  heading 'Home'
+page 'Settings' at '/settings':
+  heading 'Settings'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('id="page_Home"');
+    expect(r.html).not.toContain('id="page_Home" style="display:none"');
+    expect(r.html).toContain('id="page_Settings" style="display:none"');
+  });
+
+  it('single-page app does NOT add page wrapper divs', () => {
+    const src = `build for web
+page 'App' at '/':
+  heading 'Hello'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).not.toContain('id="page_');
+  });
+
+  it('hash router references correct page IDs', () => {
+    const src = `build for web
+page 'Home' at '/':
+  heading 'Home'
+page 'Pricing' at '/pricing':
+  heading 'Pricing'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain("'/': 'Home'");
+    expect(r.html).toContain("'/pricing': 'Pricing'");
+    expect(r.html).toContain("getElementById('page_'");
+  });
+});
+
+describe('Layout detection: side-by-side prevents max-w-2xl', () => {
+  it('side by side layout gets h-screen, not max-w-2xl', () => {
+    const src = `build for web
+page 'App' at '/':
+  section 'Layout' side by side:
+    section 'Left' 280px wide:
+      text 'Sidebar'
+    section 'Right' fills remaining space:
+      text 'Main'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).toContain('h-screen');
+  });
+
+  it('app with no layout modifiers gets max-w-2xl', () => {
+    const src = `build for web
+page 'Simple' at '/':
+  heading 'Hello'
+  text 'World'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('max-w-2xl');
+  });
+
+  it('app_layout preset gets empty class (no max-w-2xl)', () => {
+    const src = `build for web
+page 'App' at '/':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Sidebar'
+    section 'Main' with style app_main:
+      text 'Content'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).not.toContain('max-w-2xl');
+  });
+});
+
+describe('Complex app compilation: CRM with many tables', () => {
+  it('CRM with 5 tables, seed data, CRUD, charts compiles', () => {
+    const src = `build for web and javascript backend
+theme 'midnight'
+database is local memory
+create a Contacts table:
+  name, required
+  email, required, unique
+  company
+  status, default 'lead'
+create a Deals table:
+  contact_id, required
+  title, required
+  value (number), default 0
+  stage, default 'prospect'
+create a Activities table:
+  contact_id
+  action, required
+  detail
+create a Tags table:
+  name, required, unique
+create a ContactTags table:
+  contact_id, required
+  tag_id, required
+  one per contact_id and tag_id
+allow cross-origin requests
+log every request
+when user calls POST /api/seed:
+  create c1:
+    name is 'Alice'
+    email is 'alice@test.com'
+    status is 'customer'
+  save c1 as new Contact
+  create d1:
+    contact_id is '1'
+    title is 'Enterprise Deal'
+    value = 45000
+    stage is 'negotiation'
+  save d1 as new Deal
+  send back 'seeded'
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls POST /api/contacts sending contact_data:
+  requires auth
+  validate contact_data:
+    name is text, required
+    email is text, required, matches email
+  new_contact = save contact_data as new Contact
+  send back new_contact with success message
+when user calls PUT /api/contacts/:id sending update_data:
+  requires auth
+  save update_data to Contacts
+  send back 'updated' with success message
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+when user calls GET /api/deals:
+  all_deals = get all Deals
+  send back all_deals
+when user calls POST /api/deals sending deal_data:
+  requires auth
+  validate deal_data:
+    contact_id is text, required
+    title is text, required
+  new_deal = save deal_data as new Deal
+  send back new_deal with success message
+when user calls DELETE /api/deals/:id:
+  requires auth
+  delete the Deal with this id
+  send back 'deleted' with success message
+page 'CRM' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get contacts from '/api/contacts'
+    get deals from '/api/deals'
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'CRM'
+      text 'Dashboard'
+      text 'Contacts'
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+      section 'Body' with style app_content:
+        chart 'Pipeline' as bar showing deals
+        section 'Contacts' with style app_card:
+          display contacts as table showing name, email, company, status with delete and edit
+        section 'Deals' with style app_card:
+          display deals as table showing title, value, stage with delete`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Seed uses insert not update
+    expect(r.serverJS).toContain("db.insert('contacts'");
+    expect(r.serverJS).toContain("db.insert('deals'");
+    // PUT uses params.id injection
+    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    // HTML has proper layout
+    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).toContain('data-theme="midnight"');
+    // Has chart
+    expect(r.html).toContain('echarts');
+    // compound unique constraint compiles
+    expect(r.serverJS).toContain('contacttags');
+  });
+});
+
+describe('Full-stack invoice app compilation', () => {
+  it('invoice app with line items, PUT/DELETE, seed data compiles', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Invoices table:
+  client_name, required
+  amount (number), required
+  status, default 'draft'
+  due_date, required
+create a LineItems table:
+  invoice_id, required
+  description, required
+  unit_price (number), required
+allow cross-origin requests
+when user calls POST /api/seed:
+  create inv:
+    client_name is 'Acme'
+    amount = 5200
+    status is 'paid'
+    due_date is '2026-04-01'
+  save inv as new Invoice
+  send back 'seeded'
+when user calls GET /api/invoices:
+  all_invoices = get all Invoices
+  send back all_invoices
+when user calls POST /api/invoices sending invoice_data:
+  requires auth
+  validate invoice_data:
+    client_name is text, required
+    amount is number, required
+    due_date is text, required
+  new_invoice = save invoice_data as new Invoice
+  send back new_invoice with success message
+when user calls PUT /api/invoices/:id sending update_data:
+  requires auth
+  save update_data to Invoices
+  send back 'updated' with success message
+when user calls DELETE /api/invoices/:id:
+  requires auth
+  delete the Invoice with this id
+  send back 'deleted' with success message
+page 'Invoices' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get invoices from '/api/invoices'
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Invoices'
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'All Invoices'
+      section 'Body' with style app_content:
+        section 'Table' with style app_card:
+          display invoices as table showing client_name, amount, status, due_date with delete and edit`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Seed inserts correctly
+    expect(r.serverJS).toContain("db.insert('invoices'");
+    expect(r.serverJS).not.toContain("db.update('as'");
+    // PUT injects ID
+    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    // Layout correct
+    expect(r.html).not.toContain('max-w-2xl');
+  });
+});
+
+describe('Booking app with multiple tables and seed', () => {
+  it('booking app seed, CRUD, debounce all compile correctly', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Services table:
+  name, required
+  price (number), default 0
+create a Bookings table:
+  client_name, required
+  service_name, required
+  date, required
+  status, default 'pending'
+allow cross-origin requests
+when user calls POST /api/seed:
+  create s1:
+    name is 'Consultation'
+    price = 150
+  save s1 as new Service
+  create b1:
+    client_name is 'Sarah'
+    service_name is 'Consultation'
+    date is '2026-04-08'
+    status is 'confirmed'
+  save b1 as new Booking
+  send back 'seeded'
+when user calls GET /api/bookings:
+  all_bookings = get all Bookings
+  send back all_bookings
+when user calls POST /api/bookings sending booking_data:
+  requires auth
+  validate booking_data:
+    client_name is text, required
+    service_name is text, required
+    date is text, required
+  new_booking = save booking_data as new Booking
+  send back new_booking with success message
+when user calls DELETE /api/bookings/:id:
+  requires auth
+  delete the Booking with this id
+  send back 'deleted' with success message
+page 'BookIt' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get bookings from '/api/bookings'
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'BookIt'
+    section 'Right' with style app_main:
+      section 'Body' with style app_content:
+        display bookings as table showing client_name, service_name, date, status with delete`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Both seed saves use insert
+    const inserts = (r.serverJS.match(/db\.insert/g) || []).length;
+    expect(inserts >= 2).toBe(true);
+    expect(r.serverJS).not.toContain("db.update('as'");
+  });
+});
+
+describe('Table pluralization: y -> ies, Activity -> activities', () => {
+  it('Activity table pluralizes to activities, not activitys', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Activities table:
+  action, required
+when user calls POST /api/seed:
+  create a1:
+    action is 'Test'
+  save a1 as new Activity
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('activities'");
+    expect(r.serverJS).toContain('ActivitiesSchema');
+    expect(r.serverJS).not.toContain("'activitys'");
+    expect(r.serverJS).not.toContain('ActivitySchema');
+  });
+
+  it('Category table pluralizes to categories', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Categories table:
+  name, required
+when user calls POST /api/seed:
+  create cat:
+    name is 'Tech'
+  save cat as new Category
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('categories'");
+    expect(r.serverJS).not.toContain("'categorys'");
+  });
+
+  it('Address table pluralizes to addresses', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Addresses table:
+  street, required
+when user calls GET /api/addresses:
+  all_addresses = get all Addresses
+  send back all_addresses`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("'addresses'");
+  });
+});
+
+describe('Edge cases: save patterns', () => {
+  it('new_x = save data as new X (with result var) compiles to insert', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls POST /api/items sending item_data:
+  requires auth
+  new_item = save item_data as new Item
+  send back new_item with success message`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('items'");
+  });
+
+  it('save data as X (without new keyword) still inserts', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls POST /api/seed:
+  create item:
+    name is 'Widget'
+  save item as Item
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('items'");
+  });
+
+  it('save data to X (update syntax) compiles to update', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls PUT /api/items/:id sending data:
+  requires auth
+  save data to Items
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.update('items'");
+    expect(r.serverJS).toContain('data.id = req.params.id');
+  });
+});
+
 run();
 

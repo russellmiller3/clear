@@ -162,6 +162,7 @@ app.put('/api/clients/:id', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text"}, {"field":"email","type":"text"}, {"field":"company","type":"text"}, {"field":"phone","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
+    update_data.id = req.params.id;
     await db.update('clients', update_data);
     return res.status(200).json({ message: "updated" });
   } catch (err) {
@@ -231,6 +232,7 @@ app.put('/api/invoices/:id/send', async (req, res) => {
     if (!(invoice != null)) { return res.status(403).json({ error: "Invoice not found" }); }
     if (!(invoice.status == "draft")) { return res.status(403).json({ error: "Only draft invoices can be sent" }); }
     invoice.status = "sent";
+    invoice.id = req.params.id;
     await db.update('invoices', invoice);
     return res.status(200).json({ message: "sent" });
   } catch (err) {
@@ -252,6 +254,7 @@ app.put('/api/invoices/:id/pay', async (req, res) => {
     payment_data.invoice_id = incoming.id;
     const new_payment = await db.insert('payments', _pick(payment_data, PaymentsSchema));
     invoice.status = "paid";
+    invoice.id = req.params.id;
     await db.update('invoices', invoice);
     return res.status(200).json({ message: "paid" });
   } catch (err) {
@@ -267,6 +270,7 @@ app.put('/api/invoices/:id/cancel', async (req, res) => {
     if (!(invoice != null)) { return res.status(403).json({ error: "Invoice not found" }); }
     if (!(invoice.status != "paid")) { return res.status(403).json({ error: "Paid invoices cannot be cancelled" }); }
     invoice.status = "cancelled";
+    invoice.id = req.params.id;
     await db.update('invoices', invoice);
     return res.status(200).json({ message: "cancelled" });
   } catch (err) {

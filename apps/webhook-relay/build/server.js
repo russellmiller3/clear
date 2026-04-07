@@ -52,7 +52,7 @@ const DeliverySchema = {
   last_error: { type: "text" },
   created_at: { type: "timestamp", auto: true }
 };
-db.createTable('deliverys', DeliverySchema);
+db.createTable('deliveries', DeliverySchema);
 // --- Webhook Receivers ---
 // clear:25
 app.post('/webhooks/stripe', async (req, res) => {
@@ -117,7 +117,7 @@ app.delete('/api/destinations/:id', async (req, res) => {
 app.get('/api/deliveries', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    const all_deliveries = await db.findAll('deliverys');
+    const all_deliveries = await db.findAll('deliveries');
     return res.json(all_deliveries);
   } catch (err) {
     res.status(500).json({ error: err.message });

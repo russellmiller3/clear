@@ -47,168 +47,189 @@ function _validate(body, rules) {
 }
 
 // ┌──────────┬──────────────────────────────┐
-// │ Sidebar  │  Header             [Q2 2026]│
+// │ Sidebar  │  Header        [New Invoice] │
 // │          ├──────────────────────────────┤
 // │ Dashboard│  ┌────────┐┌────────┐┌─────┐│
-// │ Contacts │  │Contacts││ Deals  ││Rev. ││
-// │ Deals    │  │  247   ││  18    ││$42k ││
-// │ Activity │  └────────┘└────────┘└─────┘│
+// │ Invoices │  │ Total  ││  Paid  ││ Due ││
+// │ Clients  │  │$12,400 ││$8,200  ││$4.2k││
+// │          │  └────────┘└────────┘└─────┘│
 // │          │  ┌──────────────────────────┐│
-// │          │  │ Recent Contacts (table)  ││
+// │          │  │ Invoices Table (CRUD)    ││
 // │          │  └──────────────────────────┘│
 // └──────────┴──────────────────────────────┘
 // 
 // DATAFLOW
-// ┌──────────┐  POST /api/contacts  ┌──────────┐  save   ┌────────┐
+// ┌──────────┐  POST /api/invoices  ┌──────────┐  save   ┌────────┐
 // │ Frontend │ ───────────────────> │ Backend  │ ──────> │  DB    │
 // │  (forms) │ <─────────────────── │ (server) │ <────── │(memory)│
-// └──────────┘  GET /api/contacts   └──────────┘  query  └────────┘
+// └──────────┘  GET /api/invoices   └──────────┘  query  └────────┘
 // Database
 // clear:24
 // Database: local memory (JSON file backup)
 // clear:26
-// Data shape: Contacts
-const ContactsSchema = {
+// Data shape: Clients
+const ClientsSchema = {
   name: { type: "text", required: true },
   email: { type: "text", required: true, unique: true },
   company: { type: "text" },
-  status: { type: "text", default: "lead" },
   phone: { type: "text" },
   created_at_date: { type: "timestamp", auto: true }
 };
-db.createTable('contacts', ContactsSchema);
-// clear:34
-// Data shape: Deals
-const DealsSchema = {
-  contact_id: { type: "fk", required: true },
-  title: { type: "text", required: true },
-  value: { type: "number", default: 0 },
-  stage: { type: "text", default: "prospect" },
+db.createTable('clients', ClientsSchema);
+// clear:33
+// Data shape: Invoices
+const InvoicesSchema = {
+  client_name: { type: "text", required: true },
+  description: { type: "text", required: true },
+  amount: { type: "number", required: true },
+  status: { type: "text", default: "draft" },
+  due_date: { type: "text", required: true },
+  issued_date: { type: "text" },
+  notes: { type: "text" },
   created_at_date: { type: "timestamp", auto: true }
 };
-db.createTable('deals', DealsSchema);
-// clear:41
-// Data shape: Activities
-const ActivitiesSchema = {
-  contact_id: { type: "fk", required: true },
-  action: { type: "text", required: true },
-  detail: { type: "text" },
+db.createTable('invoices', InvoicesSchema);
+// clear:43
+// Data shape: LineItems
+const LineItemsSchema = {
+  invoice_id: { type: "fk", required: true },
+  description: { type: "text", required: true },
+  quantity: { type: "number", default: 1 },
+  unit_price: { type: "number", required: true },
   created_at_date: { type: "timestamp", auto: true }
 };
-db.createTable('activities', ActivitiesSchema);
+db.createTable('lineitems', LineItemsSchema);
 // Backend
 // Allow the frontend to talk to the backend
 // Print every request to the console for debugging
-// --- Seed data for demo ---
-// clear:56
+// --- Seed data ---
+// clear:59
 app.post('/api/seed', async (req, res) => {
   try {
-    let alice = { name: "Alice Chen", email: "alice@acme.co", company: "Acme Inc", status: "active" };
-    await db.insert('contacts', _pick(alice, ContactsSchema));
-    let bob = { name: "Bob Smith", email: "bob@globex.io", company: "Globex", status: "lead" };
-    await db.insert('contacts', _pick(bob, ContactsSchema));
-    let deal1 = { contact_id: "1", title: "Acme Enterprise", value: 25000, stage: "proposal" };
-    await db.insert('deals', _pick(deal1, DealsSchema));
-    let deal2 = { contact_id: "2", title: "Globex Pilot", value: 17300, stage: "prospect" };
-    await db.insert('deals', _pick(deal2, DealsSchema));
+    let c1 = { name: "Acme Corp", email: "billing@acme.co", company: "Acme Corporation" };
+    await db.insert('clients', _pick(c1, ClientsSchema));
+    let c2 = { name: "Globex Inc", email: "ap@globex.io", company: "Globex Industries" };
+    await db.insert('clients', _pick(c2, ClientsSchema));
+    let inv1 = { client_name: "Acme Corp", description: "Website Redesign", amount: 5200, status: "paid", due_date: "2026-03-15", issued_date: "2026-02-15" };
+    await db.insert('invoices', _pick(inv1, InvoicesSchema));
+    let inv2 = { client_name: "Acme Corp", description: "Monthly Hosting", amount: 150, status: "sent", due_date: "2026-04-01", issued_date: "2026-03-01" };
+    await db.insert('invoices', _pick(inv2, InvoicesSchema));
+    let inv3 = { client_name: "Globex Inc", description: "Consulting Q1", amount: 7050, status: "draft", due_date: "2026-04-30" };
+    await db.insert('invoices', _pick(inv3, InvoicesSchema));
     return res.status(201).json({ message: "seeded" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// --- Contacts ---
-// clear:84
-app.get('/api/contacts', async (req, res) => {
+// --- Clients ---
+// clear:96
+app.get('/api/clients', async (req, res) => {
   try {
-    const all_contacts = await db.findAll('contacts');
-    return res.json(all_contacts);
+    const all_clients = await db.findAll('clients');
+    return res.json(all_clients);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// clear:88
-app.post('/api/contacts', async (req, res) => {
+// clear:100
+app.post('/api/clients', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
-    const contact_data = req.body;
+    const client_data = req.body;
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":100}, {"field":"email","type":"text","required":true,"matches":"email"}, {"field":"company","type":"text"}, {"field":"status","type":"text"}, {"field":"phone","type":"text"}]);
+    const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":100}, {"field":"email","type":"text","required":true,"matches":"email"}, {"field":"company","type":"text"}, {"field":"phone","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_contact = await db.insert('contacts', _pick(contact_data, ContactsSchema));
-    return res.status(201).json({ ...new_contact, message: "success" });
+    const new_client = await db.insert('clients', _pick(client_data, ClientsSchema));
+    return res.status(201).json({ ...new_client, message: "success" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// clear:99
-app.delete('/api/contacts/:id', async (req, res) => {
+// clear:110
+app.delete('/api/clients/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('contacts', { id: incoming.id });
+    await db.remove('clients', { id: incoming.id });
     return res.status(200).json({ message: "deleted" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// --- Deals ---
-// clear:105
-app.get('/api/deals', async (req, res) => {
+// --- Invoices ---
+// clear:116
+app.get('/api/invoices', async (req, res) => {
   try {
-    const all_deals = await db.findAll('deals');
-    return res.json(all_deals);
+    const all_invoices = await db.findAll('invoices');
+    return res.json(all_invoices);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// clear:109
-app.post('/api/deals', async (req, res) => {
+// clear:120
+app.post('/api/invoices', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
-    const deal_data = req.body;
+    const invoice_data = req.body;
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    const _vErr = _validate(req.body, [{"field":"contact_id","type":"text","required":true}, {"field":"title","type":"text","required":true}, {"field":"value","type":"number"}, {"field":"stage","type":"text"}]);
+    const _vErr = _validate(req.body, [{"field":"client_name","type":"text","required":true}, {"field":"description","type":"text","required":true}, {"field":"amount","type":"number","required":true}, {"field":"due_date","type":"text","required":true}, {"field":"status","type":"text"}, {"field":"notes","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_deal = await db.insert('deals', _pick(deal_data, DealsSchema));
-    return res.status(201).json({ ...new_deal, message: "success" });
+    const new_invoice = await db.insert('invoices', _pick(invoice_data, InvoicesSchema));
+    return res.status(201).json({ ...new_invoice, message: "success" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// clear:119
-app.delete('/api/deals/:id', async (req, res) => {
+// clear:132
+app.put('/api/invoices/:id', async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
+    const update_data = req.body;
+    const incoming = req.params;
+    if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
+    const _vErr = _validate(req.body, [{"field":"status","type":"text"}, {"field":"description","type":"text"}, {"field":"amount","type":"number"}, {"field":"notes","type":"text"}]);
+    if (_vErr) return res.status(400).json({ error: _vErr });
+    update_data.id = req.params.id;
+    await db.update('invoices', update_data);
+    return res.status(200).json({ message: "updated" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// clear:142
+app.delete('/api/invoices/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('deals', { id: incoming.id });
+    await db.remove('invoices', { id: incoming.id });
     return res.status(200).json({ message: "deleted" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// --- Activities ---
-// clear:125
-app.get('/api/activities', async (req, res) => {
+// --- Line Items ---
+// clear:148
+app.get('/api/line-items', async (req, res) => {
   try {
-    const all_activities = await db.findAll('activities');
-    return res.json(all_activities);
+    const all_items = await db.findAll('lineitems');
+    return res.json(all_items);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// clear:129
-app.post('/api/activities', async (req, res) => {
+// clear:152
+app.post('/api/line-items', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
-    const activity_data = req.body;
+    const item_data = req.body;
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    const _vErr = _validate(req.body, [{"field":"contact_id","type":"text","required":true}, {"field":"action","type":"text","required":true}, {"field":"detail","type":"text"}]);
+    const _vErr = _validate(req.body, [{"field":"invoice_id","type":"text","required":true}, {"field":"description","type":"text","required":true}, {"field":"quantity","type":"number"}, {"field":"unit_price","type":"number","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_activity = await db.insert('activities', _pick(activity_data, ActivitiesSchema));
-    return res.status(201).json({ ...new_activity, message: "success" });
+    const new_item = await db.insert('lineitems', _pick(item_data, LineItemsSchema));
+    return res.status(201).json({ ...new_item, message: "success" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

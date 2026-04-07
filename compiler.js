@@ -1093,7 +1093,7 @@ function compileEndpoint(node, ctx, pad) {
   if (ctx.lang === 'python') {
     const pyPath = node.path.replace(/:(\w+)/g, '{$1}');
     const handlerName = `${node.method.toLowerCase()}_${sanitizeName(node.path.replace(/[/:]/g, '_'))}`;
-    const bodyCtx = { ...ctx, indent: ctx.indent + 2, endpointMethod: node.method };
+    const bodyCtx = { ...ctx, indent: ctx.indent + 2, endpointMethod: node.method, endpointHasId: node.path.includes(':id') };
     const bodyCode = node.body.map(n => compileNode(n, bodyCtx)).filter(Boolean).join('\n');
     let code = `${pad}@app.${node.method.toLowerCase()}("${pyPath}")\n${pad}async def ${handlerName}(request: Request):\n`;
     code += `${pad}    try:\n`;
@@ -1115,7 +1115,8 @@ function compileEndpoint(node, ctx, pad) {
   }
 
   const epDeclared = new Set();
-  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method });
+  const hasIdParam = node.path.includes(':id');
+  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam });
   let epCode = `${pad}app.${node.method.toLowerCase()}('${node.path}', async (req, res) => {\n`;
   epCode += `${pad}  try {\n`;
   if (needsBinding) {
@@ -1138,8 +1139,21 @@ function compileEndpoint(node, ctx, pad) {
   return epCode;
 }
 
+// Pluralize a word: Activity -> activities, Model -> models, Address -> addresses
+function pluralizeName(word) {
+  const lower = word.toLowerCase();
+  if (lower.endsWith('s') || lower.endsWith('es')) return lower;
+  if (lower.endsWith('y') && !'aeiou'.includes(lower[lower.length - 2])) {
+    return lower.slice(0, -1) + 'ies'; // activity -> activities
+  }
+  if (lower.endsWith('sh') || lower.endsWith('ch') || lower.endsWith('x') || lower.endsWith('z')) {
+    return lower + 'es'; // address -> addresses (approx)
+  }
+  return lower + 's';
+}
+
 function compileCrud(node, ctx, pad) {
-  const table = node.target ? node.target.toLowerCase() + (node.target.toLowerCase().endsWith('s') ? '' : 's') : 'unknown';
+  const table = node.target ? pluralizeName(node.target) : 'unknown';
 
   if (ctx.lang === 'python') {
     // Supabase Python path (supabase-py SDK)
@@ -1250,11 +1264,20 @@ function compileCrud(node, ctx, pad) {
     // Look up the actual declared name from ctx.schemaNames.
     const names = ctx.schemaNames || new Set();
     let schemaName;
+    // Try exact match, then pluralized, then de-pluralized
+    const pluralized = node.target[0].toUpperCase() + pluralizeName(node.target).slice(1);
     if (names.has(node.target)) schemaName = node.target + 'Schema';
     else if (names.has(node.target + 's')) schemaName = node.target + 's' + 'Schema';
+    else if (names.has(pluralized)) schemaName = pluralized + 'Schema';
     else if (names.has(node.target.replace(/s$/, ''))) schemaName = node.target.replace(/s$/, '') + 'Schema';
+    else if (names.has(node.target.replace(/ies$/, 'y'))) schemaName = node.target.replace(/ies$/, 'y') + 'Schema';
     else schemaName = node.target + 'Schema'; // fallback
     if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await db.insert('${table}', _pick(${varCode}, ${schemaName}));`;
+    if (node.isInsert) return `${pad}await db.insert('${table}', _pick(${varCode}, ${schemaName}));`;
+    // In PUT endpoints with :id, inject the URL param so db.update finds the right record
+    if (ctx.endpointHasId) {
+      return `${pad}${varCode}.id = req.params.id;\n${pad}await db.update('${table}', ${varCode});`;
+    }
     return `${pad}await db.update('${table}', ${varCode});`;
   }
   if (node.operation === 'remove') {
@@ -1381,7 +1404,7 @@ function compileDataShape(node, ctx, pad) {
   if (ctx.lang === 'python') {
     // Supabase: tables managed in dashboard, emit comment only
     if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
-      const tableName = node.name.toLowerCase() + (node.name.toLowerCase().endsWith('s') ? '' : 's');
+      const tableName = pluralizeName(node.name);
       return `${pad}# Data shape: ${node.name} (table '${tableName}' must exist in Supabase dashboard)`;
     }
     const sqlTypes = { text: 'TEXT', number: 'INTEGER', boolean: 'BOOLEAN', timestamp: 'TIMESTAMP', fk: 'INTEGER' };
@@ -1394,7 +1417,7 @@ function compileDataShape(node, ctx, pad) {
       if (f.fk) col += ` REFERENCES ${f.fk.toLowerCase()}s(id)`;
       return col;
     }).join(', ');
-    const tableName = node.name.toLowerCase() + 's';
+    const tableName = pluralizeName(node.name);
     let uniqueConstraints = '';
     if (node.compoundUniques) {
       uniqueConstraints = node.compoundUniques.map(fields => `, UNIQUE(${fields.join(', ')})`).join('');
@@ -1417,7 +1440,7 @@ function compileDataShape(node, ctx, pad) {
     if (f.fk) props.push(`ref: "${f.fk}"`);
     return `  ${sanitizeName(f.name)}: { ${props.join(', ')} }`;
   }).join(',\n');
-  const tableName = node.name.toLowerCase() + (node.name.toLowerCase().endsWith('s') ? '' : 's');
+  const tableName = pluralizeName(node.name);
   let result = `${pad}// Data shape: ${node.name}\n${pad}const ${node.name}Schema = {\n${fields}\n${pad}};`;
   if (ctx.mode === 'backend' && !(ctx.dbBackend && ctx.dbBackend.includes('supabase'))) {
     result += `\n${pad}db.createTable('${tableName}', ${node.name}Schema);`;
@@ -2145,12 +2168,12 @@ function _compileNodeInner(node, ctx) {
         let code = `${pad}# Migration: ${node.name}\n`;
         for (const op of node.operations) {
           if (op.op === 'add_column') {
-            const table = op.table.toLowerCase() + (op.table.endsWith('s') ? '' : 's');
+            const table = pluralizeName(op.table);
             let col = `${op.column} ${sqlTypes[op.type] || 'TEXT'}`;
             if (op.default !== null && op.default !== undefined) col += ` DEFAULT '${op.default}'`;
             code += `${pad}db.execute("ALTER TABLE ${table} ADD COLUMN ${col}")\n`;
           } else if (op.op === 'remove_column') {
-            const table = op.table.toLowerCase() + (op.table.endsWith('s') ? '' : 's');
+            const table = pluralizeName(op.table);
             code += `${pad}db.execute("ALTER TABLE ${table} DROP COLUMN ${op.column}")\n`;
           }
         }
@@ -2159,12 +2182,12 @@ function _compileNodeInner(node, ctx) {
       let code = `${pad}// Migration: ${node.name}\n`;
       for (const op of node.operations) {
         if (op.op === 'add_column') {
-          const table = op.table.toLowerCase() + (op.table.endsWith('s') ? '' : 's');
+          const table = pluralizeName(op.table);
           let col = `${op.column} ${sqlTypes[op.type] || 'TEXT'}`;
           if (op.default !== null && op.default !== undefined) col += ` DEFAULT '${op.default}'`;
           code += `${pad}await db.run('ALTER TABLE ${table} ADD COLUMN ${col}');\n`;
         } else if (op.op === 'remove_column') {
-          const table = op.table.toLowerCase() + (op.table.endsWith('s') ? '' : 's');
+          const table = pluralizeName(op.table);
           code += `${pad}await db.run('ALTER TABLE ${table} DROP COLUMN ${op.column}');\n`;
         }
       }
@@ -4334,7 +4357,8 @@ function compileToBrowserServer(body, errors) {
       const path = node.path;
       // Compile handler body
       const handlerDeclared = new Set();
-      const handlerCtx = { ...ctx, indent: 1, declared: handlerDeclared, insideEndpoint: true };
+      const hasIdParam = path.includes(':id');
+      const handlerCtx = { ...ctx, indent: 1, declared: handlerDeclared, insideEndpoint: true, endpointMethod: method, endpointHasId: hasIdParam };
       const handlerLines = [];
       for (const child of node.body) {
         const compiled = compileNode(child, handlerCtx);
