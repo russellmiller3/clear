@@ -1198,6 +1198,12 @@ function compileCrud(node, ctx, pad) {
         for (const [k, v] of pairs) query += `.eq('${k}', ${v})`;
       }
       if (isSingle) query += '.single()';
+      // Pagination: .range(start, end)
+      if (node.page && node.perPage) {
+        const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
+        const page = typeof node.page === 'number' ? node.page : `(${exprToCode({ type: NodeType.VARIABLE_REF, name: String(node.page) }, ctx)})`;
+        query += `.range((${page} - 1) * ${perPage}, ${page} * ${perPage} - 1)`;
+      }
       return `${pad}const { data: ${varName}, error: _err } = await ${query};\n${pad}if (_err) throw _err;`;
     }
     if (node.operation === 'save') {
@@ -1226,7 +1232,16 @@ function compileCrud(node, ctx, pad) {
   if (node.operation === 'lookup') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
-    return `${pad}const ${sanitizeName(node.variable)} = await db.${isSingleLookup ? 'findOne' : 'findAll'}('${table}'${where});`;
+    let lookupCode = `${pad}const ${sanitizeName(node.variable)} = await db.${isSingleLookup ? 'findOne' : 'findAll'}('${table}'${where});`;
+    // Pagination: slice the result array
+    if (node.page && node.perPage && !isSingleLookup) {
+      const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
+      const varName = sanitizeName(node.variable);
+      const pageExpr = typeof node.page === 'number' ? node.page : sanitizeName(String(node.page));
+      lookupCode = `${pad}const _all_${varName} = await db.findAll('${table}'${where});\n`;
+      lookupCode += `${pad}const ${varName} = _all_${varName}.slice((${pageExpr} - 1) * ${perPage}, ${pageExpr} * ${perPage});`;
+    }
+    return lookupCode;
   }
   if (node.operation === 'save') {
     const varCode = sanitizeName(node.variable);
