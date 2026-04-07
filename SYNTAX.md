@@ -577,6 +577,29 @@ When using Supabase, CRUD operations compile to Supabase SDK calls:
 
 Tables must exist in your Supabase dashboard — the compiler doesn't create them.
 
+## Retry, Timeout, Race (Production Resilience)
+
+```clear
+# Retry with exponential backoff (1s, 2s, 4s between attempts)
+retry 3 times:
+  send order to '/api/payment'
+
+# Timeout — cancel if it takes too long
+with timeout 5 seconds:
+  result = call 'Lead Scorer' with lead_data
+
+# Timeout in minutes
+with timeout 2 minutes:
+  data = fetch page 'https://slow-api.example.com'
+
+# Race — run multiple tasks, take the first result
+first to finish:
+  fetch page 'https://api-east.example.com'
+  fetch page 'https://api-west.example.com'
+```
+
+Retry compiles to a for loop with exponential backoff. Timeout compiles to `Promise.race` with a reject timer. Race compiles to `Promise.race` with multiple concurrent tasks. All three work in both JS and Python.
+
 ## Compound Unique Constraints
 
 ```clear

@@ -1331,11 +1331,13 @@ Each template includes: ASCII diagram, database schema, CRUD API, frontend with 
 
 | # | Feature | Syntax | UNLOCKS |
 |---|---------|--------|---------|
-| 52 | Retry with backoff | `retry 3 times: fetch data from '/api'` | Resilient API calls |
-| 53 | Timeout wrapper | `with timeout 5 seconds: call 'Scorer' with lead` | Prevent hanging operations |
-| 54 | Race (first to finish) | `first to finish: fetch A, fetch B` | Performance optimization |
+| 52 | Retry with backoff | `retry 3 times:` | **DONE.** Exponential backoff (JS + Python) |
+| 53 | Timeout wrapper | `with timeout 5 seconds:` | **DONE.** Promise.race with reject timer |
+| 54 | Race (first to finish) | `first to finish:` | **DONE.** Promise.race with concurrent tasks |
 | 55 | Streaming iterators | `for each line in stream file 'big.csv':` | Process large files without loading all into memory |
 | 56 | Cancellation | `cancel task` | User-initiated abort |
+
+**Phase 44 status: items 52-54 done, 55-56 pending.**
 
 ---
 
