@@ -28,16 +28,16 @@ function _validate(body, rules) {
   }
   return null;
 }
-async function _askAI(prompt, context, schema) {
-  const key = process.env.CLEAR_AI_KEY;
-  if (!key) throw new Error("Set CLEAR_AI_KEY environment variable with your Anthropic API key");
+async function _askAI(prompt, context, schema, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
   const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
   let content = context ? prompt + "\n\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
   if (schema) {
     const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\n");
     content += "\n\nRespond with ONLY a JSON object in this exact shape, no other text:\n{\n" + fields + "\n}";
   }
-  const payload = JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
+  const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
   const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
   function parseResult(text) {
     if (!schema) return text;

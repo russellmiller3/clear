@@ -121,16 +121,16 @@ const UTILITY_FUNCTIONS = [
   }
   return null;
 }`, deps: [] },
-  { name: '_askAI', code: `async function _askAI(prompt, context, schema) {
-  const key = process.env.CLEAR_AI_KEY;
-  if (!key) throw new Error("Set CLEAR_AI_KEY environment variable with your Anthropic API key");
+  { name: '_askAI', code: `async function _askAI(prompt, context, schema, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
   const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
   let content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
   if (schema) {
     const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\\n");
     content += "\\n\\nRespond with ONLY a JSON object in this exact shape, no other text:\\n{\\n" + fields + "\\n}";
   }
-  const payload = JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
+  const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
   const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
   function parseResult(text) {
     if (!schema) return text;
@@ -1077,6 +1077,7 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.CHECKOUT, NodeType.USAGE_LIMIT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
   NodeType.STREAM, NodeType.BACKGROUND, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
+  NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
 ]);
 
 // Helper: compile a list of AST nodes into joined code lines.
@@ -2019,6 +2020,114 @@ function _compileNodeInner(node, ctx) {
       return `${pad}await _emailTransport.sendMail({ to: ${exprVal('to')}, subject: ${exprVal('subject')}, text: String(${exprVal('body')}) });`;
     }
 
+    // Phase 45: External API calls
+    case NodeType.HTTP_REQUEST: {
+      const urlCode = exprToCode(node.url, ctx);
+      const config = node.config || {};
+      const hasBody = config.body;
+      const method = config.method || (hasBody ? 'POST' : 'GET');
+      // Build headers object
+      let headersCode = '';
+      if (config.headers && config.headers.length > 0) {
+        const headerEntries = config.headers.map(h =>
+          `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`
+        ).join(', ');
+        headersCode = `{ ${headerEntries} }`;
+      }
+      // Build timeout
+      const timeoutMs = config.timeout
+        ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
+        : 30000;
+      // Build body
+      const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
+
+      if (ctx.lang === 'python') {
+        let code = `${pad}import httpx\n`;
+        const headersPy = headersCode ? headersCode.replace(/:/g, ':').replace(/'/g, '"') : 'None';
+        const bodyPy = hasBody ? `json=${exprToCode(config.body, ctx)}` : '';
+        code += `${pad}async with httpx.AsyncClient(timeout=${timeoutMs / 1000}) as _client:\n`;
+        code += `${pad}    _resp = await _client.${method.toLowerCase()}(${urlCode}${headersCode ? ', headers=' + headersPy : ''}${bodyPy ? ', ' + bodyPy : ''})\n`;
+        code += `${pad}    _resp.raise_for_status()\n`;
+        code += `${pad}    _api_result = _resp.json()`;
+        return code;
+      }
+
+      // JS: wrap in async IIFE for result assignment
+      let code = `${pad}await (async () => {\n`;
+      code += `${pad}  const _ctrl = new AbortController();\n`;
+      code += `${pad}  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
+      code += `${pad}  try {\n`;
+      code += `${pad}    const _res = await fetch(${urlCode}, {\n`;
+      code += `${pad}      method: '${method}',\n`;
+      if (headersCode) code += `${pad}      headers: ${headersCode},\n`;
+      if (hasBody) code += `${pad}      body: ${bodyCode},\n`;
+      code += `${pad}      signal: _ctrl.signal\n`;
+      code += `${pad}    });\n`;
+      code += `${pad}    if (!_res.ok) throw new Error(\`API error: \${_res.status} \${_res.statusText}\`);\n`;
+      code += `${pad}    const _ct = _res.headers.get("content-type") || "";\n`;
+      code += `${pad}    return _ct.includes("json") ? _res.json() : _res.text();\n`;
+      code += `${pad}  } finally { clearTimeout(_timer); }\n`;
+      code += `${pad})()`;
+      return code;
+    }
+
+    // Phase 45: Service presets (Stripe, SendGrid, Twilio)
+    case NodeType.SERVICE_CALL: {
+      const svc = node.service;
+      const exprVal = (key) => {
+        const v = node.config[key];
+        if (!v) return 'undefined';
+        if (typeof v === 'object' && v.type) return exprToCode(v, ctx);
+        return JSON.stringify(v);
+      };
+
+      if (svc === 'stripe') {
+        // Stripe Charges API — uses form-encoded, not JSON
+        const code = `${pad}await (async () => {\n` +
+          `${pad}  const _body = new URLSearchParams({ amount: String(${exprVal('amount')}), currency: ${exprVal('currency') || '"usd"'}, source: ${exprVal('token')}, description: ${exprVal('description') || '""'} });\n` +
+          `${pad}  const _res = await fetch('https://api.stripe.com/v1/charges', {\n` +
+          `${pad}    method: 'POST',\n` +
+          `${pad}    headers: { 'Authorization': 'Bearer ' + process.env.STRIPE_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },\n` +
+          `${pad}    body: _body.toString()\n` +
+          `${pad}  });\n` +
+          `${pad}  if (!_res.ok) throw new Error('Stripe error: ' + _res.status + ' ' + (await _res.text()));\n` +
+          `${pad}  return _res.json();\n` +
+          `${pad})()`;
+        return code;
+      }
+
+      if (svc === 'sendgrid') {
+        const code = `${pad}await (async () => {\n` +
+          `${pad}  const _res = await fetch('https://api.sendgrid.com/v3/mail/send', {\n` +
+          `${pad}    method: 'POST',\n` +
+          `${pad}    headers: { 'Authorization': 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' },\n` +
+          `${pad}    body: JSON.stringify({ personalizations: [{ to: [{ email: ${exprVal('to')} }] }], from: { email: ${exprVal('from')} }, subject: ${exprVal('subject')}, content: [{ type: 'text/plain', value: ${exprVal('body')} }] })\n` +
+          `${pad}  });\n` +
+          `${pad}  if (!_res.ok) throw new Error('SendGrid error: ' + _res.status + ' ' + (await _res.text()));\n` +
+          `${pad}  return { ok: true, status: _res.status };\n` +
+          `${pad})()`;
+        return code;
+      }
+
+      if (svc === 'twilio') {
+        const code = `${pad}await (async () => {\n` +
+          `${pad}  const _sid = process.env.TWILIO_SID;\n` +
+          `${pad}  const _token = process.env.TWILIO_TOKEN;\n` +
+          `${pad}  const _body = new URLSearchParams({ To: ${exprVal('to')}, From: process.env.TWILIO_FROM || ${exprVal('from')}, Body: ${exprVal('body')} });\n` +
+          `${pad}  const _res = await fetch(\`https://api.twilio.com/2010-04-01/Accounts/\${_sid}/Messages.json\`, {\n` +
+          `${pad}    method: 'POST',\n` +
+          `${pad}    headers: { 'Authorization': 'Basic ' + Buffer.from(_sid + ':' + _token).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },\n` +
+          `${pad}    body: _body.toString()\n` +
+          `${pad}  });\n` +
+          `${pad}  if (!_res.ok) throw new Error('Twilio error: ' + _res.status + ' ' + (await _res.text()));\n` +
+          `${pad}  return _res.json();\n` +
+          `${pad})()`;
+        return code;
+      }
+
+      return `${pad}// Unknown service: ${svc}`;
+    }
+
     case NodeType.CREATE_PDF:
       return compilePdf(node, ctx, pad);
 
@@ -2712,15 +2821,47 @@ export function exprToCode(expr, ctx) {
       return `JSON.stringify(${src})`;
     }
 
+    case NodeType.HTTP_REQUEST: {
+      // call api 'url' as expression (e.g., result = call api 'https://...')
+      const urlCode = exprToCode(expr.url, ctx);
+      const config = expr.config || {};
+      const hasBody = config.body;
+      const method = config.method || (hasBody ? 'POST' : 'GET');
+      const timeoutMs = config.timeout
+        ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
+        : 30000;
+      let headersCode = '';
+      if (config.headers && config.headers.length > 0) {
+        const entries = config.headers.map(h => `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`).join(', ');
+        headersCode = `{ ${entries} }`;
+      }
+      const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
+      let code = `await (async () => {\n`;
+      code += `  const _ctrl = new AbortController();\n`;
+      code += `  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
+      code += `  try {\n`;
+      code += `    const _res = await fetch(${urlCode}, { method: '${method}'`;
+      if (headersCode) code += `, headers: ${headersCode}`;
+      if (hasBody) code += `, body: ${bodyCode}`;
+      code += `, signal: _ctrl.signal });\n`;
+      code += `    if (!_res.ok) throw new Error(\`API error: \${_res.status} \${_res.statusText}\`);\n`;
+      code += `    const _ct = _res.headers.get("content-type") || "";\n`;
+      code += `    return _ct.includes("json") ? _res.json() : _res.text();\n`;
+      code += `  } finally { clearTimeout(_timer); }\n`;
+      code += `})()`;
+      return code;
+    }
+
     case NodeType.ASK_AI: {
       const prompt = exprToCode(expr.prompt, ctx);
       const context = expr.context ? exprToCode(expr.context, ctx) : null;
       const schema = expr.schema ? JSON.stringify(expr.schema) : null;
+      const model = expr.model ? JSON.stringify(expr.model) : null;
       if (ctx.lang === 'python') {
         if (schema) return `await _ask_ai(${prompt}, ${context || 'None'}, ${schema})`;
         return context ? `await _ask_ai(${prompt}, ${context})` : `await _ask_ai(${prompt})`;
       }
-      if (schema) return `await _askAI(${prompt}, ${context || 'null'}, ${schema})`;
+      if (schema || model) return `await _askAI(${prompt}, ${context || 'null'}, ${schema || 'null'}, ${model || 'null'})`;
       return context ? `await _askAI(${prompt}, ${context})` : `await _askAI(${prompt})`;
     }
 
