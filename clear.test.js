@@ -1297,7 +1297,7 @@ page 'App' at '/':
       text 'Menu'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('w-64 shrink-0');
+    expect(result.html).toContain('w-60 shrink-0');
   });
 
   it('app_main preset produces flex column', () => {
@@ -1342,7 +1342,7 @@ page 'App' at '/':
     text 'Card content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('rounded-box p-6');
+    expect(result.html).toContain('rounded-box p-5');
   });
 
   it('app presets skip max-width wrapper', () => {
@@ -1385,10 +1385,10 @@ page 'Dashboard' at '/':
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('data-theme="midnight"');
     expect(result.html).toContain('flex h-screen');
-    expect(result.html).toContain('w-64');
+    expect(result.html).toContain('w-60');
     expect(result.html).toContain('sticky top-0');
     expect(result.html).toContain('overflow-y-auto');
-    expect(result.html).toContain('rounded-box p-6');
+    expect(result.html).toContain('rounded-box p-5');
   });
 });
 
