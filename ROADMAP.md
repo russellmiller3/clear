@@ -1396,3 +1396,28 @@ Bugs found by deploying and testing all 33 apps:
 | Download compiled output as zip | Not started | JSZip, package.json, README |
 | Mobile responsive playground | Not started | Sidebar collapses, editor/output stack vertically |
 | Share button (URL hash encoding) | Not started | Encode source in URL for sharing |
+
+---
+
+### Phase 45b: Compiled Output Quality — DONE
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Source line comments | **Done** | `// clear:LINE` on every endpoint + CRUD operation |
+| Error classification | **Done** | 400 = user message, 500 = "Something went wrong" |
+| Console error logging | **Done** | `[METHOD /path] Error:` in every catch block |
+| Seed endpoint guard | **Done** | Returns 403 when `NODE_ENV=production` |
+| Frontend fetch context | **Done** | `[GET /path]` + response.ok check |
+| Reactive model comments | **Done** | Explains _state, _recompute(), input/button flow |
+
+### Phase 46: Runtime Error Translator — PLANNED
+
+Full plan at `plans/plan-error-translator-04-07-2026.md`. 7 phases, 16 TDD cycles, 27 acceptance tests. Key features:
+- `_clearTry` wraps CRUD/auth/validation with source context
+- `_clearMap` embeds source map (conditional on CLEAR_DEBUG)
+- Three-level output: safe / hint+line / verbose+schema
+- `fix_scope` prevents AI from accidentally deleting working code
+- 27 acceptance tests including XSS, null access, CSS inheritance, cross-file bugs
+- Python first-class (not deferred)
+
+1281 tests. All 33 apps compile.
