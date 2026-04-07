@@ -1,0 +1,56 @@
+build for web and javascript backend
+database is local memory
+
+create a Events table:
+  title, required
+  venue, required
+  date, required
+  capacity (number), required
+  tickets_sold (number), default 0
+
+create a Attendees table:
+  event_id, required
+  name, required
+  email, required
+
+when user calls GET /api/events:
+  events = look up all Events
+  send back events
+
+when user calls POST /api/events sending event:
+  needs login
+  new_event = save event as new Event
+  send back new_event
+
+when user calls POST /api/attendees sending attendee:
+  needs login
+  validate attendee:
+    name is text, required
+    email is text, required, matches email
+  event = look up records in Events table where id is attendee's event_id
+  guard event's tickets_sold is less than event's capacity or 'This event is sold out'
+  new_attendee = save attendee as new Attendee
+  event's tickets_sold = event's tickets_sold + 1
+  save event to Events
+  send back new_attendee
+
+when user calls POST /api/seed:
+  create e1:
+    title is 'Tech Conference 2026'
+    venue is 'Convention Center'
+    date is '2026-06-15'
+    capacity = 500
+    tickets_sold = 487
+  save e1 as new Event
+  create e2:
+    title is 'Startup Meetup'
+    venue is 'Co-Working Space'
+    date is '2026-07-01'
+    capacity = 50
+    tickets_sold = 50
+  save e2 as new Event
+  send back 'seeded'
+
+page 'Events' at '/':
+  on page load get events from '/api/events'
+  display events as table showing title, venue, date, capacity, tickets_sold

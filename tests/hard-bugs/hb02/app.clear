@@ -1,0 +1,46 @@
+build for web and javascript backend
+database is local memory
+
+create a Products table:
+  name, required
+  price (number), required
+  category, required
+
+create a Orders table:
+  product_id, required
+  quantity (number), required
+  total (number), required
+
+when user calls GET /api/products:
+  products = look up all Products
+  send back products
+
+when user calls POST /api/products sending product:
+  needs login
+  new_product = save product as new Product
+  send back new_product
+
+when user calls POST /api/orders sending order:
+  needs login
+  product = look up records in Products table where id is order's product_id
+  order's total = product's price * order's quantity
+  new_order = save order as new Order
+  send back new_order
+
+when user calls POST /api/seed:
+  create p1:
+    name is 'Widget'
+    price = 29.99
+    category is 'hardware'
+  save p1 as new Product
+  create p2:
+    name is 'Gadget'
+    price = 49.99
+    category is 'electronics'
+  save p2 as new Product
+  send back 'seeded'
+
+page 'Store' at '/':
+  on page load:
+    get products from '/api/products'
+  display products as table showing name, price, category

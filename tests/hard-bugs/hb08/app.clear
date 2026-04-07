@@ -1,0 +1,61 @@
+build for web and javascript backend
+database is local memory
+
+create a Expenses table:
+  description, required
+  amount (number), required
+  category, required
+  date, required
+  approved, default 'false'
+
+when user calls GET /api/expenses:
+  expenses = look up all Expenses
+  send back expenses
+
+when user calls POST /api/expenses sending expense:
+  needs login
+  validate expense:
+    description is text, required
+    amount is number, required
+    category is text, required
+    date is text, required
+  new_expense = save expense as new Expense
+  send back new_expense
+
+when user calls PUT /api/expenses/:id sending expense:
+  needs login
+  expense's approved = 'true'
+  save expense to Expenses
+  send back 'approved'
+
+when user calls POST /api/seed:
+  create e1:
+    description is 'Office supplies'
+    amount = 150
+    category is 'supplies'
+    date is '2026-01-15'
+  save e1 as new Expense
+  create e2:
+    description is 'Client dinner'
+    amount = 89.50
+    category is 'meals'
+    date is '2026-01-20'
+  save e2 as new Expense
+  create e3:
+    description is 'Software license'
+    amount = 299
+    category is 'software'
+    date is '2026-02-01'
+  save e3 as new Expense
+  send back 'seeded'
+
+page 'Expenses' at '/':
+  on page load get expenses from '/api/expenses'
+  'Description' is a text input saved as a description
+  'Amount' is a text input saved as a amount
+  'Category' is a text input saved as a category
+  'Date' is a text input saved as a date
+  button 'Submit Expense':
+    send description, amount, category, date to '/api/expenses'
+    get expenses from '/api/expenses'
+  display expenses as table showing description, amount, category, date, approved with edit

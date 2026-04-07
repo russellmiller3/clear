@@ -1,0 +1,42 @@
+build for web and javascript backend
+database is local memory
+
+create a Contacts table:
+  name, required
+  email, required, unique
+  phone
+  company
+  notes
+
+when user calls GET /api/contacts:
+  contacts = look up all Contacts
+  send back contacts
+
+when user calls POST /api/contacts sending data:
+  needs login
+  validate data:
+    name is text, required
+    email is text, required, matches email
+  new_contact = save data as new Contact
+  send back new_contact
+
+when user calls PUT /api/contacts/:id sending data:
+  needs login
+  save data to Contacts
+  send back 'updated'
+
+when user calls DELETE /api/contacts/:id:
+  needs login
+  delete the Contact with this id
+  send back 'deleted'
+
+page 'CRM' at '/':
+  on page load get contacts from '/api/contacts'
+  'Name' is a text input saved as a name
+  'Email' is a text input saved as a email
+  'Phone' is a text input saved as a phone
+  'Company' is a text input saved as a company
+  button 'Save Contact':
+    send name, email, phone, company to '/api/contacts'
+    get contacts from '/api/contacts'
+  display contacts as table showing name, email, phone, company with edit, delete

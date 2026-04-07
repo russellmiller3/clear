@@ -1,0 +1,55 @@
+build for web and javascript backend
+database is local memory
+
+create a Tickets table:
+  title, required
+  description, required
+  priority, default 'medium'
+  status, default 'open'
+  assignee
+
+when user calls GET /api/tickets:
+  tickets = look up all Tickets
+  send back tickets
+
+when user calls POST /api/tickets sending ticket:
+  needs login
+  validate ticket:
+    title is text, required
+    description is text, required
+  new_ticket = save ticket as new Ticket
+  send back new_ticket
+
+when user calls PUT /api/tickets/:id sending ticket:
+  needs login
+  save ticket to Tickets
+  send back 'updated'
+
+when user calls POST /api/seed:
+  create t1:
+    title is 'Login page broken'
+    description is 'Users cannot log in since last deploy'
+    priority is 'critical'
+    assignee is 'devops'
+  save t1 as new Ticket
+  create t2:
+    title is 'Add dark mode'
+    description is 'Feature request from customers'
+    priority is 'low'
+  save t2 as new Ticket
+  create t3:
+    title is 'API rate limiting'
+    description is 'Need to add rate limits to public endpoints'
+    priority is 'high'
+    assignee is 'backend'
+  save t3 as new Ticket
+  send back 'seeded'
+
+page 'Support' at '/':
+  on page load get tickets from '/api/tickets'
+  'Title' is a text input saved as a title
+  'Description' is a text input saved as a description
+  button 'Create Ticket':
+    send title, description to '/api/tickets'
+    get tickets from '/api/tickets'
+  display tickets as table showing title, priority, status, assignee with edit
