@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(13% 0.02 250);
+  --color-base-200: oklch(10% 0.02 255);
+  --color-base-300: oklch(18% 0.015 250);
+  --color-base-content: oklch(88% 0.025 240);
+  --color-primary: oklch(62% 0.18 250);
+  --color-primary-content: oklch(98% 0.005 250);
+  --color-secondary: oklch(58% 0.12 155);
+  --color-secondary-content: oklch(10% 0.02 155);
+  --color-accent: oklch(78% 0.14 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(20% 0.015 250);
+  --color-neutral-content: oklch(80% 0.02 240);
+  --color-info: oklch(68% 0.12 245);
+  --color-info-content: oklch(10% 0.02 245);
+  --color-success: oklch(62% 0.14 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(78% 0.14 85);
+  --color-warning-content: oklch(15% 0.02 85);
+  --color-error: oklch(60% 0.2 25);
+  --color-error-content: oklch(10% 0.02 25);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="flex h-screen overflow-hidden">
+    <div class="w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden">
+    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">CRM</span></div>
+    <nav class="flex-1 overflow-y-auto py-3 px-3">
+      <ul class="menu menu-sm gap-0.5 p-0">
+    <li><a class="text-sm">Dashboard</a></li>
+    <li><a class="text-sm">Contacts</a></li>
+    <li><a class="text-sm">Deals</a></li>
+      </ul>
+    </nav>
+    </div>
+    <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0">
+    <h1 class="text-base font-semibold text-base-content">Dashboard</h1>
+    </div>
+    <div class="flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5">
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">New Contact</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Name</legend>
+      <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Name">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+      <input id="input_email" class="input input-bordered w-full" type="text" placeholder="Email">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</legend>
+      <input id="input_company" class="input input-bordered w-full" type="text" placeholder="Company">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Status</legend>
+      <input id="input_status" class="input input-bordered w-full" type="select" placeholder="Status">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Contact">Add Contact</button>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">All Contacts</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Contacts">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Contacts</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Contacts_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">New Deal</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Deal Title</legend>
+      <input id="input_deal_title" class="input input-bordered w-full" type="text" placeholder="Deal Title">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Contact ID</legend>
+      <input id="input_deal_contact_id" class="input input-bordered w-full" type="text" placeholder="Contact ID">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Value</legend>
+      <input id="input_deal_value" class="input input-bordered w-full" type="number" placeholder="Value">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Stage</legend>
+      <input id="input_stage" class="input input-bordered w-full" type="select" placeholder="Stage">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Deal">Add Deal</button>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">All Deals</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Deals">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Deals</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Deals_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+  </main>
+
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "CRM";
+
+// --- State ---
+let _state = {
+  name: "",
+  email: "",
+  company: "",
+  status: "",
+  deal_title: "",
+  deal_contact_id: "",
+  deal_value: 0,
+  stage: "",
+  contacts: null,
+  deals: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:24
+  // Database: local memory (JSON file backup)
+  {
+    const _tableEl = document.getElementById('output_Contacts_table');
+    const _data = _state.contacts;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","email","company","status"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td class="text-right">' + '<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>' + '</td>' + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Deals_table');
+    const _data = _state.deals;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["title","value","stage"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td class="text-right">' + '<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>' + '</td>' + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_name').value = _state.name;
+  document.getElementById('input_email').value = _state.email;
+  document.getElementById('input_company').value = _state.company;
+  document.getElementById('input_status').value = _state.status;
+  document.getElementById('input_deal_title').value = _state.deal_title;
+  document.getElementById('input_deal_contact_id').value = _state.deal_contact_id;
+  document.getElementById('input_deal_value').value = _state.deal_value;
+  document.getElementById('input_stage').value = _state.stage;
+}
+
+// --- Input listeners ---
+document.getElementById('input_name').addEventListener('input', function(e) {
+  _state.name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_email').addEventListener('input', function(e) {
+  _state.email = e.target.value;
+  _recompute();
+});
+document.getElementById('input_company').addEventListener('input', function(e) {
+  _state.company = e.target.value;
+  _recompute();
+});
+document.getElementById('input_status').addEventListener('input', function(e) {
+  _state.status = e.target.value;
+  _recompute();
+});
+document.getElementById('input_deal_title').addEventListener('input', function(e) {
+  _state.deal_title = e.target.value;
+  _recompute();
+});
+document.getElementById('input_deal_contact_id').addEventListener('input', function(e) {
+  _state.deal_contact_id = e.target.value;
+  _recompute();
+});
+document.getElementById('input_deal_value').addEventListener('input', function(e) {
+  _state.deal_value = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_stage').addEventListener('input', function(e) {
+  _state.stage = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Add_Contact').addEventListener('click', async function() {
+    if (_state.name === '' || _state.name == null) { _toast('name is required', 'error'); return; }
+    if (_state.email === '' || _state.email == null) { _toast('email is required', 'error'); return; }
+    if (_state.company === '' || _state.company == null) { _toast('company is required', 'error'); return; }
+    if (_state.status === '' || _state.status == null) { _toast('status is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Contact');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/contacts", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: _state.name, email: _state.email, company: _state.company, status: _state.status }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.contacts = await fetch("/api/contacts").then(r => r.json()).catch(e => { console.error(e); return _state.contacts; });
+    _state.name = "";
+    _state.email = "";
+    _state.company = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Add_Deal').addEventListener('click', async function() {
+    if (_state.deal_title === '' || _state.deal_title == null) { _toast('deal title is required', 'error'); return; }
+    if (_state.deal_contact_id === '' || _state.deal_contact_id == null) { _toast('deal contact id is required', 'error'); return; }
+    if (_state.deal_value === '' || _state.deal_value == null) { _toast('deal value is required', 'error'); return; }
+    if (_state.stage === '' || _state.stage == null) { _toast('stage is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Deal');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/deals", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deal_title: _state.deal_title, deal_contact_id: _state.deal_contact_id, deal_value: _state.deal_value, stage: _state.stage }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.deals = await fetch("/api/deals").then(r => r.json()).catch(e => { console.error(e); return _state.deals; });
+    _state.deal_title = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- Table action handlers for contacts ---
+document.getElementById('output_Contacts_table').addEventListener('click', async function(e) {
+  const deleteBtn = e.target.closest('[data-delete-id]');
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.deleteId;
+    await fetch("/api/contacts/" + id, { method: 'DELETE' }).catch(e => console.error(e));
+    _state.contacts = await fetch("/api/contacts").then(r => r.json()).catch(e => { console.error(e); return _state.contacts; });
+    _recompute();
+    return;
+  }
+});
+
+// --- Table action handlers for deals ---
+document.getElementById('output_Deals_table').addEventListener('click', async function(e) {
+  const deleteBtn = e.target.closest('[data-delete-id]');
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.deleteId;
+    await fetch("/api/deals/" + id, { method: 'DELETE' }).catch(e => console.error(e));
+    _state.deals = await fetch("/api/deals").then(r => r.json()).catch(e => { console.error(e); return _state.deals; });
+    _recompute();
+    return;
+  }
+});
+
+// --- On Page Load ---
+(async () => {
+  { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
+    if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+  _state.contacts = await fetch("/api/contacts").then(r => r.json()).catch(e => { console.error(e); return _state.contacts; });
+  _state.deals = await fetch("/api/deals").then(r => r.json()).catch(e => { console.error(e); return _state.deals; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

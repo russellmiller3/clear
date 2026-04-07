@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(13% 0.02 250);
+  --color-base-200: oklch(10% 0.02 255);
+  --color-base-300: oklch(18% 0.015 250);
+  --color-base-content: oklch(88% 0.025 240);
+  --color-primary: oklch(62% 0.18 250);
+  --color-primary-content: oklch(98% 0.005 250);
+  --color-secondary: oklch(58% 0.12 155);
+  --color-secondary-content: oklch(10% 0.02 155);
+  --color-accent: oklch(78% 0.14 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(20% 0.015 250);
+  --color-neutral-content: oklch(80% 0.02 240);
+  --color-info: oklch(68% 0.12 245);
+  --color-info-content: oklch(10% 0.02 245);
+  --color-success: oklch(62% 0.14 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(78% 0.14 85);
+  --color-warning-content: oklch(15% 0.02 85);
+  --color-error: oklch(60% 0.2 25);
+  --color-error-content: oklch(10% 0.02 25);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+.clear-component { }
+
+
+
+/* --- Inline Layout --- */
+#panel-quick_add::backdrop { background: rgba(0,0,0,0.4); }
+.section-help { position: fixed; top: 0; right: 0; height: 100vh; width: 360px; z-index: 50; background: var(--color-surface, #fff); box-shadow: -4px 0 20px rgba(0,0,0,0.1); transform: translateX(0); transition: transform 0.3s ease; overflow-y: auto; padding: 1.5rem; }</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+<div id="page_CRM_Dashboard">
+    <div class="flex h-screen overflow-hidden">
+    <div class="w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden">
+    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">CRM</span></div>
+    <nav class="flex-1 overflow-y-auto py-3 px-3">
+      <ul class="menu menu-sm gap-0.5 p-0">
+    <li><a class="text-sm">Dashboard</a></li>
+    <li><a class="text-sm">Contacts</a></li>
+    <li><a class="text-sm">Deals</a></li>
+    <li><a class="text-sm">Pipeline</a></li>
+    <li><a class="text-sm">Activity</a></li>
+      </ul>
+    </nav>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">v2.0 — Multi-file SPA</span>
+    </div>
+    <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0">
+    <h1 class="text-base font-semibold text-base-content">Dashboard</h1>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Search contacts...</legend>
+      <input id="input_search_query" class="input input-bordered w-full" type="text" placeholder="Search contacts...">
+    </fieldset>
+    </div>
+    <div class="flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5">
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Deal Pipeline</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden p-4" id="chart_Pipeline">
+      <h3 class="text-sm font-semibold text-base-content mb-2">Pipeline</h3>
+      <div id="chart_Pipeline_canvas" style="width:100%;height:320px;"></div>
+    </div>
+    </div>
+    <div class="clear-section" id="panel-data">
+    <div class="tabs tabs-bordered" role="tablist">
+      <button class="tab tab-active" data-tab="contacts" onclick="document.querySelectorAll('#panel-data .tab').forEach(t=>t.classList.remove('tab-active'));this.classList.add('tab-active');document.querySelectorAll('#panel-data .tab-panel').forEach(p=>p.style.display='none');document.getElementById('tabpanel-contacts').style.display=''">Contacts</button>
+      <button class="tab" data-tab="deals" onclick="document.querySelectorAll('#panel-data .tab').forEach(t=>t.classList.remove('tab-active'));this.classList.add('tab-active');document.querySelectorAll('#panel-data .tab-panel').forEach(p=>p.style.display='none');document.getElementById('tabpanel-deals').style.display=''">Deals</button>
+      <button class="tab" data-tab="activity" onclick="document.querySelectorAll('#panel-data .tab').forEach(t=>t.classList.remove('tab-active'));this.classList.add('tab-active');document.querySelectorAll('#panel-data .tab-panel').forEach(p=>p.style.display='none');document.getElementById('tabpanel-activity').style.display=''">Activity</button>
+    </div>
+    <div class="tab-panel p-4" id="tabpanel-contacts" style="">
+    <div class="bg-base-200 rounded-box p-5">
+    <div id="component_ContactForm_0" class="clear-component"></div>
+    <button class="btn btn-primary" id="btn_Add_Contact">Add Contact</button>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Contacts">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Contacts</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Contacts_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    <div class="tab-panel p-4" id="tabpanel-deals" style="display:none">
+    <div class="bg-base-200 rounded-box p-5">
+    <div id="component_DealForm_1" class="clear-component"></div>
+    <button class="btn btn-primary" id="btn_Add_Deal">Add Deal</button>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Deals">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Deals</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Deals_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    <div class="tab-panel p-4" id="tabpanel-activity" style="display:none">
+    <div class="bg-base-200 rounded-box p-5">
+    <div id="component_ActivityForm_2" class="clear-component"></div>
+    <button class="btn btn-primary" id="btn_Log_Activity">Log Activity</button>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Activities">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Activities</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Activities_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <dialog class="modal" id="panel-quick_add">
+    <div class="modal-box">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Quick Add Contact</h1>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Name</legend>
+      <input id="input_quick_name" class="input input-bordered w-full" type="text" placeholder="Name">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+      <input id="input_quick_email" class="input input-bordered w-full" type="text" placeholder="Email">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Save">Save</button>
+    <button class="btn btn-primary" id="btn_Cancel">Cancel</button>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+    <button class="btn btn-primary" id="btn_Quick_Add">Quick Add</button>
+    </div>
+    </div>
+    </div>
+</div>
+<div id="page_Settings" style="display:none">
+    <div class="flex h-screen overflow-hidden">
+    <div class="w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden">
+    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">CRM</span></div>
+    <nav class="flex-1 overflow-y-auto py-3 px-3">
+      <ul class="menu menu-sm gap-0.5 p-0">
+    <a class="link link-primary text-sm" href="/">Dashboard</a>
+    <li><a class="text-sm">Settings</a></li>
+      </ul>
+    </nav>
+    </div>
+    <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0">
+    <h1 class="text-base font-semibold text-base-content">Settings</h1>
+    </div>
+    <div class="flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5">
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Manage Tags</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Tag Name</legend>
+      <input id="input_tag_name" class="input input-bordered w-full" type="text" placeholder="Tag Name">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Color</legend>
+      <input id="input_color" class="input input-bordered w-full" type="select" placeholder="Color">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Tag">Add Tag</button>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Tags">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Tags</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Tags_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    <div class="clear-section" id="panel-help" style="display:none">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">CRM Help</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Use the Dashboard to manage contacts, deals, and track activity.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">The Pipeline chart shows deal values by stage.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Use Quick Add to rapidly create new contacts.</p>
+    </div>
+    <button class="btn btn-primary" id="btn_Help">Help</button>
+    </div>
+    </div>
+    </div>
+</div>
+  </main>
+
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "CRM Dashboard";
+
+// --- State ---
+let _state = {
+  search_query: "",
+  quick_name: "",
+  quick_email: "",
+  tag_name: "",
+  color: "",
+  contacts: null,
+  deals: null,
+  activities: null,
+  tags: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:31
+  // Database: local memory (JSON file backup)
+  // clear:4
+  function ContactForm() {
+    let _html = '';
+    // Input: Name
+    document.getElementById('input_contact_name').addEventListener('input', (e) => {
+      _state.contact_name = e.target.value;
+      _recompute();
+    });
+    // Input: Email
+    document.getElementById('input_contact_email').addEventListener('input', (e) => {
+      _state.contact_email = e.target.value;
+      _recompute();
+    });
+    // Input: Company
+    document.getElementById('input_contact_company').addEventListener('input', (e) => {
+      _state.contact_company = e.target.value;
+      _recompute();
+    });
+    // Input: Phone
+    document.getElementById('input_contact_phone').addEventListener('input', (e) => {
+      _state.contact_phone = e.target.value;
+      _recompute();
+    });
+    // Input: Status
+    document.getElementById('input_status').addEventListener('input', (e) => {
+      _state.status = e.target.value;
+      _recompute();
+    });
+    // Input: Source
+    document.getElementById('input_source').addEventListener('input', (e) => {
+      _state.source = e.target.value;
+      _recompute();
+    });
+    return _html;
+  }
+  // clear:12
+  function DealForm() {
+    let _html = '';
+    // Input: Deal Title
+    document.getElementById('input_deal_title').addEventListener('input', (e) => {
+      _state.deal_title = e.target.value;
+      _recompute();
+    });
+    // Input: Contact ID
+    document.getElementById('input_deal_contact_id').addEventListener('input', (e) => {
+      _state.deal_contact_id = e.target.value;
+      _recompute();
+    });
+    // Input: Value ($)
+    document.getElementById('input_deal_value').addEventListener('input', (e) => {
+      _state.deal_value = Number(e.target.value);
+      _recompute();
+    });
+    // Input: Stage
+    document.getElementById('input_stage').addEventListener('input', (e) => {
+      _state.stage = e.target.value;
+      _recompute();
+    });
+    // Input: Probability (%)
+    document.getElementById('input_deal_probability').addEventListener('input', (e) => {
+      _state.deal_probability = Number(e.target.value);
+      _recompute();
+    });
+    // Input: Expected Close
+    document.getElementById('input_expected_close').addEventListener('input', (e) => {
+      _state.expected_close = e.target.value;
+      _recompute();
+    });
+    return _html;
+  }
+  // clear:20
+  function ActivityForm() {
+    let _html = '';
+    // Input: Contact ID
+    document.getElementById('input_activity_contact_id').addEventListener('input', (e) => {
+      _state.activity_contact_id = e.target.value;
+      _recompute();
+    });
+    // Input: Action
+    document.getElementById('input_action').addEventListener('input', (e) => {
+      _state.action = e.target.value;
+      _recompute();
+    });
+    // Input: Detail
+    document.getElementById('input_activity_detail').addEventListener('input', (e) => {
+      _state.activity_detail = e.target.value;
+      _recompute();
+    });
+    return _html;
+  }
+  {
+    const _tableEl = document.getElementById('output_Tags_table');
+    const _data = _state.tags;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","color"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _chartEl = document.getElementById('chart_Pipeline_canvas');
+    const _data = _state.deals;
+    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {
+      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);
+      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');
+      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];
+      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');
+      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);
+      const _xData = _data.map(r => r[_xKey]);
+      const _series = _yKeys.map(k => ({ name: k, type: 'bar', data: _data.map(r => Number(r[k]) || 0), smooth: true }));
+      _chart.setOption({ tooltip: { trigger: 'axis' }, legend: _yKeys.length > 1 ? { data: _yKeys } : undefined, xAxis: { type: 'category', data: _xData }, yAxis: { type: 'value' }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true } }, true);
+    }
+  }
+  document.getElementById('input_search_query').value = _state.search_query;
+  document.getElementById('input_quick_name').value = _state.quick_name;
+  document.getElementById('input_quick_email').value = _state.quick_email;
+  document.getElementById('input_tag_name').value = _state.tag_name;
+  document.getElementById('input_color').value = _state.color;
+}
+
+// --- Input listeners ---
+document.getElementById('input_search_query').addEventListener('input', function(e) {
+  _state.search_query = e.target.value;
+  _recompute();
+});
+document.getElementById('input_quick_name').addEventListener('input', function(e) {
+  _state.quick_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_quick_email').addEventListener('input', function(e) {
+  _state.quick_email = e.target.value;
+  _recompute();
+});
+document.getElementById('input_tag_name').addEventListener('input', function(e) {
+  _state.tag_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_color').addEventListener('input', function(e) {
+  _state.color = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Save').addEventListener('click', async function() {
+    if (_state.quick_name === '' || _state.quick_name == null) { _toast('quick name is required', 'error'); return; }
+    if (_state.quick_email === '' || _state.quick_email == null) { _toast('quick email is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Save');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/contacts", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quick_name: _state.quick_name, quick_email: _state.quick_email }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.contacts = await fetch("/api/contacts").then(r => r.json()).catch(e => { console.error(e); return _state.contacts; });
+    _state.quick_name = "";
+    _state.quick_email = "";
+    { const _d = this.closest('dialog'); if (_d) _d.close(); }
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Cancel').addEventListener('click', function() {
+  { const _d = this.closest('dialog'); if (_d) _d.close(); }
+  _recompute();
+});
+document.getElementById('btn_Quick_Add').addEventListener('click', function() {
+  { const _p = document.getElementById('panel-quick_add'); if (_p) { if (_p.tagName === 'DIALOG') _p.showModal(); else _p.style.display = ''; } }
+  _recompute();
+});
+document.getElementById('btn_Add_Tag').addEventListener('click', async function() {
+    if (_state.tag_name === '' || _state.tag_name == null) { _toast('tag name is required', 'error'); return; }
+    if (_state.color === '' || _state.color == null) { _toast('color is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Tag');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/tags", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_name: _state.tag_name, color: _state.color }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.tags = await fetch("/api/tags").then(r => r.json()).catch(e => { console.error(e); return _state.tags; });
+    _state.tag_name = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Help').addEventListener('click', function() {
+  { const _p = document.getElementById('panel-help'); if (_p) { if (_p.style.display === 'none') _p.style.display = ''; else _p.style.display = 'none'; } }
+  _recompute();
+});
+
+// --- On Page Load ---
+(async () => {
+  { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
+    if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+  _state.contacts = await fetch("/api/contacts").then(r => r.json()).catch(e => { console.error(e); return _state.contacts; });
+  _state.deals = await fetch("/api/deals").then(r => r.json()).catch(e => { console.error(e); return _state.deals; });
+  _state.activities = await fetch("/api/activities").then(r => r.json()).catch(e => { console.error(e); return _state.activities; });
+  _state.tags = await fetch("/api/tags").then(r => r.json()).catch(e => { console.error(e); return _state.tags; });
+  _recompute();
+})();
+
+// --- When search_query changes ---
+let _debounce_search_query = null;
+document.getElementById('input_search_query').addEventListener('input', function() {
+  clearTimeout(_debounce_search_query);
+  _debounce_search_query = setTimeout(async function() {
+  _state.contacts = await fetch("/api/contacts").then(r => r.json()).catch(e => { console.error(e); return _state.contacts; });
+    _recompute();
+  }, 250);
+});
+
+// --- Hash Router ---
+const _routes = {
+  '/': 'CRM_Dashboard',
+  '/settings': 'Settings'
+};
+function _router() {
+  const hash = location.hash.slice(1) || '/';
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (hash === route) ? 'block' : 'none';
+  }
+}
+window.addEventListener('hashchange', _router);
+_router();
+  </script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get Started</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+<div id="page_Clear_Language">
+    <div class="bg-base-100 py-24 px-6 text-center">
+    <h1 class="font-display text-6xl font-extrabold tracking-tight leading-[1.1] text-base-content max-w-3xl">Build client apps in minutes, not weeks.</h1>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-xl">Tested templates. AI agents. One readable file.</p>
+    <p class="text-lg text-base-content/60 leading-relaxed">Pick a template. Customize it. Deploy it. Charge the client.</p>
+    <p class="text-lg text-base-content/60 leading-relaxed">The compiler handles auth, validation, security, and testing. You handle the invoice.</p>
+    <a class="btn btn-primary btn-lg" href="/examples">See Examples</a>
+    <a class="btn btn-primary btn-lg" href="/start">Get Started</a>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">You build the same 5 apps over and over</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">CRM. Client portal. Dashboard. Booking system. Invoice tool. Every client wants a version of the same thing.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">You spend 2 weeks on boilerplate: auth, validation, CRUD endpoints, error handling. The client-specific part takes 2 hours.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Then something breaks in production and you spend the weekend debugging code you wrote 6 months ago.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Start from a tested template. Ship in an afternoon.</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Clear is a readable programming language that compiles to production JavaScript or Python.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Every template has been compiled, deployed, and tested end-to-end. Auth works. Validation works. Error handling works. Security is enforced by the compiler -- not by your memory at 11pm.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Customize the template for your client. The compiler catches your mistakes before they reach production.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">How It Works</h2>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">1. Pick a template</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Invoice engine, project manager, booking system, CRM, ecommerce API, blog, SaaS with billing. All tested.</p>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">2. Customize in plain English</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Change field names, add endpoints, modify validation rules. Each line does one thing. No frameworks to learn.</p>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">3. Compile and deploy</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">One command generates a production Express or FastAPI server with auth, validation, CRUD, and error handling.</p>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">4. Charge the client</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Your client gets a working app. You get paid. When they want changes, you read the Clear file and make them in minutes.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">A Client Invoice System in 30 Lines</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">This is a real, working API. Auth, validation, CRUD, data persistence. Compiles to Express.js.</p>
+    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>build for javascript backend
+
+create an Invoices table:
+  client is text, required
+  amount (number), required
+  status, default "draft"
+  due_date
+  created_at_date, auto
+
+when user calls POST /api/invoices sending invoice:
+  requires auth
+  validate invoice:
+    client is text, required
+    amount is number, required
+  set saved to save invoice as new Invoice
+  send back saved with success message
+
+when user calls GET /api/invoices:
+  requires auth
+  set all_invoices to get all Invoices
+  send back all_invoices
+
+when user calls PUT /api/invoices/:id sending updates:
+  requires auth
+  set updated to update Invoice with this id using updates
+  send back updated</code></pre></div>
+    <p class="text-sm text-base-content/70 leading-relaxed">Change "Invoices" to "Bookings", adjust the fields, deploy. New client, same quality.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">AI Agents Built In</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Clear apps can call AI models mid-flow. Score leads, classify support tickets, moderate content, summarize documents -- all from readable code.</p>
+    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>agent 'Lead Scorer' receiving lead:
+  check lead's company is not missing, otherwise error 'Company is required'
+  set lead's score to ask ai 'Rate 1-10 for enterprise potential.' with lead's company
+  send back lead
+
+when user calls POST /api/score sending lead_data:
+  validate lead_data:
+    company is text, required
+    email is text, required
+  set scored to call 'Lead Scorer' with lead_data
+  set saved to save scored as new Lead
+  send back saved with success message</code></pre></div>
+    <p class="text-sm text-base-content/70 leading-relaxed">The prompt is visible in the source. Your client can read it. You can audit it. No black-box AI.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Chain multiple agents into pipelines: screen, then score, then summarize, then save.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Bugs the compiler catches for you</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Auth missing on a DELETE endpoint? Compiler error.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Validation missing a required field? Compiler error.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">User data exposed without row-level security? Compiler error.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Every bug the compiler catches is a bug your client never sees. Every fix improves every app.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Clear vs the alternatives</h2>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">vs Lovable / Bolt / v0</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Those tools generate code you cannot read. When it breaks, you are stuck. Clear generates readable source from a readable blueprint. You own both.</p>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">vs hiring a developer</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">A developer builds one app at a time. Clear templates let you build five apps a week with the same quality.</p>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">vs doing it yourself in Express/Next.js</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">You already know how. But you also know that auth, validation, error handling, and security take 80% of the time. The compiler does that part.</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-24 px-6 text-center">
+    <h1 class="font-display text-6xl font-extrabold tracking-tight leading-[1.1] text-base-content max-w-3xl">Ship your next client app this week.</h1>
+    <p class="text-lg text-base-content/60 leading-relaxed">Pick a template. Customize it. Deploy it.</p>
+    <p class="text-lg text-base-content/60 leading-relaxed">Your clients get tested, secure apps. You get your weekends back.</p>
+    <a class="btn btn-primary btn-lg" href="/start">Get Started</a>
+    </div>
+</div>
+<div id="page_Examples" style="display:none">
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Deployed Apps Built with Clear</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Every app below compiles with zero errors and passes end-to-end tests.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Backend APIs</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Invoice engine -- full CRUD with auth, validation, foreign keys, computed fields (27 E2E tests)</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Ecommerce API -- products, orders, customers, inventory tracking (16 E2E tests)</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Project manager -- projects, tasks, team members, status tracking (36 E2E tests)</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Blog API -- posts, users, comments with auth and validation (14 E2E tests)</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">SaaS billing -- Stripe checkout, subscription management, usage limits</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Chat backend -- rooms, messages, auth, real-time subscriptions</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">AI Agent Apps</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Lead scorer -- AI rates companies for enterprise potential, saves to database</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Content moderator -- AI classifies content as safe/unsafe with reasoning</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Hiring pipeline -- 3-agent chain: screen, score, summarize candidates</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">All agent apps use BYOK (bring your own key). Your API key, direct to Anthropic. No markup.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Full-Stack Apps</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Todo app -- reactive frontend + REST backend, 37 lines total</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Project manager -- dashboard with tables, forms, status filters</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">URL shortener -- create, redirect, track clicks</p>
+      </div>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Infrastructure</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Every compiled app includes: Express/FastAPI server, JSON body parsing, error handling, graceful shutdown.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Auth: JWT tokens, role-based access, middleware. Database: local memory, PostgreSQL, SQLite.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Rate limiting, CORS, request logging, webhook signature verification, file uploads.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">Auto-generated E2E test scripts for every endpoint.</p>
+      </div>
+    </div>
+</div>
+<div id="page_Get_Started" style="display:none">
+    <div class="bg-base-100 rounded-box p-6 flex flex-col gap-3">
+    <h2 class="text-lg font-semibold text-base-content">Install Clear</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">npm install -g clear-lang</p>
+    <div class="divider my-4"></div>
+    <h2 class="text-lg font-semibold text-base-content">Build from a template</h2>
+    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>clear init my-app --template invoice-engine
+cd my-app
+clear build main.clear
+node server.js</code></pre></div>
+    <div class="divider my-4"></div>
+    <h2 class="text-lg font-semibold text-base-content">Or start from scratch</h2>
+    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>clear init my-app
+cd my-app
+# edit main.clear
+clear build main.clear
+node server.js</code></pre></div>
+    <div class="divider my-4"></div>
+    <h2 class="text-lg font-semibold text-base-content">Deploy</h2>
+    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>clear package main.clear --out deploy/
+# push to Vercel, Railway, or any Node.js host</code></pre></div>
+    <div class="divider my-4"></div>
+    <h2 class="text-lg font-semibold text-base-content">Your first 5 minutes</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Start with the invoice template. Change the table name and fields to match your client. Build. Deploy. Done.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed">The compiler handles auth, validation, CRUD, error handling, and security. You write the business logic.</p>
+    </div>
+</div>
+  </main>
+
+  <script>
+// Generated by Clear v1.0
+
+// Clear Language -- Landing Page
+// Target: Freelancers and small agencies who build the same CRUD apps repeatedly
+// Uses built-in DaisyUI presets: hero, section_light, section_dark, card, code_box
+// --- Hero ---
+// clear:10
+// Page: Clear Language
+document.title = "Clear Language";
+
+// --- Examples Page ---
+// clear:79
+// Page: Examples
+document.title = "Examples";
+
+// --- Get Started Page ---
+// clear:115
+// Page: Get Started
+document.title = "Get Started";
+
+
+// --- Hash Router ---
+const _routes = {
+  '/': 'Clear_Language',
+  '/examples': 'Examples',
+  '/start': 'Get_Started'
+};
+function _router() {
+  const hash = location.hash.slice(1) || '/';
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (hash === route) ? 'block' : 'none';
+  }
+}
+window.addEventListener('hashchange', _router);
+_router();
+  </script>
+</body>
+</html>

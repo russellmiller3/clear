@@ -52,7 +52,9 @@ function _validate(body, rules) {
 // ============================================================
 // Database
 // ============================================================
+// clear:11
 // Database: local memory (JSON file backup)
+// clear:13
 // Data shape: Teams
 const TeamsSchema = {
   name: { type: "text", required: true },
@@ -60,6 +62,7 @@ const TeamsSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('teams', TeamsSchema);
+// clear:18
 // Data shape: Members
 const MembersSchema = {
   team_id: { type: "fk", required: true },
@@ -69,6 +72,7 @@ const MembersSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('members', MembersSchema);
+// clear:25
 // Data shape: Projects
 const ProjectsSchema = {
   team_id: { type: "fk", required: true },
@@ -79,6 +83,7 @@ const ProjectsSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('projects', ProjectsSchema);
+// clear:33
 // Data shape: Tasks
 const TasksSchema = {
   project_id: { type: "fk", required: true },
@@ -92,6 +97,7 @@ const TasksSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('tasks', TasksSchema);
+// clear:44
 // Data shape: Comments
 const CommentsSchema = {
   task_id: { type: "fk", required: true },
@@ -100,6 +106,7 @@ const CommentsSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('comments', CommentsSchema);
+// clear:50
 // Data shape: ActivityLog
 const ActivityLogSchema = {
   team_id: { type: "fk", required: true },
@@ -114,6 +121,7 @@ db.createTable('activitylogs', ActivityLogSchema);
 // Allow the frontend to talk to the backend
 // Print every request to the console for debugging
 // --- Teams ---
+// clear:68
 app.get('/api/teams', async (req, res) => {
   try {
     const all_teams = await db.findAll('teams');
@@ -122,6 +130,7 @@ app.get('/api/teams', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:72
 app.post('/api/teams', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -136,6 +145,7 @@ app.post('/api/teams', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:79
 app.get('/api/teams/:id', async (req, res) => {
   try {
     const team = await db.findAll('teams');
@@ -145,6 +155,7 @@ app.get('/api/teams/:id', async (req, res) => {
   }
 });
 // --- Members ---
+// clear:85
 app.get('/api/members', async (req, res) => {
   try {
     const all_members = await db.findAll('members');
@@ -153,6 +164,7 @@ app.get('/api/members', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:89
 app.post('/api/members', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -168,6 +180,7 @@ app.post('/api/members', async (req, res) => {
   }
 });
 // --- Projects ---
+// clear:101
 app.get('/api/projects', async (req, res) => {
   try {
     const all_projects = await db.findAll('projects');
@@ -176,6 +189,7 @@ app.get('/api/projects', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:105
 app.post('/api/projects', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -190,6 +204,7 @@ app.post('/api/projects', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:116
 app.put('/api/projects/:id', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -204,6 +219,7 @@ app.put('/api/projects/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:126
 app.delete('/api/projects/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -216,6 +232,7 @@ app.delete('/api/projects/:id', async (req, res) => {
   }
 });
 // --- Tasks ---
+// clear:134
 app.get('/api/tasks', async (req, res) => {
   try {
     const all_tasks = await db.findAll('tasks');
@@ -224,6 +241,7 @@ app.get('/api/tasks', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:138
 app.post('/api/tasks', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -238,6 +256,7 @@ app.post('/api/tasks', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:150
 app.put('/api/tasks/:id', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -252,6 +271,7 @@ app.put('/api/tasks/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:161
 app.delete('/api/tasks/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -263,6 +283,7 @@ app.delete('/api/tasks/:id', async (req, res) => {
   }
 });
 // --- Comments ---
+// clear:168
 app.get('/api/comments', async (req, res) => {
   try {
     const all_comments = await db.findAll('comments');
@@ -271,6 +292,7 @@ app.get('/api/comments', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:172
 app.post('/api/comments', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -286,6 +308,7 @@ app.post('/api/comments', async (req, res) => {
   }
 });
 // --- Activity Log ---
+// clear:183
 app.get('/api/activity', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -296,6 +319,7 @@ app.get('/api/activity', async (req, res) => {
   }
 });
 // --- Health ---
+// clear:190
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
