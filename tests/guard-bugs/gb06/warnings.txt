@@ -1,0 +1,3 @@
+Line 14: inserting into 'attendee' which references 'conferences'. The conferences table has capacity/counter fields but this endpoint has no guard.
+
+Your app requires auth but doesn't log requests. Without logging, you can't detect unauthorized access attempts or debug auth issues. Add: log every request

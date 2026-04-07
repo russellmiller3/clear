@@ -45,6 +45,9 @@ export function validate(ast) {
   validateDisplayActions(ast.body, warnings);
   validateEndpointResponses(ast.body, warnings);
   validateFetchURLsMatchEndpoints(ast.body, warnings);
+  validateArithmetic(ast.body, warnings);
+  validateCapacity(ast.body, warnings);
+  validateFieldMismatch(ast.body, warnings);
   validateOWASP(ast.body, errors, warnings);
   return { errors, warnings };
 }
@@ -939,6 +942,139 @@ function validateFetchURLsMatchEndpoints(body, warnings) {
     }
   }
   checkFetches(body);
+}
+
+// =============================================================================
+// SILENT BUG GUARDS — Compile-time warnings for common logic errors
+// =============================================================================
+
+const BALANCE_WATCHLIST = ['balance', 'stock', 'inventory', 'quantity', 'credits', 'remaining', 'available'];
+
+/**
+ * Warn when subtracting from balance/stock/inventory fields without a guard.
+ */
+function validateArithmetic(body, warnings) {
+  function check(nodes, hasGuard) {
+    for (const n of nodes) {
+      if (n.type === NodeType.GUARD) hasGuard = true;
+      if (n.type === 'assign' && n.name && n.name.includes('.')) {
+        const member = n.name.split('.').pop();
+        if (BALANCE_WATCHLIST.includes(member) && n.expression &&
+            n.expression.type === 'binary_op' && n.expression.operator === '-' && !hasGuard) {
+          warnings.push(
+            `Line ${n.line}: subtracting from '${member}' with no guard. Consider adding:\n` +
+            `  check ${n.name.replace('.', "'s ")} is at least <amount>, otherwise error 'Insufficient ${member}'`
+          );
+        }
+      }
+      if (n.body) check(n.body, hasGuard);
+    }
+  }
+  for (const n of body) {
+    if (n.type === NodeType.ENDPOINT && n.body) check(n.body, false);
+  }
+}
+
+const CAPACITY_FIELDS = ['capacity', 'limit', 'stock'];
+const COUNTER_FIELDS = ['tickets_sold', 'sold', 'used', 'registered_count', 'enrolled_count'];
+
+/**
+ * Warn when inserting into child of capacity table without a guard.
+ */
+function validateCapacity(body, warnings) {
+  const capacityTables = new Map();
+  for (const n of body) {
+    if (n.type !== NodeType.DATA_SHAPE) continue;
+    const fields = n.fields.map(f => f.name);
+    const hasCap = fields.some(f => CAPACITY_FIELDS.some(c => f === c || f.startsWith('max_')));
+    const hasCounter = fields.some(f => COUNTER_FIELDS.some(c => f === c || f.endsWith('_count') || f.endsWith('_sold')));
+    if (hasCap && hasCounter) capacityTables.set(n.name.toLowerCase(), n);
+  }
+  if (capacityTables.size === 0) return;
+
+  for (const ep of body) {
+    if (ep.type !== NodeType.ENDPOINT || !ep.body) continue;
+    const hasGuard = ep.body.some(n => n.type === NodeType.GUARD);
+    if (hasGuard) continue;
+    for (const n of ep.body) {
+      if (n.type !== NodeType.CRUD || n.operation !== 'save' || !n.resultVar) continue;
+      const targetName = n.target?.toLowerCase();
+      if (!targetName) continue;
+      const targetShape = body.find(b => b.type === NodeType.DATA_SHAPE &&
+        (b.name.toLowerCase() === targetName || b.name.toLowerCase() === targetName + 's' || b.name.toLowerCase() + 's' === targetName));
+      if (!targetShape) continue;
+      for (const f of targetShape.fields) {
+        if (f.fieldType === 'fk' || f.name.endsWith('_id')) {
+          const refBase = f.name.replace(/_id$/, '').toLowerCase();
+          for (const [capName] of capacityTables) {
+            if (capName.startsWith(refBase) || refBase.startsWith(capName.replace(/s$/, ''))) {
+              warnings.push(
+                `Line ${ep.line}: inserting into '${targetName}' which references '${capName}'. ` +
+                `The ${capName} table has capacity/counter fields but this endpoint has no guard.`
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Warn when frontend sends fields that don't match the backend table schema.
+ */
+function validateFieldMismatch(body, warnings) {
+  // Collect table schemas
+  const schemas = new Map();
+  for (const n of body) {
+    if (n.type === NodeType.DATA_SHAPE) {
+      const fields = new Set(n.fields.map(f => f.name));
+      schemas.set(n.name.toLowerCase(), { fields, name: n.name });
+      const plural = n.name.toLowerCase() + (n.name.toLowerCase().endsWith('s') ? '' : 's');
+      schemas.set(plural, { fields, name: n.name });
+    }
+  }
+  // Collect endpoints and their target tables
+  const endpointTables = new Map();
+  for (const ep of body) {
+    if (ep.type !== NodeType.ENDPOINT || !ep.body) continue;
+    const crud = ep.body.find(n => n.type === NodeType.CRUD && n.operation === 'save');
+    if (crud && crud.target) {
+      const key = `${ep.method} ${ep.path}`;
+      // Try both singular and plural forms
+      const target = crud.target.toLowerCase();
+      endpointTables.set(key, target);
+      endpointTables.set(key + ':plural', target + (target.endsWith('s') ? '' : 's'));
+    }
+  }
+  // Check frontend API calls
+  function checkCalls(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.API_CALL && n.fields && n.fields.length > 0 && n.url) {
+        const method = n.method || 'POST';
+        const key = `${method} ${n.url}`;
+        const tableName = endpointTables.get(key) || endpointTables.get(key + ':plural');
+        if (tableName) {
+          const schema = schemas.get(tableName) || schemas.get(tableName + 's');
+          if (schema) {
+            for (const sent of n.fields) {
+              if (!schema.fields.has(sent)) {
+                let suggestion = '';
+                for (const sf of schema.fields) {
+                  if (sent.includes(sf) || sf.includes(sent)) suggestion = ` Did you mean '${sf}'?`;
+                }
+                warnings.push(
+                  `Line ${n.line}: frontend sends '${sent}' to ${method} ${n.url}, but the ${schema.name} table has no '${sent}' field.${suggestion}`
+                );
+              }
+            }
+          }
+        }
+      }
+      if (n.body) checkCalls(n.body);
+    }
+  }
+  checkCalls(body);
 }
 
 /**

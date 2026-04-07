@@ -1,0 +1,20 @@
+build for javascript backend
+database is local memory
+
+create a Pets table:
+  name, required
+  species, required
+  weight (number), required
+
+when user calls POST /api/pets sending pet:
+  needs login
+  validate pet:
+    name is text, required
+    species is text, required
+    weight is number, required
+  new_pet = save pet as new Pet
+  send back new_pet
+
+when user calls GET /api/pets:
+  pets = look up all Pets
+  send back pets

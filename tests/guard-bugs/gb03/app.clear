@@ -1,0 +1,25 @@
+build for javascript backend
+database is local memory
+
+create a Projects table:
+  name, required
+  status, default 'active'
+
+create a Tasks table:
+  project_id, required
+  title, required
+  done, default 'false'
+
+when user calls POST /api/projects sending project:
+  needs login
+  new_project = save project as new Project
+  send back new_project
+
+when user calls POST /api/tasks sending task:
+  needs login
+  new_task = save task as new Task
+  send back new_task
+
+when user calls GET /api/tasks:
+  tasks = look up all Tasks
+  send back tasks
