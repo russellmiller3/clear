@@ -4282,10 +4282,11 @@ describe('Compiler - rate limit', () => {
     expect(result.javascript).toContain('max: 10');
   });
 
-  it('compiles rate limit to Python decorator', () => {
+  it('compiles rate limit to Python slowapi setup', () => {
     const result = compileProgram("target: python backend\non GET '/api':\n  rate limit 10 per minute\n  send back 'ok'");
-    expect(result.python).toContain('limiter');
-    expect(result.python).toContain('10/minute');
+    expect(result.python).toContain('Limiter');
+    expect(result.python).toContain('slowapi');
+    expect(result.python).toContain('10 per minute');
   });
 });
 
@@ -11269,4 +11270,44 @@ describe('Supabase adapter - CRUD compilation', () => {
   });
 });
 
+// =============================================================================
+// PYTHON SUPABASE ADAPTER
+// =============================================================================
+
+describe('Python Supabase adapter', () => {
+  it('emits supabase-py import for Python backend', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('from supabase import create_client');
+    expect(result.python).toContain('SUPABASE_URL');
+  });
+
+  it('compiles Python CRUD to supabase-py calls', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('supabase.table("contacts").select("*")');
+    expect(result.python).toContain('.execute()');
+  });
+
+  it('Python data shape is comment for supabase', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('must exist in Supabase');
+    expect(result.python).not.toContain('CREATE TABLE');
+  });
+
+  it('Python local memory still uses db stub', () => {
+    const src = `build for python backend\ndatabase is local memory\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('class _DB');
+    expect(result.python).toContain('db.query');
+    expect(result.python).not.toContain('supabase');
+  });
+});
+
 run();
+
