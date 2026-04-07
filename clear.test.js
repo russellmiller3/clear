@@ -11662,5 +11662,36 @@ describe('Phase 34 - compound unique (one per)', () => {
   });
 });
 
+// =============================================================================
+// PHASE 34: DATABASE TRANSACTIONS
+// =============================================================================
+
+describe('Phase 34 - transactions (as one operation)', () => {
+  it('parses as one operation block', () => {
+    const ast = parse("as one operation:\n  show 'a'\n  show 'b'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.TRANSACTION);
+    expect(ast.body[0].body.length).toBe(2);
+  });
+
+  it('compiles to BEGIN/COMMIT/ROLLBACK in JS', () => {
+    const src = `build for javascript backend\nas one operation:\n  show 'transfer'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('BEGIN');
+    expect(result.javascript).toContain('COMMIT');
+    expect(result.javascript).toContain('ROLLBACK');
+  });
+
+  it('compiles to BEGIN/COMMIT/ROLLBACK in Python', () => {
+    const src = `build for python backend\nas one operation:\n  show 'transfer'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('BEGIN');
+    expect(result.python).toContain('COMMIT');
+    expect(result.python).toContain('ROLLBACK');
+  });
+});
+
 run();
 

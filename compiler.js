@@ -1735,6 +1735,14 @@ function _compileNodeInner(node, ctx) {
       return `${pad}try {\n${tryCode}\n${pad}} catch (${node.errorVar}) {\n${handleCode}\n${pad}}`;
     }
 
+    case NodeType.TRANSACTION: {
+      const txBody = compileBody(node.body, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}# As one operation (transaction)\n${pad}try:\n${pad}    await db.execute("BEGIN")\n${txBody}\n${pad}    await db.execute("COMMIT")\n${pad}except Exception as _tx_err:\n${pad}    await db.execute("ROLLBACK")\n${pad}    raise _tx_err`;
+      }
+      return `${pad}// As one operation (transaction)\n${pad}try {\n${pad}  await db.run('BEGIN');\n${txBody}\n${pad}  await db.run('COMMIT');\n${pad}} catch (_txErr) {\n${pad}  await db.run('ROLLBACK');\n${pad}  throw _txErr;\n${pad}}`;
+    }
+
     case NodeType.USE:
       if (node.source) {
         // External JS import: use 'name' from 'path'
