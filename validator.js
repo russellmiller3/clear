@@ -255,13 +255,22 @@ function validateForwardReferences(body, errors) {
     'configure', 'connect', 'query', 'fetch', 'scrape', 'predict', 'train',
   ];
 
-  function suggestKeyword(name) {
+  function suggestKeyword(name, scope) {
     const lower = name.toLowerCase();
     let best = null, bestDist = 3; // max distance 2
+    // Check keywords
     for (const kw of KEYWORDS) {
-      if (lower === kw) return null; // exact match means it's not a typo
+      if (lower === kw) return null;
       const d = editDistance(lower, kw);
       if (d < bestDist) { bestDist = d; best = kw; }
+    }
+    // Check user-defined variables (catches typos like 'emial' -> 'email')
+    if (scope) {
+      for (const v of scope) {
+        if (lower === v.toLowerCase()) return null;
+        const d = editDistance(lower, v.toLowerCase());
+        if (d < bestDist) { bestDist = d; best = v; }
+      }
     }
     return best;
   }
@@ -289,7 +298,7 @@ function validateForwardReferences(body, errors) {
     switch (expr.type) {
       case NodeType.VARIABLE_REF:
         if (!scope.has(expr.name) && !BUILTINS.has(expr.name.toLowerCase())) {
-          const suggestion = suggestKeyword(expr.name);
+          const suggestion = suggestKeyword(expr.name, scope);
           if (suggestion) {
             errors.push({
               line: line,
