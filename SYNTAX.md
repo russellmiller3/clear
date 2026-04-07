@@ -281,6 +281,18 @@ Chart types: `line`, `bar`, `pie`, `area`. Data comes from a state variable (arr
 For line/bar/area, the compiler auto-detects x-axis (first string field) and y-axis (number fields).
 For pie, use `by <field>` to group and count. ECharts CDN is only included when charts are used.
 
+## Reactive Input Handlers
+
+```clear
+# Run code when an input changes
+when query changes:
+  get results from '/api/search?q={query}'
+
+# Debounced: wait 250ms after last keystroke before firing
+when search changes after 250ms:
+  get suggestions from '/api/suggest?q={search}'
+```
+
 ## Conditional UI
 
 ```clear

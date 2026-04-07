@@ -2474,6 +2474,7 @@ function _compileNodeInner(node, ctx) {
 
     // Nodes handled by dedicated loops in the reactive compiler -- skip here
     case NodeType.ON_PAGE_LOAD:
+    case NodeType.ON_CHANGE:
     case NodeType.ASK_FOR:
     case NodeType.DISPLAY:
     case NodeType.CHART:
@@ -2902,7 +2903,7 @@ function compileToJS(body, errors, sourceMap = false) {
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
-      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART) return true;
+      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE) return true;
       if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
@@ -3415,6 +3416,35 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     // No on-page-load: do initial render immediately
     lines.push('');
     lines.push('_recompute();');
+  }
+
+  // 8. On-change handlers (reactive input watchers with optional debounce)
+  const changeNodes = flatNodes.filter(n => n.type === NodeType.ON_CHANGE);
+  for (const cn of changeNodes) {
+    const inputId = `input_${sanitizeName(cn.variable)}`;
+    const changeCtx = { lang: 'js', indent: 1, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web' };
+    const bodyCode = cn.body.map(n => compileNode(n, changeCtx)).filter(Boolean).join('\n');
+    const hasApiCall = cn.body.some(n => n.type === NodeType.API_CALL);
+    const asyncKw = hasApiCall ? 'async ' : '';
+
+    lines.push('');
+    lines.push(`// --- When ${cn.variable} changes ---`);
+    if (cn.debounceMs > 0) {
+      const timerId = `_debounce_${sanitizeName(cn.variable)}`;
+      lines.push(`let ${timerId} = null;`);
+      lines.push(`document.getElementById('${inputId}').addEventListener('input', function() {`);
+      lines.push(`  clearTimeout(${timerId});`);
+      lines.push(`  ${timerId} = setTimeout(${asyncKw}function() {`);
+      lines.push(bodyCode);
+      lines.push(`    _recompute();`);
+      lines.push(`  }, ${cn.debounceMs});`);
+      lines.push(`});`);
+    } else {
+      lines.push(`document.getElementById('${inputId}').addEventListener('input', ${asyncKw}function() {`);
+      lines.push(bodyCode);
+      lines.push(`  _recompute();`);
+      lines.push(`});`);
+    }
   }
 
   return lines.join('\n');

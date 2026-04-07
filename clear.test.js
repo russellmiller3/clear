@@ -11309,5 +11309,66 @@ describe('Python Supabase adapter', () => {
   });
 });
 
+// =============================================================================
+// PHASE 31: ON-CHANGE HANDLERS (REACTIVE INPUT WATCHERS)
+// =============================================================================
+
+describe('Phase 31 - when X changes', () => {
+  it('parses when variable changes block', () => {
+    const ast = parse("page 'App':\n  'Search' is a text input saved as a query\n  when query changes:\n    get results from '/api/search'");
+    expect(ast.errors).toHaveLength(0);
+    const onChange = ast.body[0].body.find(n => n.type === NodeType.ON_CHANGE);
+    expect(onChange).toBeDefined();
+    expect(onChange.variable).toBe('query');
+    expect(onChange.debounceMs).toBe(0);
+  });
+
+  it('parses debounce delay', () => {
+    const ast = parse("page 'App':\n  'Search' is a text input saved as a query\n  when query changes after 250ms:\n    get results from '/api/search'");
+    expect(ast.errors).toHaveLength(0);
+    const onChange = ast.body[0].body.find(n => n.type === NodeType.ON_CHANGE);
+    expect(onChange.debounceMs).toBe(250);
+  });
+
+  it('compiles to input event listener', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+page 'App' at '/':
+  'Search' is a text input saved as a query
+  when query changes:
+    get results from '/api/items'
+  display results as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("When query changes");
+    expect(result.javascript).toContain("addEventListener('input'");
+  });
+
+  it('compiles debounced handler with setTimeout', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+page 'App' at '/':
+  'Search' is a text input saved as a query
+  when query changes after 300ms:
+    get results from '/api/items'
+  display results as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('clearTimeout');
+    expect(result.javascript).toContain('setTimeout');
+    expect(result.javascript).toContain('300');
+  });
+});
+
 run();
 

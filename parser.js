@@ -178,6 +178,7 @@ export const NodeType = Object.freeze({
   LIST_SORT: 'list_sort',
 
   ON_PAGE_LOAD: 'on_page_load',
+  ON_CHANGE: 'on_change',
   MATCH: 'match',
   MATCH_WHEN: 'match_when',
   MAP_GET: 'map_get',
@@ -1661,6 +1662,26 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         const { body: loadBody, endIdx: loadEnd } = parseBlock(lines, i + 1, indent, errors);
         body.push({ type: NodeType.ON_PAGE_LOAD, body: loadBody, line });
         i = loadEnd;
+        continue;
+      }
+
+      // "when X changes:" / "when X changes after 250ms:" — reactive input handler
+      if (firstToken.value === 'when' && tokens.length >= 3 && tokens[2].value === 'changes') {
+        const varName = tokens[1].value;
+        let debounceMs = 0;
+        // Check for "after N ms" or "after 250ms" debounce
+        if (tokens.length >= 5 && tokens[3].value === 'after') {
+          const delayVal = tokens[4].value;
+          if (typeof delayVal === 'number') {
+            debounceMs = delayVal;
+          } else {
+            const match = String(delayVal).match(/^(\d+)(ms)?$/);
+            if (match) debounceMs = parseInt(match[1], 10);
+          }
+        }
+        const { body: changeBody, endIdx: changeEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.ON_CHANGE, variable: varName, debounceMs, body: changeBody, line });
+        i = changeEnd;
         continue;
       }
 
