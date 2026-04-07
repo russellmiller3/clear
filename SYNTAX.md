@@ -988,10 +988,47 @@ are NOT treated as file imports.
 
 Run tests: `node cli/clear.js test myfile.clear`
 
+## CLI (for AI Agents)
+
+The Clear CLI is designed for machines first, humans second. Every command supports `--json`.
+
+```bash
+# Validate without compiling (fast)
+clear check app.clear --json
+
+# Introspect: list endpoints, tables, pages, agents
+clear info app.clear --json
+
+# Security + quality analysis
+clear lint app.clear --json
+
+# Auto-fix patchable errors (e.g. missing auth guards)
+clear fix app.clear
+
+# Compile
+clear build app.clear --out dist/
+
+# Compile + start local server
+clear serve app.clear --port 3000
+
+# Watch + rebuild on changes
+clear dev app.clear
+
+# Bundle for deployment (Dockerfile + package.json)
+clear package app.clear --out deploy/
+
+# Scaffold new project
+clear init my-app
+```
+
+Exit codes: `0` success, `1` compile error, `2` runtime error, `3` file not found, `4` test failure.
+
+All commands return structured JSON with `--json` flag for agent consumption.
+
 ## Build & Deploy
 
 ```bash
-# Build (runs 854 compiler tests first, blocks on failure)
+# Build
 node cli/clear.js build app.clear --out dist/
 
 # Build without test gate

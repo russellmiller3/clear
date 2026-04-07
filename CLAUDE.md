@@ -22,9 +22,26 @@ Compiles plain English to JavaScript, Python, and HTML.
 - `index.js` -- public API, `compileProgram(source)` is the entry point
 - `tokenizer.js` -> `parser.js` -> `validator.js` -> `compiler.js` (the pipeline)
 - `synonyms.js` -- keyword synonym table (check before adding new keywords)
+- `cli/clear.js` -- CLI for AI agents: build, check, info, fix, lint, serve, test
 - `intent.md` -- authoritative spec for all 96 node types
 - `PHILOSOPHY.md` -- design rules (14-year-old test, one op per line, no jargon)
 - `learnings.md` -- scan TOC before starting any work
+
+## CLI (for AI agents)
+The CLI is designed for machines first. Every command supports `--json`.
+```
+clear build <file>     # compile to JS/Python/HTML
+clear check <file>     # validate only (fast, no compilation)
+clear info <file>      # introspect: endpoints, tables, pages, agents
+clear fix <file>       # auto-fix patchable errors
+clear lint <file>      # security + quality warnings
+clear serve <file>     # compile + start local server
+clear test <file>      # run test blocks
+clear dev <file>       # watch + rebuild on changes
+clear init [dir]       # scaffold new project
+clear package <file>   # bundle for deployment (Dockerfile)
+```
+Exit codes: 0=ok, 1=compile error, 2=runtime error, 3=file not found, 4=test fail
 
 ## Core Design Principles (from PHILOSOPHY.md)
 - **Clear is source code.** Compiled JS/Python is build output. Never edit output.
