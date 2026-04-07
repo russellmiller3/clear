@@ -59,6 +59,7 @@ db.createTable('metrics', MetricSchema);
 // --- Config ---
 // --- REST Endpoints ---
 // clear:21
+// clear:21 — POST /api/metrics
 app.post('/api/metrics', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -66,32 +67,44 @@ app.post('/api/metrics', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true}, {"field":"value","type":"number","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_metric = await db.insert('metrics', _pick(metric_data, MetricSchema));
+    const new_metric = await db.insert('metrics', _pick(metric_data, MetricSchema)); // clear:25
     return res.status(201).json(new_metric);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/metrics] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:28
+// clear:28 — GET /api/metrics
 app.get('/api/metrics', async (req, res) => {
   try {
     const all_metrics = await db.findAll('metrics');
     return res.json(all_metrics);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/metrics] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:32
+// clear:32 — GET /api/metrics/latest
 app.get('/api/metrics/latest', async (req, res) => {
   try {
     const latest = await db.findAll('metrics');
     return res.json(latest);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/metrics/latest] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- SSE Stream ---
 // clear:38
+// clear:38 — GET /api/metrics/stream
 app.get('/api/metrics/stream', async (req, res) => {
   try {
     res.writeHead(200, {
@@ -112,7 +125,10 @@ app.get('/api/metrics/stream', async (req, res) => {
         await new Promise(resolve => setTimeout(resolve, 5000));
     })();
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/metrics/stream] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Aggregation Job ---

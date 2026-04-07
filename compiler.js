@@ -1121,8 +1121,15 @@ function compileEndpoint(node, ctx, pad) {
   const epDeclared = new Set();
   const hasIdParam = node.path.includes(':id');
   const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam });
-  let epCode = `${pad}app.${node.method.toLowerCase()}('${node.path}', async (req, res) => {\n`;
+  // Source line comment for debuggability
+  const isSeedEndpoint = node.path.includes('/seed');
+  let epCode = `${pad}// clear:${node.line} — ${node.method.toUpperCase()} ${node.path}\n`;
+  epCode += `${pad}app.${node.method.toLowerCase()}('${node.path}', async (req, res) => {\n`;
   epCode += `${pad}  try {\n`;
+  // Guard seed endpoints from running in production
+  if (isSeedEndpoint) {
+    epCode += `${pad}    if (process.env.NODE_ENV === 'production') return res.status(403).json({ error: 'Seed endpoint is disabled in production' });\n`;
+  }
   if (needsBinding) {
     if (node.receivingVar) {
       epCode += `${pad}    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });\n`;
@@ -1137,7 +1144,10 @@ function compileEndpoint(node, ctx, pad) {
   }
   epCode += bodyCode + '\n';
   epCode += `${pad}  } catch (err) {\n`;
-  epCode += `${pad}    res.status(500).json({ error: err.message });\n`;
+  epCode += `${pad}    console.error('[${node.method.toUpperCase()} ${node.path}] Error:', err.message);\n`;
+  epCode += `${pad}    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);\n`;
+  epCode += `${pad}    const safeMsg = status === 400 ? err.message : 'Something went wrong';\n`;
+  epCode += `${pad}    res.status(status).json({ error: safeMsg });\n`;
   epCode += `${pad}  }\n`;
   epCode += `${pad}});`;
   return epCode;
@@ -1158,6 +1168,7 @@ function pluralizeName(word) {
 
 function compileCrud(node, ctx, pad) {
   const table = node.target ? pluralizeName(node.target) : 'unknown';
+  const lineComment = node.line ? ` // clear:${node.line}` : '';
 
   if (ctx.lang === 'python') {
     // Supabase Python path (supabase-py SDK)
@@ -1276,17 +1287,17 @@ function compileCrud(node, ctx, pad) {
     else if (names.has(node.target.replace(/s$/, ''))) schemaName = node.target.replace(/s$/, '') + 'Schema';
     else if (names.has(node.target.replace(/ies$/, 'y'))) schemaName = node.target.replace(/ies$/, 'y') + 'Schema';
     else schemaName = node.target + 'Schema'; // fallback
-    if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await db.insert('${table}', _pick(${varCode}, ${schemaName}));`;
-    if (node.isInsert) return `${pad}await db.insert('${table}', _pick(${varCode}, ${schemaName}));`;
+    if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await db.insert('${table}', _pick(${varCode}, ${schemaName}));${lineComment}`;
+    if (node.isInsert) return `${pad}await db.insert('${table}', _pick(${varCode}, ${schemaName}));${lineComment}`;
     // In PUT endpoints with :id, inject the URL param so db.update finds the right record
     if (ctx.endpointHasId) {
-      return `${pad}${varCode}.id = req.params.id;\n${pad}await db.update('${table}', ${varCode});`;
+      return `${pad}${varCode}.id = req.params.id;\n${pad}await db.update('${table}', ${varCode});${lineComment}`;
     }
-    return `${pad}await db.update('${table}', ${varCode});`;
+    return `${pad}await db.update('${table}', ${varCode});${lineComment}`;
   }
   if (node.operation === 'remove') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
-    return `${pad}await db.remove('${table}'${where});`;
+    return `${pad}await db.remove('${table}'${where});${lineComment}`;
   }
   return `${pad}// CRUD: ${node.operation}`;
 }
@@ -2494,7 +2505,7 @@ function _compileNodeInner(node, ctx) {
       if (ctx.lang === 'python') return `${pad}# API call: ${node.method} ${node.url}`;
       if (node.method === 'GET') {
         const target = node.targetVar ? sanitizeName(node.targetVar) : 'response';
-        return `${pad}_state.${target} = await fetch(${url}).then(r => r.json()).catch(e => { console.error(e); return _state.${target}; });`;
+        return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]', e.message); return _state.${target}; });`;
       }
       // POST/PUT/DELETE: send specific fields or full state
       let bodyExpr;
@@ -3213,6 +3224,8 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   // 3. State initialization
   lines.push('');
   lines.push('// --- State ---');
+  lines.push('// Reactive model: _state holds all data. _recompute() syncs state to DOM.');
+  lines.push('// Input listeners update _state, buttons run actions, both call _recompute().');
   const stateDefaults = {};
   for (const inp of inputNodes) {
     const name = sanitizeName(inp.variable);

@@ -76,16 +76,21 @@ app.post('/webhooks/github', async (req, res) => {
 });
 // --- Management Endpoints ---
 // clear:33
+// clear:33 — GET /api/destinations
 app.get('/api/destinations', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const all_destinations = await db.findAll('destinations');
     return res.json(all_destinations);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/destinations] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:38
+// clear:38 — POST /api/destinations
 app.post('/api/destinations', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -94,33 +99,44 @@ app.post('/api/destinations', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true}, {"field":"url","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_dest = await db.insert('destinations', _pick(dest_data, DestinationSchema));
+    const new_dest = await db.insert('destinations', _pick(dest_data, DestinationSchema)); // clear:43
     return res.status(201).json(new_dest);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/destinations] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:46
+// clear:46 — DELETE /api/destinations/:id
 app.delete('/api/destinations/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     if (req.user.role !== "admin") { return res.status(403).json({ error: "Requires role: admin" }); }
-    await db.remove('destinations', { id: incoming.id });
+    await db.remove('destinations', { id: incoming.id }); // clear:49
     return res.json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/destinations/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Delivery Status ---
 // clear:54
+// clear:54 — GET /api/deliveries
 app.get('/api/deliveries', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const all_deliveries = await db.findAll('deliveries');
     return res.json(all_deliveries);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/deliveries] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Retry Job ---

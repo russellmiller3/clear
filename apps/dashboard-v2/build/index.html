@@ -196,6 +196,8 @@ function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 document.title = "Results Dashboard";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
   search: "",
   model_name: "",
@@ -251,7 +253,7 @@ document.getElementById('btn_Overview').addEventListener('click', async function
   _btn.disabled = true;
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
-    _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+    _state.models = await fetch("/api/models").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/models]', e.message); return _state.models; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -266,7 +268,7 @@ document.getElementById('btn_Add_Model').addEventListener('click', async functio
   try {
     { const _r = await fetch("/api/models", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_name: _state.model_name }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+    _state.models = await fetch("/api/models").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/models]', e.message); return _state.models; });
     _state.model_name = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
@@ -279,7 +281,7 @@ document.getElementById('btn_Refresh').addEventListener('click', async function(
   _btn.disabled = true;
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
-    _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+    _state.models = await fetch("/api/models").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/models]', e.message); return _state.models; });
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -288,7 +290,7 @@ document.getElementById('btn_Refresh').addEventListener('click', async function(
 
 // --- On Page Load ---
 (async () => {
-  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  _state.models = await fetch("/api/models").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/models]', e.message); return _state.models; });
   _recompute();
 })();
 

@@ -169,6 +169,8 @@ function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 document.title = "Invoices";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
   client_name: "",
   description: "",
@@ -282,7 +284,7 @@ document.getElementById('btn_Create_Invoice').addEventListener('click', async fu
     { const _r = await fetch("/api/invoices", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: _state.client_name, description: _state.description, amount: _state.amount, due_date: _state.due_date, status: _state.status, notes: _state.notes }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
     }
-    _state.invoices = await fetch("/api/invoices").then(r => r.json()).catch(e => { console.error(e); return _state.invoices; });
+    _state.invoices = await fetch("/api/invoices").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/invoices]', e.message); return _state.invoices; });
     _state.client_name = "";
     _state.description = "";
     _state.notes = "";
@@ -302,7 +304,7 @@ document.getElementById('btn_Add_Client').addEventListener('click', async functi
   try {
     { const _r = await fetch("/api/clients", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_client_name: _state.new_client_name, new_client_email: _state.new_client_email, new_client_company: _state.new_client_company }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.clients = await fetch("/api/clients").then(r => r.json()).catch(e => { console.error(e); return _state.clients; });
+    _state.clients = await fetch("/api/clients").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/clients]', e.message); return _state.clients; });
     _state.new_client_name = "";
     _state.new_client_email = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
@@ -352,8 +354,8 @@ document.getElementById('output_Clients_table').addEventListener('click', async 
 (async () => {
   { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
     if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-  _state.invoices = await fetch("/api/invoices").then(r => r.json()).catch(e => { console.error(e); return _state.invoices; });
-  _state.clients = await fetch("/api/clients").then(r => r.json()).catch(e => { console.error(e); return _state.clients; });
+  _state.invoices = await fetch("/api/invoices").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/invoices]', e.message); return _state.invoices; });
+  _state.clients = await fetch("/api/clients").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/clients]', e.message); return _state.clients; });
   _recompute();
 })();
 

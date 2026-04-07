@@ -56,6 +56,7 @@ db.createTable('jobs', JobSchema);
 // --- Config ---
 // --- Endpoints ---
 // clear:23
+// clear:23 — POST /api/jobs
 app.post('/api/jobs', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -64,23 +65,31 @@ app.post('/api/jobs', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"type","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_job = await db.insert('jobs', _pick(job_data, JobSchema));
+    const new_job = await db.insert('jobs', _pick(job_data, JobSchema)); // clear:27
     return res.status(201).json(new_job);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/jobs] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:30
+// clear:30 — GET /api/jobs
 app.get('/api/jobs', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const all_jobs = await db.findAll('jobs');
     return res.json(all_jobs);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/jobs] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:35
+// clear:35 — GET /api/jobs/:id
 app.get('/api/jobs/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -88,19 +97,26 @@ app.get('/api/jobs/:id', async (req, res) => {
     const job = await db.findOne('jobs', { id: incoming.id });
     return res.json(job);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/jobs/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:40
+// clear:40 — DELETE /api/jobs/:id
 app.delete('/api/jobs/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     if (req.user.role !== "admin") { return res.status(403).json({ error: "Requires role: admin" }); }
-    await db.remove('jobs', { id: incoming.id });
+    await db.remove('jobs', { id: incoming.id }); // clear:43
     return res.json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/jobs/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Workers ---

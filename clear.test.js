@@ -5060,7 +5060,7 @@ when user calls GET /api/health:
     `);
     expect(result.javascript).toContain('try {');
     expect(result.javascript).toContain('catch (err)');
-    expect(result.javascript).toContain('res.status(500).json');
+    expect(result.javascript).toContain('res.status(status).json');
   });
 
   it('wraps Python endpoint body in try/except', () => {

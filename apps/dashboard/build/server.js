@@ -63,15 +63,20 @@ const ModelsSchema = {
 db.createTable('models', ModelsSchema);
 // Backend
 // clear:28
+// clear:28 — GET /api/models
 app.get('/api/models', async (req, res) => {
   try {
     const all_models = await db.findAll('models');
     return res.json(all_models);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/models] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:32
+// clear:32 — POST /api/models
 app.post('/api/models', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -79,50 +84,66 @@ app.post('/api/models', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":100}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_model = await db.insert('models', _pick(model_data, ModelsSchema));
+    const new_model = await db.insert('models', _pick(model_data, ModelsSchema)); // clear:35
     return res.status(201).json({ ...new_model, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/models] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:38
+// clear:38 — PUT /api/models/:id
 app.put('/api/models/:id', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
     const update_data = req.body;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     update_data.id = req.params.id;
-    await db.update('models', update_data);
+    await db.update('models', update_data); // clear:40
     return res.status(200).json({ ...update_data, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[PUT /api/models/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:43
+// clear:43 — DELETE /api/models/:id
 app.delete('/api/models/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('models', { id: incoming.id });
+    await db.remove('models', { id: incoming.id }); // clear:45
     return res.status(200).json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/models/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:48
+// clear:48 — POST /api/seed
 app.post('/api/seed', async (req, res) => {
   try {
+    if (process.env.NODE_ENV === 'production') return res.status(403).json({ error: 'Seed endpoint is disabled in production' });
     let m1 = { name: "Revenue Predictor", accuracy: 92, status: "complete" };
-    await db.insert('models', _pick(m1, ModelsSchema));
+    await db.insert('models', _pick(m1, ModelsSchema)); // clear:53
     let m2 = { name: "Churn Classifier", accuracy: 87, status: "complete" };
-    await db.insert('models', _pick(m2, ModelsSchema));
+    await db.insert('models', _pick(m2, ModelsSchema)); // clear:58
     let m3 = { name: "Lead Scorer", accuracy: 78, status: "training" };
-    await db.insert('models', _pick(m3, ModelsSchema));
+    await db.insert('models', _pick(m3, ModelsSchema)); // clear:63
     let m4 = { name: "Demand Forecast", accuracy: 94, status: "complete" };
-    await db.insert('models', _pick(m4, ModelsSchema));
+    await db.insert('models', _pick(m4, ModelsSchema)); // clear:68
     return res.status(201).json({ message: "seeded" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/seed] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // Frontend

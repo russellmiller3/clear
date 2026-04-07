@@ -104,34 +104,44 @@ db.createTable('lineitems', LineItemsSchema);
 // Print every request to the console for debugging
 // --- Seed data ---
 // clear:59
+// clear:59 — POST /api/seed
 app.post('/api/seed', async (req, res) => {
   try {
+    if (process.env.NODE_ENV === 'production') return res.status(403).json({ error: 'Seed endpoint is disabled in production' });
     let c1 = { name: "Acme Corp", email: "billing@acme.co", company: "Acme Corporation" };
-    await db.insert('clients', _pick(c1, ClientsSchema));
+    await db.insert('clients', _pick(c1, ClientsSchema)); // clear:64
     let c2 = { name: "Globex Inc", email: "ap@globex.io", company: "Globex Industries" };
-    await db.insert('clients', _pick(c2, ClientsSchema));
+    await db.insert('clients', _pick(c2, ClientsSchema)); // clear:69
     let inv1 = { client_name: "Acme Corp", description: "Website Redesign", amount: 5200, status: "paid", due_date: "2026-03-15", issued_date: "2026-02-15" };
-    await db.insert('invoices', _pick(inv1, InvoicesSchema));
+    await db.insert('invoices', _pick(inv1, InvoicesSchema)); // clear:77
     let inv2 = { client_name: "Acme Corp", description: "Monthly Hosting", amount: 150, status: "sent", due_date: "2026-04-01", issued_date: "2026-03-01" };
-    await db.insert('invoices', _pick(inv2, InvoicesSchema));
+    await db.insert('invoices', _pick(inv2, InvoicesSchema)); // clear:85
     let inv3 = { client_name: "Globex Inc", description: "Consulting Q1", amount: 7050, status: "draft", due_date: "2026-04-30" };
-    await db.insert('invoices', _pick(inv3, InvoicesSchema));
+    await db.insert('invoices', _pick(inv3, InvoicesSchema)); // clear:92
     return res.status(201).json({ message: "seeded" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/seed] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Clients ---
 // clear:96
+// clear:96 — GET /api/clients
 app.get('/api/clients', async (req, res) => {
   try {
     const all_clients = await db.findAll('clients');
     return res.json(all_clients);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/clients] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:100
+// clear:100 — POST /api/clients
 app.post('/api/clients', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -140,34 +150,46 @@ app.post('/api/clients', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":100}, {"field":"email","type":"text","required":true,"matches":"email"}, {"field":"company","type":"text"}, {"field":"phone","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_client = await db.insert('clients', _pick(client_data, ClientsSchema));
+    const new_client = await db.insert('clients', _pick(client_data, ClientsSchema)); // clear:107
     return res.status(201).json({ ...new_client, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/clients] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:110
+// clear:110 — DELETE /api/clients/:id
 app.delete('/api/clients/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('clients', { id: incoming.id });
+    await db.remove('clients', { id: incoming.id }); // clear:112
     return res.status(200).json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/clients/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Invoices ---
 // clear:116
+// clear:116 — GET /api/invoices
 app.get('/api/invoices', async (req, res) => {
   try {
     const all_invoices = await db.findAll('invoices');
     return res.json(all_invoices);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/invoices] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:120
+// clear:120 — POST /api/invoices
 app.post('/api/invoices', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -176,13 +198,17 @@ app.post('/api/invoices', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"client_name","type":"text","required":true}, {"field":"description","type":"text","required":true}, {"field":"amount","type":"number","required":true}, {"field":"due_date","type":"text","required":true}, {"field":"status","type":"text"}, {"field":"notes","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_invoice = await db.insert('invoices', _pick(invoice_data, InvoicesSchema));
+    const new_invoice = await db.insert('invoices', _pick(invoice_data, InvoicesSchema)); // clear:129
     return res.status(201).json({ ...new_invoice, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/invoices] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:132
+// clear:132 — PUT /api/invoices/:id
 app.put('/api/invoices/:id', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -192,34 +218,46 @@ app.put('/api/invoices/:id', async (req, res) => {
     const _vErr = _validate(req.body, [{"field":"status","type":"text"}, {"field":"description","type":"text"}, {"field":"amount","type":"number"}, {"field":"notes","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
     update_data.id = req.params.id;
-    await db.update('invoices', update_data);
+    await db.update('invoices', update_data); // clear:139
     return res.status(200).json({ message: "updated" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[PUT /api/invoices/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:142
+// clear:142 — DELETE /api/invoices/:id
 app.delete('/api/invoices/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('invoices', { id: incoming.id });
+    await db.remove('invoices', { id: incoming.id }); // clear:144
     return res.status(200).json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/invoices/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Line Items ---
 // clear:148
+// clear:148 — GET /api/line-items
 app.get('/api/line-items', async (req, res) => {
   try {
     const all_items = await db.findAll('lineitems');
     return res.json(all_items);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/line-items] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:152
+// clear:152 — POST /api/line-items
 app.post('/api/line-items', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -228,10 +266,13 @@ app.post('/api/line-items', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"invoice_id","type":"text","required":true}, {"field":"description","type":"text","required":true}, {"field":"quantity","type":"number"}, {"field":"unit_price","type":"number","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_item = await db.insert('lineitems', _pick(item_data, LineItemsSchema));
+    const new_item = await db.insert('lineitems', _pick(item_data, LineItemsSchema)); // clear:159
     return res.status(201).json({ ...new_item, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/line-items] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // Frontend

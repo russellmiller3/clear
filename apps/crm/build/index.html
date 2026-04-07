@@ -168,6 +168,8 @@ function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 document.title = "CRM";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
   name: "",
   email: "",
@@ -266,7 +268,7 @@ document.getElementById('btn_Add_Contact').addEventListener('click', async funct
   try {
     { const _r = await fetch("/api/contacts", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: _state.name, email: _state.email, company: _state.company, status: _state.status }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.contacts = await fetch("/api/contacts").then(r => r.json()).catch(e => { console.error(e); return _state.contacts; });
+    _state.contacts = await fetch("/api/contacts").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/contacts]', e.message); return _state.contacts; });
     _state.name = "";
     _state.email = "";
     _state.company = "";
@@ -287,7 +289,7 @@ document.getElementById('btn_Add_Deal').addEventListener('click', async function
   try {
     { const _r = await fetch("/api/deals", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deal_title: _state.deal_title, deal_contact_id: _state.deal_contact_id, deal_value: _state.deal_value, stage: _state.stage }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.deals = await fetch("/api/deals").then(r => r.json()).catch(e => { console.error(e); return _state.deals; });
+    _state.deals = await fetch("/api/deals").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals]', e.message); return _state.deals; });
     _state.deal_title = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
@@ -323,8 +325,8 @@ document.getElementById('output_Deals_table').addEventListener('click', async fu
 (async () => {
   { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
     if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-  _state.contacts = await fetch("/api/contacts").then(r => r.json()).catch(e => { console.error(e); return _state.contacts; });
-  _state.deals = await fetch("/api/deals").then(r => r.json()).catch(e => { console.error(e); return _state.deals; });
+  _state.contacts = await fetch("/api/contacts").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/contacts]', e.message); return _state.contacts; });
+  _state.deals = await fetch("/api/deals").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/deals]', e.message); return _state.deals; });
   _recompute();
 })();
 

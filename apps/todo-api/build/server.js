@@ -61,26 +61,35 @@ db.createTable('todos', TodosSchema);
 // --- Config ---
 // --- Endpoints ---
 // clear:20
+// clear:20 — GET /api/todos
 app.get('/api/todos', async (req, res) => {
   try {
     const all_todos = await db.findAll('todos');
     let total = _clear_len(all_todos);
     return res.json(all_todos);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/todos] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:25
+// clear:25 — GET /api/todos/:id
 app.get('/api/todos/:id', async (req, res) => {
   try {
     const incoming = req.params;
     const todo = await db.findOne('todos', { id: incoming.id });
     return res.json(todo);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/todos/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:29
+// clear:29 — POST /api/todos
 app.post('/api/todos', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -88,13 +97,17 @@ app.post('/api/todos', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"title","type":"text","required":true,"min":1,"max":500}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_todo = await db.insert('todos', _pick(post_data, TodosSchema));
+    const new_todo = await db.insert('todos', _pick(post_data, TodosSchema)); // clear:32
     return res.status(201).json(new_todo);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/todos] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:35
+// clear:35 — PUT /api/todos/:id
 app.put('/api/todos/:id', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -104,21 +117,28 @@ app.put('/api/todos/:id', async (req, res) => {
     const _vErr = _validate(req.body, [{"field":"title","type":"text","min":1,"max":500}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
     update_data.id = req.params.id;
-    await db.update('todos', update_data);
+    await db.update('todos', update_data); // clear:39
     return res.json({ message: "updated" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[PUT /api/todos/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:42
+// clear:42 — DELETE /api/todos/:id
 app.delete('/api/todos/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('todos', { id: incoming.id });
+    await db.remove('todos', { id: incoming.id }); // clear:44
     return res.json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/todos/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 

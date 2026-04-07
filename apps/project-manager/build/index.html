@@ -186,6 +186,8 @@ function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 document.title = "Project Manager";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
   team_name: "",
   project_name: "",
@@ -300,7 +302,7 @@ document.getElementById('btn_Add_Team').addEventListener('click', async function
   try {
     { const _r = await fetch("/api/teams", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ team_name: _state.team_name }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.teams = await fetch("/api/teams").then(r => r.json()).catch(e => { console.error(e); return _state.teams; });
+    _state.teams = await fetch("/api/teams").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/teams]', e.message); return _state.teams; });
     _state.team_name = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
@@ -318,7 +320,7 @@ document.getElementById('btn_Add_Project').addEventListener('click', async funct
   try {
     { const _r = await fetch("/api/projects", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_name: _state.project_name, project_team_id: _state.project_team_id, status: _state.status }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
+    _state.projects = await fetch("/api/projects").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/projects]', e.message); return _state.projects; });
     _state.project_name = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
@@ -338,7 +340,7 @@ document.getElementById('btn_Add_Task').addEventListener('click', async function
   try {
     { const _r = await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_title: _state.task_title, task_project_id: _state.task_project_id, priority: _state.priority, assigned_to: _state.assigned_to, estimated_hours: _state.estimated_hours }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+    _state.tasks = await fetch("/api/tasks").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tasks]', e.message); return _state.tasks; });
     _state.task_title = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
@@ -348,9 +350,9 @@ document.getElementById('btn_Add_Task').addEventListener('click', async function
 
 // --- On Page Load ---
 (async () => {
-  _state.teams = await fetch("/api/teams").then(r => r.json()).catch(e => { console.error(e); return _state.teams; });
-  _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
-  _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+  _state.teams = await fetch("/api/teams").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/teams]', e.message); return _state.teams; });
+  _state.projects = await fetch("/api/projects").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/projects]', e.message); return _state.projects; });
+  _state.tasks = await fetch("/api/tasks").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tasks]', e.message); return _state.tasks; });
   _recompute();
 })();
 
