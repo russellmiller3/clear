@@ -1438,3 +1438,101 @@ Research-backed runtime protections (OWASP 2025, CWE Top 25, CodeRabbit AI study
 - Agents also found 6 compiler bugs during hard-bug testing (Stripe IIFE syntax, PUT data loss, isReactiveApp, stale schema, mass assignment, missing _pick on update)
 
 1337 tests. All 33 apps compile.
+
+---
+
+## What's Next — Road to General Purpose
+
+Clear's goal: handle any app an AI agent would build for a non-technical user. Not systems programming — not drivers, game engines, or OS kernels — but any business/productivity/data application.
+
+Organized by priority (highest impact first). Estimated effort based on velocity so far (~15 phases per day, ~300 tests per day).
+
+### Tier 1: Production-Ready (Day 4-5)
+
+These unlock real deployment. Without them, Clear apps are demos.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 47 | **SQLite local database** | In-memory DB is ephemeral. SQLite gives persistence without a server. `database is local file` compiles to better-sqlite3. | 1 day |
+| 48 | **Client portal + admin dashboard templates** | Most-requested app types. 2 template apps with auth, roles, file upload, audit log. | 0.5 day |
+| 49 | **Deploy to Vercel/Railway** | `clear deploy` compiles + deploys. One command from .clear file to live URL. | 0.5 day |
+| 50 | **Real-time / WebSocket** | Chat apps, live dashboards, notifications. `when data changes:` compiles to Socket.io. | 1 day |
+
+### Tier 2: Complex Frontend (Day 5-6)
+
+These make Clear competitive with React/Vue for real UIs.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 51 | **Multi-page routing with shared state** | SPA with `/dashboard`, `/settings`, `/profile` sharing auth state. `navigate to '/settings'` with state preservation. | 1 day |
+| 52 | **Component composition** | Reusable components with slots/children. `define Card receiving title, content:` used as `show Card('Title'):` with nested content. | 0.5 day |
+| 53 | **Conditional rendering** | `show section if user's role is 'admin'` — hide/show UI elements based on state. Currently requires workarounds. | 0.5 day |
+| 54 | **Lists with actions** | `for each item in items: show Card(item)` — render dynamic lists of components with per-item actions (edit, delete, reorder). | 0.5 day |
+| 55 | **Animations + transitions** | `animate section sliding in` / `fade out on delete`. CSS transitions compiled from English. | 0.5 day |
+
+### Tier 3: Data & Integration (Day 6-7)
+
+These make Clear apps work with the real world.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 56 | **PostgreSQL adapter** | Production database. `database is postgres` compiles to pg client with migrations. | 1 day |
+| 57 | **File upload + storage** | `'Photo' is a file input` → upload to S3/local. Display images. PDF generation. | 0.5 day |
+| 58 | **Email sending** | `send email to user's email:` with templates. Beyond the current Stripe/SendGrid presets — first-class email. | 0.5 day |
+| 59 | **Scheduled tasks** | `every day at 9am:` compiles to cron. Send reports, clean up data, sync APIs. | 0.5 day |
+| 60 | **Streaming / SSE** | `stream results to client` — server-sent events for long-running operations, AI responses. | 0.5 day |
+
+### Tier 4: Advanced Patterns (Day 7-8)
+
+These handle the 20% of apps that need more than CRUD.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 61 | **State machines** | `order goes through: draft → submitted → approved → shipped`. Enforce valid transitions. | 0.5 day |
+| 62 | **Workflows / multi-step** | `when order is approved: send email, create invoice, update inventory`. Chained operations with rollback. | 0.5 day |
+| 63 | **Search + filtering** | `search contacts where name contains query` — compiled to SQL LIKE or full-text search. | 0.5 day |
+| 64 | **Pagination** | `show 25 per page` — cursor-based pagination on lists and tables. | 0.25 day |
+| 65 | **Audit log** | `track changes to orders` — automatic changelog. Who changed what, when. | 0.25 day |
+| 66 | **Role-based UI** | `only admins see:` — sections that compile to role checks in the frontend. | 0.25 day |
+
+### Tier 5: Platform (Day 8-10)
+
+These make Clear a platform, not just a language.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 67 | **Clear Cloud MVP** | Hosted compile + deploy. Write Clear in browser, get a URL. | 2 days |
+| 68 | **Package registry** | `use 'auth-flow' from registry` — share reusable Clear modules. | 1 day |
+| 69 | **Desktop via Tauri** | `build for desktop` wraps web output in native shell. One .clear file → one binary. | 1 day |
+| 70 | **Mobile via Capacitor** | `build for mobile` wraps web output in native mobile shell. iOS + Android. | 1 day |
+
+### Tier 6: Intelligence (Day 10-12)
+
+These make Clear apps smarter than hand-coded equivalents.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 71 | **Auto-generated admin panels** | `admin panel for Orders` — CRUD UI auto-generated from table schema. Zero Clear code needed. | 0.5 day |
+| 72 | **Smart defaults** | Compiler infers validation rules from schema (email field → matches email, phone → matches phone). Less boilerplate. | 0.5 day |
+| 73 | **Performance profiling** | `CLEAR_PROFILE=true` — compiled output includes timing for every CRUD operation. Identify slow queries. | 0.5 day |
+| 74 | **AI-powered error recovery** | When an error is unrecoverable, the error translator calls Claude to suggest a patch. Fully autonomous fix loop. | 1 day |
+
+---
+
+## Effort Summary
+
+| Tier | Phases | Days | What It Unlocks |
+|------|--------|------|----------------|
+| Done (1-46b) | 46 phases | 3 days | Full-stack CRUD apps, error translator, silent bug guards |
+| Tier 1: Production | 47-50 | 2 days | Real deployment, persistent DB, real-time |
+| Tier 2: Complex Frontend | 51-55 | 3 days | Multi-page SPAs, components, animations |
+| Tier 3: Data & Integration | 56-60 | 3 days | Postgres, file upload, email, cron, streaming |
+| Tier 4: Advanced Patterns | 61-66 | 2 days | State machines, workflows, search, audit |
+| Tier 5: Platform | 67-70 | 5 days | Cloud, packages, desktop, mobile |
+| Tier 6: Intelligence | 71-74 | 2.5 days | Auto-admin, smart defaults, AI recovery |
+| **TOTAL** | **74 phases** | **~20 days** | **General-purpose app language** |
+
+At current velocity (~15 phases/day with Claude), the remaining 28 phases would take **roughly 2 more days of pure development time**, plus 3-5 days for platform/deployment work (Tier 5) which involves infrastructure, not just compiler code.
+
+**Realistic timeline: 5-7 more working days to reach "general purpose app language."**
+
