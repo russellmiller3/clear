@@ -1,0 +1,23 @@
+# CRM SPA — Reusable Components
+# Shared form components used across pages
+
+define component ContactForm:
+  'Name' is a text input saved as a contact_name
+  'Email' is a text input saved as a contact_email
+  'Company' is a text input saved as a contact_company
+  'Phone' is a text input saved as a contact_phone
+  'Status' is a dropdown with ['lead', 'qualified', 'customer', 'churned']
+  'Source' is a dropdown with ['direct', 'website', 'referral', 'cold-call', 'event']
+
+define component DealForm:
+  'Deal Title' is a text input saved as a deal_title
+  'Contact ID' is a text input saved as a deal_contact_id
+  'Value ($)' is a number input saved as a deal_value
+  'Stage' is a dropdown with ['prospect', 'proposal', 'negotiation', 'closed-won', 'closed-lost']
+  'Probability (%)' is a number input saved as a deal_probability
+  'Expected Close' is a text input saved as an expected_close
+
+define component ActivityForm:
+  'Contact ID' is a text input saved as an activity_contact_id
+  'Action' is a dropdown with ['Email sent', 'Call logged', 'Meeting held', 'Note added', 'Deal updated']
+  'Detail' is a text area saved as an activity_detail
