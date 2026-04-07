@@ -11370,5 +11370,29 @@ page 'App' at '/':
   });
 });
 
+// =============================================================================
+// PHASE 37: SMARTER COMPILER ERRORS (DID-YOU-MEAN)
+// =============================================================================
+
+describe('Phase 37 - did-you-mean for variables', () => {
+  it('suggests correct variable name on typo', () => {
+    const src = `build for javascript backend\nemail is 'test@test.com'\nshow emial`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes("Did you mean 'email'"))).toBe(true);
+  });
+
+  it('suggests variable when names are close', () => {
+    const src = `build for javascript backend\ntotal_price = 100\nshow total_pric`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes("Did you mean 'total_price'"))).toBe(true);
+  });
+
+  it('does not suggest when variable exists', () => {
+    const src = `build for javascript backend\nemail is 'test@test.com'\nshow email`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
 run();
 
