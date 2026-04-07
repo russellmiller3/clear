@@ -163,6 +163,21 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
   </main>
 
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Models: name*, accuracy, status, created_at_date (line 6)
+
+ ENDPOINTS:
+   GET /api/models (line 16)
+   POST /api/models (line 20)
+
+ PAGES:
+   'Results Dashboard' at / (line 40)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
   <script>
 // --- Runtime ---
 function _toast(msg, type) {

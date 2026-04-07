@@ -136,6 +136,24 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
   </main>
 
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Projects: name*, status, priority, created_at_date (line 8)
+   Tasks: title*, project*, assignee, status, created_at_date (line 15)
+
+ ENDPOINTS:
+   GET /api/projects (line 27)
+   POST /api/projects (line 31)
+   GET /api/tasks (line 38)
+   POST /api/tasks (line 42)
+
+ PAGES:
+   'Team Dashboard' at / (line 51)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
   <script>
 // --- Runtime ---
 function _toast(msg, type) {
