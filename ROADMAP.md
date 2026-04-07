@@ -1311,19 +1311,38 @@ Clear Cloud is the Vercel of Clear. You compile and deploy, databases are plugga
 
 ---
 
-### Phase 43: Template Library (The Growth Engine)
+### Phase 43: Template Library (The Growth Engine) — DONE
 
-Templates are pre-built Clear apps for the ICP (freelancers/agencies). Each template is a complete, tested, deployable app.
+Templates are pre-built Clear apps for the ICP (freelancers/agencies). Each template is a complete, tested, deployable app. All E2E tested with real HTTP requests.
 
-| # | Template | Lines | Target ICP |
-|---|----------|-------|------------|
-| 47 | CRM (contacts, deals, pipeline) | ~80 | Freelancers |
-| 48 | Invoice system (create, send, track) | ~100 | Agencies |
-| 49 | Booking/scheduling app | ~90 | Service businesses |
-| 50 | Client portal (projects, files, messages) | ~120 | Agencies |
-| 51 | Admin dashboard (users, roles, audit log) | ~100 | SaaS founders |
+| # | Template | Lines | Status | Features |
+|---|----------|-------|--------|----------|
+| 47 | CRM (`apps/crm/`) | 155 | **DONE** | Contacts + deals CRUD, seed data, midnight theme |
+| 47b | CRM Pro (`apps/crm-pro/`) | 270 | **DONE** | 5 tables, pipeline chart, compound unique, debounce search |
+| 47c | CRM SPA (`apps/crm-spa/`) | 4 files | **DONE** | Multi-file, components, tabs, modal, slide panel, SSE, chart |
+| 48 | Invoice (`apps/invoice/`) | 175 | **DONE** | Clients + invoices + line items, full CRUD, edit/delete |
+| 49 | Booking (`apps/booking/`) | 145 | **DONE** | Services + bookings, seed data, ivory theme |
+| 50 | Client portal (projects, files, messages) | ~120 | Planned | Agencies |
+| 51 | Admin dashboard (users, roles, audit log) | ~100 | Planned | SaaS founders |
 
-Each template includes: ASCII diagram, database schema, CRUD API, frontend with charts, auth, validation, E2E tests. Deploy with `clear deploy` in under 60 seconds.
+**Also built and tested (33 total apps):** blog-api, cast-api, cast-editor, cast-evaluator, chat-backend, clear-landing, content-moderator, dashboard, dashboard-v2, ecommerce-api, full-saas, hiring-pipeline, interactive, invoice-engine, job-queue, landing-page, lead-scorer, live-dashboard, page-analyzer, product-landing, project-manager, saas-billing, team-dashboard, todo-api, todo-fullstack, todo-v2, url-shortener, webhook-relay.
+
+### Phase 43b: Compiler Fixes from E2E Testing — DONE
+
+Bugs found by deploying and testing all 33 apps:
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| `save X as new Y` → `db.update('as')` | Parser only checked `to_connector` | Handle `as` connector + `new` keyword |
+| PUT endpoints missing ID | No `req.params.id` injection | Inject `update_data.id = req.params.id` |
+| `Activity → activitys` | Naive `+s` pluralization | `pluralizeName()` handles y→ies, ch→ches |
+| Schema mismatch `ActivitySchema` | Singular/plural lookup incomplete | Try exact, +s, pluralize, -s, -ies→y |
+| Multi-page routing broken | Pages not wrapped in `<div id="page_X">` | Splice wrappers after `walk()` |
+| Sidebar layout crushed | `flex-direction: row` not detected | Add to `hasFullLayout` check |
+| `use everything from` incomplete | Nodes only stored, not spliced | Splice into `ast.body` during resolution |
+| App presets too wide | `p-8`, `w-64` too large | Tuned to `p-6/p-5`, `w-60`, `h-16` |
+
+1265 tests passing. All 33 apps compile and deploy.
 
 ---
 
