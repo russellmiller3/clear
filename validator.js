@@ -648,7 +648,7 @@ function validateSecurity(body, errors, warnings) {
         const name = node.name.toLowerCase();
         allSchemaFields.set(name, fields);
         allSchemaFields.set(name + (name.endsWith('s') ? '' : 's'), fields);
-        if (fields.has('user_id') || fields.has('owner_id') || fields.has('owner') || fields.has('author_id')) {
+        if (fields.has('user_id') || fields.has('owner_id') || fields.has('owner')) {
           schemasWithOwner.add(name);
           schemasWithOwner.add(name + (name.endsWith('s') ? '' : 's'));
         }
