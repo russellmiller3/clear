@@ -11540,5 +11540,47 @@ describe('Security - open CORS without auth', () => {
   });
 });
 
+// =============================================================================
+// OWASP SECURITY VALIDATORS
+// =============================================================================
+
+describe('OWASP - SQL injection detection', () => {
+  it('warns on raw query with string interpolation', () => {
+    const src = `build for javascript backend\nresults = query 'SELECT * FROM users WHERE name = {name}'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('SQL injection'))).toBe(true);
+  });
+});
+
+describe('OWASP - CSRF on data-modifying POST', () => {
+  it('warns when POST modifies data without auth', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls POST /api/items sending item_data:\n  new_item = save item_data as new Item\n  send back new_item with success message`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('CSRF'))).toBe(true);
+  });
+
+  it('no CSRF warning when POST has auth', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls POST /api/items sending item_data:\n  requires auth\n  new_item = save item_data as new Item\n  send back new_item with success message`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('CSRF'))).toHaveLength(0);
+  });
+});
+
+describe('OWASP - security logging', () => {
+  it('warns when auth used but no logging', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/data:\n  requires auth\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('log'))).toBe(true);
+  });
+});
+
+describe('OWASP - PATCH without auth', () => {
+  it('errors on PATCH endpoint without auth', () => {
+    const src = `build for javascript backend\nwhen user calls PATCH /api/users/:id sending data:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes('PATCH') && e.message.includes('auth'))).toBe(true);
+  });
+});
+
 run();
 
