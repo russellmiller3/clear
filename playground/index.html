@@ -263,14 +263,61 @@ const EXAMPLES = {
 # │ Invoices    │ │ $42,300  │ │  23     │ │
 # │ Settings    │ └──────────┘ └─────────┘ │
 # │             │ ┌──────────────────────┐ │
-# │             │ │ Recent Activity      │ │
+# │             │ │ Revenue Trend (chart)│ │
 # │             │ └──────────────────────┘ │
 # └─────────────┴──────────────────────────┘
 
-build for web
+build for web and javascript backend
 theme 'ivory'
+database is local memory
+
+create a Sales table:
+  month, required
+  revenue (number), required
+  deals (number), required
+
+when user calls GET /api/sales:
+  all_sales = get all Sales
+  send back all_sales
+
+when user calls POST /api/seed:
+  create jan:
+    month is 'Jan'
+    revenue = 31200
+    deals = 14
+  save jan as new Sale
+  create feb:
+    month is 'Feb'
+    revenue = 28400
+    deals = 11
+  save feb as new Sale
+  create mar:
+    month is 'Mar'
+    revenue = 35600
+    deals = 18
+  save mar as new Sale
+  create apr:
+    month is 'Apr'
+    revenue = 33100
+    deals = 15
+  save apr as new Sale
+  create may:
+    month is 'May'
+    revenue = 38900
+    deals = 21
+  save may as new Sale
+  create jun:
+    month is 'Jun'
+    revenue = 42300
+    deals = 23
+  save jun as new Sale
+  send back 'seeded' with success message
 
 page 'Sales Dashboard' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get sales from '/api/sales'
+
   section 'Layout' with style app_layout:
     section 'Nav' with style app_sidebar:
       heading 'Acme Inc'
@@ -295,20 +342,9 @@ page 'Sales Dashboard' at '/':
             small text 'Active Deals'
             heading '23'
             text '8 closing this week'
-          section 'Pipeline' with style metric_card:
-            small text 'Pipeline Value'
-            heading '$284k'
-            text '47 qualified leads'
-          section 'Win Rate' with style metric_card:
-            small text 'Win Rate'
-            heading '34%'
-            text '+5% from Q3'
 
-        section 'Recent' with style card_bordered:
-          heading 'Recent Activity'
-          text 'Acme Corp signed $12k annual contract'
-          text 'Beta Inc moved to negotiation stage'
-          text 'Gamma Ltd requested a demo for next week'`,
+        chart 'Revenue Trend' as line showing sales
+        chart 'Deals by Month' as bar showing sales`,
 
   'Contact Manager': `# DATAFLOW:
 # ┌──────────┐  POST /api/contacts  ┌──────────┐  save  ┌──────────┐
@@ -933,6 +969,7 @@ function renderGuide() {
     ['Inputs', "'Name' is a text input saved as a name\n'Price' is a number input saved as a price\n'Notes' is a text area saved as a note\n'Gift Wrap' is a checkbox\n'Color' is a dropdown with ['Red', 'Green', 'Blue']"],
     ['Buttons & Actions', "button 'Save':\n  send name and email to '/api/signup'\n\nbutton 'Add':\n  send todo to '/api/todos'\n  get todos from '/api/todos'\n  todo is ''"],
     ['Display & Tables', "display total as dollars called 'Total'\ndisplay todos as table showing name, status\n\n# With action buttons (auto-wired)\ndisplay contacts as table showing name, email with delete\ndisplay contacts as table showing name, email with edit\ndisplay contacts as table showing name, email with delete and edit"],
+    ['Charts (ECharts)', "# Line chart\nchart 'Revenue' as line showing sales\n\n# Bar chart\nchart 'Deals' as bar showing sales\n\n# Pie chart (groups by field)\nchart 'Status' as pie showing tasks by status\n\n# Area chart (line with fill)\nchart 'Trend' as area showing monthly_data"],
     ['On Page Load', "# Inline\non page load get todos from '/api/todos'\n\n# Block\non page load:\n  get todos from '/api/todos'\n  get users from '/api/users'"],
 
     D,
