@@ -22,13 +22,17 @@ when user calls POST /api/recipes sending recipe:
   validate recipe:
     name is text, required
     cuisine is text, required
-    prep_time is number, required
-    servings is number, required
+    prep_time is number, required, min 1
+    servings is number, required, min 1
   new_recipe = save recipe as new Recipe
   send back new_recipe
 
 when user calls POST /api/ingredients sending ingredient:
   needs login
+  validate ingredient:
+    recipe_id is number, required
+    name is text, required
+    quantity is text, required
   new_ingredient = save ingredient as new Ingredient
   send back new_ingredient
 
@@ -57,4 +61,11 @@ when user calls POST /api/seed:
 
 page 'Recipes' at '/':
   on page load get recipes from '/api/recipes'
+  'Name' is a text input saved as a name
+  'Cuisine' is a text input saved as a cuisine
+  'Prep Time (minutes)' is a number input saved as a prep_time
+  'Servings' is a number input saved as a servings
+  button 'Add Recipe':
+    send name and cuisine and prep_time and servings to '/api/recipes'
+    get recipes from '/api/recipes'
   display recipes as table showing name, cuisine, prep_time, servings, difficulty

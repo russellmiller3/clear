@@ -25,10 +25,13 @@ when user calls POST /api/events sending event:
 when user calls POST /api/attendees sending attendee:
   needs login
   validate attendee:
+    event_id is number, required
     name is text, required
     email is text, required, matches email
   event = look up records in Events table where id is attendee's event_id
-  guard event's tickets_sold is less than event's capacity or 'This event is sold out'
+  check event is not missing, otherwise error 'Event not found'
+  available = event's capacity - event's tickets_sold
+  check available is greater than 0, otherwise error 'This event is sold out'
   new_attendee = save attendee as new Attendee
   event's tickets_sold = event's tickets_sold + 1
   save event to Events
