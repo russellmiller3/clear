@@ -1088,6 +1088,22 @@ The platform succeeds if:
 | DaisyUI v5 CDN fix | Done | Correct path (`/daisyui.css`), local CSS for iframe injection |
 | Google Fonts + Tailwind v4 browser CDN | Done | Proper font loading in compiled output |
 
+### What's Built (Phase 29.2 -- Session 7)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `with delete` / `with edit` table actions | Done | Explicit opt-in, auto-wired to DELETE/PUT endpoints |
+| ECharts chart syntax | Done | `chart 'Title' as line/bar/pie/area showing data` |
+| Supabase adapter (JS + Python) | Done | `database is supabase` → SDK calls, both languages |
+| Client validation + loading + error toasts | Done | Phase 30 complete: toast with icons, spinner, validation |
+| Tailwind grid classes | Done | Column layouts use `grid-cols-N` instead of inline CSS |
+| Multi-file `use everything from` fix | Done | Endpoints + pages now inlined from modules |
+| AI proxy for playground | Done | Vercel serverless, 3 calls/IP rate limit |
+| Full syntax guide in playground | Done | 30+ sections covering all features |
+| Stripe-style landing page preset | Done | page_hero py-32, text-6xl font-extrabold, dark feature cards |
+| Python Supabase + rate limiting | Done | supabase-py client, slowapi limiter |
+| File TOCs for parser.js + compiler.js | Done | Mandatory TOC update rule in CLAUDE.md |
+
 ---
 
 ## Part 2: From Demo to Shippable
@@ -1105,11 +1121,11 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
 | 1 | Form submit to endpoint | Signup forms, todo creation, contact pages, any write operation | **DONE.** Reactive compiler generates `fetch('/api/...', { method: 'POST', body: ... })` wired to button click. Tested: Contact Manager, Invoice Manager, Todo App all POST and render results. |
-| 2 | Client-side validation before fetch | Instant "required" feedback without server round-trip | Not started. Currently only server-side validation. Need JS check that prevents fetch if empty and shows inline error. |
-| 3 | Loading state during fetch | Users know the app is working, not frozen | Not started. Button stays enabled during fetch, no visual feedback. |
-| 4 | Display API errors in UI | "Email already taken" shown on screen instead of silently swallowed | Not started. Server errors are caught but not shown to user. |
+| 2 | Client-side validation before fetch | Instant "required" feedback without server round-trip | **DONE.** Buttons with POST/PUT auto-validate required fields. Shows toast on empty fields, returns before fetch. |
+| 3 | Loading state during fetch | Users know the app is working, not frozen | **DONE.** DaisyUI loading spinner replaces button text during async ops. Button disabled until complete. |
+| 4 | Display API errors in UI | "Email already taken" shown on screen instead of silently swallowed | **DONE.** Fetch checks `!response.ok`, parses error JSON, shows DaisyUI toast with slide-in animation + progress bar. |
 
-**Phase 30 status: item 1 done, items 2-4 need compiler work.**
+**Phase 30: COMPLETE.** All 4 items done.
 
 ---
 
@@ -1117,10 +1133,10 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 5 | Conditional fetch based on input | Search-as-you-type, filtered lists, dependent dropdowns | Compile `when user changes search_input: call GET /api/search?q={search_input}`; generated JS only fetches when input non-empty |
-| 6 | Debounced input handler | Live search without hammering server per keystroke | Compile search input with debounce; generated JS wraps fetch in `setTimeout`/`clearTimeout` with 250ms delay |
+| 5 | Conditional fetch based on input | Search-as-you-type, filtered lists, dependent dropdowns | **DONE.** `when query changes: get results from '/api/search'` compiles to input event listener with async fetch. |
+| 6 | Debounced input handler | Live search without hammering server per keystroke | **DONE.** `when query changes after 250ms:` compiles to `clearTimeout`/`setTimeout` wrapper. |
 
-**Phase 31 complete = search pages, filtered lists, dependent dropdowns, auto-suggest.**
+**Phase 31: COMPLETE.** Both items done.
 
 ---
 
