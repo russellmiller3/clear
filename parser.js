@@ -12,6 +12,64 @@
 // Errors are first-class: every error message tells the user what to DO,
 // not what they did wrong. Every error includes an example.
 //
+// !! MAINTENANCE RULE: Update this diagram AND the TOC whenever you add,
+// !! remove, or move a section. Use section names (not line numbers).
+//
+// ARCHITECTURE:
+//
+//   Tokenized Lines (from tokenizer.js)
+//       │
+//       ▼
+//   ┌──────────────────────────────────────────────────────┐
+//   │  parse(source)                                        │
+//   │                                                       │
+//   │  1. tokenize(source) → lines[]                        │
+//   │  2. parseBlock(lines, 0, 0) → AST body[]              │
+//   │     ┌──────────────────────────────────────────┐      │
+//   │     │  parseBlock(lines, startLine, indent)    │      │
+//   │     │                                          │      │
+//   │     │  For each line at this indent level:     │      │
+//   │     │    Match first token against patterns:   │      │
+//   │     │                                          │      │
+//   │     │    ┌─ build for → TARGET                 │      │
+//   │     │    ├─ theme → THEME                      │      │
+//   │     │    ├─ database is → DATABASE_DECL        │      │
+//   │     │    ├─ create a X table → DATA_SHAPE      │      │
+//   │     │    ├─ when user calls → ENDPOINT         │      │
+//   │     │    ├─ page 'X' at → PAGE                 │      │
+//   │     │    ├─ agent 'X' → AGENT                  │      │
+//   │     │    ├─ define function → FUNCTION_DEF     │      │
+//   │     │    ├─ if/while/repeat/for → CONTROL FLOW │      │
+//   │     │    ├─ save/look up/delete → CRUD         │      │
+//   │     │    ├─ send back → RESPOND                │      │
+//   │     │    ├─ validate → VALIDATE                │      │
+//   │     │    ├─ 'Label' is a → ASK_FOR (input)     │      │
+//   │     │    ├─ display X as → DISPLAY             │      │
+//   │     │    ├─ button 'X' → BUTTON                │      │
+//   │     │    ├─ X = expr → ASSIGN                  │      │
+//   │     │    └─ (many more — see TOC)              │      │
+//   │     │                                          │      │
+//   │     │  Indented lines → recursive parseBlock   │      │
+//   │     └──────────────────────────────────────────┘      │
+//   │                                                       │
+//   │  Output: { body: [ASTNode], errors: [{line, msg}] }   │
+//   └──────────────────────────────────────────────────────┘
+//       │
+//       ▼
+//   AST → fed to validator.js then compiler.js
+//
+// KEY INVARIANTS:
+//   - Every node has a .type (NodeType enum) and .line (source line number)
+//   - Page/section/endpoint/function nodes have .body (child nodes)
+//   - DATA_SHAPE nodes have .fields (array of field definitions)
+//   - CRUD nodes have .operation, .target, .variable, .condition
+//   - Parser sets .ui metadata on UI nodes (pre-computed HTML attributes)
+//   - Parser NEVER generates code — that's the compiler's job
+//
+// DEPENDENCIES: tokenizer.js (tokenize function)
+// DEPENDENTS:   validator.js (validates AST), compiler.js (compiles AST)
+//
+//
 // !! MAINTENANCE RULE: Update this TOC whenever you add, remove, or move
 // !! a section. Use section names (not line numbers) since lines drift.
 //

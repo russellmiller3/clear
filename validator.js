@@ -6,6 +6,55 @@
 // references, type mixing, and config usage. Separated from the compiler
 // so validation is opt-in — compile() just generates code.
 //
+// !! MAINTENANCE RULE: Update this diagram whenever you add a new validation
+// !! pass. Add the function name to both the diagram AND the validate() call
+// !! list below. Every validation function follows the same pattern:
+// !! function validateX(body, errors_or_warnings) — walks AST, pushes issues.
+//
+// ARCHITECTURE:
+//
+//   AST (from parser.js)
+//       │
+//       ▼
+//   ┌──────────────────────────────────────────────────────┐
+//   │  validate(ast) → { errors[], warnings[] }             │
+//   │                                                       │
+//   │  Runs these passes in order:                          │
+//   │                                                       │
+//   │  ERRORS (block compilation):                          │
+//   │    ├─ validateForwardReferences ... undeclared vars    │
+//   │    ├─ validateTypes .............. type mismatches     │
+//   │    └─ validateSecurity .......... missing auth guards  │
+//   │                                                       │
+//   │  WARNINGS (quality + safety):                         │
+//   │    ├─ validateConfig ............ env var usage        │
+//   │    ├─ validateFieldNames ........ misspelled fields    │
+//   │    ├─ validateEndpointURLs ...... orphan endpoints     │
+//   │    ├─ validateDuplicateEndpoints  same route twice     │
+//   │    ├─ validateDisplayActions .... edit/delete on table │
+//   │    ├─ validateEndpointResponses . missing send back    │
+//   │    ├─ validateFetchURLsMatch .... frontend→backend URL │
+//   │    ├─ validateArithmetic ........ balance subtraction  │
+//   │    ├─ validateCapacity .......... overflow risk        │
+//   │    ├─ validateFieldMismatch ..... form↔schema names    │
+//   │    └─ validateOWASP ............ SQLi, XSS, CSRF etc  │
+//   │                                                       │
+//   │  Errors block compilation. Warnings are advisory.     │
+//   └──────────────────────────────────────────────────────┘
+//       │
+//       ▼
+//   If errors: compilation stops, errors shown to user
+//   If clean: AST proceeds to compiler.js
+//
+// ADDING A NEW VALIDATION PASS:
+//   1. Write function validateX(body, warnings) — same pattern as others
+//   2. Add call to validate() function (line ~48)
+//   3. Update this diagram
+//   4. Add test to clear.test.js
+//
+// DEPENDENCIES: parser.js (NodeType enum)
+// DEPENDENTS:   index.js (called in compileProgram pipeline)
+//
 // =============================================================================
 
 import { NodeType } from './parser.js';

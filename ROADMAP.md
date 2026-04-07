@@ -1529,38 +1529,374 @@ Clear already has basic agents (`agent 'Name' receiving data:` + `ask claude`). 
 - `agent 'Name' runs every 1 hour:` — scheduled agents (cron)
 - `using 'claude-opus-4-6'` — model selection
 
-**What's missing for first-class agents:**
+**What's missing — 10 phases with exact syntax:**
 
-| Phase | Feature | Why It Matters | Effort |
-|-------|---------|---------------|--------|
-| 75 | **Tool use / function calling** | `agent 'Router' receiving query:` + `can use: search_db, send_email, create_invoice`. Agent decides which tools to call. Compiles to Anthropic tool_use API. | 1 day |
-| 76 | **Multi-turn conversation** | `conversation with user:` — agent maintains context across messages. `remember context` persists to DB. Not just one-shot prompt→response. | 1 day |
-| 77 | **Agent chains / pipelines** | `pipeline 'Process Lead':` → `classify with 'Classifier'` → `score with 'Scorer'` → `route with 'Router'`. Output of one feeds into next. Error at any step stops the chain. | 0.5 day |
-| 78 | **RAG / knowledge base** | `agent knows about: Contacts, Products, company_docs`. Auto-retrieves relevant context before prompting. Compiles to embedding search + context injection. | 1.5 days |
-| 79 | **Agent memory** | `remember that user prefers email` / `recall user's preferences`. Per-user long-term memory stored in DB, injected into agent context automatically. | 0.5 day |
-| 80 | **Parallel agent execution** | `run these at the same time:` → multiple agent calls in parallel. `wait for all results`. Compiles to Promise.all. | 0.5 day |
-| 81 | **Human-in-the-loop** | `ask user to confirm:` with approval/rejection. Agent pauses, sends approval request, resumes on response. For high-stakes actions (payments, deletions). | 0.5 day |
-| 82 | **Agent observability** | `log agent decisions` — every LLM call, tool use, and decision logged with input/output/latency. Dashboard to see what agents are doing. | 0.5 day |
-| 83 | **Guardrails / safety** | `agent must not: modify prices, delete users, access finances`. Compile-time constraints on what tools/tables an agent can touch. Prevents runaway agents. | 0.5 day |
-| 84 | **Agent testing** | `test 'Classifier' with 'positive review' expecting score > 7`. Deterministic test mode with mocked LLM responses. CI-friendly. | 0.5 day |
+---
 
-**What a Clear AI agent looks like after Tier 7:**
+#### Phase 75: Tool Use / Function Calling (1 day)
+
+Agent declares which functions it can call. The compiler maps Clear functions and CRUD operations to Anthropic tool_use API tool definitions. Agent decides at runtime which tools to invoke.
 
 ```clear
 agent 'Customer Support' receiving message:
-  can use: look_up_orders, check_status, send_email, escalate_to_human
+  can use: look_up_orders, check_status, send_email
+
+  response = ask claude 'Help this customer resolve their issue' with message
+  send back response
+
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+
+define function check_status(order_id):
+  order = look up Order where id is order_id
+  return order's status
+
+define function send_email(to, subject, body):
+  send email via sendgrid:
+    to is to
+    from is 'support@app.com'
+    subject is subject
+    body is body
+```
+
+Compiles to: `tools: [{ name: "look_up_orders", description: "...", input_schema: {...} }]` in the Anthropic API call. The agent's LLM response includes `tool_use` blocks which the runtime executes and feeds back.
+
+---
+
+#### Phase 76: Multi-Turn Conversation (1 day)
+
+Agent maintains context across messages. Conversation history stored in DB, loaded on each turn. Supports both API-driven (chatbot endpoint) and page-driven (chat UI) patterns.
+
+```clear
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+  created_at (timestamp), auto
+
+agent 'Assistant' receiving message:
+  remember conversation context
+  can use: look_up_contacts, create_task
+
+  response = ask claude 'You are a helpful assistant' with message
+  send back response
+
+when user calls POST /api/chat sending message:
+  needs login
+  response = call 'Assistant' with message
+  send back response
+
+page 'Chat' at '/':
+  section 'Chat' with style app_layout:
+    section 'Messages' with style app_main:
+      display messages as list
+    'Message' is a text input saved as a message
+    button 'Send':
+      send message to '/api/chat'
+```
+
+Compiles to: conversation history loaded from DB on each call, appended after response, truncated to token limit. `remember conversation context` triggers the storage pattern.
+
+---
+
+#### Phase 77: Agent Chains / Pipelines (0.5 day)
+
+Output of one agent feeds as input to the next. Error at any step stops the chain and reports which step failed. Useful for multi-stage processing.
+
+```clear
+agent 'Classifier' receiving text:
+  result = ask claude 'Classify this as sales, support, or billing' with text returning:
+    category
+    confidence (number)
+  send back result
+
+agent 'Scorer' receiving lead:
+  score = ask claude 'Score this lead 1-10' with lead returning:
+    score (number)
+    reason
+  send back score
+
+agent 'Router' receiving scored_lead:
+  if scored_lead's score is greater than 7:
+    send back 'fast-track'
+  otherwise:
+    send back 'nurture'
+
+pipeline 'Process Inbound' with text:
+  classify with 'Classifier'
+  score with 'Scorer'
+  route with 'Router'
+
+when user calls POST /api/inbound sending data:
+  needs login
+  result = run pipeline 'Process Inbound' with data's text
+  send back result
+```
+
+Compiles to: sequential `await` calls with error propagation. Each step's output becomes the next step's input. Pipeline result is the final step's output.
+
+---
+
+#### Phase 78: RAG / Knowledge Base (1.5 days)
+
+Agent automatically retrieves relevant context from specified tables before prompting. The compiler generates embedding + similarity search, then injects top results into the prompt context.
+
+```clear
+create a Documents table:
+  title, required
+  content, required
+  category
+
+agent 'Knowledge Bot' receiving question:
+  knows about: Documents, Products, FAQ
+  using 'claude-sonnet-4-6'
+
+  answer = ask claude 'Answer this question using the provided context' with question
+  send back answer
+```
+
+Compiles to: (1) embed the question, (2) similarity search across Documents/Products/FAQ tables, (3) inject top-k results as context in the system prompt, (4) call LLM with enriched context. Requires an embedding model (Anthropic or OpenAI) and a vector similarity function (cosine distance on stored embeddings).
+
+---
+
+#### Phase 79: Agent Memory (0.5 day)
+
+Per-user long-term memory. Agent remembers facts across sessions. Stored in DB, automatically loaded and injected into context on each call.
+
+```clear
+create a Memories table:
+  user_id, required
+  fact, required
+  created_at (timestamp), auto
+
+agent 'Personal Assistant' receiving message:
+  remember user's preferences
+  can use: create_task, send_email, check_calendar
+
+  response = ask claude 'Help the user. Use their preferences when relevant.' with message
+  send back response
+```
+
+Compiles to: (1) on each call, load recent memories for this user from Memories table, (2) inject as system context: "User preferences: [facts]", (3) if the LLM response includes a `remember` action, store the new fact. The `remember user's preferences` line triggers memory loading + the memory-store tool.
+
+---
+
+#### Phase 80: Parallel Agent Execution (0.5 day)
+
+Run multiple agent calls simultaneously. Useful for fan-out patterns (analyze from multiple angles, then merge).
+
+```clear
+agent 'Sentiment' receiving text:
+  result = ask claude 'Rate sentiment 1-10' with text returning:
+    score (number)
+  send back result
+
+agent 'Topic' receiving text:
+  result = ask claude 'Identify the main topic' with text returning:
+    topic
+  send back result
+
+agent 'Language' receiving text:
+  result = ask claude 'Detect the language' with text returning:
+    language
+  send back result
+
+when user calls POST /api/analyze sending data:
+  needs login
+  run these at the same time:
+    sentiment = call 'Sentiment' with data's text
+    topic = call 'Topic' with data's text
+    language = call 'Language' with data's text
+  create result:
+    sentiment is sentiment's score
+    topic is topic's topic
+    language is language's language
+  send back result
+```
+
+Compiles to: `const [sentiment, topic, language] = await Promise.all([agent_sentiment(data.text), agent_topic(data.text), agent_language(data.text)]);`
+
+---
+
+#### Phase 81: Human-in-the-Loop (0.5 day)
+
+Agent pauses for human approval on high-stakes actions. Creates an approval request, waits for response, then continues or aborts.
+
+```clear
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+  decided_by
+  decided_at (timestamp)
+
+agent 'Refund Processor' receiving request:
+  can use: look_up_order, process_refund
+
+  order = look_up_order(request's order_id)
+  if order's amount is greater than 100:
+    ask user to confirm 'Process refund of $' + order's amount + ' for order ' + order's id + '?'
+
+  process_refund(order)
+  send back 'Refund processed'
+
+when user calls POST /api/refund sending request:
+  needs login
+  result = call 'Refund Processor' with request
+  send back result
+```
+
+Compiles to: (1) create Approvals record with status='pending', (2) send notification (webhook/email/WebSocket), (3) return 202 Accepted with approval_id, (4) when approval is granted (PUT /api/approvals/:id), resume the agent from where it paused.
+
+---
+
+#### Phase 82: Agent Observability (0.5 day)
+
+Every LLM call, tool use, and decision is logged with input, output, latency, and token count. Queryable via API or viewable in a dashboard.
+
+```clear
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  tokens_used (number)
+  latency_ms (number)
+  created_at (timestamp), auto
+
+agent 'Support Bot' receiving message:
+  log agent decisions
+  can use: search_faq, escalate
+
+  response = ask claude 'Help the customer' with message
+  send back response
+
+page 'Agent Dashboard' at '/admin/agents':
+  on page load get logs from '/api/agent-logs'
+  display logs as table showing agent_name, action, latency_ms, tokens_used, created_at
+```
+
+Compiles to: wrapper around every `_askAI` call that records timing, token count, input/output to the AgentLogs table. `log agent decisions` enables the wrapper.
+
+---
+
+#### Phase 83: Guardrails / Safety (0.5 day)
+
+Compile-time constraints on what an agent can access. The compiler verifies that the agent's tool set does not include restricted tables or operations. Violations are compile errors, not runtime checks.
+
+```clear
+agent 'Public Bot' receiving question:
+  can use: search_products, check_availability
+  must not: modify prices, delete records, access users
+
+  response = ask claude 'Help the customer find products' with question
+  send back response
+```
+
+Compiles to: compile-time validation that none of the functions in `can use` touch the restricted tables/operations in `must not`. If `search_products` internally does `delete the Product with this id`, the compiler rejects it:
+```
+Error: agent 'Public Bot' uses 'search_products' which deletes from Products,
+  but the agent has 'must not: delete records'. Remove the restriction or
+  change the tool.
+```
+
+This is a **compile-time guarantee**, not a runtime check. A runaway agent can't bypass it because the code literally doesn't compile.
+
+---
+
+#### Phase 84: Agent Testing (0.5 day)
+
+Deterministic tests with mocked LLM responses. The test block specifies input and expected output. The compiler generates a test harness that intercepts `_askAI` calls and returns the mock.
+
+```clear
+test 'Classifier handles positive review':
+  set input to 'This product is amazing, I love it!'
+  mock claude responding:
+    sentiment is 'positive'
+    confidence = 0.95
+  result = call 'Classifier' with input
+  check result's sentiment is 'positive'
+  check result's confidence is greater than 0.9
+
+test 'Classifier handles negative review':
+  set input to 'Terrible experience, want a refund'
+  mock claude responding:
+    sentiment is 'negative'
+    confidence = 0.88
+  result = call 'Classifier' with input
+  check result's sentiment is 'negative'
+
+test 'Support Bot escalates high-urgency':
+  set input to 'My payment was charged twice, this is urgent!'
+  mock claude responding:
+    action is 'escalate'
+    reason is 'duplicate charge — financial issue'
+  result = call 'Customer Support' with input
+  check result's action is 'escalate'
+```
+
+Compiles to: test functions that replace `_askAI` with a mock that returns the specified response. `clear test app.clear` runs all test blocks. Exit code 0 = all pass, 4 = failures. CI-friendly.
+
+---
+
+**What a complete Clear AI agent looks like after Tier 7:**
+
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+
+create a Memories table:
+  user_id, required
+  fact, required
+
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  latency_ms (number)
+  created_at (timestamp), auto
+
+agent 'Customer Support' receiving message:
+  can use: look_up_orders, check_status, send_email, escalate
+  must not: delete records, modify prices, access admin tables
   knows about: Products, Orders, FAQ
   remember conversation context
+  remember user's preferences
+  log agent decisions
+  using 'claude-sonnet-4-6'
 
   response = ask claude 'Help this customer' with message
   if response's action is 'escalate':
     ask user to confirm 'Escalate to human agent?'
   send back response
+
+when user calls POST /api/chat sending message:
+  needs login
+  response = call 'Customer Support' with message
+  send back response
+
+page 'Support' at '/':
+  section 'Chat' with style app_layout:
+    section 'Messages' with style app_main:
+      display messages as list
+    'Message' is a text input saved as a message
+    button 'Send':
+      send message to '/api/chat'
+
+test 'handles product question':
+  mock claude responding:
+    answer is 'The Widget costs $29.99 and ships in 2 days'
+    action is 'respond'
+  result = call 'Customer Support' with 'How much does the Widget cost?'
+  check result's action is 'respond'
 ```
 
-That's 8 lines. The equivalent in LangChain is 200+ lines of Python with tool definitions, memory management, retrieval chains, and callback handlers.
+That's ~45 lines for a complete customer support agent with: tool use, RAG, conversation memory, user preferences, guardrails, observability, human-in-the-loop escalation, a chat UI, and deterministic tests.
 
-**Why this matters:** The entire AI agent ecosystem (LangChain, CrewAI, AutoGen, Semantic Kernel) is built for developers. Clear agents are built for AI to write and humans to read. A non-technical founder reads `agent 'Support' receiving message: can use: look_up_orders` and understands what it does. They read the LangChain equivalent and see `AgentExecutor.from_agent_and_tools(agent=agent, tools=[StructuredTool.from_function(...)])` and close the tab.
+The LangChain equivalent is 500-800 lines across 6+ files.
 
 ---
 
