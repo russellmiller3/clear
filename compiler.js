@@ -7,8 +7,81 @@
 // JavaScript, Python, or both. Same input ALWAYS produces the same output.
 // No AI in the compile step — it's a pure function.
 //
-// !! MAINTENANCE RULE: Update this TOC whenever you add, remove, or move
-// !! a section. Use section names (not line numbers) since lines drift.
+// !! MAINTENANCE RULE: Update this TOC AND this diagram whenever you add,
+// !! remove, or move a section. Use section names (not line numbers).
+//
+// ARCHITECTURE:
+//
+//   AST (from parser.js, validated by validator.js)
+//       │
+//       ▼
+//   ┌──────────────────────────────────────────────────────┐
+//   │  compileProgram(source, options)                      │
+//   │                                                       │
+//   │  1. tokenize(source) → parse(tokens) → AST            │
+//   │  2. resolveModules(AST) → inline imported files        │
+//   │  3. validate(AST) → errors/warnings                   │
+//   │  4. Detect target(s) from AST:                        │
+//   │     ┌─ web ──────────→ compileToReactiveJS()          │
+//   │     │                  compileToHTML()                 │
+//   │     ├─ js backend ──→ compileToJSBackend()            │
+//   │     ├─ python ──────→ compileToPythonBackend()        │
+//   │     └─ web + backend → all of the above               │
+//   │                                                       │
+//   │  Output: { html, javascript, serverJS, python,        │
+//   │           errors, warnings }                          │
+//   └──────────────────────────────────────────────────────┘
+//
+//   COMPILATION PIPELINE (for each output target):
+//
+//   AST body[]
+//       │
+//       ▼
+//   ┌──────────────────────────────────────────────────────┐
+//   │  compileNode(node, ctx) → string                      │
+//   │                                                       │
+//   │  ctx = { lang, indent, declared, stateVars, mode,     │
+//   │         sourceMap, schemaNames, dbBackend,             │
+//   │         endpointMethod, endpointHasId, isSeedEndpoint,│
+//   │         insideAgent, _astBody }                       │
+//   │                                                       │
+//   │  Dispatches to _compileNodeInner → switch(node.type): │
+//   │    ASSIGN ────→ const x = expr;                       │
+//   │    ENDPOINT ──→ compileEndpoint() → app.get(...)      │
+//   │    CRUD ──────→ compileCrud() → db.insert/update/etc  │
+//   │    RESPOND ───→ compileRespond() → res.json(...)      │
+//   │    AGENT ─────→ compileAgent() → async function       │
+//   │    VALIDATE ──→ compileValidate() → _validate(...)    │
+//   │    DATA_SHAPE → compileDataShape() → schema + table   │
+//   │    IF_THEN ───→ if (...) { ... }                      │
+//   │    (96 node types total — see _compileNodeInner)       │
+//   │                                                       │
+//   │  Expressions: exprToCode(expr, ctx) → string          │
+//   │    Handles: literals, variables, binary ops,           │
+//   │    member access, function calls, ask_ai, http_request │
+//   └──────────────────────────────────────────────────────┘
+//
+//   UTILITY FUNCTIONS (tree-shaken, inlined in output):
+//   │  _clearTry ... error context wrapping for CRUD
+//   │  _clearError .. 3-level debug output (off/true/verbose)
+//   │  _validate .... field-level validation
+//   │  _pick ........ schema field filtering (mass assignment protection)
+//   │  _esc ......... HTML entity escaping
+//   │  _toast ....... UI toast notifications
+//   │  _askAI ....... Anthropic API call with structured output
+//   │  _clear_* ..... string/array/number utilities
+//   └─ Only emitted when actually used (tree-shaking via _getUsedUtilities)
+//
+// 5 TOP-LEVEL OUTPUT PATHS:
+//   1. Non-reactive JS (simple scripts, no UI state)
+//   2. Reactive JS (inputs + state + _recompute cycle)
+//   3. Backend JS (Express server with middleware + CRUD)
+//   4. Backend Python (FastAPI server)
+//   5. HTML scaffold (DaisyUI + Tailwind + theme CSS)
+//
+// DEPENDENCIES: parser.js (NodeType, parse)
+// DEPENDENTS:   index.js (public API), cli/clear.js (CLI commands)
+//
 //
 // TABLE OF CONTENTS:
 //   PUBLIC API ........................ compileProgram(), compile(), resolveModules()
