@@ -136,11 +136,17 @@ const UTILITY_FUNCTIONS = [
     }
     return out;
   }
+  const map = typeof _clearMap !== 'undefined' ? _clearMap : null;
   let hint = '';
   const msg = err.message || '';
   if (msg.includes('required')) {
     const field = msg.match(/^(\\w+) is required/);
-    hint = field ? "'" + field[1] + "' is required in " + (ctx.table || 'this table') + ". Add it to the form or remove 'required' from the table definition." : msg;
+    let tableInfo = ctx.table || 'this table';
+    if (field && map && map.tables && ctx.table && map.tables[ctx.table]) {
+      const t = map.tables[ctx.table];
+      tableInfo = ctx.table + " (defined at " + t.file + " line " + t.line + ")";
+    }
+    hint = field ? "'" + field[1] + "' is required in " + tableInfo + ". Add it to the form or remove 'required' from the table definition." : msg;
   } else if (msg.includes('must be unique') || msg.includes('already exists')) {
     hint = "A record with this value already exists. Check for duplicates before saving.";
   } else if (msg.includes('Authentication required') || msg.includes('No token')) {
@@ -158,6 +164,20 @@ const UTILITY_FUNCTIONS = [
   } else {
     hint = msg;
   }
+  let suggested_fix = null;
+  if (map) {
+    if (msg.includes('required')) {
+      const field = msg.match(/^(\\w+) is required/);
+      if (field && ctx.table && map.tables && map.tables[ctx.table]) {
+        const t = map.tables[ctx.table];
+        suggested_fix = { file: t.file, line: t.line, action: 'info', explanation: "Ensure '" + field[1] + "' is included in the request body. The table at " + t.file + " line " + t.line + " requires it." };
+      }
+    } else if (msg.includes('Authentication required') || msg.includes('No token')) {
+      if (ctx.line && ctx.file) {
+        suggested_fix = { file: ctx.file, line: ctx.line, action: 'add_line_after', content: "  needs login", explanation: "Add 'needs login' to the endpoint definition." };
+      }
+    }
+  }
   const result = {
     status,
     response: {
@@ -169,11 +189,13 @@ const UTILITY_FUNCTIONS = [
       technical: msg
     }
   };
+  if (suggested_fix) result.response.suggested_fix = suggested_fix;
   if (debug === 'verbose' && ctx) {
+    const tableSchema = (map && map.tables && ctx.table) ? map.tables[ctx.table] : null;
     result.response.context = redact({
       endpoint: ctx.endpoint || null,
       input: ctx.input || null,
-      schema: ctx.schema || null,
+      schema: tableSchema ? tableSchema.fields : (ctx.schema || null),
       table: ctx.table || null
     });
   }
@@ -4599,6 +4621,42 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   if (usedUtils.length > 0) {
     lines.push('// Built-in utilities');
     for (const util of usedUtils) lines.push(util);
+    lines.push('');
+  }
+
+  // _clearMap: conditional source map for runtime error translator
+  // Only emitted when CLEAR_DEBUG is set — zero overhead in production
+  const dataShapes = body.filter(n => n.type === NodeType.DATA_SHAPE);
+  const endpoints = body.filter(n => n.type === NodeType.ENDPOINT);
+  if (dataShapes.length > 0 || endpoints.length > 0) {
+    lines.push('// Source map for error translator (only active with CLEAR_DEBUG)');
+    lines.push('const _clearMap = process.env.CLEAR_DEBUG ? {');
+    // Tables with schemas
+    if (dataShapes.length > 0) {
+      lines.push('  tables: {');
+      for (const ds of dataShapes) {
+        const fields = ds.fields.map(f => {
+          const props = [];
+          if (f.required) props.push('required: true');
+          if (f.unique) props.push('unique: true');
+          if (f.fieldType) props.push(`type: "${f.fieldType}"`);
+          return `${sanitizeName(f.name)}: { ${props.join(', ')} }`;
+        }).join(', ');
+        lines.push(`    ${pluralizeName(ds.name)}: { line: ${ds.line}, file: "${ds._sourceFile || 'main.clear'}", fields: { ${fields} } },`);
+      }
+      lines.push('  },');
+    }
+    // Endpoints
+    if (endpoints.length > 0) {
+      lines.push('  endpoints: {');
+      for (const ep of endpoints) {
+        const key = `${ep.method.toUpperCase()} ${ep.path}`;
+        const hasAuth = ep.body && ep.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE);
+        lines.push(`    "${key}": { line: ${ep.line}, file: "${ep._sourceFile || 'main.clear'}", auth: ${hasAuth} },`);
+      }
+      lines.push('  }');
+    }
+    lines.push('} : null;');
     lines.push('');
   }
 
