@@ -165,6 +165,10 @@ export const NodeType = Object.freeze({
   ACCEPT_FILE: 'accept_file',
   EXTERNAL_FETCH: 'external_fetch',
 
+  // External API Calls (Phase 45)
+  HTTP_REQUEST: 'http_request',
+  SERVICE_CALL: 'service_call',
+
   // Advanced features (Phase 20)
   STREAM: 'stream',
   BACKGROUND: 'background',
@@ -781,6 +785,89 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
           i++;
           continue;
         }
+      }
+
+      // External API call (standalone): call api 'url': + config block
+      if (firstToken.canonical === 'call_api') {
+        let urlNode;
+        if (tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
+          urlNode = literalString(tokens[1].value, line);
+        } else if (tokens.length >= 2) {
+          urlNode = variableRef(tokens[1].value, line);
+        } else {
+          errors.push({ line, message: "call api needs a URL. Example: call api 'https://api.example.com'" });
+          i++; continue;
+        }
+        const config = { method: null, headers: [], body: null, timeout: null };
+        let j = i + 1;
+        while (j < lines.length && lines[j].indent > indent) {
+          const cfgTokens = lines[j].tokens;
+          if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
+          const key = cfgTokens[0].value?.toLowerCase();
+          if (key === 'method' && cfgTokens.length >= 3) {
+            const valIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+            if (valIdx >= 0) config.method = cfgTokens[valIdx].value;
+          } else if (key === 'header' && cfgTokens.length >= 4) {
+            const nameIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+            if (nameIdx >= 0) {
+              const headerName = cfgTokens[nameIdx].value;
+              const isIdx = cfgTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+              if (isIdx >= 0) {
+                const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+                if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
+              }
+            }
+          } else if (key === 'body' && cfgTokens.length >= 3) {
+            const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+            if (isIdx >= 0) {
+              const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+              if (!valExpr.error) config.body = valExpr.node;
+            }
+          } else if (key === 'timeout' && cfgTokens.length >= 3) {
+            const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
+            if (numIdx >= 0) {
+              const val = cfgTokens[numIdx].value;
+              let unit = 'seconds';
+              if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
+              config.timeout = { value: val, unit };
+            }
+          }
+          j++;
+        }
+        body.push({ type: NodeType.HTTP_REQUEST, url: urlNode, config, line });
+        i = j;
+        continue;
+      }
+
+      // Service presets: charge via stripe: / send sms via twilio:
+      if (firstToken.canonical === 'charge_via_stripe') {
+        const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
+        body.push({ type: NodeType.SERVICE_CALL, service: 'stripe', config, line });
+        i = endIdx;
+        continue;
+      }
+      if (firstToken.canonical === 'send_sms_via_twilio') {
+        const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
+        body.push({ type: NodeType.SERVICE_CALL, service: 'twilio', config, line });
+        i = endIdx;
+        continue;
+      }
+      // send email via sendgrid: (must check BEFORE send email: SMTP)
+      if (firstToken.canonical === 'respond' &&
+          tokens.length >= 4 && tokens[1].value === 'email' &&
+          tokens[2].value === 'via' && tokens[3].value === 'sendgrid' &&
+          i + 1 < lines.length && lines[i + 1].indent > indent) {
+        const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
+        body.push({ type: NodeType.SERVICE_CALL, service: 'sendgrid', config, line });
+        i = endIdx;
+        continue;
+      }
+
+      // needs login / needs auth (alias for requires auth)
+      if (firstToken.canonical === 'needs_login') {
+        body.push({ type: NodeType.REQUIRES_AUTH, line });
+        i++;
+        continue;
       }
 
       // Email: configure email: + indented config
@@ -1539,6 +1626,20 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
+      // Phase 45: when X notifies '/path': (natural webhook syntax)
+      // e.g. when stripe notifies '/stripe/events':
+      if (firstToken.value === 'when' &&
+          tokens.length >= 4 && tokens[2].value === 'notifies' &&
+          tokens[3].type === TokenType.STRING) {
+        const service = tokens[1].value; // stripe, twilio, sendgrid, github, etc.
+        const path = tokens[3].value;
+        // Parse the body block using parseBlock
+        const result = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.WEBHOOK, path, service, body: result.body, line });
+        i = result.endIdx;
+        continue;
+      }
+
       // Phase 17: webhook '/path' signed with env('SECRET'):
       if (firstToken.canonical === 'webhook') {
         const result = parseWebhook(lines, i, indent, errors);
@@ -2017,6 +2118,54 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
             errors.push({ line, message: "returning: needs at least one field. Example:\n  returning:\n    score (number)\n    reasoning" });
           }
           parsed.expression.schema = schema;
+          body.push(assignNode(parsed.name, parsed.expression, line));
+          i = j;
+          continue;
+        }
+        // API call with config block: "result = call api 'url':" + indented config
+        if (parsed.needsBlock && parsed.expression && parsed.expression.type === NodeType.HTTP_REQUEST) {
+          const config = { method: null, headers: [], body: null, timeout: null };
+          let j = i + 1;
+          while (j < lines.length && lines[j].indent > indent) {
+            const cfgTokens = lines[j].tokens;
+            if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
+            const key = cfgTokens[0].value?.toLowerCase();
+            if (key === 'method' && cfgTokens.length >= 3) {
+              // method is 'POST'
+              const valIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+              if (valIdx >= 0) config.method = cfgTokens[valIdx].value;
+            } else if (key === 'header' && cfgTokens.length >= 4) {
+              // header 'Authorization' is 'Bearer ...'
+              const nameIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+              if (nameIdx >= 0) {
+                const headerName = cfgTokens[nameIdx].value;
+                // Parse the value expression (everything after 'is')
+                const isIdx = cfgTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+                if (isIdx >= 0) {
+                  const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+                  if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
+                }
+              }
+            } else if (key === 'body' && cfgTokens.length >= 3) {
+              // body is data_var
+              const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+              if (isIdx >= 0) {
+                const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+                if (!valExpr.error) config.body = valExpr.node;
+              }
+            } else if (key === 'timeout' && cfgTokens.length >= 3) {
+              // timeout is 10 seconds
+              const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
+              if (numIdx >= 0) {
+                const val = cfgTokens[numIdx].value;
+                let unit = 'seconds';
+                if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
+                config.timeout = { value: val, unit };
+              }
+            }
+            j++;
+          }
+          parsed.expression.config = config;
           body.push(assignNode(parsed.name, parsed.expression, line));
           i = j;
           continue;
@@ -4941,11 +5090,29 @@ function parseAssignment(tokens, line) {
     return { name, expression: literalList([], line) };
   }
 
-  // Check for "ask ai 'prompt'" on the right side of assignment
+  // Check for "call api 'url'" on the right side of assignment
+  // e.g. result = call api 'https://api.stripe.com/v1/charges'
+  if (pos < tokens.length && tokens[pos].canonical === 'call_api') {
+    pos++; // skip 'call api'
+    if (pos >= tokens.length) {
+      return { error: "call api needs a URL. Example: result = call api 'https://api.example.com'" };
+    }
+    // URL can be a string literal or a variable
+    let url;
+    if (tokens[pos].type === TokenType.STRING) {
+      url = literalString(tokens[pos].value, line);
+    } else {
+      url = variableRef(tokens[pos].value, line);
+    }
+    return { name, expression: { type: NodeType.HTTP_REQUEST, url, line }, needsBlock: true };
+  }
+
+  // Check for "ask ai/claude 'prompt'" on the right side of assignment
   // e.g. answer = ask ai 'Summarize this' with context_data
+  // e.g. answer = ask claude 'Summarize this' with context_data
   if (pos < tokens.length && tokens[pos].value === 'ask' &&
-      pos + 1 < tokens.length && tokens[pos + 1].value === 'ai') {
-    pos += 2; // skip 'ask ai'
+      pos + 1 < tokens.length && (tokens[pos + 1].value === 'ai' || tokens[pos + 1].value === 'claude')) {
+    pos += 2; // skip 'ask ai' / 'ask claude'
     if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
       return { error: "ask ai needs a quoted prompt. Example: answer = ask ai 'Summarize this' with data" };
     }
@@ -4954,24 +5121,34 @@ function parseAssignment(tokens, line) {
     let context = null;
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
       pos++;
-      // Parse context, but stop before 'returning' if present
-      const returningIdx = tokens.findIndex((t, i) => i >= pos && t.value === 'returning');
-      const endPos = returningIdx >= 0 ? returningIdx : undefined;
+      // Parse context, but stop before 'returning' or 'using' if present
+      const stopIdx = tokens.findIndex((t, i) => i >= pos && (t.value === 'returning' || t.value === 'using'));
+      const endPos = stopIdx >= 0 ? stopIdx : undefined;
       const expr = parseExpression(tokens, pos, line, endPos);
       if (expr.error) return { error: expr.error };
       context = expr.node;
       pos = expr.nextPos;
+    }
+    // Check for "using 'model-name'" clause
+    let model = null;
+    if (pos < tokens.length && tokens[pos].value === 'using') {
+      pos++;
+      if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+        model = tokens[pos].value;
+        pos++;
+      }
     }
     // Check for "returning:" at end of line (structured output schema follows as indented block)
     let hasSchema = false;
     if (pos < tokens.length && tokens[pos].value === 'returning') {
       hasSchema = true;
     }
-    return { name, expression: { type: NodeType.ASK_AI, prompt, context, line }, hasSchema };
+    return { name, expression: { type: NodeType.ASK_AI, prompt, context, model, line }, hasSchema };
   }
 
   // Check for "call 'Agent Name' with data" on the right side of assignment
   // e.g. result = call 'Lead Scorer' with lead_data
+  // NOTE: call api is handled above (canonical call_api), so this only matches call + STRING
   if (pos < tokens.length && tokens[pos].value === 'call' &&
       pos + 1 < tokens.length && tokens[pos + 1].type === TokenType.STRING) {
     pos++; // skip 'call'
