@@ -1,0 +1,237 @@
+# CRM SPA — Backend
+# All database tables, API endpoints, seed data, and SSE streaming
+
+# Database Tables
+create a Contacts table:
+  name, required
+  email, required, unique
+  company
+  phone
+  status, default 'lead'
+  source, default 'direct'
+  notes
+  created_at_date, auto
+
+create a Deals table:
+  contact_id, required
+  title, required
+  value (number), default 0
+  stage, default 'prospect'
+  probability (number), default 10
+  expected_close
+  created_at_date, auto
+
+create a Activities table:
+  contact_id
+  deal_id
+  action, required
+  detail
+  performed_by, default 'system'
+  created_at_date, auto
+
+create a Tags table:
+  name, required, unique
+  color, default 'blue'
+
+# Allow the frontend to talk to the backend
+allow cross-origin requests
+
+# Print every request to the console for debugging
+log every request
+
+# --- Seed Data ---
+when user calls POST /api/seed:
+  create c1:
+    name is 'Alice Chen'
+    email is 'alice@acme.co'
+    company is 'Acme Corporation'
+    phone is '555-0101'
+    status is 'customer'
+    source is 'referral'
+  save c1 as new Contact
+  create c2:
+    name is 'Bob Smith'
+    email is 'bob@globex.io'
+    company is 'Globex Industries'
+    phone is '555-0102'
+    status is 'qualified'
+    source is 'website'
+  save c2 as new Contact
+  create c3:
+    name is 'Carol Davis'
+    email is 'carol@initech.com'
+    company is 'Initech'
+    status is 'lead'
+    source is 'cold-call'
+  save c3 as new Contact
+  create c4:
+    name is 'Dan Wilson'
+    email is 'dan@umbrella.org'
+    company is 'Umbrella Corp'
+    status is 'customer'
+    source is 'event'
+  save c4 as new Contact
+  create d1:
+    contact_id is '1'
+    title is 'Acme Enterprise License'
+    value = 45000
+    stage is 'negotiation'
+    probability = 70
+    expected_close is '2026-05-15'
+  save d1 as new Deal
+  create d2:
+    contact_id is '2'
+    title is 'Globex Pilot Program'
+    value = 12000
+    stage is 'proposal'
+    probability = 40
+    expected_close is '2026-06-01'
+  save d2 as new Deal
+  create d3:
+    contact_id is '1'
+    title is 'Acme Support Contract'
+    value = 18000
+    stage is 'closed-won'
+    probability = 100
+  save d3 as new Deal
+  create d4:
+    contact_id is '4'
+    title is 'Umbrella Annual Renewal'
+    value = 67300
+    stage is 'prospect'
+    probability = 20
+    expected_close is '2026-08-01'
+  save d4 as new Deal
+  create a1:
+    contact_id is '1'
+    action is 'Email sent'
+    detail is 'Follow-up on enterprise proposal'
+    performed_by is 'Sales Rep'
+  save a1 as new Activity
+  create a2:
+    contact_id is '2'
+    action is 'Call logged'
+    detail is 'Discussed pilot timeline and pricing'
+    performed_by is 'Sales Rep'
+  save a2 as new Activity
+  create a3:
+    deal_id is '1'
+    action is 'Deal updated'
+    detail is 'Moved to negotiation stage'
+    performed_by is 'Sales Manager'
+  save a3 as new Activity
+  create t1:
+    name is 'Enterprise'
+    color is 'purple'
+  save t1 as new Tag
+  create t2:
+    name is 'Hot Lead'
+    color is 'red'
+  save t2 as new Tag
+  send back 'seeded' with success message
+
+# --- Contacts CRUD ---
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+
+when user calls POST /api/contacts sending contact_data:
+  requires auth
+  validate contact_data:
+    name is text, required, min 1, max 100
+    email is text, required, matches email
+    company is text
+    phone is text
+    status is text
+    source is text
+    notes is text
+  new_contact = save contact_data as new Contact
+  send back new_contact with success message
+
+when user calls PUT /api/contacts/:id sending update_data:
+  requires auth
+  validate update_data:
+    name is text
+    email is text
+    company is text
+    phone is text
+    status is text
+    notes is text
+  save update_data to Contacts
+  send back 'updated' with success message
+
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+
+# --- Deals CRUD ---
+when user calls GET /api/deals:
+  all_deals = get all Deals
+  send back all_deals
+
+when user calls POST /api/deals sending deal_data:
+  requires auth
+  validate deal_data:
+    contact_id is text, required
+    title is text, required, min 1, max 200
+    value is number
+    stage is text
+    probability is number
+    expected_close is text
+  new_deal = save deal_data as new Deal
+  send back new_deal with success message
+
+when user calls PUT /api/deals/:id sending update_data:
+  requires auth
+  validate update_data:
+    title is text
+    value is number
+    stage is text
+    probability is number
+    expected_close is text
+  save update_data to Deals
+  send back 'updated' with success message
+
+when user calls DELETE /api/deals/:id:
+  requires auth
+  delete the Deal with this id
+  send back 'deleted' with success message
+
+# --- Activities ---
+when user calls GET /api/activities:
+  all_activities = get all Activities
+  send back all_activities
+
+when user calls POST /api/activities sending activity_data:
+  requires auth
+  validate activity_data:
+    contact_id is text
+    deal_id is text
+    action is text, required
+    detail is text
+    performed_by is text
+  new_activity = save activity_data as new Activity
+  send back new_activity with success message
+
+# --- Activity Stream (SSE) ---
+when user calls GET /api/activity/stream:
+  stream:
+    send back 'heartbeat'
+
+# --- Tags ---
+when user calls GET /api/tags:
+  all_tags = get all Tags
+  send back all_tags
+
+when user calls POST /api/tags sending tag_data:
+  requires auth
+  validate tag_data:
+    name is text, required
+    color is text
+  new_tag = save tag_data as new Tag
+  send back new_tag with success message
+
+# --- Health ---
+when user calls GET /api/health:
+  send back 'ok'

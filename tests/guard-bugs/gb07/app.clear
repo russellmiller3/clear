@@ -1,0 +1,25 @@
+build for javascript backend
+database is local memory
+
+create a Tags table:
+  name, required, unique
+  color, default 'gray'
+
+when user calls POST /api/seed:
+  create t1:
+    name is 'Frontend'
+    color is 'blue'
+  save t1 as new Tag
+  create t2:
+    name is 'Backend'
+    color is 'green'
+  save t2 as new Tag
+  create t3:
+    name is 'DevOps'
+    color is 'orange'
+  save t3 as new Tag
+  send back 'seeded'
+
+when user calls GET /api/tags:
+  tags = look up all Tags
+  send back tags

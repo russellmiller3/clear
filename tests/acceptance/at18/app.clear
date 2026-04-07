@@ -1,0 +1,9 @@
+build for web
+theme 'ivory'
+page 'App' at '/':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Menu'
+      text 'Dashboard'
+    section 'Main' with style app_main:
+      heading 'Content'

@@ -49,6 +49,7 @@ function _validate(body, rules) {
 // Ecommerce API -- Stress Test App #4 (v2, with business logic)
 // Tests: product catalog, orders, inventory guards, auth, webhooks
 // --- Data ---
+// clear:8
 // Data shape: Products
 const ProductsSchema = {
   name: { type: "text", required: true },
@@ -58,6 +59,7 @@ const ProductsSchema = {
   created_at: { type: "timestamp", auto: true }
 };
 db.createTable('products', ProductsSchema);
+// clear:15
 // Data shape: Orders
 const OrdersSchema = {
   user_id: { type: "fk", required: true },
@@ -69,6 +71,7 @@ const OrdersSchema = {
 };
 db.createTable('orders', OrdersSchema);
 // --- Stripe Config ---
+// clear:25
 // Checkout config: Standard Purchase
 const CHECKOUT_STANDARD_PURCHASE = {
   price: 'price_auto',
@@ -78,6 +81,7 @@ const CHECKOUT_STANDARD_PURCHASE = {
 };
 // --- Config ---
 // --- Public: Product Catalog ---
+// clear:38
 app.get('/api/products', async (req, res) => {
   try {
     const all_products = await db.findAll('products');
@@ -86,6 +90,7 @@ app.get('/api/products', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:42
 app.get('/api/products/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -99,6 +104,7 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 // --- Protected: Orders ---
+// clear:49
 app.post('/api/orders', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -116,6 +122,7 @@ app.post('/api/orders', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:62
 app.get('/api/orders', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -125,6 +132,7 @@ app.get('/api/orders', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:67
 app.get('/api/orders/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -139,6 +147,7 @@ app.get('/api/orders/:id', async (req, res) => {
   }
 });
 // --- Admin: Product Management ---
+// clear:75
 app.post('/api/products', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -154,6 +163,7 @@ app.post('/api/products', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:84
 app.delete('/api/products/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -166,15 +176,18 @@ app.delete('/api/products/:id', async (req, res) => {
   }
 });
 // --- Webhook ---
+// clear:92
 app.post('/stripe/events', async (req, res) => {
   const incoming = req.body;
   const crypto = require('crypto');
   const signature = req.headers['stripe-signature'] || '';
   const expected = crypto.createHmac('sha256', (process.env["STRIPE_WEBHOOK_SECRET"] || "")).update(JSON.stringify(req.body)).digest('hex');
   if (signature !== expected) { return res.status(401).json({ error: "Invalid signature" }); }
+  // clear:93
   return res.json({ message: "ok" });
 });
 // --- Health ---
+// clear:97
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });

@@ -1,0 +1,38 @@
+build for javascript backend
+database is local memory
+
+create a Accounts table:
+  owner, required
+  balance (number), default 0
+
+create a Transfers table:
+  from_id, required
+  to_id, required
+  amount (number), required
+
+when user calls POST /api/transfer sending transfer:
+  needs login
+  from_account = look up Account where id is transfer's from_id
+  to_account = look up Account where id is transfer's to_id
+  check from_account's balance is at least transfer's amount, otherwise error 'Insufficient balance'
+  from_account's balance = from_account's balance - transfer's amount
+  save from_account to Accounts
+  to_account's balance = to_account's balance + transfer's amount
+  save to_account to Accounts
+  new_transfer = save transfer as new Transfer
+  send back new_transfer
+
+when user calls POST /api/seed:
+  create a1:
+    owner is 'Alice'
+    balance = 500
+  save a1 as new Account
+  create a2:
+    owner is 'Bob'
+    balance = 200
+  save a2 as new Account
+  send back 'seeded'
+
+when user calls GET /api/accounts:
+  accounts = look up all Accounts
+  send back accounts

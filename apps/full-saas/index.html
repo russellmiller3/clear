@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- User Styles --- */
+.style-navbar {
+  background: #111827;
+  color: white;
+  padding: 16px;
+}
+.style-navbar h1, .style-navbar h2, .style-navbar p, .style-navbar strong,
+.style-navbar .clear-text, .style-navbar .clear-heading, .style-navbar .clear-subheading,
+.style-navbar .clear-small { color: inherit; }
+
+.style-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.style-hero {
+  background: #1e293b;
+  color: white;
+  padding: 64px;
+  margin-left: auto; margin-right: auto; max-width: 800px;
+}
+.style-hero h1, .style-hero h2, .style-hero p, .style-hero strong,
+.style-hero .clear-text, .style-hero .clear-heading, .style-hero .clear-subheading,
+.style-hero .clear-small { color: inherit; }</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="clear-section style-hero">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Build faster with Clear</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">The programming language AI writes and humans read.</p>
+    <a class="link link-primary text-sm" href="/signup">Get Started</a>
+    <a class="link link-primary text-sm" href="/pricing">View Pricing</a>
+      </div>
+    </div>
+    <div class="clear-section style-card">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Simple, transparent pricing</h1>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Free</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">100 API requests per month. Perfect for getting started.</p>
+    <div class="divider my-4"></div>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Pro — $29/month</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">10,000 API requests per month. Priority support.</p>
+      </div>
+    </div>
+    <div class="clear-section style-card">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Create your account</h1>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+      <input id="input_email" class="input input-bordered w-full" type="text" placeholder="Email">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+      <input id="input_password" class="input input-bordered w-full" type="text" placeholder="Password">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Name</legend>
+      <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Name">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Create_Account">Create Account</button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+document.title = "Home";
+
+// --- State ---
+let _state = {
+  email: "",
+  password: "",
+  name: ""
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  document.getElementById('input_email').value = _state.email;
+  document.getElementById('input_password').value = _state.password;
+  document.getElementById('input_name').value = _state.name;
+}
+
+// --- Input listeners ---
+document.getElementById('input_email').addEventListener('input', function(e) {
+  _state.email = e.target.value;
+  _recompute();
+});
+document.getElementById('input_password').addEventListener('input', function(e) {
+  _state.password = e.target.value;
+  _recompute();
+});
+document.getElementById('input_name').addEventListener('input', function(e) {
+  _state.name = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Create_Account').addEventListener('click', async function() {
+    if (_state.email === '' || _state.email == null) { _toast('email is required', 'error'); return; }
+    if (_state.password === '' || _state.password == null) { _toast('password is required', 'error'); return; }
+    if (_state.name === '' || _state.name == null) { _toast('name is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Create_Account');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/auth/signup", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: _state.email, password: _state.password, name: _state.name }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+_recompute();
+
+// --- Hash Router ---
+const _routes = {
+  '/': 'Home',
+  '/pricing': 'Pricing',
+  '/signup': 'Sign_Up'
+};
+function _router() {
+  const hash = location.hash.slice(1) || '/';
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (hash === route) ? 'block' : 'none';
+  }
+}
+window.addEventListener('hashchange', _router);
+_router();
+  </script>
+</body>
+</html>

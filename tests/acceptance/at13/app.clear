@@ -1,0 +1,19 @@
+build for web and javascript backend
+database is local memory
+
+create a Contacts table:
+  name, required
+  email, required
+
+when user calls POST /api/contacts sending data:
+  needs login
+  validate data:
+    name is text, required
+    email is text, required, matches email
+  new_contact = save data as new Contact
+  send back new_contact
+
+page 'App' at '/':
+  'Name' is a text input saved as a name
+  button 'Save':
+    send name to '/api/contacts'
