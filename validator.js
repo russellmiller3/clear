@@ -45,6 +45,7 @@ export function validate(ast) {
   validateDisplayActions(ast.body, warnings);
   validateEndpointResponses(ast.body, warnings);
   validateFetchURLsMatchEndpoints(ast.body, warnings);
+  validateOWASP(ast.body, errors, warnings);
   return { errors, warnings };
 }
 
@@ -938,5 +939,122 @@ function validateFetchURLsMatchEndpoints(body, warnings) {
     }
   }
   checkFetches(body);
+}
+
+/**
+ * OWASP TOP 10 SECURITY CHECKS
+ *
+ * Catches security vulnerabilities at compile time based on the OWASP Top 10:2025.
+ * Each check maps to a specific OWASP category.
+ */
+function validateOWASP(body, errors, warnings) {
+  // ── A03: SQL Injection via raw queries with string interpolation ──
+  // Raw queries that use string concatenation instead of parameterized queries
+  function checkInjection(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.RAW_QUERY && n.sql) {
+        // Check if SQL contains interpolation markers like {variable} or ' + variable
+        if (n.sql.includes('{') || n.sql.includes("' +") || n.sql.includes("\" +")) {
+          warnings.push(
+            `Line ${n.line}: SQL query uses string interpolation which is vulnerable to SQL injection. ` +
+            `Use parameterized queries instead: query 'SELECT * FROM users WHERE id = $1' with user_id`
+          );
+        }
+      }
+      // Check for raw SQL in assignments too
+      if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RAW_QUERY) {
+        if (n.expression.sql && (n.expression.sql.includes('{') || n.expression.sql.includes("' +"))) {
+          warnings.push(
+            `Line ${n.line}: SQL query uses string interpolation — this is a SQL injection risk. ` +
+            `Use parameterized queries: query 'SELECT * WHERE id = $1' with id_var`
+          );
+        }
+      }
+      if (n.body) checkInjection(n.body);
+    }
+  }
+  checkInjection(body);
+
+  // ── A04: Insecure Direct Object References (path traversal in file ops) ──
+  // File operations that use user-controlled paths without validation
+  function checkPathTraversal(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.FILE_OP) {
+        // If file path is a variable reference (not a literal), warn about path traversal
+        if (n.path && n.path.type === NodeType.VARIABLE_REF) {
+          warnings.push(
+            `Line ${n.line}: File operation uses a variable path ('${n.path.name}'). ` +
+            `If this comes from user input, it could allow path traversal attacks (../../etc/passwd). ` +
+            `Validate the path or use a fixed directory prefix.`
+          );
+        }
+      }
+      if (n.body) checkPathTraversal(n.body);
+    }
+  }
+  checkPathTraversal(body);
+
+  // ── A05: Security Misconfiguration — PATCH endpoints without auth ──
+  function checkPatchWithoutAuth(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.ENDPOINT && n.method === 'PATCH') {
+        const hasAuth = n.body?.some(b =>
+          b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE
+        );
+        if (!hasAuth) {
+          errors.push({
+            line: n.line,
+            patchable: true,
+            fix: ['  requires auth'],
+            insertAfter: n.line,
+            message: `PATCH ${n.path} has no auth guard — anyone can modify data. Add: requires auth`
+          });
+        }
+      }
+      if (n.body) checkPatchWithoutAuth(n.body);
+    }
+  }
+  checkPatchWithoutAuth(body);
+
+  // ── A07: Cross-Site Request Forgery — POST endpoints that modify data without auth ──
+  // POST endpoints that save/update/delete without auth are CSRF-vulnerable
+  function checkCSRF(nodes) {
+    for (const n of nodes) {
+      if (n.type !== NodeType.ENDPOINT) continue;
+      if (n.method !== 'POST') continue;
+      const hasAuth = n.body?.some(b =>
+        b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE
+      );
+      const hasCrud = n.body?.some(b => n.type === NodeType.CRUD);
+      const modifiesData = n.body?.some(b =>
+        b.type === NodeType.CRUD && (b.operation === 'save' || b.operation === 'remove')
+      );
+      if (modifiesData && !hasAuth) {
+        const path = n.path?.toLowerCase() || '';
+        // Skip signup/register — those are intentionally unauthenticated
+        if (path.includes('signup') || path.includes('register') || path.includes('seed')) continue;
+        warnings.push(
+          `Line ${n.line}: POST ${n.path} modifies data without auth. ` +
+          `Without authentication, this endpoint is vulnerable to CSRF attacks — ` +
+          `a malicious site could trick a user's browser into submitting data. ` +
+          `Add: requires auth`
+        );
+      }
+    }
+  }
+  checkCSRF(body);
+
+  // ── A09: Security Logging — no logging on apps with auth ──
+  const hasAuth = body.some(n =>
+    n.type === NodeType.ENDPOINT && n.body &&
+    n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE)
+  );
+  const hasLogging = body.some(n => n.type === NodeType.LOG_REQUESTS);
+  if (hasAuth && !hasLogging) {
+    warnings.push(
+      `Your app requires auth but doesn't log requests. Without logging, you can't detect ` +
+      `unauthorized access attempts or debug auth issues. Add: log every request`
+    );
+  }
 }
 
