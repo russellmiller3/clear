@@ -11460,5 +11460,45 @@ describe('Phase 33 - CSS hover/focus/transition', () => {
   });
 });
 
+// =============================================================================
+// PHASE 37: BUG-PREVENTION VALIDATORS
+// =============================================================================
+
+describe('Phase 37 - endpoint must have response', () => {
+  it('warns when endpoint has no send back', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/health:\n  show 'alive'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no response'))).toBe(true);
+  });
+
+  it('no warning when endpoint has send back', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('no response'))).toHaveLength(0);
+  });
+});
+
+describe('Phase 37 - fetch URL matches endpoints', () => {
+  it('warns when fetch URL does not match any endpoint', () => {
+    const src = `build for web and javascript backend
+when user calls GET /api/users:
+  send back 'ok'
+page 'App' at '/':
+  on page load get items from '/api/user'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes("doesn't match any endpoint"))).toBe(true);
+  });
+
+  it('no warning when fetch URL matches endpoint', () => {
+    const src = `build for web and javascript backend
+when user calls GET /api/users:
+  send back 'ok'
+page 'App' at '/':
+  on page load get items from '/api/users'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes("doesn't match"))).toHaveLength(0);
+  });
+});
+
 run();
 
