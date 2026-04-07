@@ -52,7 +52,7 @@ when user calls POST /api/seed:
 page 'Expenses' at '/':
   on page load get expenses from '/api/expenses'
   'Description' is a text input saved as a description
-  'Amount' is a text input saved as a amount
+  'Amount' is a number input saved as a amount
   'Category' is a text input saved as a category
   'Date' is a text input saved as a date
   button 'Submit Expense':

@@ -118,6 +118,9 @@ const UTILITY_FUNCTIONS = [
     if (r.min != null && r.type !== 'text' && v < r.min) return r.field + ' must be at least ' + r.min;
     if (r.max != null && r.type !== 'text' && v > r.max) return r.field + ' must be at most ' + r.max;
     if (r.matches === 'email' && !/^[^@]+@[^@]+\\.[^@]+$/.test(v)) return r.field + ' must be a valid email';
+    if (r.matches === 'time' && !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(v)) return r.field + ' must be a valid time (HH:MM)';
+    if (r.matches === 'phone' && !/^[\\+]?[\\d\\s\\-\\.\\(\\)]{7,15}$/.test(v)) return r.field + ' must be a valid phone number';
+    if (r.matches === 'url' && !/^https?:\\/\\/.+/.test(v)) return r.field + ' must be a valid URL';
     if (r.oneOf && !r.oneOf.includes(v)) return r.field + ' must be one of: ' + r.oneOf.join(', ');
   }
   return null;
@@ -609,6 +612,9 @@ function generateE2ETests(body) {
   function testValueForRule(rule) {
     if (rule.fieldType === 'number') return 42;
     if (rule.constraints?.matches === 'email') return 'test@example.com';
+    if (rule.constraints?.matches === 'time') return '09:00';
+    if (rule.constraints?.matches === 'phone') return '+1-555-0100';
+    if (rule.constraints?.matches === 'url') return 'https://example.com';
     if (rule.constraints?.oneOf) return rule.constraints.oneOf[0];
     return 'Test value';
   }
@@ -1395,9 +1401,15 @@ function compileCrud(node, ctx, pad) {
     // In PUT endpoints with :id, inject the URL param so db.update finds the right record
     const updateCtx = `{ op: 'update', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
     if (ctx.endpointHasId) {
-      return `${pad}${varCode}.id = req.params.id;\n${pad}await _clearTry(() => db.update('${table}', ${varCode}), ${updateCtx});${lineComment}`;
+      // Use _pick to filter incoming fields through the schema (mass-assignment protection).
+      // The id comes from the URL param, not the body — set it after picking so db.update
+      // can find the right record. After update, re-fetch the full record from DB so the
+      // variable has all fields with correct types (numeric id, all columns). Without this,
+      // the variable only contains the partial request body, so `send back X` returns an
+      // incomplete response.
+      return `${pad}const _picked_${varCode} = _pick(${varCode}, ${schemaName});\n${pad}_picked_${varCode}.id = req.params.id;\n${pad}await _clearTry(() => db.update('${table}', _picked_${varCode}), ${updateCtx});${lineComment}\n${pad}Object.assign(${varCode}, await db.findOne('${table}', { id: _picked_${varCode}.id }) || {});`;
     }
-    return `${pad}await _clearTry(() => db.update('${table}', ${varCode}), ${updateCtx});${lineComment}`;
+    return `${pad}await _clearTry(() => db.update('${table}', _pick(${varCode}, ${schemaName})), ${updateCtx});${lineComment}`;
   }
   if (node.operation === 'remove') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
@@ -1498,6 +1510,12 @@ function compileValidate(node, ctx, pad) {
       }
       if (rule.constraints.matches === 'email')
         vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"[^@]+@[^@]+\\.[^@]+", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid email")`);
+      if (rule.constraints.matches === 'time')
+        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^([01]\\d|2[0-3]):[0-5]\\d$", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid time (HH:MM)")`);
+      if (rule.constraints.matches === 'phone')
+        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^[\\+]?[\\d\\s\\-\\.\\(\\)]{7,15}$", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid phone number")`);
+      if (rule.constraints.matches === 'url')
+        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^https?://.+", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid URL")`);
       if (rule.constraints.oneOf) {
         const opts = rule.constraints.oneOf.map(o => `"${o}"`).join(', ');
         vlines.push(`${pad}if ${acc} not in [${opts}]:\n${pad}    raise HTTPException(status_code=400, detail="${f} must be one of: ${rule.constraints.oneOf.join(', ')}")`);
@@ -4119,7 +4137,7 @@ ${options}
           } else {
             parts.push(`    <fieldset class="${fieldsetCls}">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
-      <input id="${ui.id}" class="input input-bordered w-full" type="${ui.htmlType}" placeholder="${ui.label}">
+      <input id="${ui.id}" class="input input-bordered w-full" type="${ui.htmlType}"${ui.htmlType === 'number' ? ' step="any"' : ''} placeholder="${ui.label}">
     </fieldset>`);
           }
           break;
