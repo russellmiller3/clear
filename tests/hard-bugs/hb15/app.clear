@@ -24,15 +24,20 @@ when user calls POST /api/accounts sending account:
 when user calls POST /api/transfer sending transfer:
   needs login
   validate transfer:
+    from_account_id is number, required
+    to_account_id is number, required
     amount is number, required, min 1
   from_account = look up records in Accounts table where id is transfer's from_account_id
-  guard from_account's balance is at least transfer's amount or 'Insufficient funds'
+  check from_account is not missing, otherwise error 'Source account not found'
   to_account = look up records in Accounts table where id is transfer's to_account_id
-  from_account's balance = from_account's balance - transfer's amount
-  save from_account to Accounts
-  to_account's balance = to_account's balance + transfer's amount
-  save to_account to Accounts
+  check to_account is not missing, otherwise error 'Destination account not found'
+  check from_account's balance is at least transfer's amount, otherwise error 'Insufficient funds'
   new_transaction = save transfer as new Transaction
+  as one operation:
+    from_account's balance = from_account's balance - transfer's amount
+    save from_account to Accounts
+    to_account's balance = to_account's balance + transfer's amount
+    save to_account to Accounts
   send back new_transaction
 
 when user calls POST /api/seed:
