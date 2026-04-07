@@ -3261,13 +3261,23 @@ function compileToJS(body, errors, sourceMap = false) {
 }
 
 /**
- * Check if the AST represents a reactive web app (has inputs or buttons).
+ * Check if the AST represents a reactive web app (has inputs, buttons, or
+ * any pattern that requires the reactive runtime: on-page-load fetches,
+ * table displays, or on-change handlers).
+ *
+ * A page with `on page load: get X from '/api/...'` + `display X as table`
+ * is reactive even if it has no buttons or inputs — it needs the async IIFE
+ * to fetch data and _recompute() to render it into the DOM table.
  */
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
       if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE) return true;
       if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
+      // A table display requires _recompute() to render rows into the DOM.
+      if (node.type === NodeType.DISPLAY && node.format === 'table') return true;
+      // An on-page-load block with API calls requires the async IIFE + _recompute().
+      if (node.type === NodeType.ON_PAGE_LOAD) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
       }
