@@ -11633,5 +11633,34 @@ describe('Phase 37 - FK inference opt-out', () => {
   });
 });
 
+// =============================================================================
+// PHASE 34: COMPOUND UNIQUE CONSTRAINTS
+// =============================================================================
+
+describe('Phase 34 - compound unique (one per)', () => {
+  it('parses one per field1 and field2', () => {
+    const ast = parse("create a Votes table:\n  user_id, required\n  poll_id, required\n  choice, required\n  one per user_id and poll_id");
+    expect(ast.errors).toHaveLength(0);
+    const shape = ast.body[0];
+    expect(shape.compoundUniques).toBeDefined();
+    expect(shape.compoundUniques[0]).toEqual(['user_id', 'poll_id']);
+  });
+
+  it('compiles to UNIQUE constraint in Python SQL', () => {
+    const src = `build for python backend\ncreate a Votes table:\n  user_id, required\n  poll_id, required\n  one per user_id and poll_id`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('UNIQUE(user_id, poll_id)');
+  });
+
+  it('does not treat one per as a field', () => {
+    const ast = parse("create a Votes table:\n  user_id, required\n  poll_id, required\n  one per user_id and poll_id");
+    expect(ast.errors).toHaveLength(0);
+    const shape = ast.body[0];
+    expect(shape.fields.length).toBe(2);
+    expect(shape.fields.map(f => f.name)).not.toContain('one');
+  });
+});
+
 run();
 

@@ -1395,7 +1395,11 @@ function compileDataShape(node, ctx, pad) {
       return col;
     }).join(', ');
     const tableName = node.name.toLowerCase() + 's';
-    let result = `${pad}# Data shape: ${node.name}\n${pad}db.execute("CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols})")`;
+    let uniqueConstraints = '';
+    if (node.compoundUniques) {
+      uniqueConstraints = node.compoundUniques.map(fields => `, UNIQUE(${fields.join(', ')})`).join('');
+    }
+    let result = `${pad}# Data shape: ${node.name}\n${pad}db.execute("CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols}${uniqueConstraints})")`;
     if (node.policies && node.policies.length > 0) {
       result += `\n${pad}db.execute("ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY")`;
       for (const policy of node.policies) {

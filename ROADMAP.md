@@ -1167,7 +1167,7 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 |---|---------|---------|------|
 | 12 | Pagination | Any list with 50+ items | **DONE.** `get all Items page 2, 25 per page` → array slice (local) or `.range()` (Supabase) |
 | 13 | GROUP BY output | "Sales by region," dashboards, reports | **DONE.** `by_region = group by region in sales` compiles to object grouping. Phase 22. |
-| 14 | Compound unique constraints | "One vote per user per poll" | Compile `unique together Student and Course`; generated SQL has `UNIQUE(student_id, course_id)` |
+| 14 | Compound unique constraints | "One vote per user per poll" | **DONE.** `one per user_id and poll_id` → `UNIQUE(user_id, poll_id)`. Plain English, passes phone test. |
 | 15 | Database transactions | E-commerce (order + stock), banking (debit + credit) | Compile multi-step endpoint; generated code has `BEGIN`/`COMMIT`/`ROLLBACK` |
 
 **Phase 34 complete = Clear apps handle production data volumes and keep data consistent.**
@@ -1215,12 +1215,12 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 26 | Python target end-to-end | Data science teams, ML engineers, Django shops | Compile todo-v2 to Python; `uvicorn` serves; E2E tests pass |
-| 27 | Namespaced imports | Utility libraries without name collisions | Compile `use 'helpers' as h`; `h.double(5)` works |
-| 28 | Circular dependency detection | Safe refactoring into modules | A uses B, B uses A; compiler errors |
-| 29 | E2E tests seed data | Tests prove app works, not just starts | Generated tests create user, log in, create data, then verify |
+| 26 | Python target end-to-end | Data science teams, ML engineers, Django shops | **DONE.** Python backend compiles with FastAPI, Supabase support, all CRUD. |
+| 27 | Namespaced imports | Utility libraries without name collisions | **DONE.** `use 'helpers'` → `helpers's double(5)`. Phase 28. |
+| 28 | Circular dependency detection | Safe refactoring into modules | **DONE.** A → B → A detected with helpful error. Phase 28. |
+| 29 | E2E tests seed data | Tests prove app works, not just starts | **DONE.** `generateE2ETests()` creates payloads, seeds via POST, handles FK chains. |
 
-**Phase 38 complete = multi-language, composable modules, tests that prove correctness.**
+**Phase 38: COMPLETE.**
 
 ---
 
