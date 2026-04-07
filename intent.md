@@ -379,8 +379,8 @@ Multi-word keywords that can shadow variable names: `page` (page declaration), `
 | `parser.js` | Recursive descent parser | ~4500 |
 | `compiler.js` | Code generation (5 paths) | ~2500 |
 | `validator.js` | AST validation (3 passes) | ~200 |
-| `clear.test.js` | 854 tests | ~8200 |
-| `cli/clear.js` | CLI: build, test, package | ~200 |
+| `clear.test.js` | 1089 tests | ~11500 |
+| `cli/clear.js` | CLI for AI agents: build, check, info, fix, lint, serve | ~500 |
 | `runtime/db.js` | In-memory DB with JSON persistence | ~300 |
 | `runtime/auth.js` | JWT auth + middleware | ~120 |
 | `runtime/rateLimit.js` | Request rate limiting | ~50 |
