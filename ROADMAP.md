@@ -1230,18 +1230,18 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 ---
 
-### Phase 39: Desktop Apps via Tauri
+### Phase 45: Desktop Apps via Tauri
 
-Clear already compiles to a single HTML file with inline JS/CSS. Tauri wraps a single HTML file into a native desktop app (macOS, Windows, Linux) with a ~3MB binary. This is a natural fit — no Electron bloat, no Node runtime, just the compiled HTML inside a native webview.
+Clear already compiles to a single HTML file with inline JS/CSS. Tauri wraps a single HTML file into a native desktop app (macOS, Windows, Linux) with a ~3MB binary.
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 30 | `build for desktop` target | Native desktop apps from Clear source | Compile todo app; `cargo tauri build` produces .exe/.app/.deb |
-| 31 | System tray / menu bar | Desktop-native UX (tray icon, native menus) | Clear syntax for `tray icon:` and `menu bar:` compiles to Tauri config |
-| 32 | File system access (native) | Desktop apps that read/write local files | `read file` / `write file` use Tauri fs API instead of browser shims |
-| 33 | Auto-update | Ship updates without manual reinstall | `auto update from 'https://releases.myapp.com'` compiles to Tauri updater config |
+| 57 | `build for desktop` target | Native desktop apps from Clear source | Compile todo app; `cargo tauri build` produces .exe/.app/.deb |
+| 58 | System tray / menu bar | Desktop-native UX (tray icon, native menus) | Clear syntax for `tray icon:` and `menu bar:` compiles to Tauri config |
+| 59 | File system access (native) | Desktop apps that read/write local files | `read file` / `write file` use Tauri fs API instead of browser shims |
+| 60 | Auto-update | Ship updates without manual reinstall | `auto update from 'https://releases.myapp.com'` compiles to Tauri updater config |
 
-**Phase 39 complete = `build for desktop` produces a native app. One Clear file → one binary.**
+**Phase 45 complete = `build for desktop` produces a native app. One Clear file → one binary.**
 
 ---
 
@@ -1250,17 +1250,96 @@ Clear already compiles to a single HTML file with inline JS/CSS. Tauri wraps a s
 `database is local memory` works for dev. For production, swap one line:
 
 ```clear
-database is supabase              # Supabase (Postgres)
+database is supabase              # Supabase (Postgres) — DONE
 database is planetscale           # PlanetScale (MySQL)
 database is turso                 # Turso (SQLite edge)
 ```
 
-The compiler generates the same CRUD calls (`get all`, `save`, `delete`) but emits Supabase JS client / PlanetScale SDK / Turso client instead of the in-memory runtime. Zero code changes — just swap the database line.
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 34 | `database is supabase` | Production Postgres via Supabase JS | **DONE.** JS + Python, full CRUD, .range() pagination |
+| 35 | `database is planetscale` | Production MySQL via PlanetScale SDK | Same app, PlanetScale backend |
+| 36 | `database is turso` | Edge SQLite via Turso client | Same app, Turso backend |
+| 37 | Connection string from env | `database is supabase with env('SUPABASE_URL')` | Config-driven, no hardcoded keys |
+
+**Phase 40 status: item 34 done, 35-37 pending.**
+
+---
+
+### Phase 41: CLI Agent
+
+The CLI is the product. The playground is a demo. Developers ship from the terminal.
+
+```bash
+clear build app.clear              # compile to build/
+clear dev app.clear                # compile + watch + serve + live reload
+clear test app.clear               # run auto-generated E2E tests
+clear deploy app.clear             # compile + deploy to Clear Cloud
+clear new crm                      # scaffold from template
+clear new invoice-system           # scaffold from template
+```
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 34 | `database is supabase` | Production Postgres via Supabase JS | Contact Manager works with real Supabase project |
-| 35 | `database is planetscale` | Production MySQL via PlanetScale SDK | Same app, PlanetScale backend |
+| 38 | `clear dev` — watch + serve + live reload | Real development workflow | Edit .clear, browser auto-refreshes |
+| 39 | `clear deploy` — one-command deploy | Ship to production from terminal | `clear deploy` → live URL in 30 seconds |
+| 40 | `clear new <template>` — project scaffolding | Instant start from proven patterns | `clear new crm` → working CRUD app |
+| 41 | `clear doctor` — check environment | Debug setup issues | Reports: Node version, dependencies, config |
+
+**Phase 41 complete = developers can build, test, and ship from the terminal.**
+
+---
+
+### Phase 42: Clear Cloud (The Business)
+
+Clear Cloud is the Vercel of Clear. You compile and deploy, databases are pluggable.
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 42 | Hosted compilation service | Apps compile in the cloud, no local tooling needed | POST /api/compile with source → compiled output |
+| 43 | One-click deploy | Compiled apps run on Clear's infrastructure | Deploy from playground or CLI, get a URL |
+| 44 | Custom domains | Professional deployments | `clear domain add myapp.com` |
+| 45 | Usage dashboard | Monitor apps, API calls, AI usage | Web dashboard with charts |
+| 46 | Team accounts | Agencies manage multiple apps | Invite team members, shared billing |
+
+**Pricing:**
+| Tier | Price | What |
+|------|-------|------|
+| Starter | Free | 1 app, clear.dev subdomain |
+| Pro | $49/mo | Unlimited apps, custom domains, priority support |
+| Enterprise | Contact | On-premise, SSO, audit logs, SLA |
+
+---
+
+### Phase 43: Template Library (The Growth Engine)
+
+Templates are pre-built Clear apps for the ICP (freelancers/agencies). Each template is a complete, tested, deployable app.
+
+| # | Template | Lines | Target ICP |
+|---|----------|-------|------------|
+| 47 | CRM (contacts, deals, pipeline) | ~80 | Freelancers |
+| 48 | Invoice system (create, send, track) | ~100 | Agencies |
+| 49 | Booking/scheduling app | ~90 | Service businesses |
+| 50 | Client portal (projects, files, messages) | ~120 | Agencies |
+| 51 | Admin dashboard (users, roles, audit log) | ~100 | SaaS founders |
+
+Each template includes: ASCII diagram, database schema, CRUD API, frontend with charts, auth, validation, E2E tests. Deploy with `clear deploy` in under 60 seconds.
+
+---
+
+### Phase 44: Advanced Language Features
+
+| # | Feature | Syntax | UNLOCKS |
+|---|---------|--------|---------|
+| 52 | Retry with backoff | `retry 3 times: fetch data from '/api'` | Resilient API calls |
+| 53 | Timeout wrapper | `with timeout 5 seconds: call 'Scorer' with lead` | Prevent hanging operations |
+| 54 | Race (first to finish) | `first to finish: fetch A, fetch B` | Performance optimization |
+| 55 | Streaming iterators | `for each line in stream file 'big.csv':` | Process large files without loading all into memory |
+| 56 | Cancellation | `cancel task` | User-initiated abort |
+
+---
+
+### Phase 45: Desktop Apps via Tauri
 | 36 | `database is turso` | Edge SQLite via Turso client | Same app, Turso backend |
 | 37 | Connection string from env | `database is supabase with env('SUPABASE_URL')` | Config-driven, no hardcoded keys |
 
@@ -1272,9 +1351,11 @@ The compiler generates the same CRUD calls (`get all`, `save`, `delete`) but emi
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Chart syntax (`chart X as line/bar/donut`) | Not started | ECharts integration, native Clear syntax |
+| Chart syntax (`chart X as line/bar/pie/area`) | **Done** | ECharts integration with 4 chart types |
+| Full syntax guide | **Done** | 30+ sections covering all features |
+| AI proxy (3 calls/IP demo) | **Done** | Vercel serverless, rate-limited by IP |
+| Marketing copy + how it works | **Done** | Sidebar bullets, 3-step process |
+| Stripe-style landing page | **Done** | text-6xl hero, dark feature cards, stats row |
 | Download compiled output as zip | Not started | JSZip, package.json, README |
-| BYOK key input for AI examples | Not started | sessionStorage, text input for Anthropic key |
-| GAN compiled output quality | In progress | Compiler HTML matches design-system-v2 patterns |
 | Mobile responsive playground | Not started | Sidebar collapses, editor/output stack vertically |
 | Share button (URL hash encoding) | Not started | Encode source in URL for sharing |
