@@ -33,6 +33,7 @@ function _validate(body, rules) {
 // URL Shortener — Stress Test App #3
 // Tests: redirect logic, hit counting, rate limiting, random code generation
 // --- Data ---
+// clear:8
 // Data shape: Link
 const LinkSchema = {
   code: { type: "text", unique: true },
@@ -42,6 +43,7 @@ const LinkSchema = {
 };
 db.createTable('links', LinkSchema);
 // --- Endpoints ---
+// clear:16
 app.post('/api/shorten', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -57,6 +59,7 @@ app.post('/api/shorten', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:23
 app.get('/api/links', async (req, res) => {
   try {
     const all_links = await db.findAll('links');
@@ -65,6 +68,7 @@ app.get('/api/links', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:27
 app.get('/api/links/:code', async (req, res) => {
   try {
     const incoming = req.params;
@@ -74,6 +78,7 @@ app.get('/api/links/:code', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:31
 app.delete('/api/links/:code', async (req, res) => {
   try {
     const incoming = req.params;

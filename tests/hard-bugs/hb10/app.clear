@@ -1,0 +1,54 @@
+build for web and javascript backend
+database is local memory
+
+create a Properties table:
+  address, required
+  city, required
+  price (number), required
+  bedrooms (number), required
+  status, default 'available'
+
+create a Viewings table:
+  property_id, required
+  client_name, required
+  date, required
+  notes
+
+when user calls GET /api/properties:
+  properties = look up all Properties
+  send back properties
+
+when user calls POST /api/properties sending property:
+  needs login
+  new_property = save property as new Property
+  send back new_property
+
+when user calls POST /api/viewings sending viewing:
+  needs login
+  new_viewing = save viewing as new Viewing
+  send back new_viewing
+
+when user calls PUT /api/properties/:id sending property:
+  needs login
+  property's status is 'sold'
+  save property to Properties
+  send back 'marked sold'
+
+when user calls POST /api/seed:
+  create p1:
+    address is '123 Main St'
+    city is 'Austin'
+    price = 450000
+    bedrooms = 3
+  save p1 as new Property
+  create p2:
+    address is '456 Oak Ave'
+    city is 'Austin'
+    price = 675000
+    bedrooms = 4
+  save p2 as new Property
+  send back 'seeded'
+
+page 'Listings' at '/':
+  on page load get properties from '/api/properties'
+  display properties as table showing address, city, price, bedrooms, status

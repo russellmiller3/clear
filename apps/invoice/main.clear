@@ -1,0 +1,216 @@
+# ┌──────────┬──────────────────────────────┐
+# │ Sidebar  │  Header        [New Invoice] │
+# │          ├──────────────────────────────┤
+# │ Dashboard│  ┌────────┐┌────────┐┌─────┐│
+# │ Invoices │  │ Total  ││  Paid  ││ Due ││
+# │ Clients  │  │$12,400 ││$8,200  ││$4.2k││
+# │          │  └────────┘└────────┘└─────┘│
+# │          │  ┌──────────────────────────┐│
+# │          │  │ Invoices Table (CRUD)    ││
+# │          │  └──────────────────────────┘│
+# └──────────┴──────────────────────────────┘
+#
+# DATAFLOW:
+# ┌──────────┐  POST /api/invoices  ┌──────────┐  save   ┌────────┐
+# │ Frontend │ ───────────────────> │ Backend  │ ──────> │  DB    │
+# │  (forms) │ <─────────────────── │ (server) │ <────── │(memory)│
+# └──────────┘  GET /api/invoices   └──────────┘  query  └────────┘
+
+build for web and javascript backend
+
+theme 'ivory'
+
+# Database
+database is local memory
+
+create a Clients table:
+  name, required
+  email, required, unique
+  company
+  phone
+  created_at_date, auto
+
+create a Invoices table:
+  client_name, required
+  description, required
+  amount (number), required
+  status, default 'draft'
+  due_date, required
+  issued_date
+  notes
+  created_at_date, auto
+
+create a LineItems table:
+  invoice_id, required
+  description, required
+  quantity (number), default 1
+  unit_price (number), required
+  created_at_date, auto
+
+# Backend
+
+# Allow the frontend to talk to the backend
+allow cross-origin requests
+
+# Print every request to the console for debugging
+log every request
+
+# --- Seed data ---
+when user calls POST /api/seed:
+  create c1:
+    name is 'Acme Corp'
+    email is 'billing@acme.co'
+    company is 'Acme Corporation'
+  save c1 as new Client
+  create c2:
+    name is 'Globex Inc'
+    email is 'ap@globex.io'
+    company is 'Globex Industries'
+  save c2 as new Client
+  create inv1:
+    client_name is 'Acme Corp'
+    description is 'Website Redesign'
+    amount = 5200
+    status is 'paid'
+    due_date is '2026-03-15'
+    issued_date is '2026-02-15'
+  save inv1 as new Invoice
+  create inv2:
+    client_name is 'Acme Corp'
+    description is 'Monthly Hosting'
+    amount = 150
+    status is 'sent'
+    due_date is '2026-04-01'
+    issued_date is '2026-03-01'
+  save inv2 as new Invoice
+  create inv3:
+    client_name is 'Globex Inc'
+    description is 'Consulting Q1'
+    amount = 7050
+    status is 'draft'
+    due_date is '2026-04-30'
+  save inv3 as new Invoice
+  send back 'seeded' with success message
+
+# --- Clients ---
+when user calls GET /api/clients:
+  all_clients = get all Clients
+  send back all_clients
+
+when user calls POST /api/clients sending client_data:
+  requires auth
+  validate client_data:
+    name is text, required, min 1, max 100
+    email is text, required, matches email
+    company is text
+    phone is text
+  new_client = save client_data as new Client
+  send back new_client with success message
+
+when user calls DELETE /api/clients/:id:
+  requires auth
+  delete the Client with this id
+  send back 'deleted' with success message
+
+# --- Invoices ---
+when user calls GET /api/invoices:
+  all_invoices = get all Invoices
+  send back all_invoices
+
+when user calls POST /api/invoices sending invoice_data:
+  requires auth
+  validate invoice_data:
+    client_name is text, required
+    description is text, required
+    amount is number, required
+    due_date is text, required
+    status is text
+    notes is text
+  new_invoice = save invoice_data as new Invoice
+  send back new_invoice with success message
+
+when user calls PUT /api/invoices/:id sending update_data:
+  requires auth
+  validate update_data:
+    status is text
+    description is text
+    amount is number
+    notes is text
+  save update_data to Invoices
+  send back 'updated' with success message
+
+when user calls DELETE /api/invoices/:id:
+  requires auth
+  delete the Invoice with this id
+  send back 'deleted' with success message
+
+# --- Line Items ---
+when user calls GET /api/line-items:
+  all_items = get all LineItems
+  send back all_items
+
+when user calls POST /api/line-items sending item_data:
+  requires auth
+  validate item_data:
+    invoice_id is text, required
+    description is text, required
+    quantity is number
+    unit_price is number, required
+  new_item = save item_data as new LineItem
+  send back new_item with success message
+
+# Frontend
+page 'Invoices' at '/':
+
+  on page load:
+    send nothing to '/api/seed'
+    get invoices from '/api/invoices'
+    get clients from '/api/clients'
+
+  section 'Layout' with style app_layout:
+
+    section 'Nav' with style app_sidebar:
+      heading 'InvoiceApp'
+      text 'Dashboard'
+      text 'Invoices'
+      text 'Clients'
+
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Invoices'
+
+      section 'Body' with style app_content:
+
+        # --- Create Invoice ---
+        section 'New Invoice' with style app_card:
+          subheading 'New Invoice'
+          'Client Name' is a text input saved as a client_name
+          'Description' is a text input saved as a description
+          'Amount' is a number input saved as an amount
+          'Due Date' is a text input saved as a due_date
+          'Status' is a dropdown with ['draft', 'sent', 'paid', 'overdue']
+          'Notes' is a text area saved as a notes
+          button 'Create Invoice':
+            send client_name and description and amount and due_date and status and notes to '/api/invoices'
+            get invoices from '/api/invoices'
+            client_name is ''
+            description is ''
+            notes is ''
+
+        # --- Invoices Table ---
+        section 'All Invoices' with style app_card:
+          subheading 'All Invoices'
+          display invoices as table showing client_name, description, amount, status, due_date with delete and edit
+
+        # --- Clients ---
+        section 'Manage Clients' with style app_card:
+          subheading 'Clients'
+          'Client' is a text input saved as a new_client_name
+          'Email' is a text input saved as a new_client_email
+          'Company' is a text input saved as a new_client_company
+          button 'Add Client':
+            send new_client_name and new_client_email and new_client_company to '/api/clients'
+            get clients from '/api/clients'
+            new_client_name is ''
+            new_client_email is ''
+          display clients as table showing name, email, company with delete

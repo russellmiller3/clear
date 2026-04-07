@@ -49,6 +49,7 @@ function _validate(body, rules) {
 // Cast API (Tier 4 acid test) -- Simplified version
 // Rebuilds core Cast backend routes in Clear
 // --- Data ---
+// clear:8
 // Data shape: Model
 const ModelSchema = {
   name: { type: "text", required: true },
@@ -57,6 +58,7 @@ const ModelSchema = {
   created_at: { type: "timestamp", auto: true }
 };
 db.createTable('models', ModelSchema);
+// clear:14
 // Data shape: Prediction
 const PredictionSchema = {
   model_id: { type: "text", required: true },
@@ -65,6 +67,7 @@ const PredictionSchema = {
   created_at: { type: "timestamp", auto: true }
 };
 db.createTable('predictions', PredictionSchema);
+// clear:20
 // Data shape: ChatMessage
 const ChatMessageSchema = {
   role: { type: "text", required: true },
@@ -73,6 +76,7 @@ const ChatMessageSchema = {
   created_at: { type: "timestamp", auto: true }
 };
 db.createTable('chatmessages', ChatMessageSchema);
+// clear:26
 // Data shape: SharedSheet
 const SharedSheetSchema = {
   sheet_id: { type: "text", required: true, unique: true },
@@ -83,6 +87,7 @@ const SharedSheetSchema = {
 db.createTable('sharedsheets', SharedSheetSchema);
 // --- Config ---
 // --- Health ---
+// clear:39
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
@@ -91,6 +96,7 @@ app.get('/api/health', async (req, res) => {
   }
 });
 // --- Models ---
+// clear:44
 app.get('/api/models', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -100,6 +106,7 @@ app.get('/api/models', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:49
 app.post('/api/models', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -114,6 +121,7 @@ app.post('/api/models', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:57
 app.get('/api/models/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -125,6 +133,7 @@ app.get('/api/models/:id', async (req, res) => {
   }
 });
 // --- Predictions ---
+// clear:64
 app.post('/api/predict', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -140,6 +149,7 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 // --- Chat ---
+// clear:74
 app.post('/api/chat', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -154,6 +164,7 @@ app.post('/api/chat', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:83
 app.get('/api/chat/:session_id', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -164,6 +175,7 @@ app.get('/api/chat/:session_id', async (req, res) => {
   }
 });
 // --- Share ---
+// clear:90
 app.post('/api/share', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -178,6 +190,7 @@ app.post('/api/share', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:98
 app.get('/api/share/:sheet_id', async (req, res) => {
   try {
     const shared = await db.findAll('sharedsheets');
@@ -187,6 +200,7 @@ app.get('/api/share/:sheet_id', async (req, res) => {
   }
 });
 // --- Export ---
+// clear:104
 app.post('/api/export', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });

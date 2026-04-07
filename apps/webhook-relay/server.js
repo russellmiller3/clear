@@ -32,6 +32,7 @@ function _validate(body, rules) {
 // Webhook Relay -- Stress Test App #6
 // Tests: multi-provider webhooks, signature verification, fan-out, retry
 // --- Data ---
+// clear:8
 // Data shape: Destination
 const DestinationSchema = {
   name: { type: "text", required: true },
@@ -41,6 +42,7 @@ const DestinationSchema = {
   created_at: { type: "timestamp", auto: true }
 };
 db.createTable('destinations', DestinationSchema);
+// clear:15
 // Data shape: Delivery
 const DeliverySchema = {
   webhook_id: { type: "text", required: true },
@@ -52,23 +54,28 @@ const DeliverySchema = {
 };
 db.createTable('deliverys', DeliverySchema);
 // --- Webhook Receivers ---
+// clear:25
 app.post('/webhooks/stripe', async (req, res) => {
   const incoming = req.body;
   const crypto = require('crypto');
   const signature = req.headers['stripe-signature'] || '';
   const expected = crypto.createHmac('sha256', (process.env["STRIPE_SECRET"] || "")).update(JSON.stringify(req.body)).digest('hex');
   if (signature !== expected) { return res.status(401).json({ error: "Invalid signature" }); }
+  // clear:26
   return res.json({ message: "received" });
 });
+// clear:28
 app.post('/webhooks/github', async (req, res) => {
   const incoming = req.body;
   const crypto = require('crypto');
   const signature = req.headers['stripe-signature'] || '';
   const expected = crypto.createHmac('sha256', (process.env["GITHUB_SECRET"] || "")).update(JSON.stringify(req.body)).digest('hex');
   if (signature !== expected) { return res.status(401).json({ error: "Invalid signature" }); }
+  // clear:29
   return res.json({ message: "received" });
 });
 // --- Management Endpoints ---
+// clear:33
 app.get('/api/destinations', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -78,6 +85,7 @@ app.get('/api/destinations', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:38
 app.post('/api/destinations', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -92,6 +100,7 @@ app.post('/api/destinations', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:46
 app.delete('/api/destinations/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -104,6 +113,7 @@ app.delete('/api/destinations/:id', async (req, res) => {
   }
 });
 // --- Delivery Status ---
+// clear:54
 app.get('/api/deliveries', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -114,6 +124,7 @@ app.get('/api/deliveries', async (req, res) => {
   }
 });
 // --- Retry Job ---
+// clear:61
 // Background job: retry-failed-deliveries
 setInterval(async () => {
 

@@ -1,0 +1,47 @@
+build for web and javascript backend
+database is local memory
+
+create a Appointments table:
+  patient_name, required
+  doctor, required
+  date, required
+  time, required
+  reason
+  status, default 'scheduled'
+
+when user calls GET /api/appointments:
+  appointments = look up all Appointments
+  send back appointments
+
+when user calls POST /api/appointments sending appt:
+  needs login
+  validate appt:
+    patient_name is text, required
+    doctor is text, required
+    date is text, required
+    time is text, required, matches time
+  new_appt = save appt as new Appointment
+  send back new_appt
+
+when user calls DELETE /api/appointments/:id:
+  needs login
+  delete the Appointment with this id
+  send back 'cancelled'
+
+when user calls PUT /api/appointments/:id sending appt:
+  needs login
+  appt's status is 'completed'
+  save appt to Appointments
+  send back 'marked complete'
+
+page 'Scheduling' at '/':
+  on page load get appointments from '/api/appointments'
+  'Patient' is a text input saved as a patient_name
+  'Doctor' is a text input saved as a doctor
+  'Date' is a text input saved as a date
+  'Time' is a text input saved as a time
+  'Reason' is a text input saved as a reason
+  button 'Book Appointment':
+    send patient_name, doctor, date, time, reason to '/api/appointments'
+    get appointments from '/api/appointments'
+  display appointments as table showing patient_name, doctor, date, time, status with delete

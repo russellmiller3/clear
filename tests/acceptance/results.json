@@ -1,0 +1,435 @@
+{
+  "at1": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at1/build"
+    },
+    "runtimeError": {
+      "error": "email is required",
+      "clear_line": 10,
+      "clear_file": "main.clear",
+      "clear_source": null,
+      "hint": "'email' is required in contacts (defined at main.clear line 4). Add it to the form or remove 'required' from the table definition.",
+      "technical": "email is required",
+      "suggested_fix": {
+        "file": "main.clear",
+        "line": 4,
+        "action": "info",
+        "explanation": "Ensure 'email' is included in the request body. The table at main.clear line 4 requires it."
+      },
+      "context": {
+        "endpoint": "POST /api/contacts",
+        "input": {
+          "name": "Alice"
+        },
+        "schema": {
+          "name": {
+            "required": true,
+            "type": "text"
+          },
+          "email": {
+            "required": true,
+            "unique": true,
+            "type": "text"
+          }
+        },
+        "table": "contacts"
+      }
+    }
+  },
+  "at2": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at2/build"
+    },
+    "runtimeError": {
+      "error": "name is required",
+      "clear_line": 10,
+      "clear_file": "main.clear",
+      "clear_source": null,
+      "hint": "'name' is required in contacts (defined at main.clear line 4). Add it to the form or remove 'required' from the table definition.",
+      "technical": "name is required",
+      "suggested_fix": {
+        "file": "main.clear",
+        "line": 4,
+        "action": "info",
+        "explanation": "Ensure 'name' is included in the request body. The table at main.clear line 4 requires it."
+      },
+      "context": {
+        "endpoint": "POST /api/seed",
+        "input": null,
+        "schema": {
+          "email": {
+            "required": true,
+            "unique": true,
+            "type": "text"
+          }
+        },
+        "table": "contacts"
+      }
+    }
+  },
+  "at3": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at3/build"
+    },
+    "runtimeError": {
+      "message": "updated"
+    }
+  },
+  "at4": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at4/build"
+    },
+    "runtimeError": {
+      "invoice_id": "999",
+      "description": "Widget",
+      "id": 1
+    }
+  },
+  "at5": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at5/build"
+    },
+    "runtimeError": {
+      "name": "Widget",
+      "price": "fifty",
+      "id": 1
+    }
+  },
+  "at6": {
+    "build": {
+      "ok": false,
+      "compileError": "{\n  \"ok\": false,\n  \"errors\": [\n    {\n      \"line\": 7,\n      \"patchable\": true,\n      \"fix\": [\n        \"  requires auth\"\n      ],\n      \"insertAfter\": 7,\n      \"message\": \"DELETE /api/contacts/:id has no auth guard -- anyone can delete data without logging in. Fix:\\n  requires auth\"\n    }\n  ],\n  \"warnings\": []\n}\n"
+    },
+    "error": {
+      "type": "compile",
+      "output": "{\n  \"ok\": false,\n  \"errors\": [\n    {\n      \"line\": 7,\n      \"patchable\": true,\n      \"fix\": [\n        \"  requires auth\"\n      ],\n      \"insertAfter\": 7,\n      \"message\": \"DELETE /api/contacts/:id has no auth guard -- anyone can delete data without logging in. Fix:\\n  requires auth\"\n    }\n  ],\n  \"warnings\": []\n}\n"
+    }
+  },
+  "at7": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at7/build"
+    },
+    "runtimeError": {
+      "error": "Requires role: superadmin"
+    }
+  },
+  "at8": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at8/build"
+    },
+    "runtimeError": {
+      "error": "amount must be a number"
+    }
+  },
+  "at9": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at9/build"
+    },
+    "runtimeError": {
+      "error": "name must be unique -- 'Enterprise' already exists",
+      "clear_line": 10,
+      "clear_file": "main.clear",
+      "clear_source": null,
+      "hint": "A record with this value already exists. Check for duplicates before saving.",
+      "technical": "name must be unique -- 'Enterprise' already exists",
+      "context": {
+        "endpoint": "POST /api/seed",
+        "input": null,
+        "schema": {
+          "name": {
+            "required": true,
+            "unique": true,
+            "type": "text"
+          }
+        },
+        "table": "tags"
+      }
+    }
+  },
+  "at10": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at10/build"
+    },
+    "runtimeError": {
+      "error": "Something went wrong",
+      "clear_line": 4,
+      "clear_file": "main.clear",
+      "clear_source": null,
+      "hint": "Request timed out. Check if the service is running.",
+      "technical": "This operation was aborted",
+      "context": {
+        "endpoint": "POST /api/charge",
+        "input": null,
+        "schema": null,
+        "table": null
+      }
+    }
+  },
+  "at11": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at11/build"
+    }
+  },
+  "at12": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at12/build"
+    }
+  },
+  "at13": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at13/build"
+    },
+    "frontendOutput": {
+      "patterns": [
+        "Has [clear:LINE] context in fetch",
+        "Has console.error logging",
+        "Has _clearMap source map",
+        "Has suggested_fix logic",
+        "Has _clearTry wrapping"
+      ],
+      "htmlLen": 6930,
+      "serverLen": 8420
+    }
+  },
+  "at14": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at14/build"
+    }
+  },
+  "at15": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at15/build"
+    },
+    "frontendOutput": {
+      "patterns": [],
+      "htmlLen": 0,
+      "serverLen": 0
+    }
+  },
+  "at16": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at16/build"
+    },
+    "frontendOutput": {
+      "patterns": [],
+      "htmlLen": 0,
+      "serverLen": 0
+    }
+  },
+  "at17": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at17/build"
+    },
+    "frontendOutput": {
+      "patterns": [
+        "Has [clear:LINE] context in fetch",
+        "Has console.error logging",
+        "Has _clearMap source map",
+        "Has suggested_fix logic"
+      ],
+      "htmlLen": 7703,
+      "serverLen": 6024
+    }
+  },
+  "at18": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at18/build"
+    },
+    "frontendOutput": {
+      "patterns": [],
+      "htmlLen": 0,
+      "serverLen": 0
+    }
+  },
+  "at19": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at19/build"
+    },
+    "frontendOutput": {
+      "patterns": [],
+      "htmlLen": 0,
+      "serverLen": 0
+    }
+  },
+  "at20": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at20/build"
+    },
+    "frontendOutput": {
+      "patterns": [],
+      "htmlLen": 0,
+      "serverLen": 0
+    }
+  },
+  "at21": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at21/build"
+    },
+    "runtimeError": {
+      "error": "email is required",
+      "clear_line": 9,
+      "clear_file": "main.clear",
+      "clear_source": null,
+      "hint": "'email' is required in contacts (defined at main.clear line 4). Add it to the form or remove 'required' from the table definition.",
+      "technical": "email is required",
+      "suggested_fix": {
+        "file": "main.clear",
+        "line": 4,
+        "action": "info",
+        "explanation": "Ensure 'email' is included in the request body. The table at main.clear line 4 requires it."
+      },
+      "context": {
+        "endpoint": "POST /api/contacts",
+        "input": {
+          "name": "Alice"
+        },
+        "schema": {
+          "name": {
+            "required": true,
+            "type": "text"
+          }
+        },
+        "table": "contacts"
+      }
+    }
+  },
+  "at22": {
+    "build": {
+      "ok": false,
+      "compileError": "{\n  \"ok\": false,\n  \"errors\": [\n    {\n      \"line\": 4,\n      \"message\": \"You used 'text' on line 4 but it hasn't been created yet. Define it on an earlier line. Example: text = 0 or text is 'value'\"\n    }\n  ],\n  \"warnings\": []\n}\n"
+    }
+  },
+  "at23": {
+    "build": {
+      "ok": false,
+      "compileError": "{\n  \"ok\": false,\n  \"errors\": [\n    {\n      \"line\": 4,\n      \"message\": \"You used 'text' on line 4 but it hasn't been created yet. Define it on an earlier line. Example: text = 0 or text is 'value'\"\n    },\n    {\n      \"line\": 5,\n      \"message\": \"You used 'text' on line 5 but it hasn't been created yet. Define it on an earlier line. Example: text = 0 or text is 'value'\"\n    }\n  ],\n  \"warnings\": []\n}\n"
+    }
+  },
+  "at24": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at24/build"
+    },
+    "frontendOutput": {
+      "patterns": [
+        "Has _clearMap source map",
+        "Has suggested_fix logic"
+      ],
+      "htmlLen": 3687,
+      "serverLen": 6024
+    }
+  },
+  "at25": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at25/build"
+    },
+    "runtimeError": {
+      "error": "email is required",
+      "clear_line": 11,
+      "clear_file": "main.clear",
+      "clear_source": null,
+      "hint": "'email' is required in contacts (defined at main.clear line 4). Add it to the form or remove 'required' from the table definition.",
+      "technical": "email is required",
+      "suggested_fix": {
+        "file": "main.clear",
+        "line": 4,
+        "action": "info",
+        "explanation": "Ensure 'email' is included in the request body. The table at main.clear line 4 requires it."
+      },
+      "context": {
+        "endpoint": "POST /api/contacts",
+        "input": {
+          "name": "Alice",
+          "status": "active"
+        },
+        "schema": {
+          "name": {
+            "required": true,
+            "type": "text"
+          },
+          "status": {
+            "required": true,
+            "type": "text"
+          }
+        },
+        "table": "contacts"
+      }
+    }
+  },
+  "at26": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at26/build"
+    },
+    "frontendOutput": {
+      "patterns": [
+        "Has [clear:LINE] context in fetch",
+        "Has console.error logging",
+        "Has _clearMap source map",
+        "Has suggested_fix logic",
+        "Has _clearTry wrapping"
+      ],
+      "htmlLen": 6482,
+      "serverLen": 6562
+    }
+  },
+  "at27": {
+    "build": {
+      "ok": true,
+      "buildDir": "/home/user/clear/tests/acceptance/at27/build"
+    },
+    "runtimeError": {
+      "error": "email is required",
+      "clear_line": 10,
+      "clear_file": "main.clear",
+      "clear_source": null,
+      "hint": "'email' is required in contacts (defined at main.clear line 4). Add it to the form or remove 'required' from the table definition.",
+      "technical": "email is required",
+      "suggested_fix": {
+        "file": "main.clear",
+        "line": 4,
+        "action": "info",
+        "explanation": "Ensure 'email' is included in the request body. The table at main.clear line 4 requires it."
+      },
+      "context": {
+        "endpoint": "POST /api/contacts",
+        "input": {
+          "name": "Bob"
+        },
+        "schema": {
+          "name": {
+            "required": true,
+            "type": "text"
+          },
+          "email": {
+            "required": true,
+            "unique": true,
+            "type": "text"
+          }
+        },
+        "table": "contacts"
+      }
+    }
+  }
+}

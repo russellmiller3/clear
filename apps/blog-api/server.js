@@ -49,6 +49,7 @@ function _validate(body, rules) {
 // Blog API — Stress Test App #2 (v2, new syntax)
 // Tests: auth, roles, relations, if/then branching, new syntax forms
 // --- Data ---
+// clear:8
 // Data shape: Users
 const UsersSchema = {
   name: { type: "text", required: true },
@@ -57,6 +58,7 @@ const UsersSchema = {
   created_at: { type: "timestamp", auto: true }
 };
 db.createTable('users', UsersSchema);
+// clear:14
 // Data shape: Posts
 const PostsSchema = {
   title: { type: "text", required: true },
@@ -68,9 +70,12 @@ const PostsSchema = {
 db.createTable('posts', PostsSchema);
 // --- Config ---
 // --- Auth Roles ---
+// clear:28
 const ROLE_ADMIN = { name: "admin", permissions: ["manage posts", "manage users"] };
+// clear:32
 const ROLE_AUTHOR = { name: "author", permissions: ["create posts", "edit own posts"] };
 // --- Public Endpoints ---
+// clear:38
 app.get('/api/posts', async (req, res) => {
   try {
     const all_posts = await db.findAll('posts');
@@ -79,6 +84,7 @@ app.get('/api/posts', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:42
 app.get('/api/posts/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -92,6 +98,7 @@ app.get('/api/posts/:id', async (req, res) => {
   }
 });
 // --- Protected Endpoints ---
+// clear:49
 app.post('/api/posts', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -106,6 +113,7 @@ app.post('/api/posts', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:57
 app.put('/api/posts/:id', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -120,6 +128,7 @@ app.put('/api/posts/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:64
 app.delete('/api/posts/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -132,6 +141,7 @@ app.delete('/api/posts/:id', async (req, res) => {
   }
 });
 // --- User Management (admin only) ---
+// clear:72
 app.get('/api/users', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -142,6 +152,7 @@ app.get('/api/users', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:78
 app.post('/api/users', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -158,6 +169,7 @@ app.post('/api/users', async (req, res) => {
   }
 });
 // --- Health ---
+// clear:89
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });

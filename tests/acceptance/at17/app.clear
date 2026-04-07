@@ -1,0 +1,14 @@
+build for web and javascript backend
+database is local memory
+
+create a Items table:
+  name, required
+
+when user calls GET /api/items:
+  items = look up all Items
+  send back items
+
+page 'App' at '/':
+  button 'Refresh':
+    get items from '/api/items'
+  display items as table showing name

@@ -252,6 +252,45 @@ display count called 'Items'
 display todos as table showing todo, completed        # column whitelist
 display users as table showing name, email, role      # only these columns shown
 display response as table called 'Results'            # all columns (no 'showing')
+
+# Action buttons — compiler auto-wires to matching endpoints
+display contacts as table showing name, email with delete
+display contacts as table showing name, email with edit
+display contacts as table showing name, email with delete and edit
+# "with delete" adds a Delete button per row (needs DELETE /api/contacts/:id)
+# "with edit" adds an Edit button that populates the form (needs PUT /api/contacts/:id)
+```
+
+## Charts (ECharts)
+
+```clear
+# Line chart — auto-detects x (string field) and y (number fields)
+chart 'Revenue' as line showing sales
+
+# Bar chart
+chart 'Sales by Region' as bar showing sales
+
+# Area chart (line with fill)
+chart 'Trend' as area showing monthly_data
+
+# Pie chart — groups by field and counts
+chart 'Status Breakdown' as pie showing tasks by status
+```
+
+Chart types: `line`, `bar`, `pie`, `area`. Data comes from a state variable (array of objects).
+For line/bar/area, the compiler auto-detects x-axis (first string field) and y-axis (number fields).
+For pie, use `by <field>` to group and count. ECharts CDN is only included when charts are used.
+
+## Reactive Input Handlers
+
+```clear
+# Run code when an input changes
+when query changes:
+  get results from '/api/search?q={query}'
+
+# Debounced: wait 250ms after last keystroke before firing
+when search changes after 250ms:
+  get suggestions from '/api/suggest?q={search}'
 ```
 
 ## Conditional UI
@@ -526,9 +565,52 @@ button 'Delete':
 ```clear
 # Explicit storage backend (at top of file)
 database is local memory                        # default: in-memory with JSON backup
+database is supabase                            # production: Supabase (set SUPABASE_URL + SUPABASE_ANON_KEY)
 database is SQLite at 'todos.db'                # file-based
-database is PostgreSQL at env('DATABASE_URL')   # production
+database is PostgreSQL at env('DATABASE_URL')   # raw PostgreSQL
 ```
+
+When using Supabase, CRUD operations compile to Supabase SDK calls:
+- `get all Contacts` → `supabase.from('contacts').select('*')`
+- `save X as new Contact` → `supabase.from('contacts').insert(X).select().single()`
+- `delete the Contact with this id` → `supabase.from('contacts').delete().eq('id', id)`
+
+Tables must exist in your Supabase dashboard — the compiler doesn't create them.
+
+## Retry, Timeout, Race (Production Resilience)
+
+```clear
+# Retry with exponential backoff (1s, 2s, 4s between attempts)
+retry 3 times:
+  send order to '/api/payment'
+
+# Timeout — cancel if it takes too long
+with timeout 5 seconds:
+  result = call 'Lead Scorer' with lead_data
+
+# Timeout in minutes
+with timeout 2 minutes:
+  data = fetch page 'https://slow-api.example.com'
+
+# Race — run multiple tasks, take the first result
+first to finish:
+  fetch page 'https://api-east.example.com'
+  fetch page 'https://api-west.example.com'
+```
+
+Retry compiles to a for loop with exponential backoff. Timeout compiles to `Promise.race` with a reject timer. Race compiles to `Promise.race` with multiple concurrent tasks. All three work in both JS and Python.
+
+## Compound Unique Constraints
+
+```clear
+create a Votes table:
+  user_id, required
+  poll_id, required
+  choice, required
+  one per user_id and poll_id    # only one vote per user per poll
+```
+
+`one per field1 and field2` prevents duplicate combinations. Compiles to `UNIQUE(field1, field2)`.
 
 ## Backend
 
@@ -929,10 +1011,47 @@ are NOT treated as file imports.
 
 Run tests: `node cli/clear.js test myfile.clear`
 
+## CLI (for AI Agents)
+
+The Clear CLI is designed for machines first, humans second. Every command supports `--json`.
+
+```bash
+# Validate without compiling (fast)
+clear check app.clear --json
+
+# Introspect: list endpoints, tables, pages, agents
+clear info app.clear --json
+
+# Security + quality analysis
+clear lint app.clear --json
+
+# Auto-fix patchable errors (e.g. missing auth guards)
+clear fix app.clear
+
+# Compile
+clear build app.clear --out dist/
+
+# Compile + start local server
+clear serve app.clear --port 3000
+
+# Watch + rebuild on changes
+clear dev app.clear
+
+# Bundle for deployment (Dockerfile + package.json)
+clear package app.clear --out deploy/
+
+# Scaffold new project
+clear init my-app
+```
+
+Exit codes: `0` success, `1` compile error, `2` runtime error, `3` file not found, `4` test failure.
+
+All commands return structured JSON with `--json` flag for agent consumption.
+
 ## Build & Deploy
 
 ```bash
-# Build (runs 854 compiler tests first, blocks on failure)
+# Build
 node cli/clear.js build app.clear --out dist/
 
 # Build without test gate
@@ -957,4 +1076,93 @@ node cli/clear.js package app.clear --out deploy/
 # Docker
 docker build -t myapp deploy/
 docker run -p 3000:3000 myapp
+```
+
+## External API Calls
+
+Call any REST API with custom headers, body, and timeout:
+
+```clear
+# Simple GET
+data = call api 'https://api.github.com/users/octocat'
+
+# Full POST with headers and timeout
+result = call api 'https://api.example.com/data':
+  method is 'POST'
+  header 'Authorization' is 'Bearer ' + env('API_KEY')
+  header 'Content-Type' is 'application/json'
+  body is request_data
+  timeout is 10 seconds
+```
+
+Defaults: GET without body, POST with body. 30-second timeout if not specified.
+Compiles to `fetch()` with `AbortController`. Auto-detects JSON vs text responses.
+
+## Service Presets
+
+Zero-config wrappers for common services. Just set the env var.
+
+```clear
+# Stripe — charge a card (requires STRIPE_KEY)
+charge via stripe:
+  amount = 2000
+  currency is 'usd'
+  token is payment_token
+
+# SendGrid — send an email (requires SENDGRID_KEY)
+send email via sendgrid:
+  to is customer's email
+  from is 'team@myapp.com'
+  subject is 'Invoice sent'
+  body is email_body
+
+# Twilio — send SMS (requires TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM)
+send sms via twilio:
+  to is customer's phone
+  body is 'Your booking is confirmed'
+```
+
+## AI Integration
+
+```clear
+# Anthropic (canonical form)
+answer = ask claude 'Summarize this article' with article_text
+
+# With model selection
+answer = ask claude 'Write a poem' with topic using 'claude-haiku-4-5-20251001'
+
+# Structured output
+result = ask claude 'Analyze this lead' with lead_data returning:
+  score (number)
+  reasoning
+  qualified (boolean)
+
+# ask ai still works as an alias
+answer = ask ai 'Summarize this' with data
+```
+
+Requires `ANTHROPIC_API_KEY` (falls back to `CLEAR_AI_KEY`).
+
+## Webhooks (Natural Syntax)
+
+```clear
+# When a service sends events to your server
+when stripe notifies '/stripe/events':
+  if event is 'payment.succeeded':
+    update order's status to 'paid'
+
+when twilio notifies '/sms-received':
+  save message as new IncomingMessage
+
+# Legacy syntax still works:
+webhook '/stripe/events' signed with env('STRIPE_SECRET'):
+  send back 'ok'
+```
+
+## Auth Aliases
+
+```clear
+# Both work — needs login is the natural form
+needs login
+requires auth
 ```

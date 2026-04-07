@@ -1,0 +1,5 @@
+build for web
+page 'App' at '/':
+  on page load get user from '/api/me'
+  text user's name
+  text user's email

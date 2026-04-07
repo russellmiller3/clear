@@ -93,7 +93,8 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 |-----------|--------|-------------|
 | `PAGE` | `page 'Title' at '/route':` | `<title>` + hash router |
 | `ASK_FOR` | `'Label' is a text input that saves to var` | `<input>` with label |
-| `DISPLAY` | `display x as dollars called 'Label'` | `<output>` element |
+| `DISPLAY` | `display x as dollars called 'Label'` / `display x as table showing a, b with delete` | `<output>` or `<table>` with action buttons |
+| `CHART` | `chart 'Title' as line showing data` / `chart 'Status' as pie showing data by field` | ECharts `<div>` with auto-configured option |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |
 | `SECTION` | `section 'Name' with style card:` | `<div>` with CSS class |
 | `CONTENT` | `heading 'X'` / `text 'X'` / `bold text 'X'` / `divider` | `<h1>` / `<p>` / `<hr>` |
@@ -259,6 +260,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `DATABASE_DECL` | `database is local memory` | Comment only (default) |
+| `DATABASE_DECL` | `database is supabase` | @supabase/supabase-js client (SUPABASE_URL + SUPABASE_ANON_KEY) |
 | `DATABASE_DECL` | `database is PostgreSQL at env('URL')` | pg.Pool / asyncpg |
 | `DATABASE_DECL` | `database is SQLite at 'file.db'` | sqlite3 connection |
 
@@ -377,8 +379,8 @@ Multi-word keywords that can shadow variable names: `page` (page declaration), `
 | `parser.js` | Recursive descent parser | ~4500 |
 | `compiler.js` | Code generation (5 paths) | ~2500 |
 | `validator.js` | AST validation (3 passes) | ~200 |
-| `clear.test.js` | 854 tests | ~8200 |
-| `cli/clear.js` | CLI: build, test, package | ~200 |
+| `clear.test.js` | 1089 tests | ~11500 |
+| `cli/clear.js` | CLI for AI agents: build, check, info, fix, lint, serve | ~500 |
 | `runtime/db.js` | In-memory DB with JSON persistence | ~300 |
 | `runtime/auth.js` | JWT auth + middleware | ~120 |
 | `runtime/rateLimit.js` | Request rate limiting | ~50 |

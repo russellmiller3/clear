@@ -1,0 +1,17 @@
+build for javascript backend
+database is local memory
+
+create a Users table:
+  name, required
+  role, required
+
+when user calls DELETE /api/admin/users/:id:
+  needs login
+  requires role 'superadmin'
+  delete the User with this id
+  send back 'deleted'
+
+when user calls POST /api/users sending data:
+  needs login
+  new_user = save data as new User
+  send back new_user

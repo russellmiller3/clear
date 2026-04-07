@@ -47,6 +47,7 @@ function _validate(body, rules) {
 // Live Dashboard -- Stress Test App #9
 // Tests: SSE streaming, data aggregation, real-time updates
 // --- Data ---
+// clear:8
 // Data shape: Metric
 const MetricSchema = {
   name: { type: "text", required: true },
@@ -57,6 +58,7 @@ const MetricSchema = {
 db.createTable('metrics', MetricSchema);
 // --- Config ---
 // --- REST Endpoints ---
+// clear:21
 app.post('/api/metrics', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -70,6 +72,7 @@ app.post('/api/metrics', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:28
 app.get('/api/metrics', async (req, res) => {
   try {
     const all_metrics = await db.findAll('metrics');
@@ -78,6 +81,7 @@ app.get('/api/metrics', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:32
 app.get('/api/metrics/latest', async (req, res) => {
   try {
     const latest = await db.findAll('metrics');
@@ -87,6 +91,7 @@ app.get('/api/metrics/latest', async (req, res) => {
   }
 });
 // --- SSE Stream ---
+// clear:38
 app.get('/api/metrics/stream', async (req, res) => {
   try {
     res.writeHead(200, {
@@ -111,6 +116,7 @@ app.get('/api/metrics/stream', async (req, res) => {
   }
 });
 // --- Aggregation Job ---
+// clear:45
 // Background job: aggregate-metrics
 setInterval(async () => {
 

@@ -1,0 +1,29 @@
+build for javascript backend
+database is local memory
+
+create a Warehouses table:
+  name, required
+  stock (number), default 100
+
+create a Orders table:
+  warehouse_id, required
+  quantity (number), required
+
+log every request
+
+when user calls POST /api/orders sending order:
+  needs login
+  warehouse = look up Warehouse where id is order's warehouse_id
+  check warehouse is not missing, otherwise error 'Warehouse not found'
+  check warehouse's stock is at least order's quantity, otherwise error 'Insufficient stock'
+  warehouse's stock = warehouse's stock - order's quantity
+  save warehouse to Warehouses
+  new_order = save order as new Order
+  send back new_order
+
+when user calls POST /api/seed:
+  create w1:
+    name is 'Main Warehouse'
+    stock = 10
+  save w1 as new Warehouse
+  send back 'seeded'

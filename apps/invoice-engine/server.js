@@ -52,7 +52,9 @@ function _validate(body, rules) {
 // ============================================================
 // Database
 // ============================================================
+// clear:11
 // Database: local memory (JSON file backup)
+// clear:13
 // Data shape: Clients
 const ClientsSchema = {
   name: { type: "text", required: true },
@@ -62,6 +64,7 @@ const ClientsSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('clients', ClientsSchema);
+// clear:20
 // Data shape: Invoices
 const InvoicesSchema = {
   client_id: { type: "fk", required: true },
@@ -76,6 +79,7 @@ const InvoicesSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('invoices', InvoicesSchema);
+// clear:32
 // Data shape: LineItems
 const LineItemsSchema = {
   invoice_id: { type: "fk", required: true },
@@ -86,6 +90,7 @@ const LineItemsSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('lineitems', LineItemsSchema);
+// clear:40
 // Data shape: Payments
 const PaymentsSchema = {
   invoice_id: { type: "fk", required: true },
@@ -95,6 +100,7 @@ const PaymentsSchema = {
   created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('payments', PaymentsSchema);
+// clear:47
 // Data shape: AuditLog
 const AuditLogSchema = {
   entity_type: { type: "text", required: true },
@@ -110,6 +116,7 @@ db.createTable('auditlogs', AuditLogSchema);
 // ============================================================
 // Clients
 // ============================================================
+// clear:65
 app.get('/api/clients', async (req, res) => {
   try {
     const all_clients = await db.findAll('clients');
@@ -118,6 +125,7 @@ app.get('/api/clients', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:69
 app.get('/api/clients/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -130,6 +138,7 @@ app.get('/api/clients/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:74
 app.post('/api/clients', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -144,6 +153,7 @@ app.post('/api/clients', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:84
 app.put('/api/clients/:id', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -158,6 +168,7 @@ app.put('/api/clients/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:94
 app.delete('/api/clients/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -172,6 +183,7 @@ app.delete('/api/clients/:id', async (req, res) => {
 // ============================================================
 // Invoices
 // ============================================================
+// clear:104
 app.get('/api/invoices', async (req, res) => {
   try {
     const all_invoices = await db.findAll('invoices');
@@ -180,6 +192,7 @@ app.get('/api/invoices', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:108
 app.get('/api/invoices/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -192,6 +205,7 @@ app.get('/api/invoices/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:113
 app.post('/api/invoices', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -208,6 +222,7 @@ app.post('/api/invoices', async (req, res) => {
 });
 // --- Status transitions ---
 // Valid transitions: draft->sent, sent->paid, sent->overdue, draft->cancelled, sent->cancelled
+// clear:127
 app.put('/api/invoices/:id/send', async (req, res) => {
   try {
     const incoming = req.params;
@@ -222,6 +237,7 @@ app.put('/api/invoices/:id/send', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:136
 app.put('/api/invoices/:id/pay', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -242,6 +258,7 @@ app.put('/api/invoices/:id/pay', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:151
 app.put('/api/invoices/:id/cancel', async (req, res) => {
   try {
     const incoming = req.params;
@@ -256,6 +273,7 @@ app.put('/api/invoices/:id/cancel', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:160
 app.delete('/api/invoices/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -273,6 +291,7 @@ app.delete('/api/invoices/:id', async (req, res) => {
 // ============================================================
 // Line Items
 // ============================================================
+// clear:173
 app.get('/api/line-items', async (req, res) => {
   try {
     const all_items = await db.findAll('lineitems');
@@ -281,6 +300,7 @@ app.get('/api/line-items', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:177
 app.post('/api/line-items', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -295,6 +315,7 @@ app.post('/api/line-items', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:187
 app.delete('/api/line-items/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -308,6 +329,7 @@ app.delete('/api/line-items/:id', async (req, res) => {
 // ============================================================
 // Payments
 // ============================================================
+// clear:196
 app.get('/api/payments', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -320,6 +342,7 @@ app.get('/api/payments', async (req, res) => {
 // ============================================================
 // Audit Log
 // ============================================================
+// clear:205
 app.get('/api/audit', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -333,6 +356,7 @@ app.get('/api/audit', async (req, res) => {
 // ============================================================
 // Reports (read-only computed endpoints)
 // ============================================================
+// clear:215
 app.get('/api/reports/summary', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -346,6 +370,7 @@ app.get('/api/reports/summary', async (req, res) => {
 // ============================================================
 // Health
 // ============================================================
+// clear:225
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });

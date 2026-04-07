@@ -8,15 +8,6 @@ app.use((err, req, res, next) => {
   if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON in request body" });
   next(err);
 });
-// Log every request
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    const ms = Date.now() - start;
-    console.log(`${req.method} ${req.path} ${res.statusCode} ${ms}ms`);
-  });
-  next();
-});
 // Allow cross-origin requests
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -46,19 +37,24 @@ function _validate(body, rules) {
   return null;
 }
 
-// Todo App — Full Stack
-// Frontend: page with input, button, table
-// Backend: CRUD API with validation
-// --- Data ---
+// DATAFLOW
+// ┌──────────┐  POST /api/todos  ┌──────────┐  save  ┌──────────┐
+// │ Frontend │ ──────────────> │ Backend  │ ─────> │    DB    │
+// │  (form)  │ <────────────── │ (server) │ <───── │ (memory) │
+// └──────────┘  GET /api/todos  └──────────┘  query └──────────┘
+// Database
+// clear:10
+// Database: local memory (JSON file backup)
+// clear:12
 // Data shape: Todos
 const TodosSchema = {
   title: { type: "text", required: true },
   completed: { type: "boolean", default: false },
-  created_at: { type: "timestamp", auto: true }
+  created_at_date: { type: "timestamp", auto: true }
 };
 db.createTable('todos', TodosSchema);
-// --- Config ---
-// --- Backend ---
+// Backend
+// clear:20
 app.get('/api/todos', async (req, res) => {
   try {
     const all_todos = await db.findAll('todos');
@@ -67,30 +63,32 @@ app.get('/api/todos', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:24
 app.post('/api/todos', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
-    const post_data = req.body;
+    const todo_data = req.body;
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"title","type":"text","required":true,"min":1,"max":500}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_todo = await db.insert('todos', _pick(post_data, TodosSchema));
-    return res.status(201).json(new_todo);
+    const new_todo = await db.insert('todos', _pick(todo_data, TodosSchema));
+    return res.status(201).json({ ...new_todo, message: "success" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:30
 app.delete('/api/todos/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     await db.remove('todos', { id: incoming.id });
-    return res.json({ message: "deleted" });
+    return res.status(200).json({ message: "deleted" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// --- Frontend ---
+// Frontend
 
 const path = require('path');
 app.use(express.static(__dirname));

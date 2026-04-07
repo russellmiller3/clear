@@ -42,6 +42,13 @@ export function validate(ast) {
   validateEndpointURLs(ast.body, warnings);
   validateSecurity(ast.body, errors, warnings);
   validateDuplicateEndpoints(ast.body, warnings);
+  validateDisplayActions(ast.body, warnings);
+  validateEndpointResponses(ast.body, warnings);
+  validateFetchURLsMatchEndpoints(ast.body, warnings);
+  validateArithmetic(ast.body, warnings);
+  validateCapacity(ast.body, warnings);
+  validateFieldMismatch(ast.body, warnings);
+  validateOWASP(ast.body, errors, warnings);
   return { errors, warnings };
 }
 
@@ -254,13 +261,22 @@ function validateForwardReferences(body, errors) {
     'configure', 'connect', 'query', 'fetch', 'scrape', 'predict', 'train',
   ];
 
-  function suggestKeyword(name) {
+  function suggestKeyword(name, scope) {
     const lower = name.toLowerCase();
     let best = null, bestDist = 3; // max distance 2
+    // Check keywords
     for (const kw of KEYWORDS) {
-      if (lower === kw) return null; // exact match means it's not a typo
+      if (lower === kw) return null;
       const d = editDistance(lower, kw);
       if (d < bestDist) { bestDist = d; best = kw; }
+    }
+    // Check user-defined variables (catches typos like 'emial' -> 'email')
+    if (scope) {
+      for (const v of scope) {
+        if (lower === v.toLowerCase()) return null;
+        const d = editDistance(lower, v.toLowerCase());
+        if (d < bestDist) { bestDist = d; best = v; }
+      }
     }
     return best;
   }
@@ -288,7 +304,7 @@ function validateForwardReferences(body, errors) {
     switch (expr.type) {
       case NodeType.VARIABLE_REF:
         if (!scope.has(expr.name) && !BUILTINS.has(expr.name.toLowerCase())) {
-          const suggestion = suggestKeyword(expr.name);
+          const suggestion = suggestKeyword(expr.name, scope);
           if (suggestion) {
             errors.push({
               line: line,
@@ -635,7 +651,7 @@ function validateSecurity(body, errors, warnings) {
         const name = node.name.toLowerCase();
         allSchemaFields.set(name, fields);
         allSchemaFields.set(name + (name.endsWith('s') ? '' : 's'), fields);
-        if (fields.has('user_id') || fields.has('owner_id') || fields.has('owner') || fields.has('author_id')) {
+        if (fields.has('user_id') || fields.has('owner_id') || fields.has('owner')) {
           schemasWithOwner.add(name);
           schemasWithOwner.add(name + (name.endsWith('s') ? '' : 's'));
         }
@@ -716,6 +732,60 @@ function validateSecurity(body, errors, warnings) {
     }
   }
   checkEndpoints(body);
+
+  // Check 4: POST endpoints that handle login/signup without rate limiting
+  function checkBruteForce(nodes) {
+    for (const node of nodes) {
+      if (node.type !== NodeType.ENDPOINT) continue;
+      const method = node.method.toUpperCase();
+      const path = node.path.toLowerCase();
+      const isAuthEndpoint = path.includes('login') || path.includes('signin') ||
+        path.includes('signup') || path.includes('register') || path.includes('auth');
+      if (method === 'POST' && isAuthEndpoint) {
+        const hasRateLimit = node.body.some(n => n.type === NodeType.RATE_LIMIT);
+        if (!hasRateLimit) {
+          warnings.push(
+            `Line ${node.line}: ${method} ${node.path} looks like a login/signup endpoint but has no rate limit. ` +
+            `Without rate limiting, attackers can try thousands of passwords per second. Add: rate limit 10 per minute`
+          );
+        }
+      }
+    }
+  }
+  checkBruteForce(body);
+
+  // Check 5: Sensitive field names in GET responses (password, secret, token in schema)
+  function checkSensitiveFields(nodes) {
+    const sensitiveNames = ['password', 'password_hash', 'secret', 'api_key', 'token', 'private_key'];
+    for (const node of nodes) {
+      if (node.type !== NodeType.DATA_SHAPE) continue;
+      const tableName = node.name;
+      const sensitive = node.fields.filter(f => sensitiveNames.includes(f.name.toLowerCase()));
+      if (sensitive.length > 0) {
+        const fieldNames = sensitive.map(f => f.name).join(', ');
+        warnings.push(
+          `Line ${node.line}: Table '${tableName}' has sensitive field${sensitive.length > 1 ? 's' : ''}: ${fieldNames}. ` +
+          `Make sure GET endpoints don't return ${sensitive.length > 1 ? 'these fields' : 'this field'} to clients. ` +
+          `Consider removing ${fieldNames} from the 'showing' list or filtering server-side.`
+        );
+      }
+    }
+  }
+  checkSensitiveFields(body);
+
+  // Check 6: CORS enabled but no auth on any endpoint (wide-open API)
+  const hasCORS = body.some(n => n.type === NodeType.ALLOW_CORS);
+  const hasAnyAuth = body.some(n =>
+    n.type === NodeType.ENDPOINT && n.body &&
+    n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE)
+  );
+  const hasEndpoints = body.some(n => n.type === NodeType.ENDPOINT);
+  if (hasCORS && hasEndpoints && !hasAnyAuth) {
+    warnings.push(
+      `CORS is enabled but no endpoint requires auth. Any website can call your API and read the responses. ` +
+      `Add 'requires auth' to sensitive endpoints, or remove 'allow cross-origin requests' if this is an internal API.`
+    );
+  }
 }
 
 /**
@@ -742,3 +812,385 @@ function validateDuplicateEndpoints(body, warnings) {
   }
   walk(body);
 }
+
+/**
+ * DISPLAY ACTION VALIDATION: Warn when a table has "with delete" but no
+ * DELETE endpoint, or "with edit" but no PUT/PATCH endpoint.
+ */
+function validateDisplayActions(body, warnings) {
+  const endpoints = new Map();
+  function collectEndpoints(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.ENDPOINT && node.path) {
+        const match = node.path.match(/\/api\/(\w+)\/:id/);
+        if (match) {
+          endpoints.set(`${node.method} ${match[1].toLowerCase()}`, node.line);
+        }
+      }
+      if (node.body) collectEndpoints(node.body);
+    }
+  }
+  collectEndpoints(body);
+
+  function checkDisplays(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.DISPLAY && node.actions) {
+        const varName = node.expression && node.expression.name ? node.expression.name.toLowerCase() : '';
+        for (const action of node.actions) {
+          if (action === 'delete' && !endpoints.has(`DELETE ${varName}`)) {
+            warnings.push(
+              `Line ${node.line}: Table has "with delete" but no DELETE endpoint found for ${varName}. ` +
+              `Add: when user calls DELETE /api/${varName}/:id`
+            );
+          }
+          if (action === 'edit' && !endpoints.has(`PUT ${varName}`) && !endpoints.has(`PATCH ${varName}`)) {
+            warnings.push(
+              `Line ${node.line}: Table has "with edit" but no PUT or PATCH endpoint found for ${varName}. ` +
+              `Add: when user calls PUT /api/${varName}/:id`
+            );
+          }
+        }
+      }
+      if (node.body) checkDisplays(node.body);
+    }
+  }
+  checkDisplays(body);
+}
+
+/**
+ * ENDPOINT RESPONSES: Warn if an endpoint has no send back statement.
+ * An endpoint without a response is almost always a bug — the client
+ * gets no data back and the request hangs.
+ */
+function validateEndpointResponses(body, warnings) {
+  function hasResponse(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.RESPOND) return true;
+      if (n.body && hasResponse(n.body)) return true;
+    }
+    return false;
+  }
+  function walk(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.ENDPOINT) {
+        if (!hasResponse(node.body || [])) {
+          warnings.push(
+            `Line ${node.line}: ${node.method} ${node.path} has no response. ` +
+            `Add: send back data (or send back 'ok')`
+          );
+        }
+      }
+      if (node.body) walk(node.body);
+    }
+  }
+  walk(body);
+}
+
+/**
+ * FETCH URL MATCHING: Warn if a frontend fetch targets a URL that doesn't
+ * match any declared endpoint. Catches typos like '/api/user' when the
+ * endpoint is '/api/users'.
+ */
+function validateFetchURLsMatchEndpoints(body, warnings) {
+  // Collect all declared endpoint paths
+  const endpoints = new Map();
+  function collectEndpoints(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.ENDPOINT) {
+        // Normalize: strip :param segments for matching
+        const normalized = n.path.replace(/:[\w]+/g, ':id');
+        endpoints.set(`${n.method} ${normalized}`, n.line);
+        // Also store just the base path for GET matching
+        endpoints.set(`GET ${n.path.split('/:')[0]}`, n.line);
+      }
+      if (n.body) collectEndpoints(n.body);
+    }
+  }
+  collectEndpoints(body);
+
+  // If no endpoints declared, skip (frontend-only app)
+  if (endpoints.size === 0) return;
+
+  // Collect all fetch URLs from API_CALL nodes
+  function checkFetches(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.API_CALL && n.url && n.url.startsWith('/api/')) {
+        const method = n.method || 'GET';
+        const url = n.url.split('?')[0]; // strip query params
+        // Check if this URL matches any endpoint
+        const normalized = url.replace(/\/[\w-]+$/, '/:id'); // try with :id
+        const matchesExact = endpoints.has(`${method} ${url}`);
+        const matchesParam = endpoints.has(`${method} ${normalized}`);
+        const matchesBase = endpoints.has(`GET ${url}`);
+        if (!matchesExact && !matchesParam && !matchesBase) {
+          // Find closest endpoint for suggestion
+          let closest = null;
+          let closestDist = 999;
+          for (const [key] of endpoints) {
+            const epPath = key.split(' ')[1];
+            if (!epPath) continue;
+            const dist = Math.abs(epPath.length - url.length) + (epPath.includes(url.split('/').slice(0, -1).join('/')) ? 0 : 5);
+            if (dist < closestDist) { closestDist = dist; closest = key; }
+          }
+          const suggestion = closest ? ` Did you mean ${closest}?` : '';
+          warnings.push(
+            `Line ${n.line}: ${method} ${url} doesn't match any endpoint.${suggestion}`
+          );
+        }
+      }
+      if (n.body) checkFetches(n.body);
+    }
+  }
+  checkFetches(body);
+}
+
+// =============================================================================
+// SILENT BUG GUARDS — Compile-time warnings for common logic errors
+// =============================================================================
+
+const BALANCE_WATCHLIST = ['balance', 'stock', 'inventory', 'quantity', 'credits', 'remaining', 'available'];
+
+/**
+ * Warn when subtracting from balance/stock/inventory fields without a guard.
+ */
+function validateArithmetic(body, warnings) {
+  function check(nodes, hasGuard) {
+    for (const n of nodes) {
+      if (n.type === NodeType.GUARD) hasGuard = true;
+      if (n.type === 'assign' && n.name && n.name.includes('.')) {
+        const member = n.name.split('.').pop();
+        if (BALANCE_WATCHLIST.includes(member) && n.expression &&
+            n.expression.type === 'binary_op' && n.expression.operator === '-' && !hasGuard) {
+          warnings.push(
+            `Line ${n.line}: subtracting from '${member}' with no guard. Consider adding:\n` +
+            `  check ${n.name.replace('.', "'s ")} is at least <amount>, otherwise error 'Insufficient ${member}'`
+          );
+        }
+      }
+      if (n.body) check(n.body, hasGuard);
+    }
+  }
+  for (const n of body) {
+    if (n.type === NodeType.ENDPOINT && n.body) check(n.body, false);
+  }
+}
+
+const CAPACITY_FIELDS = ['capacity', 'limit', 'stock'];
+const COUNTER_FIELDS = ['tickets_sold', 'sold', 'used', 'registered_count', 'enrolled_count'];
+
+/**
+ * Warn when inserting into child of capacity table without a guard.
+ */
+function validateCapacity(body, warnings) {
+  const capacityTables = new Map();
+  for (const n of body) {
+    if (n.type !== NodeType.DATA_SHAPE) continue;
+    const fields = n.fields.map(f => f.name);
+    const hasCap = fields.some(f => CAPACITY_FIELDS.some(c => f === c || f.startsWith('max_')));
+    const hasCounter = fields.some(f => COUNTER_FIELDS.some(c => f === c || f.endsWith('_count') || f.endsWith('_sold')));
+    if (hasCap && hasCounter) capacityTables.set(n.name.toLowerCase(), n);
+  }
+  if (capacityTables.size === 0) return;
+
+  for (const ep of body) {
+    if (ep.type !== NodeType.ENDPOINT || !ep.body) continue;
+    const hasGuard = ep.body.some(n => n.type === NodeType.GUARD);
+    if (hasGuard) continue;
+    for (const n of ep.body) {
+      if (n.type !== NodeType.CRUD || n.operation !== 'save' || !n.resultVar) continue;
+      const targetName = n.target?.toLowerCase();
+      if (!targetName) continue;
+      const targetShape = body.find(b => b.type === NodeType.DATA_SHAPE &&
+        (b.name.toLowerCase() === targetName || b.name.toLowerCase() === targetName + 's' || b.name.toLowerCase() + 's' === targetName));
+      if (!targetShape) continue;
+      for (const f of targetShape.fields) {
+        if (f.fieldType === 'fk' || f.name.endsWith('_id')) {
+          const refBase = f.name.replace(/_id$/, '').toLowerCase();
+          for (const [capName] of capacityTables) {
+            if (capName.startsWith(refBase) || refBase.startsWith(capName.replace(/s$/, ''))) {
+              warnings.push(
+                `Line ${ep.line}: inserting into '${targetName}' which references '${capName}'. ` +
+                `The ${capName} table has capacity/counter fields but this endpoint has no guard.`
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Warn when frontend sends fields that don't match the backend table schema.
+ */
+function validateFieldMismatch(body, warnings) {
+  // Collect table schemas
+  const schemas = new Map();
+  for (const n of body) {
+    if (n.type === NodeType.DATA_SHAPE) {
+      const fields = new Set(n.fields.map(f => f.name));
+      schemas.set(n.name.toLowerCase(), { fields, name: n.name });
+      const plural = n.name.toLowerCase() + (n.name.toLowerCase().endsWith('s') ? '' : 's');
+      schemas.set(plural, { fields, name: n.name });
+    }
+  }
+  // Collect endpoints and their target tables
+  const endpointTables = new Map();
+  for (const ep of body) {
+    if (ep.type !== NodeType.ENDPOINT || !ep.body) continue;
+    const crud = ep.body.find(n => n.type === NodeType.CRUD && n.operation === 'save');
+    if (crud && crud.target) {
+      const key = `${ep.method} ${ep.path}`;
+      // Try both singular and plural forms
+      const target = crud.target.toLowerCase();
+      endpointTables.set(key, target);
+      endpointTables.set(key + ':plural', target + (target.endsWith('s') ? '' : 's'));
+    }
+  }
+  // Check frontend API calls
+  function checkCalls(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.API_CALL && n.fields && n.fields.length > 0 && n.url) {
+        const method = n.method || 'POST';
+        const key = `${method} ${n.url}`;
+        const tableName = endpointTables.get(key) || endpointTables.get(key + ':plural');
+        if (tableName) {
+          const schema = schemas.get(tableName) || schemas.get(tableName + 's');
+          if (schema) {
+            for (const sent of n.fields) {
+              if (!schema.fields.has(sent)) {
+                let suggestion = '';
+                for (const sf of schema.fields) {
+                  if (sent.includes(sf) || sf.includes(sent)) suggestion = ` Did you mean '${sf}'?`;
+                }
+                warnings.push(
+                  `Line ${n.line}: frontend sends '${sent}' to ${method} ${n.url}, but the ${schema.name} table has no '${sent}' field.${suggestion}`
+                );
+              }
+            }
+          }
+        }
+      }
+      if (n.body) checkCalls(n.body);
+    }
+  }
+  checkCalls(body);
+}
+
+/**
+ * OWASP TOP 10 SECURITY CHECKS
+ *
+ * Catches security vulnerabilities at compile time based on the OWASP Top 10:2025.
+ * Each check maps to a specific OWASP category.
+ */
+function validateOWASP(body, errors, warnings) {
+  // ── A03: SQL Injection via raw queries with string interpolation ──
+  // Raw queries that use string concatenation instead of parameterized queries
+  function checkInjection(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.RAW_QUERY && n.sql) {
+        // Check if SQL contains interpolation markers like {variable} or ' + variable
+        if (n.sql.includes('{') || n.sql.includes("' +") || n.sql.includes("\" +")) {
+          warnings.push(
+            `Line ${n.line}: SQL query uses string interpolation which is vulnerable to SQL injection. ` +
+            `Use parameterized queries instead: query 'SELECT * FROM users WHERE id = $1' with user_id`
+          );
+        }
+      }
+      // Check for raw SQL in assignments too
+      if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RAW_QUERY) {
+        if (n.expression.sql && (n.expression.sql.includes('{') || n.expression.sql.includes("' +"))) {
+          warnings.push(
+            `Line ${n.line}: SQL query uses string interpolation — this is a SQL injection risk. ` +
+            `Use parameterized queries: query 'SELECT * WHERE id = $1' with id_var`
+          );
+        }
+      }
+      if (n.body) checkInjection(n.body);
+    }
+  }
+  checkInjection(body);
+
+  // ── A04: Insecure Direct Object References (path traversal in file ops) ──
+  // File operations that use user-controlled paths without validation
+  function checkPathTraversal(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.FILE_OP) {
+        // If file path is a variable reference (not a literal), warn about path traversal
+        if (n.path && n.path.type === NodeType.VARIABLE_REF) {
+          warnings.push(
+            `Line ${n.line}: File operation uses a variable path ('${n.path.name}'). ` +
+            `If this comes from user input, it could allow path traversal attacks (../../etc/passwd). ` +
+            `Validate the path or use a fixed directory prefix.`
+          );
+        }
+      }
+      if (n.body) checkPathTraversal(n.body);
+    }
+  }
+  checkPathTraversal(body);
+
+  // ── A05: Security Misconfiguration — PATCH endpoints without auth ──
+  function checkPatchWithoutAuth(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.ENDPOINT && n.method === 'PATCH') {
+        const hasAuth = n.body?.some(b =>
+          b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE
+        );
+        if (!hasAuth) {
+          errors.push({
+            line: n.line,
+            patchable: true,
+            fix: ['  requires auth'],
+            insertAfter: n.line,
+            message: `PATCH ${n.path} has no auth guard — anyone can modify data. Add: requires auth`
+          });
+        }
+      }
+      if (n.body) checkPatchWithoutAuth(n.body);
+    }
+  }
+  checkPatchWithoutAuth(body);
+
+  // ── A07: Cross-Site Request Forgery — POST endpoints that modify data without auth ──
+  // POST endpoints that save/update/delete without auth are CSRF-vulnerable
+  function checkCSRF(nodes) {
+    for (const n of nodes) {
+      if (n.type !== NodeType.ENDPOINT) continue;
+      if (n.method !== 'POST') continue;
+      const hasAuth = n.body?.some(b =>
+        b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE
+      );
+      const hasCrud = n.body?.some(b => n.type === NodeType.CRUD);
+      const modifiesData = n.body?.some(b =>
+        b.type === NodeType.CRUD && (b.operation === 'save' || b.operation === 'remove')
+      );
+      if (modifiesData && !hasAuth) {
+        const path = n.path?.toLowerCase() || '';
+        // Skip signup/register — those are intentionally unauthenticated
+        if (path.includes('signup') || path.includes('register') || path.includes('seed')) continue;
+        warnings.push(
+          `Line ${n.line}: POST ${n.path} modifies data without auth. ` +
+          `Without authentication, this endpoint is vulnerable to CSRF attacks — ` +
+          `a malicious site could trick a user's browser into submitting data. ` +
+          `Add: requires auth`
+        );
+      }
+    }
+  }
+  checkCSRF(body);
+
+  // ── A09: Security Logging — no logging on apps with auth ──
+  const hasAuth = body.some(n =>
+    n.type === NodeType.ENDPOINT && n.body &&
+    n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE)
+  );
+  const hasLogging = body.some(n => n.type === NodeType.LOG_REQUESTS);
+  if (hasAuth && !hasLogging) {
+    warnings.push(
+      `Your app requires auth but doesn't log requests. Without logging, you can't detect ` +
+      `unauthorized access attempts or debug auth issues. Add: log every request`
+    );
+  }
+}
+

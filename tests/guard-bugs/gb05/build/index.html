@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Directory</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-2xl mx-auto p-8 flex flex-col gap-6">
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Full Name</legend>
+      <input id="input_full_name" class="input input-bordered w-full" type="text" placeholder="Full Name">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Work Email</legend>
+      <input id="input_work_email" class="input input-bordered w-full" type="text" placeholder="Work Email">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Dept</legend>
+      <input id="input_dept" class="input input-bordered w-full" type="text" placeholder="Dept">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Employee">Add Employee</button>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Employees">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Employees</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Employees_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Employees: name*, email*, department* (line 4)
+
+ ENDPOINTS:
+   POST /api/employees [auth] (line 9)
+   GET /api/employees (line 14)
+
+ PAGES:
+   'Directory' at / (line 18)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "Directory";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  full_name: "",
+  work_email: "",
+  dept: "",
+  employees: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:2
+  // Database: local memory (JSON file backup)
+  {
+    const _tableEl = document.getElementById('output_Employees_table');
+    const _data = _state.employees;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","email","department"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_full_name').value = _state.full_name;
+  document.getElementById('input_work_email').value = _state.work_email;
+  document.getElementById('input_dept').value = _state.dept;
+}
+
+// --- Input listeners ---
+document.getElementById('input_full_name').addEventListener('input', function(e) {
+  _state.full_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_work_email').addEventListener('input', function(e) {
+  _state.work_email = e.target.value;
+  _recompute();
+});
+document.getElementById('input_dept').addEventListener('input', function(e) {
+  _state.dept = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Add_Employee').addEventListener('click', async function() {
+    if (_state.full_name === '' || _state.full_name == null) { _toast('full name is required', 'error'); return; }
+    if (_state.work_email === '' || _state.work_email == null) { _toast('work email is required', 'error'); return; }
+    if (_state.dept === '' || _state.dept == null) { _toast('dept is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Employee');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/employees", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full_name: _state.full_name, work_email: _state.work_email, dept: _state.dept }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/employees] [clear:24]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.employees = await fetch("/api/employees").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/employees] [clear:25]', e.message); return _state.employees; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- On Page Load ---
+(async () => {
+  _state.employees = await fetch("/api/employees").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/employees] [clear:19]', e.message); return _state.employees; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

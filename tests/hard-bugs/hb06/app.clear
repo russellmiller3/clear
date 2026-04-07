@@ -1,0 +1,37 @@
+build for web and javascript backend
+database is local memory
+
+create a Articles table:
+  title, required
+  body, required
+  author, required
+  published, default 'false'
+
+when user calls GET /api/articles:
+  articles = look up all Articles
+  send back articles
+
+when user calls POST /api/articles sending article:
+  needs login
+  new_article = save article as new Article
+  send back new_article
+
+when user calls PUT /api/articles/:id sending article:
+  needs login
+  article's published is 'true'
+  save article to Articles
+  send back article
+
+when user calls GET /api/articles/:id:
+  article = look up records in Articles table where id is incoming's id
+  send back article
+
+page 'Blog' at '/':
+  on page load get articles from '/api/articles'
+  'Title' is a text input saved as a title
+  'Body' is a text input saved as a body
+  'Author' is a text input saved as a author
+  button 'Publish Article':
+    send title, body, author to '/api/articles'
+    get articles from '/api/articles'
+  display articles as table showing title, author, published

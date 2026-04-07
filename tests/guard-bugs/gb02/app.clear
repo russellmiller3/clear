@@ -1,0 +1,24 @@
+build for javascript backend
+database is local memory
+
+create a Books table:
+  title, required
+  author, required
+  status, default 'available'
+
+when user calls POST /api/books sending book:
+  needs login
+  new_book = save book as new Book
+  send back new_book
+
+when user calls PUT /api/books/:id sending book:
+  needs login
+  existing_book = look up Book where id is this id
+  check existing_book is not missing, otherwise error 'Book not found'
+  existing_book's status is book's status
+  save existing_book to Books
+  send back existing_book
+
+when user calls GET /api/books:
+  books = look up all Books
+  send back books
