@@ -1,8 +1,8 @@
-# Clear — AI Style Guide
+# Clear — AI Instructions
 
-This file tells Claude HOW to write Clear code. The compiler is permissive
-(accepts aliases, both quote styles, etc.) but Claude should always write
-the canonical form for maximum readability.
+How to write Clear code and use the Clear CLI. This is the instruction manual
+for AI agents building apps in Clear. The compiler accepts aliases and both
+quote styles, but always write the canonical form for maximum readability.
 
 ## ASCII Diagrams First (MANDATORY — Source of Truth)
 
