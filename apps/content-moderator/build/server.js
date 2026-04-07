@@ -89,6 +89,7 @@ async function agent_moderator(review) {
   return review;
 }
 // clear:17
+// clear:17 — POST /api/moderate
 app.post('/api/moderate', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -97,27 +98,38 @@ app.post('/api/moderate', async (req, res) => {
     const _vErr = _validate(req.body, [{"field":"content","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
     let moderated = await agent_moderator(review_data);
-    const saved = await db.insert('reviews', _pick(moderated, ReviewsSchema));
+    const saved = await db.insert('reviews', _pick(moderated, ReviewsSchema)); // clear:21
     return res.status(201).json({ ...saved, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/moderate] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:24
+// clear:24 — GET /api/reviews
 app.get('/api/reviews', async (req, res) => {
   try {
     const all_reviews = await db.findAll('reviews');
     return res.json(all_reviews);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/reviews] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:28
+// clear:28 — GET /api/health
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/health] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 

@@ -144,6 +144,8 @@ function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 document.title = "ML Dashboard";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
   search: "",
   model_name: "",
@@ -211,7 +213,7 @@ document.getElementById('btn_Add_Model').addEventListener('click', async functio
     { const _r = await fetch("/api/models", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_name: _state.model_name }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
     }
-    _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+    _state.models = await fetch("/api/models").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/models]', e.message); return _state.models; });
     _state.model_name = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
@@ -243,7 +245,7 @@ document.getElementById('output_Models_table').addEventListener('click', async f
 (async () => {
   { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
     if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  _state.models = await fetch("/api/models").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/models]', e.message); return _state.models; });
   _recompute();
 })();
 

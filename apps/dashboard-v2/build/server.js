@@ -58,15 +58,20 @@ const ModelsSchema = {
 db.createTable('models', ModelsSchema);
 // Backend
 // clear:16
+// clear:16 — GET /api/models
 app.get('/api/models', async (req, res) => {
   try {
     const all_models = await db.findAll('models');
     return res.json(all_models);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/models] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:20
+// clear:20 — POST /api/models
 app.post('/api/models', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -74,10 +79,13 @@ app.post('/api/models', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":100}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_model = await db.insert('models', _pick(model_data, ModelsSchema));
+    const new_model = await db.insert('models', _pick(model_data, ModelsSchema)); // clear:23
     return res.status(201).json({ ...new_model, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/models] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // Frontend
