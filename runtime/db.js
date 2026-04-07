@@ -40,7 +40,13 @@ const _tables = {};
 
 function createTable(name, schema) {
   const tableName = name.toLowerCase();
-  if (_tables[tableName]) return; // already exists
+  if (_tables[tableName]) {
+    // Table already exists (loaded from disk) — always update schema to match
+    // current source code. This prevents stale persisted schemas from shadowing
+    // schema changes made in the .clear file.
+    _tables[tableName].schema = schema || {};
+    return;
+  }
   _tables[tableName] = {
     schema: schema || {},
     records: [],
