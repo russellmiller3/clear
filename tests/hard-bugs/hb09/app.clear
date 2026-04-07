@@ -54,7 +54,9 @@ page 'Hiring' at '/':
   'Name' is a text input saved as a name
   'Email' is a text input saved as a email
   'Position' is a text input saved as a position
+  'Stage' is a dropdown with ['applied', 'interview', 'offer', 'hired', 'rejected'] saved as a stage
+  'Rating' is a number input saved as a rating
   button 'Add Candidate':
-    send name, email, position to '/api/candidates'
+    send name, email, position, stage, rating to '/api/candidates'
     get candidates from '/api/candidates'
   display candidates as table showing name, email, position, stage, rating with edit
