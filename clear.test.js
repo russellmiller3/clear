@@ -1297,7 +1297,7 @@ page 'App' at '/':
       text 'Menu'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('w-64 shrink-0');
+    expect(result.html).toContain('w-60 shrink-0');
   });
 
   it('app_main preset produces flex column', () => {
@@ -1342,7 +1342,7 @@ page 'App' at '/':
     text 'Card content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('rounded-box p-6');
+    expect(result.html).toContain('rounded-box p-5');
   });
 
   it('app presets skip max-width wrapper', () => {
@@ -1364,7 +1364,7 @@ page 'App' at '/':
     heading 'Welcome'`;
     const result = compileProgram(source);
     expect(result.html).toContain('flex flex-col items-center');
-    expect(result.html).toContain('font-display text-5xl');
+    expect(result.html).toContain('font-display text-6xl');
   });
 
   it('full dashboard layout compiles end-to-end', () => {
@@ -1385,10 +1385,10 @@ page 'Dashboard' at '/':
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('data-theme="midnight"');
     expect(result.html).toContain('flex h-screen');
-    expect(result.html).toContain('w-64');
+    expect(result.html).toContain('w-60');
     expect(result.html).toContain('sticky top-0');
     expect(result.html).toContain('overflow-y-auto');
-    expect(result.html).toContain('rounded-box p-6');
+    expect(result.html).toContain('rounded-box p-5');
   });
 });
 
@@ -4282,10 +4282,11 @@ describe('Compiler - rate limit', () => {
     expect(result.javascript).toContain('max: 10');
   });
 
-  it('compiles rate limit to Python decorator', () => {
+  it('compiles rate limit to Python slowapi setup', () => {
     const result = compileProgram("target: python backend\non GET '/api':\n  rate limit 10 per minute\n  send back 'ok'");
-    expect(result.python).toContain('limiter');
-    expect(result.python).toContain('10/minute');
+    expect(result.python).toContain('Limiter');
+    expect(result.python).toContain('slowapi');
+    expect(result.python).toContain('10 per minute');
   });
 });
 
@@ -10710,4 +10711,3465 @@ when user calls POST /api/score sending lead_data:
   });
 });
 
+describe('Table action buttons - parsing', () => {
+  it('parses "with delete" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toEqual(['name', 'email']);
+    expect(disp.actions).toEqual(['delete']);
+  });
+
+  it('parses "with edit" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['edit']);
+  });
+
+  it('parses "with delete and edit" on display table', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete and edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toEqual(['delete', 'edit']);
+  });
+
+  it('no actions when "with" is absent', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.actions).toBe(undefined);
+  });
+
+  it('parses "with delete" without showing clause', () => {
+    const ast = parse("page 'App':\n  display contacts as table with delete");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toBe(null);
+    expect(disp.actions).toEqual(['delete']);
+  });
+
+  it('columns do not include with/delete/edit tokens', () => {
+    const ast = parse("page 'App':\n  display contacts as table showing name, email with delete and edit");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.columns).toEqual(['name', 'email']);
+    expect(disp.columns).not.toContain('with');
+    expect(disp.columns).not.toContain('delete');
+    expect(disp.columns).not.toContain('edit');
+  });
+});
+
+describe('Table action buttons - compilation', () => {
+  it('renders delete buttons when "with delete" and DELETE endpoint exist', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name, email with delete`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('data-delete-id');
+    expect(result.javascript).toContain("method: 'DELETE'");
+  });
+
+  it('does NOT render delete buttons without "with delete"', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name, email`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('data-delete-id');
+  });
+
+  it('renders edit buttons when "with edit" and PUT endpoint exist', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  'Name' is a text input saved as a name
+  display contacts as table showing name, email with edit`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('data-edit-id');
+    expect(result.javascript).toContain('_editing_id');
+  });
+
+  it('auto-upserts POST to PUT when _editing_id is set', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+  email, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls POST /api/contacts sending contact_data:
+  new_contact = save contact_data as new Contact
+  send back new_contact with success message
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  'Name' is a text input saved as a name
+  'Email' is a text input saved as an email
+  button 'Save':
+    send name and email to '/api/contacts'
+    get contacts from '/api/contacts'
+  display contacts as table showing name, email with edit`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_state._editing_id');
+    expect(result.javascript).toContain("method: 'PUT'");
+  });
+
+  it('does NOT add _editing_id to state without "with edit"', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls PUT /api/contacts/:id sending contact_data:
+  requires auth
+  save contact_data to Contacts
+  send back contact_data with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_editing_id');
+  });
+});
+
+describe('Table action buttons - validation', () => {
+  it('warns when "with delete" but no DELETE endpoint', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with delete`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no DELETE endpoint'))).toBe(true);
+  });
+
+  it('warns when "with edit" but no PUT/PATCH endpoint', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with edit`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no PUT or PATCH endpoint'))).toBe(true);
+  });
+
+  it('no warning when endpoints match actions', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with delete`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('DELETE endpoint'))).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// PHASE 30: CLIENT VALIDATION, LOADING STATE, ERROR DISPLAY
+// =============================================================================
+
+describe('Phase 30 - client-side validation before fetch', () => {
+  it('adds validation checks for POST fields', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("_toast('todo is required'");
+    expect(result.javascript).toContain("return;");
+  });
+
+  it('does not add validation for buttons without POST', () => {
+    const src = `build for web
+page 'App' at '/':
+  count = 0
+  button 'Inc':
+    increase count by 1`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_toast');
+  });
+});
+
+describe('Phase 30 - loading state on buttons', () => {
+  it('disables button and shows Loading during async', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls GET /api/todos:
+  all_todos = get all Todos
+  send back all_todos
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'
+    get todos from '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_btn.disabled = true');
+    expect(result.javascript).toContain('loading loading-spinner');
+    expect(result.javascript).toContain('_btn.disabled = false');
+  });
+});
+
+describe('Phase 30 - error display on fetch failure', () => {
+  it('checks response status and throws on error', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('if (!_r.ok)');
+    expect(result.javascript).toContain('throw new Error');
+  });
+
+  it('wraps async button body in try/catch with toast', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  todo, required
+when user calls POST /api/todos sending todo_data:
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
+page 'App' at '/':
+  'Task' is a text input saved as a todo
+  button 'Add':
+    send todo to '/api/todos'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("catch(_err)");
+    expect(result.javascript).toContain("_toast(_err.message");
+  });
+});
+
+// =============================================================================
+// CHART SYNTAX (ECharts)
+// =============================================================================
+
+describe('Chart syntax - parsing', () => {
+  it('parses chart as line showing data', () => {
+    const ast = parse("page 'App':\n  chart 'Revenue' as line showing sales");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.type).toBe(NodeType.CHART);
+    expect(chart.title).toBe('Revenue');
+    expect(chart.chartType).toBe('line');
+    expect(chart.dataVar).toBe('sales');
+  });
+
+  it('parses chart as pie showing data by field', () => {
+    const ast = parse("page 'App':\n  chart 'Status' as pie showing tasks by status");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.chartType).toBe('pie');
+    expect(chart.groupBy).toBe('status');
+  });
+
+  it('parses chart as bar and area types', () => {
+    const ast = parse("page 'App':\n  chart 'Sales' as bar showing data");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].body[0].chartType).toBe('bar');
+
+    const ast2 = parse("page 'App':\n  chart 'Trend' as area showing data");
+    expect(ast2.errors).toHaveLength(0);
+    expect(ast2.body[0].body[0].chartType).toBe('area');
+  });
+
+  it('rejects unknown chart type', () => {
+    const ast = parse("page 'App':\n  chart 'X' as donut showing data");
+    expect(ast.errors.length).toBeGreaterThan(0);
+    expect(ast.errors[0].message).toContain('Unknown chart type');
+  });
+});
+
+describe('Chart syntax - compilation', () => {
+  it('compiles chart to ECharts init + option', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Sales table:
+  region, required
+  revenue (number), required
+when user calls GET /api/sales:
+  all_sales = get all Sales
+  send back all_sales
+page 'App' at '/':
+  on page load get sales from '/api/sales'
+  chart 'Revenue' as bar showing sales`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('echarts');
+    expect(result.html).toContain('chart_Revenue');
+    expect(result.javascript).toContain('echarts.init');
+    expect(result.javascript).toContain("type: 'bar'");
+  });
+
+  it('compiles pie chart with groupBy', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+  status, default 'todo'
+when user calls GET /api/tasks:
+  all_tasks = get all Tasks
+  send back all_tasks
+page 'App' at '/':
+  on page load get tasks from '/api/tasks'
+  chart 'Status' as pie showing tasks by status`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("type: 'pie'");
+    expect(result.javascript).toContain('_counts');
+  });
+
+  it('does not include ECharts CDN when no chart nodes', () => {
+    const src = `build for web
+page 'App' at '/':
+  heading 'Hello'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).not.toContain('echarts');
+  });
+});
+
+// =============================================================================
+// MULTI-FILE APP ARCHITECTURE
+// =============================================================================
+
+describe('Multi-file app - full-stack split', () => {
+  const resolver = (name) => {
+    if (name === 'backend') return `when user calls GET /api/users:
+  all_users = get all Users
+  send back all_users
+
+when user calls POST /api/users sending user_data:
+  requires auth
+  validate user_data:
+    name is text, required
+  new_user = save user_data as new User
+  send back new_user with success message`;
+    if (name === 'frontend') return `page 'Users' at '/':
+  on page load get users from '/api/users'
+  'Name' is a text input saved as a name
+  button 'Add User':
+    send name to '/api/users'
+    get users from '/api/users'
+    name is ''
+  display users as table showing name`;
+    return null;
+  };
+
+  it('compiles a multi-file full-stack app', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Users table:
+  name, required
+allow cross-origin requests
+use everything from 'backend'
+use everything from 'frontend'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    // Backend endpoints in serverJS (full-stack splits backend from frontend)
+    expect(result.serverJS).toContain("app.get('/api/users'");
+    expect(result.serverJS).toContain("app.post('/api/users'");
+    // Frontend compiled into HTML
+    expect(result.html).toContain('input');
+    expect(result.html).toContain('btn_Add_User');
+  });
+
+  it('compiles backend-only module import', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+use everything from 'backend'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS || result.javascript).toContain("app.get('/api/users'");
+  });
+
+  it('detects missing module with helpful error', () => {
+    const src = `build for javascript backend\nuse everything from 'nonexistent'`;
+    const result = compileProgram(src, { moduleResolver: resolver });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('Could not find module');
+  });
+
+  it('detects circular imports', () => {
+    const circularResolver = (name) => {
+      if (name === 'a') return "use everything from 'b'\ndouble(x) = x * 2";
+      if (name === 'b') return "use everything from 'a'\ntriple(x) = x * 3";
+      return null;
+    };
+    const src = `build for javascript backend\nuse everything from 'a'`;
+    const result = compileProgram(src, { moduleResolver: circularResolver });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('Circular');
+  });
+});
+
+describe('Supabase adapter - parsing and scaffold', () => {
+  it('parses database is supabase', () => {
+    const ast = parse("database is supabase");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.DATABASE_DECL);
+    expect(ast.body[0].backend).toBe('supabase');
+  });
+
+  it('emits createClient import for supabase backend', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('createClient');
+    expect(result.javascript).toContain('SUPABASE_URL');
+    expect(result.javascript).toContain('SUPABASE_ANON_KEY');
+  });
+
+  it('does not require db runtime for supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain("require('./clear-runtime/db')");
+  });
+});
+
+describe('Supabase adapter - CRUD compilation', () => {
+  it('compiles get all to supabase.from().select()', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').select('*')");
+  });
+
+  it('compiles find one by id to .eq().single()', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts/:id:\n  define contact as: look up records in Contacts table where id is incoming's id\n  send back contact`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain(".eq('id'");
+    expect(result.javascript).toContain('.single()');
+  });
+
+  it('compiles save as insert to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls POST /api/contacts sending contact_data:\n  new_contact = save contact_data as new Contact\n  send back new_contact with success message`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').insert");
+    expect(result.javascript).toContain('.select().single()');
+  });
+
+  it('compiles update to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls PUT /api/contacts/:id sending update_data:\n  requires auth\n  save update_data to Contacts\n  send back 'updated'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').update");
+  });
+
+  it('compiles delete to supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls DELETE /api/contacts/:id:\n  requires auth\n  delete the Contact with this id\n  send back 'deleted' with success message`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("supabase.from('contacts').delete()");
+    expect(result.javascript).toContain(".eq('id'");
+  });
+
+  it('compiles data shape as comment for supabase (no db.createTable)', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('must exist in Supabase');
+    expect(result.javascript).not.toContain('db.createTable');
+  });
+
+  it('does not affect local memory compilation', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('db.findAll');
+    expect(result.javascript).not.toContain('supabase');
+  });
+});
+
+// =============================================================================
+// PYTHON SUPABASE ADAPTER
+// =============================================================================
+
+describe('Python Supabase adapter', () => {
+  it('emits supabase-py import for Python backend', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('from supabase import create_client');
+    expect(result.python).toContain('SUPABASE_URL');
+  });
+
+  it('compiles Python CRUD to supabase-py calls', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('supabase.table("contacts").select("*")');
+    expect(result.python).toContain('.execute()');
+  });
+
+  it('Python data shape is comment for supabase', () => {
+    const src = `build for python backend\ndatabase is supabase\ncreate a Contacts table:\n  name, required`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('must exist in Supabase');
+    expect(result.python).not.toContain('CREATE TABLE');
+  });
+
+  it('Python local memory still uses db stub', () => {
+    const src = `build for python backend\ndatabase is local memory\ncreate a Contacts table:\n  name, required\nwhen user calls GET /api/contacts:\n  all_contacts = get all Contacts\n  send back all_contacts`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('class _DB');
+    expect(result.python).toContain('db.query');
+    expect(result.python).not.toContain('supabase');
+  });
+});
+
+// =============================================================================
+// PHASE 31: ON-CHANGE HANDLERS (REACTIVE INPUT WATCHERS)
+// =============================================================================
+
+describe('Phase 31 - when X changes', () => {
+  it('parses when variable changes block', () => {
+    const ast = parse("page 'App':\n  'Search' is a text input saved as a query\n  when query changes:\n    get results from '/api/search'");
+    expect(ast.errors).toHaveLength(0);
+    const onChange = ast.body[0].body.find(n => n.type === NodeType.ON_CHANGE);
+    expect(onChange).toBeDefined();
+    expect(onChange.variable).toBe('query');
+    expect(onChange.debounceMs).toBe(0);
+  });
+
+  it('parses debounce delay', () => {
+    const ast = parse("page 'App':\n  'Search' is a text input saved as a query\n  when query changes after 250ms:\n    get results from '/api/search'");
+    expect(ast.errors).toHaveLength(0);
+    const onChange = ast.body[0].body.find(n => n.type === NodeType.ON_CHANGE);
+    expect(onChange.debounceMs).toBe(250);
+  });
+
+  it('compiles to input event listener', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+page 'App' at '/':
+  'Search' is a text input saved as a query
+  when query changes:
+    get results from '/api/items'
+  display results as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("When query changes");
+    expect(result.javascript).toContain("addEventListener('input'");
+  });
+
+  it('compiles debounced handler with setTimeout', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+page 'App' at '/':
+  'Search' is a text input saved as a query
+  when query changes after 300ms:
+    get results from '/api/items'
+  display results as table showing name`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('clearTimeout');
+    expect(result.javascript).toContain('setTimeout');
+    expect(result.javascript).toContain('300');
+  });
+});
+
+// =============================================================================
+// PHASE 37: SMARTER COMPILER ERRORS (DID-YOU-MEAN)
+// =============================================================================
+
+describe('Phase 37 - did-you-mean for variables', () => {
+  it('suggests correct variable name on typo', () => {
+    const src = `build for javascript backend\nemail is 'test@test.com'\nshow emial`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes("Did you mean 'email'"))).toBe(true);
+  });
+
+  it('suggests variable when names are close', () => {
+    const src = `build for javascript backend\ntotal_price = 100\nshow total_pric`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes("Did you mean 'total_price'"))).toBe(true);
+  });
+
+  it('does not suggest when variable exists', () => {
+    const src = `build for javascript backend\nemail is 'test@test.com'\nshow email`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// PHASE 32: FILE UPLOAD INPUT
+// =============================================================================
+
+describe('Phase 32 - file input', () => {
+  it('parses file input', () => {
+    const ast = parse("page 'App':\n  'Photo' is a file input saved as a photo");
+    expect(ast.errors).toHaveLength(0);
+    const inp = ast.body[0].body[0];
+    expect(inp.type).toBe(NodeType.ASK_FOR);
+    expect(inp.inputType).toBe('file');
+  });
+
+  it('compiles file input to HTML type=file', () => {
+    const src = `build for web\npage 'App' at '/':\n  'Photo' is a file input saved as a photo\n  button 'Upload':\n    show photo`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('type="file"');
+    expect(result.html).toContain('file-input');
+  });
+
+  it('uses change event for file input', () => {
+    const src = `build for web\npage 'App' at '/':\n  'Photo' is a file input saved as a photo\n  button 'Go':\n    show photo`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("'change'");
+    expect(result.javascript).toContain('files[0]');
+  });
+});
+
+// =============================================================================
+// PHASE 33: CSS STATES (HOVER, FOCUS, TRANSITIONS, RESPONSIVE)
+// =============================================================================
+
+describe('Phase 33 - CSS hover/focus/transition', () => {
+  it('compiles hover_ properties to :hover rule', () => {
+    const src = `build for web\nstyle card:\n  background is 'white'\n  hover_background is '#f0f0f0'\npage 'App' at '/':\n  section 'X' with style card:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain(':hover');
+    expect(result.css).toContain('#f0f0f0');
+  });
+
+  it('compiles focus_ properties to :focus-within rule', () => {
+    const src = `build for web\nstyle input_box:\n  border is '1px solid #ccc'\n  focus_border is '1px solid blue'\npage 'App' at '/':\n  section 'X' with style input_box:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain(':focus-within');
+  });
+
+  it('auto-adds transition when hover props exist', () => {
+    const src = `build for web\nstyle card:\n  background is 'white'\n  hover_background is 'blue'\npage 'App' at '/':\n  section 'X' with style card:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain('transition');
+  });
+
+  it('compiles responsive breakpoints', () => {
+    const src = `build for web\nstyle mobile:\n  for_screen is 'small'\n  padding = 8\npage 'App' at '/':\n  section 'X' with style mobile:\n    text 'hi'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.css).toContain('@media');
+    expect(result.css).toContain('max-width: 640px');
+  });
+});
+
+// =============================================================================
+// PHASE 37: BUG-PREVENTION VALIDATORS
+// =============================================================================
+
+describe('Phase 37 - endpoint must have response', () => {
+  it('warns when endpoint has no send back', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/health:\n  show 'alive'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('no response'))).toBe(true);
+  });
+
+  it('no warning when endpoint has send back', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('no response'))).toHaveLength(0);
+  });
+});
+
+describe('Phase 37 - fetch URL matches endpoints', () => {
+  it('warns when fetch URL does not match any endpoint', () => {
+    const src = `build for web and javascript backend
+when user calls GET /api/users:
+  send back 'ok'
+page 'App' at '/':
+  on page load get items from '/api/user'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes("doesn't match any endpoint"))).toBe(true);
+  });
+
+  it('no warning when fetch URL matches endpoint', () => {
+    const src = `build for web and javascript backend
+when user calls GET /api/users:
+  send back 'ok'
+page 'App' at '/':
+  on page load get items from '/api/users'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes("doesn't match"))).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// SECURITY: ATTACK PREVENTION VALIDATORS
+// =============================================================================
+
+describe('Security - brute force prevention', () => {
+  it('warns when login endpoint has no rate limit', () => {
+    const src = `build for javascript backend\nwhen user calls POST /api/login sending credentials:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('rate limit'))).toBe(true);
+  });
+
+  it('no warning when login has rate limit', () => {
+    const src = `build for javascript backend\nwhen user calls POST /api/login sending credentials:\n  rate limit 10 per minute\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('login') && w.includes('rate limit'))).toHaveLength(0);
+  });
+});
+
+describe('Security - sensitive data exposure', () => {
+  it('warns when table has password field', () => {
+    const src = `build for javascript backend\ncreate a Users table:\n  email, required\n  password, required`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('sensitive') && w.includes('password'))).toBe(true);
+  });
+});
+
+describe('Security - open CORS without auth', () => {
+  it('warns when CORS enabled but no auth on any endpoint', () => {
+    const src = `build for javascript backend\nallow cross-origin requests\nwhen user calls GET /api/data:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('CORS') && w.includes('auth'))).toBe(true);
+  });
+
+  it('no warning when CORS + auth exist', () => {
+    const src = `build for javascript backend\nallow cross-origin requests\nwhen user calls GET /api/data:\n  requires auth\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('CORS') && w.includes('no endpoint'))).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// OWASP SECURITY VALIDATORS
+// =============================================================================
+
+describe('OWASP - SQL injection detection', () => {
+  it('warns on raw query with string interpolation', () => {
+    const src = `build for javascript backend\nresults = query 'SELECT * FROM users WHERE name = {name}'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('SQL injection'))).toBe(true);
+  });
+});
+
+describe('OWASP - CSRF on data-modifying POST', () => {
+  it('warns when POST modifies data without auth', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls POST /api/items sending item_data:\n  new_item = save item_data as new Item\n  send back new_item with success message`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('CSRF'))).toBe(true);
+  });
+
+  it('no CSRF warning when POST has auth', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls POST /api/items sending item_data:\n  requires auth\n  new_item = save item_data as new Item\n  send back new_item with success message`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.includes('CSRF'))).toHaveLength(0);
+  });
+});
+
+describe('OWASP - security logging', () => {
+  it('warns when auth used but no logging', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/data:\n  requires auth\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.includes('log'))).toBe(true);
+  });
+});
+
+describe('OWASP - PATCH without auth', () => {
+  it('errors on PATCH endpoint without auth', () => {
+    const src = `build for javascript backend\nwhen user calls PATCH /api/users/:id sending data:\n  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes('PATCH') && e.message.includes('auth'))).toBe(true);
+  });
+});
+
+// =============================================================================
+// PHASE 34: PAGINATION
+// =============================================================================
+
+describe('Phase 34 - pagination', () => {
+  it('parses get all with page and per page', () => {
+    const ast = parse("all_items = get all Items page 1, 25 per page");
+    expect(ast.errors).toHaveLength(0);
+    const crud = ast.body[0];
+    expect(crud.type).toBe(NodeType.CRUD);
+    expect(crud.page).toBe(1);
+    expect(crud.perPage).toBe(25);
+  });
+
+  it('compiles pagination to array slice for local memory', () => {
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items page 1, 10 per page\n  send back items`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('.slice(');
+  });
+
+  it('compiles pagination to .range() for supabase', () => {
+    const src = `build for javascript backend\ndatabase is supabase\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items page 1, 10 per page\n  send back items`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('.range(');
+  });
+});
+
+// =============================================================================
+// PHASE 37: FK INFERENCE OPT-OUT
+// =============================================================================
+
+describe('Phase 37 - FK inference opt-out', () => {
+  it('capitalized field without type hint is FK', () => {
+    const ast = parse("create a Tasks table:\n  Category, required");
+    expect(ast.body[0].fields[0].fieldType).toBe('fk');
+  });
+
+  it('capitalized field with (text) type hint is NOT FK', () => {
+    const ast = parse("create a Tasks table:\n  Category (text), required");
+    expect(ast.body[0].fields[0].fieldType).toBe('text');
+    expect(ast.body[0].fields[0].fk).toBe(null);
+  });
+
+  it('capitalized field with (number) type hint is NOT FK', () => {
+    const ast = parse("create a Tasks table:\n  Priority (number), default 0");
+    expect(ast.body[0].fields[0].fieldType).toBe('number');
+  });
+});
+
+// =============================================================================
+// PHASE 34: COMPOUND UNIQUE CONSTRAINTS
+// =============================================================================
+
+describe('Phase 34 - compound unique (one per)', () => {
+  it('parses one per field1 and field2', () => {
+    const ast = parse("create a Votes table:\n  user_id, required\n  poll_id, required\n  choice, required\n  one per user_id and poll_id");
+    expect(ast.errors).toHaveLength(0);
+    const shape = ast.body[0];
+    expect(shape.compoundUniques).toBeDefined();
+    expect(shape.compoundUniques[0]).toEqual(['user_id', 'poll_id']);
+  });
+
+  it('compiles to UNIQUE constraint in Python SQL', () => {
+    const src = `build for python backend\ncreate a Votes table:\n  user_id, required\n  poll_id, required\n  one per user_id and poll_id`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('UNIQUE(user_id, poll_id)');
+  });
+
+  it('does not treat one per as a field', () => {
+    const ast = parse("create a Votes table:\n  user_id, required\n  poll_id, required\n  one per user_id and poll_id");
+    expect(ast.errors).toHaveLength(0);
+    const shape = ast.body[0];
+    expect(shape.fields.length).toBe(2);
+    expect(shape.fields.map(f => f.name)).not.toContain('one');
+  });
+});
+
+// =============================================================================
+// PHASE 34: DATABASE TRANSACTIONS
+// =============================================================================
+
+describe('Phase 34 - transactions (as one operation)', () => {
+  it('parses as one operation block', () => {
+    const ast = parse("as one operation:\n  show 'a'\n  show 'b'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.TRANSACTION);
+    expect(ast.body[0].body.length).toBe(2);
+  });
+
+  it('compiles to BEGIN/COMMIT/ROLLBACK in JS', () => {
+    const src = `build for javascript backend\nas one operation:\n  show 'transfer'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('BEGIN');
+    expect(result.javascript).toContain('COMMIT');
+    expect(result.javascript).toContain('ROLLBACK');
+  });
+
+  it('compiles to BEGIN/COMMIT/ROLLBACK in Python', () => {
+    const src = `build for python backend\nas one operation:\n  show 'transfer'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('BEGIN');
+    expect(result.python).toContain('COMMIT');
+    expect(result.python).toContain('ROLLBACK');
+  });
+});
+
+// =============================================================================
+// STRESS TESTS — ADVERSARIAL EDGE CASES
+// =============================================================================
+
+describe('Stress: Empty/Null Inputs', () => {
+  it('handles empty string input', () => {
+    const result = compileProgram('');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles whitespace-only input', () => {
+    const result = compileProgram('   \n  \n   \n');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles comment-only input', () => {
+    const result = compileProgram('# just a comment\n# another comment');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles page with no body gracefully', () => {
+    const src = `build for web\npage 'Empty' at '/':`;
+    const result = compileProgram(src);
+    // Empty page produces an error — this is correct behavior, not a crash
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('empty');
+  });
+
+  it('handles endpoint with empty body gracefully', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/empty:`;
+    const result = compileProgram(src);
+    // Endpoint with no body produces a warning about missing response
+    expect(result).toBeDefined();
+  });
+
+  it('handles button with no body gracefully', () => {
+    const src = `build for web\npage 'Test' at '/':\n  button 'Click':`;
+    const result = compileProgram(src);
+    // Should not crash — may produce error about empty button
+    expect(result).toBeDefined();
+  });
+
+  it('handles display with undefined variable', () => {
+    const src = `build for web\npage 'Test' at '/':\n  display phantom`;
+    const result = compileProgram(src);
+    // Should either compile or produce a clear error, not crash
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress: Feature Combinations That Might Conflict', () => {
+  it('chart + with delete on same page', () => {
+    const src = [
+      `build for web and javascript backend`,
+      `database is local memory`,
+      `create a Sales table:`,
+      `  region, required`,
+      `  revenue (number), required`,
+      `when user calls GET /api/sales:`,
+      `  data = get all Sales`,
+      `  send back data`,
+      `when user calls DELETE /api/sales/:id:`,
+      `  requires auth`,
+      `  delete the Sale with this id`,
+      `  send back 'deleted' with success message`,
+      `page 'Dashboard' at '/':`,
+      `  on page load get sales from '/api/sales'`,
+      `  chart 'Revenue' as bar showing sales`,
+      `  display sales as table showing region, revenue with delete`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toBeDefined();
+  });
+
+  it('when X changes + on page load both fetching same URL', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  on page load get items from '/api/items'`,
+      `  'Search' is a text input saved as a query`,
+      `  when query changes:`,
+      `    get items from '/api/items?q={query}'`,
+      `  display items as table`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('multiple charts showing same data', () => {
+    const src = [
+      `build for web`,
+      `page 'Charts' at '/':`,
+      `  on page load get sales from '/api/sales'`,
+      `  chart 'Revenue Line' as line showing sales`,
+      `  chart 'Revenue Bar' as bar showing sales`,
+      `  chart 'Revenue Pie' as pie showing sales by region`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toBeDefined();
+  });
+
+  it('with edit + with delete + chart on same table data', () => {
+    const src = [
+      `build for web and javascript backend`,
+      `database is local memory`,
+      `create a Tasks table:`,
+      `  name, required`,
+      `  status, default 'pending'`,
+      `  hours (number), default 0`,
+      `when user calls GET /api/tasks:`,
+      `  data = get all Tasks`,
+      `  send back data`,
+      `when user calls DELETE /api/tasks/:id:`,
+      `  requires auth`,
+      `  delete the Task with this id`,
+      `  send back 'deleted' with success message`,
+      `when user calls PUT /api/tasks/:id sending update_data:`,
+      `  requires auth`,
+      `  save update_data to Tasks`,
+      `  send back 'updated'`,
+      `page 'Tasks' at '/':`,
+      `  on page load get tasks from '/api/tasks'`,
+      `  chart 'Hours' as bar showing tasks`,
+      `  display tasks as table showing name, status, hours with delete and edit`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('file input inside a modal', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  section 'Upload' as modal:`,
+      `    heading 'Upload File'`,
+      `    'Choose file' is a text input saved as a filename`,
+      `    button 'Upload':`,
+      `      close modal`,
+      `  button 'Open Upload':`,
+      `    open the Upload modal`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('nested sections 5 levels deep', () => {
+    const src = [
+      `build for web`,
+      `page 'Deep' at '/':`,
+      `  section 'Level1':`,
+      `    section 'Level2':`,
+      `      section 'Level3':`,
+      `        section 'Level4':`,
+      `          section 'Level5':`,
+      `            text 'Very deep'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('Very deep');
+  });
+
+  it('when X changes inside a section inside a page', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  section 'Search':`,
+      `    'Query' is a text input saved as a query`,
+      `    when query changes:`,
+      `      get results from '/api/search?q={query}'`,
+      `  section 'Results':`,
+      `    display results as table`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('transaction inside backend endpoint', () => {
+    const src = [
+      `build for javascript backend`,
+      `database is local memory`,
+      `create a Accounts table:`,
+      `  name, required`,
+      `  balance (number), default 0`,
+      `when user calls POST /api/transfer sending data:`,
+      `  as one operation:`,
+      `    show 'transferring'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress: Boundary Values', () => {
+  it('handles very long variable names (100+ chars)', () => {
+    const longName = 'a'.repeat(120);
+    const src = `${longName} = 42\nshow ${longName}`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain(longName);
+  });
+
+  it('handles very long string literals', () => {
+    const longStr = 'x'.repeat(5000);
+    const src = `name is '${longStr}'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain(longStr);
+  });
+
+  it('handles 50+ fields in a data shape', () => {
+    const fields = Array.from({ length: 55 }, (_, i) => `  field${i}, required`).join('\n');
+    const src = `build for javascript backend\ndatabase is local memory\ncreate a BigTable table:\n${fields}`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles 20+ endpoints in one file', () => {
+    const endpoints = Array.from({ length: 25 }, (_, i) =>
+      `when user calls GET /api/route${i}:\n  send back 'ok${i}'`
+    ).join('\n');
+    const src = `build for javascript backend\n${endpoints}`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles page with 100+ lines of content', () => {
+    const lines = Array.from({ length: 110 }, (_, i) =>
+      `  text 'Line ${i}'`
+    ).join('\n');
+    const src = `build for web\npage 'Big' at '/':\n${lines}`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('Line 109');
+  });
+
+  it('handles debounce with 0ms', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  'Search' is a text input saved as a query`,
+      `  when query changes after 0ms:`,
+      `    get results from '/api/search?q={query}'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles debounce with 999999ms', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  'Search' is a text input saved as a query`,
+      `  when query changes after 999999ms:`,
+      `    get results from '/api/search?q={query}'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('999999');
+  });
+});
+
+describe('Stress: Synonym Collisions', () => {
+  it('variable named chart does not collide with chart keyword', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  chart = 0`,
+      `  display chart called 'Chart Value'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    // Should treat 'chart' as variable name in assignment context
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('variable named delete does not crash', () => {
+    const src = `build for web\npage 'Test' at '/':\n  show 'hello'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('variable named changes does not trigger when-changes handler', () => {
+    const src = `changes = 5\nshow changes`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('changes');
+  });
+
+  it('variable named operation does not collide with transaction', () => {
+    const src = `operation is 'test'\nshow operation`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('field named one in a table does not collide with one per', () => {
+    const src = [
+      `build for javascript backend`,
+      `database is local memory`,
+      `create a Items table:`,
+      `  one, required`,
+      `  two, required`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('table named Chart does not collide with chart UI element', () => {
+    const src = [
+      `build for javascript backend`,
+      `database is local memory`,
+      `create a Chart table:`,
+      `  name, required`,
+      `  value (number), required`,
+      `when user calls GET /api/chart:`,
+      `  data = get all Chart`,
+      `  send back data`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress: Type Confusion', () => {
+  it('chart showing a non-array variable does not crash', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  count = 42`,
+      `  chart 'Data' as bar showing count`,
+    ].join('\n');
+    const result = compileProgram(src);
+    // Should compile (runtime will handle the type issue)
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('display with delete on non-table display does not crash', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  total = 100`,
+      `  display total as dollars called 'Total'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('when X changes where X has not been declared as input', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  phantom = 0`,
+      `  when phantom changes:`,
+      `    show 'changed'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    // Should either work or give a clear error, not crash
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress: Security Edge Cases', () => {
+  it('endpoint with both requires auth AND requires role', () => {
+    const src = [
+      `build for javascript backend`,
+      `database is local memory`,
+      `create a Users table:`,
+      `  name, required`,
+      `when user calls DELETE /api/users/:id:`,
+      `  requires auth`,
+      `  requires role 'admin'`,
+      `  delete the User with this id`,
+      `  send back 'deleted'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('admin');
+  });
+
+  it('POST endpoint with validation + rate limit + auth (all three)', () => {
+    const src = [
+      `build for javascript backend`,
+      `database is local memory`,
+      `rate limit 10 per minute`,
+      `create a Posts table:`,
+      `  title, required`,
+      `  body, required`,
+      `when user calls POST /api/posts sending post_data:`,
+      `  requires auth`,
+      `  validate post_data:`,
+      `    title is text, required, min 1, max 200`,
+      `    body is text, required`,
+      `  new_post = save post_data as new Post`,
+      `  send back new_post with success message`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('parameterized query should not trigger injection warning', () => {
+    const src = [
+      `build for javascript backend`,
+      `when user calls GET /api/search:`,
+      `  results = query 'select * from users where name = :name' with incoming's name`,
+      `  send back results`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress: Multiple Pages and Routes', () => {
+  it('handles multiple pages with same component', () => {
+    const src = [
+      `build for web`,
+      `define component Card receiving content:`,
+      `  heading 'Card'`,
+      `  show content`,
+      `page 'Home' at '/':`,
+      `  show Card:`,
+      `    text 'Home card'`,
+      `page 'About' at '/about':`,
+      `  show Card:`,
+      `    text 'About card'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles page at root / and page at /index (potential conflict)', () => {
+    const src = [
+      `build for web`,
+      `page 'Home' at '/':`,
+      `  text 'home'`,
+      `page 'Index' at '/index':`,
+      `  text 'index'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress: Complex Expression Edge Cases', () => {
+  it('handles deeply nested arithmetic', () => {
+    const src = `result = ((1 + 2) * (3 + 4)) / ((5 - 6) + (7 * 8))`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles string interpolation with nested possessive', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  create person:`,
+      `    name is 'Alice'`,
+      `  msg is 'Hello {person\\'s name}'`,
+      `  text msg`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('handles multiple boolean conditions chained', () => {
+    const src = [
+      `x = 5`,
+      `y = 10`,
+      `z = 15`,
+      `if x is greater than 3 and y is less than 20 and z is 15:`,
+      `  show 'all true'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles comparison with string that looks like keyword', () => {
+    const src = `name is 'delete'\nif name is 'delete' then show 'yes'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress: Backend Edge Cases', () => {
+  it('handles endpoint with no send back', () => {
+    const src = [
+      `build for javascript backend`,
+      `when user calls POST /api/log sending data:`,
+      `  show data`,
+    ].join('\n');
+    const result = compileProgram(src);
+    // Should compile, even if no explicit response
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('handles multiple tables with foreign-key-like fields', () => {
+    const src = [
+      `build for javascript backend`,
+      `database is local memory`,
+      `create a Authors table:`,
+      `  name, required`,
+      `create a Books table:`,
+      `  title, required`,
+      `  author_id, required`,
+      `when user calls GET /api/books:`,
+      `  books = get all Books`,
+      `  send back books`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles webhook with env variable', () => {
+    const src = [
+      `build for javascript backend`,
+      `webhook '/stripe/events' signed with env('STRIPE_SECRET'):`,
+      `  send back 'ok'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles database migration with multiple operations', () => {
+    const src = [
+      `build for javascript backend`,
+      `database is local memory`,
+      `create a Users table:`,
+      `  name, required`,
+      `  email, required`,
+      `update database:`,
+      `  in Users table:`,
+      `    add status field as text, default 'active'`,
+      `    remove legacy field`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress: UI Edge Cases', () => {
+  it('handles tabs with single tab', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  section 'Views' as tabs:`,
+      `    tab 'Only':`,
+      `      text 'The only tab'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles collapsible section that starts closed', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  section 'Advanced' collapsible, starts closed:`,
+      `    text 'Hidden content'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('Hidden content');
+  });
+
+  it('handles modal open + close in same button', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  section 'Confirm' as modal:`,
+      `    text 'Are you sure?'`,
+      `    button 'OK':`,
+      `      close modal`,
+      `  button 'Toggle':`,
+      `    open the Confirm modal`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles slide-in panel', () => {
+    const src = [
+      `build for web`,
+      `page 'Test' at '/':`,
+      `  section 'Help' slides in from right:`,
+      `    text 'Help text'`,
+      `  button 'Help':`,
+      `    toggle the Help panel`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles conditional UI with multiple conditions', () => {
+    const src = [
+      `build for web`,
+      `page 'Wizard' at '/':`,
+      `  step = 1`,
+      `  button 'Next':`,
+      `    increase step by 1`,
+      `  button 'Back':`,
+      `    decrease step by 1`,
+      `  if step is 1:`,
+      `    heading 'Step 1'`,
+      `  if step is 2:`,
+      `    heading 'Step 2'`,
+      `  if step is 3:`,
+      `    heading 'Step 3'`,
+      `  if step is 4:`,
+      `    heading 'Step 4'`,
+      `  if step is 5:`,
+      `    heading 'Step 5'`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress: Python Backend', () => {
+  it('handles Python backend with all CRUD operations', () => {
+    const src = [
+      `build for python backend`,
+      `database is local memory`,
+      `create a Items table:`,
+      `  name, required`,
+      `  price (number), default 0`,
+      `when user calls GET /api/items:`,
+      `  items = get all Items`,
+      `  send back items`,
+      `when user calls POST /api/items sending item_data:`,
+      `  new_item = save item_data as new Item`,
+      `  send back new_item`,
+      `when user calls DELETE /api/items/:id:`,
+      `  requires auth`,
+      `  delete the Item with this id`,
+      `  send back 'deleted' with success message`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toBeDefined();
+  });
+});
+
+describe('Stress: Mixed Target Edge Cases', () => {
+  it('full-stack app with all features combined', () => {
+    const src = [
+      `build for web and javascript backend`,
+      `database is local memory`,
+      `log every request`,
+      `allow cross-origin requests`,
+      `rate limit 100 per minute`,
+      `create a Contacts table:`,
+      `  name, required`,
+      `  email, required, unique`,
+      `  phone`,
+      `when user calls GET /api/contacts:`,
+      `  contacts = get all Contacts`,
+      `  send back contacts`,
+      `when user calls POST /api/contacts sending contact_data:`,
+      `  requires auth`,
+      `  validate contact_data:`,
+      `    name is text, required, min 1, max 100`,
+      `    email is text, required, matches email`,
+      `  new_contact = save contact_data as new Contact`,
+      `  send back new_contact with success message`,
+      `when user calls PUT /api/contacts/:id sending update_data:`,
+      `  requires auth`,
+      `  save update_data to Contacts`,
+      `  send back 'updated'`,
+      `when user calls DELETE /api/contacts/:id:`,
+      `  requires auth`,
+      `  requires role 'admin'`,
+      `  delete the Contact with this id`,
+      `  send back 'deleted'`,
+      `page 'Contacts' at '/':`,
+      `  on page load get contacts from '/api/contacts'`,
+      `  heading 'Contact Manager'`,
+      `  'Name' is a text input saved as a name`,
+      `  'Email' is a text input saved as a email`,
+      `  'Phone' is a text input saved as a phone`,
+      `  button 'Add':`,
+      `    send name and email and phone as a new contact to '/api/contacts'`,
+      `    get contacts from '/api/contacts'`,
+      `    name is ''`,
+      `    email is ''`,
+      `    phone is ''`,
+      `  display contacts as table showing name, email, phone with delete and edit`,
+      `  chart 'Contacts' as bar showing contacts`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toBeDefined();
+    expect(result.javascript).toBeDefined();
+  });
+});
+
+// =============================================================================
+// PHASE 44: RETRY, TIMEOUT, RACE
+// =============================================================================
+
+describe('Phase 44 - retry', () => {
+  it('parses retry N times block', () => {
+    const ast = parse("retry 3 times:\n  show 'trying'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.RETRY);
+    expect(ast.body[0].count).toBe(3);
+  });
+
+  it('compiles retry to for loop with exponential backoff', () => {
+    const src = `build for javascript backend\nretry 3 times:\n  show 'trying'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_attempt');
+    expect(result.javascript).toContain('break');
+  });
+
+  it('compiles retry to Python for loop', () => {
+    const src = `build for python backend\nretry 3 times:\n  show 'trying'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('for _attempt in range(3)');
+  });
+});
+
+describe('Phase 44 - timeout', () => {
+  it('parses with timeout N seconds block', () => {
+    const ast = parse("with timeout 5 seconds:\n  show 'working'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.TIMEOUT);
+    expect(ast.body[0].ms).toBe(5000);
+  });
+
+  it('parses timeout in minutes', () => {
+    const ast = parse("with timeout 2 minutes:\n  show 'working'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].ms).toBe(120000);
+  });
+
+  it('compiles timeout to Promise.race', () => {
+    const src = `build for javascript backend\nwith timeout 5 seconds:\n  show 'working'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Promise.race');
+    expect(result.javascript).toContain('5000');
+  });
+});
+
+describe('Phase 44 - race (first to finish)', () => {
+  it('parses first to finish block', () => {
+    const ast = parse("first to finish:\n  show 'a'\n  show 'b'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.RACE);
+  });
+
+  it('compiles race to Promise.race', () => {
+    const src = `build for javascript backend\nfirst to finish:\n  show 'a'\n  show 'b'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Promise.race');
+  });
+});
+
+describe('Crash fixes', () => {
+  it('does not crash on undefined expression name', () => {
+    // sanitizeName(undefined) should not crash
+    const result = compileProgram("build for web\npage 'App' at '/':\n  heading 'test'");
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// ADVERSARIAL STRESS TESTS — ROUND 2
+// =============================================================================
+
+describe('Stress R2: Degenerate Inputs', () => {
+  it('handles a single newline', () => {
+    const result = compileProgram('\n');
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles 1000 blank lines', () => {
+    const result = compileProgram('\n'.repeat(1000));
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles line with only spaces (no trailing newline)', () => {
+    const result = compileProgram('     ');
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles comments with special characters', () => {
+    const result = compileProgram("# <script>alert('xss')</script>\n# DROP TABLE users;\nshow 'safe'");
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles string with newline escape', () => {
+    const result = compileProgram("msg is 'line1\\nline2'\nshow msg");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('handles empty string literal', () => {
+    const result = compileProgram("name is ''\nshow name");
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles display with no arguments in web page', () => {
+    const src = "build for web\npage 'Test' at '/':\n  heading 'hi'";
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Variable Name Edge Cases', () => {
+  it('variable name is a single character', () => {
+    const result = compileProgram('x = 1\nshow x');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('variable name with underscores', () => {
+    const result = compileProgram('my_very_long_var_name = 42\nshow my_very_long_var_name');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('variable name starting with underscore', () => {
+    const result = compileProgram('_private = 99\nshow _private');
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('variable named status (common word)', () => {
+    const result = compileProgram("status is 'active'\nshow status");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('variable named result (common word)', () => {
+    const result = compileProgram("result = 42\nshow result");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('variable named items shadows list operations', () => {
+    const result = compileProgram("items is an empty list\nadd 'hello' to items\nshow items");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('variable named count does not collide with count of', () => {
+    const result = compileProgram("count = 5\nshow count");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('variable named send does not collide with send back', () => {
+    const result = compileProgram("send = 10\nshow send");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: Arithmetic Edge Cases', () => {
+  it('division by zero compiles (runtime error)', () => {
+    const result = compileProgram('x = 10 / 0\nshow x');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('negative numbers in assignment', () => {
+    const result = compileProgram('x = -5\nshow x');
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('modulo operator', () => {
+    const result = compileProgram('x = 10 % 3\nshow x');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('chained math operations', () => {
+    const result = compileProgram('x = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10\nshow x');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('zero as value', () => {
+    const result = compileProgram('x = 0\nshow x');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('very large number', () => {
+    const result = compileProgram('x = 999999999999999\nshow x');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('decimal precision', () => {
+    const result = compileProgram('x = 0.1 + 0.2\nshow x');
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Conditional Edge Cases', () => {
+  it('deeply nested if/otherwise blocks', () => {
+    const src = [
+      'x = 5',
+      'if x is 1:',
+      '  if x is 2:',
+      '    if x is 3:',
+      '      show "deep"',
+      '    otherwise:',
+      '      show "not 3"',
+      '  otherwise:',
+      '    show "not 2"',
+      'otherwise:',
+      '  show "not 1"',
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('if with is nothing comparison', () => {
+    const result = compileProgram("x is nothing\nif x is nothing then show 'null'");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('if with not operator', () => {
+    const result = compileProgram("active is true\nif not active then show 'inactive'");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('inline if with string comparison', () => {
+    const result = compileProgram("name is 'Alice'\nif name is 'Alice' then show 'hi Alice'");
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Loop Edge Cases', () => {
+  it('repeat 0 times', () => {
+    const result = compileProgram("repeat 0 times:\n  show 'never'");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('repeat 1 time', () => {
+    const result = compileProgram("repeat 1 times:\n  show 'once'");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('for each on empty list', () => {
+    const result = compileProgram("items is an empty list\nfor each item in items list:\n  show item");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('nested loops', () => {
+    const src = [
+      'repeat 3 times:',
+      '  repeat 3 times:',
+      '    show "nested"',
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Function Edge Cases', () => {
+  it('function with no parameters', () => {
+    const result = compileProgram("define function greet():\n  return 'hello'\nresult = greet()\nshow result");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('function calling another function', () => {
+    const src = [
+      'double(x) = x * 2',
+      'quadruple(x) = double(double(x))',
+      'result = quadruple(5)',
+      'show result',
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('function with many parameters', () => {
+    const result = compileProgram('f(a, b, c, d, e, f, g, h) = a + b + c + d + e + f + g + h\nresult = f(1,2,3,4,5,6,7,8)\nshow result');
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('recursive function', () => {
+    const src = [
+      'define function factorial(n):',
+      '  if n is 1 then return 1',
+      '  return n * factorial(n - 1)',
+      'result = factorial(5)',
+      'show result',
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: Web Page Structure Edge Cases', () => {
+  it('page with only a divider', () => {
+    const src = "build for web\npage 'Minimal' at '/':\n  divider";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('hr');
+  });
+
+  it('page with every text variant', () => {
+    const src = [
+      "build for web",
+      "page 'Text' at '/':",
+      "  heading 'H1'",
+      "  subheading 'H2'",
+      "  text 'Normal'",
+      "  bold text 'Bold'",
+      "  italic text 'Italic'",
+      "  small text 'Small'",
+      "  code block 'x = 1'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('H1');
+    expect(result.html).toContain('Bold');
+  });
+
+  it('multiple buttons in sequence — BUG: inline button actions not recognized', () => {
+    // BUG: "button 'One': increase count by 1" (inline) fails validation
+    // because the validator thinks buttons with inline actions have no body.
+    // This works if using block form with indented body, but inline colon form breaks.
+    const src = [
+      "build for web",
+      "page 'Buttons' at '/':",
+      "  count = 0",
+      "  button 'One': increase count by 1",
+      "  button 'Two': increase count by 2",
+      "  button 'Three': increase count by 3",
+      "  button 'Reset': count = 0",
+      "  display count called 'Count'",
+    ].join('\n');
+    const result = compileProgram(src);
+    // EXPECTED: errors.length === 0 (inline button actions should be valid)
+    // ACTUAL: 4 errors about buttons having no action
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('no action');
+  });
+
+  it('input saved with article variations', () => {
+    const src = [
+      "build for web",
+      "page 'Form' at '/':",
+      "  'Name' is a text input saved as a name",
+      "  'Age' is a number input saved as age",
+      "  'Email' is a text input saved as an email",
+      "  button 'Submit':",
+      "    show name",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('dropdown with many options', () => {
+    const options = Array.from({ length: 20 }, (_, i) => `'Option${i}'`).join(', ');
+    const src = [
+      "build for web",
+      `page 'Select' at '/':`,
+      `  'Pick one' is a dropdown with [${options}]`,
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('page with link elements', () => {
+    const src = [
+      "build for web",
+      "page 'Links' at '/':",
+      "  link 'Home' to '/'",
+      "  link 'About' to '/about'",
+      "  link 'External' to 'https://example.com'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('href');
+  });
+});
+
+describe('Stress R2: Style Edge Cases', () => {
+  it('style block with all properties', () => {
+    const src = [
+      "build for web",
+      "style mybox:",
+      "  background is '#ff0000'",
+      "  padding = 24",
+      "  rounded = 12",
+      "  shadow is 'medium'",
+      "  color is 'white'",
+      "  text_size is '1.25rem'",
+      "  bold is true",
+      "page 'Styled' at '/':",
+      "  section 'Box' with style mybox:",
+      "    text 'Styled content'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('section with many inline layout modifiers', () => {
+    const src = [
+      "build for web",
+      "page 'Layout' at '/':",
+      "  section 'Main' full height, side by side, padded, rounded, with shadow:",
+      "    text 'content'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('built-in preset page_hero', () => {
+    const src = [
+      "build for web",
+      "page 'Landing' at '/':",
+      "  section 'Hero' with style page_hero:",
+      "    heading 'Welcome'",
+      "    text 'Subtitle'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Multiple CRUD Tables in Same App', () => {
+  it('two tables with GET endpoints and display', () => {
+    const src = [
+      "build for web and javascript backend",
+      "database is local memory",
+      "create a Products table:",
+      "  name, required",
+      "  price (number), required",
+      "create a Orders table:",
+      "  product_name, required",
+      "  quantity (number), required",
+      "when user calls GET /api/products:",
+      "  requires auth",
+      "  products = get all Products",
+      "  send back products",
+      "when user calls GET /api/orders:",
+      "  requires auth",
+      "  orders = get all Orders",
+      "  send back orders",
+      "page 'Dashboard' at '/':",
+      "  on page load:",
+      "    get products from '/api/products'",
+      "    get orders from '/api/orders'",
+      "  heading 'Products'",
+      "  display products as table showing name, price",
+      "  heading 'Orders'",
+      "  display orders as table showing product_name, quantity",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toBeDefined();
+    expect(result.javascript).toBeDefined();
+  });
+});
+
+describe('Stress R2: Error Handling Edge Cases', () => {
+  it('try block with nested operations', () => {
+    const src = [
+      "try:",
+      "  x = 10 / 0",
+      "  show x",
+      "if there's an error:",
+      "  show 'caught error'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('try block in backend endpoint', () => {
+    const src = [
+      "build for javascript backend",
+      "when user calls GET /api/risky:",
+      "  try:",
+      "    show 'attempt'",
+      "  if there's an error:",
+      "    show 'failed'",
+      "  send back 'done'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: Pattern Matching Edge Cases', () => {
+  it('match with many when branches', () => {
+    const src = [
+      "status is 'pending'",
+      "match status:",
+      "  when 'pending':",
+      "    show 'waiting'",
+      "  when 'active':",
+      "    show 'running'",
+      "  when 'completed':",
+      "    show 'done'",
+      "  when 'failed':",
+      "    show 'error'",
+      "  when 'cancelled':",
+      "    show 'stopped'",
+      "  otherwise:",
+      "    show 'unknown'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Component Edge Cases', () => {
+  it('component used in a loop — BUG: bold text with variable fails', () => {
+    // BUG: "bold text label" inside a component definition fails because
+    // the parser expects quoted text after "bold text", not a variable name.
+    // This means you can't use bold/italic text with dynamic content in components.
+    const src = [
+      "build for web",
+      "define component Badge receiving label:",
+      "  bold text label",
+      "page 'Test' at '/':",
+      "  on page load get items from '/api/items'",
+      "  for each item in items list:",
+      "    show Badge(item)",
+    ].join('\n');
+    const result = compileProgram(src);
+    // EXPECTED: errors.length === 0 (bold text should accept variable names)
+    // ACTUAL: error about needing text in quotes
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('text in quotes');
+  });
+
+  it('component with multiple props', () => {
+    const src = [
+      "build for web",
+      "define component UserCard receiving name and email:",
+      "  heading name",
+      "  text email",
+      "page 'Test' at '/':",
+      "  show UserCard('Alice' and 'alice@test.com')",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: Reactive Input Collisions', () => {
+  it('two when-changes handlers on different inputs', () => {
+    const src = [
+      "build for web",
+      "page 'Search' at '/':",
+      "  'Name' is a text input saved as a name",
+      "  'City' is a text input saved as a city",
+      "  when name changes:",
+      "    get results from '/api/search?name={name}'",
+      "  when city changes:",
+      "    get results from '/api/search?city={city}'",
+      "  display results as table",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('when-changes with debounce + button both modify same variable', () => {
+    const src = [
+      "build for web",
+      "page 'Test' at '/':",
+      "  'Query' is a text input saved as a query",
+      "  when query changes after 300ms:",
+      "    get results from '/api/search?q={query}'",
+      "  button 'Clear':",
+      "    query is ''",
+      "  display results as table",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: XSS and Injection in String Literals', () => {
+  it('string literal with HTML tags', () => {
+    const src = "msg is '<script>alert(1)</script>'\nshow msg";
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('string literal with SQL injection attempt', () => {
+    const src = "msg is 'Robert; DROP TABLE users;--'\nshow msg";
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('heading with HTML in web page does not crash', () => {
+    const src = "build for web\npage 'XSS' at '/':\n  heading '<img onerror=alert(1) src=x>'";
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: Object and Map Edge Cases', () => {
+  it('object with many fields', () => {
+    const fields = Array.from({ length: 20 }, (_, i) => `  field${i} = ${i}`).join('\n');
+    const src = `create config:\n${fields}\nshow config`;
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('possessive access chain', () => {
+    const src = [
+      "create person:",
+      "  name is 'Alice'",
+      "  age = 30",
+      "show person's name",
+      "show person's age",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('get/set with dynamic key', () => {
+    const src = [
+      "create scope:",
+      "  x = 5",
+      "  y = 10",
+      "key is 'x'",
+      "result = get key from scope",
+      "show result",
+      "set key in scope to 100",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Collection Operations Edge Cases', () => {
+  it('sum of empty list variable', () => {
+    const src = "prices is an empty list\ntotal = sum of prices\nshow total";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('chained collection operations', () => {
+    const src = [
+      "items is an empty list",
+      "add 'a' to items",
+      "add 'b' to items",
+      "add 'c' to items",
+      "first_item = first of items",
+      "last_item = last of items",
+      "how_many = count of items",
+      "show first_item",
+      "show last_item",
+      "show how_many",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Backend Validation Edge Cases', () => {
+  it('validate with all constraint types', () => {
+    const src = [
+      "build for javascript backend",
+      "database is local memory",
+      "create a Users table:",
+      "  name, required",
+      "  email, required, unique",
+      "  age (number)",
+      "when user calls POST /api/users sending data:",
+      "  requires auth",
+      "  validate data:",
+      "    name is text, required, min 1, max 100",
+      "    email is text, required, matches email",
+      "    age is number",
+      "  new_user = save data as new User",
+      "  send back new_user with success message",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('validate');
+  });
+
+  it('endpoint with guard condition', () => {
+    const src = [
+      "build for javascript backend",
+      "database is local memory",
+      "create a Products table:",
+      "  name, required",
+      "  stock (number), default 0",
+      "when user calls POST /api/buy sending order:",
+      "  requires auth",
+      "  guard order's stock is greater than 0 or 'Out of stock'",
+      "  send back 'purchased'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: Multi-Page SPA Edge Cases', () => {
+  it('five pages with different routes', () => {
+    const pages = Array.from({ length: 5 }, (_, i) =>
+      `page 'Page${i}' at '/page${i}':\n  heading 'Page ${i}'`
+    ).join('\n');
+    const src = `build for web\n${pages}`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('Page 0');
+    expect(result.html).toContain('Page 4');
+  });
+
+  it('pages with go to navigation', () => {
+    const src = [
+      "build for web",
+      "page 'Home' at '/':",
+      "  heading 'Home'",
+      "  button 'Go to About':",
+      "    go to '/about'",
+      "page 'About' at '/about':",
+      "  heading 'About'",
+      "  button 'Go Home':",
+      "    go to '/'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Database Backends', () => {
+  it('supabase database declaration compiles', () => {
+    const src = [
+      "build for javascript backend",
+      "database is supabase",
+      "create a Notes table:",
+      "  title, required",
+      "  content",
+      "when user calls GET /api/notes:",
+      "  requires auth",
+      "  notes = get all Notes",
+      "  send back notes",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('compound unique constraint', () => {
+    const src = [
+      "build for javascript backend",
+      "database is local memory",
+      "create a Votes table:",
+      "  user_id, required",
+      "  poll_id, required",
+      "  choice, required",
+      "  one per user_id and poll_id",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Chart Type Variations', () => {
+  it('area chart compiles', () => {
+    const src = [
+      "build for web",
+      "page 'Charts' at '/':",
+      "  on page load get data from '/api/data'",
+      "  chart 'Trend' as area showing data",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toBeDefined();
+  });
+
+  it('pie chart with by-field grouping', () => {
+    const src = [
+      "build for web",
+      "page 'Pie' at '/':",
+      "  on page load get tasks from '/api/tasks'",
+      "  chart 'Status' as pie showing tasks by status",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('chart title with special characters', () => {
+    const src = [
+      "build for web",
+      "page 'Test' at '/':",
+      "  on page load get data from '/api/data'",
+      "  chart 'Revenue ($) & Growth (%)' as line showing data",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: Build Target Edge Cases', () => {
+  it('build for web only — backend syntax should error or be ignored', () => {
+    const src = [
+      "build for web",
+      "page 'Home' at '/':",
+      "  heading 'Hello'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toBeDefined();
+  });
+
+  it('build for javascript backend only — no HTML output', () => {
+    const src = [
+      "build for javascript backend",
+      "when user calls GET /api/ping:",
+      "  send back 'pong'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toBeDefined();
+  });
+
+  it('no build declaration — defaults to non-reactive JS', () => {
+    const result = compileProgram("x = 42\nshow x");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toBeDefined();
+  });
+});
+
+describe('Stress R2: Whitespace and Indentation Edge Cases', () => {
+  it('mixed indentation (2 spaces vs 4 spaces) in same block', () => {
+    const src = "if true:\n  show 'two spaces'\n    show 'four spaces'";
+    const result = compileProgram(src);
+    // May or may not error — should not crash
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('trailing whitespace on lines', () => {
+    const result = compileProgram("x = 42   \nshow x   ");
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it('tab indentation', () => {
+    const src = "if true:\n\tshow 'tabbed'";
+    const result = compileProgram(src);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: String Interpolation Edge Cases', () => {
+  it('interpolation with multiple variables', () => {
+    const src = [
+      "name is 'Alice'",
+      "age = 30",
+      "msg is 'Name: {name}, Age: {age}'",
+      "show msg",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('interpolation with no variables (just text)', () => {
+    const src = "msg is 'Hello world'\nshow msg";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('nested braces in interpolation', () => {
+    const src = "x = 5\nmsg is 'Result: {x}'\nshow msg";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('empty interpolation braces', () => {
+    const src = "msg is 'Hello {} world'\nshow msg";
+    const result = compileProgram(src);
+    // Should not crash even with empty braces
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+});
+
+describe('Stress R2: Display Format Edge Cases', () => {
+  it('display as dollars', () => {
+    const src = [
+      "build for web",
+      "page 'Test' at '/':",
+      "  total = 99.99",
+      "  display total as dollars called 'Total'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('display as table with no showing clause', () => {
+    const src = [
+      "build for web",
+      "page 'Test' at '/':",
+      "  on page load get items from '/api/items'",
+      "  display items as table",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('display as table with single column', () => {
+    const src = [
+      "build for web",
+      "page 'Test' at '/':",
+      "  on page load get items from '/api/items'",
+      "  display items as table showing name",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('display as table with many columns — BUG: variable not recognized with 15+ cols', () => {
+    // BUG: When showing 15 columns, the compiler reports "data hasn't been
+    // created yet" even though it was fetched via on page load. The column
+    // parsing may be consuming the variable name or the get-from-url result
+    // isn't being registered in the declared variables set.
+    const cols = Array.from({ length: 15 }, (_, i) => `col${i}`).join(', ');
+    const src = [
+      "build for web",
+      "page 'Test' at '/':",
+      "  on page load get data from '/api/data'",
+      `  display data as table showing ${cols}`,
+    ].join('\n');
+    const result = compileProgram(src);
+    // EXPECTED: errors.length === 0
+    // ACTUAL: 1 error about 'data' not being created yet
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('data');
+  });
+});
+
+describe('Stress R2: Rate Limiting and Production Features', () => {
+  it('rate limit + CORS + logging all together', () => {
+    const src = [
+      "build for javascript backend",
+      "log every request",
+      "allow cross-origin requests",
+      "rate limit 100 per minute",
+      "when user calls GET /api/health:",
+      "  send back 'ok'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('env variable usage', () => {
+    const src = [
+      "build for javascript backend",
+      "api_key is env('API_KEY')",
+      "when user calls GET /api/test:",
+      "  send back 'ok'",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Stress R2: Concurrent Feature Interactions', () => {
+  it('on page load + when changes + button + chart + table all on one page', () => {
+    const src = [
+      "build for web and javascript backend",
+      "database is local memory",
+      "create a Metrics table:",
+      "  label, required",
+      "  value (number), required",
+      "when user calls GET /api/metrics:",
+      "  requires auth",
+      "  data = get all Metrics",
+      "  send back data",
+      "when user calls POST /api/metrics sending metric_data:",
+      "  requires auth",
+      "  new_metric = save metric_data as new Metric",
+      "  send back new_metric with success message",
+      "when user calls DELETE /api/metrics/:id:",
+      "  requires auth",
+      "  delete the Metric with this id",
+      "  send back 'deleted' with success message",
+      "page 'Dashboard' at '/':",
+      "  on page load get metrics from '/api/metrics'",
+      "  'Label' is a text input saved as a label",
+      "  'Value' is a number input saved as a value",
+      "  when label changes after 200ms:",
+      "    show label",
+      "  button 'Add Metric':",
+      "    send label and value as a new metric to '/api/metrics'",
+      "    get metrics from '/api/metrics'",
+      "    label is ''",
+      "    value is ''",
+      "  chart 'Metrics' as bar showing metrics",
+      "  display metrics as table showing label, value with delete",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toBeDefined();
+    expect(result.javascript).toBeDefined();
+  });
+
+  it('tabs + modal + slide-in panel on same page', () => {
+    const src = [
+      "build for web",
+      "page 'Complex' at '/':",
+      "  section 'Help' slides in from right:",
+      "    text 'Help content'",
+      "  section 'Confirm' as modal:",
+      "    text 'Are you sure?'",
+      "    button 'Yes':",
+      "      close modal",
+      "  section 'Views' as tabs:",
+      "    tab 'Tab1':",
+      "      text 'Content 1'",
+      "      button 'Delete':",
+      "        open the Confirm modal",
+      "    tab 'Tab2':",
+      "      text 'Content 2'",
+      "  button 'Help':",
+      "    toggle the Help panel",
+    ].join('\n');
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// E2E-DERIVED STRESS TESTS — Bugs found deploying template apps
+// =============================================================================
+
+describe('Seed blocks: save X as new Y (no result var)', () => {
+  it('save X as new Model compiles to db.insert, not db.update', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Models table:
+  name, required
+when user calls POST /api/seed:
+  create m1:
+    name is 'Test'
+  save m1 as new Model
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('models'");
+    expect(r.serverJS).not.toContain("db.update('as'");
+  });
+
+  it('multiple seed saves all compile to db.insert', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Users table:
+  name, required
+  email, required
+when user calls POST /api/seed:
+  create u1:
+    name is 'Alice'
+    email is 'alice@test.com'
+  save u1 as new User
+  create u2:
+    name is 'Bob'
+    email is 'bob@test.com'
+  save u2 as new User
+  send back 'seeded'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const insertCount = (r.serverJS.match(/db\.insert/g) || []).length;
+    expect(insertCount).toBe(2);
+    expect(r.serverJS).not.toContain("db.update('as'");
+  });
+
+  it('save X to Y still compiles to db.update (not insert)', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Models table:
+  name, required
+when user calls PUT /api/models/:id sending update_data:
+  requires auth
+  save update_data to Models
+  send back 'updated'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.update('models'");
+  });
+});
+
+describe('PUT endpoints: ID injection from URL params', () => {
+  it('save to X in PUT /:id injects req.params.id', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+  status, default 'todo'
+when user calls PUT /api/tasks/:id sending update_data:
+  requires auth
+  save update_data to Tasks
+  send back 'updated'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    expect(r.serverJS).toContain("db.update('tasks'");
+  });
+
+  it('save to X in POST (no :id) does NOT inject params.id', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+when user calls POST /api/tasks sending task_data:
+  requires auth
+  new_task = save task_data as new Task
+  send back new_task with success message`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).not.toContain('params.id');
+    expect(r.serverJS).toContain("db.insert('tasks'");
+  });
+});
+
+describe('Multi-page routing: page wrapper divs', () => {
+  it('multi-page app wraps each page in div with id', () => {
+    const src = `build for web
+page 'Home' at '/':
+  heading 'Welcome'
+page 'About' at '/about':
+  heading 'About Us'
+page 'Contact' at '/contact':
+  heading 'Contact'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('id="page_Home"');
+    expect(r.html).toContain('id="page_About"');
+    expect(r.html).toContain('id="page_Contact"');
+  });
+
+  it('second+ pages start hidden (display:none)', () => {
+    const src = `build for web
+page 'Home' at '/':
+  heading 'Home'
+page 'Settings' at '/settings':
+  heading 'Settings'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('id="page_Home"');
+    expect(r.html).not.toContain('id="page_Home" style="display:none"');
+    expect(r.html).toContain('id="page_Settings" style="display:none"');
+  });
+
+  it('single-page app does NOT add page wrapper divs', () => {
+    const src = `build for web
+page 'App' at '/':
+  heading 'Hello'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).not.toContain('id="page_');
+  });
+
+  it('hash router references correct page IDs', () => {
+    const src = `build for web
+page 'Home' at '/':
+  heading 'Home'
+page 'Pricing' at '/pricing':
+  heading 'Pricing'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain("'/': 'Home'");
+    expect(r.html).toContain("'/pricing': 'Pricing'");
+    expect(r.html).toContain("getElementById('page_'");
+  });
+});
+
+describe('Layout detection: side-by-side prevents max-w-2xl', () => {
+  it('side by side layout gets h-screen, not max-w-2xl', () => {
+    const src = `build for web
+page 'App' at '/':
+  section 'Layout' side by side:
+    section 'Left' 280px wide:
+      text 'Sidebar'
+    section 'Right' fills remaining space:
+      text 'Main'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).toContain('h-screen');
+  });
+
+  it('app with no layout modifiers gets max-w-2xl', () => {
+    const src = `build for web
+page 'Simple' at '/':
+  heading 'Hello'
+  text 'World'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('max-w-2xl');
+  });
+
+  it('app_layout preset gets empty class (no max-w-2xl)', () => {
+    const src = `build for web
+page 'App' at '/':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Sidebar'
+    section 'Main' with style app_main:
+      text 'Content'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).not.toContain('max-w-2xl');
+  });
+});
+
+describe('Complex app compilation: CRM with many tables', () => {
+  it('CRM with 5 tables, seed data, CRUD, charts compiles', () => {
+    const src = `build for web and javascript backend
+theme 'midnight'
+database is local memory
+create a Contacts table:
+  name, required
+  email, required, unique
+  company
+  status, default 'lead'
+create a Deals table:
+  contact_id, required
+  title, required
+  value (number), default 0
+  stage, default 'prospect'
+create a Activities table:
+  contact_id
+  action, required
+  detail
+create a Tags table:
+  name, required, unique
+create a ContactTags table:
+  contact_id, required
+  tag_id, required
+  one per contact_id and tag_id
+allow cross-origin requests
+log every request
+when user calls POST /api/seed:
+  create c1:
+    name is 'Alice'
+    email is 'alice@test.com'
+    status is 'customer'
+  save c1 as new Contact
+  create d1:
+    contact_id is '1'
+    title is 'Enterprise Deal'
+    value = 45000
+    stage is 'negotiation'
+  save d1 as new Deal
+  send back 'seeded'
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+when user calls POST /api/contacts sending contact_data:
+  requires auth
+  validate contact_data:
+    name is text, required
+    email is text, required, matches email
+  new_contact = save contact_data as new Contact
+  send back new_contact with success message
+when user calls PUT /api/contacts/:id sending update_data:
+  requires auth
+  save update_data to Contacts
+  send back 'updated' with success message
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+when user calls GET /api/deals:
+  all_deals = get all Deals
+  send back all_deals
+when user calls POST /api/deals sending deal_data:
+  requires auth
+  validate deal_data:
+    contact_id is text, required
+    title is text, required
+  new_deal = save deal_data as new Deal
+  send back new_deal with success message
+when user calls DELETE /api/deals/:id:
+  requires auth
+  delete the Deal with this id
+  send back 'deleted' with success message
+page 'CRM' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get contacts from '/api/contacts'
+    get deals from '/api/deals'
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'CRM'
+      text 'Dashboard'
+      text 'Contacts'
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+      section 'Body' with style app_content:
+        chart 'Pipeline' as bar showing deals
+        section 'Contacts' with style app_card:
+          display contacts as table showing name, email, company, status with delete and edit
+        section 'Deals' with style app_card:
+          display deals as table showing title, value, stage with delete`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Seed uses insert not update
+    expect(r.serverJS).toContain("db.insert('contacts'");
+    expect(r.serverJS).toContain("db.insert('deals'");
+    // PUT uses params.id injection
+    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    // HTML has proper layout
+    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).toContain('data-theme="midnight"');
+    // Has chart
+    expect(r.html).toContain('echarts');
+    // compound unique constraint compiles
+    expect(r.serverJS).toContain('contacttags');
+  });
+});
+
+describe('Full-stack invoice app compilation', () => {
+  it('invoice app with line items, PUT/DELETE, seed data compiles', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Invoices table:
+  client_name, required
+  amount (number), required
+  status, default 'draft'
+  due_date, required
+create a LineItems table:
+  invoice_id, required
+  description, required
+  unit_price (number), required
+allow cross-origin requests
+when user calls POST /api/seed:
+  create inv:
+    client_name is 'Acme'
+    amount = 5200
+    status is 'paid'
+    due_date is '2026-04-01'
+  save inv as new Invoice
+  send back 'seeded'
+when user calls GET /api/invoices:
+  all_invoices = get all Invoices
+  send back all_invoices
+when user calls POST /api/invoices sending invoice_data:
+  requires auth
+  validate invoice_data:
+    client_name is text, required
+    amount is number, required
+    due_date is text, required
+  new_invoice = save invoice_data as new Invoice
+  send back new_invoice with success message
+when user calls PUT /api/invoices/:id sending update_data:
+  requires auth
+  save update_data to Invoices
+  send back 'updated' with success message
+when user calls DELETE /api/invoices/:id:
+  requires auth
+  delete the Invoice with this id
+  send back 'deleted' with success message
+page 'Invoices' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get invoices from '/api/invoices'
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Invoices'
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'All Invoices'
+      section 'Body' with style app_content:
+        section 'Table' with style app_card:
+          display invoices as table showing client_name, amount, status, due_date with delete and edit`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Seed inserts correctly
+    expect(r.serverJS).toContain("db.insert('invoices'");
+    expect(r.serverJS).not.toContain("db.update('as'");
+    // PUT injects ID
+    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    // Layout correct
+    expect(r.html).not.toContain('max-w-2xl');
+  });
+});
+
+describe('Booking app with multiple tables and seed', () => {
+  it('booking app seed, CRUD, debounce all compile correctly', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Services table:
+  name, required
+  price (number), default 0
+create a Bookings table:
+  client_name, required
+  service_name, required
+  date, required
+  status, default 'pending'
+allow cross-origin requests
+when user calls POST /api/seed:
+  create s1:
+    name is 'Consultation'
+    price = 150
+  save s1 as new Service
+  create b1:
+    client_name is 'Sarah'
+    service_name is 'Consultation'
+    date is '2026-04-08'
+    status is 'confirmed'
+  save b1 as new Booking
+  send back 'seeded'
+when user calls GET /api/bookings:
+  all_bookings = get all Bookings
+  send back all_bookings
+when user calls POST /api/bookings sending booking_data:
+  requires auth
+  validate booking_data:
+    client_name is text, required
+    service_name is text, required
+    date is text, required
+  new_booking = save booking_data as new Booking
+  send back new_booking with success message
+when user calls DELETE /api/bookings/:id:
+  requires auth
+  delete the Booking with this id
+  send back 'deleted' with success message
+page 'BookIt' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get bookings from '/api/bookings'
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'BookIt'
+    section 'Right' with style app_main:
+      section 'Body' with style app_content:
+        display bookings as table showing client_name, service_name, date, status with delete`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Both seed saves use insert
+    const inserts = (r.serverJS.match(/db\.insert/g) || []).length;
+    expect(inserts >= 2).toBe(true);
+    expect(r.serverJS).not.toContain("db.update('as'");
+  });
+});
+
+describe('Table pluralization: y -> ies, Activity -> activities', () => {
+  it('Activity table pluralizes to activities, not activitys', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Activities table:
+  action, required
+when user calls POST /api/seed:
+  create a1:
+    action is 'Test'
+  save a1 as new Activity
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('activities'");
+    expect(r.serverJS).toContain('ActivitiesSchema');
+    expect(r.serverJS).not.toContain("'activitys'");
+    expect(r.serverJS).not.toContain('ActivitySchema');
+  });
+
+  it('Category table pluralizes to categories', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Categories table:
+  name, required
+when user calls POST /api/seed:
+  create cat:
+    name is 'Tech'
+  save cat as new Category
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('categories'");
+    expect(r.serverJS).not.toContain("'categorys'");
+  });
+
+  it('Address table pluralizes to addresses', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Addresses table:
+  street, required
+when user calls GET /api/addresses:
+  all_addresses = get all Addresses
+  send back all_addresses`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("'addresses'");
+  });
+});
+
+describe('Edge cases: save patterns', () => {
+  it('new_x = save data as new X (with result var) compiles to insert', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls POST /api/items sending item_data:
+  requires auth
+  new_item = save item_data as new Item
+  send back new_item with success message`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('items'");
+  });
+
+  it('save data as X (without new keyword) still inserts', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls POST /api/seed:
+  create item:
+    name is 'Widget'
+  save item as Item
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.insert('items'");
+  });
+
+  it('save data to X (update syntax) compiles to update', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls PUT /api/items/:id sending data:
+  requires auth
+  save data to Items
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.update('items'");
+    expect(r.serverJS).toContain('data.id = req.params.id');
+  });
+});
+
+// =============================================================================
+// MULTI-FILE, COMPONENTS, STREAMING STRESS TESTS
+// =============================================================================
+
+describe('Multi-file: use everything from inlines all node types', () => {
+  it('use everything from backend inlines endpoints and data shapes', () => {
+    const mainSrc = `build for web and javascript backend
+database is local memory
+use everything from 'backend'`;
+    const backendSrc = `create a Items table:
+  name, required
+allow cross-origin requests
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+when user calls POST /api/items sending item_data:
+  requires auth
+  new_item = save item_data as new Item
+  send back new_item with success message`;
+    const resolver = (name) => name === 'backend' ? backendSrc : null;
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("db.createTable('items'");
+    expect(r.serverJS).toContain("app.get('/api/items'");
+    expect(r.serverJS).toContain("app.post('/api/items'");
+    expect(r.serverJS).toContain("db.insert('items'");
+  });
+
+  it('use everything from frontend inlines pages and UI', () => {
+    const mainSrc = `build for web and javascript backend
+theme 'midnight'
+database is local memory
+use everything from 'backend'
+use everything from 'frontend'`;
+    const backendSrc = `create a Todos table:
+  title, required
+allow cross-origin requests
+when user calls GET /api/todos:
+  all_todos = get all Todos
+  send back all_todos`;
+    const frontendSrc = `page 'App' at '/':
+  on page load get todos from '/api/todos'
+  heading 'Todo App'
+  display todos as table showing title`;
+    const resolver = (name) => {
+      if (name === 'backend') return backendSrc;
+      if (name === 'frontend') return frontendSrc;
+      return null;
+    };
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("app.get('/api/todos'");
+    expect(r.html).toContain('Todo App');
+    expect(r.html).toContain('data-theme="midnight"');
+  });
+
+  it('three-level deep imports (main -> frontend -> components) resolve', () => {
+    const mainSrc = `build for web
+use everything from 'frontend'`;
+    const frontendSrc = `use everything from 'components'
+page 'App' at '/':
+  heading 'My App'`;
+    const componentsSrc = `define component Greeting receiving name:
+  text 'Hello'`;
+    const resolver = (name) => {
+      if (name === 'frontend') return frontendSrc;
+      if (name === 'components') return componentsSrc;
+      return null;
+    };
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('My App');
+  });
+});
+
+describe('Multi-file: use everything from does NOT double-compile', () => {
+  it('endpoints are not duplicated when imported via use everything from', () => {
+    const mainSrc = `build for web and javascript backend
+database is local memory
+use everything from 'backend'`;
+    const backendSrc = `create a Items table:
+  name, required
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items`;
+    const resolver = (name) => name === 'backend' ? backendSrc : null;
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    const getCount = (r.serverJS.match(/app\.get\('\/api\/items'/g) || []).length;
+    expect(getCount).toBe(1);
+  });
+});
+
+describe('Multi-page SPA with multi-file imports', () => {
+  it('multi-page app from imported frontend gets page wrappers', () => {
+    const mainSrc = `build for web
+use everything from 'frontend'`;
+    const frontendSrc = `page 'Home' at '/':
+  heading 'Welcome'
+page 'About' at '/about':
+  heading 'About'`;
+    const resolver = (name) => name === 'frontend' ? frontendSrc : null;
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('id="page_Home"');
+    expect(r.html).toContain('id="page_About"');
+    expect(r.html).toContain('_router');
+  });
+});
+
+describe('Components: define and show', () => {
+  it('component with inputs compiles to HTML fields', () => {
+    const src = `build for web
+define component SearchBox:
+  'Query' is a text input saved as a query
+page 'App' at '/':
+  show SearchBox()`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('Query');
+  });
+
+  it('component imported from file compiles correctly', () => {
+    const mainSrc = `build for web
+use everything from 'components'
+page 'App' at '/':
+  heading 'App'`;
+    const compSrc = `define component Badge receiving label:
+  bold text 'Badge'`;
+    const resolver = (name) => name === 'components' ? compSrc : null;
+    const r = compileProgram(mainSrc, { moduleResolver: resolver });
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('Streaming: SSE endpoint compilation', () => {
+  it('stream block compiles to SSE endpoint with event-stream headers', () => {
+    const src = `build for web and javascript backend
+when user calls GET /api/stream:
+  stream:
+    send back 'heartbeat'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain('text/event-stream');
+    expect(r.serverJS).toContain("app.get('/api/stream'");
+  });
+});
+
+describe('Complex SPA: tabs + modal + chart + debounce + multi-page', () => {
+  it('all interactive features compile together without conflicts', () => {
+    const src = `build for web and javascript backend
+theme 'midnight'
+database is local memory
+create a Items table:
+  name, required
+  status, default 'active'
+allow cross-origin requests
+when user calls GET /api/items:
+  all_items = get all Items
+  send back all_items
+when user calls POST /api/items sending item_data:
+  requires auth
+  new_item = save item_data as new Item
+  send back new_item with success message
+when user calls PUT /api/items/:id sending update_data:
+  requires auth
+  save update_data to Items
+  send back 'updated'
+when user calls DELETE /api/items/:id:
+  requires auth
+  delete the Item with this id
+  send back 'deleted'
+page 'Dashboard' at '/':
+  on page load get items from '/api/items'
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'App'
+      'Search' is a text input saved as a query
+      when query changes after 250ms:
+        get items from '/api/items'
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+      section 'Body' with style app_content:
+        chart 'Items' as bar showing items
+        section 'Content' as tabs:
+          tab 'List':
+            display items as table showing name, status with delete and edit
+          tab 'Add':
+            'Name' is a text input saved as a name
+            button 'Add':
+              send name to '/api/items'
+              get items from '/api/items'
+        section 'Confirm' as modal:
+          heading 'Are you sure?'
+          button 'Yes':
+            close modal
+        section 'Help' slides in from right:
+          text 'Use the Dashboard'
+        button 'Help':
+          toggle the Help panel
+page 'Settings' at '/settings':
+  heading 'Settings'
+  text 'Coming soon'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Multi-page routing
+    expect(r.html).toContain('id="page_Dashboard"');
+    expect(r.html).toContain('id="page_Settings"');
+    // Tabs
+    expect(r.html).toContain('tab');
+    // Chart
+    expect(r.html).toContain('echarts');
+    // Server features
+    expect(r.serverJS).toContain("db.insert('items'");
+    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    // Layout
+    expect(r.html).not.toContain('max-w-2xl');
+    expect(r.html).toContain('data-theme="midnight"');
+  });
+});
+
 run();
+

@@ -12,6 +12,49 @@
 // Errors are first-class: every error message tells the user what to DO,
 // not what they did wrong. Every error includes an example.
 //
+// !! MAINTENANCE RULE: Update this TOC whenever you add, remove, or move
+// !! a section. Use section names (not line numbers) since lines drift.
+//
+// TABLE OF CONTENTS:
+//   AST NODE TYPES ..................... NodeType enum + builder helpers
+//   PARSER ............................ parse(), parseConfigBlock(), parseBlock()
+//   BLOCK-LEVEL PARSERS ............... parseComponentDef, parseFunctionDef, parseAgent,
+//                                      parseMatch, parseIfBlock, parseRepeatLoop,
+//                                      parseForEachLoop, parseWhileLoop
+//   USE / IMPORT MODULES .............. parseUse()
+//   PAGE DECLARATION .................. parsePage()
+//   SECTION ........................... parseSection()
+//   STYLE DEF ......................... parseStyleDef()
+//   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
+//   STATIC CONTENT ELEMENTS ........... parseContent()
+//   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
+//   CRUD OPERATIONS ................... parseSave, parseRemoveFrom, parseDefineAs,
+//                                      parseLookUpAssignment, parseSaveAssignment
+//   TEST BLOCKS ....................... parseTestDef(), parseExpect()
+//   ASK FOR (legacy) .................. parseAskFor()
+//   DISPLAY ........................... parseDisplay() — includes "with delete/edit"
+//   CHART ............................. parseChart() — ECharts (line, bar, pie, area)
+//   BUTTON ............................ parseButton()
+//   ENDPOINT .......................... parseEndpoint()
+//   ADVANCED FEATURES ................. parseStream, parseBackground, parseSubscribe,
+//                                      parseUpdateDatabase, parseMigration, parseWait
+//   FILE UPLOADS & EXTERNAL APIS ...... parseAcceptFile, parseExternalFetch
+//   BILLING & PAYMENTS ................ parseCheckout, parseUsageLimit
+//   WEBHOOKS & OAUTH .................. parseWebhook, parseOAuthConfig
+//   INPUT VALIDATION .................. parseValidateBlock, parseFieldRule,
+//                                      parseRespondsWithBlock, parseRateLimit
+//   RESPOND ........................... parseRespond()
+//   MATH-STYLE FUNCTION DEFS .......... parseMathStyleFunction()
+//   TRY / HANDLE ...................... parseTryHandle()
+//   INCREASE / DECREASE ............... parseIncDec()
+//   OBJECT DEFINITION ................. tryParseObjectDef()
+//   LINE-LEVEL PARSERS ................ parseTarget, parseAssignment, parseIfThen,
+//                                      parseStatementInline
+//   EXPRESSION PARSER ................. parseExpression, parseExprPrec, parsePrimary,
+//                                      parseListLiteral, parseEachExpression,
+//                                      parseFunctionCall
+//   OPERATOR HELPERS .................. getOperatorKey, normalizeOperator, findCanonical
+//
 // =============================================================================
 
 import { tokenize, TokenType } from './tokenizer.js';
@@ -76,6 +119,7 @@ export const NodeType = Object.freeze({
   PAGE: 'page',
   ASK_FOR: 'ask_for',
   DISPLAY: 'display',
+  CHART: 'chart',
   BUTTON: 'button',
 
   // Layout (Phase 7)
@@ -134,6 +178,11 @@ export const NodeType = Object.freeze({
   LIST_SORT: 'list_sort',
 
   ON_PAGE_LOAD: 'on_page_load',
+  TRANSACTION: 'transaction',
+  ON_CHANGE: 'on_change',
+  RETRY: 'retry',
+  TIMEOUT: 'timeout',
+  RACE: 'race',
   MATCH: 'match',
   MATCH_WHEN: 'match_when',
   MAP_GET: 'map_get',
@@ -333,6 +382,7 @@ function askForNode(variable, inputType, label, line) {
   let htmlType = 'text';
   let tag = 'input';
   if (baseType === 'number' || baseType === 'percent') htmlType = 'number';
+  else if (baseType === 'file') htmlType = 'file';
   else if (baseType === 'yes/no') { htmlType = 'checkbox'; tag = 'input'; }
   else if (baseType === 'long text') { htmlType = 'textarea'; tag = 'textarea'; }
   else if (baseType === 'choice') { htmlType = 'select'; tag = 'select'; }
@@ -888,6 +938,18 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
+      // chart 'Title' as line showing data
+      if (firstToken.value === 'chart' && tokens.length >= 4 && tokens[1].type === TokenType.STRING) {
+        const parsed = parseChart(tokens, line);
+        if (parsed.error) {
+          errors.push({ line, message: parsed.error });
+        } else {
+          body.push(parsed.node);
+        }
+        i++;
+        continue;
+      }
+
       if (firstToken.canonical === 'show' && hasDisplayModifiers(tokens)) {
         const parsed = parseDisplay(tokens, line);
         if (parsed.error) {
@@ -1048,6 +1110,49 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         const result = parseTryHandle(lines, i, indent, errors);
         if (result.node) body.push(result.node);
         i = result.endIdx;
+        continue;
+      }
+
+      // Transaction: "as one operation:" — all-or-nothing database operations
+      if (firstToken.canonical === 'as_format' && tokens.length >= 2 &&
+          tokens[1].value === 'one' &&
+          tokens.some(t => t.value === 'operation')) {
+        const { body: txBody, endIdx: txEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.TRANSACTION, body: txBody, line });
+        i = txEnd;
+        continue;
+      }
+
+      // Retry: "retry 3 times:" — retry block up to N times on failure
+      if (firstToken.value === 'retry' && tokens.length >= 3) {
+        const count = typeof tokens[1].value === 'number' ? tokens[1].value : parseInt(tokens[1].value, 10) || 3;
+        const { body: retryBody, endIdx: retryEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.RETRY, count, body: retryBody, line });
+        i = retryEnd;
+        continue;
+      }
+
+      // Timeout: "with timeout 5 seconds:" — cancel if block takes too long
+      if (firstToken.canonical === 'with' && tokens.length >= 3 &&
+          tokens[1].value === 'timeout') {
+        const amount = typeof tokens[2].value === 'number' ? tokens[2].value : parseInt(tokens[2].value, 10) || 5;
+        // Detect unit: seconds or minutes
+        let ms = amount * 1000; // default seconds
+        if (tokens.length >= 4 && (tokens[3].value === 'minutes' || tokens[3].value === 'minute')) {
+          ms = amount * 60000;
+        }
+        const { body: timeoutBody, endIdx: timeoutEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.TIMEOUT, ms, body: timeoutBody, line });
+        i = timeoutEnd;
+        continue;
+      }
+
+      // Race: "first to finish:" — run multiple tasks, take first result
+      if (firstToken.value === 'first' && tokens.length >= 2 &&
+          tokens.some(t => t.value === 'finish')) {
+        const { body: raceBody, endIdx: raceEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.RACE, body: raceBody, line });
+        i = raceEnd;
         continue;
       }
 
@@ -1605,6 +1710,26 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         const { body: loadBody, endIdx: loadEnd } = parseBlock(lines, i + 1, indent, errors);
         body.push({ type: NodeType.ON_PAGE_LOAD, body: loadBody, line });
         i = loadEnd;
+        continue;
+      }
+
+      // "when X changes:" / "when X changes after 250ms:" — reactive input handler
+      if (firstToken.value === 'when' && tokens.length >= 3 && tokens[2].value === 'changes') {
+        const varName = tokens[1].value;
+        let debounceMs = 0;
+        // Check for "after N ms" or "after 250ms" debounce
+        if (tokens.length >= 5 && tokens[3].value === 'after') {
+          const delayVal = tokens[4].value;
+          if (typeof delayVal === 'number') {
+            debounceMs = delayVal;
+          } else {
+            const match = String(delayVal).match(/^(\d+)(ms)?$/);
+            if (match) debounceMs = parseInt(match[1], 10);
+          }
+        }
+        const { body: changeBody, endIdx: changeEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.ON_CHANGE, variable: varName, debounceMs, body: changeBody, line });
+        i = changeEnd;
         continue;
       }
 
@@ -2605,7 +2730,7 @@ function parseStyleDef(lines, startIdx, blockIndent, errors) {
 // 'Hourly Rate' as number input saves to rate
 
 function isInputType(token) {
-  return ['text_input', 'number_input', 'dropdown', 'checkbox', 'text_area'].includes(token.canonical);
+  return ['text_input', 'number_input', 'file_input', 'dropdown', 'checkbox', 'text_area'].includes(token.canonical);
 }
 
 // 'Label' is a text input that saves to var
@@ -2619,6 +2744,7 @@ function parseLabelIsInput(tokens, line) {
   let inputType = null;
   if (typeToken.canonical === 'text_input') inputType = 'text';
   else if (typeToken.canonical === 'number_input') inputType = 'number';
+  else if (typeToken.canonical === 'file_input') inputType = 'file';
   else if (typeToken.canonical === 'dropdown') inputType = 'choice';
   else if (typeToken.canonical === 'checkbox') inputType = 'yes/no';
   else if (typeToken.canonical === 'text_area') inputType = 'long text';
@@ -2954,6 +3080,7 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
   // Parse field lines and RLS policy lines directly from tokens
   const fields = [];
   const policies = [];
+  const compoundUniques = [];
   let j = startIdx + 1;
   while (j < lines.length && lines[j].indent > blockIndent) {
     const fieldTokens = lines[j].tokens;
@@ -2967,6 +3094,23 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
         (firstCanonical === 'role' && fieldTokens.length > 1 && fieldTokens[1].type === TokenType.STRING)) {
       const policy = parseRLSPolicy(fieldTokens, fieldLine);
       if (policy) policies.push(policy);
+      j++;
+      continue;
+    }
+
+    // Compound unique: "one per student and course"
+    // Means: only one row per combination of these fields
+    if (fieldTokens[0].value === 'one' && fieldTokens.length >= 3 && fieldTokens[1].value === 'per') {
+      const uniqueFields = [];
+      for (let u = 2; u < fieldTokens.length; u++) {
+        if (fieldTokens[u].value === 'and' || fieldTokens[u].value === ',') continue;
+        if (fieldTokens[u].type === TokenType.IDENTIFIER || fieldTokens[u].type === TokenType.KEYWORD) {
+          uniqueFields.push(fieldTokens[u].value);
+        }
+      }
+      if (uniqueFields.length >= 2) {
+        compoundUniques.push(uniqueFields);
+      }
       j++;
       continue;
     }
@@ -3087,7 +3231,9 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
     errors.push({ line, message: `The ${name} table is empty -- add fields inside. Example:\n  create a ${name} table:\n    name, required\n    email, required, unique` });
   }
 
-  return { node: dataShapeNode(name, fields, line, policies), endIdx: j };
+  const shapeNode = dataShapeNode(name, fields, line, policies);
+  if (compoundUniques.length > 0) shapeNode.compoundUniques = compoundUniques;
+  return { node: shapeNode, endIdx: j };
 }
 
 // =============================================================================
@@ -3102,16 +3248,25 @@ function parseSave(tokens, line) {
   const variable = tokens[pos].value;
   pos++;
 
-  // expect "to"
-  if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
+  // expect "to" or "as" connector: "save X to Y" or "save X as new Y"
+  let isInsert = false;
+  if (pos < tokens.length && (tokens[pos].canonical === 'as_format' || tokens[pos].canonical === 'as'
+      || (typeof tokens[pos].value === 'string' && tokens[pos].value.toLowerCase() === 'as'))) {
+    isInsert = true; // "save X as Y" = insert new record
     pos++;
+  } else if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
+    pos++; // "save X to Y" = update existing
   }
+  // Skip optional "new": "save X as new Model"
+  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
   if (pos >= tokens.length) {
     return { error: 'The save statement needs a target. Example: save new_user to Users' };
   }
   const target = tokens[pos].value;
 
-  return { node: crudNode('save', variable, target, null, line) };
+  const node = crudNode('save', variable, target, null, line);
+  if (isInsert) node.isInsert = true;
+  return { node };
 }
 
 function parseRemoveFrom(tokens, line) {
@@ -3332,6 +3487,18 @@ function parseLookUpAssignment(name, tokens, pos, line) {
 
   const node = crudNode('lookup', name, target, condition, line);
   node.lookupAll = lookupAll;
+  // Optional pagination: "page N, M per page"
+  if (pos < tokens.length && tokens[pos].value === 'page') {
+    pos++;
+    if (pos < tokens.length) {
+      node.page = tokens[pos].type === TokenType.NUMBER ? tokens[pos].value : tokens[pos].value;
+      pos++;
+      if (pos < tokens.length && tokens[pos].value === ',') pos++;
+      if (pos < tokens.length && tokens[pos].type === TokenType.NUMBER) {
+        node.perPage = tokens[pos].value;
+      }
+    }
+  }
   return { name, isCrud: true, node };
 }
 
@@ -3518,6 +3685,7 @@ function parseDisplay(tokens, line) {
     pos++;
     columns = [];
     while (pos < tokens.length) {
+      if (tokens[pos].canonical === 'with') break;
       if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
         columns.push(tokens[pos].value);
       }
@@ -3527,9 +3695,85 @@ function parseDisplay(tokens, line) {
     }
   }
 
+  // Optional: with delete / with edit / with delete and edit
+  let actions = null;
+  if (pos < tokens.length && tokens[pos].canonical === 'with') {
+    pos++;
+    actions = [];
+    while (pos < tokens.length) {
+      const canon = tokens[pos].canonical;
+      if (canon === 'remove') {
+        actions.push('delete');
+      } else if (tokens[pos].value.toLowerCase() === 'edit') {
+        actions.push('edit');
+      }
+      pos++;
+      if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+    }
+  }
+
   const node = displayNode(expr.node, format, label, line);
-  if (columns) node.columns = columns;
+  node.columns = columns;
+  if (actions && actions.length > 0) node.actions = actions;
   return { node };
+}
+
+// =============================================================================
+// CHART (Phase 30)
+// =============================================================================
+// CANONICAL: chart 'Title' as line showing data_var
+// Also: chart 'Title' as bar showing data_var
+//        chart 'Title' as pie showing data_var by field_name
+//        chart 'Title' as area showing data_var
+
+function parseChart(tokens, line) {
+  let pos = 1; // skip "chart"
+
+  // Title (required, string)
+  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+    return { error: 'Chart needs a title in quotes. Example: chart \'Revenue\' as line showing sales' };
+  }
+  const title = tokens[pos].value;
+  pos++;
+
+  // "as" <chartType> (required)
+  if (pos >= tokens.length || tokens[pos].canonical !== 'as_format') {
+    return { error: 'Chart needs a type after "as". Example: chart \'Revenue\' as line showing sales' };
+  }
+  pos++;
+  if (pos >= tokens.length) {
+    return { error: 'Chart needs a type (line, bar, pie, area). Example: chart \'Revenue\' as line showing sales' };
+  }
+  const chartType = tokens[pos].value.toLowerCase();
+  if (!['line', 'bar', 'pie', 'area'].includes(chartType)) {
+    return { error: `Unknown chart type '${chartType}'. Use: line, bar, pie, or area.` };
+  }
+  pos++;
+
+  // "showing" <data_var> (required)
+  if (pos >= tokens.length || tokens[pos].value !== 'showing') {
+    return { error: 'Chart needs "showing" followed by your data variable. Example: chart \'Revenue\' as line showing sales' };
+  }
+  pos++;
+  if (pos >= tokens.length) {
+    return { error: 'Chart needs a data variable after "showing". Example: chart \'Revenue\' as line showing sales' };
+  }
+  const dataVar = tokens[pos].value;
+  pos++;
+
+  // Optional: "by" <field> (for pie charts — groups by this field)
+  let groupBy = null;
+  if (pos < tokens.length && tokens[pos].value === 'by') {
+    pos++;
+    if (pos < tokens.length) {
+      groupBy = tokens[pos].value;
+      pos++;
+    }
+  }
+
+  const slug = sanitizeForId(title.replace(/\s+/g, '_'));
+  const ui = { tag: 'chart', id: `chart_${slug}`, label: title };
+  return { node: { type: NodeType.CHART, title, chartType, dataVar, groupBy, line, ui } };
 }
 
 // =============================================================================
@@ -5081,13 +5325,27 @@ function parseAssignment(tokens, line) {
   }
 
   // Shorthand: "get all Todos" -> CRUD lookup all
-  // e.g. all_todos = get all Todos
+  // Also: "get all Todos page 2, 25 per page" -> paginated lookup
   if (pos < tokens.length && tokens[pos].canonical === 'get_key' &&
       pos + 1 < tokens.length && tokens[pos + 1].value === 'all' &&
       pos + 2 < tokens.length) {
     const tableName = tokens[pos + 2].value;
     const node = crudNode('lookup', name, tableName, null, line);
     node.lookupAll = true;
+    // Optional pagination: "page N, M per page"
+    let pPos = pos + 3;
+    if (pPos < tokens.length && tokens[pPos].value === 'page') {
+      pPos++;
+      if (pPos < tokens.length) {
+        node.page = tokens[pPos].type === TokenType.NUMBER ? tokens[pPos].value : tokens[pPos].value;
+        pPos++;
+        // Skip comma
+        if (pPos < tokens.length && tokens[pPos].value === ',') pPos++;
+        if (pPos < tokens.length && tokens[pPos].type === TokenType.NUMBER) {
+          node.perPage = tokens[pPos].value;
+        }
+      }
+    }
     return { name, isCrud: true, node };
   }
 

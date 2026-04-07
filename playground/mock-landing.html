@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear Language — Mock Landing</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'DM Sans', sans-serif; }
+    .font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen bg-base-100">
+
+  <!-- HERO — Stripe-style: massive headline, centered, gradient accent, clean CTA -->
+  <section class="py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden">
+    <!-- Subtle gradient orb behind hero -->
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/5 rounded-full blur-3xl -z-10"></div>
+
+    <span class="badge badge-outline badge-sm font-mono tracking-wide uppercase animate-pulse">Now in public beta</span>
+    <h1 class="font-display text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.1] text-base-content max-w-3xl">
+      Write English.<br>Ship apps.
+    </h1>
+    <p class="text-xl text-base-content/60 leading-relaxed max-w-2xl">
+      Clear compiles plain English to production JavaScript, Python, and HTML. No framework. No config. No learning curve.
+    </p>
+    <div class="flex gap-4 mt-2">
+      <a class="btn btn-primary btn-lg shadow-lg shadow-primary/25" href="/playground">Start Building Free</a>
+      <a class="btn btn-ghost btn-lg" href="#features">See how it works</a>
+    </div>
+
+    <!-- Code preview card -->
+    <div class="mt-8 max-w-lg w-full bg-neutral text-neutral-content rounded-2xl p-6 text-left font-mono text-sm shadow-2xl">
+      <div class="flex gap-1.5 mb-4">
+        <div class="w-3 h-3 rounded-full bg-error/60"></div>
+        <div class="w-3 h-3 rounded-full bg-warning/60"></div>
+        <div class="w-3 h-3 rounded-full bg-success/60"></div>
+      </div>
+      <pre class="leading-relaxed"><span class="text-primary/80"># 30 lines. Full-stack app.</span>
+<span class="text-success">build for</span> web and javascript backend
+
+<span class="text-success">create a</span> Todos <span class="text-success">table</span>:
+  todo, required
+  done, default false
+
+<span class="text-success">when user calls</span> GET /api/todos:
+  all_todos = get all Todos
+  send back all_todos
+
+<span class="text-success">page</span> 'Todo App' at '/':
+  heading 'My Todos'
+  <span class="text-success">display</span> todos <span class="text-success">as table</span> showing todo, done</pre>
+    </div>
+  </section>
+
+  <!-- FEATURES — dark section, 3-col grid with icons -->
+  <section id="features" class="bg-neutral text-neutral-content py-24 px-6">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center mb-16">
+        <h2 class="font-display text-4xl font-bold tracking-tight mb-4">Why developers switch to Clear</h2>
+        <p class="text-lg text-neutral-content/60 max-w-xl mx-auto">Every feature exists to eliminate busywork between your idea and a running app.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="bg-neutral-focus/50 rounded-2xl p-8 border border-neutral-content/10">
+          <div class="text-3xl mb-4">⚡</div>
+          <h3 class="text-xl font-bold mb-2">8ms compile</h3>
+          <p class="text-neutral-content/60 leading-relaxed">From source to running app in under 8 milliseconds. No build step, no bundler, no waiting.</p>
+        </div>
+        <div class="bg-neutral-focus/50 rounded-2xl p-8 border border-neutral-content/10">
+          <div class="text-3xl mb-4">👁</div>
+          <h3 class="text-xl font-bold mb-2">Readable output</h3>
+          <p class="text-neutral-content/60 leading-relaxed">The compiled JavaScript is clean, readable, and yours. Not minified garbage you can't debug.</p>
+        </div>
+        <div class="bg-neutral-focus/50 rounded-2xl p-8 border border-neutral-content/10">
+          <div class="text-3xl mb-4">🤖</div>
+          <h3 class="text-xl font-bold mb-2">AI-native agents</h3>
+          <p class="text-neutral-content/60 leading-relaxed">Built-in AI agents with structured output. Write an agent in 5 lines, deploy immediately.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOCIAL PROOF — stats row -->
+  <section class="py-16 px-6 bg-base-200">
+    <div class="max-w-4xl mx-auto grid grid-cols-3 gap-8 text-center">
+      <div>
+        <p class="font-display text-4xl font-extrabold text-primary">1,031</p>
+        <p class="text-sm text-base-content/50 mt-1">Tests passing</p>
+      </div>
+      <div>
+        <p class="font-display text-4xl font-extrabold text-primary">0</p>
+        <p class="text-sm text-base-content/50 mt-1">Dependencies</p>
+      </div>
+      <div>
+        <p class="font-display text-4xl font-extrabold text-primary">8ms</p>
+        <p class="text-sm text-base-content/50 mt-1">Compile time</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA — final push -->
+  <section class="py-32 px-6 text-center flex flex-col items-center gap-6">
+    <h2 class="font-display text-5xl font-extrabold tracking-tight text-base-content max-w-2xl">
+      Your next app starts with one sentence.
+    </h2>
+    <p class="text-lg text-base-content/60 max-w-lg">
+      No sign-up. No credit card. No config file. Just write what you want and hit compile.
+    </p>
+    <a class="btn btn-primary btn-lg shadow-lg shadow-primary/25 mt-2" href="/playground">Try the Playground</a>
+  </section>
+
+</body>
+</html>

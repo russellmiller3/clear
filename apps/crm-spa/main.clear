@@ -1,0 +1,34 @@
+# ┌──────────┬──────────────────────────────────────┐
+# │ Sidebar  │  Header [Search]      [New Contact]  │
+# │          ├──────────────────────────────────────┤
+# │ Dashboard│  ┌─────────┐┌─────────┐┌──────────┐ │
+# │ Contacts │  │Contacts ││  Deals  ││ Revenue  │ │
+# │ Deals    │  │   247   ││   18    ││ $142,300 │ │
+# │ Pipeline │  └─────────┘└─────────┘└──────────┘ │
+# │ Activity │  ┌──────────────────────────────────┐ │
+# │          │  │     Pipeline Chart (ECharts)     │ │
+# │          │  ├──────────────────────────────────┤ │
+# │          │  │  Contacts / Deals / Activity     │ │
+# │          │  │  (tabs with CRUD tables)         │ │
+# │          │  └──────────────────────────────────┘ │
+# └──────────┴──────────────────────────────────────┘
+#
+# DATAFLOW:
+# ┌──────────┐  POST /api/contacts   ┌──────────┐  save   ┌────────┐
+# │ Frontend │ ────────────────────> │ Backend  │ ──────> │   DB   │
+# │ (SPA)    │ <──────────────────── │ (server) │ <────── │(memory)│
+# └──────────┘  GET /api/contacts    └──────────┘  query  └────────┘
+#      │                                   │
+#      │ debounced search ─> GET?q=...     │ SSE /api/activity/stream
+#      │ on page load ─> GET all           │ PUT /api/deals/:id
+#      │ pipeline chart ─> GET /api/deals  │ DELETE /api/contacts/:id
+
+build for web and javascript backend
+
+theme 'midnight'
+
+# Database
+database is local memory
+
+use everything from 'backend'
+use everything from 'frontend'

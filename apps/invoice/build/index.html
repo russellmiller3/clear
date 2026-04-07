@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoices</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="flex h-screen overflow-hidden">
+    <div class="w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden">
+    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">InvoiceApp</span></div>
+    <nav class="flex-1 overflow-y-auto py-3 px-3">
+      <ul class="menu menu-sm gap-0.5 p-0">
+    <li><a class="text-sm">Dashboard</a></li>
+    <li><a class="text-sm">Invoices</a></li>
+    <li><a class="text-sm">Clients</a></li>
+      </ul>
+    </nav>
+    </div>
+    <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0">
+    <h1 class="text-base font-semibold text-base-content">Invoices</h1>
+    </div>
+    <div class="flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5">
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">New Invoice</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Client Name</legend>
+      <input id="input_client_name" class="input input-bordered w-full" type="text" placeholder="Client Name">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Description</legend>
+      <input id="input_description" class="input input-bordered w-full" type="text" placeholder="Description">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Amount</legend>
+      <input id="input_amount" class="input input-bordered w-full" type="number" placeholder="Amount">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Due Date</legend>
+      <input id="input_due_date" class="input input-bordered w-full" type="text" placeholder="Due Date">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Status</legend>
+      <input id="input_status" class="input input-bordered w-full" type="select" placeholder="Status">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Notes</legend>
+      <textarea id="input_notes" class="textarea textarea-bordered w-full" placeholder="Notes" rows="6"></textarea>
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Create_Invoice">Create Invoice</button>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">All Invoices</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Invoices">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Invoices</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Invoices_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Clients</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Client</legend>
+      <input id="input_new_client_name" class="input input-bordered w-full" type="text" placeholder="Client">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+      <input id="input_new_client_email" class="input input-bordered w-full" type="text" placeholder="Email">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Company</legend>
+      <input id="input_new_client_company" class="input input-bordered w-full" type="text" placeholder="Company">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Client">Add Client</button>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Clients">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Clients</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Clients_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+  </main>
+
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "Invoices";
+
+// --- State ---
+let _state = {
+  client_name: "",
+  description: "",
+  amount: 0,
+  due_date: "",
+  status: "",
+  notes: "",
+  new_client_name: "",
+  new_client_email: "",
+  new_client_company: "",
+  invoices: null,
+  clients: null,
+  _editing_id: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:24
+  // Database: local memory (JSON file backup)
+  {
+    const _tableEl = document.getElementById('output_Invoices_table');
+    const _data = _state.invoices;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["client_name","description","amount","status","due_date"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td class="text-right">' + '<button class="btn btn-ghost btn-xs" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>' + ' ' + '<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>' + '</td>' + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Clients_table');
+    const _data = _state.clients;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","email","company"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td class="text-right">' + '<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>' + '</td>' + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_client_name').value = _state.client_name;
+  document.getElementById('input_description').value = _state.description;
+  document.getElementById('input_amount').value = _state.amount;
+  document.getElementById('input_due_date').value = _state.due_date;
+  document.getElementById('input_status').value = _state.status;
+  document.getElementById('input_notes').value = _state.notes;
+  document.getElementById('input_new_client_name').value = _state.new_client_name;
+  document.getElementById('input_new_client_email').value = _state.new_client_email;
+  document.getElementById('input_new_client_company').value = _state.new_client_company;
+}
+
+// --- Input listeners ---
+document.getElementById('input_client_name').addEventListener('input', function(e) {
+  _state.client_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_description').addEventListener('input', function(e) {
+  _state.description = e.target.value;
+  _recompute();
+});
+document.getElementById('input_amount').addEventListener('input', function(e) {
+  _state.amount = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_due_date').addEventListener('input', function(e) {
+  _state.due_date = e.target.value;
+  _recompute();
+});
+document.getElementById('input_status').addEventListener('input', function(e) {
+  _state.status = e.target.value;
+  _recompute();
+});
+document.getElementById('input_notes').addEventListener('input', function(e) {
+  _state.notes = e.target.value;
+  _recompute();
+});
+document.getElementById('input_new_client_name').addEventListener('input', function(e) {
+  _state.new_client_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_new_client_email').addEventListener('input', function(e) {
+  _state.new_client_email = e.target.value;
+  _recompute();
+});
+document.getElementById('input_new_client_company').addEventListener('input', function(e) {
+  _state.new_client_company = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Create_Invoice').addEventListener('click', async function() {
+    if (_state.client_name === '' || _state.client_name == null) { _toast('client name is required', 'error'); return; }
+    if (_state.description === '' || _state.description == null) { _toast('description is required', 'error'); return; }
+    if (_state.amount === '' || _state.amount == null) { _toast('amount is required', 'error'); return; }
+    if (_state.due_date === '' || _state.due_date == null) { _toast('due date is required', 'error'); return; }
+    if (_state.status === '' || _state.status == null) { _toast('status is required', 'error'); return; }
+    if (_state.notes === '' || _state.notes == null) { _toast('notes is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Create_Invoice');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    if (_state._editing_id) {
+    { const _r = await fetch("/api/invoices/" + _state._editing_id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: _state.client_name, description: _state.description, amount: _state.amount, due_date: _state.due_date, status: _state.status, notes: _state.notes }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'PUT failed'); } }
+      _state._editing_id = null;
+    } else {
+    { const _r = await fetch("/api/invoices", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: _state.client_name, description: _state.description, amount: _state.amount, due_date: _state.due_date, status: _state.status, notes: _state.notes }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    }
+    _state.invoices = await fetch("/api/invoices").then(r => r.json()).catch(e => { console.error(e); return _state.invoices; });
+    _state.client_name = "";
+    _state.description = "";
+    _state.notes = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Add_Client').addEventListener('click', async function() {
+    if (_state.new_client_name === '' || _state.new_client_name == null) { _toast('new client name is required', 'error'); return; }
+    if (_state.new_client_email === '' || _state.new_client_email == null) { _toast('new client email is required', 'error'); return; }
+    if (_state.new_client_company === '' || _state.new_client_company == null) { _toast('new client company is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Client');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/clients", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_client_name: _state.new_client_name, new_client_email: _state.new_client_email, new_client_company: _state.new_client_company }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.clients = await fetch("/api/clients").then(r => r.json()).catch(e => { console.error(e); return _state.clients; });
+    _state.new_client_name = "";
+    _state.new_client_email = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- Table action handlers for invoices ---
+document.getElementById('output_Invoices_table').addEventListener('click', async function(e) {
+  const deleteBtn = e.target.closest('[data-delete-id]');
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.deleteId;
+    await fetch("/api/invoices/" + id, { method: 'DELETE' }).catch(e => console.error(e));
+    _state.invoices = await fetch("/api/invoices").then(r => r.json()).catch(e => { console.error(e); return _state.invoices; });
+    _recompute();
+    return;
+  }
+  const editBtn = e.target.closest('[data-edit-id]');
+  if (editBtn) {
+    const id = editBtn.dataset.editId;
+    const row = JSON.parse(editBtn.dataset.editRow);
+    _state.client_name = row.client_name != null ? row.client_name : '';
+    _state.description = row.description != null ? row.description : '';
+    _state.amount = row.amount != null ? row.amount : '';
+    _state.status = row.status != null ? row.status : '';
+    _state.due_date = row.due_date != null ? row.due_date : '';
+    _state._editing_id = id;
+    _recompute();
+    return;
+  }
+});
+
+// --- Table action handlers for clients ---
+document.getElementById('output_Clients_table').addEventListener('click', async function(e) {
+  const deleteBtn = e.target.closest('[data-delete-id]');
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.deleteId;
+    await fetch("/api/clients/" + id, { method: 'DELETE' }).catch(e => console.error(e));
+    _state.clients = await fetch("/api/clients").then(r => r.json()).catch(e => { console.error(e); return _state.clients; });
+    _recompute();
+    return;
+  }
+});
+
+// --- On Page Load ---
+(async () => {
+  { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
+    if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+  _state.invoices = await fetch("/api/invoices").then(r => r.json()).catch(e => { console.error(e); return _state.invoices; });
+  _state.clients = await fetch("/api/clients").then(r => r.json()).catch(e => { console.error(e); return _state.clients; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

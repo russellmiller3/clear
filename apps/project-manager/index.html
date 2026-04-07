@@ -1,89 +1,153 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="ivory">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Project Manager</title>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <link rel="stylesheet" href="style.css">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- Inline Layout --- */
+.section-header { box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); padding: 1.5rem; }
+.section-app { display: flex; flex-direction: row; }
+.section-sidebar { overflow-y: auto; padding: 1.5rem; width: 320px; flex-shrink: 0; }
+.section-main { flex: 1; overflow-y: auto; padding: 1.5rem; }
+.section-add_task { padding: 1.5rem; }</style>
 </head>
-<body class="bg-base-200 min-h-screen">
-  <main id="app" class="max-w-2xl mx-auto p-8">
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-2xl mx-auto p-8 flex flex-col gap-6">
     <div class="clear-section section-header">
-    <h1 class="text-3xl font-semibold tracking-tight mb-6 clear-heading">Project Manager</h1>
-    <small class="text-sm opacity-60 clear-small">Track teams, projects, and tasks</small>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Project Manager</h1>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">Track teams, projects, and tasks</span>
     </div>
     <div class="clear-section section-app">
     <div class="clear-section section-sidebar">
-    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Teams</h2>
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_team_name"><span class="label-text">Team name</span></label>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Teams</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Team name</legend>
       <input id="input_team_name" class="input input-bordered w-full" type="text" placeholder="Team name">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Team">Add Team</button>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Teams">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Teams</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Teams_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
-    <button class="btn btn-neutral clear-button" id="btn_Add_Team">Add Team</button>
-    <div class="overflow-x-auto clear-table-container" id="output_Teams">
-      <div class="stat-title clear-output-label">Teams</div>
-      <table class="table table-zebra clear-table" id="output_Teams_table">
-        <thead><tr></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <hr class="divider clear-divider">
-    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Projects</h2>
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_project_name"><span class="label-text">Project name</span></label>
+    <div class="divider my-4"></div>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Projects</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Project name</legend>
       <input id="input_project_name" class="input input-bordered w-full" type="text" placeholder="Project name">
-    </div>
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_project_team_id"><span class="label-text">Team ID</span></label>
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Team ID</legend>
       <input id="input_project_team_id" class="input input-bordered w-full" type="text" placeholder="Team ID">
-    </div>
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_status"><span class="label-text">Status</span></label>
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Status</legend>
       <input id="input_status" class="input input-bordered w-full" type="select" placeholder="Status">
-    </div>
-    <button class="btn btn-neutral clear-button" id="btn_Add_Project">Add Project</button>
-    <div class="overflow-x-auto clear-table-container" id="output_Projects">
-      <div class="stat-title clear-output-label">Projects</div>
-      <table class="table table-zebra clear-table" id="output_Projects_table">
-        <thead><tr></tr></thead>
-        <tbody></tbody>
-      </table>
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Project">Add Project</button>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Projects">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Projects</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Projects_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
     </div>
     <div class="clear-section section-main">
-    <h2 class="text-xl font-semibold mt-6 mb-3 clear-subheading">Tasks</h2>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Tasks</h2>
     <div class="clear-section section-add_task">
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_task_title"><span class="label-text">Task title</span></label>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Task title</legend>
       <input id="input_task_title" class="input input-bordered w-full" type="text" placeholder="Task title">
-    </div>
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_task_project_id"><span class="label-text">Project ID</span></label>
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Project ID</legend>
       <input id="input_task_project_id" class="input input-bordered w-full" type="text" placeholder="Project ID">
-    </div>
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_priority"><span class="label-text">Priority</span></label>
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Priority</legend>
       <input id="input_priority" class="input input-bordered w-full" type="select" placeholder="Priority">
-    </div>
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_assigned_to"><span class="label-text">Assigned to</span></label>
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Assigned to</legend>
       <input id="input_assigned_to" class="input input-bordered w-full" type="text" placeholder="Assigned to">
-    </div>
-    <div class="form-control clear-input-group">
-      <label class="label" for="input_estimated_hours"><span class="label-text">Estimated hours</span></label>
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Estimated hours</legend>
       <input id="input_estimated_hours" class="input input-bordered w-full" type="number" placeholder="Estimated hours">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Task">Add Task</button>
     </div>
-    <button class="btn btn-neutral clear-button" id="btn_Add_Task">Add Task</button>
-    </div>
-    <hr class="divider clear-divider">
-    <div class="overflow-x-auto clear-table-container" id="output_Tasks">
-      <div class="stat-title clear-output-label">Tasks</div>
-      <table class="table table-zebra clear-table" id="output_Tasks_table">
-        <thead><tr></tr></thead>
-        <tbody></tbody>
-      </table>
+    <div class="divider my-4"></div>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Tasks">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Tasks</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Tasks_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
     </div>
     </div>
@@ -91,6 +155,33 @@
 
   <script>
 // --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
 function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 document.title = "Project Manager";
 
@@ -112,14 +203,15 @@ let _state = {
 
 // --- Recompute derived values and update displays ---
 function _recompute() {
+  // clear:11
   // Database: local memory (JSON file backup)
   {
     const _tableEl = document.getElementById('output_Teams_table');
     const _data = _state.teams;
     if (_tableEl && Array.isArray(_data) && _data.length > 0) {
       const _keys = ["name"];
-      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
     } else if (_tableEl) {
       _tableEl.querySelector('thead tr').innerHTML = '';
       _tableEl.querySelector('tbody').innerHTML = '';
@@ -130,8 +222,8 @@ function _recompute() {
     const _data = _state.projects;
     if (_tableEl && Array.isArray(_data) && _data.length > 0) {
       const _keys = ["name","status"];
-      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
     } else if (_tableEl) {
       _tableEl.querySelector('thead tr').innerHTML = '';
       _tableEl.querySelector('tbody').innerHTML = '';
@@ -142,8 +234,8 @@ function _recompute() {
     const _data = _state.tasks;
     if (_tableEl && Array.isArray(_data) && _data.length > 0) {
       const _keys = ["title","status","priority","assigned_to","estimated_hours"];
-      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
     } else if (_tableEl) {
       _tableEl.querySelector('thead tr').innerHTML = '';
       _tableEl.querySelector('tbody').innerHTML = '';
@@ -200,21 +292,57 @@ document.getElementById('input_estimated_hours').addEventListener('input', funct
 
 // --- Button handlers ---
 document.getElementById('btn_Add_Team').addEventListener('click', async function() {
-  await fetch("/api/teams", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ team_name: _state.team_name }) }).catch(e => console.error(e));
-  _state.teams = await fetch("/api/teams").then(r => r.json()).catch(e => { console.error(e); return _state.teams; });
-  _state.team_name = "";
+    if (_state.team_name === '' || _state.team_name == null) { _toast('team name is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Team');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/teams", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ team_name: _state.team_name }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.teams = await fetch("/api/teams").then(r => r.json()).catch(e => { console.error(e); return _state.teams; });
+    _state.team_name = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
   _recompute();
 });
 document.getElementById('btn_Add_Project').addEventListener('click', async function() {
-  await fetch("/api/projects", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_name: _state.project_name, project_team_id: _state.project_team_id, status: _state.status }) }).catch(e => console.error(e));
-  _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
-  _state.project_name = "";
+    if (_state.project_name === '' || _state.project_name == null) { _toast('project name is required', 'error'); return; }
+    if (_state.project_team_id === '' || _state.project_team_id == null) { _toast('project team id is required', 'error'); return; }
+    if (_state.status === '' || _state.status == null) { _toast('status is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Project');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/projects", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_name: _state.project_name, project_team_id: _state.project_team_id, status: _state.status }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
+    _state.project_name = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
   _recompute();
 });
 document.getElementById('btn_Add_Task').addEventListener('click', async function() {
-  await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_title: _state.task_title, task_project_id: _state.task_project_id, priority: _state.priority, assigned_to: _state.assigned_to, estimated_hours: _state.estimated_hours }) }).catch(e => console.error(e));
-  _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
-  _state.task_title = "";
+    if (_state.task_title === '' || _state.task_title == null) { _toast('task title is required', 'error'); return; }
+    if (_state.task_project_id === '' || _state.task_project_id == null) { _toast('task project id is required', 'error'); return; }
+    if (_state.priority === '' || _state.priority == null) { _toast('priority is required', 'error'); return; }
+    if (_state.assigned_to === '' || _state.assigned_to == null) { _toast('assigned to is required', 'error'); return; }
+    if (_state.estimated_hours === '' || _state.estimated_hours == null) { _toast('estimated hours is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Task');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_title: _state.task_title, task_project_id: _state.task_project_id, priority: _state.priority, assigned_to: _state.assigned_to, estimated_hours: _state.estimated_hours }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+    _state.task_title = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
   _recompute();
 });
 

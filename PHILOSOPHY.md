@@ -393,7 +393,7 @@ alternatives, explain trade-offs. Then implement what's decided.
 
 ## AI Style Guide
 
-See `AI-STYLE-GUIDE.md` for the full guide Claude follows when writing Clear code.
+See `AI-INSTRUCTIONS.md` for the full guide Claude follows when writing Clear code.
 Key rules: `=` for numbers, `is` for strings. Single quotes canonical. Numbers
 get px in styles. Name elements what they are (text input, dropdown, heading).
 
@@ -638,6 +638,7 @@ The reader knows what data exists, what the API does, and what the user sees.
 | Display (auto-label) | `display subtotal as dollars` |
 | Display (custom label) | `display tax as dollars called 'Sales Tax'` |
 | Display table | `display todos as table showing name, status` |
+| Table with actions | `display todos as table showing name, status with delete` |
 | Button | `button 'Click Me':` |
 | Send data | `send todo as a new todo to '/api/todos'` |
 | Named fetch | `get todos from '/api/todos'` |
