@@ -1360,6 +1360,22 @@ Bugs found by deploying and testing all 33 apps:
 
 ---
 
+### Phase 45: External API Calls & Service Integrations — DONE
+
+| # | Feature | Syntax | Status |
+|---|---------|--------|--------|
+| 57 | Generic HTTP requests | `call api 'url':` + method/headers/body/timeout | **DONE.** fetch() with AbortController |
+| 58 | Stripe preset | `charge via stripe:` + amount/currency/token | **DONE.** Charges API, form-encoded |
+| 59 | SendGrid preset | `send email via sendgrid:` + to/from/subject/body | **DONE.** Mail Send v3 API |
+| 60 | Twilio preset | `send sms via twilio:` + to/body | **DONE.** Messages API, Basic auth |
+| 61 | ask claude (canonical AI) | `ask claude 'prompt' with data using 'model'` | **DONE.** ANTHROPIC_API_KEY, model selection |
+| 62 | Natural webhooks | `when stripe notifies '/path':` | **DONE.** Replaces `webhook` jargon |
+| 63 | needs login alias | `needs login` | **DONE.** Alias for `requires auth` |
+
+1281 tests. `call api` handles arbitrary REST APIs. Service presets compile to correct API-specific formats (form-encoded for Stripe/Twilio, JSON for SendGrid).
+
+---
+
 ### Phase 45: Desktop Apps via Tauri
 | 36 | `database is turso` | Edge SQLite via Turso client | Same app, Turso backend |
 | 37 | Connection string from env | `database is supabase with env('SUPABASE_URL')` | Config-driven, no hardcoded keys |
