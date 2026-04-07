@@ -1142,6 +1142,36 @@ function compileCrud(node, ctx, pad) {
   const table = node.target ? node.target.toLowerCase() + (node.target.toLowerCase().endsWith('s') ? '' : 's') : 'unknown';
 
   if (ctx.lang === 'python') {
+    // Supabase Python path (supabase-py SDK)
+    if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+      if (node.operation === 'lookup') {
+        const varName = sanitizeName(node.variable);
+        const isSingle = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
+        let query = `supabase.table("${table}").select("*")`;
+        if (node.condition) {
+          const pairs = extractEqPairs(node.condition, ctx);
+          for (const [k, v] of pairs) query += `.eq("${k}", ${v})`;
+        }
+        if (isSingle) query += '.single()';
+        return `${pad}_resp = ${query}.execute()\n${pad}${varName} = _resp.data`;
+      }
+      if (node.operation === 'save') {
+        const varCode = sanitizeName(node.variable);
+        if (node.resultVar) {
+          return `${pad}_resp = supabase.table("${table}").insert(${varCode}).execute()\n${pad}${sanitizeName(node.resultVar)} = _resp.data[0] if _resp.data else {}`;
+        }
+        return `${pad}supabase.table("${table}").update(${varCode}).eq("id", ${varCode}["id"]).execute()`;
+      }
+      if (node.operation === 'remove') {
+        let query = `supabase.table("${table}").delete()`;
+        if (node.condition) {
+          const pairs = extractEqPairs(node.condition, ctx);
+          for (const [k, v] of pairs) query += `.eq("${k}", ${v})`;
+        }
+        return `${pad}${query}.execute()`;
+      }
+    }
+    // Default Python path (in-memory db)
     if (node.operation === 'lookup') {
       const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
       const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
@@ -1334,6 +1364,11 @@ function compileValidate(node, ctx, pad) {
 
 function compileDataShape(node, ctx, pad) {
   if (ctx.lang === 'python') {
+    // Supabase: tables managed in dashboard, emit comment only
+    if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+      const tableName = node.name.toLowerCase() + (node.name.toLowerCase().endsWith('s') ? '' : 's');
+      return `${pad}# Data shape: ${node.name} (table '${tableName}' must exist in Supabase dashboard)`;
+    }
     const sqlTypes = { text: 'TEXT', number: 'INTEGER', boolean: 'BOOLEAN', timestamp: 'TIMESTAMP', fk: 'INTEGER' };
     const cols = node.fields.map(f => {
       let col = `${f.name} ${sqlTypes[f.fieldType] || 'TEXT'}`;
@@ -1819,6 +1854,7 @@ function _compileNodeInner(node, ctx) {
     case NodeType.DATABASE_DECL: {
       const b = node.backend;
       if (b.includes('local') || b.includes('memory')) {
+        if (ctx.lang === 'python') return `${pad}# Database: local memory`;
         return `${pad}// Database: local memory (JSON file backup)`;
       }
       if (b.includes('sqlite')) {
@@ -1834,6 +1870,7 @@ function _compileNodeInner(node, ctx) {
         return `${pad}const { Pool } = require('pg');\n${pad}const _pool = new Pool({ connectionString: ${url} });`;
       }
       if (b.includes('supabase')) {
+        if (ctx.lang === 'python') return `${pad}# Database: Supabase (client initialized at top of file)`;
         return `${pad}// Database: Supabase (client initialized at top of file)`;
       }
       return `${pad}// Database: ${node.backend}`;
@@ -2213,7 +2250,8 @@ function _compileNodeInner(node, ctx) {
     case NodeType.RATE_LIMIT: {
       const ms = node.period === 'second' ? 1000 : node.period === 'minute' ? 60000 : node.period === 'hour' ? 3600000 : 60000;
       if (ctx.lang === 'python') {
-        return `${pad}# Rate limit: ${node.count} per ${node.period}\n${pad}@limiter.limit("${node.count}/${node.period}")`;
+        // slowapi rate limiting for FastAPI
+        return `${pad}# Rate limit: ${node.count} per ${node.period}\n${pad}from slowapi import Limiter\n${pad}from slowapi.util import get_remote_address\n${pad}_limiter = Limiter(key_func=get_remote_address)\n${pad}app.state.limiter = _limiter`;
       }
       return `${pad}// Rate limit: ${node.count} per ${node.period}\n${pad}app.use(rateLimit({ windowMs: ${ms}, max: ${node.count} }));`;
     }
@@ -4333,9 +4371,26 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('db = _DB()');
   lines.push('');
 
+  // Detect database backend for Supabase support
+  const pyDbBackend = body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
+  const pyIsSupabase = pyDbBackend.includes('supabase');
+  if (pyIsSupabase) {
+    // Replace in-memory db with Supabase client
+    // Clear the db stub lines and replace with supabase init
+    const dbStubStart = lines.findIndex(l => l.includes('# In-memory database'));
+    if (dbStubStart >= 0) {
+      // Remove from '# In-memory database' through 'db = _DB()'
+      const dbStubEnd = lines.findIndex((l, i) => i > dbStubStart && l.includes('db = _DB()'));
+      if (dbStubEnd >= 0) lines.splice(dbStubStart, dbStubEnd - dbStubStart + 2);
+    }
+    lines.push('from supabase import create_client');
+    lines.push('supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])');
+    lines.push('');
+  }
+
   const pySchemaNames = new Set();
   for (const node of body) { if (node.type === NodeType.DATA_SHAPE) pySchemaNames.add(node.name); }
-  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames };
+  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, dbBackend: pyDbBackend };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
