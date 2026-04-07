@@ -577,6 +577,18 @@ When using Supabase, CRUD operations compile to Supabase SDK calls:
 
 Tables must exist in your Supabase dashboard — the compiler doesn't create them.
 
+## Compound Unique Constraints
+
+```clear
+create a Votes table:
+  user_id, required
+  poll_id, required
+  choice, required
+  one per user_id and poll_id    # only one vote per user per poll
+```
+
+`one per field1 and field2` prevents duplicate combinations. Compiles to `UNIQUE(field1, field2)`.
+
 ## Backend
 
 ```clear

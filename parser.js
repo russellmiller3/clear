@@ -3033,6 +3033,7 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
   // Parse field lines and RLS policy lines directly from tokens
   const fields = [];
   const policies = [];
+  const compoundUniques = [];
   let j = startIdx + 1;
   while (j < lines.length && lines[j].indent > blockIndent) {
     const fieldTokens = lines[j].tokens;
@@ -3046,6 +3047,23 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
         (firstCanonical === 'role' && fieldTokens.length > 1 && fieldTokens[1].type === TokenType.STRING)) {
       const policy = parseRLSPolicy(fieldTokens, fieldLine);
       if (policy) policies.push(policy);
+      j++;
+      continue;
+    }
+
+    // Compound unique: "one per student and course"
+    // Means: only one row per combination of these fields
+    if (fieldTokens[0].value === 'one' && fieldTokens.length >= 3 && fieldTokens[1].value === 'per') {
+      const uniqueFields = [];
+      for (let u = 2; u < fieldTokens.length; u++) {
+        if (fieldTokens[u].value === 'and' || fieldTokens[u].value === ',') continue;
+        if (fieldTokens[u].type === TokenType.IDENTIFIER || fieldTokens[u].type === TokenType.KEYWORD) {
+          uniqueFields.push(fieldTokens[u].value);
+        }
+      }
+      if (uniqueFields.length >= 2) {
+        compoundUniques.push(uniqueFields);
+      }
       j++;
       continue;
     }
@@ -3166,7 +3184,9 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
     errors.push({ line, message: `The ${name} table is empty -- add fields inside. Example:\n  create a ${name} table:\n    name, required\n    email, required, unique` });
   }
 
-  return { node: dataShapeNode(name, fields, line, policies), endIdx: j };
+  const shapeNode = dataShapeNode(name, fields, line, policies);
+  if (compoundUniques.length > 0) shapeNode.compoundUniques = compoundUniques;
+  return { node: shapeNode, endIdx: j };
 }
 
 // =============================================================================
