@@ -1,67 +1,70 @@
-# Handoff — 2026-04-07
+# Handoff — 2026-04-07 (Session 9)
 
 ## Current State
 - **Branch:** main
-- **Last commit:** c4bcb50 Replace fix_scope with suggested_fix
-- **Working tree:** Clean
-- **Tests:** 1281 passing
+- **Tests:** 1337 passing
 - **Apps:** 33 template apps, all compile
+- **Working tree:** Clean
 
 ## What Was Done This Session
 
-- Built 5 template apps (CRM, Booking, Invoice, CRM Pro, CRM SPA multi-file) and E2E tested all of them with real HTTP requests + race condition tests
-- Fixed 8 compiler bugs found during E2E (seed inserts, PUT ID injection, pluralization, multi-page routing, sidebar layout, multi-file module resolution)
-- Added Phase 45: external API calls (`call api`, Stripe, SendGrid, Twilio, `ask claude`, `when X notifies`, `needs login`)
-- Improved compiled output quality: source line comments (`// clear:LINE`), error classification (400 vs 500), seed endpoint guards, reactive model comments
-- Added auto-generated ASCII architecture diagrams to all compiled output (tables, endpoints, pages, dataflow — regenerates on every build)
-- Designed Phase 46 error translator plan with 27 acceptance tests, red-teamed, and iterated on `suggested_fix` (minimal diff) replacing `fix_scope` (preserve list)
+### Phase 46: Runtime Error Translator
+- Implemented `_clearTry` (context-aware CRUD wrapping), `_clearError` (3-level debug output), `_clearMap` (conditional source map with table schemas + endpoint info)
+- `suggested_fix` generates minimal diffs for fixable errors (missing field → table location, missing auth → add_line_after)
+- PII auto-redaction in verbose mode. Python first-class with CLEAR_DEBUG-aware FastAPI formatting
+- Frontend fetch errors log `[clear:LINE file.clear]` to browser console
+- External API errors (Stripe/SendGrid/Twilio/call api) carry service-specific `_clearCtx`
+- Multi-file `_sourceFile` tagging in resolveModules
+- 50 blind-agent acceptance tests (AT-1 through AT-27 + 15 hard-bug + 8 guard-bug): all scored A or B
 
-## What's In Progress
+### Phase 46b: Silent Bug Guards
+- **enforceTypes()**: coerces numeric strings to numbers, rejects non-numeric for number fields
+- **validateForeignKeys()**: checks FK references exist in parent tables before insert
+- **Update 404**: db.update throws 404 when no record matches by id
+- **validateArithmetic()**: compile-time warning on balance/stock subtraction without guard
+- **validateFieldMismatch()**: compile-time warning when frontend field names don't match table schema
+- **validateCapacity()**: compile-time warning on insert into child of capacity table without guard
+- **Seed idempotency**: compiled seed endpoints use findOne-before-insert for unique fields
 
-**Phase 46: Runtime Error Translator** — plan is complete at `plans/plan-error-translator-04-07-2026.md`, ready to implement.
-- 7 phases, 16 TDD cycles, 27 acceptance tests
-- Key systems: `_clearTry` (context-aware error wrapping), `_clearMap` (embedded source map), `suggested_fix` (compiler-generated minimal diffs)
-- All utilities inlined (no external files, zero new dependencies)
-- Python is first-class (not deferred)
-- Branch: `feature/error-translator`
+### Compiler Bugs Found by Blind Agents
+- Stripe/SendGrid/Twilio IIFE closing `)()` → `})()` (syntax error)
+- PUT endpoints returned partial data (no re-fetch after update)
+- Update path lacked `_pick` schema filtering (mass assignment vulnerability)
+- `isReactiveApp()` missed ON_PAGE_LOAD + table DISPLAY triggers
+- `createTable()` no-oped on existing tables → stale schemas from disk
+- `_validate` had no format matchers for time/phone/url
 
 ## Key Decisions Made
 
-1. **`suggested_fix` over `fix_scope`** — instead of listing what NOT to touch (which is just "everything else"), give the AI the exact minimal diff. The compiler knows enough for schema errors (missing field, wrong type, missing auth, typos). For logic bugs / CSS — no suggested fix, just hint + line. Honest about what it knows.
-2. **Auto-diagrams replace per-app intent files** — every compiled file has an architecture diagram that regenerates on build. Impossible to be stale. The diagram IS the intent file.
-3. **`ask claude` is canonical, `ask ai` is alias** — ANTHROPIC_API_KEY takes precedence over CLEAR_AI_KEY. Model selection via `using 'model-id'`.
-4. **`when X notifies` replaces `webhook`** — matches existing `when user calls` pattern. 14-year-old test.
-5. **Service presets use correct content types** — Stripe/Twilio use form-encoded (URLSearchParams), SendGrid uses JSON. Can't assume JSON for all.
-6. **CLEAR_DEBUG controls three levels** — off (production default), true (hint + line), verbose (+ sanitized input/schema). PII auto-redacted.
+1. **Runtime guards > compile-time guards** — putting type enforcement, FK checks, and update-not-found in `runtime/db.js` covers ALL code paths. One fix, every app.
+2. **Blind agent testing as acceptance criteria** — the real test is: can a fresh agent fix the bug from the error + files alone? Not unit tests, not human review.
+3. **Research-backed priorities** — OWASP 2025, CWE Top 25, CodeRabbit AI study (470 repos) ranked the guards. Type coercion, wrong status codes, null access are the top 3.
+4. **`Number("")` returns 0** — empty strings must NOT silently coerce to 0 for non-required number fields. Guard skips empty/whitespace before coercion.
+5. **Compile-time warnings for business logic** — balance checks, capacity limits, and field mismatches are warnings, not errors. The compiler can't safely infer business rules.
 
 ## Known Issues / Bugs
 
 - Browser server doesn't inline module endpoints from `use everything from`
 - `data from` synonym collision with variable name `data`
-- `charge = charge via stripe:` collides (same word as synonym + variable)
 - Single `_editing_id` shared across tables (edit mode collision in multi-table UIs)
-- `GET /api/teams/:id` returns all records (doesn't filter by id param)
 
 ## Next Steps (Priority Order)
 
-1. **Implement error translator** (Phase 46) — `plans/plan-error-translator-04-07-2026.md`. Branch: `feature/error-translator`. This is the highest-leverage work.
-2. **Deploy playground to Vercel** — AI proxy ready, just needs `vercel deploy`
-3. **Client portal + admin dashboard templates** — complete Phase 43
-4. **Clear Cloud MVP** — hosted compile + deploy
-5. **Streaming iterators** — `for each line in stream file`
+1. **Deploy playground to Vercel** — AI proxy ready, just needs `vercel deploy`
+2. **Client portal + admin dashboard templates** — complete Phase 43
+3. **Clear Cloud MVP** — hosted compile + deploy
+4. **Streaming iterators** — `for each line in stream file`
 
 ## Files to Read First
 
 | File | Why |
 |------|-----|
 | `HANDOFF.md` | This file — session context |
-| `CLAUDE.md` | Startup reading order, all rules, 1281 tests |
-| `plans/plan-error-translator-04-07-2026.md` | Next task — 7 phases, 27 acceptance tests |
-| `AI-INSTRUCTIONS.md` | How to write Clear code |
-| `intent.md` | Authoritative spec for all node types |
-| `learnings.md` | Sessions 7-8: 34 gotchas (scan TOC) |
-| `ROADMAP.md` | Phases 30-45b complete, 46 planned |
+| `CLAUDE.md` | Startup reading order, all rules, 1337 tests |
+| `learnings.md` | Scan TOC — Session 9 has error translator + guard gotchas |
+| `ROADMAP.md` | Phases 30-46b complete, 1337 tests |
+| `plans/plan-silent-bug-guards-04-07-2026.md` | Guard implementation details |
 
 ## Resume Prompt
 
-> Read HANDOFF.md, CLAUDE.md, plans/plan-error-translator-04-07-2026.md. 1281 tests passing. 33 apps. Phases 30-45b complete. Next: implement error translator (Phase 46) — 7 phases, 16 TDD cycles, 27 acceptance tests. Key: `_clearTry` wraps CRUD/auth with source context, `_clearMap` embeds source map conditionally, `suggested_fix` gives AI the minimal diff. All utilities inlined. Python first-class. Branch: `feature/error-translator`. Run `node clear.test.js` to verify.
+> Read HANDOFF.md, CLAUDE.md. 1337 tests passing. 33 apps. Phases 30-46b complete. Phase 46: runtime error translator (_clearTry, _clearError, _clearMap, suggested_fix, PII redaction, Python first-class). Phase 46b: silent bug guards (type enforcement, FK check, update-not-found 404, balance/field/capacity warnings, seed idempotency). 50 blind-agent acceptance tests all A/B. 6 compiler bugs found and fixed by agents. Next: deploy playground to Vercel, client portal templates, Clear Cloud MVP.
