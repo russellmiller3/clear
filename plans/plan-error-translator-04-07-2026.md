@@ -541,9 +541,93 @@ page 'App' at '/':
 
 ---
 
+### CSS / UI INHERITANCE BUGS
+
+**AT-18: Dark sidebar text invisible on light theme**
+```clear
+theme 'ivory'
+page 'App' at '/':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'Menu'
+      text 'Dashboard'
+    section 'Main' with style app_main:
+      heading 'Content'
+```
+- Trigger: Compile and inspect HTML — sidebar uses `bg-base-200` but text color inherits from ivory theme's `base-content` which may be low-contrast on the sidebar background
+- Assert: error/warning at compile time or runtime says "text in app_sidebar may have low contrast on ivory theme — consider adding `dark background` or switching to `theme 'midnight'`"
+- This tests CSS-aware diagnostics
+
+**AT-19: Nested style preset override**
+```clear
+style outer:
+  padding = 32
+  background is '#f0f0f0'
+
+style inner:
+  padding = 16
+
+page 'App' at '/':
+  section 'Outer' with style outer:
+    section 'Inner' with style inner:
+      text 'Hello'
+```
+- Trigger: Inner section inherits outer's background but overrides padding — is that intended?
+- Assert: when `CLEAR_DEBUG=true`, compiled CSS includes comments: `/* clear:3 — style outer */` and `/* clear:7 — style inner */` so dev can trace which style rule applies
+
+**AT-20: Chart container has zero height**
+```clear
+page 'App' at '/':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Nav'
+    section 'Main' with style app_main:
+      section 'Body' with style app_content:
+        chart 'Revenue' as bar showing data
+```
+- Trigger: Chart renders inside a flex container that may collapse to zero height if data is empty
+- Assert: console.warn includes "chart container has zero dimensions — check parent layout" and clear:LINE
+
+---
+
+### ACCIDENTAL DELETION PREVENTION (fix_scope)
+
+Every error response with `CLEAR_DEBUG=true` should include a `fix_scope` field that tells the AI exactly what to change and what NOT to change:
+
+```json
+{
+  "error": "email is required",
+  "clear_line": 45,
+  "clear_file": "backend.clear",
+  "hint": "Add 'email, required' to Contacts table...",
+  "fix_scope": {
+    "change": {
+      "file": "backend.clear",
+      "lines": "12-16",
+      "description": "Add email field to Contacts table definition"
+    },
+    "preserve": [
+      { "file": "backend.clear", "lines": "40-55", "description": "POST /api/contacts endpoint — do not modify" },
+      { "file": "backend.clear", "lines": "56-70", "description": "PUT /api/contacts endpoint — do not modify" },
+      { "file": "frontend.clear", "lines": "1-30", "description": "Page layout — do not modify" }
+    ]
+  }
+}
+```
+
+**AT-21: Fix-scope prevents accidental deletion**
+- Start with CRM SPA (4 files)
+- Introduce bug: validation rule has wrong type (`amount is text` should be `amount is number`)
+- Error response must include `fix_scope` with:
+  - `change`: the validation block line range
+  - `preserve`: the CRUD operations below, the table definition above, and ALL other endpoints
+- Verify: the `preserve` list covers every function/endpoint in the same file that is NOT the bug
+
+---
+
 ### THE ULTIMATE TEST: Autonomous Fix Loop
 
-**AT-18: Full autonomous debug cycle**
+**AT-22: Full autonomous debug cycle**
 
 This is the money test. Steps:
 
@@ -573,10 +657,10 @@ After implementing, score each acceptance test:
 | **C** | Error gives direction but agent needs to explore — 2+ file reads |
 | **F** | Error is useless — agent has to start from scratch |
 
-**Target: A or B on all 18 tests. No F grades allowed.**
+**Target: A or B on all 22 tests. No F grades allowed.**
 
 ---
 
 ## 📎 RESUME PROMPT
 
-> Read `plans/plan-error-translator-04-07-2026.md`. Runtime error translator: maps compiled JS errors back to Clear source with hints. 7 phases, 16 TDD cycles + 18 acceptance tests. All utilities inlined (no external files). _clearTry wraps CRUD/auth when CLEAR_DEBUG set. _clearMap embeds source map conditionally. PII auto-redacted. Python deferred. Branch: `feature/error-translator`. Run `node clear.test.js` after each phase. Acceptance tests (AT-1 through AT-18) verify an AI agent can fix bugs from error responses alone.
+> Read `plans/plan-error-translator-04-07-2026.md`. Runtime error translator: maps compiled JS errors back to Clear source with hints. 7 phases, 16 TDD cycles + 22 acceptance tests (incl. CSS inheritance, fix_scope deletion prevention, autonomous loop). All utilities inlined (no external files). _clearTry wraps CRUD/auth when CLEAR_DEBUG set. _clearMap embeds source map conditionally. PII auto-redacted. Python deferred. Branch: `feature/error-translator`. Run `node clear.test.js` after each phase. Acceptance tests (AT-1 through AT-18) verify an AI agent can fix bugs from error responses alone.
