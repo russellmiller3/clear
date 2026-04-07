@@ -1021,6 +1021,12 @@ Features that Clear can't build yet, roughly prioritized by demand.
 | **Blockchain / web3** | Smart contracts, wallet integration | Hard -- new paradigm |
 | **Desktop apps** | Compile to Electron or Tauri | Medium-hard -- new build target |
 
+### Nice to Have (developer experience)
+
+| Feature | What it enables | Difficulty |
+|---------|----------------|------------|
+| **JSDoc typedefs + `@ts-check`** | IDE autocomplete, type checking without a build step. Add `@typedef` for AST nodes and `// @ts-check` to compiler files. 80% of TypeScript's benefits with 0% build complexity. | Easy |
+
 ### ICP and Go-to-Market
 
 **Primary ICP: Freelancers and small agencies.**
