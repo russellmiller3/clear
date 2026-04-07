@@ -104,13 +104,13 @@ db.createTable('bookings', BookingsSchema);
 app.post('/api/seed', async (req, res) => {
   try {
     let s1 = { name: "Consultation", duration: 60, price: 150 };
-    await db.update('as', s1);
+    await db.insert('services', _pick(s1, ServicesSchema));
     let s2 = { name: "Follow-up", duration: 30, price: 75 };
-    await db.update('as', s2);
+    await db.insert('services', _pick(s2, ServicesSchema));
     let b1 = { client_name: "Sarah Johnson", service_name: "Consultation", date: "2026-04-08", time: "10:00", status: "confirmed" };
-    await db.update('as', b1);
+    await db.insert('bookings', _pick(b1, BookingsSchema));
     let b2 = { client_name: "Mike Peters", service_name: "Follow-up", date: "2026-04-08", time: "14:00", status: "pending" };
-    await db.update('as', b2);
+    await db.insert('bookings', _pick(b2, BookingsSchema));
     return res.status(201).json({ message: "seeded" });
   } catch (err) {
     res.status(500).json({ error: err.message });

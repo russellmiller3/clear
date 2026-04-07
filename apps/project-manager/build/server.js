@@ -213,6 +213,7 @@ app.put('/api/projects/:id', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"status","type":"text"}, {"field":"name","type":"text"}, {"field":"description","type":"text"}, {"field":"deadline","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
+    update_data.id = req.params.id;
     await db.update('projects', update_data);
     return res.status(200).json({ message: "updated" });
   } catch (err) {
@@ -265,6 +266,7 @@ app.put('/api/tasks/:id', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"status","type":"text"}, {"field":"title","type":"text"}, {"field":"priority","type":"text"}, {"field":"assigned_to","type":"text"}, {"field":"actual_hours","type":"number"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
+    update_data.id = req.params.id;
     await db.update('tasks', update_data);
     return res.status(200).json({ message: "updated" });
   } catch (err) {

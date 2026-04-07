@@ -103,6 +103,7 @@ app.put('/api/todos/:id', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"title","type":"text","min":1,"max":500}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
+    update_data.id = req.params.id;
     await db.update('todos', update_data);
     return res.json({ message: "updated" });
   } catch (err) {

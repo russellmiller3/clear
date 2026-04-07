@@ -3248,16 +3248,25 @@ function parseSave(tokens, line) {
   const variable = tokens[pos].value;
   pos++;
 
-  // expect "to"
-  if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
+  // expect "to" or "as" connector: "save X to Y" or "save X as new Y"
+  let isInsert = false;
+  if (pos < tokens.length && (tokens[pos].canonical === 'as_format' || tokens[pos].canonical === 'as'
+      || (typeof tokens[pos].value === 'string' && tokens[pos].value.toLowerCase() === 'as'))) {
+    isInsert = true; // "save X as Y" = insert new record
     pos++;
+  } else if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
+    pos++; // "save X to Y" = update existing
   }
+  // Skip optional "new": "save X as new Model"
+  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
   if (pos >= tokens.length) {
     return { error: 'The save statement needs a target. Example: save new_user to Users' };
   }
   const target = tokens[pos].value;
 
-  return { node: crudNode('save', variable, target, null, line) };
+  const node = crudNode('save', variable, target, null, line);
+  if (isInsert) node.isInsert = true;
+  return { node };
 }
 
 function parseRemoveFrom(tokens, line) {

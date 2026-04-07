@@ -91,6 +91,7 @@ app.put('/api/models/:id', async (req, res) => {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
     const update_data = req.body;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
+    update_data.id = req.params.id;
     await db.update('models', update_data);
     return res.status(200).json({ ...update_data, message: "success" });
   } catch (err) {
@@ -112,13 +113,13 @@ app.delete('/api/models/:id', async (req, res) => {
 app.post('/api/seed', async (req, res) => {
   try {
     let m1 = { name: "Revenue Predictor", accuracy: 92, status: "complete" };
-    await db.update('as', m1);
+    await db.insert('models', _pick(m1, ModelsSchema));
     let m2 = { name: "Churn Classifier", accuracy: 87, status: "complete" };
-    await db.update('as', m2);
+    await db.insert('models', _pick(m2, ModelsSchema));
     let m3 = { name: "Lead Scorer", accuracy: 78, status: "training" };
-    await db.update('as', m3);
+    await db.insert('models', _pick(m3, ModelsSchema));
     let m4 = { name: "Demand Forecast", accuracy: 94, status: "complete" };
-    await db.update('as', m4);
+    await db.insert('models', _pick(m4, ModelsSchema));
     return res.status(201).json({ message: "seeded" });
   } catch (err) {
     res.status(500).json({ error: err.message });
