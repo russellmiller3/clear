@@ -69,15 +69,20 @@ db.createTable('rooms', RoomSchema);
 // --- Config ---
 // --- REST Endpoints ---
 // clear:26
+// clear:26 — GET /api/rooms
 app.get('/api/rooms', async (req, res) => {
   try {
     const all_rooms = await db.findAll('rooms');
     return res.json(all_rooms);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/rooms] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:30
+// clear:30 — POST /api/rooms
 app.post('/api/rooms', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -86,22 +91,30 @@ app.post('/api/rooms', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":100}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_room = await db.insert('rooms', _pick(room_data, RoomSchema));
+    const new_room = await db.insert('rooms', _pick(room_data, RoomSchema)); // clear:34
     return res.status(201).json(new_room);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/rooms] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:37
+// clear:37 — GET /api/rooms/:id/messages
 app.get('/api/rooms/:id/messages', async (req, res) => {
   try {
     const room_messages = await db.findAll('messages');
     return res.json(room_messages);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/rooms/:id/messages] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:41
+// clear:41 — POST /api/messages
 app.post('/api/messages', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -110,10 +123,13 @@ app.post('/api/messages', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"room","type":"text","required":true}, {"field":"sender","type":"text","required":true}, {"field":"content","type":"text","required":true,"min":1}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_message = await db.insert('messages', _pick(msg_data, MessageSchema));
+    const new_message = await db.insert('messages', _pick(msg_data, MessageSchema)); // clear:47
     return res.status(201).json(new_message);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/messages] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- WebSocket ---
@@ -145,11 +161,15 @@ setInterval(() => {
 }, 30000);
 // --- Health ---
 // clear:57
+// clear:57 — GET /api/health
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/health] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 

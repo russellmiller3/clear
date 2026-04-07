@@ -78,6 +78,7 @@ const LIMITS_API_REQUESTS = {
 // --- Frontend: Marketing ---
 // --- Backend: Auth ---
 // clear:86
+// clear:86 — POST /api/auth/signup
 app.post('/api/auth/signup', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -85,13 +86,17 @@ app.post('/api/auth/signup', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"email","type":"text","required":true,"matches":"email"}, {"field":"name","type":"text","required":true,"min":1}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_user = await db.insert('users', _pick(signup_data, UserSchema));
+    const new_user = await db.insert('users', _pick(signup_data, UserSchema)); // clear:90
     return res.status(201).json(new_user);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/auth/signup] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:93
+// clear:93 — POST /api/auth/login
 app.post('/api/auth/login', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -101,21 +106,29 @@ app.post('/api/auth/login', async (req, res) => {
     if (_vErr) return res.status(400).json({ error: _vErr });
     return res.json({ message: "token" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/auth/login] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Backend: Projects ---
 // clear:100
+// clear:100 — GET /api/projects
 app.get('/api/projects', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const all_projects = await db.findAll('projects');
     return res.json(all_projects);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/projects] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:105
+// clear:105 — POST /api/projects
 app.post('/api/projects', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -124,25 +137,33 @@ app.post('/api/projects', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":100}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_project = await db.insert('projects', _pick(project_data, ProjectSchema));
+    const new_project = await db.insert('projects', _pick(project_data, ProjectSchema)); // clear:109
     return res.status(201).json(new_project);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/projects] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:112
+// clear:112 — DELETE /api/projects/:id
 app.delete('/api/projects/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('projects', { id: incoming.id });
+    await db.remove('projects', { id: incoming.id }); // clear:114
     return res.json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/projects/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Backend: API Keys ---
 // clear:119
+// clear:119 — POST /api/keys
 app.post('/api/keys', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -151,10 +172,13 @@ app.post('/api/keys', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"project_id","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_key = await db.insert('apikeys', _pick(key_data, ApiKeySchema));
+    const new_key = await db.insert('apikeys', _pick(key_data, ApiKeySchema)); // clear:123
     return res.status(201).json(new_key);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/keys] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Backend: Billing Webhook ---
@@ -170,11 +194,15 @@ app.post('/stripe/events', async (req, res) => {
 });
 // --- Backend: Health ---
 // clear:133
+// clear:133 — GET /api/health
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/health] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 

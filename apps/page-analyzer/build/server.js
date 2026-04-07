@@ -52,6 +52,7 @@ async function agent_page_analyzer(page_data) {
   return page_data;
 }
 // clear:17
+// clear:17 — POST /api/analyze
 app.post('/api/analyze', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -61,27 +62,38 @@ app.post('/api/analyze', async (req, res) => {
     const _vErr = _validate(req.body, [{"field":"url","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
     let analyzed = await agent_page_analyzer(page_data);
-    const saved = await db.insert('pages', _pick(analyzed, PagesSchema));
+    const saved = await db.insert('pages', _pick(analyzed, PagesSchema)); // clear:22
     return res.status(201).json({ ...saved, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/analyze] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:25
+// clear:25 — GET /api/pages
 app.get('/api/pages', async (req, res) => {
   try {
     const all_pages = await db.findAll('pages');
     return res.json(all_pages);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/pages] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:29
+// clear:29 — GET /api/health
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/health] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 

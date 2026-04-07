@@ -44,6 +44,7 @@ const LinkSchema = {
 db.createTable('links', LinkSchema);
 // --- Endpoints ---
 // clear:16
+// clear:16 — POST /api/shorten
 app.post('/api/shorten', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -53,40 +54,55 @@ app.post('/api/shorten', async (req, res) => {
     if (_vErr) return res.status(400).json({ error: _vErr });
     // Rate limit: 10 per minute
     app.use(rateLimit({ windowMs: 60000, max: 10 }));
-    const new_link = await db.insert('links', _pick(link_data, LinkSchema));
+    const new_link = await db.insert('links', _pick(link_data, LinkSchema)); // clear:20
     return res.status(201).json(new_link);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/shorten] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:23
+// clear:23 — GET /api/links
 app.get('/api/links', async (req, res) => {
   try {
     const all_links = await db.findAll('links');
     return res.json(all_links);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/links] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:27
+// clear:27 — GET /api/links/:code
 app.get('/api/links/:code', async (req, res) => {
   try {
     const incoming = req.params;
     const found = await db.findAll('links', { code: incoming.code });
     return res.json(found);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/links/:code] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:31
+// clear:31 — DELETE /api/links/:code
 app.delete('/api/links/:code', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('links', { code: incoming.code });
+    await db.remove('links', { code: incoming.code }); // clear:33
     return res.json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/links/:code] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 

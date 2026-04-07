@@ -84,24 +84,33 @@ const LIMITS_FILE_UPLOADS = {
 };
 // --- Endpoints ---
 // clear:49
+// clear:49 — GET /api/billing/plans
 app.get('/api/billing/plans', async (req, res) => {
   try {
     return res.json({ message: "plans" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/billing/plans] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:52
+// clear:52 — GET /api/billing/usage
 app.get('/api/billing/usage', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const user_usage = await db.findAll('usages');
     return res.json(user_usage);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/billing/usage] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:57
+// clear:57 — POST /api/billing/subscribe
 app.post('/api/billing/subscribe', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -112,7 +121,10 @@ app.post('/api/billing/subscribe', async (req, res) => {
     if (_vErr) return res.status(400).json({ error: _vErr });
     return res.json({ message: "subscribed" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/billing/subscribe] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Webhook ---

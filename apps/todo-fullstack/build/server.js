@@ -55,15 +55,20 @@ const TodosSchema = {
 db.createTable('todos', TodosSchema);
 // Backend
 // clear:20
+// clear:20 — GET /api/todos
 app.get('/api/todos', async (req, res) => {
   try {
     const all_todos = await db.findAll('todos');
     return res.json(all_todos);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/todos] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:24
+// clear:24 — POST /api/todos
 app.post('/api/todos', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -71,21 +76,28 @@ app.post('/api/todos', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"title","type":"text","required":true,"min":1,"max":500}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_todo = await db.insert('todos', _pick(todo_data, TodosSchema));
+    const new_todo = await db.insert('todos', _pick(todo_data, TodosSchema)); // clear:27
     return res.status(201).json({ ...new_todo, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/todos] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:30
+// clear:30 — DELETE /api/todos/:id
 app.delete('/api/todos/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('todos', { id: incoming.id });
+    await db.remove('todos', { id: incoming.id }); // clear:32
     return res.status(200).json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/todos/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // Frontend
