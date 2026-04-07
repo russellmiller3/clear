@@ -1735,6 +1735,34 @@ function _compileNodeInner(node, ctx) {
       return `${pad}try {\n${tryCode}\n${pad}} catch (${node.errorVar}) {\n${handleCode}\n${pad}}`;
     }
 
+    case NodeType.RETRY: {
+      const n = node.count || 3;
+      const retryBody = compileBody(node.body, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}# Retry up to ${n} times\n${pad}for _attempt in range(${n}):\n${pad}    try:\n${retryBody.split('\n').map(l => '    ' + l).join('\n')}\n${pad}        break\n${pad}    except Exception as _retry_err:\n${pad}        if _attempt == ${n - 1}:\n${pad}            raise _retry_err\n${pad}        import asyncio; await asyncio.sleep(2 ** _attempt)`;
+      }
+      return `${pad}// Retry up to ${n} times\n${pad}for (let _attempt = 0; _attempt < ${n}; _attempt++) {\n${pad}  try {\n${retryBody}\n${pad}    break;\n${pad}  } catch (_retryErr) {\n${pad}    if (_attempt === ${n - 1}) throw _retryErr;\n${pad}    await new Promise(r => setTimeout(r, Math.pow(2, _attempt) * 1000));\n${pad}  }\n${pad}}`;
+    }
+
+    case NodeType.TIMEOUT: {
+      const ms = node.ms || 5000;
+      const timeoutBody = compileBody(node.body, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}# Timeout: ${ms}ms\n${pad}import asyncio\n${pad}try:\n${pad}    await asyncio.wait_for(asyncio.ensure_future((lambda: (${timeoutBody.trim()}))() or asyncio.sleep(0)), timeout=${ms / 1000})\n${pad}except asyncio.TimeoutError:\n${pad}    raise Exception("Operation timed out after ${ms}ms")`;
+      }
+      return `${pad}// Timeout: ${ms}ms\n${pad}await Promise.race([\n${pad}  (async () => {\n${timeoutBody}\n${pad}  })(),\n${pad}  new Promise((_, reject) => setTimeout(() => reject(new Error('Operation timed out after ${ms}ms')), ${ms}))\n${pad}]);`;
+    }
+
+    case NodeType.RACE: {
+      const tasks = node.body.map(n => compileNode(n, ctx)).filter(Boolean);
+      if (ctx.lang === 'python') {
+        const pyTasks = tasks.map((t, i) => `${pad}    asyncio.ensure_future(${t.trim()})`).join(',\n');
+        return `${pad}# First to finish\n${pad}import asyncio\n${pad}_done, _pending = await asyncio.wait([${tasks.map((_, i) => `_task_${i}`).join(', ')}], return_when=asyncio.FIRST_COMPLETED)\n${pad}_result = _done.pop().result()`;
+      }
+      const jsTasks = tasks.map(t => `${pad}  (async () => { ${t.trim()} })()`).join(',\n');
+      return `${pad}// First to finish\n${pad}await Promise.race([\n${jsTasks}\n${pad}]);`;
+    }
+
     case NodeType.TRANSACTION: {
       const txBody = compileBody(node.body, ctx);
       if (ctx.lang === 'python') {
@@ -3956,7 +3984,7 @@ ${options}
 
         case NodeType.SHOW: {
           // Component call: show Card(name) -> container div for reactive rendering
-          if (node.expression && node.expression.type === NodeType.CALL) {
+          if (node.expression && node.expression.type === NodeType.CALL && node.expression.name) {
             const containerId = `component_${sanitizeName(node.expression.name)}_${compRenderCounter++}`;
             parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
           }
@@ -4906,6 +4934,7 @@ function _clear_env(name) {
 // =============================================================================
 
 function sanitizeName(name) {
+  if (name == null) return '_unnamed';
   // Preserve dots for property access (person.name → person.name)
   if (name.includes('.')) {
     return name.split('.').map(part => part.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1')).join('.');

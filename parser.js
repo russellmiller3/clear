@@ -180,6 +180,9 @@ export const NodeType = Object.freeze({
   ON_PAGE_LOAD: 'on_page_load',
   TRANSACTION: 'transaction',
   ON_CHANGE: 'on_change',
+  RETRY: 'retry',
+  TIMEOUT: 'timeout',
+  RACE: 'race',
   MATCH: 'match',
   MATCH_WHEN: 'match_when',
   MAP_GET: 'map_get',
@@ -1117,6 +1120,39 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         const { body: txBody, endIdx: txEnd } = parseBlock(lines, i + 1, indent, errors);
         body.push({ type: NodeType.TRANSACTION, body: txBody, line });
         i = txEnd;
+        continue;
+      }
+
+      // Retry: "retry 3 times:" — retry block up to N times on failure
+      if (firstToken.value === 'retry' && tokens.length >= 3) {
+        const count = typeof tokens[1].value === 'number' ? tokens[1].value : parseInt(tokens[1].value, 10) || 3;
+        const { body: retryBody, endIdx: retryEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.RETRY, count, body: retryBody, line });
+        i = retryEnd;
+        continue;
+      }
+
+      // Timeout: "with timeout 5 seconds:" — cancel if block takes too long
+      if (firstToken.canonical === 'with' && tokens.length >= 3 &&
+          tokens[1].value === 'timeout') {
+        const amount = typeof tokens[2].value === 'number' ? tokens[2].value : parseInt(tokens[2].value, 10) || 5;
+        // Detect unit: seconds or minutes
+        let ms = amount * 1000; // default seconds
+        if (tokens.length >= 4 && (tokens[3].value === 'minutes' || tokens[3].value === 'minute')) {
+          ms = amount * 60000;
+        }
+        const { body: timeoutBody, endIdx: timeoutEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.TIMEOUT, ms, body: timeoutBody, line });
+        i = timeoutEnd;
+        continue;
+      }
+
+      // Race: "first to finish:" — run multiple tasks, take first result
+      if (firstToken.value === 'first' && tokens.length >= 2 &&
+          tokens.some(t => t.value === 'finish')) {
+        const { body: raceBody, endIdx: raceEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.RACE, body: raceBody, line });
+        i = raceEnd;
         continue;
       }
 
