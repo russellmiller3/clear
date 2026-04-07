@@ -1168,9 +1168,9 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 | 12 | Pagination | Any list with 50+ items | **DONE.** `get all Items page 2, 25 per page` → array slice (local) or `.range()` (Supabase) |
 | 13 | GROUP BY output | "Sales by region," dashboards, reports | **DONE.** `by_region = group by region in sales` compiles to object grouping. Phase 22. |
 | 14 | Compound unique constraints | "One vote per user per poll" | **DONE.** `one per user_id and poll_id` → `UNIQUE(user_id, poll_id)`. Plain English, passes phone test. |
-| 15 | Database transactions | E-commerce (order + stock), banking (debit + credit) | Compile multi-step endpoint; generated code has `BEGIN`/`COMMIT`/`ROLLBACK` |
+| 15 | Database transactions | E-commerce (order + stock), banking (debit + credit) | **DONE.** `as one operation:` → `BEGIN`/`COMMIT`/`ROLLBACK` wrapping. Plain English. |
 
-**Phase 34 complete = Clear apps handle production data volumes and keep data consistent.**
+**Phase 34: COMPLETE.** All 4 items done.
 
 ---
 

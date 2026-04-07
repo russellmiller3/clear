@@ -178,6 +178,7 @@ export const NodeType = Object.freeze({
   LIST_SORT: 'list_sort',
 
   ON_PAGE_LOAD: 'on_page_load',
+  TRANSACTION: 'transaction',
   ON_CHANGE: 'on_change',
   MATCH: 'match',
   MATCH_WHEN: 'match_when',
@@ -1106,6 +1107,16 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         const result = parseTryHandle(lines, i, indent, errors);
         if (result.node) body.push(result.node);
         i = result.endIdx;
+        continue;
+      }
+
+      // Transaction: "as one operation:" — all-or-nothing database operations
+      if (firstToken.canonical === 'as_format' && tokens.length >= 2 &&
+          tokens[1].value === 'one' &&
+          tokens.some(t => t.value === 'operation')) {
+        const { body: txBody, endIdx: txEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.TRANSACTION, body: txBody, line });
+        i = txEnd;
         continue;
       }
 
