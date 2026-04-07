@@ -136,6 +136,31 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
   </main>
 
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Clients: name*, email*!, company, phone, created_at_date (line 26)
+   Invoices: client_name*, description*, amount*, status, due_date*, issued_date, notes, created_at_date (line 33)
+   LineItems: invoice_id*, description*, quantity, unit_price*, created_at_date (line 43)
+
+ ENDPOINTS:
+   POST /api/seed (line 59)
+   GET /api/clients (line 96)
+   POST /api/clients [auth] (line 100)
+   DELETE /api/clients/:id [auth] (line 110)
+   GET /api/invoices (line 116)
+   POST /api/invoices [auth] (line 120)
+   PUT /api/invoices/:id [auth] (line 132)
+   DELETE /api/invoices/:id [auth] (line 142)
+   GET /api/line-items (line 148)
+   POST /api/line-items [auth] (line 152)
+
+ PAGES:
+   'Invoices' at / (line 163)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
   <script>
 // --- Runtime ---
 function _toast(msg, type) {

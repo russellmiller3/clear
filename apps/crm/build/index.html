@@ -135,6 +135,30 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
   </main>
 
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Contacts: name*, email*!, company, status, phone, created_at_date (line 26)
+   Deals: contact_id*, title*, value, stage, created_at_date (line 34)
+   Activities: contact_id*, action*, detail, created_at_date (line 41)
+
+ ENDPOINTS:
+   POST /api/seed (line 56)
+   GET /api/contacts (line 84)
+   POST /api/contacts [auth] (line 88)
+   DELETE /api/contacts/:id [auth] (line 99)
+   GET /api/deals (line 105)
+   POST /api/deals [auth] (line 109)
+   DELETE /api/deals/:id [auth] (line 119)
+   GET /api/activities (line 125)
+   POST /api/activities [auth] (line 129)
+
+ PAGES:
+   'CRM' at / (line 139)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
   <script>
 // --- Runtime ---
 function _toast(msg, type) {

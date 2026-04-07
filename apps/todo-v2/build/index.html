@@ -66,6 +66,22 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
   </main>
 
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Todos: todo*, completed, created_at_date (line 3)
+
+ ENDPOINTS:
+   GET /api/todos (line 11)
+   POST /api/todos (line 15)
+   DELETE /api/todos/:id [auth] (line 21)
+
+ PAGES:
+   'Todo App' at / (line 26)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
   <script>
 // --- Runtime ---
 function _toast(msg, type) {
