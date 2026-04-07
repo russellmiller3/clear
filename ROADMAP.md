@@ -23,10 +23,10 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28 -- All Complete)
+## What's Built (Phases 1-28, 30-46b -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1005 tests, all passing.
+1337 tests, all passing.
 
 ### Core Language (Phase 1-3)
 | Feature | Status | Canonical Syntax |
@@ -1410,14 +1410,31 @@ Bugs found by deploying and testing all 33 apps:
 | Frontend fetch context | **Done** | `[GET /path]` + response.ok check |
 | Reactive model comments | **Done** | Explains _state, _recompute(), input/button flow |
 
-### Phase 46: Runtime Error Translator — PLANNED
+### Phase 46: Runtime Error Translator — DONE
 
-Full plan at `plans/plan-error-translator-04-07-2026.md`. 7 phases, 16 TDD cycles, 27 acceptance tests. Key features:
-- `_clearTry` wraps CRUD/auth/validation with source context
-- `_clearMap` embeds source map (conditional on CLEAR_DEBUG)
-- Three-level output: safe / hint+line / verbose+schema
-- `fix_scope` prevents AI from accidentally deleting working code
-- 27 acceptance tests including XSS, null access, CSS inheritance, cross-file bugs
-- Python first-class (not deferred)
+Implemented `plans/plan-error-translator-04-07-2026.md`. Runtime errors now map back to Clear source with hints + suggested fixes.
+- `_clearTry` wraps CRUD/auth with source context (line, file, table, operation)
+- `_clearError` formats errors based on CLEAR_DEBUG level (off/true/verbose)
+- `_clearMap` embeds conditional source map (table schemas + endpoint info, zero production overhead)
+- `suggested_fix` generates minimal diffs for fixable errors (missing field, missing auth)
+- PII auto-redacted in verbose mode (password, token, secret, etc.)
+- `_sourceFile` tagging tracks multi-file imports through resolveModules
+- Frontend fetch errors log `[clear:LINE file.clear]` to browser console
+- External API errors (Stripe/SendGrid/Twilio/call api) carry service-specific context
+- Python first-class (CLEAR_DEBUG-aware error formatting in FastAPI endpoints)
+- 50 blind-agent acceptance tests: 42/42 A or B grades. Agents fix bugs from error JSON alone.
 
-1281 tests. All 33 apps compile.
+### Phase 46b: Silent Bug Guards — DONE
+
+Research-backed runtime protections (OWASP 2025, CWE Top 25, CodeRabbit AI study).
+- **Type enforcement**: `enforceTypes()` in db.insert/update — coerces "45.50"→45.5, rejects "fifty"
+- **Update-not-found**: db.update throws 404 when record doesn't exist (wrong status codes = 70% of API bugs)
+- **FK reference check**: db.insert validates FK references exist in parent tables
+- **Balance/stock subtraction warning**: validator warns on subtraction from watchlist fields without guard
+- **Field mismatch warning**: validator warns when frontend field names don't match table schema
+- **Capacity overflow warning**: validator warns on insert into child of capacity table without guard
+- **Seed idempotency**: compiled seed endpoints use findOne-before-insert for unique fields
+- 8 blind-agent acceptance tests: 8/8 A grades
+- Agents also found 6 compiler bugs during hard-bug testing (Stripe IIFE syntax, PUT data loss, isReactiveApp, stale schema, mass assignment, missing _pick on update)
+
+1337 tests. All 33 apps compile.
