@@ -378,6 +378,7 @@ function askForNode(variable, inputType, label, line) {
   let htmlType = 'text';
   let tag = 'input';
   if (baseType === 'number' || baseType === 'percent') htmlType = 'number';
+  else if (baseType === 'file') htmlType = 'file';
   else if (baseType === 'yes/no') { htmlType = 'checkbox'; tag = 'input'; }
   else if (baseType === 'long text') { htmlType = 'textarea'; tag = 'textarea'; }
   else if (baseType === 'choice') { htmlType = 'select'; tag = 'select'; }
@@ -2682,7 +2683,7 @@ function parseStyleDef(lines, startIdx, blockIndent, errors) {
 // 'Hourly Rate' as number input saves to rate
 
 function isInputType(token) {
-  return ['text_input', 'number_input', 'dropdown', 'checkbox', 'text_area'].includes(token.canonical);
+  return ['text_input', 'number_input', 'file_input', 'dropdown', 'checkbox', 'text_area'].includes(token.canonical);
 }
 
 // 'Label' is a text input that saves to var
@@ -2696,6 +2697,7 @@ function parseLabelIsInput(tokens, line) {
   let inputType = null;
   if (typeToken.canonical === 'text_input') inputType = 'text';
   else if (typeToken.canonical === 'number_input') inputType = 'number';
+  else if (typeToken.canonical === 'file_input') inputType = 'file';
   else if (typeToken.canonical === 'dropdown') inputType = 'choice';
   else if (typeToken.canonical === 'checkbox') inputType = 'yes/no';
   else if (typeToken.canonical === 'text_area') inputType = 'long text';
