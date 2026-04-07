@@ -5060,7 +5060,7 @@ when user calls GET /api/health:
     `);
     expect(result.javascript).toContain('try {');
     expect(result.javascript).toContain('catch (err)');
-    expect(result.javascript).toContain('res.status(status).json');
+    expect(result.javascript).toContain('_clearError(err');
   });
 
   it('wraps Python endpoint body in try/except', () => {
@@ -5071,7 +5071,7 @@ when user calls GET /api/health:
     `);
     expect(result.python).toContain('try:');
     expect(result.python).toContain('except Exception');
-    expect(result.python).toContain('status_code=500');
+    expect(result.python).toContain('status_code=_status');
   });
 });
 
@@ -14399,6 +14399,352 @@ page 'App' at '/':
     expect(r.serverJS).toContain('api.stripe.com');
     expect(r.serverJS).toContain('api.sendgrid.com');
     expect(r.html).toContain('Store');
+  });
+});
+
+// =============================================================================
+// Phase 46: Runtime Error Translator
+// =============================================================================
+
+describe('Phase 46 - Runtime Error Translator', () => {
+  describe('_clearError utility', () => {
+    it('emits _clearError when endpoint has CRUD', () => {
+      const src = `
+build for javascript backend
+create a Contacts table:
+  name, required
+when user calls POST /api/contacts sending data:
+  needs login
+  new_contact = save data as new Contact
+  send back new_contact`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain('_clearError');
+      expect(r.javascript).toContain('_clearTry');
+    });
+
+    it('endpoint catch uses _clearError format', () => {
+      const src = `
+build for javascript backend
+when user calls GET /api/health:
+  send back 'ok'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain('_clearError(err');
+      expect(r.javascript).toContain('_info.status');
+      expect(r.javascript).toContain('_info.response');
+    });
+
+    it('_clearError has three debug levels', () => {
+      const src = `
+build for javascript backend
+create a Todos table:
+  title, required
+when user calls POST /api/todos sending data:
+  needs login
+  new_todo = save data as new Todo
+  send back new_todo`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      // Should contain the _clearError function with debug level checks
+      expect(r.javascript).toContain('CLEAR_DEBUG');
+      expect(r.javascript).toContain('verbose');
+      expect(r.javascript).toContain('[REDACTED]');
+    });
+
+    it('_clearError redacts PII fields', () => {
+      const src = `
+build for javascript backend
+create a Users table:
+  email, required
+when user calls POST /api/users sending data:
+  needs login
+  new_user = save data as new User
+  send back new_user`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      // Should contain PII field names for redaction
+      expect(r.javascript).toContain('password');
+      expect(r.javascript).toContain('secret');
+      expect(r.javascript).toContain('REDACTED');
+    });
+  });
+
+  describe('_clearTry CRUD wrapping', () => {
+    it('wraps db.insert with _clearTry and source context', () => {
+      const src = `
+build for javascript backend
+create a Contacts table:
+  name, required
+  email, required
+when user calls POST /api/contacts sending data:
+  needs login
+  new_contact = save data as new Contact
+  send back new_contact`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("_clearTry(() => db.insert('contacts'");
+      expect(r.javascript).toContain("op: 'insert'");
+      expect(r.javascript).toContain("table: 'contacts'");
+    });
+
+    it('wraps db.update with _clearTry', () => {
+      const src = `
+build for javascript backend
+create a Contacts table:
+  name, required
+when user calls PUT /api/contacts/:id sending data:
+  needs login
+  save data to Contacts
+  send back 'updated'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("_clearTry(() => db.update('contacts'");
+      expect(r.javascript).toContain("op: 'update'");
+    });
+
+    it('wraps db.remove with _clearTry', () => {
+      const src = `
+build for javascript backend
+create a Contacts table:
+  name, required
+when user calls DELETE /api/contacts/:id:
+  needs login
+  delete the Contact with this id
+  send back 'deleted'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("_clearTry(() => db.remove('contacts'");
+      expect(r.javascript).toContain("op: 'remove'");
+    });
+  });
+
+  describe('_clearError hint generation', () => {
+    it('_clearError includes required field hint pattern', () => {
+      const src = `
+build for javascript backend
+create a Contacts table:
+  name, required
+when user calls POST /api/contacts sending data:
+  needs login
+  new_contact = save data as new Contact
+  send back new_contact`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      // _clearError function should contain hint logic for required fields
+      expect(r.javascript).toContain("is required");
+      expect(r.javascript).toContain("hint");
+    });
+
+    it('_clearError includes auth hint pattern', () => {
+      const src = `
+build for javascript backend
+when user calls POST /api/data sending data:
+  needs login
+  send back 'ok'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain('Authentication required');
+      expect(r.javascript).toContain('needs login');
+    });
+
+    it('_clearError includes unique constraint hint pattern', () => {
+      const src = `
+build for javascript backend
+create a Users table:
+  email, required, unique
+when user calls POST /api/users sending data:
+  needs login
+  new_user = save data as new User
+  send back new_user`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain('must be unique');
+      expect(r.javascript).toContain('already exists');
+    });
+  });
+
+  describe('source file tracking', () => {
+    it('endpoint catch includes source file info', () => {
+      const src = `
+build for javascript backend
+when user calls GET /api/health:
+  send back 'ok'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("file: 'main.clear'");
+    });
+
+    it('CRUD context includes line number', () => {
+      const src = `
+build for javascript backend
+create a Items table:
+  name, required
+when user calls POST /api/items sending data:
+  needs login
+  new_item = save data as new Item
+  send back new_item`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      // CRUD wrapping should include line number
+      expect(r.javascript).toMatch(/line: \d+/);
+    });
+  });
+
+  describe('frontend fetch error context', () => {
+    it('GET fetch errors include clear:LINE', () => {
+      const src = `
+build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  items = look up all Items
+  send back items
+page 'App' at '/':
+  button 'Load':
+    get items from '/api/items'
+  display items as table showing name`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      // Frontend fetch should include clear:LINE
+      expect(r.html).toContain('[clear:');
+    });
+
+    it('POST fetch errors include clear:LINE', () => {
+      const src = `
+build for web and javascript backend
+database is local memory
+create a Contacts table:
+  name, required
+when user calls POST /api/contacts sending data:
+  needs login
+  new_contact = save data as new Contact
+  send back new_contact
+page 'App' at '/':
+  'Name' is a text input saved as a name
+  button 'Save':
+    send name to '/api/contacts'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.html).toContain('[POST /api/contacts]');
+      expect(r.html).toContain('[clear:');
+    });
+  });
+
+  describe('external API error context', () => {
+    it('Stripe errors include service context', () => {
+      const src = `
+build for javascript backend
+when user calls POST /api/charge sending order:
+  needs login
+  charge via stripe:
+    amount = 2000
+    currency is 'usd'
+    token is 'tok_test'
+  send back 'charged'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("service: 'Stripe'");
+      expect(r.javascript).toContain('_clearCtx');
+    });
+
+    it('SendGrid errors include service context', () => {
+      const src = `
+build for javascript backend
+when user calls POST /api/notify sending data:
+  needs login
+  send email via sendgrid:
+    to is 'test@example.com'
+    from is 'noreply@app.com'
+    subject is 'Hello'
+    body is 'World'
+  send back 'sent'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("service: 'SendGrid'");
+    });
+
+    it('Twilio errors include service context', () => {
+      const src = `
+build for javascript backend
+when user calls POST /api/sms sending data:
+  needs login
+  send sms via twilio:
+    to is '+15551234567'
+    body is 'Hello from Clear'
+  send back 'sent'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("service: 'Twilio'");
+    });
+
+    it('call api errors include _clearCtx', () => {
+      const src = `
+build for javascript backend
+when user calls POST /api/fetch-data:
+  needs login
+  result = call api 'https://api.example.com/data':
+    timeout is 5 seconds
+  send back result`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("service: 'external'");
+      expect(r.javascript).toContain('_clearCtx');
+    });
+  });
+
+  describe('Python backend error translator', () => {
+    it('Python endpoint catch includes debug level', () => {
+      const src = `
+build for python backend
+when user calls GET /api/health:
+  send back 'ok'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.python).toContain('CLEAR_DEBUG');
+      expect(r.python).toContain('clear_line');
+      expect(r.python).toContain('clear_file');
+    });
+
+    it('Python 400 vs 500 status detection', () => {
+      const src = `
+build for python backend
+create a Contacts table:
+  name, required
+when user calls POST /api/contacts sending data:
+  needs login
+  new_contact = save data as new Contact
+  send back new_contact`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.python).toContain("_status = 400 if");
+      expect(r.python).toContain("'Something went wrong'");
+    });
+  });
+
+  describe('production safety', () => {
+    it('no _clearMap or source info in production (CLEAR_DEBUG off)', () => {
+      const src = `
+build for javascript backend
+when user calls GET /api/health:
+  send back 'ok'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      // _clearError handles production safety at runtime:
+      // when CLEAR_DEBUG is off, only { error: safeMsg } is returned
+      expect(r.javascript).toContain("if (!debug) return { status, response: { error: safeMsg } }");
+    });
+
+    it('500 errors show safe message, not internal details', () => {
+      const src = `
+build for javascript backend
+when user calls GET /api/data:
+  send back 'ok'`;
+      const r = compileProgram(src);
+      expect(r.errors).toHaveLength(0);
+      expect(r.javascript).toContain("'Something went wrong'");
+    });
   });
 });
 
