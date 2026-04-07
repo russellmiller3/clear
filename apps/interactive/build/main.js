@@ -1,6 +1,8 @@
 document.title = "Interactive Patterns";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
 };
 
