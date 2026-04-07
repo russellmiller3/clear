@@ -1517,6 +1517,51 @@ These make Clear apps smarter than hand-coded equivalents.
 | 73 | **Performance profiling** | `CLEAR_PROFILE=true` — compiled output includes timing for every CRUD operation. Identify slow queries. | 0.5 day |
 | 74 | **AI-powered error recovery** | When an error is unrecoverable, the error translator calls Claude to suggest a patch. Fully autonomous fix loop. | 1 day |
 
+### Tier 7: First-Class AI Agents (Day 10-14)
+
+Clear already has basic agents (`agent 'Name' receiving data:` + `ask claude`). These phases make Clear the best way to build AI agents — better than LangChain, CrewAI, or raw Python.
+
+**What exists today:**
+- `agent 'Name' receiving data:` — define an agent function
+- `ask claude 'prompt' with context` — single LLM call
+- `ask claude 'prompt' with data returning:` — structured output (JSON schema)
+- `call 'Agent' with data` — invoke agent from endpoint
+- `agent 'Name' runs every 1 hour:` — scheduled agents (cron)
+- `using 'claude-opus-4-6'` — model selection
+
+**What's missing for first-class agents:**
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 75 | **Tool use / function calling** | `agent 'Router' receiving query:` + `can use: search_db, send_email, create_invoice`. Agent decides which tools to call. Compiles to Anthropic tool_use API. | 1 day |
+| 76 | **Multi-turn conversation** | `conversation with user:` — agent maintains context across messages. `remember context` persists to DB. Not just one-shot prompt→response. | 1 day |
+| 77 | **Agent chains / pipelines** | `pipeline 'Process Lead':` → `classify with 'Classifier'` → `score with 'Scorer'` → `route with 'Router'`. Output of one feeds into next. Error at any step stops the chain. | 0.5 day |
+| 78 | **RAG / knowledge base** | `agent knows about: Contacts, Products, company_docs`. Auto-retrieves relevant context before prompting. Compiles to embedding search + context injection. | 1.5 days |
+| 79 | **Agent memory** | `remember that user prefers email` / `recall user's preferences`. Per-user long-term memory stored in DB, injected into agent context automatically. | 0.5 day |
+| 80 | **Parallel agent execution** | `run these at the same time:` → multiple agent calls in parallel. `wait for all results`. Compiles to Promise.all. | 0.5 day |
+| 81 | **Human-in-the-loop** | `ask user to confirm:` with approval/rejection. Agent pauses, sends approval request, resumes on response. For high-stakes actions (payments, deletions). | 0.5 day |
+| 82 | **Agent observability** | `log agent decisions` — every LLM call, tool use, and decision logged with input/output/latency. Dashboard to see what agents are doing. | 0.5 day |
+| 83 | **Guardrails / safety** | `agent must not: modify prices, delete users, access finances`. Compile-time constraints on what tools/tables an agent can touch. Prevents runaway agents. | 0.5 day |
+| 84 | **Agent testing** | `test 'Classifier' with 'positive review' expecting score > 7`. Deterministic test mode with mocked LLM responses. CI-friendly. | 0.5 day |
+
+**What a Clear AI agent looks like after Tier 7:**
+
+```clear
+agent 'Customer Support' receiving message:
+  can use: look_up_orders, check_status, send_email, escalate_to_human
+  knows about: Products, Orders, FAQ
+  remember conversation context
+
+  response = ask claude 'Help this customer' with message
+  if response's action is 'escalate':
+    ask user to confirm 'Escalate to human agent?'
+  send back response
+```
+
+That's 8 lines. The equivalent in LangChain is 200+ lines of Python with tool definitions, memory management, retrieval chains, and callback handlers.
+
+**Why this matters:** The entire AI agent ecosystem (LangChain, CrewAI, AutoGen, Semantic Kernel) is built for developers. Clear agents are built for AI to write and humans to read. A non-technical founder reads `agent 'Support' receiving message: can use: look_up_orders` and understands what it does. They read the LangChain equivalent and see `AgentExecutor.from_agent_and_tools(agent=agent, tools=[StructuredTool.from_function(...)])` and close the tab.
+
 ---
 
 ## Effort Summary
@@ -1530,9 +1575,21 @@ These make Clear apps smarter than hand-coded equivalents.
 | Tier 4: Advanced Patterns | 61-66 | 2 days | State machines, workflows, search, audit |
 | Tier 5: Platform | 67-70 | 5 days | Cloud, packages, desktop, mobile |
 | Tier 6: Intelligence | 71-74 | 2.5 days | Auto-admin, smart defaults, AI recovery |
-| **TOTAL** | **74 phases** | **~20 days** | **General-purpose app language** |
+| Tier 7: AI Agents | 75-84 | 7 days | Tool use, RAG, memory, pipelines, guardrails, testing |
+| **TOTAL** | **84 phases** | **~27 days** | **General-purpose app + agent language** |
 
-At current velocity (~15 phases/day with Claude), the remaining 28 phases would take **roughly 2 more days of pure development time**, plus 3-5 days for platform/deployment work (Tier 5) which involves infrastructure, not just compiler code.
+**What's been built: 3 days, 46 phases, 1337 tests, 14k lines of compiler.**
+**What remains: ~24 days for 38 phases.**
 
-**Realistic timeline: 5-7 more working days to reach "general purpose app language."**
+But the tiers aren't equal. Tiers 1-4 (production + frontend + data + patterns) are pure compiler work — **~10 days** at current velocity. Tier 5 (platform) is infrastructure — **~5 days**, slower because it's deploy tooling not compiler code. Tier 7 (AI agents) is the most ambitious — **~7 days** — but also the highest leverage because it makes Clear the best way to build AI-powered apps.
+
+**Recommended order:**
+1. SQLite (unlocks persistence)
+2. Real-time / WebSocket (unlocks chat, notifications)
+3. Tool use + function calling (unlocks real agents)
+4. Multi-turn conversation (agents that remember)
+5. Complex frontend (multi-page, components)
+6. Templates (client portal, admin dashboard)
+7. Deploy (one command to production)
+8. Everything else in priority order
 
