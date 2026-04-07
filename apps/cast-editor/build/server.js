@@ -72,15 +72,20 @@ const MessagesSchema = {
 };
 db.createTable('messages', MessagesSchema);
 // clear:65
+// clear:65 — GET /api/sheets
 app.get('/api/sheets', async (req, res) => {
   try {
     const all_sheets = await db.findAll('sheets');
     return res.json(all_sheets);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/sheets] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:69
+// clear:69 — POST /api/sheets
 app.post('/api/sheets', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -88,13 +93,17 @@ app.post('/api/sheets', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"title","type":"text","required":true}, {"field":"code","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_sheet = await db.insert('sheets', _pick(sheet, SheetsSchema));
+    const new_sheet = await db.insert('sheets', _pick(sheet, SheetsSchema)); // clear:73
     return res.status(201).json(new_sheet);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/sheets] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:76
+// clear:76 — POST /api/chat
 app.post('/api/chat', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -102,19 +111,26 @@ app.post('/api/chat', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"content","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_message = await db.insert('messages', _pick(message, MessagesSchema));
+    const new_message = await db.insert('messages', _pick(message, MessagesSchema)); // clear:79
     return res.status(201).json(new_message);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/chat] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:82
+// clear:82 — GET /api/chat
 app.get('/api/chat', async (req, res) => {
   try {
     const all_messages = await db.findAll('messages');
     return res.json(all_messages);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/chat] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Frontend ---

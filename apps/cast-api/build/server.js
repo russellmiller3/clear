@@ -88,25 +88,34 @@ db.createTable('sharedsheets', SharedSheetSchema);
 // --- Config ---
 // --- Health ---
 // clear:39
+// clear:39 — GET /api/health
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/health] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Models ---
 // clear:44
+// clear:44 — GET /api/models
 app.get('/api/models', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const all_models = await db.findAll('models');
     return res.json(all_models);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/models] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:49
+// clear:49 — POST /api/models
 app.post('/api/models', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -115,13 +124,17 @@ app.post('/api/models', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true}, {"field":"type","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_model = await db.insert('models', _pick(model_data, ModelSchema));
+    const new_model = await db.insert('models', _pick(model_data, ModelSchema)); // clear:54
     return res.status(201).json(new_model);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/models] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:57
+// clear:57 — GET /api/models/:id
 app.get('/api/models/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -129,11 +142,15 @@ app.get('/api/models/:id', async (req, res) => {
     const model = await db.findOne('models', { id: incoming.id });
     return res.json(model);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/models/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Predictions ---
 // clear:64
+// clear:64 — POST /api/predict
 app.post('/api/predict', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -142,14 +159,18 @@ app.post('/api/predict', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"model_id","type":"text","required":true}, {"field":"input_data","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const prediction = await db.insert('predictions', _pick(predict_data, PredictionSchema));
+    const prediction = await db.insert('predictions', _pick(predict_data, PredictionSchema)); // clear:69
     return res.status(201).json(prediction);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/predict] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Chat ---
 // clear:74
+// clear:74 — POST /api/chat
 app.post('/api/chat', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -158,24 +179,32 @@ app.post('/api/chat', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"role","type":"text","required":true}, {"field":"content","type":"text","required":true,"min":1}, {"field":"session_id","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const message = await db.insert('chatmessages', _pick(chat_data, ChatMessageSchema));
+    const message = await db.insert('chatmessages', _pick(chat_data, ChatMessageSchema)); // clear:80
     return res.status(201).json(message);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/chat] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:83
+// clear:83 — GET /api/chat/:session_id
 app.get('/api/chat/:session_id', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const messages = await db.findAll('chatmessages');
     return res.json(messages);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/chat/:session_id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Share ---
 // clear:90
+// clear:90 — POST /api/share
 app.post('/api/share', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -184,23 +213,31 @@ app.post('/api/share', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"sheet_id","type":"text","required":true}, {"field":"code","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const shared = await db.insert('sharedsheets', _pick(share_data, SharedSheetSchema));
+    const shared = await db.insert('sharedsheets', _pick(share_data, SharedSheetSchema)); // clear:95
     return res.status(201).json(shared);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/share] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:98
+// clear:98 — GET /api/share/:sheet_id
 app.get('/api/share/:sheet_id', async (req, res) => {
   try {
     const shared = await db.findAll('sharedsheets');
     return res.json(shared);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/share/:sheet_id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Export ---
 // clear:104
+// clear:104 — POST /api/export
 app.post('/api/export', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -211,7 +248,10 @@ app.post('/api/export', async (req, res) => {
     if (_vErr) return res.status(400).json({ error: _vErr });
     return res.json({ message: "export started" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/export] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 

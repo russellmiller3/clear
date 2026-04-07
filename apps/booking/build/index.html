@@ -165,6 +165,8 @@ function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 document.title = "BookIt";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
   client_name: "",
   service: "",
@@ -264,7 +266,7 @@ document.getElementById('btn_Book').addEventListener('click', async function() {
   try {
     { const _r = await fetch("/api/bookings", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: _state.client_name, service: _state.service, date: _state.date, time: _state.time, notes: _state.notes }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.bookings = await fetch("/api/bookings").then(r => r.json()).catch(e => { console.error(e); return _state.bookings; });
+    _state.bookings = await fetch("/api/bookings").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/bookings]', e.message); return _state.bookings; });
     _state.client_name = "";
     _state.notes = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
@@ -283,7 +285,7 @@ document.getElementById('btn_Add_Service').addEventListener('click', async funct
   try {
     { const _r = await fetch("/api/services", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ service_name: _state.service_name, duration: _state.duration, price: _state.price }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.services = await fetch("/api/services").then(r => r.json()).catch(e => { console.error(e); return _state.services; });
+    _state.services = await fetch("/api/services").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/services]', e.message); return _state.services; });
     _state.service_name = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
@@ -319,8 +321,8 @@ document.getElementById('output_Services_table').addEventListener('click', async
 (async () => {
   { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
     if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-  _state.bookings = await fetch("/api/bookings").then(r => r.json()).catch(e => { console.error(e); return _state.bookings; });
-  _state.services = await fetch("/api/services").then(r => r.json()).catch(e => { console.error(e); return _state.services; });
+  _state.bookings = await fetch("/api/bookings").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/bookings]', e.message); return _state.bookings; });
+  _state.services = await fetch("/api/services").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/services]', e.message); return _state.services; });
   _recompute();
 })();
 

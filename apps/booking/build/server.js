@@ -101,32 +101,42 @@ db.createTable('bookings', BookingsSchema);
 // Print every request to the console for debugging
 // --- Seed data ---
 // clear:54
+// clear:54 — POST /api/seed
 app.post('/api/seed', async (req, res) => {
   try {
+    if (process.env.NODE_ENV === 'production') return res.status(403).json({ error: 'Seed endpoint is disabled in production' });
     let s1 = { name: "Consultation", duration: 60, price: 150 };
-    await db.insert('services', _pick(s1, ServicesSchema));
+    await db.insert('services', _pick(s1, ServicesSchema)); // clear:59
     let s2 = { name: "Follow-up", duration: 30, price: 75 };
-    await db.insert('services', _pick(s2, ServicesSchema));
+    await db.insert('services', _pick(s2, ServicesSchema)); // clear:64
     let b1 = { client_name: "Sarah Johnson", service_name: "Consultation", date: "2026-04-08", time: "10:00", status: "confirmed" };
-    await db.insert('bookings', _pick(b1, BookingsSchema));
+    await db.insert('bookings', _pick(b1, BookingsSchema)); // clear:71
     let b2 = { client_name: "Mike Peters", service_name: "Follow-up", date: "2026-04-08", time: "14:00", status: "pending" };
-    await db.insert('bookings', _pick(b2, BookingsSchema));
+    await db.insert('bookings', _pick(b2, BookingsSchema)); // clear:78
     return res.status(201).json({ message: "seeded" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/seed] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Services ---
 // clear:82
+// clear:82 — GET /api/services
 app.get('/api/services', async (req, res) => {
   try {
     const all_services = await db.findAll('services');
     return res.json(all_services);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/services] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:86
+// clear:86 — POST /api/services
 app.post('/api/services', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -135,34 +145,46 @@ app.post('/api/services', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true}, {"field":"duration","type":"number"}, {"field":"price","type":"number"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_service = await db.insert('services', _pick(service_data, ServicesSchema));
+    const new_service = await db.insert('services', _pick(service_data, ServicesSchema)); // clear:92
     return res.status(201).json({ ...new_service, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/services] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:95
+// clear:95 — DELETE /api/services/:id
 app.delete('/api/services/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('services', { id: incoming.id });
+    await db.remove('services', { id: incoming.id }); // clear:97
     return res.status(200).json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/services/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Clients ---
 // clear:101
+// clear:101 — GET /api/clients
 app.get('/api/clients', async (req, res) => {
   try {
     const all_clients = await db.findAll('clients');
     return res.json(all_clients);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/clients] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:105
+// clear:105 — POST /api/clients
 app.post('/api/clients', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -171,23 +193,31 @@ app.post('/api/clients', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true}, {"field":"email","type":"text","required":true,"matches":"email"}, {"field":"phone","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_client = await db.insert('clients', _pick(client_data, ClientsSchema));
+    const new_client = await db.insert('clients', _pick(client_data, ClientsSchema)); // clear:111
     return res.status(201).json({ ...new_client, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/clients] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Bookings ---
 // clear:115
+// clear:115 — GET /api/bookings
 app.get('/api/bookings', async (req, res) => {
   try {
     const all_bookings = await db.findAll('bookings');
     return res.json(all_bookings);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/bookings] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:119
+// clear:119 — POST /api/bookings
 app.post('/api/bookings', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -196,21 +226,28 @@ app.post('/api/bookings', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"client_name","type":"text","required":true}, {"field":"service_name","type":"text","required":true}, {"field":"date","type":"text","required":true}, {"field":"time","type":"text","required":true}, {"field":"notes","type":"text"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_booking = await db.insert('bookings', _pick(booking_data, BookingsSchema));
+    const new_booking = await db.insert('bookings', _pick(booking_data, BookingsSchema)); // clear:127
     return res.status(201).json({ ...new_booking, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/bookings] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:130
+// clear:130 — DELETE /api/bookings/:id
 app.delete('/api/bookings/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
-    await db.remove('bookings', { id: incoming.id });
+    await db.remove('bookings', { id: incoming.id }); // clear:132
     return res.status(200).json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/bookings/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // Frontend

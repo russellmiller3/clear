@@ -76,15 +76,20 @@ const ROLE_ADMIN = { name: "admin", permissions: ["manage posts", "manage users"
 const ROLE_AUTHOR = { name: "author", permissions: ["create posts", "edit own posts"] };
 // --- Public Endpoints ---
 // clear:38
+// clear:38 — GET /api/posts
 app.get('/api/posts', async (req, res) => {
   try {
     const all_posts = await db.findAll('posts');
     return res.json(all_posts);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/posts] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:42
+// clear:42 — GET /api/posts/:id
 app.get('/api/posts/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -94,11 +99,15 @@ app.get('/api/posts/:id', async (req, res) => {
     }
     return res.json(post);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/posts/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Protected Endpoints ---
 // clear:49
+// clear:49 — POST /api/posts
 app.post('/api/posts', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -107,13 +116,17 @@ app.post('/api/posts', async (req, res) => {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const _vErr = _validate(req.body, [{"field":"title","type":"text","required":true,"min":1,"max":200}, {"field":"body","type":"text","required":true,"min":1}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_post = await db.insert('posts', _pick(post_data, PostsSchema));
+    const new_post = await db.insert('posts', _pick(post_data, PostsSchema)); // clear:54
     return res.status(201).json(new_post);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/posts] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:57
+// clear:57 — PUT /api/posts/:id
 app.put('/api/posts/:id', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -123,26 +136,34 @@ app.put('/api/posts/:id', async (req, res) => {
     const _vErr = _validate(req.body, [{"field":"title","type":"text","min":1,"max":200}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
     update_data.id = req.params.id;
-    await db.update('posts', update_data);
+    await db.update('posts', update_data); // clear:61
     return res.json({ message: "updated" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[PUT /api/posts/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:64
+// clear:64 — DELETE /api/posts/:id
 app.delete('/api/posts/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     if (req.user.role !== "admin") { return res.status(403).json({ error: "Requires role: admin" }); }
-    await db.remove('posts', { id: incoming.id });
+    await db.remove('posts', { id: incoming.id }); // clear:67
     return res.json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/posts/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- User Management (admin only) ---
 // clear:72
+// clear:72 — GET /api/users
 app.get('/api/users', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -150,10 +171,14 @@ app.get('/api/users', async (req, res) => {
     const all_users = await db.findAll('users');
     return res.json(all_users);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/users] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:78
+// clear:78 — POST /api/users
 app.post('/api/users', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -163,19 +188,26 @@ app.post('/api/users', async (req, res) => {
     if (req.user.role !== "admin") { return res.status(403).json({ error: "Requires role: admin" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true}, {"field":"email","type":"text","required":true,"matches":"email"}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_user = await db.insert('users', _pick(user_data, UsersSchema));
+    const new_user = await db.insert('users', _pick(user_data, UsersSchema)); // clear:84
     return res.status(201).json(new_user);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/users] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Health ---
 // clear:89
+// clear:89 — GET /api/health
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/health] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 

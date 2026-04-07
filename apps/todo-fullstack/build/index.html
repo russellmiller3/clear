@@ -100,6 +100,8 @@ function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 document.title = "Todo App";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
   title: "",
   todos: null
@@ -140,7 +142,7 @@ document.getElementById('btn_Add').addEventListener('click', async function() {
   try {
     { const _r = await fetch("/api/todos", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: _state.title }) });
       if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.todos = await fetch("/api/todos").then(r => r.json()).catch(e => { console.error(e); return _state.todos; });
+    _state.todos = await fetch("/api/todos").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/todos]', e.message); return _state.todos; });
     _state.title = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
@@ -162,7 +164,7 @@ document.getElementById('output_Todos_table').addEventListener('click', async fu
 
 // --- On Page Load ---
 (async () => {
-  _state.todos = await fetch("/api/todos").then(r => r.json()).catch(e => { console.error(e); return _state.todos; });
+  _state.todos = await fetch("/api/todos").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/todos]', e.message); return _state.todos; });
   _recompute();
 })();
 

@@ -68,15 +68,20 @@ const TasksSchema = {
 db.createTable('tasks', TasksSchema);
 // Backend
 // clear:27
+// clear:27 — GET /api/projects
 app.get('/api/projects', async (req, res) => {
   try {
     const all_projects = await db.findAll('projects');
     return res.json(all_projects);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/projects] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:31
+// clear:31 — POST /api/projects
 app.post('/api/projects', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -84,22 +89,30 @@ app.post('/api/projects', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":100}, {"field":"owner","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_project = await db.insert('projects', _pick(project_data, ProjectsSchema));
+    const new_project = await db.insert('projects', _pick(project_data, ProjectsSchema)); // clear:35
     return res.status(201).json({ ...new_project, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/projects] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:38
+// clear:38 — GET /api/tasks
 app.get('/api/tasks', async (req, res) => {
   try {
     const all_tasks = await db.findAll('tasks');
     return res.json(all_tasks);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/tasks] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:42
+// clear:42 — POST /api/tasks
 app.post('/api/tasks', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -107,10 +120,13 @@ app.post('/api/tasks', async (req, res) => {
     const incoming = req.params;
     const _vErr = _validate(req.body, [{"field":"title","type":"text","required":true,"min":1,"max":200}, {"field":"project","type":"text","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_task = await db.insert('tasks', _pick(task_data, TasksSchema));
+    const new_task = await db.insert('tasks', _pick(task_data, TasksSchema)); // clear:46
     return res.status(201).json({ ...new_task, message: "success" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/tasks] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // Frontend

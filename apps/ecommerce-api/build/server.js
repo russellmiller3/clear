@@ -82,15 +82,20 @@ const CHECKOUT_STANDARD_PURCHASE = {
 // --- Config ---
 // --- Public: Product Catalog ---
 // clear:38
+// clear:38 — GET /api/products
 app.get('/api/products', async (req, res) => {
   try {
     const all_products = await db.findAll('products');
     return res.json(all_products);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/products] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:42
+// clear:42 — GET /api/products/:id
 app.get('/api/products/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -100,11 +105,15 @@ app.get('/api/products/:id', async (req, res) => {
     }
     return res.json(product);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/products/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Protected: Orders ---
 // clear:49
+// clear:49 — POST /api/orders
 app.post('/api/orders', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -116,23 +125,31 @@ app.post('/api/orders', async (req, res) => {
     const product = await db.findOne('products', { id: order_data.product_id });
     if (!(product != null)) { return res.status(403).json({ error: "Product not found" }); }
     if (!(product.stock > 0)) { return res.status(403).json({ error: "Out of stock" }); }
-    const new_order = await db.insert('orders', _pick(order_data, OrdersSchema));
+    const new_order = await db.insert('orders', _pick(order_data, OrdersSchema)); // clear:59
     return res.status(201).json(new_order);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/orders] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:62
+// clear:62 — GET /api/orders
 app.get('/api/orders', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     const all_orders = await db.findAll('orders');
     return res.json(all_orders);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/orders] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:67
+// clear:67 — GET /api/orders/:id
 app.get('/api/orders/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -143,11 +160,15 @@ app.get('/api/orders/:id', async (req, res) => {
     }
     return res.json(order);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/orders/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Admin: Product Management ---
 // clear:75
+// clear:75 — POST /api/products
 app.post('/api/products', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -157,22 +178,29 @@ app.post('/api/products', async (req, res) => {
     if (req.user.role !== "admin") { return res.status(403).json({ error: "Requires role: admin" }); }
     const _vErr = _validate(req.body, [{"field":"name","type":"text","required":true,"min":1,"max":200}, {"field":"price","type":"number","required":true}]);
     if (_vErr) return res.status(400).json({ error: _vErr });
-    const new_product = await db.insert('products', _pick(product_data, ProductsSchema));
+    const new_product = await db.insert('products', _pick(product_data, ProductsSchema)); // clear:81
     return res.status(201).json(new_product);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[POST /api/products] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // clear:84
+// clear:84 — DELETE /api/products/:id
 app.delete('/api/products/:id', async (req, res) => {
   try {
     const incoming = req.params;
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
     if (req.user.role !== "admin") { return res.status(403).json({ error: "Requires role: admin" }); }
-    await db.remove('products', { id: incoming.id });
+    await db.remove('products', { id: incoming.id }); // clear:87
     return res.json({ message: "deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[DELETE /api/products/:id] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 // --- Webhook ---
@@ -188,11 +216,15 @@ app.post('/stripe/events', async (req, res) => {
 });
 // --- Health ---
 // clear:97
+// clear:97 — GET /api/health
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[GET /api/health] Error:', err.message);
+    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);
+    const safeMsg = status === 400 ? err.message : 'Something went wrong';
+    res.status(status).json({ error: safeMsg });
   }
 });
 
