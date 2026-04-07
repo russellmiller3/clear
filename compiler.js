@@ -121,6 +121,70 @@ const UTILITY_FUNCTIONS = [
   }
   return null;
 }`, deps: [] },
+  { name: '_clearError', code: `function _clearError(err, ctx) {
+  const debug = typeof process !== 'undefined' && process.env.CLEAR_DEBUG;
+  const status = err.status || (err.message && (err.message.includes('required') || err.message.includes('must be') || err.message.includes('must be unique') || err.message.includes('already exists')) ? 400 : 500);
+  const safeMsg = status === 400 ? err.message : 'Something went wrong';
+  if (!debug) return { status, response: { error: safeMsg } };
+  const PII_FIELDS = ['password','secret','token','key','credit_card','ssn','api_key','api_secret'];
+  function redact(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    const out = Array.isArray(obj) ? [...obj] : { ...obj };
+    for (const k of Object.keys(out)) {
+      if (PII_FIELDS.some(p => k.toLowerCase().includes(p))) out[k] = '[REDACTED]';
+      else if (typeof out[k] === 'object') out[k] = redact(out[k]);
+    }
+    return out;
+  }
+  let hint = '';
+  const msg = err.message || '';
+  if (msg.includes('required')) {
+    const field = msg.match(/^(\\w+) is required/);
+    hint = field ? "'" + field[1] + "' is required in " + (ctx.table || 'this table') + ". Add it to the form or remove 'required' from the table definition." : msg;
+  } else if (msg.includes('must be unique') || msg.includes('already exists')) {
+    hint = "A record with this value already exists. Check for duplicates before saving.";
+  } else if (msg.includes('Authentication required') || msg.includes('No token')) {
+    hint = "This endpoint needs login. Add 'needs login' to the endpoint definition.";
+  } else if (msg.includes('Requires role') || msg.includes('requires role')) {
+    const role = msg.match(/role '?(\\w+)'?/);
+    hint = role ? "User needs '" + role[1] + "' role." : "User does not have the required role.";
+  } else if (msg.includes('must be a')) {
+    hint = msg + ". Check the form or API call.";
+  } else if (msg.includes('API') || msg.includes('api')) {
+    const svc = ctx.service || 'external';
+    hint = svc + " API call failed. Check the API key and account.";
+  } else if (msg.includes('aborted') || msg.includes('timed out') || msg.includes('timeout')) {
+    hint = "Request timed out. Check if the service is running.";
+  } else {
+    hint = msg;
+  }
+  const result = {
+    status,
+    response: {
+      error: safeMsg,
+      clear_line: ctx.line || null,
+      clear_file: ctx.file || null,
+      clear_source: ctx.source || null,
+      hint: hint,
+      technical: msg
+    }
+  };
+  if (debug === 'verbose' && ctx) {
+    result.response.context = redact({
+      endpoint: ctx.endpoint || null,
+      input: ctx.input || null,
+      schema: ctx.schema || null,
+      table: ctx.table || null
+    });
+  }
+  return result;
+}`, deps: [] },
+  { name: '_clearTry', code: `async function _clearTry(fn, ctx) {
+  try { return await fn(); } catch (err) {
+    err._clearCtx = ctx;
+    throw err;
+  }
+}`, deps: ['_clearError'] },
   { name: '_askAI', code: `async function _askAI(prompt, context, schema, model) {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
   if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
@@ -260,6 +324,11 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
       }
       node._resolved = true;
       if (!hasCollision) {
+        // Tag each imported node with its source file for error translator
+        for (const n of importedNodes) {
+          n._sourceFile = moduleName;
+          if (n.body) for (const child of n.body) child._sourceFile = child._sourceFile || moduleName;
+        }
         // Splice imported nodes directly into the parent AST so all compile paths
         // (server JS, reactive JS, HTML scaffold) can see pages, endpoints, etc.
         ast.body.splice(i + 1, 0, ...importedNodes);
@@ -1114,7 +1183,12 @@ function compileEndpoint(node, ctx, pad) {
     }
     code += bodyCode + '\n';
     code += `${pad}    except Exception as err:\n`;
-    code += `${pad}        return JSONResponse(content={"error": str(err)}, status_code=500)`;
+    code += `${pad}        _status = 400 if ('required' in str(err) or 'must be' in str(err)) else 500\n`;
+    code += `${pad}        _safe = str(err) if _status == 400 else 'Something went wrong'\n`;
+    code += `${pad}        _debug = os.environ.get('CLEAR_DEBUG', '')\n`;
+    code += `${pad}        if _debug:\n`;
+    code += `${pad}            return JSONResponse(content={"error": _safe, "clear_line": ${node.line}, "clear_file": "${node._sourceFile || 'main.clear'}", "hint": str(err), "technical": str(err)}, status_code=_status)\n`;
+    code += `${pad}        return JSONResponse(content={"error": _safe}, status_code=_status)`;
     return code;
   }
 
@@ -1143,11 +1217,15 @@ function compileEndpoint(node, ctx, pad) {
     }
   }
   epCode += bodyCode + '\n';
+  const srcFile = node._sourceFile || 'main.clear';
   epCode += `${pad}  } catch (err) {\n`;
   epCode += `${pad}    console.error('[${node.method.toUpperCase()} ${node.path}] Error:', err.message);\n`;
-  epCode += `${pad}    const status = err.status || (err.message.includes('required') || err.message.includes('must be') ? 400 : 500);\n`;
-  epCode += `${pad}    const safeMsg = status === 400 ? err.message : 'Something went wrong';\n`;
-  epCode += `${pad}    res.status(status).json({ error: safeMsg });\n`;
+  epCode += `${pad}    const _ctx = Object.assign({ endpoint: '${node.method.toUpperCase()} ${node.path}', line: ${node.line}, file: '${srcFile}' }, err._clearCtx || {});\n`;
+  if (needsBinding && node.receivingVar) {
+    epCode += `${pad}    if (typeof process !== 'undefined' && process.env.CLEAR_DEBUG === 'verbose') _ctx.input = req.body;\n`;
+  }
+  epCode += `${pad}    const _info = _clearError(err, _ctx);\n`;
+  epCode += `${pad}    res.status(_info.status).json(_info.response);\n`;
   epCode += `${pad}  }\n`;
   epCode += `${pad}});`;
   return epCode;
@@ -1287,17 +1365,21 @@ function compileCrud(node, ctx, pad) {
     else if (names.has(node.target.replace(/s$/, ''))) schemaName = node.target.replace(/s$/, '') + 'Schema';
     else if (names.has(node.target.replace(/ies$/, 'y'))) schemaName = node.target.replace(/ies$/, 'y') + 'Schema';
     else schemaName = node.target + 'Schema'; // fallback
-    if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await db.insert('${table}', _pick(${varCode}, ${schemaName}));${lineComment}`;
-    if (node.isInsert) return `${pad}await db.insert('${table}', _pick(${varCode}, ${schemaName}));${lineComment}`;
+    const srcFile = node._sourceFile || 'main.clear';
+    const tryCtx = `{ op: 'insert', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+    if (node.isInsert) return `${pad}await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
     // In PUT endpoints with :id, inject the URL param so db.update finds the right record
+    const updateCtx = `{ op: 'update', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
     if (ctx.endpointHasId) {
-      return `${pad}${varCode}.id = req.params.id;\n${pad}await db.update('${table}', ${varCode});${lineComment}`;
+      return `${pad}${varCode}.id = req.params.id;\n${pad}await _clearTry(() => db.update('${table}', ${varCode}), ${updateCtx});${lineComment}`;
     }
-    return `${pad}await db.update('${table}', ${varCode});${lineComment}`;
+    return `${pad}await _clearTry(() => db.update('${table}', ${varCode}), ${updateCtx});${lineComment}`;
   }
   if (node.operation === 'remove') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
-    return `${pad}await db.remove('${table}'${where});${lineComment}`;
+    const removeCtx = `{ op: 'remove', table: '${table}', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    return `${pad}await _clearTry(() => db.remove('${table}'${where}), ${removeCtx});${lineComment}`;
   }
   return `${pad}// CRUD: ${node.operation}`;
 }
@@ -1500,7 +1582,7 @@ function compileExternalFetch(node, ctx, pad) {
     code += `${pad}  _fetched_data = ${exprToCode(node.config.errorFallback, ctx)};\n`;
   } else {
     code += `${pad}} catch (_err) {\n`;
-    code += `${pad}  throw new Error(\`External fetch failed: \${_err.message}\`);\n`;
+    code += `${pad}  const _fetchErr = new Error(\`External API call failed: \${_err.message}\`); _fetchErr._clearCtx = { service: 'external', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'call api ${node.url}' }; throw _fetchErr;\n`;
   }
   code += `${pad}}`;
   return code;
@@ -2074,7 +2156,7 @@ function _compileNodeInner(node, ctx) {
       if (hasBody) code += `${pad}      body: ${bodyCode},\n`;
       code += `${pad}      signal: _ctrl.signal\n`;
       code += `${pad}    });\n`;
-      code += `${pad}    if (!_res.ok) throw new Error(\`API error: \${_res.status} \${_res.statusText}\`);\n`;
+      code += `${pad}    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
       code += `${pad}    const _ct = _res.headers.get("content-type") || "";\n`;
       code += `${pad}    return _ct.includes("json") ? _res.json() : _res.text();\n`;
       code += `${pad}  } finally { clearTimeout(_timer); }\n`;
@@ -2101,7 +2183,7 @@ function _compileNodeInner(node, ctx) {
           `${pad}    headers: { 'Authorization': 'Bearer ' + process.env.STRIPE_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },\n` +
           `${pad}    body: _body.toString()\n` +
           `${pad}  });\n` +
-          `${pad}  if (!_res.ok) throw new Error('Stripe error: ' + _res.status + ' ' + (await _res.text()));\n` +
+          `${pad}  if (!_res.ok) { const _e = new Error('Stripe API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'Stripe', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'charge via stripe' }; throw _e; }\n` +
           `${pad}  return _res.json();\n` +
           `${pad})()`;
         return code;
@@ -2114,7 +2196,7 @@ function _compileNodeInner(node, ctx) {
           `${pad}    headers: { 'Authorization': 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' },\n` +
           `${pad}    body: JSON.stringify({ personalizations: [{ to: [{ email: ${exprVal('to')} }] }], from: { email: ${exprVal('from')} }, subject: ${exprVal('subject')}, content: [{ type: 'text/plain', value: ${exprVal('body')} }] })\n` +
           `${pad}  });\n` +
-          `${pad}  if (!_res.ok) throw new Error('SendGrid error: ' + _res.status + ' ' + (await _res.text()));\n` +
+          `${pad}  if (!_res.ok) { const _e = new Error('SendGrid API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'SendGrid', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'send email via sendgrid' }; throw _e; }\n` +
           `${pad}  return { ok: true, status: _res.status };\n` +
           `${pad})()`;
         return code;
@@ -2130,7 +2212,7 @@ function _compileNodeInner(node, ctx) {
           `${pad}    headers: { 'Authorization': 'Basic ' + Buffer.from(_sid + ':' + _token).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },\n` +
           `${pad}    body: _body.toString()\n` +
           `${pad}  });\n` +
-          `${pad}  if (!_res.ok) throw new Error('Twilio error: ' + _res.status + ' ' + (await _res.text()));\n` +
+          `${pad}  if (!_res.ok) { const _e = new Error('Twilio API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'Twilio', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'send sms via twilio' }; throw _e; }\n` +
           `${pad}  return _res.json();\n` +
           `${pad})()`;
         return code;
@@ -2505,7 +2587,8 @@ function _compileNodeInner(node, ctx) {
       if (ctx.lang === 'python') return `${pad}# API call: ${node.method} ${node.url}`;
       if (node.method === 'GET') {
         const target = node.targetVar ? sanitizeName(node.targetVar) : 'response';
-        return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]', e.message); return _state.${target}; });`;
+        const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
+        return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
       }
       // POST/PUT/DELETE: send specific fields or full state
       let bodyExpr;
@@ -2516,10 +2599,11 @@ function _compileNodeInner(node, ctx) {
         bodyExpr = '_state';
       }
       // Helper: compile a fetch call with error checking
+      const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
       const fetchWithErrorCheck = (fetchUrl, method, body) => {
         const lines = [];
         lines.push(`${pad}{ const _r = await fetch(${fetchUrl}, { method: '${method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${body}) });`);
-        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || '${method} failed'); } }`);
+        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[${method} ${node.url}]${srcInfo}', _e.error || '${method} failed'); throw new Error(_e.error || _e.message || '${method} failed'); } }`);
         return lines.join('\n');
       };
       // Auto-upsert: if this is a POST and a matching PUT/PATCH endpoint exists,
@@ -2855,7 +2939,7 @@ export function exprToCode(expr, ctx) {
       if (headersCode) code += `, headers: ${headersCode}`;
       if (hasBody) code += `, body: ${bodyCode}`;
       code += `, signal: _ctrl.signal });\n`;
-      code += `    if (!_res.ok) throw new Error(\`API error: \${_res.status} \${_res.statusText}\`);\n`;
+      code += `    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
       code += `    const _ct = _res.headers.get("content-type") || "";\n`;
       code += `    return _ct.includes("json") ? _res.json() : _res.text();\n`;
       code += `  } finally { clearTimeout(_timer); }\n`;
