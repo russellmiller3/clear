@@ -56,6 +56,11 @@ Exit codes: 0=ok, 1=compile error, 2=runtime error, 3=file not found, 4=test fai
 - **Compiler accumulates quality.** Fix a bug once, every app gets the fix on recompile.
 - **Compiled output is self-documenting.** Every compiled file starts with an auto-generated ASCII architecture diagram (tables, endpoints, pages, data flow). Regenerates on every build. The diagram IS the intent file for that app.
 
+## No Backward Compatibility
+There are no users yet. Do not preserve backward compatibility. Always do things the right way.
+If the right design breaks existing tests, update the tests. If it changes syntax, change it.
+Speed of iteration > stability of APIs. We'll freeze interfaces when we have users, not before.
+
 ## File TOC Rule (MANDATORY)
 Both `parser.js` and `compiler.js` have a TABLE OF CONTENTS at the top.
 **Every time you change either file** — adding, removing, or moving a section —
