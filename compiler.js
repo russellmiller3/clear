@@ -2184,6 +2184,20 @@ function _compileNodeInner(node, ctx) {
       return `${pad}const [${vars}] = await Promise.all([${tasks}]);`;
     }
 
+    case NodeType.HUMAN_CONFIRM: {
+      const msg = exprToCode(node.message, ctx);
+      if (ctx.lang === 'python') {
+        let code = `${pad}# Human-in-the-loop: create approval request\n`;
+        code += `${pad}_approval = await db.insert("Approvals", {"action": "confirm", "details": str(${msg}), "status": "pending"})\n`;
+        code += `${pad}return JSONResponse(content={"approval_id": _approval.get("id"), "message": ${msg}, "status": "pending"}, status_code=202)`;
+        return code;
+      }
+      let code = `${pad}// Human-in-the-loop: create approval request\n`;
+      code += `${pad}const _approval = await db.insert('Approvals', { action: 'confirm', details: String(${msg}), status: 'pending' });\n`;
+      code += `${pad}return res.status(202).json({ approval_id: _approval.id, message: ${msg}, status: 'pending' });`;
+      return code;
+    }
+
     case NodeType.REPEAT: {
       const count = exprToCode(node.count, ctx);
       if (ctx.lang === 'python') {

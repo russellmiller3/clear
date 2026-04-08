@@ -16165,5 +16165,69 @@ agent 'PA' receiving message:
   });
 });
 
+// =============================================================================
+// HUMAN-IN-THE-LOOP (Phase 81)
+// =============================================================================
+
+describe('Human-in-the-loop - parser', () => {
+  it('parses ask user to confirm with message', () => {
+    const src = `build for javascript backend
+agent 'Refund' receiving request:
+  ask user to confirm 'Process this refund?'
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    const confirm = agent.body.find(n => n.type === 'human_confirm');
+    expect(confirm).toBeDefined();
+    expect(confirm.message.value).toBe('Process this refund?');
+  });
+});
+
+describe('Human-in-the-loop - compiler', () => {
+  it('emits Approvals insert and 202 response', () => {
+    const src = `build for javascript backend
+when user calls POST /api/refund sending data:
+  ask user to confirm 'Process this refund?'
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Approvals');
+    expect(result.javascript).toContain('202');
+    expect(result.javascript).toContain('pending');
+    expect(result.javascript).toContain('approval_id');
+  });
+
+  it('confirm inside if-block compiles', () => {
+    const src = `build for javascript backend
+when user calls POST /api/refund sending data:
+  amount = 150
+  if amount is greater than 100:
+    ask user to confirm 'Large refund - are you sure?'
+  send back 'processed'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Approvals');
+  });
+
+  it('E2E: agent with confirmation compiles', () => {
+    const src = `build for javascript backend
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+agent 'Processor' receiving request:
+  ask user to confirm 'Proceed with action?'
+  send back 'completed'
+when user calls POST /api/process sending data:
+  result = call 'Processor' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Approvals');
+    expect(result.javascript).toContain('agent_processor');
+  });
+});
+
 run();
 

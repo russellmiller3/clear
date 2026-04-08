@@ -163,6 +163,7 @@ export const NodeType = Object.freeze({
   PARALLEL_AGENTS: 'parallel_agents',
   PIPELINE: 'pipeline',
   RUN_PIPELINE: 'run_pipeline',
+  HUMAN_CONFIRM: 'human_confirm',
 
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
@@ -1444,6 +1445,27 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         const result = parseSection(lines, i, indent, errors);
         if (result.node) body.push(result.node);
         i = result.endIdx;
+        continue;
+      }
+
+      // Human-in-the-loop: ask user to confirm 'message'
+      if (firstToken.value === 'ask' && tokens.length >= 4 &&
+          tokens[1].value === 'user' &&
+          (tokens[2].canonical === 'to_connector' || tokens[2].value === 'to') &&
+          tokens[3].value === 'confirm') {
+        // Parse the message expression after 'confirm'
+        let messageExpr = null;
+        if (tokens.length > 4) {
+          const expr = parseExpression(tokens, 4, line);
+          if (!expr.error) messageExpr = expr.node;
+        }
+        if (!messageExpr) {
+          errors.push({ line, message: "ask user to confirm needs a message. Example: ask user to confirm 'Proceed with this action?'" });
+          i++;
+          continue;
+        }
+        body.push({ type: NodeType.HUMAN_CONFIRM, message: messageExpr, line });
+        i++;
         continue;
       }
 
