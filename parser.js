@@ -742,9 +742,16 @@ function parseConfigBlock(lines, startIdx, parentIndent) {
 const ZONE_OVERRIDES = {
   ui: {
     delete: 'action_delete',  // In display context, 'delete' = action button, not CRUD remove
+    remove: 'action_delete',  // 'remove' also means action button in UI context
   },
-  crud: {},    // delete -> 'remove' is the default (token.canonical), no override needed
+  crud: {
+    delete: 'remove',         // In CRUD context, 'delete' = remove from database (tokenizer default)
+  },
   comparison: {},  // 'is' context-sensitivity already handled by parser
+  agent: {
+    use: 'agent_use',         // In agent directives, 'use' = tool access, not module import
+    log: 'agent_log',         // In agent directives, 'log' = logging config, not show
+  },
 };
 
 function resolveCanonical(token, zone) {
@@ -4070,8 +4077,8 @@ function parseDisplay(tokens, line) {
     pos++;
     actions = [];
     while (pos < tokens.length) {
-      const canon = tokens[pos].canonical;
-      if (canon === 'remove') {
+      const resolved = resolveCanonical(tokens[pos], 'ui');
+      if (resolved === 'action_delete' || resolved === 'remove') {
         actions.push('delete');
       } else if (tokens[pos].value.toLowerCase() === 'edit') {
         actions.push('edit');
