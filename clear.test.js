@@ -13327,11 +13327,10 @@ describe('Stress R2: Display Format Edge Cases', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('display as table with many columns — BUG: variable not recognized with 15+ cols', () => {
-    // BUG: When showing 15 columns, the compiler reports "data hasn't been
-    // created yet" even though it was fetched via on page load. The column
-    // parsing may be consuming the variable name or the get-from-url result
-    // isn't being registered in the declared variables set.
+  it('display as table with many columns — FIXED: data from collision resolved', () => {
+    // Previously: "data from" tokenized as a single data_from keyword, eating the
+    // variable name "data". Now the tokenizer only matches "data from" at line start.
+    // "get data from '/url'" correctly parses "data" as the target variable.
     const cols = Array.from({ length: 15 }, (_, i) => `col${i}`).join(', ');
     const src = [
       "build for web",
@@ -13340,10 +13339,8 @@ describe('Stress R2: Display Format Edge Cases', () => {
       `  display data as table showing ${cols}`,
     ].join('\n');
     const result = compileProgram(src);
-    // EXPECTED: errors.length === 0
-    // ACTUAL: 1 error about 'data' not being created yet
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0].message).toContain('data');
+    // After fix: no errors — 'data' is correctly registered as a variable
+    expect(result.errors.length).toBe(0);
   });
 });
 
