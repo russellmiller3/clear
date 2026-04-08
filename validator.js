@@ -300,6 +300,14 @@ function validateForwardReferences(body, errors) {
         case NodeType.RESPONDS_WITH:
         case NodeType.RATE_LIMIT:
           break;
+        // Phases 85-90: Workflows
+        case NodeType.WORKFLOW: {
+          // Workflow defines state fields in its scope
+          const wfScope = new Set(localDefined);
+          if (node.stateVar) wfScope.add(node.stateVar);
+          for (const f of (node.stateFields || [])) wfScope.add(f.name);
+          break;
+        }
         default:
           break;
       }

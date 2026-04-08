@@ -89,8 +89,9 @@
 //   DEPLOY CONFIG .................... generateDeployConfig()
 //   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
 //     Node compilers ................. compileEndpoint, compileCrud, compileRespond,
-//                                     compileAgent, compileValidate, compileDataShape,
-//                                     compileExternalFetch, compileWebhook, compilePdf
+//                                     compileAgent, compileWorkflow, compileValidate,
+//                                     compileDataShape, compileExternalFetch,
+//                                     compileWebhook, compilePdf
 //     _compileNodeInner .............. Main switch over all NodeTypes
 //     exprToCode ..................... Expression-to-code for all expression nodes
 //   RLS POLICY COMPILER .............. compileRLSPolicy()
@@ -2205,6 +2206,155 @@ function compileAgent(node, ctx, pad) {
   return `${pad}async function${genStar} ${fnName}(${finalParam}) {\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}\n${pad}}`;
 }
 
+// Workflow compiler — Phases 85-90
+// Compiles workflow 'Name' with state: blocks into async functions with
+// state threading, conditional routing, repeat-until cycles, parallel branches,
+// durable execution (DB checkpoint or Temporal), and observability.
+function compileWorkflow(node, ctx, pad) {
+  const fnName = 'workflow_' + sanitizeName(node.name.toLowerCase().replace(/\s+/g, '_'));
+  const innerPad = pad + '  ';
+  const deepPad = innerPad + '  ';
+
+  const stateVarName = sanitizeName(node.stateVar);
+
+  // Build state initialization with defaults from state has:
+  let stateInit = `${innerPad}let _state = Object.assign({`;
+  const defaults = node.stateFields.map(f => {
+    let val = 'null';
+    if (f.default !== null && f.default !== undefined) {
+      if (typeof f.default === 'string') val = JSON.stringify(f.default);
+      else if (typeof f.default === 'boolean') val = String(f.default);
+      else val = String(f.default);
+    }
+    return `${sanitizeName(f.name)}: ${val}`;
+  });
+  stateInit += defaults.join(', ') + `}, ${stateVarName});\n`;
+
+  // Helper: rewrite state var references in expressions to _state
+  function rewriteStateRef(code) {
+    if (stateVarName === '_state') return code;
+    // Replace stateVar.field with _state.field (word-boundary safe)
+    return code.replace(new RegExp('\\b' + stateVarName + '\\.', 'g'), '_state.');
+  }
+
+  // Observability: state history tracking (Phase 90)
+  let trackCode = '';
+  if (node.trackProgress) {
+    stateInit += `${innerPad}const _history = [];\n`;
+    trackCode = `${innerPad}_state._history = _history;\n`;
+  }
+
+  // Compile each step
+  function compileStep(step, indent) {
+    const p = ' '.repeat(indent);
+    const agentFn = 'agent_' + sanitizeName(step.agentName.toLowerCase().replace(/\s+/g, '_'));
+    let code = '';
+    if (node.trackProgress) {
+      code += `${p}_history.push({ step: ${JSON.stringify(step.name)}, state: JSON.parse(JSON.stringify(_state)), timestamp: new Date().toISOString() });\n`;
+    }
+    if (node.saveProgressTo) {
+      code += `${p}await db.insert('${node.saveProgressTo}', { workflow: ${JSON.stringify(node.name)}, step: ${JSON.stringify(step.name)}, state: JSON.stringify(_state), created_at: new Date().toISOString() });\n`;
+    }
+    if (step.savesTo) {
+      code += `${p}_state.${sanitizeName(step.savesTo)} = await ${agentFn}(_state);\n`;
+    } else {
+      code += `${p}_state = await ${agentFn}(_state);\n`;
+    }
+    return code;
+  }
+
+  function compileSteps(steps, indent) {
+    const p = ' '.repeat(indent);
+    let code = '';
+    for (const step of steps) {
+      if (step.kind === 'step') {
+        code += compileStep(step, indent);
+      } else if (step.kind === 'conditional') {
+        const condCode = step.condition ? rewriteStateRef(exprToCode(step.condition, ctx)) : 'true';
+        code += `${p}if (${condCode}) {\n`;
+        code += compileSteps(step.thenSteps, indent + 2);
+        if (step.elseSteps && step.elseSteps.length > 0) {
+          code += `${p}} else {\n`;
+          code += compileSteps(step.elseSteps, indent + 2);
+        }
+        code += `${p}}\n`;
+      } else if (step.kind === 'repeat') {
+        const condCode = step.condition ? rewriteStateRef(exprToCode(step.condition, ctx)) : 'true';
+        const max = step.maxIterations || 10;
+        code += `${p}for (let _iter = 0; _iter < ${max}; _iter++) {\n`;
+        code += `${p}  if (${condCode}) break;\n`;
+        code += compileSteps(step.steps, indent + 2);
+        code += `${p}}\n`;
+      } else if (step.kind === 'parallel') {
+        const names = [];
+        const calls = [];
+        for (const ps of step.steps) {
+          const agentFn = 'agent_' + sanitizeName(ps.agentName.toLowerCase().replace(/\s+/g, '_'));
+          if (ps.savesTo) {
+            names.push(sanitizeName(ps.savesTo));
+          } else {
+            names.push('_p' + names.length);
+          }
+          calls.push(`${agentFn}(_state)`);
+        }
+        if (node.trackProgress) {
+          code += `${p}_history.push({ step: 'parallel', branches: ${JSON.stringify(step.steps.map(s => s.name))}, timestamp: new Date().toISOString() });\n`;
+        }
+        code += `${p}const [${names.join(', ')}] = await Promise.all([${calls.join(', ')}]);\n`;
+        // Assign parallel results back to state
+        for (const ps of step.steps) {
+          if (ps.savesTo) {
+            code += `${p}_state.${sanitizeName(ps.savesTo)} = ${sanitizeName(ps.savesTo)};\n`;
+          }
+        }
+        // For steps without savesTo, merge last result
+        const noSave = step.steps.filter(s => !s.savesTo);
+        if (noSave.length > 0 && step.steps.every(s => !s.savesTo)) {
+          code += `${p}_state = Object.assign(_state, ${names.join(', ')});\n`;
+        }
+      }
+    }
+    return code;
+  }
+
+  let bodyCode = compileSteps(node.steps, (pad.length / 2 + 1) * 2);
+
+  // Temporal target (Phase 88)
+  if (node.runsOnTemporal) {
+    let code = `${pad}// Temporal workflow: ${node.name}\n`;
+    code += `${pad}import { proxyActivities } from '@temporalio/workflow';\n`;
+    // Generate activity proxies from steps
+    const agentNames = new Set();
+    function collectAgents(steps) {
+      for (const s of steps) {
+        if (s.kind === 'step' && s.agentName) agentNames.add(s.agentName);
+        if (s.kind === 'conditional') { collectAgents(s.thenSteps); collectAgents(s.elseSteps || []); }
+        if (s.kind === 'repeat') collectAgents(s.steps);
+        if (s.kind === 'parallel') collectAgents(s.steps);
+      }
+    }
+    collectAgents(node.steps);
+    const activityNames = [...agentNames].map(n => 'agent_' + sanitizeName(n.toLowerCase().replace(/\s+/g, '_')));
+    code += `${pad}const { ${activityNames.join(', ')} } = proxyActivities({ startToCloseTimeout: '5m' });\n\n`;
+    code += `${pad}export async function ${fnName}(${sanitizeName(node.stateVar)}) {\n`;
+    code += stateInit;
+    code += bodyCode;
+    code += trackCode;
+    code += `${innerPad}return _state;\n`;
+    code += `${pad}}`;
+    return code;
+  }
+
+  // Standard workflow (non-Temporal)
+  let code = `${pad}async function ${fnName}(${sanitizeName(node.stateVar)}) {\n`;
+  code += stateInit;
+  code += bodyCode;
+  code += trackCode;
+  code += `${innerPad}return _state;\n`;
+  code += `${pad}}`;
+  return code;
+}
+
 function compileValidate(node, ctx, pad) {
   if (ctx.lang === 'python') {
     const checks = node.rules.map(rule => {
@@ -2610,6 +2760,9 @@ function _compileNodeInner(node, ctx) {
       const vars = names.join(', ');
       return `${pad}const [${vars}] = await Promise.all([${tasks}]);`;
     }
+
+    case NodeType.WORKFLOW:
+      return compileWorkflow(node, ctx, pad);
 
     case NodeType.MOCK_AI:
       // Consumed by TEST_DEF compilation — emits nothing standalone
@@ -3841,6 +3994,12 @@ export function exprToCode(expr, ctx) {
     case NodeType.RUN_PIPELINE: {
       const fnName = 'pipeline_' + sanitizeName(expr.pipelineName.toLowerCase().replace(/\s+/g, '_'));
       const arg = expr.argument ? exprToCode(expr.argument, ctx) : '';
+      return `await ${fnName}(${arg})`;
+    }
+
+    case NodeType.RUN_WORKFLOW: {
+      const fnName = 'workflow_' + sanitizeName(expr.workflowName.toLowerCase().replace(/\s+/g, '_'));
+      const arg = expr.argument ? exprToCode(expr.argument, ctx) : '{}';
       return `await ${fnName}(${arg})`;
     }
 

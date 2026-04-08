@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (96 total)
+## Node Types (98 total)
 
 ### Core Language
 
@@ -241,6 +241,32 @@ Agent directives (metadata on AGENT node, not separate nodes):
 | `remember user's preferences` | Per-user long-term memory |
 | `track agent decisions` | Observability — logs _askAI calls with timing |
 | `knows about: Table1, Table2` | RAG — keyword search before prompting |
+
+### Workflow Primitives (Phases 85-90)
+
+| Node Type | Syntax | Compiles To |
+|-----------|--------|-------------|
+| `WORKFLOW` | `workflow 'Name' with state:` + directives + steps | `async function workflow_name(state) { ... }` |
+| `RUN_WORKFLOW` | `result = run workflow 'Name' with data` | `await workflow_name(data)` |
+
+Workflow directives (metadata on WORKFLOW node):
+
+| Directive | What it does |
+|-----------|-------------|
+| `state has:` + fields | Define workflow state shape with types and defaults |
+| `runs on temporal` | Compile to Temporal.io workflow + activities |
+| `save progress to TableName table` | DB checkpoint at each step |
+| `track workflow progress` | State history array logged after each step |
+
+Workflow step types (inside workflow body):
+
+| Step | Syntax | Compiles To |
+|------|--------|-------------|
+| Step | `step 'Name' with 'Agent'` | `_state = await agent_name(_state)` |
+| Step with save | `step 'Name' with 'Agent' saves to state's field` | `_state.field = await agent_name(_state)` |
+| Conditional | `if state's field is value:` + steps | `if (_state.field == value) { ... }` |
+| Repeat | `repeat until condition, max N times:` + steps | `for (_iter < N) { if (cond) break; ... }` |
+| Parallel | `at the same time:` + steps | `Promise.all([...])` |
 
 `missing` is a synonym for `nothing` (null). Both work everywhere.
 

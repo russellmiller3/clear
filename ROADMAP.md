@@ -23,10 +23,10 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28, 30-46b, 47 -- All Complete)
+## What's Built (Phases 1-28, 30-46b, 47, 75-90 -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1407 tests, all passing.
+1446 tests, all passing.
 
 ### Compiler Internal Refactor (Phase 47)
 | Feature | Status | Description |
@@ -1924,7 +1924,7 @@ The LangChain equivalent is 500-800 lines across 6+ files.
 
 | Tier | Phases | Days | What It Unlocks |
 |------|--------|------|----------------|
-| Done (1-46b, 75-84) | 56 phases | 4 days | Full-stack CRUD apps, error translator, silent bug guards, first-class AI agents |
+| Done (1-46b, 75-90) | 62 phases | 5 days | Full-stack CRUD apps, error translator, silent bug guards, first-class AI agents, workflow engine |
 | Tier 1: Production | 47-50 | 2 days | Real deployment, persistent DB, real-time |
 | Tier 2: Complex Frontend | 51-55 | 3 days | Multi-page SPAs, components, animations |
 | Tier 3: Data & Integration | 56-60 | 3 days | Postgres, file upload, email, cron, streaming |
@@ -1932,16 +1932,16 @@ The LangChain equivalent is 500-800 lines across 6+ files.
 | Tier 5: Platform | 67-70 | 5 days | Cloud, packages, desktop, mobile |
 | Tier 6: Intelligence | 71-74 | 2.5 days | Auto-admin, smart defaults, AI recovery |
 | Tier 7: AI Agents | 75-84 | 7 days | Tool use, RAG, memory, pipelines, guardrails, testing |
-| Tier 8: Agent Workflows | 85-90 | 4 days | Stateful graphs, durable execution, cycles, routing |
+| ~~Tier 8: Agent Workflows~~ | 85-90 | DONE | Stateful graphs, durable execution, cycles, routing |
 | **TOTAL** | **90 phases** | **~31 days** | **General-purpose app + agent language** |
 
 ---
 
-### Tier 8: Agent Workflows — LangGraph Parity (Day 14-18)
+### Tier 8: Agent Workflows — LangGraph Parity (SHIPPED — Session 11)
 
-Clear has agents, pipelines, and parallel execution. Tier 8 adds the three features that make LangGraph powerful: stateful graphs, durable execution, and cycles. Clear's advantage: these compile to deterministic JS/Python — no framework dependency, no runtime overhead, no vendor lock-in.
+All 6 phases implemented. 1446 tests passing. 24 new tests. GAN app: `apps/content-pipeline/main.clear` (90 lines → complete workflow with retry loops, parallel branches, DB checkpoints, observability).
 
-**What exists today:**
+**What's built:**
 - Linear pipelines (`pipeline 'Name' with var:`)
 - Parallel execution (`do these at the same time:`)
 - Agent-to-agent calls (`call 'Agent' with data`)
@@ -1952,7 +1952,7 @@ Clear has agents, pipelines, and parallel execution. Tier 8 adds the three featu
 
 ---
 
-#### Phase 85: Workflow State (0.5 day)
+#### Phase 85: Workflow State (DONE)
 
 Explicit shared state object that every step can read and modify. Unlike pipeline's linear pass-through, workflow state is a named, typed object.
 
@@ -1974,7 +1974,7 @@ Compiles to: a mutable state object (plain JS object) passed by reference throug
 
 ---
 
-#### Phase 86: Conditional Routing (0.5 day)
+#### Phase 86: Conditional Routing (DONE)
 
 Route to different agents based on state. Declarative, not buried inside agent bodies.
 
@@ -1999,7 +1999,7 @@ Compiles to: if/else chain between step calls. The routing is at the workflow le
 
 ---
 
-#### Phase 87: Cycles and Retry Loops (1 day)
+#### Phase 87: Cycles and Retry Loops (DONE)
 
 Agents can loop back for retry, reflection, or re-evaluation. The loop has an explicit exit condition and max iterations (safety).
 
@@ -2023,7 +2023,7 @@ Compiles to: a while loop with the exit condition + max iteration guard. Each it
 
 ---
 
-#### Phase 88: Durable Execution via Temporal (1 day)
+#### Phase 88: Durable Execution via Temporal (DONE)
 
 Workflow state is checkpointed and resumed by Temporal.io — not a homebrew solution. Clear compiles `workflow` blocks to Temporal workflow definitions + activities. Temporal handles retries, timeouts, crash recovery, and distributed execution.
 
@@ -2067,7 +2067,7 @@ This gives two tiers: DB checkpoint for simple apps, Temporal for production-gra
 
 ---
 
-#### Phase 89: Parallel Branches with Join (0.5 day)
+#### Phase 89: Parallel Branches with Join (DONE)
 
 Fan-out to multiple agents, then merge results back into state.
 
@@ -2091,7 +2091,7 @@ Compiles to: `Promise.all` with results assigned to specific state fields. Unlik
 
 ---
 
-#### Phase 90: Workflow Observability and Testing (0.5 day)
+#### Phase 90: Workflow Observability and Testing (DONE)
 
 Every step transition is logged with state snapshots. Tests can verify the workflow path.
 

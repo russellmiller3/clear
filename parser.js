@@ -78,7 +78,7 @@
 //   PARSER ............................ parse(), parseConfigBlock(), parseBlock()
 //   BLOCK-LEVEL PARSERS ............... parseComponentDef, parseFunctionDef, parseAgent,
 //                                      parseMatch, parseIfBlock, parseRepeatLoop,
-//                                      parseForEachLoop, parseWhileLoop
+//                                      parseForEachLoop, parseWhileLoop, parseWorkflow
 //   USE / IMPORT MODULES .............. parseUse()
 //   PAGE DECLARATION .................. parsePage()
 //   SECTION ........................... parseSection()
@@ -166,6 +166,10 @@ export const NodeType = Object.freeze({
   HUMAN_CONFIRM: 'human_confirm',
   MOCK_AI: 'mock_ai',
   SKILL: 'skill',
+
+  // Workflow primitives (Phases 85-90)
+  WORKFLOW: 'workflow',
+  RUN_WORKFLOW: 'run_workflow',
 
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
@@ -1793,6 +1797,12 @@ const RAW_DISPATCH = new Map([
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
   }],
+  ['workflow', (ctx) => {
+    if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
+    const result = parseWorkflow(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+  }],
   ['ask', (ctx) => {
     // Human-in-the-loop: ask user to confirm 'message'
     if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'user' &&
@@ -2560,6 +2570,316 @@ function parseSkill(lines, startIdx, blockIndent, errors) {
     j++;
   }
   return { node: { type: NodeType.SKILL, name, tools, instructions, line }, endIdx: j };
+}
+
+// Workflow definition: workflow 'Name' with state: + state has: + steps
+// Supports: state has (Phase 85), conditional routing (Phase 86),
+//   repeat until (Phase 87), runs on temporal / save progress to (Phase 88),
+//   at the same time (Phase 89), track workflow progress (Phase 90)
+function parseWorkflow(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  let pos = 1; // skip 'workflow'
+
+  // Parse workflow name
+  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+    errors.push({ line, message: "workflow needs a quoted name. Example: workflow 'Support Ticket' with state:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const name = tokens[pos].value; pos++;
+
+  // Parse 'with' + state variable name
+  if (pos >= tokens.length || (tokens[pos].value !== 'with' && tokens[pos].canonical !== 'with')) {
+    errors.push({ line, message: `workflow '${name}' needs 'with state:'. Example: workflow '${name}' with state:` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  pos++;
+  let stateVar = 'state';
+  if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
+    stateVar = tokens[pos].value;
+  }
+
+  const workflowIndent = lines[startIdx].indent;
+  const directives = {
+    stateFields: [],
+    runsOnTemporal: false,
+    saveProgressTo: null,
+    trackProgress: false,
+  };
+
+  // Scan directives before body
+  let bodyStartIdx = startIdx + 1;
+  while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > workflowIndent) {
+    const dTokens = lines[bodyStartIdx].tokens;
+    if (dTokens.length === 0) { bodyStartIdx++; continue; }
+
+    // state has: + indented field definitions
+    if (dTokens[0].value === stateVar && dTokens.length >= 2 && dTokens[1].value === 'has') {
+      bodyStartIdx++;
+      const fieldIndent = lines[bodyStartIdx - 1].indent;
+      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > fieldIndent) {
+        const fTokens = lines[bodyStartIdx].tokens;
+        if (fTokens.length > 0) {
+          const fieldName = fTokens[0].value;
+          let fieldType = 'string';
+          let required = false;
+          let defaultVal = null;
+          for (let t = 1; t < fTokens.length; t++) {
+            if (fTokens[t].type === TokenType.COMMA) continue;
+            if (fTokens[t].value === 'required') required = true;
+            else if (fTokens[t].value === 'number' || (fTokens[t].type === TokenType.PAREN_OPEN && t > 0 && fTokens[t - 1]?.value === '(')) {
+              // Handle (number) or (boolean) type annotation
+              if (fTokens[t].value === 'number') fieldType = 'number';
+            }
+            else if (fTokens[t].value === 'boolean') fieldType = 'boolean';
+            else if (fTokens[t].value === 'default' && t + 1 < fTokens.length) {
+              t++;
+              if (fTokens[t].type === TokenType.STRING) defaultVal = fTokens[t].value;
+              else if (fTokens[t].type === TokenType.NUMBER) defaultVal = fTokens[t].value;
+              else if (fTokens[t].value === 'true') defaultVal = true;
+              else if (fTokens[t].value === 'false') defaultVal = false;
+              else defaultVal = fTokens[t].value;
+            }
+          }
+          // Check for (number) or (boolean) in parenthesized form
+          const raw = fTokens.map(t => t.value).join(' ');
+          if (raw.includes('(number)')) fieldType = 'number';
+          if (raw.includes('(boolean)')) fieldType = 'boolean';
+          if (raw.includes('(timestamp)')) fieldType = 'timestamp';
+          directives.stateFields.push({ name: fieldName, type: fieldType, required, default: defaultVal });
+        }
+        bodyStartIdx++;
+      }
+      continue;
+    }
+
+    // runs on temporal
+    if (dTokens[0].value === 'runs' && dTokens.length >= 3 &&
+        dTokens[1].value === 'on' && dTokens[2].value === 'temporal') {
+      directives.runsOnTemporal = true; bodyStartIdx++; continue;
+    }
+
+    // save progress to TableName table
+    if (dTokens[0].value === 'save' && dTokens.length >= 3 &&
+        dTokens[1].value === 'progress' && (dTokens[2].value === 'to' || dTokens[2].canonical === 'to_connector')) {
+      let tableName = 'Workflows';
+      if (dTokens.length > 3) tableName = dTokens[3].value;
+      directives.saveProgressTo = tableName; bodyStartIdx++; continue;
+    }
+
+    // track workflow progress
+    if (dTokens[0].value === 'track' && dTokens.length >= 3 &&
+        dTokens[1].value === 'workflow' && dTokens[2].value === 'progress') {
+      directives.trackProgress = true; bodyStartIdx++; continue;
+    }
+
+    break; // first non-directive line = start of steps
+  }
+
+  // Parse workflow body — steps, conditionals, parallel, repeat blocks
+  const steps = [];
+  while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > workflowIndent) {
+    const sTokens = lines[bodyStartIdx].tokens;
+    if (sTokens.length === 0) { bodyStartIdx++; continue; }
+    const sLine = sTokens[0].line;
+
+    // step 'Name' with 'Agent Name'
+    if (sTokens[0].value === 'step' && sTokens.length >= 4 && sTokens[1].type === TokenType.STRING) {
+      const stepName = sTokens[1].value;
+      let agentName = null;
+      let savesTo = null;
+      for (let t = 2; t < sTokens.length; t++) {
+        if ((sTokens[t].value === 'with' || sTokens[t].canonical === 'with') && t + 1 < sTokens.length && sTokens[t + 1].type === TokenType.STRING) {
+          agentName = sTokens[t + 1].value; t++;
+        }
+        if ((sTokens[t].canonical === 'saves_to' || sTokens[t].value === 'saves') && t + 1 < sTokens.length) {
+          // saves to state's field — "saves to" may be a single multi-word token (canonical saves_to)
+          let nextIdx = t + 1;
+          // If "saves" and "to" are separate tokens, skip "to"
+          if (sTokens[t].value === 'saves' && nextIdx < sTokens.length && (sTokens[nextIdx].value === 'to' || sTokens[nextIdx].canonical === 'to_connector')) nextIdx++;
+          const remaining = sTokens.slice(nextIdx).map(tk => tk.value).join(' ');
+          // Strip possessive state reference: "state's sentiment" → "sentiment"
+          savesTo = remaining.replace(stateVar + "'s ", '').replace("'s ", '');
+          if (!savesTo) savesTo = remaining;
+          t = sTokens.length;
+        }
+      }
+      if (!agentName) {
+        errors.push({ line: sLine, message: `step '${stepName}' needs an agent. Example: step '${stepName}' with 'Agent Name'` });
+      }
+      steps.push({ kind: 'step', name: stepName, agentName, savesTo, line: sLine });
+      bodyStartIdx++;
+      continue;
+    }
+
+    // if state's X is Y: (conditional routing)
+    if (sTokens[0].canonical === 'if' || sTokens[0].value === 'if') {
+      const condExpr = parseExpression(sTokens, 1, sLine);
+      const thenSteps = [];
+      const condIndent = lines[bodyStartIdx].indent;
+      bodyStartIdx++;
+      // Collect indented steps under this condition
+      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > condIndent) {
+        const cTokens = lines[bodyStartIdx].tokens;
+        if (cTokens.length > 0 && cTokens[0].value === 'step' && cTokens.length >= 4 && cTokens[1].type === TokenType.STRING) {
+          const cLine = cTokens[0].line;
+          const stepName = cTokens[1].value;
+          let agentName = null;
+          for (let t = 2; t < cTokens.length; t++) {
+            if ((cTokens[t].value === 'with' || cTokens[t].canonical === 'with') && t + 1 < cTokens.length && cTokens[t + 1].type === TokenType.STRING) {
+              agentName = cTokens[t + 1].value; t++;
+            }
+          }
+          thenSteps.push({ kind: 'step', name: stepName, agentName, savesTo: null, line: cLine });
+        }
+        bodyStartIdx++;
+      }
+      // Check for otherwise:
+      let elseSteps = [];
+      if (bodyStartIdx < lines.length && lines[bodyStartIdx].indent === condIndent) {
+        const oTokens = lines[bodyStartIdx].tokens;
+        if (oTokens.length > 0 && (oTokens[0].canonical === 'otherwise' || oTokens[0].value === 'otherwise')) {
+          bodyStartIdx++;
+          while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > condIndent) {
+            const eTokens = lines[bodyStartIdx].tokens;
+            if (eTokens.length > 0 && eTokens[0].value === 'step' && eTokens.length >= 4 && eTokens[1].type === TokenType.STRING) {
+              const eLine = eTokens[0].line;
+              const stepName = eTokens[1].value;
+              let agentName = null;
+              for (let t = 2; t < eTokens.length; t++) {
+                if ((eTokens[t].value === 'with' || eTokens[t].canonical === 'with') && t + 1 < eTokens.length && eTokens[t + 1].type === TokenType.STRING) {
+                  agentName = eTokens[t + 1].value; t++;
+                }
+              }
+              elseSteps.push({ kind: 'step', name: stepName, agentName, savesTo: null, line: eLine });
+            }
+            bodyStartIdx++;
+          }
+        }
+      }
+      steps.push({ kind: 'conditional', condition: condExpr.error ? null : condExpr.node, thenSteps, elseSteps, line: sLine });
+      continue;
+    }
+
+    // repeat until state's X is Y, max N times:
+    if (sTokens[0].value === 'repeat' && sTokens.length >= 3 && sTokens[1].value === 'until') {
+      // Find "max N times" at the end
+      let maxIterations = 10; // safety default
+      let condEnd = sTokens.length;
+      for (let t = sTokens.length - 1; t >= 3; t--) {
+        if (sTokens[t].value === 'times' && t >= 2 && sTokens[t - 1].type === TokenType.NUMBER &&
+            sTokens[t - 2].value === 'max') {
+          maxIterations = sTokens[t - 1].value;
+          condEnd = t - 2;
+          // Remove trailing comma if present
+          if (condEnd > 0 && sTokens[condEnd - 1].type === TokenType.COMMA) condEnd--;
+          break;
+        }
+      }
+      const condExpr = parseExpression(sTokens, 2, sLine, condEnd);
+      const repeatSteps = [];
+      const repeatIndent = lines[bodyStartIdx].indent;
+      bodyStartIdx++;
+      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > repeatIndent) {
+        const rTokens = lines[bodyStartIdx].tokens;
+        if (rTokens.length === 0) { bodyStartIdx++; continue; }
+        const rLine = rTokens[0].line;
+
+        // Nested if inside repeat
+        if (rTokens[0].canonical === 'if' || rTokens[0].value === 'if') {
+          const nestedCond = parseExpression(rTokens, 1, rLine);
+          const nestedThen = [];
+          const nestedIndent = lines[bodyStartIdx].indent;
+          bodyStartIdx++;
+          while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > nestedIndent) {
+            const nTokens = lines[bodyStartIdx].tokens;
+            if (nTokens.length > 0 && nTokens[0].value === 'step' && nTokens.length >= 4 && nTokens[1].type === TokenType.STRING) {
+              const nLine = nTokens[0].line;
+              let agentName = null;
+              for (let t = 2; t < nTokens.length; t++) {
+                if ((nTokens[t].value === 'with' || nTokens[t].canonical === 'with') && t + 1 < nTokens.length && nTokens[t + 1].type === TokenType.STRING) {
+                  agentName = nTokens[t + 1].value; t++;
+                }
+              }
+              nestedThen.push({ kind: 'step', name: nTokens[1].value, agentName, savesTo: null, line: nLine });
+            }
+            bodyStartIdx++;
+          }
+          repeatSteps.push({ kind: 'conditional', condition: nestedCond.error ? null : nestedCond.node, thenSteps: nestedThen, elseSteps: [], line: rLine });
+          continue;
+        }
+
+        // step inside repeat
+        if (rTokens[0].value === 'step' && rTokens.length >= 4 && rTokens[1].type === TokenType.STRING) {
+          let agentName = null;
+          for (let t = 2; t < rTokens.length; t++) {
+            if ((rTokens[t].value === 'with' || rTokens[t].canonical === 'with') && t + 1 < rTokens.length && rTokens[t + 1].type === TokenType.STRING) {
+              agentName = rTokens[t + 1].value; t++;
+            }
+          }
+          repeatSteps.push({ kind: 'step', name: rTokens[1].value, agentName, savesTo: null, line: rLine });
+          bodyStartIdx++;
+          continue;
+        }
+        bodyStartIdx++;
+      }
+      steps.push({ kind: 'repeat', condition: condExpr.error ? null : condExpr.node, maxIterations, steps: repeatSteps, line: sLine });
+      continue;
+    }
+
+    // at the same time: (parallel branches with join)
+    if (sTokens.length >= 4 && sTokens[0].value === 'at' && sTokens[1].value === 'the' &&
+        sTokens[2].value === 'same' && sTokens[3].value === 'time') {
+      const parallelSteps = [];
+      const parallelIndent = lines[bodyStartIdx].indent;
+      bodyStartIdx++;
+      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > parallelIndent) {
+        const pTokens = lines[bodyStartIdx].tokens;
+        if (pTokens.length > 0 && pTokens[0].value === 'step' && pTokens.length >= 4 && pTokens[1].type === TokenType.STRING) {
+          const pLine = pTokens[0].line;
+          const stepName = pTokens[1].value;
+          let agentName = null;
+          let savesTo = null;
+          for (let t = 2; t < pTokens.length; t++) {
+            if ((pTokens[t].value === 'with' || pTokens[t].canonical === 'with') && t + 1 < pTokens.length && pTokens[t + 1].type === TokenType.STRING) {
+              agentName = pTokens[t + 1].value; t++;
+            }
+            if ((pTokens[t].canonical === 'saves_to' || pTokens[t].value === 'saves') && t + 1 < pTokens.length) {
+              let nextIdx = t + 1;
+              if (pTokens[t].value === 'saves' && nextIdx < pTokens.length && (pTokens[nextIdx].value === 'to' || pTokens[nextIdx].canonical === 'to_connector')) nextIdx++;
+              // Skip possessive state reference: state's field → field
+              if (nextIdx < pTokens.length && pTokens[nextIdx].value === stateVar &&
+                  nextIdx + 1 < pTokens.length && pTokens[nextIdx + 1].type === TokenType.POSSESSIVE) {
+                nextIdx += 2; // skip state + 's
+              }
+              const remaining = pTokens.slice(nextIdx).map(tk => tk.value).join(' ');
+              savesTo = remaining || null;
+              t = pTokens.length;
+            }
+          }
+          parallelSteps.push({ kind: 'step', name: stepName, agentName, savesTo, line: pLine });
+        }
+        bodyStartIdx++;
+      }
+      steps.push({ kind: 'parallel', steps: parallelSteps, line: sLine });
+      continue;
+    }
+
+    // Unknown line — skip
+    bodyStartIdx++;
+  }
+
+  if (steps.length === 0 && directives.stateFields.length === 0) {
+    errors.push({ line, message: `workflow '${name}' is empty — add steps. Example:\n  step 'Triage' with 'Triage Agent'` });
+  }
+
+  return {
+    node: {
+      type: NodeType.WORKFLOW, name, stateVar, steps, line,
+      ...directives,
+    },
+    endIdx: bodyStartIdx,
+  };
 }
 
 // Block-form if: "if condition:" + indented body, optional "otherwise:" block
@@ -5342,6 +5662,22 @@ function parseAssignment(tokens, line) {
       hasSchema = true;
     }
     return { name, expression: { type: NodeType.ASK_AI, prompt, context, model, line }, hasSchema };
+  }
+
+  // Check for "run workflow 'Name' with ..." (workflow invocation)
+  if (pos < tokens.length && (tokens[pos].value === 'run' || tokens[pos].canonical === 'raw_run') &&
+      pos + 1 < tokens.length && tokens[pos + 1].value === 'workflow' &&
+      pos + 2 < tokens.length && tokens[pos + 2].type === TokenType.STRING) {
+    pos += 2; // skip 'run workflow'
+    const workflowName = tokens[pos].value; pos++;
+    let argument = null;
+    if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
+      pos++;
+      const expr = parseExpression(tokens, pos, line);
+      if (expr.error) return { error: expr.error };
+      argument = expr.node;
+    }
+    return { name, expression: { type: NodeType.RUN_WORKFLOW, workflowName, argument, line } };
   }
 
   // Check for "call pipeline 'Name' with data" (must come BEFORE call 'Agent')

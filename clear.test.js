@@ -16912,5 +16912,509 @@ agent 'Bot' receiving question:
   });
 });
 
+// =============================================================================
+// PHASES 85-90: WORKFLOW PRIMITIVES
+// =============================================================================
+
+// Phase 85: Workflow State
+describe('Workflow state - parser', () => {
+  it('parses basic workflow with state has block', () => {
+    const src = `workflow 'Support Ticket' with state:
+  state has:
+    message, required
+    category
+    priority
+    status, default 'new'
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf).toBeTruthy();
+    expect(wf.name).toBe('Support Ticket');
+    expect(wf.stateVar).toBe('state');
+    expect(wf.stateFields).toHaveLength(4);
+    expect(wf.stateFields[0].name).toBe('message');
+    expect(wf.stateFields[0].required).toBe(true);
+    expect(wf.stateFields[3].name).toBe('status');
+    expect(wf.stateFields[3].default).toBe('new');
+    expect(wf.steps).toHaveLength(2);
+    expect(wf.steps[0].kind).toBe('step');
+    expect(wf.steps[0].name).toBe('Triage');
+    expect(wf.steps[0].agentName).toBe('Triage Agent');
+  });
+
+  it('parses state field types: number, boolean, timestamp', () => {
+    const src = `workflow 'Review' with state:
+  state has:
+    draft, required
+    quality_score (number), default 0
+    feedback
+    published (boolean), default false
+  step 'Write' with 'Writer Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf.stateFields[1].name).toBe('quality_score');
+    expect(wf.stateFields[1].type).toBe('number');
+    expect(wf.stateFields[1].default).toBe(0);
+    expect(wf.stateFields[3].name).toBe('published');
+    expect(wf.stateFields[3].type).toBe('boolean');
+    expect(wf.stateFields[3].default).toBe(false);
+  });
+
+  it('rejects workflow without name', () => {
+    const src = `workflow 123 with state:
+  step 'A' with 'Agent A'`;
+    const ast = parse(src);
+    // Either errors or no workflow node created (falls through dispatch)
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf).toBeFalsy();
+  });
+});
+
+describe('Workflow state - compiler', () => {
+  it('compiles workflow to async function with state threading', () => {
+    const src = `build for javascript backend
+workflow 'Support' with state:
+  state has:
+    message, required
+    category
+    status, default 'new'
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function workflow_support(state)');
+    expect(result.javascript).toContain('let _state = Object.assign({');
+    expect(result.javascript).toContain("status: \"new\"");
+    expect(result.javascript).toContain('_state = await agent_triage_agent(_state)');
+    expect(result.javascript).toContain('_state = await agent_resolution_agent(_state)');
+    expect(result.javascript).toContain('return _state;');
+  });
+
+  it('compiles workflow state defaults correctly', () => {
+    const src = `build for javascript backend
+workflow 'Test' with state:
+  state has:
+    count (number), default 0
+    active (boolean), default true
+    label, default 'untitled'
+  step 'Process' with 'Processor'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('count: 0');
+    expect(result.javascript).toContain('active: true');
+    expect(result.javascript).toContain('label: "untitled"');
+  });
+});
+
+// Phase 86: Conditional Routing
+describe('Workflow conditional routing - parser', () => {
+  it('parses if/otherwise routing inside workflow', () => {
+    const src = `workflow 'Support' with state:
+  state has:
+    message, required
+    category
+  step 'Triage' with 'Triage Agent'
+  if state's category is 'software':
+    step 'Software Fix' with 'Software Specialist'
+  otherwise:
+    step 'General' with 'General Agent'
+  step 'Resolution' with 'Resolution Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf.steps).toHaveLength(3);
+    expect(wf.steps[0].kind).toBe('step');
+    expect(wf.steps[1].kind).toBe('conditional');
+    expect(wf.steps[1].thenSteps).toHaveLength(1);
+    expect(wf.steps[1].thenSteps[0].agentName).toBe('Software Specialist');
+    expect(wf.steps[1].elseSteps).toHaveLength(1);
+    expect(wf.steps[1].elseSteps[0].agentName).toBe('General Agent');
+    expect(wf.steps[2].kind).toBe('step');
+  });
+});
+
+describe('Workflow conditional routing - compiler', () => {
+  it('compiles conditional routing to if/else', () => {
+    const src = `build for javascript backend
+workflow 'Support' with state:
+  state has:
+    message, required
+    category
+  step 'Triage' with 'Triage Agent'
+  if state's category is 'software':
+    step 'Software Fix' with 'Software Specialist'
+  otherwise:
+    step 'General' with 'General Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('agent_triage_agent(_state)');
+    expect(result.javascript).toContain('_state.category == "software"');
+    expect(result.javascript).toContain('agent_software_specialist(_state)');
+    expect(result.javascript).toContain('} else {');
+    expect(result.javascript).toContain('agent_general_agent(_state)');
+  });
+});
+
+// Phase 87: Cycles and Retry Loops
+describe('Workflow cycles and retry loops - parser', () => {
+  it('parses repeat until with max times', () => {
+    const src = `workflow 'Content Review' with state:
+  state has:
+    draft, required
+    quality_score (number), default 0
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer Agent'
+  step 'Publish' with 'Publisher Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf.steps).toHaveLength(3); // step, repeat, step
+    expect(wf.steps[1].kind).toBe('repeat');
+    expect(wf.steps[1].maxIterations).toBe(3);
+    expect(wf.steps[1].steps).toHaveLength(2); // step + conditional
+    expect(wf.steps[1].steps[0].kind).toBe('step');
+    expect(wf.steps[1].steps[0].agentName).toBe('Reviewer Agent');
+    expect(wf.steps[1].steps[1].kind).toBe('conditional');
+  });
+});
+
+describe('Workflow cycles and retry loops - compiler', () => {
+  it('compiles repeat until to for loop with break', () => {
+    const src = `build for javascript backend
+workflow 'Review' with state:
+  state has:
+    draft, required
+    quality_score (number), default 0
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+  step 'Publish' with 'Publisher Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('for (let _iter = 0; _iter < 3; _iter++)');
+    expect(result.javascript).toContain('if (_state.quality_score > 8) break;');
+    expect(result.javascript).toContain('agent_reviewer_agent(_state)');
+    expect(result.javascript).toContain('agent_publisher_agent(_state)');
+  });
+});
+
+// Phase 88: Durable Execution
+describe('Workflow durable execution - parser', () => {
+  it('parses save progress to directive', () => {
+    const src = `workflow 'Onboarding' with state:
+  save progress to Workflows table
+  state has:
+    user_id, required
+    step_completed
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf.saveProgressTo).toBe('Workflows');
+  });
+
+  it('parses runs on temporal directive', () => {
+    const src = `workflow 'Onboarding' with state:
+  runs on temporal
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf.runsOnTemporal).toBe(true);
+  });
+});
+
+describe('Workflow durable execution - compiler', () => {
+  it('compiles save progress to with db.insert at each step', () => {
+    const src = `build for javascript backend
+workflow 'Onboarding' with state:
+  save progress to Workflows table
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("db.insert('Workflows'");
+    expect(result.javascript).toContain("step: \"Welcome\"");
+    expect(result.javascript).toContain("step: \"Profile\"");
+  });
+
+  it('compiles runs on temporal to Temporal workflow', () => {
+    const src = `build for javascript backend
+workflow 'Onboarding' with state:
+  runs on temporal
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("proxyActivities");
+    expect(result.javascript).toContain("startToCloseTimeout: '5m'");
+    expect(result.javascript).toContain('export async function workflow_onboarding');
+    expect(result.javascript).toContain('agent_welcome_agent');
+    expect(result.javascript).toContain('agent_profile_agent');
+  });
+});
+
+// Phase 89: Parallel Branches with Join
+describe('Workflow parallel branches - parser', () => {
+  it('parses at the same time block with saves to', () => {
+    const src = `workflow 'Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    topics
+    language
+  step 'Triage' with 'Triage Agent'
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'Topics' with 'Topic Agent' saves to state's topics
+    step 'Language' with 'Language Agent' saves to state's language
+  step 'Report' with 'Report Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf.steps).toHaveLength(3); // step, parallel, step
+    expect(wf.steps[1].kind).toBe('parallel');
+    expect(wf.steps[1].steps).toHaveLength(3);
+    expect(wf.steps[1].steps[0].savesTo).toBe('sentiment');
+    expect(wf.steps[1].steps[1].savesTo).toBe('topics');
+    expect(wf.steps[1].steps[2].savesTo).toBe('language');
+  });
+});
+
+describe('Workflow parallel branches - compiler', () => {
+  it('compiles parallel branches to Promise.all with state assignment', () => {
+    const src = `build for javascript backend
+workflow 'Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    topics
+  step 'Triage' with 'Triage Agent'
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'Topics' with 'Topic Agent' saves to state's topics
+  step 'Report' with 'Report Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Promise.all([');
+    expect(result.javascript).toContain('agent_sentiment_agent(_state)');
+    expect(result.javascript).toContain('agent_topic_agent(_state)');
+    expect(result.javascript).toContain('_state.sentiment = sentiment');
+    expect(result.javascript).toContain('_state.topics = topics');
+  });
+});
+
+// Phase 90: Workflow Observability and Testing
+describe('Workflow observability - parser', () => {
+  it('parses track workflow progress directive', () => {
+    const src = `workflow 'Support' with state:
+  track workflow progress
+  state has:
+    message, required
+    resolved (boolean), default false
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    expect(wf.trackProgress).toBe(true);
+  });
+});
+
+describe('Workflow observability - compiler', () => {
+  it('compiles track workflow progress with history array', () => {
+    const src = `build for javascript backend
+workflow 'Support' with state:
+  track workflow progress
+  state has:
+    message, required
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('const _history = []');
+    expect(result.javascript).toContain('_history.push(');
+    expect(result.javascript).toContain("step: \"Triage\"");
+    expect(result.javascript).toContain("step: \"Resolve\"");
+    expect(result.javascript).toContain('_state._history = _history');
+  });
+});
+
+describe('Workflow invocation (run workflow)', () => {
+  it('parses run workflow in assignment', () => {
+    const src = `result = run workflow 'Support' with data`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const assign = ast.body.find(n => n.type === NodeType.ASSIGN);
+    expect(assign).toBeTruthy();
+    expect(assign.expression.type).toBe(NodeType.RUN_WORKFLOW);
+    expect(assign.expression.workflowName).toBe('Support');
+  });
+
+  it('compiles run workflow to await', () => {
+    const src = `build for javascript backend
+result = run workflow 'Support' with data`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('await workflow_support(data)');
+  });
+});
+
+// GAN: Complete workflow integration test
+describe('GAN: Complete workflow with all features', () => {
+  it('compiles a full content pipeline workflow', () => {
+    const src = `build for javascript backend
+
+workflow 'Content Pipeline' with state:
+  save progress to Workflows table
+  track workflow progress
+  state has:
+    topic, required
+    draft
+    quality_score (number), default 0
+    feedback
+    published (boolean), default false
+
+  step 'Research' with 'Research Agent'
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer Agent'
+  step 'Publish' with 'Publisher Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // State initialization
+    expect(result.javascript).toContain('async function workflow_content_pipeline(state)');
+    expect(result.javascript).toContain('quality_score: 0');
+    expect(result.javascript).toContain('published: false');
+    // Steps
+    expect(result.javascript).toContain('agent_research_agent(_state)');
+    expect(result.javascript).toContain('agent_writer_agent(_state)');
+    // Retry loop
+    expect(result.javascript).toContain('for (let _iter = 0; _iter < 3; _iter++)');
+    expect(result.javascript).toContain('_state.quality_score > 8) break');
+    expect(result.javascript).toContain('agent_reviewer_agent(_state)');
+    // Conditional inside loop
+    expect(result.javascript).toContain('_state.quality_score < 8');
+    // Observability
+    expect(result.javascript).toContain('_history.push(');
+    expect(result.javascript).toContain('_state._history = _history');
+    // Durable execution checkpoint
+    expect(result.javascript).toContain("db.insert('Workflows'");
+    // Final step
+    expect(result.javascript).toContain('agent_publisher_agent(_state)');
+    expect(result.javascript).toContain('return _state;');
+  });
+
+  it('compiles a Temporal workflow', () => {
+    const src = `build for javascript backend
+
+workflow 'Onboarding' with state:
+  runs on temporal
+  state has:
+    user_id, required
+    welcome_sent (boolean), default false
+    profile_created (boolean), default false
+
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'
+  step 'Tutorial' with 'Tutorial Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("proxyActivities");
+    expect(result.javascript).toContain("startToCloseTimeout: '5m'");
+    expect(result.javascript).toContain('export async function workflow_onboarding');
+    expect(result.javascript).toContain('welcome_sent: false');
+    expect(result.javascript).toContain('profile_created: false');
+    expect(result.javascript).toContain('agent_welcome_agent');
+    expect(result.javascript).toContain('agent_profile_agent');
+    expect(result.javascript).toContain('agent_tutorial_agent');
+  });
+
+  it('compiles parallel branches workflow', () => {
+    const src = `build for javascript backend
+
+workflow 'Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    topics
+    language
+
+  step 'Triage' with 'Triage Agent'
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'Topics' with 'Topic Agent' saves to state's topics
+    step 'Language' with 'Language Agent' saves to state's language
+  step 'Report' with 'Report Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('agent_triage_agent(_state)');
+    expect(result.javascript).toContain('Promise.all([');
+    expect(result.javascript).toContain('agent_sentiment_agent(_state)');
+    expect(result.javascript).toContain('agent_topic_agent(_state)');
+    expect(result.javascript).toContain('agent_language_agent(_state)');
+    expect(result.javascript).toContain('_state.sentiment = sentiment');
+    expect(result.javascript).toContain('agent_report_agent(_state)');
+  });
+
+  it('compiles workflow invocation from endpoint', () => {
+    const src = `build for web and javascript backend
+
+workflow 'Support' with state:
+  state has:
+    message, required
+    resolved (boolean), default false
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+
+when user calls POST /api/support sending data:
+  result = run workflow 'Support' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS).toContain('workflow_support(data)');
+    expect(result.serverJS).toContain('async function workflow_support');
+  });
+
+  it('compiles workflow with conditional routing in endpoint context', () => {
+    const src = `build for javascript backend
+
+workflow 'Router' with state:
+  state has:
+    message, required
+    category
+    priority
+  step 'Triage' with 'Triage Agent'
+  if state's category is 'urgent':
+    step 'FastTrack' with 'Priority Agent'
+  otherwise:
+    step 'Normal' with 'Standard Agent'
+  step 'Done' with 'Closer Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('agent_triage_agent(_state)');
+    expect(result.javascript).toContain('_state.category == "urgent"');
+    expect(result.javascript).toContain('agent_priority_agent(_state)');
+    expect(result.javascript).toContain('} else {');
+    expect(result.javascript).toContain('agent_standard_agent(_state)');
+    expect(result.javascript).toContain('agent_closer_agent(_state)');
+  });
+});
+
 run();
 
