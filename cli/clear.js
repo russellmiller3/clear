@@ -12,6 +12,8 @@
 //   info <file>      Introspect: list endpoints, tables, pages, agents
 //   fix <file>       Auto-fix all patchable errors in source
 //   test <file>      Run test blocks in a .clear file
+//   eval <file>      Run agent evals (schema checks, or --graded for LLM scorecard)
+//   agent <file>     List agents with tools, skills, guardrails, directives
 //   run <file>       Compile and execute (backend JS only)
 //   serve <file>     Compile and start a local Express server
 //   lint <file>      Security + quality warnings
@@ -437,6 +439,210 @@ async function testCommand(args) {
   }
 }
 
+// =============================================================================
+// AGENT COMMAND — List agents with all directives
+// =============================================================================
+
+async function agentCommand(args) {
+  const flags = parseFlags(args);
+  const file = flags.positional[0];
+  if (!file) { output({ error: 'Usage: clear agent <file.clear>' }, flags); process.exit(1); }
+
+  const loaded = loadSource(file);
+  if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
+
+  const { parse, NodeType } = await getCompiler();
+  const ast = parse(loaded.source);
+
+  const agents = [];
+  const skills = [];
+  const pipelines = [];
+
+  for (const n of ast.body) {
+    if (n.type === NodeType.AGENT) {
+      const agent = {
+        name: n.name,
+        line: n.line,
+        receiving: n.receivingVar,
+        schedule: n.schedule || null,
+        tools: n.tools ? n.tools.map(t => t.type === 'ref' ? t.name : t.description) : [],
+        skills: n.skills || [],
+        restrictions: n.restrictions ? n.restrictions.map(r => r.text) : [],
+        knowsAbout: n.knowsAbout || [],
+        trackDecisions: n.trackDecisions || false,
+        rememberConversation: n.rememberConversation || false,
+        rememberPreferences: n.rememberPreferences || false,
+        model: n.model || null,
+      };
+      agents.push(agent);
+    }
+    if (n.type === NodeType.SKILL) {
+      skills.push({ name: n.name, tools: n.tools, instructions: n.instructions, line: n.line });
+    }
+    if (n.type === NodeType.PIPELINE) {
+      pipelines.push({ name: n.name, input: n.inputVar, steps: n.steps.map(s => s.agentName), line: n.line });
+    }
+  }
+
+  if (flags.json) {
+    output({ ok: true, agents, skills, pipelines }, flags);
+    return;
+  }
+
+  if (agents.length === 0) {
+    console.log('  No agents found.');
+    return;
+  }
+
+  for (const a of agents) {
+    console.log(`\n  Agent '${a.name}' (line ${a.line}):`);
+    if (a.schedule) console.log(`    Schedule: runs every ${a.schedule.value} ${a.schedule.unit}(s)`);
+    else console.log(`    Receiving: ${a.receiving}`);
+    if (a.tools.length > 0) console.log(`    Tools: ${a.tools.join(', ')}`);
+    if (a.skills.length > 0) console.log(`    Skills: ${a.skills.join(', ')}`);
+    if (a.restrictions.length > 0) console.log(`    Must not: ${a.restrictions.join('; ')}`);
+    if (a.knowsAbout.length > 0) console.log(`    Knows about: ${a.knowsAbout.join(', ')}`);
+    if (a.trackDecisions) console.log(`    Observability: tracking decisions`);
+    if (a.rememberConversation) console.log(`    Memory: conversation context`);
+    if (a.rememberPreferences) console.log(`    Memory: user preferences`);
+    if (a.model) console.log(`    Model: ${a.model}`);
+  }
+
+  if (skills.length > 0) {
+    console.log('\n  Skills:');
+    for (const s of skills) {
+      console.log(`    '${s.name}' (line ${s.line}): ${s.tools.join(', ')} — ${s.instructions.length} instruction(s)`);
+    }
+  }
+
+  if (pipelines.length > 0) {
+    console.log('\n  Pipelines:');
+    for (const p of pipelines) {
+      console.log(`    '${p.name}' (line ${p.line}): ${p.steps.join(' → ')}`);
+    }
+  }
+  console.log('');
+}
+
+// =============================================================================
+// EVAL COMMAND — Run agent evals (schema checks + LLM-graded scorecards)
+// =============================================================================
+
+async function evalCommand(args) {
+  const flags = parseFlags(args);
+  const file = flags.positional[0];
+  if (!file) { output({ error: 'Usage: clear eval <file.clear> [--graded]' }, flags); process.exit(1); }
+
+  const loaded = loadSource(file);
+  if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
+
+  const { compileProgram } = await getCompiler();
+  const result = compileProgram(loaded.source, { moduleResolver: makeModuleResolver(loaded.filePath) });
+
+  if (result.errors.length > 0) {
+    output({ ok: false, errors: result.errors }, flags);
+    process.exit(1);
+  }
+
+  if (!result.evals) {
+    output({ ok: true, message: 'No agents found — nothing to eval.' }, flags);
+    process.exit(0);
+  }
+
+  const graded = args.includes('--graded');
+
+  if (graded) {
+    // LLM-graded evals — write eval.js and run it
+    if (!result.evals.graded) {
+      output({ ok: true, message: 'No graded evals generated (no agent endpoints found).' }, flags);
+      process.exit(0);
+    }
+    const outDir = resolve(dirname(resolve(file)), 'build');
+    if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+    const evalFile = resolve(outDir, 'eval.js');
+    writeFileSync(evalFile, result.evals.graded);
+
+    if (!flags.quiet) console.log(`  Graded evals written to ${evalFile}`);
+    if (!flags.quiet) console.log(`  Run: ANTHROPIC_API_KEY=sk-... node ${evalFile}`);
+    if (!flags.quiet) console.log(`  (Requires server running — start with: clear serve ${file})`);
+
+    if (flags.json) {
+      output({ ok: true, evalFile, type: 'graded', instructions: 'Start server, then run eval.js with ANTHROPIC_API_KEY' }, flags);
+    }
+    return;
+  }
+
+  // Schema evals — write eval Clear blocks and compile to standalone runner
+  if (!result.evals.schema) {
+    output({ ok: true, message: 'No schema evals generated.' }, flags);
+    process.exit(0);
+  }
+
+  const outDir = resolve(dirname(resolve(file)), 'build');
+  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+
+  // Write schema evals as Clear source
+  const schemaFile = resolve(outDir, 'schema-evals.clear');
+  writeFileSync(schemaFile, loaded.source + '\n\n' + result.evals.schema);
+
+  // Compile the combined source to a runnable JS file
+  const combinedSource = loaded.source + '\n\n' + result.evals.schema;
+  const evalResult = compileProgram(combinedSource, { moduleResolver: makeModuleResolver(loaded.filePath) });
+
+  if (evalResult.errors.length > 0) {
+    if (!flags.quiet) {
+      console.log('  Schema eval compilation errors:');
+      for (const e of evalResult.errors) console.log(`    line ${e.line}: ${e.message}`);
+    }
+    output({ ok: false, errors: evalResult.errors }, flags);
+    process.exit(1);
+  }
+
+  // Write the eval runner as a standalone node script
+  const js = evalResult.serverJS || evalResult.javascript || '';
+  const evalRunner = `#!/usr/bin/env node
+// Schema Evals (auto-generated) — run with: node schema-eval.js
+// Tests agent output shapes against returning: schemas with mocked AI.
+
+// Redirect app.listen so it doesn't actually start a server
+const _origListen = Function.prototype;
+
+${js}
+
+// Collect and run tests
+const _results = { passed: 0, failed: 0, failures: [] };
+if (typeof _tests !== 'undefined') {
+  (async () => {
+    for (const t of _tests) {
+      try { await t.fn(); _results.passed++; } catch(e) { _results.failed++; _results.failures.push({ name: t.name, error: e.message }); }
+    }
+    console.log("\\nSchema Eval Results:");
+    console.log("  Passed:", _results.passed);
+    if (_results.failed > 0) {
+      console.log("  Failed:", _results.failed);
+      for (const f of _results.failures) console.log("    -", f.name + ":", f.error);
+    }
+    process.exit(_results.failed > 0 ? 1 : 0);
+  })();
+}
+`;
+
+  const evalFile = resolve(outDir, 'schema-eval.js');
+  writeFileSync(evalFile, evalRunner);
+
+  if (!flags.quiet) {
+    console.log(`\n  Schema evals generated:`);
+    console.log(`    Clear source: ${schemaFile}`);
+    console.log(`    JS runner:    ${evalFile}`);
+    console.log(`\n  Run: node ${evalFile}`);
+    console.log('');
+  }
+
+  if (flags.json) {
+    output({ ok: true, type: 'schema', schemaFile, evalFile, instructions: `Run: node ${evalFile}` }, flags);
+  }
+}
+
 async function runCommand(args) {
   const flags = parseFlags(args);
   const file = flags.positional[0];
@@ -620,7 +826,7 @@ CMD ["node", "server.js"]`);
 function helpCommand(flags = {}) {
   if (flags.json) {
     output({
-      commands: ['build', 'check', 'info', 'fix', 'test', 'run', 'serve', 'lint', 'dev', 'init', 'package', 'help'],
+      commands: ['build', 'check', 'info', 'fix', 'test', 'eval', 'agent', 'run', 'serve', 'lint', 'dev', 'init', 'package', 'help'],
       globalFlags: ['--json', '--quiet', '--no-test', '--auto-fix', '--stdout', '--out <dir>', '--port <n>'],
       exitCodes: { 0: 'success', 1: 'compile error', 2: 'runtime error', 3: 'file not found', 4: 'test failure' },
     }, flags);
@@ -637,6 +843,9 @@ Commands:
   info <file>      List endpoints, tables, pages, agents
   fix <file>       Auto-fix patchable errors in source
   test <file>      Run test blocks
+  eval <file>      Run agent schema evals (deterministic)
+  eval <file> --graded  Generate LLM-graded eval harness
+  agent <file>     List agents with tools, skills, guardrails
   run <file>       Compile and execute
   serve <file>     Compile and start local server
   lint <file>      Security + quality analysis
@@ -677,6 +886,8 @@ switch (command) {
   case 'lint':     await lintCommand(commandArgs); break;
   case 'dev':      await devCommand(commandArgs); break;
   case 'init':     await initCommand(commandArgs); break;
+  case 'agent':    await agentCommand(commandArgs); break;
+  case 'eval':     await evalCommand(commandArgs); break;
   case 'package':
   case 'deploy':   await packageCommand(commandArgs); break;
   case 'help':
