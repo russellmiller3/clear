@@ -618,6 +618,14 @@ export function compile(ast, options = {}) {
     result.tests = generateE2ETests(ast.body);
   }
 
+  // Generate agent evals:
+  //   .evals.schema — Clear test blocks (deterministic, mocked AI)
+  //   .evals.graded — JS eval harness (real AI, LLM-graded scorecard)
+  const agentEvals = generateAgentEvals(ast.body);
+  if (agentEvals) {
+    result.evals = agentEvals;
+  }
+
   return result;
 }
 
@@ -1112,6 +1120,215 @@ function generateE2ETests(body) {
   lines.push('run();');
 
   return lines.join('\n');
+}
+
+/**
+ * Generate agent evals — two types:
+ *
+ * 1. SCHEMA EVALS (deterministic, no AI needed):
+ *    Call agent with mocked AI, verify output matches returning: schema.
+ *    Tests field presence, types, required fields.
+ *
+ * 2. LLM-GRADED EVALS (requires AI, grades real agent output):
+ *    Call agent with REAL AI (no mock), then send output to a grader LLM
+ *    that scores against a rubric. Compiled to a runnable JS eval harness.
+ *
+ * Returns: { schema: "Clear test blocks", graded: "JS eval harness" }
+ */
+function generateAgentEvals(body) {
+  const agents = body.filter(n => n.type === NodeType.AGENT && !n.schedule);
+  const pipelines = body.filter(n => n.type === NodeType.PIPELINE);
+  if (agents.length === 0 && pipelines.length === 0) return null;
+
+  // === PART 1: Schema evals (Clear-native test blocks with mocks) ===
+  const schemaLines = [];
+  schemaLines.push('# === SCHEMA EVALS (auto-generated) ===');
+  schemaLines.push('# Deterministic tests — mocked AI, verify output shape.');
+  schemaLines.push('# Append to your .clear file and run: clear test app.clear');
+  schemaLines.push('');
+
+  for (const agent of agents) {
+    const askAiNodes = [];
+    function findAskAi(nodes) {
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI) {
+          askAiNodes.push({ varName: n.name, schema: n.expression.schema || null });
+        }
+        if (n.body) findAskAi(n.body);
+        if (n.thenBranch) findAskAi(n.thenBranch);
+        if (n.otherwiseBranch) findAskAi(n.otherwiseBranch);
+      }
+    }
+    findAskAi(agent.body);
+
+    const hasSchema = askAiNodes.length > 0 && askAiNodes[0].schema && askAiNodes[0].schema.length > 0;
+    const schema = hasSchema ? askAiNodes[0].schema : null;
+
+    // Build mock fields from schema
+    const mockFields = [];
+    if (schema) {
+      for (const field of schema) {
+        if (field.type === 'number') mockFields.push(`    ${field.name} = 7`);
+        else if (field.type === 'boolean') mockFields.push(`    ${field.name} is true`);
+        else mockFields.push(`    ${field.name} is 'test_${field.name}'`);
+      }
+    } else {
+      mockFields.push(`    response is 'Test response'`);
+    }
+
+    // Schema shape test
+    schemaLines.push(`test '${agent.name} — output matches schema':`);
+    schemaLines.push(`  mock claude responding:`);
+    for (const f of mockFields) schemaLines.push(f);
+    schemaLines.push(`  result = call '${agent.name}' with 'schema eval input'`);
+    schemaLines.push(`  expect result is not nothing`);
+    if (schema) {
+      for (const field of schema) {
+        if (field.type === 'number') {
+          schemaLines.push(`  expect result's ${field.name} is 7`);
+        } else if (field.type === 'boolean') {
+          schemaLines.push(`  expect result's ${field.name} is true`);
+        } else {
+          schemaLines.push(`  expect result's ${field.name} is not nothing`);
+        }
+      }
+    }
+    schemaLines.push('');
+  }
+
+  // Pipeline schema evals
+  for (const pipeline of pipelines) {
+    schemaLines.push(`test '${pipeline.name} — pipeline completes all ${pipeline.steps.length} steps':`);
+    for (const step of pipeline.steps) {
+      schemaLines.push(`  mock claude responding:`);
+      schemaLines.push(`    output is 'step ${step.agentName} done'`);
+    }
+    schemaLines.push(`  result = call pipeline '${pipeline.name}' with 'pipeline eval input'`);
+    schemaLines.push(`  expect result is not nothing`);
+    schemaLines.push('');
+  }
+
+  // === PART 2: LLM-graded evals (JS harness, real AI, scorecard) ===
+  const gradedLines = [];
+  gradedLines.push('#!/usr/bin/env node');
+  gradedLines.push('// === LLM-GRADED AGENT EVALS (auto-generated) ===');
+  gradedLines.push('// Calls agents with REAL AI, then grades output against a scorecard.');
+  gradedLines.push('// Run: ANTHROPIC_API_KEY=sk-... node eval.js');
+  gradedLines.push('// Requires: server running on localhost:3000');
+  gradedLines.push('');
+  gradedLines.push('const BASE = process.env.TEST_URL || "http://localhost:3000";');
+  gradedLines.push('const EVAL_MODEL = process.env.EVAL_MODEL || "claude-sonnet-4-20250514";');
+  gradedLines.push('');
+  gradedLines.push('async function grade(agentName, input, output, rubric) {');
+  gradedLines.push('  const key = process.env.ANTHROPIC_API_KEY;');
+  gradedLines.push('  if (!key) { console.log("SKIP:", agentName, "— set ANTHROPIC_API_KEY"); return null; }');
+  gradedLines.push('  const prompt = `Grade this agent output on a scale of 1-10 for each criterion.\\n\\nAgent: ${agentName}\\nInput: ${JSON.stringify(input)}\\nOutput: ${JSON.stringify(output)}\\n\\nRubric:\\n${rubric}\\n\\nRespond with ONLY a JSON object: { "scores": { "criterion": score }, "overall": number, "pass": boolean, "feedback": "string" }`;');
+  gradedLines.push('  const r = await fetch("https://api.anthropic.com/v1/messages", {');
+  gradedLines.push('    method: "POST",');
+  gradedLines.push('    headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },');
+  gradedLines.push('    body: JSON.stringify({ model: EVAL_MODEL, max_tokens: 512, messages: [{ role: "user", content: prompt }] })');
+  gradedLines.push('  });');
+  gradedLines.push('  const data = await r.json();');
+  gradedLines.push('  try { return JSON.parse(data.content[0].text.match(/\\{[\\s\\S]*\\}/)[0]); }');
+  gradedLines.push('  catch { return { overall: 0, pass: false, feedback: "Failed to parse grader response" }; }');
+  gradedLines.push('}');
+  gradedLines.push('');
+  gradedLines.push('async function schemaCheck(name, output, schema) {');
+  gradedLines.push('  const missing = schema.filter(f => output[f.name] === undefined);');
+  gradedLines.push('  const wrongType = schema.filter(f => {');
+  gradedLines.push('    if (output[f.name] === undefined) return false;');
+  gradedLines.push('    if (f.type === "number" && typeof output[f.name] !== "number") return true;');
+  gradedLines.push('    if (f.type === "boolean" && typeof output[f.name] !== "boolean") return true;');
+  gradedLines.push('    return false;');
+  gradedLines.push('  });');
+  gradedLines.push('  return { name, pass: missing.length === 0 && wrongType.length === 0, missing: missing.map(f => f.name), wrongType: wrongType.map(f => f.name) };');
+  gradedLines.push('}');
+  gradedLines.push('');
+  gradedLines.push('async function run() {');
+  gradedLines.push('  const results = [];');
+  gradedLines.push('');
+
+  for (const agent of agents) {
+    const agentName = agent.name;
+    // Find the endpoint that calls this agent
+    const callingEp = body.filter(n => n.type === NodeType.ENDPOINT && n.method === 'POST').find(ep => {
+      return (ep.body || []).some(n =>
+        n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_AGENT &&
+        n.expression.agentName === agentName
+      );
+    });
+
+    if (!callingEp) continue;
+    const path = callingEp.path;
+
+    // Build rubric from agent context
+    const rubricParts = [];
+    if (agent.tools && agent.tools.length > 0) {
+      rubricParts.push(`Tool use: Agent should use available tools (${agent.tools.map(t => t.name || t.description).join(', ')}) when appropriate`);
+    }
+    if (agent.restrictions && agent.restrictions.length > 0) {
+      rubricParts.push(`Safety: Agent must respect guardrails: ${agent.restrictions.map(r => r.text).join(', ')}`);
+    }
+    rubricParts.push('Relevance: Response directly addresses the input');
+    rubricParts.push('Tone: Response is professional and helpful');
+    rubricParts.push('Completeness: Response covers all aspects of the question');
+    const rubric = rubricParts.map((r, i) => `${i + 1}. ${r}`).join('\\n');
+
+    // Schema check
+    const askAiNodes = [];
+    function findAskAi2(nodes) {
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI && n.expression.schema?.length > 0) {
+          askAiNodes.push(n.expression.schema);
+        }
+        if (n.body) findAskAi2(n.body);
+        if (n.thenBranch) findAskAi2(n.thenBranch);
+        if (n.otherwiseBranch) findAskAi2(n.otherwiseBranch);
+      }
+    }
+    findAskAi2(agent.body);
+    const schemaJson = askAiNodes.length > 0 ? JSON.stringify(askAiNodes[0]) : 'null';
+
+    // Test cases for this agent
+    const testInputs = [
+      `What can you help me with?`,
+      `I have a problem with my order`,
+    ];
+
+    gradedLines.push(`  // --- ${agentName} ---`);
+    for (const input of testInputs) {
+      gradedLines.push(`  {`);
+      gradedLines.push(`    const r = await fetch(BASE + "${path}", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: ${JSON.stringify(input)} }) });`);
+      gradedLines.push(`    const output = await r.json();`);
+      if (schemaJson !== 'null') {
+        gradedLines.push(`    const schema = ${schemaJson};`);
+        gradedLines.push(`    results.push(await schemaCheck("${agentName} schema", output, schema));`);
+      }
+      gradedLines.push(`    const gradeResult = await grade("${agentName}", ${JSON.stringify(input)}, output, "${rubric}");`);
+      gradedLines.push(`    if (gradeResult) results.push({ name: "${agentName}: ${input.substring(0, 40)}", ...gradeResult });`);
+      gradedLines.push(`  }`);
+      gradedLines.push('');
+    }
+  }
+
+  gradedLines.push('  // --- Results ---');
+  gradedLines.push('  console.log("\\n=== AGENT EVAL RESULTS ===\\n");');
+  gradedLines.push('  let passed = 0, failed = 0;');
+  gradedLines.push('  for (const r of results) {');
+  gradedLines.push('    const icon = r.pass ? "✅" : "❌";');
+  gradedLines.push('    console.log(`${icon} ${r.name}: ${r.overall || (r.pass ? "PASS" : "FAIL")}${r.feedback ? " — " + r.feedback : ""}${r.missing?.length ? " (missing: " + r.missing.join(", ") + ")" : ""}${r.wrongType?.length ? " (wrong type: " + r.wrongType.join(", ") + ")" : ""}`);');
+  gradedLines.push('    if (r.pass) passed++; else failed++;');
+  gradedLines.push('  }');
+  gradedLines.push('  console.log(`\\n${passed} passed, ${failed} failed`);');
+  gradedLines.push('  process.exit(failed > 0 ? 1 : 0);');
+  gradedLines.push('}');
+  gradedLines.push('');
+  gradedLines.push('run();');
+
+  return {
+    schema: schemaLines.join('\n'),
+    graded: gradedLines.join('\n'),
+  };
 }
 
 function generateDeployConfig(platform, target) {
