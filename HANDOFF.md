@@ -3,38 +3,43 @@
 ## Current State
 - **Branch:** main
 - **Tests:** 1413 passing
-- **Parser:** 5888 lines (down from 6185 — 297 lines of dead code removed)
+- **Parser:** 6166 lines (was 6185 start of session)
 - **Working tree:** Clean
 
 ## What Was Done This Session
 
 ### Phase 47: Compiler Internal Refactor
-- Unified HTTP_REQUEST + RAW_QUERY compilation paths (`compileHttpRequest`, `compileRawQueryExpr`)
-- Normalized parser return types (removed `isCrud` wrapper, `parseTarget` returns `{ node }`)
-- Tokenizer preserves colons as COLON tokens (trailing stripped at token level)
-- Added COLON, LBRACE, RBRACE to TokenType enum
+- Unified HTTP_REQUEST + RAW_QUERY compilation paths
+- Normalized parser return types (removed isCrud wrapper)
+- Tokenizer preserves colons as COLON tokens
+- Added COLON, LBRACE, RBRACE to TokenType
 
-### Phase 47b: Context-Sensitive Synonyms + Full Dispatch Table
-- Added `rawValue` field to all KEYWORD tokens
-- Wired `resolveCanonical(token, zone)` with ZONE_OVERRIDES
-- **93 of 97** parseBlock branches migrated to CANONICAL_DISPATCH + RAW_DISPATCH Maps
+### Phase 47b: Full Dispatch Table + Context-Sensitive Synonyms
+- **97 of 97** parseBlock keyword branches now handled by dispatch system
+- CANONICAL_DISPATCH (60+ entries) + RAW_DISPATCH (96 entries) Maps
 - Router functions for show, if, define, set, remove, respond
-- Zone overrides active: ui (delete→action_delete), crud, agent (use→agent_use, log→agent_log)
+- `resolveCanonical(token, zone)` with ZONE_OVERRIDES (ui, crud, agent)
+- `rawValue` field on all KEYWORD tokens
+- Panel actions (toggle/open/close) moved to RAW_DISPATCH
+- parseBlock structure: comment → dispatch → patterns → assignment
 
 ### Fix: data-from Multi-Word Synonym Collision
 - Tokenizer only matches `data from`/`fetch from` at line start
-- Resolved documented bug: `get data from '/url'` now correctly registers `data` as variable
-- `display data as table` with 15+ columns no longer produces false errors
+- Resolved documented bug: `get data from '/url'` now registers `data` as variable
 
-## Architecture Decisions
-- **Two dispatch Maps**: RAW_DISPATCH (raw value) before CANONICAL_DISPATCH (canonical)
-- **Router functions**: Complex branches wrapped as Map handlers that check tokens[1+]
-- **rawValue field**: Backward compatible — .canonical still works, rawValue enables zone overrides
-- **data_from guard**: Multi-word synonyms can check preceding tokens to avoid mid-line collisions
+### Design + Planning
+- Design discussion doc: zero deps + one-op-per-line consequences
+- Two plans written + red-teamed (compiler refactor, context synonyms)
+
+## Architecture
+- parseBlock: comment → RAW_DISPATCH → CANONICAL_DISPATCH → patterns (text_block, do_all, label-input, math-function) → assignment → bare expression
+- Adding a new keyword: one Map entry, zero ordering risk
+- Synonym collisions: add ZONE_OVERRIDES entry + resolveCanonical() call
 
 ## Resume Prompt
 ```
-Read HANDOFF.md, learnings.md, intent.md. Session 10: Phase 47 compiler
-refactor, Phase 47b dispatch tables + context synonyms, data-from collision
-fix. 93/97 branches in Maps. 1413 tests. Parser 5888 lines.
+Read HANDOFF.md, learnings.md, intent.md. Session 10 completed full
+compiler refactor: dispatch tables (97/97 branches), context-sensitive
+synonyms, data-from collision fix. 1413 tests. Next: build real apps
+to stress-test, or new features from ROADMAP.md.
 ```
