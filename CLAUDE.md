@@ -15,7 +15,7 @@ Compiles plain English to JavaScript, Python, and HTML.
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1471 tests)
+- Run all tests: `node clear.test.js` (1473 tests)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 

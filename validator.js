@@ -90,7 +90,7 @@ export function validate(ast) {
   validateTypes(ast.body, errors);
   validateConfig(ast.body, warnings);
   validateFieldNames(ast.body, warnings);
-  validateEndpointURLs(ast.body, warnings);
+  validateEndpointURLs(ast.body, errors, warnings);
   validateSecurity(ast.body, errors, warnings);
   validateDuplicateEndpoints(ast.body, warnings);
   validateDisplayActions(ast.body, warnings);
@@ -645,7 +645,7 @@ function validateFieldNames(body, warnings) {
  * ENDPOINT URL CROSS-CHECK: Warn when frontend fetches a URL
  * that no backend endpoint serves.
  */
-function validateEndpointURLs(body, warnings) {
+function validateEndpointURLs(body, errors, warnings) {
   // Collect all backend endpoint method+URL pairs
   const endpoints = []; // { method, path, pattern }
   function collectEndpoints(nodes) {
@@ -685,7 +685,7 @@ function validateEndpointURLs(body, warnings) {
             });
             if (closest) hint = ` Did you mean '${closest.path}'?`;
           }
-          warnings.push(`Line ${node.line || '?'}: frontend ${method}s '${url}' but no backend endpoint handles ${method} ${url}.${hint}`);
+          errors.push({ line: node.line || 0, message: `frontend ${method}s '${url}' but no backend endpoint handles ${method} ${url}.${hint}` });
         }
       }
       if (node.type === NodeType.BUTTON && node.body) checkFetchURLs(node.body);
@@ -1244,10 +1244,9 @@ function validateOWASP(body, errors, warnings) {
         // Skip signup/register — those are intentionally unauthenticated
         if (path.includes('signup') || path.includes('register') || path.includes('seed')) continue;
         warnings.push(
-          `Line ${n.line}: POST ${n.path} modifies data without auth. ` +
-          `Without authentication, this endpoint is vulnerable to CSRF attacks — ` +
-          `a malicious site could trick a user's browser into submitting data. ` +
-          `Add: requires auth`
+          `Line ${n.line}: POST ${n.path} modifies data without auth — CSRF vulnerable. ` +
+          `A malicious site could trick a user's browser into submitting data. ` +
+          `Fix: add 'requires auth' inside the endpoint.`
         );
       }
     }
