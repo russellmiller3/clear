@@ -2023,28 +2023,47 @@ Compiles to: a while loop with the exit condition + max iteration guard. Each it
 
 ---
 
-#### Phase 88: Durable Execution (1 day)
+#### Phase 88: Durable Execution via Temporal (1 day)
 
-Workflow state is checkpointed to the database after each step. If the server crashes mid-workflow, it resumes from the last checkpoint on restart.
+Workflow state is checkpointed and resumed by Temporal.io — not a homebrew solution. Clear compiles `workflow` blocks to Temporal workflow definitions + activities. Temporal handles retries, timeouts, crash recovery, and distributed execution.
 
 ```clear
 workflow 'Onboarding' with state:
+  runs on temporal
   state has:
     user_id, required
     step_completed
     welcome_sent (boolean), default false
     profile_created (boolean), default false
 
-  save progress to Workflows table
-  
   step 'Welcome' with 'Welcome Agent'
   step 'Profile' with 'Profile Agent'
   step 'Tutorial' with 'Tutorial Agent'
 ```
 
-`save progress to Workflows table` enables checkpointing. After each step, the workflow state is saved with `step_completed` set to the last finished step. On restart, the workflow resumes from the next step.
+`runs on temporal` sets the compile target. Each `step` compiles to a Temporal activity. The workflow function is a Temporal workflow.
 
-Compiles to: `await db.update('workflows', state)` after each step. On load, check for existing state with `status !== 'complete'` and resume.
+Compiles to:
+```js
+import { proxyActivities } from '@temporalio/workflow';
+const { agent_welcome, agent_profile, agent_tutorial } = proxyActivities({ startToCloseTimeout: '5m' });
+
+export async function onboardingWorkflow(state) {
+  state = await agent_welcome(state);
+  state = await agent_profile(state);
+  state = await agent_tutorial(state);
+  return state;
+}
+```
+
+Without `runs on temporal`, workflows use a simpler DB-backed checkpoint (for apps that don't need Temporal's infrastructure):
+```clear
+workflow 'Simple' with state:
+  save progress to Workflows table
+  step 'A' with 'Agent A'
+```
+
+This gives two tiers: DB checkpoint for simple apps, Temporal for production-grade durability.
 
 ---
 
