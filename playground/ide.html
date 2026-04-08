@@ -43,11 +43,15 @@
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--tx); font-family: var(--font); font-size: 13px; -webkit-font-smoothing: antialiased; }
 
 /* Layout */
-#app { display: grid; grid-template-rows: 46px 1fr; grid-template-columns: 1fr 1fr 360px; height: 100vh; }
+#app { display: grid; grid-template-rows: 46px 1fr 24px; grid-template-columns: 1fr 1fr 360px; height: 100vh; }
 #toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: linear-gradient(180deg, var(--bg2), var(--bg)); border-bottom: 1px solid var(--bd); }
 #editor-pane { display: flex; flex-direction: column; border-right: 1px solid var(--bd); overflow: hidden; }
 #preview-pane { display: flex; flex-direction: column; border-right: 1px solid var(--bd); overflow: hidden; }
 #chat-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--bg2); }
+#status-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: var(--accent2); color: rgba(255,255,255,.8); font-size: 11px; font-family: var(--mono); border-top: 1px solid var(--bd); }
+#status-bar span { white-space: nowrap; }
+.sb-sep { width: 1px; height: 12px; background: rgba(255,255,255,.2); }
+@media (max-width: 1100px) { #app { grid-template-columns: 1fr 1fr 0px; } #chat-pane { display: none; } }
 
 /* Toolbar */
 #toolbar select { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-family: var(--mono); cursor: pointer; transition: border-color .15s; }
@@ -73,11 +77,16 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #editor-pane .cm-editor .cm-selectionBackground { background: rgba(108,140,255,.15) !important; }
 #editor-pane .cm-editor .cm-cursor { border-left-color: var(--accent); border-left-width: 2px; }
 #editor-pane .cm-editor { background: var(--bg); }
+#editor-header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--bd); font-size: 11px; font-weight: 600; color: var(--tx3); text-transform: uppercase; letter-spacing: .05em; }
+#editor-header .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+#editor-header .dot.err { background: var(--red); }
 #errors { padding: 10px 14px; background: var(--bg2); border-top: 1px solid var(--bd); max-height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 11px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
 #errors:empty { display: none; }
-.error-line { color: var(--red); padding: 3px 0; cursor: pointer; transition: opacity .1s; }
+.error-line { color: var(--red); padding: 3px 0; cursor: pointer; transition: opacity .1s; display: flex; align-items: baseline; gap: 6px; }
+.error-line::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--red); flex-shrink: 0; margin-top: 5px; }
 .error-line:hover { opacity: .8; }
-.warning-line { color: var(--amber); padding: 3px 0; opacity: .8; }
+.warning-line { color: var(--amber); padding: 3px 0; opacity: .8; display: flex; align-items: baseline; gap: 6px; }
+.warning-line::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--amber); flex-shrink: 0; margin-top: 5px; }
 
 /* Preview */
 #preview-tabs { display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--bd); }
@@ -134,6 +143,20 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #theme-toggle { background: none; border: 1px solid var(--bd2); border-radius: 20px; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all .2s; color: var(--tx3); }
 #theme-toggle:hover { border-color: var(--accent); color: var(--accent); transform: rotate(20deg); }
 
+/* Chat loading indicator */
+@keyframes dotPulse { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+.typing-indicator { display: flex; gap: 4px; padding: 10px 14px; align-self: flex-start; }
+.typing-indicator span { width: 6px; height: 6px; border-radius: 50%; background: var(--tx3); animation: dotPulse 1.4s ease-in-out infinite; }
+.typing-indicator span:nth-child(2) { animation-delay: .2s; }
+.typing-indicator span:nth-child(3) { animation-delay: .4s; }
+
+/* Empty state */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--tx3); gap: 8px; padding: 24px; text-align: center; }
+.empty-state .icon { font-size: 32px; opacity: .5; margin-bottom: 4px; }
+.empty-state .title { font-size: 14px; font-weight: 600; color: var(--tx2); }
+.empty-state .hint { font-size: 12px; opacity: .7; }
+.empty-state kbd { background: var(--bg3); border: 1px solid var(--bd2); border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 11px; }
+
 /* Saved toast */
 @keyframes toastIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
@@ -169,6 +192,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 
   <!-- Editor -->
   <div id="editor-pane">
+    <div id="editor-header"><span class="dot" id="compile-dot"></span> <span id="editor-label">main.clear</span></div>
     <div id="editor-mount"></div>
     <div id="errors"></div>
   </div>
@@ -177,23 +201,45 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   <div id="preview-pane">
     <div id="preview-tabs">
       <button class="prev-tab active" onclick="showTab('preview')">Preview</button>
-      <button class="prev-tab" onclick="showTab('code')">JS Output</button>
+      <button class="prev-tab" onclick="showTab('code')">Output</button>
       <button class="prev-tab" onclick="showTab('terminal')">Terminal</button>
     </div>
-    <div id="preview-content"></div>
+    <div id="preview-content">
+      <div class="empty-state">
+        <div class="icon">&#9654;</div>
+        <div class="title">No preview yet</div>
+        <div class="hint">Start typing Clear code or pick a template</div>
+      </div>
+    </div>
   </div>
 
   <!-- Chat -->
   <div id="chat-pane">
     <div id="chat-header">
-      Claude Agent
+      <span style="display:flex;align-items:center;gap:6px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--green);"></span>
+        Claude Agent
+      </span>
       <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
     </div>
     <div id="chat-messages"></div>
     <div id="chat-input-area">
-      <textarea id="chat-input" rows="2" placeholder="Ask Claude to build something..."></textarea>
+      <textarea id="chat-input" rows="2" placeholder="Ask Claude to build something... (Enter to send)"></textarea>
       <button id="chat-send" onclick="sendChat()">Send</button>
     </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div id="status-bar">
+    <span id="sb-lines">Lines: 4</span>
+    <span class="sb-sep"></span>
+    <span id="sb-cursor">Ln 1, Col 1</span>
+    <span class="sb-sep"></span>
+    <span id="sb-target">No target</span>
+    <span style="flex:1"></span>
+    <span>Clear v1.0</span>
+    <span class="sb-sep"></span>
+    <span id="sb-shortcuts">Ctrl+S compile &middot; Ctrl+Enter run &middot; Ctrl+K chat</span>
   </div>
 </div>
 
@@ -297,6 +343,14 @@ show 'Hello, Clear!'
         clearTimeout(compileTimer);
         compileTimer = setTimeout(() => autoCompile(), 500);
       }
+      // Update status bar cursor position
+      const pos = update.state.selection.main.head;
+      const line = update.state.doc.lineAt(pos);
+      const col = pos - line.from + 1;
+      const linesEl = document.getElementById('sb-lines');
+      const cursorEl = document.getElementById('sb-cursor');
+      if (linesEl) linesEl.textContent = 'Lines: ' + update.state.doc.lines;
+      if (cursorEl) cursorEl.textContent = 'Ln ' + line.number + ', Col ' + col;
     }),
     EditorView.theme({
       '&': { height: '100%' },
@@ -322,11 +376,19 @@ async function autoCompile() {
     });
     lastCompiled = await r.json();
     showErrors(lastCompiled.errors, lastCompiled.warnings);
+    // Update compile dot
+    const dot = document.getElementById('compile-dot');
     if (lastCompiled.errors.length === 0) {
+      if (dot) dot.className = 'dot';
       setStatus('ok', `OK${lastCompiled.warnings?.length ? ` (${lastCompiled.warnings.length} warnings)` : ''}`);
+      // Update target info in status bar
+      const target = lastCompiled.html ? (lastCompiled.serverJS ? 'web + backend' : 'web') : (lastCompiled.python ? 'python' : lastCompiled.javascript ? 'backend' : 'script');
+      const tEl = document.getElementById('sb-target');
+      if (tEl) tEl.textContent = target;
       if (activeTab === 'preview') showPreview();
       if (activeTab === 'code') showCode();
     } else {
+      if (dot) dot.className = 'dot err';
       setStatus('err', `${lastCompiled.errors.length} error${lastCompiled.errors.length > 1 ? 's' : ''}`);
     }
   } catch (err) {
@@ -514,6 +576,13 @@ window.sendChat = async function() {
 
   addChatMsg('user', msg);
   document.getElementById('chat-send').disabled = true;
+  // Show typing indicator
+  const typingEl = document.createElement('div');
+  typingEl.className = 'typing-indicator';
+  typingEl.innerHTML = '<span></span><span></span><span></span>';
+  typingEl.id = 'typing';
+  document.getElementById('chat-messages').appendChild(typingEl);
+  document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
 
   try {
     const r = await fetch('/api/chat', {
@@ -553,6 +622,8 @@ window.sendChat = async function() {
   } catch (err) {
     addChatMsg('assistant', 'Connection error: ' + err.message);
   }
+  const typingInd = document.getElementById('typing');
+  if (typingInd) typingInd.remove();
   document.getElementById('chat-send').disabled = false;
 };
 
@@ -586,6 +657,9 @@ document.getElementById('template-picker').addEventListener('change', async func
     editor.dispatch({
       changes: { from: 0, to: editor.state.doc.length, insert: source },
     });
+    // Update editor header with template name
+    const label = document.getElementById('editor-label');
+    if (label) label.textContent = this.value + '/main.clear';
     autoCompile();
   } catch {}
 });
