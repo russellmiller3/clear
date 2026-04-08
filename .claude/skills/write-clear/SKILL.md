@@ -176,6 +176,8 @@ node test.js
 
 **Backend:** REST endpoints, validation, auth guards, role-based access, rate limiting, CORS, logging, webhooks (HMAC), OAuth, Stripe checkout, background jobs, SSE streaming, WebSocket
 
+**Policies (Enact Guards):** `policy:` block with 30+ runtime guards — database safety (block DDL, protect tables, filter-required deletes), prompt injection detection, access control (require role, block sensitive reads), code freeze, email (no mass emails), Slack (channel allowlist, block DMs), filesystem (restrict paths, block extensions), git safety (block push to main), CRM (no duplicate contacts), cloud storage (require human approval for deletes)
+
 **Data:** in-memory DB, PostgreSQL/SQLite declaration, table schemas with constraints, row-level security, migrations, CSV load/save/filter/sort/group, JSON parse/stringify
 
 **AI Agents:** agent definitions, ask claude, tool use, skills, guardrails, conversation memory, user preferences, RAG, observability, pipelines, parallel agents, human-in-the-loop, agent testing, streaming

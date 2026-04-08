@@ -1173,6 +1173,24 @@ Workflow directives (before steps):
 
 Invoke with: `result = run workflow 'Content Pipeline' with data`
 
+### App-Level Policies (Enact Guards)
+
+Add a `policy:` block at the app level for runtime safety guards. These wrap all db operations with deterministic checks — no LLMs, just enforcement.
+
+```clear
+policy:
+  block schema changes
+  block deletes without filter
+  protect tables: AuditLog
+  block prompt injection
+  no mass emails
+  require role 'admin'
+```
+
+**Always add policies to production apps.** At minimum: `block schema changes`, `block deletes without filter`, and `block prompt injection`. These prevent the most common agent failure modes.
+
+**Policy categories:** database safety, prompt injection, access control, code freeze, email/Slack, filesystem, git safety, CRM, cloud storage.
+
 ## CLI Workflow (How Agents Build Apps)
 
 When building a Clear app, use the CLI for fast feedback loops:

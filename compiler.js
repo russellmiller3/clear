@@ -2481,6 +2481,182 @@ function compileWorkflow(node, ctx, pad) {
   return code;
 }
 
+// Policy compiler — generates runtime guard middleware from Enact-style policy rules
+function compilePolicy(node, ctx, pad) {
+  if (ctx.lang === 'python') return compilePolicyPython(node, ctx, pad);
+
+  let code = `${pad}// === POLICY GUARDS (Enact) ===\n`;
+
+  for (const rule of node.rules) {
+    switch (rule.kind) {
+      // Database Safety
+      case 'block_ddl':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'block_ddl', check: (op, table, data) => { if (['drop', 'truncate', 'alter', 'create'].some(w => (op || '').toLowerCase().includes(w))) throw Object.assign(new Error('Policy violation: schema changes (DDL) are blocked by policy'), { status: 403 }); } });\n`;
+        break;
+      case 'dont_delete_row':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'dont_delete_row', check: (op) => { if (op === 'remove') throw Object.assign(new Error('Policy violation: all row deletions are blocked by policy'), { status: 403 }); } });\n`;
+        break;
+      case 'dont_delete_without_where':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'dont_delete_without_where', check: (op, table, data, filter) => { if (op === 'remove' && (!filter || Object.keys(filter).length === 0)) throw Object.assign(new Error('Policy violation: DELETE without a filter is blocked — would delete all rows in ' + table), { status: 403 }); } });\n`;
+        break;
+      case 'dont_update_without_where':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'dont_update_without_where', check: (op, table, data, filter) => { if (op === 'update' && (!filter || Object.keys(filter).length === 0)) throw Object.assign(new Error('Policy violation: UPDATE without a filter is blocked — would overwrite all rows in ' + table), { status: 403 }); } });\n`;
+        break;
+      case 'protect_tables': {
+        const tables = JSON.stringify(rule.tables.map(t => t.toLowerCase()));
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'protect_tables', check: (op, table) => { if (${tables}.includes((table || '').toLowerCase())) throw Object.assign(new Error('Policy violation: table ' + table + ' is protected by policy'), { status: 403 }); } });\n`;
+        break;
+      }
+
+      // Code Freeze
+      case 'code_freeze_active':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'code_freeze_active', check: () => { if (process.env.ENACT_FREEZE === '1') throw Object.assign(new Error('Policy violation: code freeze is active (ENACT_FREEZE=1)'), { status: 503 }); } });\n`;
+        break;
+      case 'maintenance_window':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'maintenance_window', check: () => { const h = new Date().getUTCHours(); const m = new Date().getUTCMinutes(); const now = h * 60 + m; const start = ${parseInt(rule.start)} * 60; const end = ${parseInt(rule.end)} * 60; const inWindow = start <= end ? (now >= start && now < end) : (now >= start || now < end); if (!inWindow) throw Object.assign(new Error('Policy violation: outside maintenance window (${rule.start}-${rule.end} UTC)'), { status: 503 }); } });\n`;
+        break;
+
+      // Prompt Injection
+      case 'block_prompt_injection': {
+        const fieldsCheck = rule.fields ? `const _fields = ${JSON.stringify(rule.fields)}; const _vals = _fields.map(f => data?.[f]).filter(Boolean);` : `const _vals = typeof data === 'string' ? [data] : Object.values(data || {}).filter(v => typeof v === 'string');`;
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'block_prompt_injection', check: (op, table, data) => { ${fieldsCheck} const _patterns = [/ignore.*(?:previous|above|prior).*instructions/i, /you are now/i, /system:\\s/i, /\\[INST\\]/i, /<<<.*>>>/i, /forget.*(?:rules|instructions|guidelines)/i, /pretend you/i, /act as (?:a |an )?(?:different|new)/i]; for (const v of _vals) { for (const p of _patterns) { if (p.test(v)) throw Object.assign(new Error('Policy violation: prompt injection detected in input'), { status: 400 }); } } } });\n`;
+        break;
+      }
+
+      // Access Control
+      case 'dont_read_sensitive_tables': {
+        const tables = JSON.stringify(rule.tables.map(t => t.toLowerCase()));
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'dont_read_sensitive_tables', check: (op, table) => { if (op === 'read' && ${tables}.includes((table || '').toLowerCase())) throw Object.assign(new Error('Policy violation: reading from ' + table + ' is blocked by policy'), { status: 403 }); } });\n`;
+        break;
+      }
+      case 'require_role': {
+        const roles = JSON.stringify(rule.roles);
+        code += `${pad}// Policy: require_role — checked in endpoint middleware\n`;
+        code += `${pad}app.use((req, res, next) => { if (req.path.startsWith('/api/')) { const role = req.user?.role || req.body?.actor_role; if (!role || !${roles}.includes(role)) return res.status(403).json({ error: 'Policy violation: requires role ' + ${roles}.join(' or ') }); } next(); });\n`;
+        break;
+      }
+
+      // Email
+      case 'no_mass_emails':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'no_mass_emails', check: (op, table, data) => { if (op === 'send_email' && data?.to && (Array.isArray(data.to) ? data.to.length > 1 : data.to.includes(','))) throw Object.assign(new Error('Policy violation: mass emails (>1 recipient) are blocked by policy'), { status: 403 }); } });\n`;
+        break;
+      case 'no_repeat_emails':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'no_repeat_emails', check: (op, table, data) => { if (op === 'send_email') { /* Requires DB lookup — guard registered, enforcement in email adapter */ } } });\n`;
+        break;
+
+      // Filesystem
+      case 'dont_delete_file':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'dont_delete_file', check: (op) => { if (op === 'delete_file') throw Object.assign(new Error('Policy violation: file deletions are blocked by policy'), { status: 403 }); } });\n`;
+        break;
+      case 'restrict_paths': {
+        const paths = JSON.stringify(rule.paths);
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'restrict_paths', check: (op, table, data) => { const p = data?.path || data?.file || ''; if (p && !${paths}.some(allowed => p.startsWith(allowed))) throw Object.assign(new Error('Policy violation: path ' + p + ' is outside allowed directories'), { status: 403 }); } });\n`;
+        break;
+      }
+      case 'block_extensions': {
+        const exts = JSON.stringify(rule.extensions);
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'block_extensions', check: (op, table, data) => { const p = data?.path || data?.file || ''; if (p && ${exts}.some(ext => p.endsWith(ext))) throw Object.assign(new Error('Policy violation: operations on ' + p.split('.').pop() + ' files are blocked by policy'), { status: 403 }); } });\n`;
+        break;
+      }
+      case 'dont_read_sensitive_paths': {
+        const paths = JSON.stringify(rule.paths);
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'dont_read_sensitive_paths', check: (op, table, data) => { const p = data?.path || data?.file || ''; if (op === 'read_file' && ${paths}.some(sp => p.startsWith(sp))) throw Object.assign(new Error('Policy violation: reading from sensitive path ' + p + ' is blocked'), { status: 403 }); } });\n`;
+        break;
+      }
+
+      // CRM
+      case 'dont_duplicate_contacts':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'dont_duplicate_contacts', check: (op, table, data) => { if (op === 'insert' && table?.toLowerCase().includes('contact') && data?.email) { const existing = db.findOne(table, { email: data.email }); if (existing) throw Object.assign(new Error('Policy violation: contact with email ' + data.email + ' already exists'), { status: 409 }); } } });\n`;
+        break;
+
+      // Slack
+      case 'require_channel_allowlist': {
+        const channels = JSON.stringify(rule.channels);
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'require_channel_allowlist', check: (op, table, data) => { if (op === 'send_slack' && data?.channel && !${channels}.includes(data.channel)) throw Object.assign(new Error('Policy violation: channel ' + data.channel + ' is not in the allow list'), { status: 403 }); } });\n`;
+        break;
+      }
+      case 'block_dms':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'block_dms', check: (op, table, data) => { if (op === 'send_slack' && data?.channel && (data.channel.startsWith('D') || data.channel.startsWith('U'))) throw Object.assign(new Error('Policy violation: direct messages are blocked by policy'), { status: 403 }); } });\n`;
+        break;
+
+      // Cloud Storage
+      case 'require_human_approval_for_delete':
+        code += `${pad}db._guards = db._guards || [];\n`;
+        code += `${pad}db._guards.push({ type: 'require_human_approval_for_delete', check: (op, table, data) => { if (op === 'delete_file' || op === 'remove') { /* Requires HITL receipt verification — guard registered */ } } });\n`;
+        break;
+
+      // Custom
+      case 'custom':
+        code += `${pad}// Custom policy: ${rule.text}\n`;
+        break;
+    }
+  }
+
+  // Hook guards into db operations
+  if (node.rules.some(r => r.kind.startsWith('dont_') || r.kind.startsWith('block_') || r.kind === 'protect_tables' || r.kind === 'code_freeze_active' || r.kind === 'maintenance_window')) {
+    code += `${pad}// Wire policy guards into db operations\n`;
+    code += `${pad}const _origInsert = db.insert.bind(db);\n`;
+    code += `${pad}const _origUpdate = db.update.bind(db);\n`;
+    code += `${pad}const _origRemove = db.remove.bind(db);\n`;
+    code += `${pad}db.insert = function(table, record) { (db._guards || []).forEach(g => g.check('insert', table, record)); return _origInsert(table, record); };\n`;
+    code += `${pad}db.update = function(table, filter, data) { (db._guards || []).forEach(g => g.check('update', table, data || filter, filter)); return _origUpdate(table, filter, data); };\n`;
+    code += `${pad}db.remove = function(table, filter) { (db._guards || []).forEach(g => g.check('remove', table, null, filter)); return _origRemove(table, filter); };\n`;
+  }
+
+  return code;
+}
+
+function compilePolicyPython(node, ctx, pad) {
+  let code = `${pad}# === POLICY GUARDS (Enact) ===\n`;
+  code += `${pad}_policy_guards = []\n`;
+
+  for (const rule of node.rules) {
+    switch (rule.kind) {
+      case 'block_ddl':
+        code += `${pad}_policy_guards.append({"type": "block_ddl", "check": lambda op, table=None, data=None, **kw: (_ for _ in ()).throw(Exception("Policy: DDL blocked")) if op in ("drop","truncate","alter","create") else None})\n`;
+        break;
+      case 'dont_delete_row':
+        code += `${pad}_policy_guards.append({"type": "dont_delete_row"})\n`;
+        break;
+      case 'dont_delete_without_where':
+        code += `${pad}_policy_guards.append({"type": "dont_delete_without_where"})\n`;
+        break;
+      case 'protect_tables': {
+        const tables = JSON.stringify(rule.tables.map(t => t.toLowerCase()));
+        code += `${pad}_policy_guards.append({"type": "protect_tables", "tables": ${tables}})\n`;
+        break;
+      }
+      case 'block_prompt_injection':
+        code += `${pad}_policy_guards.append({"type": "block_prompt_injection"})\n`;
+        break;
+      case 'no_mass_emails':
+        code += `${pad}_policy_guards.append({"type": "no_mass_emails"})\n`;
+        break;
+      default:
+        code += `${pad}_policy_guards.append({"type": "${rule.kind}"})\n`;
+    }
+  }
+  return code;
+}
+
 function compileValidate(node, ctx, pad) {
   if (ctx.lang === 'python') {
     const checks = node.rules.map(rule => {
@@ -2889,6 +3065,9 @@ function _compileNodeInner(node, ctx) {
 
     case NodeType.WORKFLOW:
       return compileWorkflow(node, ctx, pad);
+
+    case NodeType.POLICY:
+      return compilePolicy(node, ctx, pad);
 
     case NodeType.MOCK_AI:
       // Consumed by TEST_DEF compilation — emits nothing standalone

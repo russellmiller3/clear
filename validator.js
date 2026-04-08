@@ -313,6 +313,8 @@ function validateForwardReferences(body, errors) {
           for (const f of (node.stateFields || [])) wfScope.add(f.name);
           break;
         }
+        case NodeType.POLICY:
+          break;
         default:
           break;
       }
