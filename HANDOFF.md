@@ -2,32 +2,50 @@
 
 ## Current State
 - **Branch:** main
-- **Tests:** 1413 passing
-- **Apps:** 36 template apps (3 new agent apps), all compile
+- **Tests:** 1422 passing
+- **Apps:** 42 total (6 new GAN stress-test apps this session)
+- **Parser:** 6166 lines, 97/97 dispatch Map entries
 - **Working tree:** Clean
 
 ## What Was Done This Session
 
-### Tier 7: First-Class AI Agents (11 Phases + Skills)
+### Phase 47: Compiler Internal Refactor
+- Unified HTTP_REQUEST + RAW_QUERY compilation (compileHttpRequest, compileRawQueryExpr)
+- Normalized parser return types (removed isCrud, parseTarget returns { node })
+- Tokenizer preserves colons as COLON tokens, added LBRACE/RBRACE
+- rawValue field on all KEYWORD tokens
 
-| Phase | Feature | Syntax |
-|-------|---------|--------|
-| 80 | Parallel Agents | `do these at the same time:` |
-| 77 | Pipelines | `pipeline 'Name' with var:` + `call pipeline` |
-| 82 | Observability | `track agent decisions` / `log agent decisions` |
-| 75 | Tool Use | `can use: fn1, fn2` + agentic loop |
-| 75b | Skills | `skill 'Name':` + `uses skills:` |
-| 83 | Guardrails | `must not:` (compile-time + runtime) |
-| 76 | Conversation | `remember conversation context` |
-| 79 | Memory | `remember user's preferences` |
-| 81 | Human-in-the-Loop | `ask user to confirm 'msg'` |
-| 84 | Agent Testing | `mock claude responding:` |
-| 78 | RAG | `knows about: Tables` |
+### Phase 47b: Full Dispatch Table + Context-Sensitive Synonyms
+- 97/97 parseBlock branches in CANONICAL_DISPATCH + RAW_DISPATCH Maps
+- Router functions for show, if, define, set, remove, respond
+- resolveCanonical(token, zone) with ZONE_OVERRIDES (ui, crud, agent)
+- Panel actions (toggle/open/close) in RAW_DISPATCH
 
-### CLI: agent + eval + eval --graded
-### GAN: 3 agent apps, 4 compiler bugs found and fixed
-### Auto-generated evals: schema checks + LLM-graded scorecards
+### Bug Fixes Found by GAN
+- **stream: block** not wrapped in Express route (res is not defined)
+- **data from** multi-word synonym collision (ate variable names mid-line)
+- Both fixed and verified by E2E deployment of all 6 GAN apps
+
+### Syntax Improvements
+- CORS canonical: `allow server to accept requests from frontend`
+- All old forms kept as silent aliases
+
+### Documentation
+- **USER-GUIDE.md** — 18 chapters, 53 tested examples, Rails Tutorial style with humor
+- **Tier 8 roadmap** — formal grammar, LSP, type system, source maps, deploy, packages
+- **Design discussion** — zero deps + one-op-per-line consequences
+
+## Key Decisions
+- Two dispatch Maps (RAW before CANONICAL) — order-independent keyword dispatch
+- rawValue field for backward-compatible zone overrides
+- data_from only matches at line start (prevents mid-line collision)
+- stream: wraps in app.get('/stream', ...) Express route
 
 ## Resume Prompt
-
-> Read HANDOFF.md, CLAUDE.md. 1413 tests. 36 apps. Session 10: Tier 7 complete — 11 phases + skills. CLI: agent, eval, eval --graded. 3 GAN apps. Next: streaming AI, compose conversation+RAG, deploy playground.
+```
+Read HANDOFF.md, CLAUDE.md, learnings.md. Session 10: full compiler
+refactor (dispatch tables 97/97, context synonyms, stream fix,
+data-from fix). 1422 tests. 42 apps. USER-GUIDE.md with 53 tested
+examples. Tier 8 roadmap (grammar→LSP→types→maps→deploy→packages).
+Next: formal grammar (PEG/EBNF) or build more GAN apps.
+```
