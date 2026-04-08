@@ -17416,5 +17416,177 @@ workflow 'Router' with state:
   });
 });
 
+// =============================================================================
+// PYTHON STREAMING + PYTHON WORKFLOWS
+// =============================================================================
+
+describe('Python streaming agents', () => {
+  it('Python text agent uses _ask_ai_stream', () => {
+    const src = `build for python backend
+agent 'Chat' receiving msg:
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('_ask_ai_stream(');
+    expect(result.python).toContain('async for _chunk in response');
+    expect(result.python).toContain('yield _chunk');
+  });
+
+  it('Python structured output agent does NOT stream', () => {
+    const src = `build for python backend
+agent 'Classifier' receiving text:
+  result = ask claude 'Classify' with text returning:
+    category
+    confidence (number)
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // The agent function itself uses _ask_ai (non-streaming) for structured output
+    const agentFn = result.python.substring(result.python.indexOf('async def agent_classifier'));
+    expect(agentFn).toContain('await _ask_ai(');
+    expect(agentFn).not.toContain('_ask_ai_stream(');
+  });
+
+  it('Python agent with model uses _ask_ai_stream with model param', () => {
+    const src = `build for python backend
+agent 'Bot' receiving msg:
+  using 'claude-sonnet-4-6'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('_ask_ai_stream(');
+    expect(result.python).toContain('claude-sonnet-4-6');
+  });
+
+  it('Python backend includes _ask_ai and _ask_ai_stream utility functions', () => {
+    const src = `build for python backend
+agent 'Bot' receiving msg:
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('async def _ask_ai(');
+    expect(result.python).toContain('async def _ask_ai_stream(');
+    expect(result.python).toContain('import httpx');
+  });
+});
+
+describe('Python workflow compilation', () => {
+  it('compiles basic workflow to Python async def', () => {
+    const src = `build for python backend
+workflow 'Support' with state:
+  state has:
+    message, required
+    category
+    status, default 'new'
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('async def workflow_support(state):');
+    expect(result.python).toContain('_state = {');
+    expect(result.python).toContain("status: \"new\"");
+    expect(result.python).toContain('_state = await agent_triage_agent(_state)');
+    expect(result.python).toContain('_state = await agent_resolution_agent(_state)');
+    expect(result.python).toContain('return _state');
+  });
+
+  it('compiles conditional routing to Python if/else', () => {
+    const src = `build for python backend
+workflow 'Router' with state:
+  state has:
+    message, required
+    category
+  step 'Triage' with 'Triage Agent'
+  if state's category is 'urgent':
+    step 'Fast' with 'Priority Agent'
+  otherwise:
+    step 'Normal' with 'Standard Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('if _state');
+    expect(result.python).toContain('else:');
+    expect(result.python).toContain('agent_priority_agent(_state)');
+    expect(result.python).toContain('agent_standard_agent(_state)');
+  });
+
+  it('compiles repeat until to Python for loop', () => {
+    const src = `build for python backend
+workflow 'Review' with state:
+  state has:
+    quality_score (number), default 0
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('for _iter in range(3):');
+    expect(result.python).toContain('_state["quality_score"] > 8');
+    expect(result.python).toContain('break');
+  });
+
+  it('compiles parallel branches to Python asyncio.gather', () => {
+    const src = `build for python backend
+workflow 'Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    topics
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'Topics' with 'Topic Agent' saves to state's topics`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('asyncio.gather(');
+    expect(result.python).toContain('import asyncio');
+    expect(result.python).toContain('_state["sentiment"]');
+    expect(result.python).toContain('_state["topics"]');
+  });
+
+  it('compiles workflow observability to Python', () => {
+    const src = `build for python backend
+workflow 'Support' with state:
+  track workflow progress
+  state has:
+    message, required
+  step 'Triage' with 'Triage Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('_history = []');
+    expect(result.python).toContain('_history.append(');
+    expect(result.python).toContain('_state["_history"] = _history');
+  });
+
+  it('compiles durable execution to Python', () => {
+    const src = `build for python backend
+workflow 'Onboarding' with state:
+  save progress to Workflows table
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('db.save("workflows"');
+    expect(result.python).toContain('"step": "Welcome"');
+  });
+
+  it('compiles run workflow invocation in Python', () => {
+    const src = `build for python backend
+workflow 'Support' with state:
+  state has:
+    message, required
+  step 'Triage' with 'Triage Agent'
+
+when user calls POST /api/support sending data:
+  result = run workflow 'Support' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('await workflow_support(');
+  });
+});
+
 run();
 
