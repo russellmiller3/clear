@@ -749,6 +749,242 @@ const CANONICAL_DISPATCH = new Map([
   ['break', (ctx) => { ctx.body.push(breakNode(ctx.line)); return ctx.i + 1; }],
   ['continue', (ctx) => { ctx.body.push(continueNode(ctx.line)); return ctx.i + 1; }],
   ['requires_auth', (ctx) => { ctx.body.push(requiresAuthNode(ctx.line)); return ctx.i + 1; }],
+  ['needs_login', (ctx) => { ctx.body.push({ type: NodeType.REQUIRES_AUTH, line: ctx.line }); return ctx.i + 1; }],
+  ['target', (ctx) => {
+    const parsed = parseTarget(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else { ctx._targetValue = parsed.node.value; ctx.body.push(parsed.node); }
+    return ctx.i + 1;
+  }],
+  ['build', (ctx) => {
+    const parsed = parseTarget(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else { ctx._targetValue = parsed.node.value; ctx.body.push(parsed.node); }
+    return ctx.i + 1;
+  }],
+  ['connect_to_database', (ctx) => {
+    const config = {};
+    let j = ctx.i + 1;
+    while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+      const cfgTokens = ctx.lines[j].tokens;
+      if (cfgTokens.length >= 3) {
+        const key = cfgTokens[0].value;
+        const val = cfgTokens.slice(2).map(t => t.value).join('');
+        config[key] = val;
+      }
+      j++;
+    }
+    ctx.body.push({ type: NodeType.CONNECT_DB, config, line: ctx.line });
+    return j;
+  }],
+  ['raw_run', (ctx) => {
+    let qPos = 1;
+    if (qPos < ctx.tokens.length && ctx.tokens[qPos].type === TokenType.STRING) {
+      const sql = ctx.tokens[qPos].value;
+      qPos++;
+      let params = null;
+      if (qPos < ctx.tokens.length && (ctx.tokens[qPos].value === 'with' || ctx.tokens[qPos].canonical === 'with')) {
+        qPos++;
+        const expr = parseExpression(ctx.tokens, qPos, ctx.line);
+        if (!expr.error) params = expr.node;
+      }
+      ctx.body.push({ type: NodeType.RAW_QUERY, sql, params, variable: null, operation: 'run', line: ctx.line });
+    }
+    return ctx.i + 1;
+  }],
+  ['charge_via_stripe', (ctx) => {
+    const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+    ctx.body.push({ type: NodeType.SERVICE_CALL, service: 'stripe', config, line: ctx.line });
+    return endIdx;
+  }],
+  ['send_sms_via_twilio', (ctx) => {
+    const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+    ctx.body.push({ type: NodeType.SERVICE_CALL, service: 'twilio', config, line: ctx.line });
+    return endIdx;
+  }],
+  ['configure_email', (ctx) => {
+    const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+    ctx.body.push({ type: NodeType.CONFIGURE_EMAIL, config, line: ctx.line });
+    return endIdx;
+  }],
+  ['save_csv', (ctx) => {
+    const parsed = parseSaveCsv(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['append_to_file', (ctx) => {
+    const parsed = parseAppendToFile(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['requires_role', (ctx) => {
+    let role = 'user';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
+      role = ctx.tokens[1].value;
+    } else if (ctx.tokens.length > 1 && (ctx.tokens[1].type === TokenType.IDENTIFIER || ctx.tokens[1].type === TokenType.KEYWORD)) {
+      role = ctx.tokens[1].value;
+    }
+    ctx.body.push(requiresRoleNode(role, ctx.line));
+    return ctx.i + 1;
+  }],
+  ['when_user_calls', (ctx) => {
+    const parsed = parseEndpoint(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['on_method', (ctx) => {
+    const parsed = parseEndpoint(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['send_back', (ctx) => {
+    const parsed = parseRespond(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['go_to', (ctx) => {
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
+      url = ctx.tokens[1].value;
+    }
+    ctx.body.push({ type: NodeType.NAVIGATE, url, line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['theme', (ctx) => {
+    if (ctx.tokens.length < 2) {
+      ctx.errors.push({ line: ctx.line, message: "theme needs a name — try: theme 'midnight', theme 'ivory', or theme 'nova'" });
+      return ctx.i + 1;
+    }
+    const nameToken = ctx.tokens[1];
+    const themeName = nameToken.value.replace(/^['"]|['"]$/g, '');
+    const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss'];
+    if (!validThemes.includes(themeName)) {
+      ctx.errors.push({ line: ctx.line, message: `'${themeName}' isn't a theme Clear knows — try: ${validThemes.join(', ')}` });
+    } else {
+      ctx.body.push({ type: NodeType.THEME, name: themeName, line: ctx.line });
+    }
+    return ctx.i + 1;
+  }],
+  ['define_role', (ctx) => {
+    if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) {
+      ctx.errors.push({ line: ctx.line, message: "define role needs a name. Example: define role 'admin':" });
+      return ctx.i + 1;
+    }
+    const roleName = ctx.tokens[1].value;
+    const permissions = [];
+    let j = ctx.i + 1;
+    while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+      const permTokens = ctx.lines[j].tokens;
+      if (permTokens.length >= 2 && permTokens[0].canonical === 'can') {
+        const action = permTokens.slice(1).map(t => t.value).join(' ');
+        permissions.push(action);
+      }
+      j++;
+    }
+    ctx.body.push(defineRoleNode(roleName, permissions, [], ctx.line));
+    return j;
+  }],
+  ['guard', (ctx) => {
+    let endPos = ctx.tokens.length;
+    let guardMessage = null;
+    for (let k = ctx.tokens.length - 1; k > 1; k--) {
+      if (ctx.tokens[k].type === TokenType.STRING && k > 0 && ctx.tokens[k-1].canonical === 'or') {
+        guardMessage = ctx.tokens[k].value;
+        endPos = k - 1;
+        break;
+      }
+    }
+    const result = parseExpression(ctx.tokens, 1, ctx.line, endPos);
+    if (result.error) {
+      ctx.errors.push({ line: ctx.line, message: result.error });
+    } else {
+      ctx.body.push(guardNode(result.node, ctx.line, guardMessage));
+    }
+    return ctx.i + 1;
+  }],
+  ['on_page_load', (ctx) => {
+    // Inline form: "on page load get todos from '/api/todos'"
+    if (ctx.tokens.length > 1) {
+      const restTokens = ctx.tokens.slice(1);
+      const firstRest = restTokens[0];
+      if (firstRest && (firstRest.canonical === 'get_from' || firstRest.canonical === 'get_key')) {
+        const fromIdx = restTokens.findIndex(t => t.value === 'from');
+        if (fromIdx > 0 && fromIdx + 1 < restTokens.length && restTokens[fromIdx + 1].type === TokenType.STRING) {
+          const targetVar = fromIdx > 1 ? restTokens[1].value : 'response';
+          const url = restTokens[fromIdx + 1].value;
+          ctx.body.push({ type: NodeType.ON_PAGE_LOAD, body: [
+            { type: NodeType.API_CALL, method: 'GET', url, targetVar, fields: [], line: ctx.line }
+          ], line: ctx.line });
+          return ctx.i + 1;
+        }
+      }
+    }
+    // Block form
+    const { body: loadBody, endIdx: loadEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+    ctx.body.push({ type: NodeType.ON_PAGE_LOAD, body: loadBody, line: ctx.line });
+    return loadEnd;
+  }],
+  ['create_pdf', (ctx) => {
+    let pathExpr;
+    if (ctx.tokens.length >= 2 && ctx.tokens[1].type === TokenType.STRING) {
+      pathExpr = { type: NodeType.LITERAL_STRING, value: ctx.tokens[1].value, line: ctx.line };
+    } else if (ctx.tokens.length >= 2 && ctx.tokens[1].type === TokenType.IDENTIFIER) {
+      pathExpr = { type: NodeType.VARIABLE_REF, name: ctx.tokens[1].value, line: ctx.line };
+    } else {
+      ctx.errors.push({ line: ctx.line, message: "create pdf needs a file path. Example: create pdf 'report.pdf':" });
+      return ctx.i + 1;
+    }
+    const block = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+    ctx.body.push({ type: NodeType.CREATE_PDF, path: pathExpr, content: block.body, line: ctx.line });
+    return block.endIdx;
+  }],
+  ['post_to', (ctx) => {
+    const methodMap = { post_to: 'POST', get_from: 'GET', put_to: 'PUT', delete_from: 'DELETE' };
+    const method = methodMap[ctx.tokens[0].canonical];
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['get_from', (ctx) => {
+    const method = 'GET';
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['put_to', (ctx) => {
+    const method = 'PUT';
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['delete_from', (ctx) => {
+    const method = 'DELETE';
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['sort_by', (ctx) => {
+    if (ctx.tokens.length < 3) return undefined;
+    let byPos = -1;
+    for (let k = 1; k < ctx.tokens.length; k++) {
+      if (ctx.tokens[k].canonical === 'by') { byPos = k; break; }
+    }
+    if (byPos > 0 && byPos + 1 < ctx.tokens.length) {
+      const listName = ctx.tokens[1].value;
+      const field = ctx.tokens[byPos + 1].value;
+      const descending = ctx.tokens.some(t => t.value === 'descending' || t.value === 'desc');
+      ctx.body.push({ type: NodeType.LIST_SORT, list: listName, field, descending, line: ctx.line });
+      return ctx.i + 1;
+    }
+    return undefined;
+  }],
   ['deploy_to', (ctx) => {
     let platform = 'vercel';
     if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
@@ -1008,23 +1244,15 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         if (canonHandler) {
           const ctx = { lines, i, indent, tokens, line, errors, body };
           const newI = canonHandler(ctx);
-          if (newI !== undefined) { i = newI; continue; }
+          if (newI !== undefined) {
+            if (ctx._targetValue) targetValue = ctx._targetValue;
+            i = newI; continue;
+          }
         }
       }
       // --- END DISPATCH TABLE LOOKUP ---
 
-      // Target declaration: "build for web" or "target: web"
-      if (firstToken.canonical === 'target' || firstToken.canonical === 'build') {
-        const parsed = parseTarget(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          targetValue = parsed.node.value;
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // target, build: handled by CANONICAL_DISPATCH
 
       // ---- ADAPTERS & CONFIG (database, email, scraper, pdf, ml) ----
 
@@ -1051,46 +1279,9 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
 
       // write_file: handled by CANONICAL_DISPATCH
 
-      // Database: connect to database: + indented config
-      if (firstToken.canonical === 'connect_to_database') {
-        const config = {};
-        let j = i + 1;
-        while (j < lines.length && lines[j].indent > indent) {
-          const cfgTokens = lines[j].tokens;
-          if (cfgTokens.length >= 3) {
-            const key = cfgTokens[0].value;
-            // skip 'is' or '=' (token index 1), reconstruct full value from remaining tokens
-            const val = cfgTokens.slice(2).map(t => t.value).join('');
-            config[key] = val;
-          }
-          j++;
-        }
-        body.push({ type: NodeType.CONNECT_DB, config, line });
-        i = j;
-        continue;
-      }
+      // connect_to_database: handled by CANONICAL_DISPATCH
 
-      // Database: query 'SQL' with params  OR  run 'SQL' with params
-      if (firstToken.canonical === 'raw_query' || firstToken.canonical === 'raw_run') {
-        // Handled as assignment: results = query 'SQL' with params
-        // Standalone: run 'SQL' with params
-        if (firstToken.canonical === 'raw_run') {
-          let qPos = 1;
-          if (qPos < tokens.length && tokens[qPos].type === TokenType.STRING) {
-            const sql = tokens[qPos].value;
-            qPos++;
-            let params = null;
-            if (qPos < tokens.length && (tokens[qPos].value === 'with' || tokens[qPos].canonical === 'with')) {
-              qPos++;
-              const expr = parseExpression(tokens, qPos, line);
-              if (!expr.error) params = expr.node;
-            }
-            body.push({ type: NodeType.RAW_QUERY, sql, params, variable: null, operation: 'run', line });
-          }
-          i++;
-          continue;
-        }
-      }
+      // raw_run: handled by CANONICAL_DISPATCH
 
       // External API call (standalone): call api 'url': + config block
       if (firstToken.canonical === 'call_api') {
@@ -1144,19 +1335,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Service presets: charge via stripe: / send sms via twilio:
-      if (firstToken.canonical === 'charge_via_stripe') {
-        const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
-        body.push({ type: NodeType.SERVICE_CALL, service: 'stripe', config, line });
-        i = endIdx;
-        continue;
-      }
-      if (firstToken.canonical === 'send_sms_via_twilio') {
-        const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
-        body.push({ type: NodeType.SERVICE_CALL, service: 'twilio', config, line });
-        i = endIdx;
-        continue;
-      }
+      // charge_via_stripe, send_sms_via_twilio: handled by CANONICAL_DISPATCH
       // send email via sendgrid: (must check BEFORE send email: SMTP)
       if (firstToken.canonical === 'respond' &&
           tokens.length >= 4 && tokens[1].value === 'email' &&
@@ -1168,20 +1347,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // needs login / needs auth (alias for requires auth)
-      if (firstToken.canonical === 'needs_login') {
-        body.push({ type: NodeType.REQUIRES_AUTH, line });
-        i++;
-        continue;
-      }
-
-      // Email: configure email: + indented config
-      if (firstToken.canonical === 'configure_email') {
-        const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
-        body.push({ type: NodeType.CONFIGURE_EMAIL, config, line });
-        i = endIdx;
-        continue;
-      }
+      // needs_login, configure_email: handled by CANONICAL_DISPATCH
 
       // Email: send email: + indented config (NOT 'send email to URL' which is an API call)
       // Detect: first token canonical is 'respond' (send), second is 'email',
@@ -1265,48 +1431,9 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       // PDF: create pdf 'path': + indented content elements
-      if (firstToken.canonical === 'create_pdf') {
-        // Next token should be the file path (string) or a variable
-        let pathExpr;
-        if (tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
-          pathExpr = { type: NodeType.LITERAL_STRING, value: tokens[1].value, line };
-        } else if (tokens.length >= 2 && tokens[1].type === TokenType.IDENTIFIER) {
-          pathExpr = { type: NodeType.VARIABLE_REF, name: tokens[1].value, line };
-        } else {
-          errors.push({ line, message: "create pdf needs a file path. Example: create pdf 'report.pdf':" });
-          i++;
-          continue;
-        }
-        // Parse indented content block
-        const block = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.CREATE_PDF, path: pathExpr, content: block.body, line });
-        i = block.endIdx;
-        continue;
-      }
+      // create_pdf: handled by CANONICAL_DISPATCH
 
-      // Data: save csv 'path' with data
-      if (firstToken.canonical === 'save_csv') {
-        const parsed = parseSaveCsv(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // File I/O: append to file 'path' with data
-      if (firstToken.canonical === 'append_to_file') {
-        const parsed = parseAppendToFile(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // save_csv, append_to_file: handled by CANONICAL_DISPATCH
 
       // ---- UI & DISPLAY (show, display, toast, content elements) ----
 
@@ -1497,23 +1624,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
 
       // use: handled by CANONICAL_DISPATCH
 
-      // Theme directive: theme 'midnight' / theme 'ivory' / theme 'nova'
-      if (firstToken.canonical === 'theme') {
-        if (tokens.length < 2) {
-          errors.push({ line, message: "theme needs a name — try: theme 'midnight', theme 'ivory', or theme 'nova'" });
-        } else {
-          const nameToken = tokens[1];
-          const themeName = nameToken.value.replace(/^['"]|['"]$/g, '');
-          const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss'];
-          if (!validThemes.includes(themeName)) {
-            errors.push({ line, message: `'${themeName}' isn't a theme Clear knows — try: ${validThemes.join(', ')}` });
-          } else {
-            body.push({ type: NodeType.THEME, name: themeName, line });
-          }
-        }
-        i++;
-        continue;
-      }
+      // theme: handled by CANONICAL_DISPATCH
 
       // Script block: script: + indented raw JavaScript (escape hatch)
       if (firstToken.value === 'script') {
@@ -1641,64 +1752,11 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
 
       // deploy_to, requires_auth: handled by CANONICAL_DISPATCH
 
-      // Auth: requires role 'admin'
-      if (firstToken.canonical === 'requires_role') {
-        let role = 'user';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          role = tokens[1].value;
-        } else if (tokens.length > 1 && (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD)) {
-          role = tokens[1].value;
-        }
-        body.push(requiresRoleNode(role, line));
-        i++;
-        continue;
-      }
+      // requires_role: handled by CANONICAL_DISPATCH
 
-      // Auth: define role 'admin': (block with permissions)
-      if (firstToken.canonical === 'define_role') {
-        let role = 'user';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          role = tokens[1].value;
-        } else if (tokens.length > 1 && (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD)) {
-          role = tokens[1].value;
-        }
-        // Parse body lines directly — look for "can <action>" lines
-        const permissions = [];
-        let j = i + 1;
-        while (j < lines.length && lines[j].indent > indent) {
-          const bodyTokens = lines[j].tokens;
-          if (bodyTokens.length > 0 && bodyTokens[0].canonical === 'can') {
-            const permText = bodyTokens.slice(1).map(t => t.value).join(' ');
-            permissions.push(permText);
-          }
-          j++;
-        }
-        body.push(defineRoleNode(role, permissions, [], line));
-        i = j;
-        continue;
-      }
+      // define_role: handled by CANONICAL_DISPATCH
 
-      // Auth: guard <expression>
-      if (firstToken.canonical === 'guard') {
-        // Check for "or 'message'" at the end
-        let endPos = tokens.length;
-        let guardMessage = null;
-        for (let k = tokens.length - 1; k > 1; k--) {
-          if (tokens[k].type === TokenType.STRING && k > 0 && tokens[k-1].canonical === 'or') {
-            guardMessage = tokens[k].value;
-            endPos = k - 1;
-            break;
-          }
-        }
-        const result = parseExpression(tokens, 1, line, endPos);
-        if (result.error) {
-          errors.push({ line, message: result.error });
-        } else {
-          body.push(guardNode(result.node, line, guardMessage));
-        }
-        i++;
-        continue;
-      }
+      // guard: handled by CANONICAL_DISPATCH
 
       // ---- BACKEND FEATURES ----
       // stream, subscribe_to, update_database, migration_kw, wait_kw,
@@ -1731,12 +1789,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       // ---- ENDPOINTS & DATA (REST routes, data shapes, CRUD, auth) ----
 
       // Backend endpoint: when user calls GET /api/users: (or: on GET /api/users:)
-      if (firstToken.canonical === 'when_user_calls' || firstToken.canonical === 'on_method') {
-        const result = parseEndpoint(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // when_user_calls, on_method: handled by CANONICAL_DISPATCH
 
       // "send X and Y to '/url'" — frontend API call (must check BEFORE send back)
       if (firstToken.canonical === 'respond' && tokens.length >= 3) {
@@ -1770,7 +1823,8 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       // Send back: send back data (or: respond with data)
-      if (firstToken.canonical === 'send_back' || firstToken.canonical === 'respond' || firstToken.canonical === 'respond_with') {
+      // send_back: handled by CANONICAL_DISPATCH
+      if (firstToken.canonical === 'respond' || firstToken.canonical === 'respond_with') {
         const parsed = parseRespond(tokens, line);
         if (parsed.error) {
           errors.push({ line, message: parsed.error });
@@ -1795,32 +1849,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
 
       // test, match_kw: handled by CANONICAL_DISPATCH
 
-      // "on page load:" — runs code when page first loads
-      if (firstToken.canonical === 'on_page_load') {
-        // Inline form: "on page load get todos from '/api/todos'" (rest of line is the action)
-        if (tokens.length > 1) {
-          // Parse the remaining tokens as a statement by constructing a fake single-line block
-          const restTokens = tokens.slice(1);
-          // Check for "get IDENTIFIER from 'URL'" pattern inline
-          if (restTokens.length >= 3 && restTokens[0].canonical === 'get_key') {
-            const fromIdx = restTokens.findIndex(t => t.value === 'from');
-            if (fromIdx > 0 && fromIdx + 1 < restTokens.length && restTokens[fromIdx + 1].type === TokenType.STRING) {
-              const targetVar = fromIdx > 1 ? restTokens[1].value : 'response';
-              const url = restTokens[fromIdx + 1].value;
-              body.push({ type: NodeType.ON_PAGE_LOAD, body: [
-                { type: NodeType.API_CALL, method: 'GET', url, targetVar, fields: [], line }
-              ], line });
-              i++;
-              continue;
-            }
-          }
-        }
-        // Block form: "on page load:" + indented body
-        const { body: loadBody, endIdx: loadEnd } = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.ON_PAGE_LOAD, body: loadBody, line });
-        i = loadEnd;
-        continue;
-      }
+      // on_page_load: handled by CANONICAL_DISPATCH
 
       // "when X changes:" / "when X changes after 250ms:" — reactive input handler
       if (firstToken.value === 'when' && tokens.length >= 3 && tokens[2].value === 'changes') {
@@ -1842,16 +1871,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // "go to '/signup'" — page navigation
-      if (firstToken.canonical === 'go_to') {
-        let url = '';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          url = tokens[1].value;
-        }
-        body.push({ type: NodeType.NAVIGATE, url, line });
-        i++;
-        continue;
-      }
+      // go_to: handled by CANONICAL_DISPATCH
 
       // Frontend API calls:
       //   "send name and email to '/api/signup'" (canonical — friendly)
@@ -1870,19 +1890,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       //   "post to '/api/signup'" (terse alias)
-      //   "get from '/api/items'" (terse alias)
-      if (firstToken.canonical === 'post_to' || firstToken.canonical === 'get_from' ||
-          firstToken.canonical === 'put_to' || firstToken.canonical === 'delete_from') {
-        const methodMap = { post_to: 'POST', get_from: 'GET', put_to: 'PUT', delete_from: 'DELETE' };
-        const method = methodMap[firstToken.canonical];
-        let url = '';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          url = tokens[1].value;
-        }
-        body.push({ type: NodeType.API_CALL, method, url, fields: [], line });
-        i++;
-        continue;
-      }
+      // post_to, get_from, put_to, delete_from: handled by CANONICAL_DISPATCH
       // "add X to Y" — list push
       if (firstToken.canonical === 'add' && tokens.length >= 3) {
         // Find "to" keyword
@@ -1923,25 +1931,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         }
       }
 
-      // "sort X by Y" / "sort X by Y descending"
-      if (firstToken.canonical === 'sort_by' && tokens.length >= 3) {
-        let byPos = -1;
-        for (let k = 1; k < tokens.length; k++) {
-          if (tokens[k].canonical === 'by') { byPos = k; break; }
-        }
-        if (byPos > 0 && byPos + 1 < tokens.length) {
-          const listName = tokens[1].value;
-          const field = tokens[byPos + 1].value;
-          let descending = false;
-          if (byPos + 2 < tokens.length && tokens[byPos + 2].value &&
-              (tokens[byPos + 2].value.toLowerCase() === 'descending' || tokens[byPos + 2].value.toLowerCase() === 'desc')) {
-            descending = true;
-          }
-          body.push({ type: NodeType.LIST_SORT, list: listName, field, descending, line });
-          i++;
-          continue;
-        }
-      }
+      // sort_by: handled by CANONICAL_DISPATCH
 
       // "delete the Todo with this id" -> CRUD remove by URL param
       // Pattern: remove/delete [the] TABLE with/whose this PARAM
