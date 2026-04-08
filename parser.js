@@ -720,6 +720,237 @@ function parseConfigBlock(lines, startIdx, parentIndent) {
   return { config, endIdx: j };
 }
 
+// =============================================================================
+// DISPATCH TABLES — Map-based keyword dispatch for parseBlock
+// =============================================================================
+// Handlers take { lines, i, indent, tokens, line, errors, body } and return
+// the new value of i, or undefined to fall through to the if/else chain.
+// Assignment is NEVER in these maps — it's always the last resort in parseBlock.
+
+// Canonical-keyword handlers (keyed on firstToken.canonical)
+const CANONICAL_DISPATCH = new Map([
+  // --- Simple single-line nodes ---
+  ['log_requests', (ctx) => { ctx.body.push({ type: NodeType.LOG_REQUESTS, line: ctx.line }); return ctx.i + 1; }],
+  ['allow_cors', (ctx) => { ctx.body.push({ type: NodeType.ALLOW_CORS, line: ctx.line }); return ctx.i + 1; }],
+  ['break', (ctx) => { ctx.body.push(breakNode(ctx.line)); return ctx.i + 1; }],
+  ['continue', (ctx) => { ctx.body.push(continueNode(ctx.line)); return ctx.i + 1; }],
+  ['requires_auth', (ctx) => { ctx.body.push(requiresAuthNode(ctx.line)); return ctx.i + 1; }],
+  ['deploy_to', (ctx) => {
+    let platform = 'vercel';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
+      platform = ctx.tokens[1].value;
+    } else if (ctx.tokens.length > 1 && (ctx.tokens[1].type === TokenType.IDENTIFIER || ctx.tokens[1].type === TokenType.KEYWORD)) {
+      platform = ctx.tokens[1].value;
+    }
+    ctx.body.push(deployNode(platform, ctx.line));
+    return ctx.i + 1;
+  }],
+
+  // --- Single-line parse-function handlers ---
+  ['return', (ctx) => {
+    const expr = parseExpression(ctx.tokens, 1, ctx.line);
+    if (expr.error) ctx.errors.push({ line: ctx.line, message: expr.error });
+    else ctx.body.push(returnNode(expr.node, ctx.line));
+    return ctx.i + 1;
+  }],
+  ['write_file', (ctx) => {
+    const parsed = parseWriteFile(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['save_to', (ctx) => {
+    const parsed = parseSave(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['remove_from', (ctx) => {
+    const parsed = parseRemoveFrom(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['wait_kw', (ctx) => {
+    const parsed = parseWait(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['expect', (ctx) => {
+    const parsed = parseExpect(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['rate_limit', (ctx) => {
+    const parsed = parseRateLimit(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['increase', (ctx) => {
+    const parsed = parseIncDec(ctx.tokens, ctx.line, 'increase');
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['decrease', (ctx) => {
+    const parsed = parseIncDec(ctx.tokens, ctx.line, 'decrease');
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+
+  // --- Multi-line parse-function handlers ---
+  ['repeat', (ctx) => {
+    const parsed = parseRepeatLoop(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['for_each', (ctx) => {
+    const parsed = parseForEachLoop(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['while', (ctx) => {
+    const parsed = parseWhileLoop(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['try', (ctx) => {
+    const parsed = parseTryHandle(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['use', (ctx) => {
+    const parsed = parseUse(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['page', (ctx) => {
+    const parsed = parsePage(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['section', (ctx) => {
+    const parsed = parseSection(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['style', (ctx) => {
+    const parsed = parseStyleDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['ask_for', (ctx) => {
+    const parsed = parseAskFor(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['button', (ctx) => {
+    const parsed = parseButton(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['test', (ctx) => {
+    const parsed = parseTestDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['match_kw', (ctx) => {
+    const parsed = parseMatch(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['stream', (ctx) => {
+    const parsed = parseStream(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['subscribe_to', (ctx) => {
+    const parsed = parseSubscribe(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['update_database', (ctx) => {
+    const parsed = parseUpdateDatabase(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.nodes) { for (const n of parsed.nodes) ctx.body.push(n); }
+    return parsed.endIdx;
+  }],
+  ['migration_kw', (ctx) => {
+    const parsed = parseMigration(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['accept_file', (ctx) => {
+    const parsed = parseAcceptFile(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['data_from', (ctx) => {
+    const parsed = parseExternalFetch(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['checkout', (ctx) => {
+    const parsed = parseCheckout(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['usage_limit', (ctx) => {
+    const parsed = parseUsageLimit(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['webhook', (ctx) => {
+    const parsed = parseWebhook(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['oauth', (ctx) => {
+    const parsed = parseOAuthConfig(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['validate', (ctx) => {
+    const parsed = parseValidateBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['responds_with', (ctx) => {
+    const parsed = parseRespondsWithBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+]);
+
+// Raw-value handlers (keyed on firstToken.value, for keywords not in synonym table)
+const RAW_DISPATCH = new Map([
+  ['store', (ctx) => {
+    if (ctx.tokens.length < 2) return undefined;
+    const varName = ctx.tokens[1].value;
+    let key = varName;
+    if (ctx.tokens.length >= 4 && (ctx.tokens[2].canonical === 'as_format' || ctx.tokens[2].value === 'as') && ctx.tokens[3].type === TokenType.STRING) {
+      key = ctx.tokens[3].value;
+    }
+    ctx.body.push({ type: NodeType.STORE, variable: varName, key, line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['restore', (ctx) => {
+    if (ctx.tokens.length < 2) return undefined;
+    const varName = ctx.tokens[1].value;
+    let key = varName;
+    if (ctx.tokens.length >= 4 && (ctx.tokens[2].canonical === 'as_format' || ctx.tokens[2].value === 'as') && ctx.tokens[3].type === TokenType.STRING) {
+      key = ctx.tokens[3].value;
+    }
+    ctx.body.push({ type: NodeType.RESTORE, variable: varName, key, line: ctx.line });
+    return ctx.i + 1;
+  }],
+]);
+
 function parseBlock(lines, startIdx, parentIndent, errors) {
   const body = [];
   let targetValue = null;
@@ -745,6 +976,28 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         i++;
         continue;
       }
+
+      // --- DISPATCH TABLE LOOKUP ---
+      // Try Map-based dispatch first (order-independent, O(1) lookup).
+      // Raw-value dispatch (for keywords not in synonym table or with canonical conflicts)
+      if (typeof firstToken.value === 'string') {
+        const rawHandler = RAW_DISPATCH.get(firstToken.value);
+        if (rawHandler) {
+          const ctx = { lines, i, indent, tokens, line, errors, body };
+          const newI = rawHandler(ctx);
+          if (newI !== undefined) { i = newI; continue; }
+        }
+      }
+      // Canonical dispatch (for synonym-resolved keywords)
+      if (firstToken.canonical) {
+        const canonHandler = CANONICAL_DISPATCH.get(firstToken.canonical);
+        if (canonHandler) {
+          const ctx = { lines, i, indent, tokens, line, errors, body };
+          const newI = canonHandler(ctx);
+          if (newI !== undefined) { i = newI; continue; }
+        }
+      }
+      // --- END DISPATCH TABLE LOOKUP ---
 
       // Target declaration: "build for web" or "target: web"
       if (firstToken.canonical === 'target' || firstToken.canonical === 'build') {
@@ -780,29 +1033,9 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Production hardening directives
-      if (firstToken.canonical === 'log_requests') {
-        body.push({ type: NodeType.LOG_REQUESTS, line });
-        i++;
-        continue;
-      }
-      if (firstToken.canonical === 'allow_cors') {
-        body.push({ type: NodeType.ALLOW_CORS, line });
-        i++;
-        continue;
-      }
+      // log_requests + allow_cors: handled by CANONICAL_DISPATCH
 
-      // File I/O: write file 'path' with data
-      if (firstToken.canonical === 'write_file') {
-        const parsed = parseWriteFile(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // write_file: handled by CANONICAL_DISPATCH
 
       // Database: connect to database: + indented config
       if (firstToken.canonical === 'connect_to_database') {
@@ -1154,30 +1387,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       // Return statement
-      if (firstToken.canonical === 'return') {
-        const expr = parseExpression(tokens, 1, line);
-        if (expr.error) {
-          errors.push({ line, message: expr.error });
-        } else {
-          body.push(returnNode(expr.node, line));
-        }
-        i++;
-        continue;
-      }
-
-      // Break statement
-      if (firstToken.canonical === 'break') {
-        body.push(breakNode(line));
-        i++;
-        continue;
-      }
-
-      // Continue statement
-      if (firstToken.canonical === 'continue') {
-        body.push(continueNode(line));
-        i++;
-        continue;
-      }
+      // return, break, continue: handled by CANONICAL_DISPATCH
 
       // "define component X receiving a, b:" (must be checked BEFORE define-as and function def)
       if (firstToken.canonical === 'define' && tokens.length >= 3 &&
@@ -1226,37 +1436,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Repeat loop: repeat <N> times
-      if (firstToken.canonical === 'repeat') {
-        const result = parseRepeatLoop(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // For-each loop: for each <var> in <iterable>
-      if (firstToken.canonical === 'for_each') {
-        const result = parseForEachLoop(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // While loop: while <condition>
-      if (firstToken.canonical === 'while') {
-        const result = parseWhileLoop(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Try/handle error handling
-      if (firstToken.canonical === 'try') {
-        const result = parseTryHandle(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // repeat, for_each, while, try: handled by CANONICAL_DISPATCH
 
       // Transaction: "as one operation:" — all-or-nothing database operations
       if (firstToken.canonical === 'as_format' && tokens.length >= 2 &&
@@ -1301,17 +1481,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Use/import module: use "helpers"
-      if (firstToken.canonical === 'use') {
-        const parsed = parseUse(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // use: handled by CANONICAL_DISPATCH
 
       // Theme directive: theme 'midnight' / theme 'ivory' / theme 'nova'
       if (firstToken.canonical === 'theme') {
@@ -1349,65 +1519,10 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Browser storage: store X / restore X
-      if (firstToken.value === 'store' && tokens.length >= 2) {
-        const varName = tokens[1].value;
-        let key = varName;
-        // Optional: store X as 'custom-key'
-        if (tokens.length >= 4 && (tokens[2].canonical === 'as' || tokens[2].value === 'as') && tokens[3].type === TokenType.STRING) {
-          key = tokens[3].value;
-        }
-        body.push({ type: NodeType.STORE, variable: varName, key, line });
-        i++;
-        continue;
-      }
-
-      if (firstToken.value === 'restore' && tokens.length >= 2) {
-        const varName = tokens[1].value;
-        let key = varName;
-        if (tokens.length >= 4 && (tokens[2].canonical === 'as' || tokens[2].value === 'as') && tokens[3].type === TokenType.STRING) {
-          key = tokens[3].value;
-        }
-        body.push({ type: NodeType.RESTORE, variable: varName, key, line });
-        i++;
-        continue;
-      }
+      // store, restore: handled by RAW_DISPATCH
 
       // Style block: style card: + indented properties
-      if (firstToken.canonical === 'style') {
-        const result = parseStyleDef(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Page declaration: page "My App"
-      if (firstToken.canonical === 'page') {
-        const result = parsePage(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Section: section "Title" + indented body
-      if (firstToken.canonical === 'section') {
-        const result = parseSection(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Ask for (input): ask for price as number called "Price" (legacy)
-      if (firstToken.canonical === 'ask_for') {
-        const parsed = parseAskFor(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // style, page, section, ask_for: handled by CANONICAL_DISPATCH
 
       // Label-first input syntax:
       //   CANONICAL: 'Label' is a text input that saves to var
@@ -1481,13 +1596,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Button: button "Click Me" + indented body
-      if (firstToken.canonical === 'button') {
-        const result = parseButton(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // button: handled by CANONICAL_DISPATCH
 
       // Tab: tab 'Name': + indented content (inside a tabs section)
       if (firstToken.value === 'tab' && tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
@@ -1516,25 +1625,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Deploy: deploy to 'vercel'
-      if (firstToken.canonical === 'deploy_to') {
-        let platform = 'vercel';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          platform = tokens[1].value;
-        } else if (tokens.length > 1 && (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD)) {
-          platform = tokens[1].value;
-        }
-        body.push(deployNode(platform, line));
-        i++;
-        continue;
-      }
-
-      // Auth: requires auth
-      if (firstToken.canonical === 'requires_auth') {
-        body.push(requiresAuthNode(line));
-        i++;
-        continue;
-      }
+      // deploy_to, requires_auth: handled by CANONICAL_DISPATCH
 
       // Auth: requires role 'admin'
       if (firstToken.canonical === 'requires_role') {
@@ -1595,17 +1686,13 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // ---- BACKEND FEATURES (phases 16-20: real-time, billing, webhooks, validation) ----
-
-      // Phase 20: stream: + indented body
-      if (firstToken.canonical === 'stream') {
-        const result = parseStream(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // ---- BACKEND FEATURES ----
+      // stream, subscribe_to, update_database, migration_kw, wait_kw,
+      // accept_file, data_from, checkout, usage_limit, webhook, oauth,
+      // validate, responds_with, rate_limit: handled by CANONICAL_DISPATCH
 
       // Phase 20: background 'name': (or: background job 'name':)
+      // Not in dispatch — needs raw-value + canonical check
       if (firstToken.canonical === 'background_job'
           || (firstToken.value === 'background' && tokens.length > 1 && tokens[1].type === TokenType.STRING)) {
         const result = parseBackground(lines, i, indent, errors);
@@ -1614,131 +1701,16 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Phase 20: subscribe to 'channel':
-      if (firstToken.canonical === 'subscribe_to') {
-        const result = parseSubscribe(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // "update database:" — friendly migration syntax
-      if (firstToken.canonical === 'update_database') {
-        const result = parseUpdateDatabase(lines, i, indent, errors);
-        if (result.nodes) {
-          for (const n of result.nodes) body.push(n);
-        }
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 20: migration 'name': (terse alias)
-      if (firstToken.canonical === 'migration_kw') {
-        const result = parseMigration(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 20: wait 100ms
-      if (firstToken.canonical === 'wait_kw') {
-        const parsed = parseWait(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // Phase 19: accept file: + indented config
-      if (firstToken.canonical === 'accept_file') {
-        const result = parseAcceptFile(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 19: data from 'url': + indented config
-      if (firstToken.canonical === 'data_from') {
-        const result = parseExternalFetch(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 18: checkout 'Pro Plan':
-      if (firstToken.canonical === 'checkout') {
-        const result = parseCheckout(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 18: limit 'ai_generations':
-      if (firstToken.canonical === 'usage_limit') {
-        const result = parseUsageLimit(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
       // Phase 45: when X notifies '/path': (natural webhook syntax)
-      // e.g. when stripe notifies '/stripe/events':
+      // Not in dispatch — complex condition on tokens[2]
       if (firstToken.value === 'when' &&
           tokens.length >= 4 && tokens[2].value === 'notifies' &&
           tokens[3].type === TokenType.STRING) {
-        const service = tokens[1].value; // stripe, twilio, sendgrid, github, etc.
+        const service = tokens[1].value;
         const path = tokens[3].value;
-        // Parse the body block using parseBlock
         const result = parseBlock(lines, i + 1, indent, errors);
         body.push({ type: NodeType.WEBHOOK, path, service, body: result.body, line });
         i = result.endIdx;
-        continue;
-      }
-
-      // Phase 17: webhook '/path' signed with env('SECRET'):
-      if (firstToken.canonical === 'webhook') {
-        const result = parseWebhook(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 17: oauth 'github':
-      if (firstToken.canonical === 'oauth') {
-        const result = parseOAuthConfig(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 16: validate incoming: + indented field rules
-      if (firstToken.canonical === 'validate') {
-        const result = parseValidateBlock(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 16: responds with: + indented fields
-      if (firstToken.canonical === 'responds_with') {
-        const result = parseRespondsWithBlock(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 16: rate limit 10 per minute
-      if (firstToken.canonical === 'rate_limit') {
-        const parsed = parseRateLimit(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
         continue;
       }
 
@@ -1805,45 +1777,9 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Save: save X to Y
-      if (firstToken.canonical === 'save_to') {
-        const parsed = parseSave(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // save_to, remove_from: handled by CANONICAL_DISPATCH
 
-      // Remove from: remove from Users where ...
-      if (firstToken.canonical === 'remove_from') {
-        const parsed = parseRemoveFrom(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // Test block: test 'name': + indented body
-      if (firstToken.canonical === 'test') {
-        const result = parseTestDef(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // "match X:" — pattern matching block
-      if (firstToken.canonical === 'match_kw') {
-        const result = parseMatch(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // test, match_kw: handled by CANONICAL_DISPATCH
 
       // "on page load:" — runs code when page first loads
       if (firstToken.canonical === 'on_page_load') {
@@ -2034,17 +1970,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         }
       }
 
-      // Expect statement (inside test blocks)
-      if (firstToken.canonical === 'expect') {
-        const parsed = parseExpect(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // expect: handled by CANONICAL_DISPATCH
 
       // Check: "check X, otherwise error 'msg'" → guard node
       // `check` tokenizes as canonical `if`, so detect the `otherwise error` pattern here
@@ -2100,17 +2026,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Increase/decrease: "increase counter by 1" → counter = counter + 1
-      if (firstToken.canonical === 'increase' || firstToken.canonical === 'decrease') {
-        const parsed = parseIncDec(tokens, line, firstToken.canonical);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // increase, decrease: handled by CANONICAL_DISPATCH
 
       // Math-style function definition: total_value(item) = item's price * item's quantity
       // Detected BEFORE assignment because it looks like assignment but has (params) on the left
