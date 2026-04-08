@@ -294,6 +294,22 @@ export function tokenizeLine(line, lineNumber = 1) {
 
       if (matchedSynonym) {
         const canonical = REVERSE_LOOKUP[matchedSynonym];
+        // Guard: "data from" and "fetch from" only match when they're the first
+        // significant token on the line (or after set/define). Otherwise "data" is
+        // a variable name. e.g., "get data from '/url'" → data is an identifier.
+        if (canonical === 'data_from' && tokens.length > 0) {
+          // There's already a token before us — "data from" is mid-line
+          const prevToken = tokens[tokens.length - 1];
+          // Allow after set/define (e.g., "define result as: data from 'url'")
+          if (prevToken.canonical !== 'set' && prevToken.canonical !== 'define' &&
+              prevToken.canonical !== 'as_format') {
+            matchedSynonym = null; // Not at line start — treat words individually
+          }
+        }
+      }
+
+      if (matchedSynonym) {
+        const canonical = REVERSE_LOOKUP[matchedSynonym];
         tokens.push({
           type: TokenType.KEYWORD,
           value: matchedSynonym,
