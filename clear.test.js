@@ -17266,6 +17266,10 @@ describe('Workflow invocation (run workflow)', () => {
 
   it('compiles run workflow to await', () => {
     const src = `build for javascript backend
+workflow 'Support' with state:
+  state has:
+    message, required
+  step 'Triage' with 'Triage Agent'
 result = run workflow 'Support' with data`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
@@ -17665,6 +17669,83 @@ agent 'Classifier' receives text:
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('_ask_ai(');
     expect(result.python).toContain('"category"');
+  });
+});
+
+// =============================================================================
+// FIRST-CLASS ERRORS: call target + type safety validation
+// =============================================================================
+
+describe('Validate call targets - undefined agent', () => {
+  it('errors when calling undefined agent', () => {
+    const src = `build for javascript backend
+result = call 'NonExistent' with data`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes("agent 'NonExistent' is not defined"))).toBe(true);
+  });
+
+  it('no error when calling defined agent', () => {
+    const src = `build for javascript backend
+agent 'Helper' receives msg:
+  send back msg
+result = call 'Helper' with data`;
+    const result = compileProgram(src);
+    // Should have no "not defined" error for Helper
+    expect(result.errors.filter(e => e.message.includes('not defined'))).toHaveLength(0);
+  });
+
+  it('errors when calling undefined pipeline', () => {
+    const src = `build for javascript backend
+result = call pipeline 'Missing' with data`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes("pipeline 'Missing' is not defined"))).toBe(true);
+  });
+
+  it('errors when calling undefined workflow', () => {
+    const src = `build for javascript backend
+result = run workflow 'Missing' with data`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes("workflow 'Missing' is not defined"))).toBe(true);
+  });
+
+  it('no error when calling defined workflow', () => {
+    const src = `build for javascript backend
+workflow 'Support' with state:
+  state has:
+    msg, required
+  step 'A' with 'Agent A'
+result = run workflow 'Support' with data`;
+    const result = compileProgram(src);
+    expect(result.errors.filter(e => e.message.includes('not defined'))).toHaveLength(0);
+  });
+
+  it('lists defined agents in error hint', () => {
+    const src = `build for javascript backend
+agent 'Alpha' receives data:
+  send back data
+agent 'Beta' receives data:
+  send back data
+result = call 'Gamma' with data`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message.includes('alpha') && e.message.includes('beta'))).toBe(true);
+  });
+});
+
+describe('Validate member access on primitives', () => {
+  it('warns when accessing field on a number', () => {
+    const src = `price = 9.99
+name = price's label`;
+    const result = compileProgram(src);
+    expect(result.warnings.some(w => w.message?.includes('number') && w.message?.includes('price'))).toBe(true);
+  });
+
+  it('no warning when accessing field on an object', () => {
+    const src = `create person:
+  name is 'Alice'
+result = person's name`;
+    const result = compileProgram(src);
+    expect(result.warnings.filter(w => w.message?.includes('not an object'))).toHaveLength(0);
   });
 });
 

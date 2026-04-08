@@ -37,7 +37,9 @@
 //   │    ├─ validateArithmetic ........ balance subtraction  │
 //   │    ├─ validateCapacity .......... overflow risk        │
 //   │    ├─ validateFieldMismatch ..... form↔schema names    │
-//   │    └─ validateOWASP ............ SQLi, XSS, CSRF etc  │
+//   │    ├─ validateOWASP ............ SQLi, XSS, CSRF etc  │
+//   │    ├─ validateCallTargets ...... undefined agents etc  │
+//   │    └─ validateMemberAccessTypes  field on primitive    │
 //   │                                                       │
 //   │  Errors block compilation. Warnings are advisory.     │
 //   └──────────────────────────────────────────────────────┘
@@ -99,6 +101,8 @@ export function validate(ast) {
   validateFieldMismatch(ast.body, warnings);
   validateOWASP(ast.body, errors, warnings);
   validateAgentTools(ast.body, errors);
+  validateCallTargets(ast.body, errors);
+  validateMemberAccessTypes(ast.body, warnings);
   return { errors, warnings };
 }
 
@@ -116,6 +120,7 @@ function validateForwardReferences(body, errors) {
       if (node.type === NodeType.COMPONENT_DEF) functionNames.add(node.name);
       if (node.type === NodeType.AGENT) functionNames.add('agent_' + node.name.toLowerCase().replace(/\s+/g, '_'));
       if (node.type === NodeType.PIPELINE) functionNames.add('pipeline_' + node.name.toLowerCase().replace(/\s+/g, '_'));
+      if (node.type === NodeType.WORKFLOW) functionNames.add('workflow_' + node.name.toLowerCase().replace(/\s+/g, '_'));
       if (node.type === NodeType.SKILL) functionNames.add('skill_' + node.name.toLowerCase().replace(/\s+/g, '_'));
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         collectFunctions(node.body);
@@ -1356,5 +1361,108 @@ function validateAgentTools(body, errors) {
       }
     }
   }
+}
+
+// =============================================================================
+// VALIDATE CALL TARGETS: agent, pipeline, workflow names must exist
+// =============================================================================
+function validateCallTargets(body, errors) {
+  const agents = new Set();
+  const pipelines = new Set();
+  const workflows = new Set();
+  for (const node of body) {
+    if (node.type === NodeType.AGENT) agents.add(node.name.toLowerCase().replace(/\s+/g, '_'));
+    if (node.type === NodeType.PIPELINE) pipelines.add(node.name.toLowerCase().replace(/\s+/g, '_'));
+    if (node.type === NodeType.WORKFLOW) workflows.add(node.name.toLowerCase().replace(/\s+/g, '_'));
+  }
+
+  function checkExpr(expr, line) {
+    if (!expr) return;
+    if (expr.type === NodeType.RUN_AGENT && expr.agentName) {
+      const normalized = expr.agentName.toLowerCase().replace(/\s+/g, '_');
+      if (!agents.has(normalized)) {
+        const all = [...agents];
+        const hint = all.length > 0 ? ` Defined agents: ${all.join(', ')}` : '';
+        errors.push({ line: expr.line || line, message: `agent '${expr.agentName}' is not defined.${hint}` });
+      }
+    }
+    if (expr.type === NodeType.RUN_PIPELINE && expr.pipelineName) {
+      const normalized = expr.pipelineName.toLowerCase().replace(/\s+/g, '_');
+      if (!pipelines.has(normalized)) {
+        errors.push({ line: expr.line || line, message: `pipeline '${expr.pipelineName}' is not defined. Add: pipeline '${expr.pipelineName}' with var:` });
+      }
+    }
+    if (expr.type === NodeType.RUN_WORKFLOW && expr.workflowName) {
+      const normalized = expr.workflowName.toLowerCase().replace(/\s+/g, '_');
+      if (!workflows.has(normalized)) {
+        errors.push({ line: expr.line || line, message: `workflow '${expr.workflowName}' is not defined. Add: workflow '${expr.workflowName}' with state:` });
+      }
+    }
+    if (expr.left) checkExpr(expr.left, line);
+    if (expr.right) checkExpr(expr.right, line);
+    if (expr.argument) checkExpr(expr.argument, line);
+  }
+
+  function checkNodes(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.ASSIGN && node.expression) checkExpr(node.expression, node.line);
+      if (node.body) checkNodes(node.body);
+      if (node.thenBranch && Array.isArray(node.thenBranch)) checkNodes(node.thenBranch);
+      if (node.otherwiseBranch && Array.isArray(node.otherwiseBranch)) checkNodes(node.otherwiseBranch);
+      if (node.tryBody) checkNodes(node.tryBody);
+      if (node.handleBody) checkNodes(node.handleBody);
+    }
+  }
+  checkNodes(body);
+}
+
+// =============================================================================
+// VALIDATE MEMBER ACCESS TYPES: warn about field access on known primitives
+// =============================================================================
+function validateMemberAccessTypes(body, warnings) {
+  const varTypes = new Map();
+
+  function inferType(expr) {
+    if (!expr) return 'unknown';
+    if (expr.type === 'literal_number' || expr.type === 'number') return 'number';
+    if (expr.type === 'literal_string' || expr.type === 'string') return 'string';
+    if (expr.type === 'literal_boolean' || expr.type === 'boolean') return 'boolean';
+    if (expr.type === 'literal_record') return 'object';
+    if (expr.type === 'literal_list') return 'list';
+    if (expr.type === NodeType.ASK_AI && expr.schema && expr.schema.length > 0) return 'object';
+    if (expr.type === NodeType.RUN_AGENT || expr.type === NodeType.RUN_WORKFLOW) return 'object';
+    if (expr.type === 'binary_op') {
+      const op = expr.operator;
+      if (['+', '-', '*', '/', '%'].includes(op)) return 'number';
+    }
+    if (expr.type === 'variable_ref' && varTypes.has(expr.name)) return varTypes.get(expr.name);
+    return 'unknown';
+  }
+
+  function checkNodes(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.ASSIGN && node.expression) {
+        const t = inferType(node.expression);
+        if (t !== 'unknown') varTypes.set(node.name, t);
+      }
+      if (node.type === NodeType.ASSIGN && node.expression?.type === 'member_access') {
+        const obj = node.expression.object;
+        const objName = obj?.name || obj?.value;
+        if (objName && varTypes.has(objName)) {
+          const t = varTypes.get(objName);
+          if (t === 'number' || t === 'boolean') {
+            warnings.push({
+              line: node.line,
+              message: `'${objName}' is a ${t}, not an object — accessing '${node.expression.property}' on it will fail at runtime.`
+            });
+          }
+        }
+      }
+      if (node.body) checkNodes(node.body);
+      if (node.thenBranch && Array.isArray(node.thenBranch)) checkNodes(node.thenBranch);
+      if (node.otherwiseBranch && Array.isArray(node.otherwiseBranch)) checkNodes(node.otherwiseBranch);
+    }
+  }
+  checkNodes(body);
 }
 

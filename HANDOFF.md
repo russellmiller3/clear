@@ -2,7 +2,7 @@
 
 ## Current State
 - **Branch:** main
-- **Tests:** 1457 passing
+- **Tests:** 1471 passing
 - **Apps:** 43+ template apps (4 agent GAN apps, 1 workflow GAN app)
 - **Python parity:** Agents stream, workflows compile, asyncio.gather for parallel
 - **Working tree:** Clean
