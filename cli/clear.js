@@ -423,19 +423,85 @@ async function testCommand(args) {
     process.exit(0);
   }
 
-  const result = compileProgram(loaded.source, { target: 'web' });
+  const result = compileProgram(loaded.source, { moduleResolver: makeModuleResolver(loaded.filePath) });
   if (result.errors.length > 0) {
     output({ ok: false, errors: result.errors }, flags);
     process.exit(1);
   }
 
-  // Execute tests
-  const runner = `let _passed=0,_failed=0;function test(n,f){try{f();_passed++}catch(e){_failed++;console.error("FAIL: "+n+" -- "+e.message)}}function expect(v){return{toBeTruthy(){if(!v)throw Error("Expected truthy")}}}${result.javascript};`;
+  // Build test JS: combine browserServer (db + agents) with test blocks from javascript
+  let js = '';
+  let testBlocks = '';
+
+  if (result.browserServer) {
+    js = result.browserServer;
+    // Extract test blocks from frontend JS (they compile there, not in browserServer)
+    const frontendJs = result.javascript || '';
+    const testStart = frontendJs.indexOf('test("');
+    if (testStart > 0) {
+      let testEnd = frontendJs.length;
+      // Stop before server startup code
+      const serverIdx = frontendJs.indexOf('const server', testStart);
+      const appListenIdx = frontendJs.indexOf('app.listen', testStart);
+      const portIdx = frontendJs.indexOf('const PORT', testStart);
+      if (serverIdx > 0) testEnd = Math.min(testEnd, serverIdx);
+      if (appListenIdx > 0) testEnd = Math.min(testEnd, appListenIdx);
+      if (portIdx > 0) testEnd = Math.min(testEnd, portIdx);
+      testBlocks = frontendJs.substring(testStart, testEnd);
+    }
+  } else {
+    js = result.serverJS || result.javascript || '';
+  }
+
+  // Strip browser-specific code for Node test runner
+  if (js.includes('// --- Clear Browser Server')) {
+    // Remove IIFE wrapper
+    js = js.replace(/^[^\n]*\n\(function\(\)\s*\{/, '');
+    // Cut at fetch interceptor
+    const fetchIdx = js.indexOf('const _origFetch');
+    if (fetchIdx > 0) js = js.substring(0, fetchIdx);
+    // Remove trailing })();
+    js = js.trimEnd().replace(/\}\)\(\);?\s*$/, '');
+    // Stub browser globals + AI functions (real ones were in the fetch interceptor we stripped)
+    js = 'var window = {};\nasync function _askAI() { throw new Error("Set ANTHROPIC_API_KEY"); }\nasync function _askAIWithTools() { throw new Error("Set ANTHROPIC_API_KEY"); }\n' + js;
+  }
+
+  // Append test blocks AFTER stripping
+  if (testBlocks) js += '\n' + testBlocks;
+
+  // Write test runner to temp file and execute with Node
+  const tmpFile = resolve(dirname(resolve(file)), '.clear-test-runner.cjs');
+  const wrappedRunner = [
+    '"use strict";',
+    '(async () => {',
+    'const _tests = [];',
+    'let _passed = 0, _failed = 0;',
+    'function test(n, f) { _tests.push({ name: n, fn: f }); }',
+    'function expect(v) {',
+    '  return {',
+    '    toBeTruthy() { if (!v) throw new Error("Expected truthy, got " + v); },',
+    '    toBe(expected) { if (v !== expected) throw new Error("Expected " + JSON.stringify(expected) + ", got " + JSON.stringify(v)); },',
+    '  };',
+    '}',
+    js,
+    'for (const t of _tests) {',
+    '  try { await t.fn(); _passed++; console.log("  PASS:", t.name); }',
+    '  catch(e) { _failed++; console.log("  FAIL:", t.name, "--", e.message); }',
+    '}',
+    'console.log("");',
+    'console.log("  " + _passed + " passed, " + _failed + " failed");',
+    'if (_failed > 0) process.exit(4);',
+    '})().catch(e => { console.error(e.message); process.exit(2); });',
+  ].join('\n');
+  writeFileSync(tmpFile, wrappedRunner);
   try {
-    new Function(runner)();
+    execSync(`node ${tmpFile}`, { stdio: 'inherit', timeout: 30000 });
   } catch (e) {
-    output({ ok: false, error: e.message }, flags);
+    if (e.status === 4) process.exit(4);
+    output({ ok: false, error: e.message?.split('\n')[0] || 'Test runner failed' }, flags);
     process.exit(2);
+  } finally {
+    try { require('fs').unlinkSync(tmpFile); } catch {}
   }
 }
 
