@@ -3086,24 +3086,27 @@ function _compileNodeInner(node, ctx) {
         code += `${pad}return StreamingResponse(event_generator(), media_type="text/event-stream")`;
         return code;
       }
+      // Wrap stream body in an Express SSE endpoint
       const streamCtx = { ...ctx, indent: ctx.indent + 2, streamMode: true };
       const bodyCode = node.body.map(n => compileNode(n, streamCtx)).filter(Boolean).join('\n');
-      let code = `${pad}res.writeHead(200, {\n`;
-      code += `${pad}  'Content-Type': 'text/event-stream',\n`;
-      code += `${pad}  'Cache-Control': 'no-cache',\n`;
-      code += `${pad}  Connection: 'keep-alive',\n`;
-      code += `${pad}});\n`;
-      code += `${pad}// Heartbeat to detect disconnected clients\n`;
-      code += `${pad}const _heartbeat = setInterval(() => {\n`;
-      code += `${pad}  res.write(':\\n\\n');\n`;
-      code += `${pad}}, 30000);\n`;
-      code += `${pad}req.on('close', () => {\n`;
-      code += `${pad}  clearInterval(_heartbeat);\n`;
-      code += `${pad}});\n`;
-      code += `${pad}// Stream body\n`;
-      code += `${pad}(async () => {\n`;
+      let code = `${pad}app.get('/stream', (req, res) => {\n`;
+      code += `${pad}  res.writeHead(200, {\n`;
+      code += `${pad}    'Content-Type': 'text/event-stream',\n`;
+      code += `${pad}    'Cache-Control': 'no-cache',\n`;
+      code += `${pad}    Connection: 'keep-alive',\n`;
+      code += `${pad}  });\n`;
+      code += `${pad}  // Heartbeat to detect disconnected clients\n`;
+      code += `${pad}  const _heartbeat = setInterval(() => {\n`;
+      code += `${pad}    res.write(':\\n\\n');\n`;
+      code += `${pad}  }, 30000);\n`;
+      code += `${pad}  req.on('close', () => {\n`;
+      code += `${pad}    clearInterval(_heartbeat);\n`;
+      code += `${pad}  });\n`;
+      code += `${pad}  // Stream body\n`;
+      code += `${pad}  (async () => {\n`;
       code += bodyCode + '\n';
-      code += `${pad}})();`;
+      code += `${pad}  })();\n`;
+      code += `${pad}});`;
       return code;
     }
 
