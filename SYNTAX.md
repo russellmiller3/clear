@@ -1296,6 +1296,28 @@ test 'handles product question':
   expect result's action is 'respond'
 ```
 
+### Streaming (Default for Text Agents)
+Text agents stream by default — token-by-token via SSE. No directive needed.
+```clear
+# Streams automatically (text response, no returning:)
+agent 'Chat' receiving message:
+  response = ask claude 'Help the user' with message
+  send back response
+
+# Auto non-streaming (structured output can't stream partial JSON)
+agent 'Classifier' receiving text:
+  result = ask claude 'Classify' with text returning:
+    category
+    confidence (number)
+  send back result
+
+# Explicit opt-out (pipeline step needs full response)
+agent 'Summarizer' receiving text:
+  do not stream
+  summary = ask claude 'Summarize in one sentence' with text
+  send back summary
+```
+
 ### Scheduled Agents
 ```clear
 agent 'Daily Report' runs every 1 day:
