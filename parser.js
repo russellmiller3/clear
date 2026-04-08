@@ -2545,16 +2545,25 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     rememberConversation: false,
     rememberPreferences: false,
     knowsAbout: null,   // ['Documents', 'Products', 'FAQ']
+    model: null,        // 'claude-sonnet-4-6', 'claude-opus-4-6', etc.
   };
   let bodyStartIdx = startIdx + 1;
   while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
     const dTokens = lines[bodyStartIdx].tokens;
     if (dTokens.length === 0) { bodyStartIdx++; continue; }
 
-    // track agent decisions
-    if (dTokens[0].value === 'track' && dTokens.length >= 3 &&
+    // track agent decisions (also: log agent decisions — `log` has canonical `show` but value `log`)
+    if ((dTokens[0].value === 'track' || dTokens[0].value === 'log') && dTokens.length >= 3 &&
         dTokens[1].value === 'agent' && dTokens[2].value === 'decisions') {
       directives.trackDecisions = true;
+      bodyStartIdx++;
+      continue;
+    }
+
+    // using 'model-name' — standalone model selection directive
+    if ((dTokens[0].value === 'using' || dTokens[0].canonical === 'with') &&
+        dTokens.length >= 2 && dTokens[1].type === TokenType.STRING) {
+      directives.model = dTokens[1].value;
       bodyStartIdx++;
       continue;
     }
@@ -2591,33 +2600,62 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
       continue;
     }
 
-    // must not: (block form — one policy per indented line)
+    // must not: single-line comma-separated OR block form (one policy per indented line)
     if (dTokens[0].value === 'must' && dTokens.length >= 2 && dTokens[1].value === 'not') {
       directives.restrictions = [];
-      bodyStartIdx++;
-      const mustNotIndent = lines[bodyStartIdx - 1].indent;
-      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > mustNotIndent) {
-        const policyTokens = lines[bodyStartIdx].tokens;
-        if (policyTokens.length > 0) {
-          const policyText = policyTokens.map(t => t.value).join(' ');
-          // Categorize: delete/modify/access = compile-time, call more than/spend more than = runtime
-          let category = 'compile';
-          let limit = null;
-          if (policyText.startsWith('delete')) category = 'delete';
-          else if (policyText.startsWith('modify')) category = 'modify';
-          else if (policyText.startsWith('access')) category = 'access';
-          else if (policyText.includes('call more than')) {
-            category = 'max_calls';
-            const match = policyText.match(/call more than (\d+)/);
-            if (match) limit = parseInt(match[1], 10);
-          } else if (policyText.includes('spend more than')) {
-            category = 'max_tokens';
-            const match = policyText.match(/spend more than (\d+)/);
-            if (match) limit = parseInt(match[1], 10);
+
+      // Helper to categorize a policy text
+      function categorizePolicy(policyText) {
+        let category = 'compile';
+        let limit = null;
+        if (policyText.startsWith('delete')) category = 'delete';
+        else if (policyText.startsWith('modify')) category = 'modify';
+        else if (policyText.startsWith('access')) category = 'access';
+        else if (policyText.includes('call more than')) {
+          category = 'max_calls';
+          const match = policyText.match(/call more than (\d+)/);
+          if (match) limit = parseInt(match[1], 10);
+        } else if (policyText.includes('spend more than')) {
+          category = 'max_tokens';
+          const match = policyText.match(/spend more than (\d+)/);
+          if (match) limit = parseInt(match[1], 10);
+        }
+        return { text: policyText, category, limit };
+      }
+
+      if (dTokens.length > 2) {
+        // Single-line form: must not: delete records, modify prices, access admin tables
+        // Split by commas — each segment between commas is a policy
+        // Skip colon token if present (not stripped because it's mid-line)
+        let startPos = 2;
+        if (dTokens[startPos] && (dTokens[startPos].type === 'colon' || dTokens[startPos].value === ':')) startPos++;
+        let currentPolicy = [];
+        for (let t = startPos; t < dTokens.length; t++) {
+          if (dTokens[t].type === TokenType.COMMA) {
+            if (currentPolicy.length > 0) {
+              directives.restrictions.push(categorizePolicy(currentPolicy.join(' ')));
+              currentPolicy = [];
+            }
+          } else {
+            currentPolicy.push(dTokens[t].value);
           }
-          directives.restrictions.push({ text: policyText, category, limit });
+        }
+        if (currentPolicy.length > 0) {
+          directives.restrictions.push(categorizePolicy(currentPolicy.join(' ')));
         }
         bodyStartIdx++;
+      } else {
+        // Block form: must not: + indented policy lines
+        bodyStartIdx++;
+        const mustNotIndent = lines[bodyStartIdx - 1].indent;
+        while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > mustNotIndent) {
+          const policyTokens = lines[bodyStartIdx].tokens;
+          if (policyTokens.length > 0) {
+            const policyText = policyTokens.map(t => t.value).join(' ');
+            directives.restrictions.push(categorizePolicy(policyText));
+          }
+          bodyStartIdx++;
+        }
       }
       continue;
     }

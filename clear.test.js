@@ -16667,5 +16667,117 @@ when user calls POST /api/chat sending data:
   });
 });
 
+// =============================================================================
+// ROADMAP SYNTAX COMPATIBILITY
+// =============================================================================
+
+describe('Roadmap syntax - single-line must not', () => {
+  it('parses single-line must not with comma-separated policies', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  must not: delete records, modify prices, access admin tables
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.restrictions).toHaveLength(3);
+    expect(agent.restrictions[0].category).toBe('delete');
+    expect(agent.restrictions[1].category).toBe('modify');
+    expect(agent.restrictions[2].category).toBe('access');
+  });
+});
+
+describe('Roadmap syntax - log agent decisions alias', () => {
+  it('log agent decisions works as alias for track agent decisions', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving msg:
+  log agent decisions
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.trackDecisions).toBe(true);
+    expect(result.javascript).toContain('_agentLog');
+  });
+});
+
+describe('Roadmap syntax - using model directive', () => {
+  it('using model as standalone directive sets model on agent', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving msg:
+  using 'claude-opus-4-6'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.model).toBe('claude-opus-4-6');
+    expect(result.javascript).toContain('claude-opus-4-6');
+  });
+
+  it('Python agent with model directive', () => {
+    const src = `build for python backend
+agent 'Bot' receiving msg:
+  using 'claude-sonnet-4-6'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('claude-sonnet-4-6');
+  });
+});
+
+describe('Roadmap syntax - complete showcase example', () => {
+  it('full roadmap showcase compiles with 0 errors', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+create a Memories table:
+  user_id, required
+  fact, required
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  latency_ms (number)
+  created_at (timestamp), auto
+define function look_up_orders(email):
+  return email
+define function check_status(order_id):
+  return order_id
+define function send_email(msg):
+  return msg
+define function escalate(issue):
+  return issue
+agent 'Customer Support' receiving message:
+  can use: look_up_orders, check_status, send_email, escalate
+  must not: delete records, modify prices, access admin tables
+  log agent decisions
+  using 'claude-sonnet-4-6'
+  response = ask claude 'Help this customer' with message
+  if response's action is 'escalate':
+    ask user to confirm 'Escalate to human agent?'
+  send back response
+when user calls POST /api/chat sending message:
+  needs login
+  response = call 'Customer Support' with message
+  send back response
+test 'handles product question':
+  mock claude responding:
+    answer is 'The Widget costs 29.99'
+    action is 'respond'
+  result = call 'Customer Support' with 'How much?'
+  expect result's action is 'respond'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
 run();
 

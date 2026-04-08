@@ -1620,8 +1620,26 @@ function compileAgent(node, ctx, pad) {
 
   // === COMPOSABLE AGENT FEATURES ===
   // All features modify bodyCode and/or preamble, then the final code is assembled at the end.
-  // Order matters: skills merge tools → tools replace _askAI → tracking wraps _askAI calls
+  // Order matters: model → skills → tools → tracking → conversation/memory/RAG
   let preamble = ''; // Code inserted at top of agent function body
+
+  // 0. Model selection: using 'claude-sonnet-4-6' — inject model param into _askAI calls
+  if (node.model) {
+    const modelStr = JSON.stringify(node.model);
+    if (ctx.lang === 'python') {
+      // _ask_ai(prompt, context, schema) → _ask_ai(prompt, context, None, model)
+      bodyCode = bodyCode.replace(
+        /await _ask_ai\(([^)]+)\)/g,
+        `await _ask_ai($1, ${modelStr})`
+      );
+    } else {
+      // _askAI(prompt, context) → _askAI(prompt, context, null, model)
+      bodyCode = bodyCode.replace(
+        /await _askAI\(([^)]*)\)/g,
+        (m, args) => `await _askAI(${args}, null, ${modelStr})`
+      );
+    }
+  }
 
   // 1. Skills: merge skill tools + instructions into agent (mutates node.tools + bodyCode)
   if (node.skills && node.skills.length > 0) {
