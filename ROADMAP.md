@@ -2203,19 +2203,18 @@ test 'pipeline produces quality content':
 
 That's ~30 lines for a durable, retrying content pipeline with quality gates, checkpointing, and tests. The LangGraph equivalent is 200+ lines of Python with framework boilerplate.
 
-**What's been built: 3 days, 46 phases, 1337 tests, 14k lines of compiler.**
-**What remains: ~24 days for 38 phases.**
+**What's been built: 6 days, 65 phases, 1482 tests, 99 node types.**
+**What remains: ~13 days for Tier 8 (hosted platform) + production tiers.**
 
-But the tiers aren't equal. Tiers 1-4 (production + frontend + data + patterns) are pure compiler work — **~10 days** at current velocity. Tier 5 (platform) is infrastructure — **~5 days**, slower because it's deploy tooling not compiler code. Tier 7 (AI agents) is the most ambitious — **~7 days** — but also the highest leverage because it makes Clear the best way to build AI-powered apps.
-
-**Recommended order:**
-1. Formal grammar + LSP (unlocks tooling ecosystem)
-2. Type system (catches bugs before runtime)
-3. Source maps (debuggable compiled output)
-4. Deploy (one command to production)
-5. Package manager (shareable Clear modules)
-6. Incremental compilation (scales to large apps)
-7. Everything else in priority order
+**Current priority order (hosted platform focus):**
+1. CodeMirror Clear mode (syntax highlighting for hosted editor)
+2. Hosted compile API (HTTP wrapper around compileProgram)
+3. One-click deploy (compile → container → live URL)
+4. Type system — inferred (catch `'hello' * 1.08` at compile time)
+5. Live preview (right pane shows running app)
+6. Source maps (map runtime errors to Clear lines)
+7. Package registry (shareable Clear modules)
+8. Production tiers (real DB, persistent sessions)
 
 ---
 
