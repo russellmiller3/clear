@@ -15910,5 +15910,153 @@ when user calls POST /api/support sending data:
   });
 });
 
+// =============================================================================
+// GUARDRAILS / SAFETY (Phase 83)
+// =============================================================================
+
+describe('Guardrails - parser', () => {
+  it('parses must not: block into restrictions array', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  must not:
+    delete any records
+    access Users table
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.restrictions).toHaveLength(2);
+    expect(agent.restrictions[0].text).toBe('delete any records');
+    expect(agent.restrictions[0].category).toBe('delete');
+    expect(agent.restrictions[1].text).toBe('access Users table');
+    expect(agent.restrictions[1].category).toBe('access');
+  });
+
+  it('parses runtime restrictions with limits', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  must not:
+    call more than 5 tools per request
+    spend more than 10000 tokens
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.restrictions).toHaveLength(2);
+    expect(agent.restrictions[0].category).toBe('max_calls');
+    expect(agent.restrictions[0].limit).toBe(5);
+    expect(agent.restrictions[1].category).toBe('max_tokens');
+    expect(agent.restrictions[1].limit).toBe(10000);
+  });
+});
+
+describe('Guardrails - validator', () => {
+  it('errors when tool deletes and restriction says delete any records', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+define function clear_products():
+  remove from Products where name is 'test'
+  return 'done'
+agent 'Bot' receiving msg:
+  can use: clear_products
+  must not:
+    delete any records
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes('deletes from') && e.message.includes('must not'))).toBe(true);
+  });
+
+  it('passes when tools dont violate restrictions', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+define function search_products(query):
+  products = look up all Products where name is query
+  return products
+agent 'Bot' receiving msg:
+  can use: search_products
+  must not:
+    delete any records
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('errors when tool accesses restricted table', () => {
+    const src = `build for javascript backend
+create a Users table:
+  name, required
+define function get_user(user_id):
+  user = look up User where id is user_id
+  return user
+agent 'PublicBot' receiving msg:
+  can use: get_user
+  must not:
+    access Users table
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes('accesses User') && e.message.includes('must not'))).toBe(true);
+  });
+
+  it('error message includes agent name and tool name', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+define function nuke_products():
+  remove from Products where name is 'all'
+  return 'done'
+agent 'SafeBot' receiving msg:
+  can use: nuke_products
+  must not:
+    delete any records
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => e.message.includes('must not'));
+    expect(err.message).toContain('SafeBot');
+    expect(err.message).toContain('nuke_products');
+  });
+});
+
+describe('Guardrails - E2E', () => {
+  it('agent with clean guardrails compiles', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+  price (number)
+define function search_products(query):
+  products = look up all Products where name is query
+  return products
+define function check_stock(product_id):
+  product = look up Product where id is product_id
+  return product
+agent 'ShopBot' receiving msg:
+  can use: search_products, check_stock
+  must not:
+    delete any records
+    access Users table
+  response = ask claude 'Help find products' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAIWithTools');
+  });
+});
+
 run();
 

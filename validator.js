@@ -1256,23 +1256,93 @@ function validateOWASP(body, errors, warnings) {
 
 /**
  * Validate agent tool references — verify each tool name matches a defined function.
+ * Also validate guardrails: check that tool functions don't violate must-not restrictions.
  */
 function validateAgentTools(body, errors) {
-  // Collect all function names
-  const functionNames = new Set();
+  // Collect all function definitions
+  const functionDefs = {};
   for (const node of body) {
-    if (node.type === NodeType.FUNCTION_DEF) functionNames.add(node.name);
+    if (node.type === NodeType.FUNCTION_DEF) functionDefs[node.name] = node;
   }
 
-  // Check each agent's tools
+  // Helper: scan a function body for CRUD operations
+  function findCrudOps(fnBody) {
+    const ops = [];
+    function scan(nodes) {
+      for (const n of nodes) {
+        if (n.type === NodeType.CRUD) {
+          ops.push({ operation: n.operation, target: n.target });
+        }
+        if (n.body) scan(n.body);
+        if (n.thenBranch) scan(n.thenBranch);
+        if (n.otherwiseBranch) scan(n.otherwiseBranch);
+        // Check expression-level CRUD (assignments with CRUD expressions)
+        if (n.type === NodeType.ASSIGN && n.expression && n.expression.type === NodeType.CRUD) {
+          ops.push({ operation: n.expression.operation, target: n.expression.target });
+        }
+      }
+    }
+    scan(fnBody);
+    return ops;
+  }
+
+  // Check each agent
   for (const node of body) {
-    if (node.type === NodeType.AGENT && node.tools && node.tools.length > 0) {
+    if (node.type !== NodeType.AGENT) continue;
+
+    // Validate tool references exist
+    if (node.tools && node.tools.length > 0) {
       for (const tool of node.tools) {
-        if (tool.type === 'ref' && !functionNames.has(tool.name)) {
+        if (tool.type === 'ref' && !functionDefs[tool.name]) {
           errors.push({
             line: node.line,
             message: `agent '${node.name}' uses tool '${tool.name}' but no function '${tool.name}' is defined. Add: define function ${tool.name}(...):`
           });
+        }
+      }
+    }
+
+    // Validate guardrails: check tool functions against must-not restrictions
+    if (node.restrictions && node.restrictions.length > 0 && node.tools && node.tools.length > 0) {
+      const compileRestrictions = node.restrictions.filter(r => r.category === 'delete' || r.category === 'modify' || r.category === 'access');
+      for (const tool of node.tools) {
+        if (tool.type !== 'ref') continue;
+        const fnDef = functionDefs[tool.name];
+        if (!fnDef) continue;
+        const crudOps = findCrudOps(fnDef.body);
+        for (const restriction of compileRestrictions) {
+          for (const op of crudOps) {
+            if (restriction.category === 'delete' && (op.operation === 'remove' || op.operation === 'delete')) {
+              errors.push({
+                line: node.line,
+                message: `agent '${node.name}' uses '${tool.name}' which deletes from ${op.target}, but the agent has 'must not: ${restriction.text}'. Remove the restriction or change the tool.`
+              });
+            }
+            if (restriction.category === 'access') {
+              // Extract table name from restriction: "access Users table" or "access Users"
+              const tableMatch = restriction.text.match(/access\s+(\w+)/);
+              const restrictedTable = tableMatch ? tableMatch[1] : '';
+              // Handle singular/plural: "User" matches "Users" and vice versa
+              const singularTarget = op.target.replace(/s$/, '');
+              const singularRestricted = restrictedTable.replace(/s$/, '');
+              if (restrictedTable && (op.target === restrictedTable || singularTarget === singularRestricted)) {
+                errors.push({
+                  line: node.line,
+                  message: `agent '${node.name}' uses '${tool.name}' which accesses ${op.target}, but the agent has 'must not: ${restriction.text}'. Remove the restriction or change the tool.`
+                });
+              }
+            }
+            if (restriction.category === 'modify' && (op.operation === 'save' || op.operation === 'update' || op.operation === 'insert')) {
+              const tableMatch = restriction.text.match(/modify\s+(\w+)/);
+              const restrictedTable = tableMatch ? tableMatch[1] : '';
+              if (restrictedTable && op.target === restrictedTable) {
+                errors.push({
+                  line: node.line,
+                  message: `agent '${node.name}' uses '${tool.name}' which modifies ${op.target}, but the agent has 'must not: ${restriction.text}'. Remove the restriction or change the tool.`
+                });
+              }
+            }
+          }
         }
       }
     }

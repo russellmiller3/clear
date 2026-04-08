@@ -2477,6 +2477,7 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
   const directives = {
     trackDecisions: false,
     tools: null,        // [{type:'ref', name:'fn1'}, ...] or [{type:'inline', description:'...'}]
+    restrictions: null, // [{text:'delete any records', category:'delete'}, ...]
   };
   let bodyStartIdx = startIdx + 1;
   while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
@@ -2519,6 +2520,37 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
           }
           bodyStartIdx++;
         }
+      }
+      continue;
+    }
+
+    // must not: (block form — one policy per indented line)
+    if (dTokens[0].value === 'must' && dTokens.length >= 2 && dTokens[1].value === 'not') {
+      directives.restrictions = [];
+      bodyStartIdx++;
+      const mustNotIndent = lines[bodyStartIdx - 1].indent;
+      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > mustNotIndent) {
+        const policyTokens = lines[bodyStartIdx].tokens;
+        if (policyTokens.length > 0) {
+          const policyText = policyTokens.map(t => t.value).join(' ');
+          // Categorize: delete/modify/access = compile-time, call more than/spend more than = runtime
+          let category = 'compile';
+          let limit = null;
+          if (policyText.startsWith('delete')) category = 'delete';
+          else if (policyText.startsWith('modify')) category = 'modify';
+          else if (policyText.startsWith('access')) category = 'access';
+          else if (policyText.includes('call more than')) {
+            category = 'max_calls';
+            const match = policyText.match(/call more than (\d+)/);
+            if (match) limit = parseInt(match[1], 10);
+          } else if (policyText.includes('spend more than')) {
+            category = 'max_tokens';
+            const match = policyText.match(/spend more than (\d+)/);
+            if (match) limit = parseInt(match[1], 10);
+          }
+          directives.restrictions.push({ text: policyText, category, limit });
+        }
+        bodyStartIdx++;
       }
       continue;
     }
