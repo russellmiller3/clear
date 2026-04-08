@@ -1,0 +1,56 @@
+build for web and javascript backend
+
+# Database
+database is local memory
+create a Tasks table:
+  title, required
+  status, default 'todo'
+  priority, default 'medium'
+  assigned_to
+  created_at, auto
+
+# Backend
+accept requests from any website
+log every request
+
+when user calls GET /api/tasks:
+  all_tasks = get all Tasks
+  send back all_tasks
+
+when user calls POST /api/tasks sending task_data:
+  validate task_data:
+    title is text, required, min 1, max 200
+    status is text
+    priority is text
+    assigned_to is text
+  new_task = save task_data as new Task
+  send back new_task with success message
+
+when user calls PUT /api/tasks/:id sending update_data:
+  requires auth
+  save update_data to Tasks
+  send back update_data with success message
+
+when user calls DELETE /api/tasks/:id:
+  requires auth
+  delete the Task with this id
+  send back 'deleted' with success message
+
+# Frontend
+page 'Project Board':
+  on page load get tasks from '/api/tasks'
+
+  heading 'Project Board'
+  subheading 'Track your team tasks'
+
+  section 'New Task' with style card:
+    'Task Title' is a text input saved as a title
+    'Priority' is a dropdown with ['Low', 'Medium', 'High', 'Critical'] saved as a priority
+    'Assigned To' is a text input saved as a assigned_to
+    button 'Add Task':
+      send title, priority and assigned_to as a new task to '/api/tasks'
+      get tasks from '/api/tasks'
+      title is ''
+
+  section 'Task Board':
+    display tasks as table showing title, status, priority, assigned_to with delete and edit

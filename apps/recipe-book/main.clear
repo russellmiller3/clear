@@ -1,0 +1,57 @@
+build for web and javascript backend
+
+# Database
+database is local memory
+create a Recipes table:
+  title, required
+  ingredients, required
+  instructions, required
+  prep_time (number), default 0
+  servings (number), default 4
+  created_at, auto
+
+# Backend
+accept requests from any website
+log every request
+
+when user calls GET /api/recipes:
+  all_recipes = get all Recipes
+  send back all_recipes
+
+when user calls POST /api/recipes sending recipe_data:
+  validate recipe_data:
+    title is text, required, min 1, max 100
+    ingredients is text, required
+    instructions is text, required
+    prep_time is number
+    servings is number
+  new_recipe = save recipe_data as new Recipe
+  send back new_recipe with success message
+
+when user calls DELETE /api/recipes/:id:
+  requires auth
+  delete the Recipe with this id
+  send back 'deleted' with success message
+
+# Frontend
+page 'Recipe Book' at '/':
+  on page load get recipes from '/api/recipes'
+
+  heading 'Recipe Book'
+  text 'Save and organize your favorite recipes'
+
+  section 'Add Recipe' with style card:
+    'Title' is a text input saved as a title
+    'Ingredients' is a text area saved as a ingredients
+    'Instructions' is a text area saved as a instructions
+    'Prep Time (minutes)' is a number input saved as a prep_time
+    'Servings' is a number input saved as a servings
+    button 'Save Recipe':
+      send title, ingredients, instructions, prep_time and servings as a new recipe to '/api/recipes'
+      get recipes from '/api/recipes'
+      title is ''
+      ingredients is ''
+      instructions is ''
+
+  section 'All Recipes':
+    display recipes as table showing title, prep_time, servings with delete
