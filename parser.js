@@ -2534,6 +2534,7 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     restrictions: null, // [{text:'delete any records', category:'delete'}, ...]
     rememberConversation: false,
     rememberPreferences: false,
+    knowsAbout: null,   // ['Documents', 'Products', 'FAQ']
   };
   let bodyStartIdx = startIdx + 1;
   while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
@@ -2623,6 +2624,20 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     if (dTokens[0].value === 'remember' && dTokens.length >= 2 &&
         (dTokens[1].value === "user's" || (dTokens[1].value === 'user' && dTokens.length >= 3))) {
       directives.rememberPreferences = true;
+      bodyStartIdx++;
+      continue;
+    }
+
+    // knows about: Table1, Table2 — RAG knowledge base
+    if (dTokens[0].value === 'knows' && dTokens.length >= 3 &&
+        dTokens[1].value === 'about') {
+      directives.knowsAbout = [];
+      for (let t = 2; t < dTokens.length; t++) {
+        if (dTokens[t].type === TokenType.COMMA) continue;
+        if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) {
+          directives.knowsAbout.push(dTokens[t].value);
+        }
+      }
       bodyStartIdx++;
       continue;
     }

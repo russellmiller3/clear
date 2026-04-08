@@ -16326,5 +16326,105 @@ test 'simple test':
   });
 });
 
+// =============================================================================
+// RAG / KNOWLEDGE BASE (Phase 78)
+// =============================================================================
+
+describe('RAG - parser', () => {
+  it('parses knows about directive with table names', () => {
+    const src = `build for javascript backend
+agent 'KnowledgeBot' receiving question:
+  knows about: Documents, Products, FAQ
+  answer = ask claude 'Answer this question' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual(['Documents', 'Products', 'FAQ']);
+  });
+
+  it('single table knowledge base', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving question:
+  knows about: Products
+  answer = ask claude 'Help' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual(['Products']);
+  });
+
+  it('agent without knows about has null', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  send back data`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toBeNull();
+  });
+});
+
+describe('RAG - compiler', () => {
+  it('RAG agent emits keyword search code', () => {
+    const src = `build for javascript backend
+create a Documents table:
+  title, required
+  content, required
+agent 'KnowledgeBot' receiving question:
+  knows about: Documents
+  answer = ask claude 'Answer using context' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_ragContext');
+    expect(result.javascript).toContain('_query');
+    expect(result.javascript).toContain("'Documents'");
+    expect(result.javascript).toContain('_ragStr');
+  });
+
+  it('context injected into _askAI call', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+agent 'Bot' receiving question:
+  knows about: Products
+  answer = ask claude 'Answer this' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_ragStr');
+    expect(result.javascript).toContain('Relevant context');
+  });
+
+  it('multiple tables searched', () => {
+    const src = `build for javascript backend
+create a Docs table:
+  content, required
+create a FAQ table:
+  question, required
+agent 'Bot' receiving question:
+  knows about: Docs, FAQ
+  answer = ask claude 'Answer' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("'Docs'");
+    expect(result.javascript).toContain("'FAQ'");
+  });
+
+  it('non-RAG agent has no search code', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_ragContext');
+    expect(result.javascript).not.toContain('_ragStr');
+  });
+});
+
 run();
 

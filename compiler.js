@@ -1774,6 +1774,51 @@ function compileAgent(node, ctx, pad) {
     return code;
   }
 
+  // RAG: knows about: Table1, Table2 — keyword search before _askAI
+  if (node.knowsAbout && node.knowsAbout.length > 0) {
+    const tables = node.knowsAbout;
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${param}):\n`;
+      code += `${innerPad}# RAG: search knowledge base\n`;
+      code += `${innerPad}_query = str(${param}).lower().split() if isinstance(${param}, str) else str(${param}).lower().split()\n`;
+      code += `${innerPad}_rag_context = []\n`;
+      for (const table of tables) {
+        code += `${innerPad}for _rec in await db.find_all("${table}", {}):\n`;
+        code += `${innerPad}    _text = " ".join(str(v) for v in _rec.values()).lower()\n`;
+        code += `${innerPad}    _score = sum(1 for w in _query if w in _text)\n`;
+        code += `${innerPad}    if _score > 0: _rag_context.append({"source": "${table}", "data": _rec, "score": _score})\n`;
+      }
+      code += `${innerPad}_rag_context.sort(key=lambda x: x["score"], reverse=True)\n`;
+      code += `${innerPad}_rag_context = _rag_context[:5]\n`;
+      // Inject context into _askAI calls
+      const wrappedBody = bodyCode.replace(
+        /await _ask_ai\("([^"]*)",/g,
+        (m, prompt) => `await _ask_ai("${prompt}\\n\\nRelevant context:\\n" + "\\n".join(str(r["data"]) for r in _rag_context),`
+      );
+      code += wrappedBody;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${param}) {\n`;
+    code += `${innerPad}// RAG: search knowledge base by keywords\n`;
+    code += `${innerPad}const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);\n`;
+    code += `${innerPad}const _ragContext = [];\n`;
+    for (const table of tables) {
+      code += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${table}', {}) : [];\n`;
+      code += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${table}', data: _rec, score: _score }); } }\n`;
+    }
+    code += `${innerPad}_ragContext.sort((a, b) => b.score - a.score);\n`;
+    code += `${innerPad}const _ragTop = _ragContext.slice(0, 5);\n`;
+    code += `${innerPad}const _ragStr = _ragTop.length ? '\\n\\nRelevant context:\\n' + _ragTop.map(r => JSON.stringify(r.data)).join('\\n') : '';\n`;
+    // Inject context into _askAI calls
+    const wrappedBody = bodyCode.replace(
+      /await _askAI\("([^"]*)",/g,
+      (m, prompt) => `await _askAI("${prompt}" + _ragStr,`
+    );
+    code += wrappedBody + '\n';
+    code += `${pad}}`;
+    return code;
+  }
+
   if (ctx.lang === 'python') {
     return `${pad}async def ${fnName}(${param}):\n${bodyCode}`;
   }
