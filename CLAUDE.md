@@ -134,6 +134,9 @@ Never edit the compiler or playground HTML directly to "make it look better." Al
 The mock is the discriminator. The compiler is the generator. Iterate until output matches target.
 This applies to: playground page redesigns, compiled app output quality, landing pages, dashboards, any visual work.
 
+## Console First Rule
+When debugging any browser/UI issue, **always check console errors first** before reading code or guessing. Use `preview_console_logs` or ask the user for the console output. A SyntaxError in the console tells you exactly what's broken in seconds. Guessing wastes everyone's time.
+
 ## Ross Perot Rule
 Proactively do what makes sense. Don't wait to be told. If something obviously needs doing — fix it, build it, clean it up. Act on judgment, not just instructions.
 

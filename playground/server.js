@@ -127,7 +127,7 @@ app.post('/api/run', (req, res) => {
   const rtDir = join(BUILD_DIR, 'clear-runtime');
   mkdirSync(rtDir, { recursive: true });
   writeFileSync(join(BUILD_DIR, 'server.js'), serverJS);
-  writeFileSync(join(BUILD_DIR, 'package.json'), '{}'); // CJS mode
+  writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: { ws: '*' } })); // CJS mode, include ws for chat apps
   if (html) writeFileSync(join(BUILD_DIR, 'index.html'), html);
   writeFileSync(join(BUILD_DIR, 'style.css'), css || '');
 
@@ -143,12 +143,13 @@ app.post('/api/run', (req, res) => {
 
   // Start child
   const env = { ...process.env, PORT: String(runningPort) };
-  runningChild = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
+  const child = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
+  runningChild = child;
 
   let responded = false;
   const logs = [];
 
-  runningChild.stdout.on('data', (data) => {
+  child.stdout.on('data', (data) => {
     const msg = data.toString();
     logs.push(msg);
     if (msg.includes('running on port') && !responded) {
@@ -157,20 +158,22 @@ app.post('/api/run', (req, res) => {
     }
   });
 
-  runningChild.stderr.on('data', (data) => {
-    const msg = data.toString();
-    logs.push('[stderr] ' + msg);
-    if (!responded) {
-      responded = true;
-      res.status(500).json({ error: msg, logs });
-    }
+  child.stderr.on('data', (data) => {
+    // Accumulate stderr but don't fail immediately — warnings are common at startup
+    logs.push('[stderr] ' + data.toString());
   });
 
-  runningChild.on('exit', (code) => {
-    runningChild = null;
+  child.on('exit', (code) => {
+    // Only clear runningChild if this is still the current child (prevents race condition
+    // where old child's exit fires after new child has already started)
+    if (runningChild === child) runningChild = null;
     if (!responded) {
       responded = true;
-      res.status(500).json({ error: `Process exited with code ${code}`, logs });
+      if (code !== 0) {
+        res.status(500).json({ error: `Process exited with code ${code}`, logs });
+      } else {
+        res.json({ port: runningPort, logs });
+      }
     }
   });
 
