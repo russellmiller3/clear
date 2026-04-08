@@ -370,6 +370,7 @@ const SYNONYM_TABLE = Object.freeze({
   // Advanced features (Phase 28)
   text_block: Object.freeze(['text block', 'multiline text', 'text template']),
   do_all: Object.freeze(['do all', 'run all', 'all at once']),
+  do_parallel: Object.freeze(['do these at the same time']),
 
   // External APIs (Phase 45)
   call_api: Object.freeze(['call api']),
@@ -401,6 +402,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.10.0';
+const SYNONYM_VERSION = '0.11.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

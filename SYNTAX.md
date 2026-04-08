@@ -1166,3 +1166,139 @@ webhook '/stripe/events' signed with env('STRIPE_SECRET'):
 needs login
 requires auth
 ```
+
+---
+
+## AI Agents
+
+### Basic Agent
+```clear
+agent 'Lead Scorer' receiving lead:
+  check lead's company is not missing, otherwise error 'Company required'
+  score = ask claude 'Rate 1-10 for enterprise potential' with lead's company
+  send back score
+```
+
+### Agent with Tool Use
+```clear
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+
+agent 'Support' receiving message:
+  can use: look_up_orders
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
+### Skills (Reusable Tool Bundles)
+```clear
+skill 'Order Management':
+  can: look_up_orders, check_status
+  instructions:
+    Always verify customer identity before changes.
+    Include order number in responses.
+
+agent 'Support' receiving message:
+  uses skills: 'Order Management'
+  response = ask claude 'Help' with message
+  send back response
+```
+
+### Guardrails
+```clear
+agent 'Public Bot' receiving question:
+  can use: search_products
+  must not:
+    delete any records
+    access Users table
+    call more than 5 tools per request
+  response = ask claude 'Help find products' with question
+  send back response
+```
+
+### Multi-Turn Conversation
+```clear
+agent 'Chat' receiving message:
+  remember conversation context
+  response = ask claude 'You are a helpful assistant' with message
+  send back response
+```
+
+### Agent Memory
+```clear
+agent 'PA' receiving message:
+  remember user's preferences
+  response = ask claude 'Help the user' with message
+  send back response
+```
+
+### RAG / Knowledge Base
+```clear
+agent 'KnowledgeBot' receiving question:
+  knows about: Documents, Products, FAQ
+  answer = ask claude 'Answer using context' with question
+  send back answer
+```
+
+### Observability
+```clear
+agent 'Bot' receiving message:
+  track agent decisions
+  response = ask claude 'Help' with message
+  send back response
+```
+
+### Long Prompts (Text Blocks)
+```clear
+agent 'Bot' receiving message:
+  today = format date current time as 'YYYY-MM-DD'
+  prompt is text block:
+    You are a support agent. Today is {today}.
+    Be concise and professional.
+  response = ask claude prompt with message
+  send back response
+```
+
+### Pipelines
+```clear
+pipeline 'Process Inbound' with text:
+  'Classifier'
+  'Scorer'
+  'Router'
+
+result = call pipeline 'Process Inbound' with data
+```
+
+### Parallel Execution
+```clear
+do these at the same time:
+  sentiment = call 'Sentiment' with text
+  topic = call 'Topic' with text
+  lang = call 'Language' with text
+```
+
+### Human-in-the-Loop
+```clear
+agent 'Refund' receiving request:
+  if request's amount is greater than 100:
+    ask user to confirm 'Process large refund?'
+  send back 'Refund processed'
+```
+
+### Agent Testing
+```clear
+test 'handles product question':
+  mock claude responding:
+    answer is 'The Widget costs $29.99'
+    action is 'respond'
+  result = call 'Support' with 'How much is the Widget?'
+  expect result's action is 'respond'
+```
+
+### Scheduled Agents
+```clear
+agent 'Daily Report' runs every 1 day:
+  leads = get all Leads where status is 'new'
+  send back leads
+```

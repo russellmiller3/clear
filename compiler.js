@@ -90,8 +90,7 @@
 //   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
 //     Node compilers ................. compileEndpoint, compileCrud, compileRespond,
 //                                     compileAgent, compileValidate, compileDataShape,
-//                                     compileExternalFetch, compileWebhook, compilePdf,
-//                                     compileHttpRequest, compileRawQueryExpr
+//                                     compileExternalFetch, compileWebhook, compilePdf
 //     _compileNodeInner .............. Main switch over all NodeTypes
 //     exprToCode ..................... Expression-to-code for all expression nodes
 //   RLS POLICY COMPILER .............. compileRLSPolicy()
@@ -324,6 +323,39 @@ const UTILITY_FUNCTIONS = [
       return parseResult(data.content[0].text);
     } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
   }
+}`, deps: [] },
+  { name: '_askAIWithTools', code: `async function _askAIWithTools(prompt, context, tools, toolFns, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
+  const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+  const _model = model || "claude-sonnet-4-20250514";
+  const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === "string" ? context : JSON.stringify(context)) : prompt;
+  const messages = [{ role: "user", content: userContent }];
+  const maxTurns = 10;
+  for (let i = 0; i < maxTurns; i++) {
+    const payload = { model: _model, max_tokens: 4096, messages, tools };
+    const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
+    if (!r.ok) { const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e); }
+    const data = await r.json();
+    const msg = data.content;
+    messages.push({ role: "assistant", content: msg });
+    const toolUses = msg.filter(b => b.type === "tool_use");
+    if (toolUses.length === 0) return msg.find(b => b.type === "text")?.text || "";
+    const results = [];
+    for (const tu of toolUses) {
+      const fn = toolFns[tu.name];
+      if (!fn) { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: "Unknown tool: " + tu.name }), is_error: true }); continue; }
+      try {
+        const result = await fn(...Object.values(tu.input));
+        results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result) });
+      } catch (toolErr) {
+        results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: toolErr.message }), is_error: true });
+      }
+    }
+    messages.push({ role: "user", content: results });
+  }
+  throw new Error("Agent exceeded maximum tool use turns (10)");
 }`, deps: [] },
 ];
 
@@ -1567,7 +1599,7 @@ function compileRespond(node, ctx, pad) {
 function compileAgent(node, ctx, pad) {
   const fnName = 'agent_' + sanitizeName(node.name.toLowerCase().replace(/\s+/g, '_'));
   const agentDeclared = new Set();
-  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 1, declared: agentDeclared, insideAgent: true });
+  let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 1, declared: agentDeclared, insideAgent: true });
 
   // Scheduled agent: runs on interval, no input parameter
   if (node.schedule) {
@@ -1584,10 +1616,249 @@ function compileAgent(node, ctx, pad) {
   }
 
   const param = node.receivingVar ? sanitizeName(node.receivingVar) : '';
-  if (ctx.lang === 'python') {
-    return `${pad}async def ${fnName}(${param}):\n${bodyCode}`;
+  const innerPad = pad + '  ';
+
+  // === COMPOSABLE AGENT FEATURES ===
+  // All features modify bodyCode and/or preamble, then the final code is assembled at the end.
+  // Order matters: model → skills → tools → tracking → conversation/memory/RAG
+  let preamble = ''; // Code inserted at top of agent function body
+
+  // 0. Model selection: using 'claude-sonnet-4-6' — inject model param into _askAI calls
+  if (node.model) {
+    const modelStr = JSON.stringify(node.model);
+    if (ctx.lang === 'python') {
+      // _ask_ai(prompt, context, schema) → _ask_ai(prompt, context, None, model)
+      bodyCode = bodyCode.replace(
+        /await _ask_ai\(([^)]+)\)/g,
+        `await _ask_ai($1, ${modelStr})`
+      );
+    } else {
+      // _askAI(prompt, context) → _askAI(prompt, context, null, model)
+      bodyCode = bodyCode.replace(
+        /await _askAI\(([^)]*)\)/g,
+        (m, args) => `await _askAI(${args}, null, ${modelStr})`
+      );
+    }
   }
-  return `${pad}async function ${fnName}(${param}) {\n${bodyCode}\n${pad}}`;
+
+  // 1. Skills: merge skill tools + instructions into agent (mutates node.tools + bodyCode)
+  if (node.skills && node.skills.length > 0) {
+    const astBody = ctx._astBody || [];
+    let skillInstructions = '';
+    for (const skillName of node.skills) {
+      const skillNode = astBody.find(n => n.type === NodeType.SKILL && n.name === skillName);
+      if (!skillNode) continue;
+      if (skillNode.tools && skillNode.tools.length > 0) {
+        if (!node.tools) node.tools = [];
+        for (const toolName of skillNode.tools) {
+          if (!node.tools.some(t => t.type === 'ref' && t.name === toolName)) {
+            node.tools.push({ type: 'ref', name: toolName });
+          }
+        }
+      }
+      if (skillNode.instructions && skillNode.instructions.length > 0) {
+        skillInstructions += skillNode.instructions.join('\\n') + '\\n';
+      }
+    }
+    if (skillInstructions) {
+      const safeInstr = skillInstructions.replace(/"/g, '\\"');
+      // Handle both string literal prompts and variable prompts
+      bodyCode = bodyCode.replace(
+        /await _askAI\(("([^"]*)")/g,
+        (m, fullMatch, prompt) => `await _askAI("${safeInstr}\\n${prompt}"`
+      );
+      bodyCode = bodyCode.replace(
+        /await _askAI\(([a-zA-Z_]\w*),/g,
+        (m, varName) => `await _askAI("${safeInstr}\\n" + ${varName},`
+      );
+    }
+  }
+
+  // 2. Tool use: can use: fn1, fn2 — add _tools/_toolFns preamble, replace _askAI with _askAIWithTools
+  if (node.tools && node.tools.length > 0) {
+    const refTools = node.tools.filter(t => t.type === 'ref');
+    if (refTools.length > 0) {
+      const astBody = ctx._astBody || [];
+      const toolDefs = [];
+      const toolFnNames = [];
+      for (const tool of refTools) {
+        const fnDef = astBody.find(n => n.type === NodeType.FUNCTION_DEF && n.name === tool.name);
+        const params = fnDef ? fnDef.params : [];
+        const properties = {};
+        for (const p of params) {
+          properties[p] = { type: 'string' };
+        }
+        const required = params.length > 0 ? params : undefined;
+        toolDefs.push({
+          name: tool.name,
+          description: `${tool.name}(${params.join(', ')})`,
+          input_schema: { type: 'object', properties, ...(required ? { required } : {}) },
+        });
+        toolFnNames.push(sanitizeName(tool.name));
+      }
+      const toolsJson = JSON.stringify(toolDefs);
+      const toolFnsObj = toolFnNames.map(n => `${n}`).join(', ');
+      preamble += `${innerPad}const _tools = ${toolsJson};\n`;
+      preamble += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
+      // Replace _askAI calls with _askAIWithTools in bodyCode
+      bodyCode = bodyCode.replace(
+        /await _askAI\(([^)]*)\)/g,
+        'await _askAIWithTools($1, _tools, _toolFns)'
+      );
+    }
+  }
+
+  // 3. Observability: track agent decisions — wrap _askAI/_askAIWithTools calls with logging
+  if (node.trackDecisions) {
+    const agentNameStr = JSON.stringify(node.name);
+    if (ctx.lang === 'python') {
+      preamble += `${innerPad}import time as _time\n`;
+      preamble += `${innerPad}async def _agent_log(action, _input, fn):\n`;
+      preamble += `${innerPad}    _start = _time.time()\n`;
+      preamble += `${innerPad}    _result = await fn()\n`;
+      preamble += `${innerPad}    _ms = int((_time.time() - _start) * 1000)\n`;
+      preamble += `${innerPad}    await db.insert("AgentLogs", {"agent_name": ${agentNameStr}, "action": action, "input": str(_input)[:500], "output": str(_result)[:500], "latency_ms": _ms})\n`;
+      preamble += `${innerPad}    return _result\n`;
+      bodyCode = bodyCode.replace(
+        /await _ask_ai\(([^)]+)\)/g,
+        `await _agent_log("ask_ai", ${param}, lambda: _ask_ai($1))`
+      );
+    } else {
+      preamble += `${innerPad}const _agentLog = async (action, _input, fn) => {\n`;
+      preamble += `${innerPad}  const _start = Date.now();\n`;
+      preamble += `${innerPad}  const _result = await fn();\n`;
+      preamble += `${innerPad}  const _ms = Date.now() - _start;\n`;
+      preamble += `${innerPad}  try { await db.insert('AgentLogs', { agent_name: ${agentNameStr}, action, input: JSON.stringify(_input).slice(0, 500), output: JSON.stringify(_result).slice(0, 500), latency_ms: _ms }); } catch(e) { console.warn('[clear:agent-log]', e.message); }\n`;
+      preamble += `${innerPad}  return _result;\n`;
+      preamble += `${innerPad}};\n`;
+    }
+    // Wrap _askAI and _askAIWithTools calls with logging
+    if (ctx.lang !== 'python') {
+      bodyCode = bodyCode.replace(
+        /await (_askAI(?:WithTools)?)\(([^)]*)\)/g,
+        (m, fn, args) => `await _agentLog("ask_ai", ${param}, () => ${fn}(${args}))`
+    );
+    }
+  }
+
+  // Multi-turn conversation: remember conversation context
+  // Wraps agent with conversation history load/save
+  if (node.rememberConversation) {
+    const params = param ? `${param}, _userId` : '_userId';
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${params}):\n`;
+      code += `${innerPad}_conv = await db.find_one("Conversations", {"user_id": _userId})\n`;
+      code += `${innerPad}if not _conv:\n`;
+      code += `${innerPad}    _conv = await db.insert("Conversations", {"user_id": _userId, "messages": "[]"})\n`;
+      code += `${innerPad}import json\n`;
+      code += `${innerPad}_history = json.loads(_conv.get("messages", "[]"))\n`;
+      code += `${innerPad}_history.append({"role": "user", "content": str(${param}) if isinstance(${param}, str) else json.dumps(${param})})\n`;
+      code += bodyCode + '\n';
+      code += `${innerPad}# _history updated by _ask_ai when history param is passed\n`;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${params}) {\n`;
+    code += `${innerPad}let _conv = db.findAll ? (await db.findAll('Conversations', { user_id: _userId }))[0] : null;\n`;
+    code += `${innerPad}if (!_conv) _conv = await db.insert('Conversations', { user_id: _userId, messages: '[]' });\n`;
+    code += `${innerPad}const _history = JSON.parse(_conv.messages || '[]');\n`;
+    code += `${innerPad}_history.push({ role: 'user', content: typeof ${param} === 'string' ? ${param} : JSON.stringify(${param}) });\n`;
+    // Emit body code — _askAI calls should get _history appended
+    const wrappedBody = bodyCode.replace(
+      /await _askAI\(([^)]*)\)/g,
+      (match, args) => `await _askAI(${args}, null, null, _history)`
+    );
+    code += wrappedBody + '\n';
+    code += `${innerPad}_history.push({ role: 'assistant', content: typeof response === 'string' ? response : JSON.stringify(response) });\n`;
+    code += `${innerPad}try { await db.update('Conversations', { ..._conv, messages: JSON.stringify(_history.slice(-50)) }); } catch(e) { console.warn('[clear:conversation]', e.message); }\n`;
+    code += `${pad}}`;
+    return code;
+  }
+
+  // Agent memory: remember user's preferences
+  if (node.rememberPreferences) {
+    const params = param ? `${param}, _userId` : '_userId';
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${params}):\n`;
+      code += `${innerPad}_memories = await db.find_all("Memories", {"user_id": _userId})\n`;
+      code += `${innerPad}_mem_context = ""\n`;
+      code += `${innerPad}if _memories:\n`;
+      code += `${innerPad}    _mem_context = "\\nUser preferences: " + "; ".join(m.get("fact","") for m in _memories)\n`;
+      code += bodyCode;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${params}) {\n`;
+    code += `${innerPad}const _memories = db.findAll ? await db.findAll('Memories', { user_id: _userId }) : [];\n`;
+    code += `${innerPad}const _memContext = _memories.length ? '\\nUser preferences: ' + _memories.map(m => m.fact).join('; ') : '';\n`;
+    // Inject memory context into _askAI prompt
+    const wrappedBody = bodyCode.replace(
+      /await _askAI\("([^"]*)",/g,
+      (match, prompt) => `await _askAI("${prompt}" + _memContext,`
+    );
+    code += wrappedBody + '\n';
+    // Extract [REMEMBER: ...] tags from response
+    code += `${innerPad}// Extract new memories from response\n`;
+    code += `${innerPad}if (typeof response === 'string') {\n`;
+    code += `${innerPad}  const _newFacts = response.match(/\\[REMEMBER: (.+?)\\]/g);\n`;
+    code += `${innerPad}  if (_newFacts) for (const f of _newFacts) { try { await db.insert('Memories', { user_id: _userId, fact: f.replace(/\\[REMEMBER: (.+)\\]/, '$1') }); } catch(e) {} }\n`;
+    code += `${innerPad}}\n`;
+    code += `${pad}}`;
+    return code;
+  }
+
+  // RAG: knows about: Table1, Table2 — keyword search before _askAI
+  if (node.knowsAbout && node.knowsAbout.length > 0) {
+    const tables = node.knowsAbout;
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${param}):\n`;
+      code += `${innerPad}# RAG: search knowledge base\n`;
+      code += `${innerPad}_query = str(${param}).lower().split() if isinstance(${param}, str) else str(${param}).lower().split()\n`;
+      code += `${innerPad}_rag_context = []\n`;
+      for (const table of tables) {
+        code += `${innerPad}for _rec in await db.find_all("${table}", {}):\n`;
+        code += `${innerPad}    _text = " ".join(str(v) for v in _rec.values()).lower()\n`;
+        code += `${innerPad}    _score = sum(1 for w in _query if w in _text)\n`;
+        code += `${innerPad}    if _score > 0: _rag_context.append({"source": "${table}", "data": _rec, "score": _score})\n`;
+      }
+      code += `${innerPad}_rag_context.sort(key=lambda x: x["score"], reverse=True)\n`;
+      code += `${innerPad}_rag_context = _rag_context[:5]\n`;
+      // Inject context into _askAI calls
+      const wrappedBody = bodyCode.replace(
+        /await _ask_ai\("([^"]*)",/g,
+        (m, prompt) => `await _ask_ai("${prompt}\\n\\nRelevant context:\\n" + "\\n".join(str(r["data"]) for r in _rag_context),`
+      );
+      code += wrappedBody;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${param}) {\n`;
+    code += preamble;
+    code += `${innerPad}// RAG: search knowledge base by keywords\n`;
+    code += `${innerPad}const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);\n`;
+    code += `${innerPad}const _ragContext = [];\n`;
+    for (const table of tables) {
+      code += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${table}', {}) : [];\n`;
+      code += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${table}', data: _rec, score: _score }); } }\n`;
+    }
+    code += `${innerPad}_ragContext.sort((a, b) => b.score - a.score);\n`;
+    code += `${innerPad}const _ragTop = _ragContext.slice(0, 5);\n`;
+    code += `${innerPad}const _ragStr = _ragTop.length ? '\\n\\nRelevant context:\\n' + _ragTop.map(r => JSON.stringify(r.data)).join('\\n') : '';\n`;
+    // Inject RAG context into _askAI calls (handles both string literal and variable prompts)
+    let wrappedBody = bodyCode.replace(
+      /await (_askAI(?:WithTools)?)\("([^"]*)",/g,
+      (m, fn, prompt) => `await ${fn}("${prompt}" + _ragStr,`
+    );
+    wrappedBody = wrappedBody.replace(
+      /await (_askAI(?:WithTools)?)\(([a-zA-Z_]\w+),/g,
+      (m, fn, varName) => `await ${fn}(${varName} + _ragStr,`
+    );
+    code += wrappedBody + '\n';
+    code += `${pad}}`;
+    return code;
+  }
+
+  if (ctx.lang === 'python') {
+    return `${pad}async def ${fnName}(${param}):\n${preamble}${bodyCode}`;
+  }
+  return `${pad}async function ${fnName}(${param}) {\n${preamble}${bodyCode}\n${pad}}`;
 }
 
 function compileValidate(node, ctx, pad) {
@@ -1844,71 +2115,6 @@ function compilePdf(node, ctx, pad) {
   return code;
 }
 
-// Unified HTTP_REQUEST compiler — used by both _compileNodeInner and exprToCode
-function compileHttpRequest(node, ctx, pad) {
-  const urlCode = exprToCode(node.url, ctx);
-  const config = node.config || {};
-  const hasBody = config.body;
-  const method = config.method || (hasBody ? 'POST' : 'GET');
-  let headersCode = '';
-  if (config.headers && config.headers.length > 0) {
-    const headerEntries = config.headers.map(h =>
-      `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`
-    ).join(', ');
-    headersCode = `{ ${headerEntries} }`;
-  }
-  const timeoutMs = config.timeout
-    ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
-    : 30000;
-  const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
-
-  if (ctx.lang === 'python') {
-    let code = `${pad}import httpx\n`;
-    const headersPy = headersCode ? headersCode.replace(/:/g, ':').replace(/'/g, '"') : 'None';
-    const bodyPy = hasBody ? `json=${exprToCode(config.body, ctx)}` : '';
-    code += `${pad}async with httpx.AsyncClient(timeout=${timeoutMs / 1000}) as _client:\n`;
-    code += `${pad}    _resp = await _client.${method.toLowerCase()}(${urlCode}${headersCode ? ', headers=' + headersPy : ''}${bodyPy ? ', ' + bodyPy : ''})\n`;
-    code += `${pad}    _resp.raise_for_status()\n`;
-    code += `${pad}    _api_result = _resp.json()`;
-    return code;
-  }
-
-  // JS: wrap in async IIFE
-  let code = `${pad}await (async () => {\n`;
-  code += `${pad}  const _ctrl = new AbortController();\n`;
-  code += `${pad}  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
-  code += `${pad}  try {\n`;
-  code += `${pad}    const _res = await fetch(${urlCode}, {\n`;
-  code += `${pad}      method: '${method}',\n`;
-  if (headersCode) code += `${pad}      headers: ${headersCode},\n`;
-  if (hasBody) code += `${pad}      body: ${bodyCode},\n`;
-  code += `${pad}      signal: _ctrl.signal\n`;
-  code += `${pad}    });\n`;
-  code += `${pad}    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${node.line || 0}, file: '${node._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
-  code += `${pad}    const _ct = _res.headers.get("content-type") || "";\n`;
-  code += `${pad}    return _ct.includes("json") ? _res.json() : _res.text();\n`;
-  code += `${pad}  } catch (_err) {\n`;
-  code += `${pad}    if (!_err._clearCtx) { _err._clearCtx = { service: 'external', line: ${node.line || 0}, file: '${node._sourceFile || 'main.clear'}', source: 'call api' }; }\n`;
-  code += `${pad}    throw _err;\n`;
-  code += `${pad}  } finally { clearTimeout(_timer); }\n`;
-  code += `${pad}})()`;
-  return code;
-}
-
-// Unified RAW_QUERY compiler — used by both _compileNodeInner and exprToCode
-function compileRawQueryExpr(node, ctx) {
-  const sql = JSON.stringify(node.sql);
-  const params = node.params ? exprToCode(node.params, ctx) : null;
-  if (ctx.lang === 'python') {
-    return params
-      ? `await (await _get_db()).fetch(${sql}, ${params})`
-      : `await (await _get_db()).fetch(${sql})`;
-  }
-  return params
-    ? `(await _pool.query(${sql}, [${params}])).rows`
-    : `(await _pool.query(${sql})).rows`;
-}
-
 function _compileNodeInner(node, ctx) {
   // Skip backend-only nodes when compiling for web frontend
   if (ctx.mode === 'web' && BACKEND_ONLY_NODES.has(node.type)) return null;
@@ -2021,6 +2227,65 @@ function _compileNodeInner(node, ctx) {
 
     case NodeType.AGENT:
       return compileAgent(node, ctx, pad);
+
+    case NodeType.PIPELINE: {
+      const fnName = 'pipeline_' + sanitizeName(node.name.toLowerCase().replace(/\s+/g, '_'));
+      const param = sanitizeName(node.inputVar);
+      if (ctx.lang === 'python') {
+        let code = `${pad}async def ${fnName}(${param}):\n`;
+        code += `${pad}    _pipe = ${param}\n`;
+        for (const step of node.steps) {
+          const agentFn = 'agent_' + sanitizeName(step.agentName.toLowerCase().replace(/\s+/g, '_'));
+          code += `${pad}    _pipe = await ${agentFn}(_pipe)\n`;
+        }
+        code += `${pad}    return _pipe`;
+        return code;
+      }
+      let code = `${pad}async function ${fnName}(${param}) {\n`;
+      code += `${pad}  let _pipe = ${param};\n`;
+      for (const step of node.steps) {
+        const agentFn = 'agent_' + sanitizeName(step.agentName.toLowerCase().replace(/\s+/g, '_'));
+        code += `${pad}  _pipe = await ${agentFn}(_pipe);\n`;
+      }
+      code += `${pad}  return _pipe;\n`;
+      code += `${pad}}`;
+      return code;
+    }
+
+    case NodeType.PARALLEL_AGENTS: {
+      const names = node.assignments.map(a => sanitizeName(a.name));
+      const calls = node.assignments.map(a => exprToCode(a.expression, ctx));
+      if (ctx.lang === 'python') {
+        const tasks = calls.join(', ');
+        const vars = names.join(', ');
+        return `${pad}${vars} = await asyncio.gather(${tasks})`;
+      }
+      const tasks = calls.join(', ');
+      const vars = names.join(', ');
+      return `${pad}const [${vars}] = await Promise.all([${tasks}]);`;
+    }
+
+    case NodeType.MOCK_AI:
+      // Consumed by TEST_DEF compilation — emits nothing standalone
+      return null;
+
+    case NodeType.SKILL:
+      // Skills compile to nothing — consumed by agents that use them
+      return null;
+
+    case NodeType.HUMAN_CONFIRM: {
+      const msg = exprToCode(node.message, ctx);
+      if (ctx.lang === 'python') {
+        let code = `${pad}# Human-in-the-loop: create approval request\n`;
+        code += `${pad}_approval = await db.insert("Approvals", {"action": "confirm", "details": str(${msg}), "status": "pending"})\n`;
+        code += `${pad}return JSONResponse(content={"approval_id": _approval.get("id"), "message": ${msg}, "status": "pending"}, status_code=202)`;
+        return code;
+      }
+      let code = `${pad}// Human-in-the-loop: create approval request\n`;
+      code += `${pad}const _approval = await db.insert('Approvals', { action: 'confirm', details: String(${msg}), status: 'pending' });\n`;
+      code += `${pad}return res.status(202).json({ approval_id: _approval.id, message: ${msg}, status: 'pending' });`;
+      return code;
+    }
 
     case NodeType.REPEAT: {
       const count = exprToCode(node.count, ctx);
@@ -2281,23 +2546,25 @@ function _compileNodeInner(node, ctx) {
     case NodeType.RAW_QUERY: {
       const sql = JSON.stringify(node.sql);
       const params = node.params ? exprToCode(node.params, ctx) : null;
-      // "run" operation — execute without return value
-      if (node.operation === 'run') {
-        if (ctx.lang === 'python') {
+      if (ctx.lang === 'python') {
+        if (node.operation === 'run') {
           return params
             ? `${pad}await (await _get_db()).execute(${sql}, ${params})`
             : `${pad}await (await _get_db()).execute(${sql})`;
         }
         return params
+          ? `${pad}${sanitizeName(node.variable)} = await (await _get_db()).fetch(${sql}, ${params})`
+          : `${pad}${sanitizeName(node.variable)} = await (await _get_db()).fetch(${sql})`;
+      }
+      if (node.operation === 'run') {
+        return params
           ? `${pad}await _pool.query(${sql}, [${params}]);`
           : `${pad}await _pool.query(${sql});`;
       }
-      // "fetch" operation — query with result assignment
-      const expr = compileRawQueryExpr(node, ctx);
-      if (ctx.lang === 'python') {
-        return `${pad}${sanitizeName(node.variable)} = ${expr}`;
-      }
-      return `${pad}const ${sanitizeName(node.variable)} = ${expr};`;
+      const varName = sanitizeName(node.variable);
+      return params
+        ? `${pad}const ${varName} = (await _pool.query(${sql}, [${params}])).rows;`
+        : `${pad}const ${varName} = (await _pool.query(${sql})).rows;`;
     }
 
     case NodeType.CONFIGURE_EMAIL: {
@@ -2326,8 +2593,55 @@ function _compileNodeInner(node, ctx) {
     }
 
     // Phase 45: External API calls
-    case NodeType.HTTP_REQUEST:
-      return compileHttpRequest(node, ctx, pad);
+    case NodeType.HTTP_REQUEST: {
+      const urlCode = exprToCode(node.url, ctx);
+      const config = node.config || {};
+      const hasBody = config.body;
+      const method = config.method || (hasBody ? 'POST' : 'GET');
+      // Build headers object
+      let headersCode = '';
+      if (config.headers && config.headers.length > 0) {
+        const headerEntries = config.headers.map(h =>
+          `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`
+        ).join(', ');
+        headersCode = `{ ${headerEntries} }`;
+      }
+      // Build timeout
+      const timeoutMs = config.timeout
+        ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
+        : 30000;
+      // Build body
+      const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
+
+      if (ctx.lang === 'python') {
+        let code = `${pad}import httpx\n`;
+        const headersPy = headersCode ? headersCode.replace(/:/g, ':').replace(/'/g, '"') : 'None';
+        const bodyPy = hasBody ? `json=${exprToCode(config.body, ctx)}` : '';
+        code += `${pad}async with httpx.AsyncClient(timeout=${timeoutMs / 1000}) as _client:\n`;
+        code += `${pad}    _resp = await _client.${method.toLowerCase()}(${urlCode}${headersCode ? ', headers=' + headersPy : ''}${bodyPy ? ', ' + bodyPy : ''})\n`;
+        code += `${pad}    _resp.raise_for_status()\n`;
+        code += `${pad}    _api_result = _resp.json()`;
+        return code;
+      }
+
+      // JS: wrap in async IIFE for result assignment
+      let code = `${pad}await (async () => {\n`;
+      code += `${pad}  const _ctrl = new AbortController();\n`;
+      code += `${pad}  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
+      code += `${pad}  try {\n`;
+      code += `${pad}    const _res = await fetch(${urlCode}, {\n`;
+      code += `${pad}      method: '${method}',\n`;
+      if (headersCode) code += `${pad}      headers: ${headersCode},\n`;
+      if (hasBody) code += `${pad}      body: ${bodyCode},\n`;
+      code += `${pad}      signal: _ctrl.signal\n`;
+      code += `${pad}    });\n`;
+      code += `${pad}    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
+      code += `${pad}    const _ct = _res.headers.get("content-type") || "";\n`;
+      code += `${pad}    return _ct.includes("json") ? _res.json() : _res.text();\n`;
+      code += `${pad}  } finally { clearTimeout(_timer); }\n`;
+      code += `${pad})()`;
+      return code;
+    }
 
     // Phase 45: Service presets (Stripe, SendGrid, Twilio)
     case NodeType.SERVICE_CALL: {
@@ -2421,11 +2735,38 @@ function _compileNodeInner(node, ctx) {
       return compileCrud(node, ctx, pad);
 
     case NodeType.TEST_DEF: {
+      // Check if body contains mock AI nodes
+      const mockNodes = node.body.filter(n => n.type === NodeType.MOCK_AI);
+      const nonMockBody = node.body.filter(n => n.type !== NodeType.MOCK_AI);
       if (ctx.lang === 'python') {
-        const bodyCode = compileBody(node.body, ctx);
+        const bodyCode = compileBody(nonMockBody, ctx);
         return `${pad}def test_${sanitizeName(node.name)}():\n${bodyCode}`;
       }
-      const bodyCode = compileBody(node.body, ctx, { declared: new Set() });
+      const bodyCode = compileBody(nonMockBody, ctx, { declared: new Set() });
+      if (mockNodes.length > 0) {
+        // Build mock responses array
+        const mocks = mockNodes.map(m => {
+          const obj = m.fields.map(f => {
+            const val = typeof f.value === 'string' ? JSON.stringify(f.value) : f.value;
+            return `${JSON.stringify(f.name)}: ${val}`;
+          }).join(', ');
+          return `{ ${obj} }`;
+        });
+        let code = `${pad}test(${JSON.stringify(node.name)}, async () => {\n`;
+        code += `${pad}  const _origAskAI = typeof _askAI !== 'undefined' ? _askAI : null;\n`;
+        if (mocks.length === 1) {
+          code += `${pad}  _askAI = async () => (${mocks[0]});\n`;
+        } else {
+          code += `${pad}  const _mockResponses = [${mocks.join(', ')}];\n`;
+          code += `${pad}  let _mockIdx = 0;\n`;
+          code += `${pad}  _askAI = async () => _mockResponses[_mockIdx++];\n`;
+        }
+        code += `${pad}  try {\n`;
+        code += bodyCode.split('\n').map(l => '  ' + l).join('\n') + '\n';
+        code += `${pad}  } finally { if (_origAskAI) _askAI = _origAskAI; }\n`;
+        code += `${pad}});`;
+        return code;
+      }
       return `${pad}test(${JSON.stringify(node.name)}, () => {\n${bodyCode}\n${pad}});`;
     }
 
@@ -3081,8 +3422,39 @@ export function exprToCode(expr, ctx) {
       return `JSON.stringify(${src})`;
     }
 
-    case NodeType.HTTP_REQUEST:
-      return compileHttpRequest(expr, ctx, '');
+    case NodeType.HTTP_REQUEST: {
+      // call api 'url' as expression (e.g., result = call api 'https://...')
+      const urlCode = exprToCode(expr.url, ctx);
+      const config = expr.config || {};
+      const hasBody = config.body;
+      const method = config.method || (hasBody ? 'POST' : 'GET');
+      const timeoutMs = config.timeout
+        ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
+        : 30000;
+      let headersCode = '';
+      if (config.headers && config.headers.length > 0) {
+        const entries = config.headers.map(h => `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`).join(', ');
+        headersCode = `{ ${entries} }`;
+      }
+      const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
+      let code = `await (async () => {\n`;
+      code += `  const _ctrl = new AbortController();\n`;
+      code += `  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
+      code += `  try {\n`;
+      code += `    const _res = await fetch(${urlCode}, { method: '${method}'`;
+      if (headersCode) code += `, headers: ${headersCode}`;
+      if (hasBody) code += `, body: ${bodyCode}`;
+      code += `, signal: _ctrl.signal });\n`;
+      code += `    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
+      code += `    const _ct = _res.headers.get("content-type") || "";\n`;
+      code += `    return _ct.includes("json") ? _res.json() : _res.text();\n`;
+      code += `  } catch (_err) {\n`;
+      code += `    if (!_err._clearCtx) { _err._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; }\n`;
+      code += `    throw _err;\n`;
+      code += `  } finally { clearTimeout(_timer); }\n`;
+      code += `})()`;
+      return code;
+    }
 
     case NodeType.ASK_AI: {
       const prompt = exprToCode(expr.prompt, ctx);
@@ -3103,8 +3475,24 @@ export function exprToCode(expr, ctx) {
       return `await ${fnName}(${arg})`;
     }
 
-    case NodeType.RAW_QUERY:
-      return compileRawQueryExpr(expr, ctx);
+    case NodeType.RUN_PIPELINE: {
+      const fnName = 'pipeline_' + sanitizeName(expr.pipelineName.toLowerCase().replace(/\s+/g, '_'));
+      const arg = expr.argument ? exprToCode(expr.argument, ctx) : '';
+      return `await ${fnName}(${arg})`;
+    }
+
+    case NodeType.RAW_QUERY: {
+      const sql = JSON.stringify(expr.sql);
+      const params = expr.params ? exprToCode(expr.params, ctx) : null;
+      if (ctx.lang === 'python') {
+        return params
+          ? `await (await _get_db()).fetch(${sql}, ${params})`
+          : `await (await _get_db()).fetch(${sql})`;
+      }
+      return params
+        ? `(await _pool.query(${sql}, [${params}])).rows`
+        : `(await _pool.query(${sql})).rows`;
+    }
 
     case NodeType.COUNT_BY: {
       const list = sanitizeName(expr.list);
@@ -4833,13 +5221,13 @@ function compileToBrowserServer(body, errors) {
   }
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames, _astBody: body };
 
   // Collect schemas and route handlers
   for (const node of body) {
     if (node.type === NodeType.DATA_SHAPE || node.type === NodeType.ENDPOINT ||
         node.type === NodeType.AGENT || node.type === NodeType.ASSIGN ||
-        node.type === NodeType.FUNCTION_DEF) {
+        node.type === NodeType.FUNCTION_DEF || node.type === NodeType.PIPELINE) {
       const result = compileNode(node, ctx);
       if (result !== null) bodyLines.push(result);
     }
@@ -4897,7 +5285,7 @@ function compileToBrowserServer(body, errors) {
 
   // Compile agent functions (needed by endpoints that call agents)
   for (const node of body) {
-    if (node.type === NodeType.AGENT || node.type === NodeType.FUNCTION_DEF) {
+    if (node.type === NodeType.AGENT || node.type === NodeType.FUNCTION_DEF || node.type === NodeType.PIPELINE) {
       const result = compileNode(node, ctx);
       if (result !== null) lines.push(result);
     }
@@ -4952,6 +5340,38 @@ function compileToBrowserServer(body, errors) {
   lines.push('  if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
   lines.push('  return data.result;');
   lines.push('}');
+
+  // Browser _askAIWithTools — agentic loop via proxy
+  // Check if any agent uses tools before emitting
+  const hasToolAgents = body.some(n => n.type === NodeType.AGENT && n.tools && n.tools.length > 0);
+  if (hasToolAgents) {
+    lines.push('');
+    lines.push('async function _askAIWithTools(prompt, context, tools, toolFns, model) {');
+    lines.push('  const proxyUrl = window._clearAIProxy || "/api/ai-proxy";');
+    lines.push('  const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === "string" ? context : JSON.stringify(context)) : prompt;');
+    lines.push('  const messages = [{ role: "user", content: userContent }];');
+    lines.push('  for (let i = 0; i < 10; i++) {');
+    lines.push('    const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: null, messages, tools, model }) });');
+    lines.push('    const data = await r.json();');
+    lines.push('    if (!r.ok) throw new Error(data.error || "AI request failed");');
+    lines.push('    if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
+    lines.push('    if (data.result && typeof data.result === "string") return data.result;');
+    lines.push('    const msg = data.content || [];');
+    lines.push('    messages.push({ role: "assistant", content: msg });');
+    lines.push('    const toolUses = msg.filter(b => b.type === "tool_use");');
+    lines.push('    if (toolUses.length === 0) return (msg.find(b => b.type === "text") || {}).text || "";');
+    lines.push('    const results = [];');
+    lines.push('    for (const tu of toolUses) {');
+    lines.push('      const fn = toolFns[tu.name];');
+    lines.push('      if (!fn) { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: "Unknown tool: " + tu.name }), is_error: true }); continue; }');
+    lines.push('      try { const res = await fn(...Object.values(tu.input)); results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(res) }); }');
+    lines.push('      catch (e) { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: e.message }), is_error: true }); }');
+    lines.push('    }');
+    lines.push('    messages.push({ role: "user", content: results });');
+    lines.push('  }');
+    lines.push('  throw new Error("Agent exceeded maximum tool use turns (10)");');
+    lines.push('}');
+  }
 
   lines.push('})();');
   return lines.join('\n');

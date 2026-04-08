@@ -21,7 +21,7 @@ describe('Synonym Table', () => {
   });
 
   it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.10.0');
+    expect(SYNONYM_VERSION).toBe('0.11.0');
   });
 
   it('maps "create" to canonical "set"', () => {
@@ -9661,10 +9661,10 @@ describe('Agent primitives - validator', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('errors when ask ai prompt is not a string', () => {
+  it('allows variable as ask ai prompt (for text blocks)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai d\n  send back answer");
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0].message).toContain('quoted prompt');
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAI(d');
   });
 
   it('errors when agent has no name', () => {
@@ -15354,6 +15354,1428 @@ when user calls POST /api/categories sending cat:
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).not.toContain('_existing');
+  });
+});
+
+// =============================================================================
+// PARALLEL AGENT EXECUTION (Phase 80)
+// =============================================================================
+
+describe('Parallel agent execution - parser', () => {
+  it('parses do these at the same time with agent calls', () => {
+    const src = `build for javascript backend
+agent 'Sentiment' receiving text:
+  send back text
+agent 'Topic' receiving text:
+  send back text
+when user calls POST /api/analyze sending data:
+  do these at the same time:
+    sentiment = call 'Sentiment' with data
+    topic = call 'Topic' with data
+  send back sentiment`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const parallel = endpoint.body.find(n => n.type === 'parallel_agents');
+    expect(parallel).toBeDefined();
+    expect(parallel.assignments).toHaveLength(2);
+    expect(parallel.assignments[0].name).toBe('sentiment');
+    expect(parallel.assignments[1].name).toBe('topic');
+  });
+
+  it('errors on empty parallel block', () => {
+    const src = `build for javascript backend
+when user calls POST /api/test:
+  do these at the same time:
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Parallel agent execution - compiler', () => {
+  it('compiles to Promise.all with destructuring', () => {
+    const src = `build for javascript backend
+agent 'Alpha' receiving d:
+  send back d
+agent 'Beta' receiving d:
+  send back d
+when user calls POST /api/test sending data:
+  do these at the same time:
+    alpha = call 'Alpha' with data
+    beta = call 'Beta' with data
+  send back alpha`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Promise.all');
+    expect(result.javascript).toContain('const [alpha, beta]');
+    expect(result.javascript).toContain('agent_alpha(');
+    expect(result.javascript).toContain('agent_beta(');
+  });
+
+  it('compiles 3-agent parallel correctly', () => {
+    const src = `build for javascript backend
+agent 'Sentiment' receiving d:
+  send back d
+agent 'Topic' receiving d:
+  send back d
+agent 'Language' receiving d:
+  send back d
+when user calls POST /api/test sending data:
+  do these at the same time:
+    sentiment = call 'Sentiment' with data
+    topic = call 'Topic' with data
+    lang = call 'Language' with data
+  send back sentiment`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('const [sentiment, topic, lang]');
+    expect(result.javascript).toContain('Promise.all([');
+  });
+
+  it('compiles parallel inside endpoint with send back', () => {
+    const src = `build for javascript backend
+agent 'Fast' receiving d:
+  send back d
+agent 'Slow' receiving d:
+  send back d
+when user calls POST /api/race sending data:
+  do these at the same time:
+    fast = call 'Fast' with data
+    slow = call 'Slow' with data
+  send back fast`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Promise.all');
+    expect(result.javascript).toContain('return res.json(fast)');
+  });
+
+  it('compiles to Python asyncio.gather', () => {
+    const src = `build for python backend
+agent 'Alpha' receiving d:
+  send back d
+agent 'Beta' receiving d:
+  send back d
+when user calls POST /api/test sending data:
+  do these at the same time:
+    alpha = call 'Alpha' with data
+    beta = call 'Beta' with data
+  send back alpha`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('asyncio.gather');
+    expect(result.python).toContain('alpha, beta = await asyncio.gather');
+  });
+
+  it('2-agent parallel (minimum case)', () => {
+    const src = `build for javascript backend
+agent 'One' receiving d:
+  send back d
+agent 'Two' receiving d:
+  send back d
+when user calls POST /api/test sending data:
+  do these at the same time:
+    one = call 'One' with data
+    two = call 'Two' with data
+  send back one`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('const [one, two]');
+  });
+});
+
+// =============================================================================
+// AGENT PIPELINES (Phase 77)
+// =============================================================================
+
+describe('Agent pipelines - parser', () => {
+  it('parses pipeline definition with steps', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receiving text:
+  send back text
+agent 'Scorer' receiving lead:
+  send back lead
+pipeline 'Process Inbound' with text:
+  classify with 'Classifier'
+  score with 'Scorer'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const pipeline = result.ast.body.find(n => n.type === 'pipeline');
+    expect(pipeline).toBeDefined();
+    expect(pipeline.name).toBe('Process Inbound');
+    expect(pipeline.inputVar).toBe('text');
+    expect(pipeline.steps).toHaveLength(2);
+    expect(pipeline.steps[0].agentName).toBe('Classifier');
+    expect(pipeline.steps[1].agentName).toBe('Scorer');
+  });
+
+  it('parses call pipeline in assignment', () => {
+    const src = `build for javascript backend
+agent 'Echo' receiving data:
+  send back data
+pipeline 'Simple' with data:
+  echo with 'Echo'
+when user calls POST /api/test sending data:
+  result = call pipeline 'Simple' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const assign = endpoint.body.find(n => n.type === 'assign');
+    expect(assign.expression.type).toBe('run_pipeline');
+    expect(assign.expression.pipelineName).toBe('Simple');
+  });
+
+  it('errors on empty pipeline', () => {
+    const src = `build for javascript backend
+pipeline 'Empty' with data:
+when user calls GET /api/test:
+  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes('empty'))).toBe(true);
+  });
+});
+
+describe('Agent pipelines - compiler', () => {
+  it('compiles pipeline to sequential await chain', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receiving text:
+  send back text
+agent 'Scorer' receiving lead:
+  send back lead
+agent 'Router' receiving scored:
+  send back scored
+pipeline 'Process' with text:
+  classify with 'Classifier'
+  score with 'Scorer'
+  route with 'Router'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function pipeline_process(text)');
+    expect(result.javascript).toContain('let _pipe = text');
+    expect(result.javascript).toContain('_pipe = await agent_classifier(_pipe)');
+    expect(result.javascript).toContain('_pipe = await agent_scorer(_pipe)');
+    expect(result.javascript).toContain('_pipe = await agent_router(_pipe)');
+    expect(result.javascript).toContain('return _pipe');
+  });
+
+  it('compiles call pipeline to await', () => {
+    const src = `build for javascript backend
+agent 'Echo' receiving data:
+  send back data
+pipeline 'Simple' with data:
+  echo with 'Echo'
+when user calls POST /api/test sending data:
+  result = call pipeline 'Simple' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('await pipeline_simple(');
+  });
+
+  it('compiles pipeline to Python', () => {
+    const src = `build for python backend
+agent 'Alpha' receiving data:
+  send back data
+agent 'Beta' receiving data:
+  send back data
+pipeline 'Flow' with data:
+  step1 with 'Alpha'
+  step2 with 'Beta'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('async def pipeline_flow(data)');
+    expect(result.python).toContain('_pipe = data');
+    expect(result.python).toContain('_pipe = await agent_alpha(_pipe)');
+  });
+
+  it('2-step pipeline (minimum)', () => {
+    const src = `build for javascript backend
+agent 'First' receiving data:
+  send back data
+agent 'Second' receiving data:
+  send back data
+pipeline 'Duo' with data:
+  step1 with 'First'
+  step2 with 'Second'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function pipeline_duo(data)');
+    expect(result.javascript).toContain('agent_first');
+    expect(result.javascript).toContain('agent_second');
+  });
+
+  it('E2E: 3-step pipeline with endpoint compiles', () => {
+    const src = `build for javascript backend
+agent 'Classify' receiving text:
+  send back text
+agent 'Score' receiving lead:
+  send back lead
+agent 'Route' receiving scored:
+  send back scored
+pipeline 'Inbound' with text:
+  classify with 'Classify'
+  score with 'Score'
+  route with 'Route'
+when user calls POST /api/inbound sending data:
+  result = call pipeline 'Inbound' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('pipeline_inbound');
+    // Pipeline is sequential — NO Promise.all, uses let _pipe chain
+    expect(result.javascript).toContain('let _pipe');
+    expect(result.javascript).toContain('await pipeline_inbound(');
+  });
+});
+
+// =============================================================================
+// AGENT OBSERVABILITY (Phase 82)
+// =============================================================================
+
+describe('Agent observability - parser', () => {
+  it('parses track agent decisions directive', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  track agent decisions
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent).toBeDefined();
+    expect(agent.trackDecisions).toBe(true);
+    expect(agent.body.length).toBeGreaterThan(0);
+  });
+
+  it('directive is consumed — not in agent body', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  track agent decisions
+  send back message`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    // Body should NOT contain a node for 'track agent decisions'
+    const hasTrackNode = agent.body.some(n =>
+      n.type === 'assign' && n.name === 'track'
+    );
+    expect(hasTrackNode).toBe(false);
+    expect(agent.trackDecisions).toBe(true);
+  });
+
+  it('agent without track directive has trackDecisions false', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  send back data`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.trackDecisions).toBe(false);
+  });
+});
+
+describe('Agent observability - compiler', () => {
+  it('tracking agent emits _agentLog wrapper', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  track agent decisions
+  response = ask claude 'Help the customer' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_agentLog');
+    expect(result.javascript).toContain('Date.now()');
+    expect(result.javascript).toContain("db.insert('AgentLogs'");
+    expect(result.javascript).toContain('"Bot"');
+  });
+
+  it('non-tracking agent has no logging code', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_agentLog');
+    expect(result.javascript).not.toContain('AgentLogs');
+  });
+
+  it('compiled output includes db.insert to AgentLogs', () => {
+    const src = `build for javascript backend
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+agent 'Support' receiving message:
+  track agent decisions
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('AgentLogs');
+    expect(result.javascript).toContain('latency_ms');
+  });
+
+  it('compiles tracking agent to Python', () => {
+    const src = `build for python backend
+agent 'Bot' receiving message:
+  track agent decisions
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('_agent_log');
+    expect(result.python).toContain('_time.time()');
+    expect(result.python).toContain('"AgentLogs"');
+  });
+});
+
+// =============================================================================
+// TOOL USE / FUNCTION CALLING (Phase 75)
+// =============================================================================
+
+describe('Tool use - parser', () => {
+  it('parses can use: with comma-separated function names', () => {
+    const src = `build for javascript backend
+define function look_up_orders(email):
+  return email
+define function check_status(id):
+  return id
+define function send_email(msg):
+  return msg
+agent 'Support' receiving message:
+  can use: look_up_orders, check_status, send_email
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.tools).toHaveLength(3);
+    expect(agent.tools[0]).toEqual({ type: 'ref', name: 'look_up_orders' });
+    expect(agent.tools[1]).toEqual({ type: 'ref', name: 'check_status' });
+    expect(agent.tools[2]).toEqual({ type: 'ref', name: 'send_email' });
+  });
+
+  it('parses single tool', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving data:
+  can use: helper
+  response = ask claude 'Help' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.tools).toHaveLength(1);
+    expect(agent.tools[0].name).toBe('helper');
+  });
+
+  it('parses can use: with track agent decisions', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  track agent decisions
+  can use: helper
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.trackDecisions).toBe(true);
+    expect(agent.tools).toHaveLength(1);
+  });
+});
+
+describe('Tool use - compiler', () => {
+  it('generates _tools array and _toolFns map', () => {
+    const src = `build for javascript backend
+define function look_up_orders(customer_email):
+  return customer_email
+define function check_status(order_id):
+  return order_id
+agent 'Support' receiving message:
+  can use: look_up_orders, check_status
+  response = ask claude 'Help this customer' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_tools');
+    expect(result.javascript).toContain('look_up_orders');
+    expect(result.javascript).toContain('check_status');
+    expect(result.javascript).toContain('_toolFns');
+    expect(result.javascript).toContain('_askAIWithTools');
+    expect(result.javascript).not.toContain('await _askAI('); // replaced with _askAIWithTools
+  });
+
+  it('tool schema includes function parameters', () => {
+    const src = `build for javascript backend
+define function search_products(query, category):
+  return query
+agent 'Bot' receiving msg:
+  can use: search_products
+  response = ask claude 'Find products' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('"query"');
+    expect(result.javascript).toContain('"category"');
+    expect(result.javascript).toContain('search_products');
+  });
+
+  it('_askAIWithTools utility is tree-shaken in', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function _askAIWithTools');
+  });
+
+  it('agent WITHOUT tools still uses _askAI (no regression)', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_askAIWithTools');
+    expect(result.javascript).not.toContain('_tools');
+  });
+});
+
+describe('Tool use - validator', () => {
+  it('errors on undefined tool function', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving msg:
+  can use: nonexistent_function
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes('nonexistent_function') && e.message.includes('no function'))).toBe(true);
+  });
+
+  it('passes when tool function exists', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Tool use - E2E', () => {
+  it('full agent with 3 tools + endpoint compiles', () => {
+    const src = `build for javascript backend
+create a Orders table:
+  email, required
+  status, default 'pending'
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+define function check_status(order_id):
+  order = look up Order where id is order_id
+  return order
+define function send_notification(message):
+  show message
+  return message
+agent 'Customer Support' receiving message:
+  can use: look_up_orders, check_status, send_notification
+  response = ask claude 'Help this customer resolve their issue' with message
+  send back response
+when user calls POST /api/support sending data:
+  result = call 'Customer Support' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAIWithTools');
+    expect(result.javascript).toContain('_tools');
+    expect(result.javascript).toContain('look_up_orders');
+    expect(result.javascript).toContain('async function agent_customer_support');
+  });
+});
+
+// =============================================================================
+// GUARDRAILS / SAFETY (Phase 83)
+// =============================================================================
+
+describe('Guardrails - parser', () => {
+  it('parses must not: block into restrictions array', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  must not:
+    delete any records
+    access Users table
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.restrictions).toHaveLength(2);
+    expect(agent.restrictions[0].text).toBe('delete any records');
+    expect(agent.restrictions[0].category).toBe('delete');
+    expect(agent.restrictions[1].text).toBe('access Users table');
+    expect(agent.restrictions[1].category).toBe('access');
+  });
+
+  it('parses runtime restrictions with limits', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  must not:
+    call more than 5 tools per request
+    spend more than 10000 tokens
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.restrictions).toHaveLength(2);
+    expect(agent.restrictions[0].category).toBe('max_calls');
+    expect(agent.restrictions[0].limit).toBe(5);
+    expect(agent.restrictions[1].category).toBe('max_tokens');
+    expect(agent.restrictions[1].limit).toBe(10000);
+  });
+});
+
+describe('Guardrails - validator', () => {
+  it('errors when tool deletes and restriction says delete any records', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+define function clear_products():
+  remove from Products where name is 'test'
+  return 'done'
+agent 'Bot' receiving msg:
+  can use: clear_products
+  must not:
+    delete any records
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes('deletes from') && e.message.includes('must not'))).toBe(true);
+  });
+
+  it('passes when tools dont violate restrictions', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+define function search_products(query):
+  products = look up all Products where name is query
+  return products
+agent 'Bot' receiving msg:
+  can use: search_products
+  must not:
+    delete any records
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('errors when tool accesses restricted table', () => {
+    const src = `build for javascript backend
+create a Users table:
+  name, required
+define function get_user(user_id):
+  user = look up User where id is user_id
+  return user
+agent 'PublicBot' receiving msg:
+  can use: get_user
+  must not:
+    access Users table
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes('accesses User') && e.message.includes('must not'))).toBe(true);
+  });
+
+  it('error message includes agent name and tool name', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+define function nuke_products():
+  remove from Products where name is 'all'
+  return 'done'
+agent 'SafeBot' receiving msg:
+  can use: nuke_products
+  must not:
+    delete any records
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const err = result.errors.find(e => e.message.includes('must not'));
+    expect(err.message).toContain('SafeBot');
+    expect(err.message).toContain('nuke_products');
+  });
+});
+
+describe('Guardrails - E2E', () => {
+  it('agent with clean guardrails compiles', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+  price (number)
+define function search_products(query):
+  products = look up all Products where name is query
+  return products
+define function check_stock(product_id):
+  product = look up Product where id is product_id
+  return product
+agent 'ShopBot' receiving msg:
+  can use: search_products, check_stock
+  must not:
+    delete any records
+    access Users table
+  response = ask claude 'Help find products' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAIWithTools');
+  });
+});
+
+// =============================================================================
+// MULTI-TURN CONVERSATION (Phase 76) + AGENT MEMORY (Phase 79)
+// =============================================================================
+
+describe('Multi-turn conversation - parser', () => {
+  it('parses remember conversation context directive', () => {
+    const src = `build for javascript backend
+agent 'Assistant' receiving message:
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.rememberConversation).toBe(true);
+  });
+
+  it('non-conversation agent has rememberConversation false', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  send back data`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.rememberConversation).toBe(false);
+  });
+});
+
+describe('Multi-turn conversation - compiler', () => {
+  it('conversation agent has _userId parameter', () => {
+    const src = `build for javascript backend
+agent 'Chat' receiving message:
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('agent_chat(message, _userId)');
+  });
+
+  it('emits conversation history load/save', () => {
+    const src = `build for javascript backend
+agent 'Chat' receiving message:
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Conversations');
+    expect(result.javascript).toContain('_history');
+    expect(result.javascript).toContain('JSON.parse');
+    expect(result.javascript).toContain('JSON.stringify');
+  });
+
+  it('non-conversation agent has no history code', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_history');
+    expect(result.javascript).not.toContain('Conversations');
+  });
+});
+
+describe('Agent memory - parser', () => {
+  it('parses remember user preferences directive', () => {
+    const src = `build for javascript backend
+agent 'PA' receiving message:
+  remember user's preferences
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.rememberPreferences).toBe(true);
+  });
+});
+
+describe('Agent memory - compiler', () => {
+  it('memory agent has _userId parameter', () => {
+    const src = `build for javascript backend
+agent 'PA' receiving message:
+  remember user's preferences
+  response = ask claude 'Help the user' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_userId');
+    expect(result.javascript).toContain('Memories');
+    expect(result.javascript).toContain('_memContext');
+  });
+
+  it('memory agent extracts REMEMBER tags', () => {
+    const src = `build for javascript backend
+agent 'PA' receiving message:
+  remember user's preferences
+  response = ask claude 'Help the user' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('REMEMBER');
+    expect(result.javascript).toContain("db.insert('Memories'");
+  });
+});
+
+// =============================================================================
+// HUMAN-IN-THE-LOOP (Phase 81)
+// =============================================================================
+
+describe('Human-in-the-loop - parser', () => {
+  it('parses ask user to confirm with message', () => {
+    const src = `build for javascript backend
+agent 'Refund' receiving request:
+  ask user to confirm 'Process this refund?'
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    const confirm = agent.body.find(n => n.type === 'human_confirm');
+    expect(confirm).toBeDefined();
+    expect(confirm.message.value).toBe('Process this refund?');
+  });
+});
+
+describe('Human-in-the-loop - compiler', () => {
+  it('emits Approvals insert and 202 response', () => {
+    const src = `build for javascript backend
+when user calls POST /api/refund sending data:
+  ask user to confirm 'Process this refund?'
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Approvals');
+    expect(result.javascript).toContain('202');
+    expect(result.javascript).toContain('pending');
+    expect(result.javascript).toContain('approval_id');
+  });
+
+  it('confirm inside if-block compiles', () => {
+    const src = `build for javascript backend
+when user calls POST /api/refund sending data:
+  amount = 150
+  if amount is greater than 100:
+    ask user to confirm 'Large refund - are you sure?'
+  send back 'processed'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Approvals');
+  });
+
+  it('E2E: agent with confirmation compiles', () => {
+    const src = `build for javascript backend
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+agent 'Processor' receiving request:
+  ask user to confirm 'Proceed with action?'
+  send back 'completed'
+when user calls POST /api/process sending data:
+  result = call 'Processor' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Approvals');
+    expect(result.javascript).toContain('agent_processor');
+  });
+});
+
+// =============================================================================
+// AGENT TESTING (Phase 84)
+// =============================================================================
+
+describe('Agent testing - parser', () => {
+  it('parses mock claude responding with fields', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receiving text:
+  result = ask claude 'Classify this' with text returning:
+    sentiment
+    confidence (number)
+  send back result
+test 'handles positive':
+  set input to 'Amazing product!'
+  mock claude responding:
+    sentiment is 'positive'
+    confidence = 0.95
+  result = call 'Classifier' with input
+  expect result's sentiment is 'positive'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('mock has correct fields', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving data:
+  response = ask claude 'Help' with data
+  send back response
+test 'test mock':
+  mock claude responding:
+    answer is 'hello'
+    score = 42
+  result = call 'Bot' with 'test'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Find the test block
+    const testNode = result.ast.body.find(n => n.type === 'test_def');
+    const mockNode = testNode.body.find(n => n.type === 'mock_ai');
+    expect(mockNode).toBeDefined();
+    expect(mockNode.fields).toHaveLength(2);
+    expect(mockNode.fields[0].name).toBe('answer');
+    expect(mockNode.fields[0].value).toBe('hello');
+    expect(mockNode.fields[1].name).toBe('score');
+    expect(mockNode.fields[1].value).toBe(42);
+  });
+});
+
+describe('Agent testing - compiler', () => {
+  it('test with mock emits _askAI override and try/finally', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving data:
+  response = ask claude 'Help' with data
+  send back response
+test 'basic mock':
+  mock claude responding:
+    answer is 'mocked'
+  result = call 'Bot' with 'test'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_origAskAI');
+    expect(result.javascript).toContain('_askAI = async');
+    expect(result.javascript).toContain('"mocked"');
+    expect(result.javascript).toContain('finally');
+  });
+
+  it('multiple mocks use array with counter', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving data:
+  response = ask claude 'Help' with data
+  send back response
+test 'multi mock':
+  mock claude responding:
+    step is 'first'
+  mock claude responding:
+    step is 'second'
+  result = call 'Bot' with 'test'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_mockResponses');
+    expect(result.javascript).toContain('_mockIdx');
+    expect(result.javascript).toContain('"first"');
+    expect(result.javascript).toContain('"second"');
+  });
+
+  it('test without mock has no mock code', () => {
+    const src = `build for javascript backend
+test 'simple test':
+  price = 10
+  tax = 2
+  expect price + tax is 12`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_origAskAI');
+    expect(result.javascript).not.toContain('_mockResponses');
+  });
+});
+
+// =============================================================================
+// RAG / KNOWLEDGE BASE (Phase 78)
+// =============================================================================
+
+describe('RAG - parser', () => {
+  it('parses knows about directive with table names', () => {
+    const src = `build for javascript backend
+agent 'KnowledgeBot' receiving question:
+  knows about: Documents, Products, FAQ
+  answer = ask claude 'Answer this question' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual(['Documents', 'Products', 'FAQ']);
+  });
+
+  it('single table knowledge base', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving question:
+  knows about: Products
+  answer = ask claude 'Help' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual(['Products']);
+  });
+
+  it('agent without knows about has null', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  send back data`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toBeNull();
+  });
+});
+
+describe('RAG - compiler', () => {
+  it('RAG agent emits keyword search code', () => {
+    const src = `build for javascript backend
+create a Documents table:
+  title, required
+  content, required
+agent 'KnowledgeBot' receiving question:
+  knows about: Documents
+  answer = ask claude 'Answer using context' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_ragContext');
+    expect(result.javascript).toContain('_query');
+    expect(result.javascript).toContain("'Documents'");
+    expect(result.javascript).toContain('_ragStr');
+  });
+
+  it('context injected into _askAI call', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+agent 'Bot' receiving question:
+  knows about: Products
+  answer = ask claude 'Answer this' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_ragStr');
+    expect(result.javascript).toContain('Relevant context');
+  });
+
+  it('multiple tables searched', () => {
+    const src = `build for javascript backend
+create a Docs table:
+  content, required
+create a FAQ table:
+  question, required
+agent 'Bot' receiving question:
+  knows about: Docs, FAQ
+  answer = ask claude 'Answer' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("'Docs'");
+    expect(result.javascript).toContain("'FAQ'");
+  });
+
+  it('non-RAG agent has no search code', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_ragContext');
+    expect(result.javascript).not.toContain('_ragStr');
+  });
+});
+
+// =============================================================================
+// SKILLS (Phase 75b) + LONG PROMPTS + GAN AGENT APP
+// =============================================================================
+
+describe('Skills - parser', () => {
+  it('parses skill definition with tools and instructions', () => {
+    const src = `build for javascript backend
+define function look_up_orders(email):
+  return email
+define function cancel_order(order_id):
+  return order_id
+skill 'Order Management':
+  can: look_up_orders, cancel_order
+  instructions:
+    Always verify customer identity.
+    Never cancel shipped orders.
+agent 'Bot' receiving msg:
+  uses skills: 'Order Management'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const skill = result.ast.body.find(n => n.type === 'skill');
+    expect(skill).toBeDefined();
+    expect(skill.name).toBe('Order Management');
+    expect(skill.tools).toEqual(['look_up_orders', 'cancel_order']);
+    expect(skill.instructions).toHaveLength(2);
+    expect(skill.instructions[0]).toContain('verify customer');
+  });
+
+  it('agent with uses skills directive', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+skill 'Basic':
+  can: helper
+  instructions:
+    Be helpful.
+agent 'Bot' receiving msg:
+  uses skills: 'Basic'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.skills).toEqual(['Basic']);
+  });
+});
+
+describe('Skills - compiler', () => {
+  it('merges skill tools into agent', () => {
+    const src = `build for javascript backend
+define function look_up_orders(email):
+  return email
+define function send_email(msg):
+  return msg
+skill 'Support':
+  can: look_up_orders, send_email
+  instructions:
+    Be professional.
+agent 'Bot' receiving msg:
+  uses skills: 'Support'
+  response = ask claude 'Help customer' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAIWithTools');
+    expect(result.javascript).toContain('look_up_orders');
+    expect(result.javascript).toContain('send_email');
+  });
+
+  it('skill instructions prepended to prompt', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+skill 'Polite':
+  can: helper
+  instructions:
+    Always say please.
+agent 'Bot' receiving msg:
+  uses skills: 'Polite'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Always say please');
+  });
+});
+
+describe('Long prompts - text blocks in agents', () => {
+  it('text block as ask ai prompt compiles', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  prompt is text block:
+    You are a helpful assistant.
+    Be concise and clear.
+  response = ask claude prompt with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('You are a helpful assistant');
+    expect(result.javascript).toContain('_askAI(prompt');
+  });
+
+  it('text block with interpolation compiles', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  today = format date current time as 'YYYY-MM-DD'
+  prompt is text block:
+    Today is {today}.
+    Help the user.
+  response = ask claude prompt with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('today');
+  });
+});
+
+describe('GAN: Complete customer support agent', () => {
+  it('full agent with all features compiles', () => {
+    const src = `build for javascript backend
+database is local memory
+
+create a Orders table:
+  email, required
+  product, required
+  status, default 'pending'
+  amount (number)
+
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+
+create a Memories table:
+  user_id, required
+  fact, required
+
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+
+define function check_status(order_id):
+  order = look up Order where id is order_id
+  return order
+
+define function process_refund(order_id):
+  order = look up Order where id is order_id
+  return order
+
+skill 'Order Support':
+  can: look_up_orders, check_status
+  instructions:
+    Always look up the customer order before answering.
+    Include order number in responses.
+
+agent 'Customer Support' receiving message:
+  uses skills: 'Order Support'
+  track agent decisions
+  must not:
+    delete any records
+
+  system_prompt is text block:
+    You are a customer support agent for Acme Corp.
+    Be friendly but professional.
+    If the customer wants a refund over 100 dollars ask for confirmation.
+
+  response = ask claude system_prompt with message
+  send back response
+
+when user calls POST /api/chat sending data:
+  result = call 'Customer Support' with data
+  send back result
+
+test 'handles order lookup':
+  mock claude responding:
+    answer is 'Your order 123 is being shipped'
+    action is 'respond'
+  result = call 'Customer Support' with 'Where is my order?'
+  expect result's action is 'respond'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Verify all features are present in compiled output
+    expect(result.javascript).toContain('_askAIWithTools');     // tool use
+    expect(result.javascript).toContain('_agentLog');           // observability
+    expect(result.javascript).toContain('AgentLogs');           // logging table
+    expect(result.javascript).toContain('look_up_orders');      // tools
+    expect(result.javascript).toContain('_tools');              // tool definitions
+    expect(result.javascript).toContain('customer support');    // agent name in logs
+    expect(result.javascript).toContain('You are a customer');  // long prompt
+    expect(result.javascript).toContain('_origAskAI');          // mock in test
+  });
+});
+
+// =============================================================================
+// WEB TARGET AGENT FEATURES
+// =============================================================================
+
+describe('Web target agent features', () => {
+  it('web+backend target includes _askAIWithTools in serverJS and browserServer', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Products table:
+  name, required
+define function search_products(query):
+  products = look up all Products where name is query
+  return products
+agent 'ShopBot' receiving message:
+  can use: search_products
+  track agent decisions
+  response = ask claude 'Help find products' with message
+  send back response
+when user calls POST /api/chat sending data:
+  result = call 'ShopBot' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // serverJS (Express backend)
+    expect(result.serverJS).toContain('_askAIWithTools');
+    expect(result.serverJS).toContain('_agentLog');
+    expect(result.serverJS).toContain('const _tools');
+    // browserServer (in-page fetch interceptor)
+    expect(result.browserServer).toContain('function _askAIWithTools');
+    expect(result.browserServer).toContain('_agentLog');
+    expect(result.browserServer).toContain('const _tools');
+  });
+});
+
+// =============================================================================
+// ROADMAP SYNTAX COMPATIBILITY
+// =============================================================================
+
+describe('Roadmap syntax - single-line must not', () => {
+  it('parses single-line must not with comma-separated policies', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  must not: delete records, modify prices, access admin tables
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.restrictions).toHaveLength(3);
+    expect(agent.restrictions[0].category).toBe('delete');
+    expect(agent.restrictions[1].category).toBe('modify');
+    expect(agent.restrictions[2].category).toBe('access');
+  });
+});
+
+describe('Roadmap syntax - log agent decisions alias', () => {
+  it('log agent decisions works as alias for track agent decisions', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving msg:
+  log agent decisions
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.trackDecisions).toBe(true);
+    expect(result.javascript).toContain('_agentLog');
+  });
+});
+
+describe('Roadmap syntax - using model directive', () => {
+  it('using model as standalone directive sets model on agent', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving msg:
+  using 'claude-opus-4-6'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.model).toBe('claude-opus-4-6');
+    expect(result.javascript).toContain('claude-opus-4-6');
+  });
+
+  it('Python agent with model directive', () => {
+    const src = `build for python backend
+agent 'Bot' receiving msg:
+  using 'claude-sonnet-4-6'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('claude-sonnet-4-6');
+  });
+});
+
+describe('Roadmap syntax - complete showcase example', () => {
+  it('full roadmap showcase compiles with 0 errors', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+create a Memories table:
+  user_id, required
+  fact, required
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  latency_ms (number)
+  created_at (timestamp), auto
+define function look_up_orders(email):
+  return email
+define function check_status(order_id):
+  return order_id
+define function send_email(msg):
+  return msg
+define function escalate(issue):
+  return issue
+agent 'Customer Support' receiving message:
+  can use: look_up_orders, check_status, send_email, escalate
+  must not: delete records, modify prices, access admin tables
+  log agent decisions
+  using 'claude-sonnet-4-6'
+  response = ask claude 'Help this customer' with message
+  if response's action is 'escalate':
+    ask user to confirm 'Escalate to human agent?'
+  send back response
+when user calls POST /api/chat sending message:
+  needs login
+  response = call 'Customer Support' with message
+  send back response
+test 'handles product question':
+  mock claude responding:
+    answer is 'The Widget costs 29.99'
+    action is 'respond'
+  result = call 'Customer Support' with 'How much?'
+  expect result's action is 'respond'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
   });
 });
 

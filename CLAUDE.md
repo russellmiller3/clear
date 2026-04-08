@@ -11,10 +11,10 @@ Compiles plain English to JavaScript, Python, and HTML.
 5. **`SYNTAX.md`** -- complete syntax reference with examples for every feature.
 6. **`design-system.md`** -- 3 themes (midnight/ivory/nova), all color tokens, typography, spacing, shadows, animation. DaisyUI v5 + Tailwind v4.
 7. **`ai-build-instructions.md`** -- 10 hard UI rules, CDN imports, component patterns, ECharts config.
-8. **`ROADMAP.md`** -- what's built (phases 1-28 complete), what's planned.
+8. **`ROADMAP.md`** -- what's built (phases 1-46b, 75-84 complete), what's planned.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1337 tests)
+- Run all tests: `node clear.test.js` (1407 tests)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 

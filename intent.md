@@ -223,6 +223,24 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `(nu
 | `ASK_AI` (structured) | `set result to ask ai 'prompt' with context returning:` + fields | (same) | `await _askAI("prompt", context, schema)` |
 | `RUN_AGENT` | `set result to call 'Name' with data` | `result = call 'Name' with data` | `await agent_name(data)` |
 | `GUARD` | `check X is not missing, otherwise error 'msg'` | `guard X is not nothing or 'msg'` | `throw new Error("msg")` (in agent) / `res.status(403)` (in endpoint) |
+| `PARALLEL_AGENTS` | `do these at the same time:` + assignments | (same) | `const [a, b] = await Promise.all([...])` |
+| `PIPELINE` | `pipeline 'Name' with var:` + agent steps | (same) | `async function pipeline_name(var) { ... }` |
+| `RUN_PIPELINE` | `result = call pipeline 'Name' with data` | (same) | `await pipeline_name(data)` |
+| `SKILL` | `skill 'Name':` + `can:` + `instructions:` | (same) | Compile-time merge into agent |
+| `HUMAN_CONFIRM` | `ask user to confirm 'message'` | (same) | Approvals table insert + 202 response |
+| `MOCK_AI` | `mock claude responding:` + fields (in test) | (same) | `_askAI` override with mock |
+
+Agent directives (metadata on AGENT node, not separate nodes):
+
+| Directive | What it does |
+|-----------|-------------|
+| `can use: fn1, fn2` | Tool use — maps functions to Anthropic tool_use API |
+| `uses skills: 'Skill1', 'Skill2'` | Merges skill tools + instructions into agent |
+| `must not:` + policies | Compile-time guardrails + runtime limits |
+| `remember conversation context` | DB-backed multi-turn conversation history |
+| `remember user's preferences` | Per-user long-term memory |
+| `track agent decisions` | Observability — logs _askAI calls with timing |
+| `knows about: Table1, Table2` | RAG — keyword search before prompting |
 
 `missing` is a synonym for `nothing` (null). Both work everywhere.
 
