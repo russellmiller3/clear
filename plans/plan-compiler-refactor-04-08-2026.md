@@ -2,7 +2,7 @@
 
 **Branch:** `feature/compiler-refactor`
 **Date:** 2026-04-08
-**Status:** Draft
+**Status:** Red-teamed. 7 issues found, all patched.
 
 ---
 
@@ -56,22 +56,66 @@ Phase B: Pattern matchers (only if Map misses)
 **Risk:** Low. Same functions get called, same AST comes out. Map is just a different dispatch mechanism.
 **Test:** All 1337 tests pass. No new tests needed — this is pure internal restructuring.
 
-**Implementation steps:**
-1. Build the DISPATCH Map at module level from existing branches
-2. Build the PATTERNS array (3 entries: label-input, math-function, assignment)
-3. Replace the if/else chain in parseBlock with: check Map first, then iterate PATTERNS
-4. Handle multi-canonical branches (e.g. `show` dispatches to display/toast/show based on tokens[1])
-5. Run tests after each sub-step
+**CRITICAL: 13 branches dispatch on `firstToken.value` (raw), not `firstToken.canonical`.**
+These CANNOT go in the canonical-keyed Map. They need a separate raw-value Map or pre-check:
+- `database` (line 765) — raw value, not a keyword
+- `chart` (line 1087) — raw value
+- `agent` (line 1208) — raw value
+- `retry` (line 1272) — raw value
+- `first` (line 1296) — raw value (for `first to finish`)
+- `script` (line 1335) — raw value
+- `store` (line 1353) — raw value
+- `restore` (line 1365) — raw value
+- `tab` (line 1493) — raw value
+- `toggle`/`open`/`close` (line 1503) — raw values (panel actions)
+- `background` (line 1610) — raw value (collides with CSS synonym!)
+- `when` (lines 1689, 1876) — raw value (webhook + on-change; `when` is synonym for `if`)
 
-**Tricky branches that need wrapper functions:**
+**Fix:** Two Maps, not one:
+```
+RAW_DISPATCH = new Map([
+  ['database',  handleDatabase],
+  ['chart',     handleChart],
+  ['agent',     parseAgent],
+  ['script',    handleScript],
+  ['store',     handleStore],
+  ['restore',   handleRestore],
+  ['tab',       handleTab],
+  ['when',      handleWhen],        // webhooks, on-change
+  ['toggle',    handlePanelAction],
+  ['open',      handlePanelAction],
+  ['close',     handlePanelAction],
+  ['retry',     handleRetry],
+  ['first',     handleFirstToFinish],
+  ['background', handleBackground],
+])
+
+CANONICAL_DISPATCH = new Map([
+  ['repeat',          parseRepeatLoop],
+  ['for_each',        parseForEachLoop],
+  ... (all canonical-keyed branches)
+])
+```
+
+Lookup order: RAW_DISPATCH first (raw value), then CANONICAL_DISPATCH (canonical), then PATTERNS array.
+
+**Implementation steps:**
+1. Build RAW_DISPATCH Map for the 13 raw-value branches
+2. Build CANONICAL_DISPATCH Map for the ~60 canonical-keyed branches
+3. Build PATTERNS array (3 entries: label-input, math-function, assignment — ALWAYS LAST)
+4. Replace parseBlock's if/else chain with: RAW_DISPATCH → CANONICAL_DISPATCH → PATTERNS
+5. Write router functions for multi-target branches (show, if, remove, define, respond, set)
+6. Run tests after each sub-step
+
+**Tricky branches that need wrapper functions (8 total):**
 - `show` — routes to parseDisplay (if followed by display modifiers), toast node, or show node
 - `remove` — routes to CRUD delete (4+ tokens with table pattern) or list remove
 - `define` — routes to parseComponentDef, parseFunctionDef, or parseDefineAs
 - `if` — routes to guard (if + otherwise error), parseIfBlock (no `then`), or inline if-then
-- `respond`/`send` — routes to email, API call, or parseRespond based on tokens[1]
+- `respond`/`send` — routes to email (via sendgrid), API call, or parseRespond based on tokens[1]
 - `set` — routes to parseDataShape (if followed by data_shape pattern) or falls through to PATTERNS
-
-These 6 branches need small router functions that inspect tokens[1] and delegate.
+- `when` — routes to webhook (has 'notifies'), on-change (has 'changes'), or falls through
+- `background` — only matches if followed by STRING token (else falls through to PATTERNS)
 ### Phase 2: Context-Sensitive Synonyms
 
 **Bug class eliminated:** All 10+ synonym collision bugs in learnings.md (background/CSS, toggle/checkbox, delete/remove, data from, count by, send email, theme/style, as/as_format, max/maximum, etc.)
@@ -85,6 +129,20 @@ These 6 branches need small router functions that inspect tokens[1] and delegate
 - Keep multi-word synonym matching (these are unambiguous: "is greater than", "for each", etc.)
 - Emit raw words as IDENTIFIER tokens with a new `rawValue` field
 - Single words that COULD be keywords get `type: TokenType.WORD` (new token type)
+
+**⚠️ TEST BREAKAGE WARNING:** 3 tokenizer tests check `token.canonical` directly:
+- Line 91: `expect(tokens[0].canonical).toBe('set')` — tests `create` → `set` rewriting
+- Line 96: `expect(tokens[0].canonical).toBe('show')` — tests `display` → `show`
+- Line 120: `tokens.find(t => t.canonical === 'is greater than')`
+
+The multi-word test (line 120) still passes since multi-word synonyms stay in tokenizer.
+The single-word tests (lines 91, 96) WILL BREAK because single-word rewriting moves to parser.
+
+**Fix:** These 2 tests must be updated to check that the tokenizer emits `TokenType.WORD` with
+the raw value, and that `resolveCanonical()` in the parser resolves them correctly. This is the
+ONE exception to "no test changes" — 2 tokenizer unit tests need updating to match the new
+contract. All 1335 other tests pass unchanged because they test parse/compile output, not
+tokenizer internals.
 
 **B. Parser changes (parser.js):**
 - New function: `resolveCanonical(token, zone)` 
@@ -111,6 +169,24 @@ These 6 branches need small router functions that inspect tokens[1] and delegate
 7. Run tests after each file change
 
 **The safe migration path:** Do this incrementally. Start by having `resolveCanonical()` just call the existing REVERSE_LOOKUP (same behavior). Then zone by zone, move synonyms into zone-specific tables. Each zone migration is independently testable.
+
+**⚠️ PUBLIC API IMPACT:** `index.js` re-exports `REVERSE_LOOKUP` and `SYNONYM_TABLE`. The test
+file imports them (`clear.test.js` line 12). If you restructure synonyms.js, these exports
+must still work. Options:
+- Keep `REVERSE_LOOKUP` as the full/statement-zone table (backward compatible)
+- Add `ZONE_SYNONYMS` as a new export alongside the existing ones
+- `SYNONYM_VERSION` must be bumped (currently '0.10.0')
+
+**⚠️ PHASE 1 CONFLICT:** If Phase 1 (dispatch table) dispatches on `firstToken.canonical`,
+and Phase 2 stops setting `canonical` on single-word tokens, the dispatch table breaks.
+
+**Resolution:** Phase 2 must ensure tokens still have a `canonical` field. The change is:
+- Tokenizer sets `canonical` to the raw word (identity mapping) instead of REVERSE_LOOKUP
+- Parser's `resolveCanonical(token, zone)` returns the zone-aware canonical
+- Dispatch table in parseBlock uses `resolveCanonical(firstToken, 'statement')` not `firstToken.canonical`
+
+This means Phase 1's CANONICAL_DISPATCH Map keys must match what `resolveCanonical()` returns
+in statement zone — which is the same as current `firstToken.canonical`. No conflict.
 ### Phase 3: Normalize Parser Return Types
 
 **Bug class eliminated:** "Used wrong field name on return value" (learnings.md: parseExpression returns {node, nextPos} not {expr, pos}; define-as must return {node:assignNode()} not {name, expression}; CRUD nodes must use {isCrud:true, node})
@@ -158,10 +234,20 @@ These 6 branches need small router functions that inspect tokens[1] and delegate
 - Add `COLON: 'colon'` to TokenType enum
 - Add colon detection in tokenizeLine: `if (line[pos] === ':')` -> emit COLON token
 
+**⚠️ COLON INSIDE ROUTE PARAMS:** `/api/todos/:id` has a colon mid-line. The tokenizer will
+now emit a COLON token there too. This is fine — `parseEndpoint` already uses `lines[i].raw`
+to extract the full route path (learnings.md: "store raw text and extract paths from raw source
+in parseEndpoint"). The COLON tokens in mid-line are ignored by parseEndpoint.
+
+**⚠️ COLON AFTER INLINE VALUES:** `define x as: price + tax` has a colon after `as`. Currently
+this colon is stripped. With the change, `parseAssignment` will see a COLON token between `as`
+and the expression. The parser must skip COLON tokens in this position.
+
 **B. Parser handles block-opener colons:**
 - In `parseBlock()`, when a line's last token is COLON, treat it as block opener
 - Strip the COLON from the token array before passing to sub-parsers
 - This is the same behavior as now, just decided by parser not tokenizer
+- ALSO: skip COLON tokens after `as_format` in parseAssignment/parseDefineAs
 
 **C. Add LBRACE/RBRACE tokens:**
 - Add to TokenType enum: `LBRACE: 'lbrace'`, `RBRACE: 'rbrace'`
@@ -211,6 +297,29 @@ case NodeType.HTTP_REQUEST:
 - HTTP_REQUEST: Keep the statement version (has Python support + _clearCtx error context). Expression version calls same function with indent=0.
 - RAW_QUERY: Keep statement version (handles both `run` and `fetch` operations). Expression version calls same function for fetch-only case.
 
+**⚠️ STATEMENT vs EXPRESSION DIFFERENCES (must be preserved):**
+
+HTTP_REQUEST statement (line 2265) vs expression (line 3067):
+- Statement has Python path (`ctx.lang === 'python'` → httpx). Expression is JS-only.
+- Statement uses `${pad}` for indentation. Expression uses no padding.
+- Statement has `finally` without catch. Expression has explicit catch + re-throw.
+- Both have `_clearCtx` error context — good.
+
+The unified function must:
+1. Accept a `padOverride` param (empty string for expression context)
+2. Keep the Python path from the statement version
+3. Keep the catch + re-throw from the expression version (it's more correct)
+
+RAW_QUERY statement (line 2215) vs expression (line 3120):
+- Statement handles both `run` (execute, no return) and `fetch` (query, returns rows)
+- Statement assigns to `node.variable` with `const`
+- Expression only handles `fetch`, returns raw expression (no variable assignment)
+
+The unified function must:
+1. Return the raw expression (no `const X =` prefix)
+2. Let the ASSIGN case in `_compileNodeInner` add the `const X =` prefix
+3. Handle `run` operation only in statement context (no expression form for `run`)
+
 **Files:** compiler.js only
 **Risk:** Low. Only 2 node types affected. Each merge is independently testable.
 
@@ -253,21 +362,29 @@ No new files created.
 
 ---
 
-## 🔄 PHASE ORDERING
+## 🔄 PHASE ORDERING (revised after red-team)
 
 ```
-Phase 1 (Dispatch Table)     -- no dependencies, do first
+Phase 5 (Unify Compilation)  -- independent, smallest, good warmup
     |
-Phase 3 (Return Types)       -- benefits from Phase 1 (cleaner call sites)
+Phase 3 (Return Types)       -- independent, mechanical, low risk
     |
-Phase 2 (Context Synonyms)   -- benefits from Phase 1 (dispatch knows zones)
+Phase 1 (Dispatch Table)     -- parser restructure, medium risk
     |
-Phase 4 (Tokenizer Preserve) -- after Phase 2 (tokenizer changes coordinate)
+Phase 2 (Context Synonyms)   -- depends on Phase 1 dispatch, highest risk
     |
-Phase 5 (Unify Compilation)  -- independent, can be done anytime
+Phase 4 (Tokenizer Preserve) -- depends on Phase 2 tokenizer changes
 ```
+
+**Why reordered:** Original order put Phase 1 first, but Phase 5 is the safest
+warmup (only 2 cases in compiler.js, zero parser impact). Phase 3 is mechanical
+and reduces noise before the big Phase 1 restructure. Phase 2 MUST come after
+Phase 1 because the dispatch table needs to use `resolveCanonical()`.
 
 **Critical rule:** Run `node clear.test.js` after EVERY sub-step. Not per phase — per change.
+
+**Bailout rule:** If any phase causes more than 10 test failures, STOP. The
+change is wrong — don't try to fix 10 tests. Revert and rethink.
 
 ---
 
@@ -297,11 +414,14 @@ No new tests. Existing suite IS the acceptance criteria.
 - Verify output is byte-identical to pre-refactor
 
 **Checklist:**
-- [ ] All 1337 tests pass after each phase
+- [ ] All 1337 tests pass after each phase (except 2 tokenizer tests updated in Phase 2)
 - [ ] Compiled output byte-identical for todo app
 - [ ] No new files created
 - [ ] TOC in parser.js and compiler.js updated if sections moved
 - [ ] learnings.md updated after completion
+- [ ] intent.md "Compiler Passes" section updated to reflect new dispatch architecture
+- [ ] SYNONYM_VERSION bumped after Phase 2
+- [ ] index.js exports still work (REVERSE_LOOKUP, SYNONYM_TABLE)
 
 ---
 
