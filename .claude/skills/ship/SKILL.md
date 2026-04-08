@@ -27,6 +27,7 @@ Review every changed file and update these docs as needed:
 - **`HANDOFF.md`** — Rewrite: what was done, what's next, key decisions, known issues, resume prompt
 - **`CLAUDE.md`** — Verify new rules are present, update test count if tests were added
 - **`.claude/skills/write-clear/SKILL.md`** — Update the write-clear skill if new syntax was added, canonical forms changed, or new features need examples
+- **`USER-GUIDE.md`** — Update if new syntax, features, or app patterns were added. Add examples for new features. Test all code examples compile.
 
 ### Step 1: Rebuild playground bundle
 
