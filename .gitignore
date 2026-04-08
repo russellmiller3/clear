@@ -7,3 +7,5 @@ apps/*/build/clear-data.json
 clear-data.json
 .clear-test-runner.*
 playground/.playground-build/
+test-save/
+test-save-compiled/
