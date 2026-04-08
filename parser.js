@@ -728,9 +728,29 @@ function parseConfigBlock(lines, startIdx, parentIndent) {
 // behavior as before). Future: zone-based resolution where 'delete' means
 // different things in CRUD vs UI contexts.
 
+// Zone-specific synonym overrides.
+// When a zone is active, these take precedence over the tokenizer's canonical.
+// Currently unused — the tokenizer still resolves all synonyms.
+// To activate: change tokenizer to emit raw words, then call resolveCanonical()
+// with the appropriate zone in each parser function.
+const ZONE_OVERRIDES = {
+  ui: {
+    // In UI context (display table actions), 'delete' means action button, not CRUD
+    // Currently handled by parser guard: checks 'remove' canonical, emits 'delete' action
+  },
+  crud: {
+    // In CRUD context, 'delete' means remove from database
+    // This is the tokenizer's default behavior (delete -> remove)
+  },
+  comparison: {
+    // In comparison context, 'is' means equals (==), not assignment
+    // Already context-sensitive in the parser
+  },
+};
+
 function resolveCanonical(token, _zone) {
   // Currently returns the tokenizer-resolved canonical (identity behavior).
-  // Zone parameter reserved for future context-sensitive resolution.
+  // When zones are activated, this will check ZONE_OVERRIDES[zone] first.
   return token.canonical || null;
 }
 
