@@ -1949,13 +1949,14 @@ function compileAgent(node, ctx, pad) {
   // Order matters: stream → model → skills → tools → tracking → conversation/memory/RAG
   let preamble = ''; // Code inserted at top of agent function body
 
-  // -1. Streaming: explicit opt-in with `stream response`, auto-disabled for structured output
-  //   stream response  → stream (unless has returning: which forces non-stream)
-  //   do not stream    → never stream
-  //   default (null)   → non-streaming (explicit > implicit)
-  let shouldStream = false;
-  if (node.streamResponse === true) {
-    // Check if any ask_ai call has structured output — can't stream JSON
+  // -1. Streaming: ON by default for text agents, OFF for structured output
+  //   Default (null)      → stream text, don't stream structured (returning:)
+  //   `do not stream`     → never stream (for pipeline steps)
+  //   `stream response`   → force stream (redundant for text, documents intent)
+  //   Structured output   → never stream (JSON must be complete)
+  let shouldStream = node.streamResponse !== false; // false only if explicit `do not stream`
+  if (shouldStream) {
+    // Auto-disable for structured output — can't stream partial JSON
     let hasStructuredOutput = false;
     (function checkStructured(nodes) {
       for (const n of nodes) {
@@ -1965,20 +1966,48 @@ function compileAgent(node, ctx, pad) {
         if (n.otherwiseBranch) checkStructured(n.otherwiseBranch);
       }
     })(node.body);
-    shouldStream = !hasStructuredOutput;
+    if (hasStructuredOutput) shouldStream = false;
+  }
+  // Scheduled agents don't stream (no HTTP response to pipe to)
+  if (node.schedule) shouldStream = false;
+  // Tool-use agents don't stream (tool loop needs full request-response cycle)
+  // Check both direct tools and skills that provide tools
+  if (node.tools && node.tools.length > 0) shouldStream = false;
+  if (node.skills && node.skills.length > 0) {
+    const astBody = ctx._astBody || [];
+    for (const skillName of node.skills) {
+      const skillNode = astBody.find(n => n.type === NodeType.SKILL && n.name === skillName);
+      if (skillNode?.tools?.length > 0) { shouldStream = false; break; }
+    }
   }
 
-  if (shouldStream && ctx.lang !== 'python') {
-    // Replace _askAI calls with _askAIStream (async generator)
+  // Only actually stream if the body has _askAI calls to replace
+  if (shouldStream && ctx.lang !== 'python' && bodyCode.includes('_askAI(')) {
+    // Track which variables hold stream results (so we know which returns to convert)
+    const streamVars = new Set();
     bodyCode = bodyCode.replace(
-      /await _askAI\(([^)]*)\)/g,
-      '_askAIStream($1)'
+      /let (\w+) = await _askAI\(([^)]*)\)/g,
+      (m, varName, args) => { streamVars.add(varName); return `let ${varName} = _askAIStream(${args})`; }
     );
-    // Replace `return response;` with `yield* response;` (response is now an async generator)
+    // Also handle _askAIWithTools
     bodyCode = bodyCode.replace(
-      /return (\w+);/g,
-      'for await (const _chunk of $1) { yield _chunk; }'
+      /let (\w+) = await _askAIWithTools\(([^)]*)\)/g,
+      (m, varName, args) => { streamVars.add(varName); return `let ${varName} = _askAIStream(${args})`; }
     );
+    // Only convert returns of stream variables to yield
+    if (streamVars.size > 0) {
+      for (const v of streamVars) {
+        bodyCode = bodyCode.replace(
+          new RegExp(`return ${v};`, 'g'),
+          `for await (const _chunk of ${v}) { yield _chunk; }`
+        );
+      }
+    } else {
+      // No _askAI assignment found, disable streaming
+      shouldStream = false;
+    }
+  } else {
+    shouldStream = false;
   }
 
   // 0. Model selection: using 'claude-sonnet-4-6' — inject model param into _askAI calls
@@ -1995,6 +2024,11 @@ function compileAgent(node, ctx, pad) {
       bodyCode = bodyCode.replace(
         /await _askAI\(([^)]*)\)/g,
         (m, args) => `await _askAI(${args}, null, ${modelStr})`
+      );
+      // Also handle streaming: _askAIStream(prompt, context) → _askAIStream(prompt, context, model)
+      bodyCode = bodyCode.replace(
+        /_askAIStream\(([^)]*)\)/g,
+        (m, args) => `_askAIStream(${args}, ${modelStr})`
       );
     }
   }
