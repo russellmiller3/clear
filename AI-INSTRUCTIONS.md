@@ -1143,6 +1143,36 @@ do these at the same time:
   lang = call 'Language' with text
 ```
 
+### Workflows (Stateful Multi-Step Graphs)
+
+Use **workflows** when you need shared state, conditional routing, retry loops, or durable execution:
+```clear
+workflow 'Content Pipeline' with state:
+  save progress to Workflows table
+  track workflow progress
+  state has:
+    topic, required
+    draft
+    quality_score (number), default 0
+    published (boolean), default false
+
+  step 'Research' with 'Research Agent'
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer Agent'
+  step 'Publish' with 'Publisher Agent'
+```
+
+Workflow directives (before steps):
+- `state has:` — define state shape with types and defaults
+- `save progress to TableName table` — DB checkpoint at each step
+- `track workflow progress` — state history array
+- `runs on temporal` — compile to Temporal.io workflow
+
+Invoke with: `result = run workflow 'Content Pipeline' with data`
+
 ## CLI Workflow (How Agents Build Apps)
 
 When building a Clear app, use the CLI for fast feedback loops:

@@ -257,3 +257,18 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Block-form directives need inner while loops.** `must not:` and block-form `can use:` have indented sub-lines. The outer directive scanner loop must consume ALL sub-lines with an inner `while (indent > parentIndent)` loop. Missing this causes sub-lines to fall through to `parseBlock` which chokes on them.
 - **Singular/plural table name matching in guardrails.** CRUD nodes use singular table names (`User`) but declarations use plural (`Users`). The guardrail validator must normalize both by stripping trailing `s` before comparing.
 - **Regex-based code wrapping is fragile but works for v1.** `bodyCode.replace(/await _askAI\(([^)]*)\)/g, ...)` rewrites compiled output to inject wrappers. Works for single-line _askAI calls. Will break if _askAI call spans multiple lines or has nested parentheses. Fine for now — tracked as tech debt for v2.
+
+## Session 11: Agent Workflows — Phases 85-90 (2026-04-08)
+
+### Synonym Gotchas (Workflow)
+- **`saves to` is a multi-word synonym (canonical `saves_to`).** In `step 'X' with 'Agent' saves to state's field`, the `saves to` tokenizes as a single keyword token, not two separate words. Parser must check `canonical === 'saves_to'` instead of `value === 'saves'`. Also: the possessive `state's field` tokenizes to 3 tokens (`state`, `'s`, `field`), not a single string — can't use string replacement, must skip tokens by type.
+- **`workflow`, `step`, `state` are NOT synonyms.** Verified safe — none appear in synonyms.js. These tokens come through as plain identifiers, matched by raw `.value` in dispatch maps.
+- **`at the same time` inside workflows reuses the same English phrase** as `do these at the same time` (Phase 80), but structurally different: workflow parallel uses `step` declarations with `saves to`, while Phase 80 parallel uses assignments. No synonym conflict because the workflow parser consumes these tokens directly.
+
+### Parser Patterns (Workflow)
+- **Workflow directives use the same pre-scan pattern as agents.** `state has:`, `runs on temporal`, `save progress to`, `track workflow progress` are consumed before `parseBlock`. Each directive's inner block (e.g., `state has:` fields) needs its own `while (indent > parentIndent)` loop.
+- **Possessive token splitting matters for `saves to state's field`.** After `saves to`, the tokens are `state`, `'s` (POSSESSIVE type), `field`. Must explicitly skip the state var token + possessive token, then take the remaining identifier as the field name. String-based `.replace()` doesn't work because token values include space-delimited joins.
+- **Field type annotations use parenthesized form.** `quality_score (number)` — the `(number)` is parsed from the raw token string with `.includes('(number)')` because the parentheses tokenize as separate tokens. Pragmatic and correct.
+- **`repeat until` condition parsing needs a `condEnd` boundary.** The `max N times` suffix must be stripped before parsing the condition expression. Walk backwards from the end to find `times` + NUMBER + `max`, then parse expression only up to that boundary.
+- **State variable rewriting in conditions.** Workflow conditions like `if state's quality_score > 8` compile the expression using the original variable name (`state.quality_score`), but the compiled workflow uses `_state`. The compiler applies `rewriteStateRef()` — a regex that replaces `\bstate\.` with `_state.` — to all condition code after `exprToCode()`.
+- **`is` compiles to `==`, not `===`.** Clear's `is` operator maps to loose equality. Tests expecting `===` will fail. This is intentional — Clear avoids type coercion complexity.

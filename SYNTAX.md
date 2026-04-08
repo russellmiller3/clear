@@ -1324,3 +1324,95 @@ agent 'Daily Report' runs every 1 day:
   leads = get all Leads where status is 'new'
   send back leads
 ```
+
+## Workflows (Stateful Agent Graphs)
+
+### Basic Workflow
+```clear
+workflow 'Support Ticket' with state:
+  state has:
+    message, required
+    category
+    status, default 'new'
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+```
+
+### Conditional Routing
+```clear
+workflow 'Router' with state:
+  state has:
+    message, required
+    category
+  step 'Triage' with 'Triage Agent'
+  if state's category is 'software':
+    step 'Software Fix' with 'Software Specialist'
+  otherwise:
+    step 'General' with 'General Agent'
+  step 'Done' with 'Closer Agent'
+```
+
+### Retry Loops
+```clear
+workflow 'Content Review' with state:
+  state has:
+    draft, required
+    quality_score (number), default 0
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer Agent'
+  step 'Publish' with 'Publisher Agent'
+```
+
+### Parallel Branches
+```clear
+workflow 'Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    topics
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'Topics' with 'Topic Agent' saves to state's topics
+  step 'Report' with 'Report Agent'
+```
+
+### Durable Execution (DB Checkpoint)
+```clear
+workflow 'Onboarding' with state:
+  save progress to Workflows table
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'
+```
+
+### Durable Execution (Temporal.io)
+```clear
+workflow 'Onboarding' with state:
+  runs on temporal
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'
+```
+
+### Workflow Observability
+```clear
+workflow 'Support' with state:
+  track workflow progress
+  state has:
+    message, required
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+# _state._history contains state snapshots at each step
+```
+
+### Running a Workflow
+```clear
+when user calls POST /api/support sending data:
+  result = run workflow 'Support' with data
+  send back result
+```

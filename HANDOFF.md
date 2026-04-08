@@ -1,31 +1,41 @@
-# Handoff — 2026-04-08 (Session 10)
+# Handoff — 2026-04-08 (Session 11)
 
 ## Current State
 - **Branch:** main
-- **Tests:** 1422 passing
-- **Apps:** 39+ template apps (3 agent GAN apps)
+- **Tests:** 1446 passing
+- **Apps:** 43+ template apps (4 agent GAN apps, 1 workflow GAN app)
 - **Working tree:** Clean
 
 ## What Was Done This Session
 
-### Tier 7: First-Class AI Agents — Complete (11 phases + skills)
-Tool use, skills, guardrails, conversation, memory, RAG, observability, pipelines, parallel execution, HITL, agent testing, streaming by default.
+### Tier 8: Agent Workflows — Complete (6 phases, LangGraph parity)
+All 6 workflow phases implemented, tested, and shipping:
 
-### Streaming by Default
-Text agents stream via `_askAIStream` async generator. Auto-disabled for structured output, tool-use, and scheduled agents. `do not stream` for explicit opt-out.
+- **Phase 85: Workflow State** — `workflow 'Name' with state:` + `state has:` block with typed fields (number, boolean, timestamp) and defaults. Compiles to `async function workflow_name(state)` with `Object.assign` initialization.
+- **Phase 86: Conditional Routing** — `if state's field is value:` + `otherwise:` inside workflow body. Compiles to if/else chains between step calls.
+- **Phase 87: Cycles & Retry Loops** — `repeat until condition, max N times:` with nested conditionals. Compiles to `for` loop with break condition and max iteration guard.
+- **Phase 88: Durable Execution** — Two tiers: `save progress to Workflows table` (DB checkpoint at each step) and `runs on temporal` (compiles to Temporal.io workflow + activity proxies).
+- **Phase 89: Parallel Branches** — `at the same time:` + `step 'X' with 'Agent' saves to state's field`. Compiles to `Promise.all` with targeted state field assignment.
+- **Phase 90: Workflow Observability** — `track workflow progress` logs state snapshots after each step into `_history` array.
 
-### CLI: agent + eval + eval --graded
-Introspect agents, run schema evals (deterministic), generate LLM-graded scorecards.
+### New Node Types
+- `WORKFLOW` — workflow definition with state, directives, and step body
+- `RUN_WORKFLOW` — workflow invocation: `result = run workflow 'Name' with data`
 
-### Auto-Generated ASCII Flow Diagrams
-Compiled output includes visual agent flow diagrams with fork/join, pipeline boxes, agent annotations, endpoint routing.
+### GAN App
+`apps/content-pipeline/main.clear` — 90 lines exercising all 6 phases: research → write → quality-gated retry loop → parallel sentiment+SEO analysis → publish, with DB checkpoints and observability.
 
-### Tier 8: Agent Workflows (Roadmap)
-6 new phases: workflow state, conditional routing, cycles/retry, durable execution (Temporal.io), parallel branches, workflow testing.
+## Key Decisions
+- Workflow steps thread a `_state` object (pass-by-reference, not pipeline-style). Each agent receives and returns full state.
+- `at the same time` in workflows is structurally different from `do these at the same time` (Phase 80). Workflow parallel uses `step` declarations with `saves to`; Phase 80 uses assignment expressions.
+- State var references in conditions are rewritten from `state.X` to `_state.X` via regex in the compiler.
+- `saves to` is a multi-word synonym (canonical `saves_to`) — parser checks canonical, not raw value.
 
-### GAN Apps + 6 Compiler Bugs Fixed
-support-agent (2 tests), hiring-agent (3 tests), helpdesk-agent (6 tests). Bugs: non-async functions, mock _askAIWithTools, browser server _astBody, colon in must-not, return-all replacement, model injection for streams.
+## Known Issues
+- Workflow compilation is JS-only (no Python target yet — would need `asyncio.gather` for parallel, `async def` for functions)
+- Temporal import is generated inline (would need a separate worker file in real deployments)
+- No workflow-specific test syntax yet (`run workflow 'X' with ...` in test blocks uses standard `run workflow` assignment)
 
 ## Resume Prompt
 
-> Read HANDOFF.md, CLAUDE.md. 1422 tests. Session 10: Tier 7 AI agents complete, streaming default, composable pipeline, CLI (agent/eval), ASCII flow diagrams in compiled output, Tier 8 workflows roadmapped (LangGraph parity + Temporal). Next: implement Tier 8 workflows, deploy playground to Vercel, production tier.
+> Read HANDOFF.md, CLAUDE.md. 1446 tests. Session 11: Tier 8 Agent Workflows complete (Phases 85-90) — workflow state, conditional routing, retry cycles, durable execution (DB + Temporal), parallel branches with join, observability. LangGraph parity achieved. GAN app: content-pipeline. Next: update USER-GUIDE workflow chapter, Python workflow target, Tier 1 production (real DB + deploy), playground Vercel deploy.

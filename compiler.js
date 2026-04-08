@@ -2300,17 +2300,20 @@ function compileWorkflow(node, ctx, pad) {
         if (node.trackProgress) {
           code += `${p}_history.push({ step: 'parallel', branches: ${JSON.stringify(step.steps.map(s => s.name))}, timestamp: new Date().toISOString() });\n`;
         }
-        code += `${p}const [${names.join(', ')}] = await Promise.all([${calls.join(', ')}]);\n`;
-        // Assign parallel results back to state
-        for (const ps of step.steps) {
+        // Use unique temp names for parallel results since agents return full state
+        const tempNames = step.steps.map((_, i) => `_p${i}`);
+        code += `${p}const [${tempNames.join(', ')}] = await Promise.all([${calls.join(', ')}]);\n`;
+        // Assign parallel results back to state — extract specific field from returned state
+        for (let si = 0; si < step.steps.length; si++) {
+          const ps = step.steps[si];
           if (ps.savesTo) {
-            code += `${p}_state.${sanitizeName(ps.savesTo)} = ${sanitizeName(ps.savesTo)};\n`;
+            code += `${p}_state.${sanitizeName(ps.savesTo)} = ${tempNames[si]}.${sanitizeName(ps.savesTo)};\n`;
           }
         }
         // For steps without savesTo, merge last result
         const noSave = step.steps.filter(s => !s.savesTo);
         if (noSave.length > 0 && step.steps.every(s => !s.savesTo)) {
-          code += `${p}_state = Object.assign(_state, ${names.join(', ')});\n`;
+          code += `${p}_state = Object.assign(_state, ${tempNames.join(', ')});\n`;
         }
       }
     }

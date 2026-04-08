@@ -17212,8 +17212,8 @@ workflow 'Analysis' with state:
     expect(result.javascript).toContain('Promise.all([');
     expect(result.javascript).toContain('agent_sentiment_agent(_state)');
     expect(result.javascript).toContain('agent_topic_agent(_state)');
-    expect(result.javascript).toContain('_state.sentiment = sentiment');
-    expect(result.javascript).toContain('_state.topics = topics');
+    expect(result.javascript).toContain('_state.sentiment = _p0.sentiment');
+    expect(result.javascript).toContain('_state.topics = _p1.topics');
   });
 });
 
@@ -17368,7 +17368,7 @@ workflow 'Analysis' with state:
     expect(result.javascript).toContain('agent_sentiment_agent(_state)');
     expect(result.javascript).toContain('agent_topic_agent(_state)');
     expect(result.javascript).toContain('agent_language_agent(_state)');
-    expect(result.javascript).toContain('_state.sentiment = sentiment');
+    expect(result.javascript).toContain('_state.sentiment = _p0.sentiment');
     expect(result.javascript).toContain('agent_report_agent(_state)');
   });
 

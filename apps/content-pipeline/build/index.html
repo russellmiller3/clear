@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Content Pipeline</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-2xl mx-auto p-8 flex flex-col gap-6">
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Create Content</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Topic</legend>
+      <input id="input_topic" class="input input-bordered w-full" type="text" placeholder="Topic">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Generate_Content">Generate Content</button>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Workflows: workflow*, step*, state, created_at (line 6)
+
+ ENDPOINTS:
+   POST /api/content (line 70)
+
+ PAGES:
+   'Content Pipeline' at / (line 76)
+
+ AGENTS:
+   'Research Agent' [streaming] (line 14)
+   'Writer Agent' [streaming] (line 18)
+   'Reviewer Agent' [streaming] (line 22)
+   'Publisher Agent' [streaming] (line 30)
+   'Sentiment Agent' [streaming] (line 34)
+   'SEO Agent' [streaming] (line 38)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+async function _askAI(prompt, context, schema, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
+  const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  let content = context ? prompt + "\n\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  if (schema) {
+    const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\n");
+    content += "\n\nRespond with ONLY a JSON object in this exact shape, no other text:\n{\n" + fields + "\n}";
+  }
+  const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
+  const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+  function parseResult(text) {
+    if (!schema) return text;
+    // Extract JSON from response (may have markdown fences)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("AI did not return valid JSON. Response: " + text.slice(0, 200));
+    try { return JSON.parse(jsonMatch[0]); } catch (e) { throw new Error("AI returned invalid JSON: " + e.message + ". Response: " + text.slice(0, 200)); }
+  }
+  // Use fetch (works in most environments). If behind a proxy, fall back to curl.
+  try {
+    const r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(30000) });
+    if (!r.ok) { const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e); }
+    const data = await r.json();
+    return parseResult(data.content[0].text);
+  } catch (fetchErr) {
+    if (!process.env.HTTP_PROXY && !process.env.HTTPS_PROXY && !process.env.http_proxy) throw fetchErr;
+    // Proxy environment: fetch may not respect HTTP_PROXY, fall back to curl
+    const { execSync } = require("child_process");
+    const tmp = "/tmp/_askAI_" + Date.now() + ".json";
+    require("fs").writeFileSync(tmp, payload);
+    try {
+      const hdr = Object.entries(headers).map(([k,v]) => '-H "' + k + ": " + v + '"').join(" ");
+      const out = execSync('curl -s -X POST ' + hdr + ' -d @' + tmp + ' "' + endpoint + '"', { encoding: "utf8", timeout: 30000 });
+      require("fs").unlinkSync(tmp);
+      const data = JSON.parse(out);
+      if (data.error) throw new Error("AI error: " + data.error.message);
+      return parseResult(data.content[0].text);
+    } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
+  }
+}
+document.title = "Content Pipeline";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  topic: ""
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  async function agent_research_agent(state) {
+    state.research = await _askAI("Research the topic and provide key findings", state.topic);
+  }
+  async function agent_writer_agent(state) {
+    state.draft = await _askAI("Write a draft article based on the research", state.research);
+  }
+  async function agent_reviewer_agent(state) {
+    let result = await _askAI("Review this draft for quality. Score 1-10.", state.draft, [{"name":"quality_score","type":"number"},{"name":"feedback","type":"text"}], null);
+    state.quality_score = result.quality_score;
+    state.feedback = result.feedback;
+  }
+  async function agent_publisher_agent(state) {
+    state.published = true;
+  }
+  async function agent_sentiment_agent(state) {
+    state.sentiment = await _askAI("Rate sentiment 1-10", state.draft);
+  }
+  async function agent_seo_agent(state) {
+    state.seo_score = await _askAI("Rate SEO quality 1-10", state.draft);
+  }
+  async function workflow_content_pipeline(state) {
+    let _state = Object.assign({topic: null, research: null, draft: null, quality_score: 0, feedback: null, sentiment: null, seo_score: null, published: false}, state);
+    const _history = [];
+    _history.push({ step: "Research", state: JSON.parse(JSON.stringify(_state)), timestamp: new Date().toISOString() });
+    await db.insert('Workflows', { workflow: "Content Pipeline", step: "Research", state: JSON.stringify(_state), created_at: new Date().toISOString() });
+    _state = await agent_research_agent(_state);
+    _history.push({ step: "Write", state: JSON.parse(JSON.stringify(_state)), timestamp: new Date().toISOString() });
+    await db.insert('Workflows', { workflow: "Content Pipeline", step: "Write", state: JSON.stringify(_state), created_at: new Date().toISOString() });
+    _state = await agent_writer_agent(_state);
+    for (let _iter = 0; _iter < 3; _iter++) {
+      if (_state.quality_score > 8) break;
+      _history.push({ step: "Review", state: JSON.parse(JSON.stringify(_state)), timestamp: new Date().toISOString() });
+      await db.insert('Workflows', { workflow: "Content Pipeline", step: "Review", state: JSON.stringify(_state), created_at: new Date().toISOString() });
+      _state = await agent_reviewer_agent(_state);
+      if (_state.quality_score < 8) {
+        _history.push({ step: "Revise", state: JSON.parse(JSON.stringify(_state)), timestamp: new Date().toISOString() });
+        await db.insert('Workflows', { workflow: "Content Pipeline", step: "Revise", state: JSON.stringify(_state), created_at: new Date().toISOString() });
+        _state = await agent_writer_agent(_state);
+      }
+    }
+    _history.push({ step: 'parallel', branches: ["Sentiment","SEO"], timestamp: new Date().toISOString() });
+    const [_p0, _p1] = await Promise.all([agent_sentiment_agent(_state), agent_seo_agent(_state)]);
+    _state.sentiment = _p0.sentiment;
+    _state.seo_score = _p1.seo_score;
+    _history.push({ step: "Publish", state: JSON.parse(JSON.stringify(_state)), timestamp: new Date().toISOString() });
+    await db.insert('Workflows', { workflow: "Content Pipeline", step: "Publish", state: JSON.stringify(_state), created_at: new Date().toISOString() });
+    _state = await agent_publisher_agent(_state);
+    _state._history = _history;
+    return _state;
+  }
+  document.getElementById('input_topic').value = _state.topic;
+}
+
+// --- Input listeners ---
+document.getElementById('input_topic').addEventListener('input', function(e) {
+  _state.topic = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Generate_Content').addEventListener('click', async function() {
+    if (_state.topic === '' || _state.topic == null) { _toast('topic is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Generate_Content');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/content", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: _state.topic }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/content] [clear:80]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+_recompute();
+
+  </script>
+</body>
+</html>

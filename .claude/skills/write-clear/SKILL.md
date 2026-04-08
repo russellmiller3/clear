@@ -178,6 +178,10 @@ node test.js
 
 **Data:** in-memory DB, PostgreSQL/SQLite declaration, table schemas with constraints, row-level security, migrations, CSV load/save/filter/sort/group, JSON parse/stringify
 
+**AI Agents:** agent definitions, ask claude, tool use, skills, guardrails, conversation memory, user preferences, RAG, observability, pipelines, parallel agents, human-in-the-loop, agent testing, streaming
+
+**Workflows:** stateful workflows with state threading, conditional routing, retry loops (`repeat until, max N times`), durable execution (DB checkpoint + Temporal.io), parallel branches (`at the same time` + `saves to`), workflow observability
+
 **Utilities:** file I/O, regex, dates, email, web scraping, PDF generation, machine learning, parallel execution, multi-line strings with interpolation, string interpolation
 
 ## Canonical Example (37-line full-stack app)
