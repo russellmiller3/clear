@@ -5203,7 +5203,7 @@ function compileToBrowserServer(body, errors) {
   }
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames, _astBody: body };
 
   // Collect schemas and route handlers
   for (const node of body) {
@@ -5322,6 +5322,38 @@ function compileToBrowserServer(body, errors) {
   lines.push('  if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
   lines.push('  return data.result;');
   lines.push('}');
+
+  // Browser _askAIWithTools — agentic loop via proxy
+  // Check if any agent uses tools before emitting
+  const hasToolAgents = body.some(n => n.type === NodeType.AGENT && n.tools && n.tools.length > 0);
+  if (hasToolAgents) {
+    lines.push('');
+    lines.push('async function _askAIWithTools(prompt, context, tools, toolFns, model) {');
+    lines.push('  const proxyUrl = window._clearAIProxy || "/api/ai-proxy";');
+    lines.push('  const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === "string" ? context : JSON.stringify(context)) : prompt;');
+    lines.push('  const messages = [{ role: "user", content: userContent }];');
+    lines.push('  for (let i = 0; i < 10; i++) {');
+    lines.push('    const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: null, messages, tools, model }) });');
+    lines.push('    const data = await r.json();');
+    lines.push('    if (!r.ok) throw new Error(data.error || "AI request failed");');
+    lines.push('    if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
+    lines.push('    if (data.result && typeof data.result === "string") return data.result;');
+    lines.push('    const msg = data.content || [];');
+    lines.push('    messages.push({ role: "assistant", content: msg });');
+    lines.push('    const toolUses = msg.filter(b => b.type === "tool_use");');
+    lines.push('    if (toolUses.length === 0) return (msg.find(b => b.type === "text") || {}).text || "";');
+    lines.push('    const results = [];');
+    lines.push('    for (const tu of toolUses) {');
+    lines.push('      const fn = toolFns[tu.name];');
+    lines.push('      if (!fn) { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: "Unknown tool: " + tu.name }), is_error: true }); continue; }');
+    lines.push('      try { const res = await fn(...Object.values(tu.input)); results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(res) }); }');
+    lines.push('      catch (e) { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: e.message }), is_error: true }); }');
+    lines.push('    }');
+    lines.push('    messages.push({ role: "user", content: results });');
+    lines.push('  }');
+    lines.push('  throw new Error("Agent exceeded maximum tool use turns (10)");');
+    lines.push('}');
+  }
 
   lines.push('})();');
   return lines.join('\n');

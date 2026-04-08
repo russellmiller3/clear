@@ -16633,5 +16633,39 @@ test 'handles order lookup':
   });
 });
 
+// =============================================================================
+// WEB TARGET AGENT FEATURES
+// =============================================================================
+
+describe('Web target agent features', () => {
+  it('web+backend target includes _askAIWithTools in serverJS and browserServer', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Products table:
+  name, required
+define function search_products(query):
+  products = look up all Products where name is query
+  return products
+agent 'ShopBot' receiving message:
+  can use: search_products
+  track agent decisions
+  response = ask claude 'Help find products' with message
+  send back response
+when user calls POST /api/chat sending data:
+  result = call 'ShopBot' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // serverJS (Express backend)
+    expect(result.serverJS).toContain('_askAIWithTools');
+    expect(result.serverJS).toContain('_agentLog');
+    expect(result.serverJS).toContain('const _tools');
+    // browserServer (in-page fetch interceptor)
+    expect(result.browserServer).toContain('function _askAIWithTools');
+    expect(result.browserServer).toContain('_agentLog');
+    expect(result.browserServer).toContain('const _tools');
+  });
+});
+
 run();
 
