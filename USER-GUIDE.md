@@ -1,24 +1,35 @@
 # The Clear Language Guide
 
-Welcome to Clear — a programming language designed for AI to write and humans to read.
+*A friendly introduction for humans who want to understand what the AI just built.*
 
-This guide will take you from zero to building real applications. No programming
-experience required. By the end, you'll understand every Clear program you encounter
-and be able to modify them yourself.
+Welcome! You're about to learn Clear — a programming language that reads like English.
+
+Here's the deal: when AI builds you an app, it writes Clear code. You open the file,
+read it, and understand exactly what your app does. No JavaScript. No Python. No
+mystery. Just plain sentences that say what they mean.
+
+**You don't need to know how to program.** If you can read a recipe, you can read Clear.
+
+(And if you CAN program, you'll appreciate how much less typing there is.)
+
+Let's jump in.
 
 ---
 
-## Chapter 1: Your First Program
+## Chapter 1: Hello, World (The Easiest Chapter You'll Ever Read)
 
-Clear programs are plain English. Let's start with the simplest possible program:
+Every programming tutorial starts here. Tradition demands it:
 
 ```clear
 show 'Hello, world!'
 ```
 
-That's it. One line. It displays "Hello, world!" on the screen.
+That's the whole program. One line. It shows "Hello, world!" on screen.
 
-Let's make it do math:
+Not very useful yet, but congratulations — you're a programmer now.
+Put it on your resume. We won't tell.
+
+Let's make it do something real:
 
 ```clear
 price = 100
@@ -27,12 +38,18 @@ total = price + tax
 show total
 ```
 
-This creates three values and shows the result (108). Notice:
-- **Numbers use `=`** for assignment
-- **Each line does one thing** — no nesting, no chaining
-- **You can read it out loud** and it makes sense
+This shows 108. Four lines, four operations. Each line does exactly one thing.
+That's a rule in Clear: **one line, one job.** No sneaking three things onto
+one line like some languages we won't name. (Looking at you, JavaScript.)
+Notice how you can read each line out loud? "Price equals 100. Tax equals price
+times 0.08." That's not an accident — Clear is designed to be read aloud without
+sounding like a robot.
 
-### Strings vs Numbers
+### Strings vs Numbers (The Only Slightly Tricky Part)
+
+There's one rule you need to remember. Just one. Ready?
+
+**Numbers use `=`. Everything else uses `is`.**
 
 ```clear
 # Numbers use =
@@ -47,11 +64,13 @@ greeting is 'Hello there'
 active is true
 ```
 
-The rule: `=` for numbers, `is` for everything else.
+Why? Because "price is 9.99" sounds like a comparison ("is the price 9.99?"),
+but "price = 9.99" is clearly setting a value. Clear wants to be unambiguous,
+even if it means using a symbol for one thing.
 
 ### Named Values
 
-When you want to give a value a descriptive name:
+When a value deserves a nice descriptive name (and honestly, they all do):
 
 ```clear
 price = 100
@@ -64,7 +83,9 @@ define total_cost as: price + (price * tax_rate)
 
 ---
 
-## Chapter 2: Making Decisions
+## Chapter 2: Making Decisions (Your App Gets an Opinion)
+
+Programs that can't make decisions are just fancy calculators. Let's fix that.
 
 ### If/Then (one line)
 
@@ -83,9 +104,9 @@ otherwise:
   show 'Sorry, adults only'
 ```
 
-### Comparisons
+### Comparisons (No Cryptic Symbols)
 
-Clear uses English words for comparisons:
+Other languages use `>=` and `!=`. Clear uses words a human would say:
 
 ```clear
 price = 75
@@ -104,7 +125,10 @@ if score is at most 100 then show 'valid'
 
 ---
 
-## Chapter 3: Lists and Loops
+## Chapter 3: Lists and Loops (Doing Things More Than Once)
+
+Computers are really, REALLY good at doing things over and over. That's basically
+their whole job. Let's put them to work.
 
 ### Creating Lists
 
@@ -165,9 +189,12 @@ sort items by price
 
 ---
 
-## Chapter 4: Functions
+## Chapter 4: Functions (Teaching Your Program New Tricks)
 
-### One-Line Functions
+A function is a reusable recipe. You define it once, use it anywhere.
+Think of it like saving a formula in a spreadsheet — except it has a name.
+
+### One-Line Functions (The Fun Ones)
 
 ```clear
 double(x) = x * 2
@@ -198,9 +225,12 @@ define function calculate_total(price, quantity):
 
 ---
 
-## Chapter 5: Building a Calculator (Your First Web App)
+## Chapter 5: Your First Web App (It's a Tip Calculator, Obviously)
 
-Time to build something real. A tip calculator that runs in the browser:
+OK, enough theory. Let's build something you can actually see in a browser.
+Every programming tutorial builds a tip calculator at some point. It's the law.
+
+Here's the entire app:
 
 ```clear
 build for web
@@ -225,9 +255,13 @@ clear build main.clear
 # Open build/index.html in your browser
 ```
 
-**What just happened?** You wrote 11 lines of Clear. The compiler generated a complete
-HTML page with inputs, reactive calculations, and formatted output. Change the bill
-amount and the tip updates instantly.
+**Wait, that's it?** 11 lines? Yep. The compiler turns that into a complete HTML page
+with styled inputs, reactive calculations, and formatted dollar amounts. Change the
+bill amount and the tip updates instantly — no "submit" button needed.
+
+In JavaScript, this would be about 80 lines. In React, maybe 40 plus a build system.
+In Clear, it's 11 lines that a 14-year-old can read. (That's actually our design test.
+If a curious teenager can't read it, we simplify.)
 
 ### What Each Line Does
 
@@ -240,9 +274,15 @@ amount and the tip updates instantly.
 
 ---
 
-## Chapter 6: Building a Full-Stack Todo App
+## Chapter 6: The Full-Stack Todo App (The Real Deal)
 
-Now let's build a real application with a database and API:
+This is the moment. We're going to build a real application with a database,
+an API, validation, security, and a reactive frontend. In 35 lines.
+
+If you've ever tried to build a web app from scratch, you know this normally
+involves: a database, a server framework, routes, middleware, CORS headers,
+input validation, HTML templates, CSS, JavaScript event handlers, and a
+partridge in a pear tree. In Clear, it's one file:
 
 ```clear
 build for web and javascript backend
@@ -296,8 +336,11 @@ node server.js
 # Open http://localhost:3000
 ```
 
-**That's a full-stack app in 35 lines.** Database, API, validation, auth on delete,
-and a reactive frontend. Let's break down each section.
+**35 lines. Full-stack app.** Database, REST API, input validation, auth on delete,
+and a reactive frontend with DaisyUI styling. Your backend developer friends will
+be either impressed or deeply concerned.
+
+Let's break it down so you know exactly what every section does.
 
 ### The Database Section
 
@@ -381,9 +424,11 @@ Shows all todos in a table with a delete button on each row.
 
 ---
 
-## Chapter 7: Building an Expense Tracker
+## Chapter 7: Expense Tracker (Now You're Cooking)
 
-Let's build something more complex — multiple input types, computed values, formatting:
+Let's level up. This app has dropdowns, computed totals, dollar formatting,
+and sections with card styling. It's the kind of thing a freelancer might
+actually use. (Or at least intend to use before going back to a spreadsheet.)
 
 ```clear
 build for web and javascript backend
@@ -450,9 +495,10 @@ page 'Expense Tracker':
 
 ---
 
-## Chapter 8: Multi-Page Apps
+## Chapter 8: Multi-Page Apps (Because One Page Is Never Enough)
 
-Apps can have multiple pages with navigation:
+Real apps have multiple pages. A list page, an add page, a detail page.
+Clear handles this with page declarations and the `go to` command:
 
 ```clear
 build for web and javascript backend
@@ -488,11 +534,14 @@ page 'Add Recipe' at '/add':
 
 ---
 
-## Chapter 9: Real-Time Features
+## Chapter 9: Real-Time Features (Making Things Go Brrr)
 
-### Streaming (Server-Sent Events)
+Want a chat app? A live dashboard? Notifications? You need real-time features.
+Clear makes these surprisingly easy.
 
-Send live updates to the browser:
+### Streaming (Live Updates)
+
+Push data to the browser as it happens:
 
 ```clear
 stream:
@@ -525,9 +574,11 @@ This verifies the webhook signature using HMAC and processes the payload.
 
 ---
 
-## Chapter 10: AI-Powered Apps
+## Chapter 10: AI-Powered Apps (The Fun Part)
 
-Clear has first-class support for AI agents:
+This is where Clear gets interesting. You can call AI models directly from
+your Clear code — no API keys to manage, no HTTP requests to write, no
+JSON to parse. Just ask a question and get an answer.
 
 ### Simple AI Call
 
@@ -572,7 +623,11 @@ Agents can:
 
 ---
 
-## Chapter 11: Styling and Layout
+## Chapter 11: Making It Pretty (Styling and Layout)
+
+Clear apps automatically use DaisyUI and Tailwind CSS, so they look
+professional out of the box. But you can customize the look with
+sections, cards, and content elements.
 
 ### Sections and Cards
 
@@ -616,7 +671,14 @@ display rate as percent
 
 ---
 
-## Chapter 12: Security and Validation
+## Chapter 12: Security (The Part You Can't Skip)
+
+Clear takes security seriously. The compiler actually REFUSES to build your app
+if it has obvious security holes. Try creating a DELETE endpoint without auth
+and the compiler will politely but firmly say no.
+
+(Most languages let you deploy insecure code and hope for the best. Clear
+would rather hurt your feelings now than let hackers hurt your users later.)
 
 ### Input Validation
 
@@ -700,7 +762,10 @@ secret is env('STRIPE_SECRET')
 
 ---
 
-## Chapter 14: Error Handling
+## Chapter 14: Error Handling (Because Things Go Wrong)
+
+The internet is unreliable. APIs go down. Databases hiccup. Users type nonsense
+into every field. Clear gives you clean ways to handle all of it.
 
 ```clear
 try:
@@ -726,7 +791,10 @@ with timeout 5 seconds:
 
 ---
 
-## Chapter 15: Modules and Organization
+## Chapter 15: Modules (When One File Isn't Enough)
+
+Small apps live in one file. Bigger apps split into modules — a backend file,
+a helpers file, a frontend file. Clear keeps it simple.
 
 ### Splitting Code Across Files
 
@@ -762,9 +830,10 @@ without the ` ```clear ` tag — they can't compile standalone.)
 
 ---
 
-## Chapter 16: The Clear CLI
+## Chapter 16: The Clear CLI (Your Toolbox)
 
-Clear has a command-line tool designed for both humans and AI agents. Every
+Clear comes with a command-line tool that does everything: build, test, deploy,
+lint, fix, and introspect. It's designed for both humans and AI agents — every
 command supports `--json` for machine-readable output.
 
 ### Build
@@ -903,9 +972,10 @@ clear build main.clear --auto-fix  # Auto-patch errors during build
 
 ---
 
-## Chapter 17: Testing
+## Chapter 17: Testing (Proving Your Code Works)
 
-Clear has built-in testing. Write tests directly in your .clear file:
+You know what's better than code that looks right? Code that you can PROVE
+is right. Clear has built-in testing — write tests right alongside your code:
 
 ```clear
 test 'addition works':
@@ -984,7 +1054,10 @@ clear eval main.clear --graded     # LLM-graded scorecard (calls Claude)
 
 ---
 
-## Chapter 18: Deploying Your App
+## Chapter 18: Going Live (Deploying Your App)
+
+You built it. You tested it. Now let's put it on the internet where
+people can actually use it.
 
 ### Step 1: Build
 
@@ -1125,14 +1198,25 @@ page 'My App':
 
 ---
 
-## What's Next?
+## What's Next? (You Did It!)
 
-You've learned enough Clear to build real applications. Here's what to explore:
+You just learned an entire programming language. Not bad for one sitting.
 
-1. **Read the example apps** in the `apps/` directory — 42 apps from simple to complex
-2. **Read `SYNTAX.md`** for every feature with examples
-3. **Read `AI-INSTRUCTIONS.md`** for how AI writes Clear code
-4. **Build something** — the best way to learn is to write a real app
+Here's where to go from here:
 
-Clear is designed so you can read any program and understand what it does.
-If you can't, that's a bug in the language — not in you.
+1. **Browse the example apps** in the `apps/` directory — 42 apps from simple to ambitious
+2. **Read `SYNTAX.md`** — the complete reference for every feature
+3. **Ask AI to build something** — describe what you want and let it write Clear code
+4. **Read the output** — open `main.clear` and verify it does what you asked
+5. **Tweak it** — change a label, adjust a number, add a field. You can do this now.
+
+Here's the thing about Clear that makes it different from every other language:
+**you're not supposed to write it from scratch.** AI writes it. You read it.
+You verify it does the right thing. You make small edits when needed.
+
+That's the whole deal. AI is the writer. You're the editor.
+
+And if you ever read a Clear program and can't understand what it does?
+That's a bug in the language — not in you. Seriously. File an issue. We'll fix it.
+
+Happy building!
