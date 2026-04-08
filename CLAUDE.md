@@ -12,6 +12,7 @@ Compiles plain English to JavaScript, Python, and HTML.
 6. **`design-system.md`** -- 3 themes (midnight/ivory/nova), all color tokens, typography, spacing, shadows, animation. DaisyUI v5 + Tailwind v4.
 7. **`ai-build-instructions.md`** -- 10 hard UI rules, CDN imports, component patterns, ECharts config.
 8. **`ROADMAP.md`** -- what's built (phases 1-46b, 75-84 complete), what's planned.
+9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
 - Run all tests: `node clear.test.js` (1413 tests)

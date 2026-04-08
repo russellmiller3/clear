@@ -1940,12 +1940,48 @@ The LangChain equivalent is 500-800 lines across 6+ files.
 But the tiers aren't equal. Tiers 1-4 (production + frontend + data + patterns) are pure compiler work — **~10 days** at current velocity. Tier 5 (platform) is infrastructure — **~5 days**, slower because it's deploy tooling not compiler code. Tier 7 (AI agents) is the most ambitious — **~7 days** — but also the highest leverage because it makes Clear the best way to build AI-powered apps.
 
 **Recommended order:**
-1. SQLite (unlocks persistence)
-2. Real-time / WebSocket (unlocks chat, notifications)
-3. Tool use + function calling (unlocks real agents)
-4. Multi-turn conversation (agents that remember)
-5. Complex frontend (multi-page, components)
-6. Templates (client portal, admin dashboard)
-7. Deploy (one command to production)
-8. Everything else in priority order
+1. Formal grammar + LSP (unlocks tooling ecosystem)
+2. Type system (catches bugs before runtime)
+3. Source maps (debuggable compiled output)
+4. Deploy (one command to production)
+5. Package manager (shareable Clear modules)
+6. Incremental compilation (scales to large apps)
+7. Everything else in priority order
+
+---
+
+### Tier 8: Compiler to Platform (turns Clear from a compiler into a language ecosystem)
+
+The compiler itself is solid — 1413 tests, 42 apps, zero deps, professional error messages, security
+validators. What's missing is the ecosystem around it. These features turn Clear from "a compiler
+that works" into "a language developers adopt."
+
+**Priority order is based on what creates the most leverage:**
+
+| Priority | Feature | Why This Order | Effort |
+|----------|---------|---------------|--------|
+| 1 | **Formal grammar (PEG/EBNF)** | Everything else depends on having a formal spec. Syntax highlighting, LSP, formatter, linter — all need a grammar. Without it, every tool re-implements parsing from scratch. Also: a grammar IS the language spec. If someone asks "what can Clear do?", the grammar answers definitively. | 2 days |
+| 2 | **LSP (Language Server Protocol)** | Autocomplete, hover docs, go-to-definition, real-time errors in VS Code / JetBrains. This is the #1 reason developers adopt or reject a language. Without LSP, writing Clear feels like writing in Notepad. With it, the editor knows every keyword, every table field, every function signature. Depends on formal grammar. | 3 days |
+| 3 | **Type system** | Clear infers types for table fields but doesn't type-check variables, function args, or return values. `price = 'hello'` then `total = price * 1.08` compiles fine but crashes at runtime. A type system catches this at compile time. Doesn't need to be complex — even a basic system (number, text, boolean, list, record) with function signatures eliminates the #1 class of runtime bugs. | 3 days |
+| 4 | **Source maps** | When a compiled Express server crashes at line 247 of server.js, you need to know which Clear line caused it. Source maps (`.map` files) let browser devtools and Node debuggers show Clear source instead of compiled JS. The `clear:LINE` comments exist but real source maps enable step-through debugging. | 1 day |
+| 5 | **One-command deploy** | `clear deploy` compiles + deploys to Vercel/Railway/Fly.io. Currently: compile, copy build/, set up hosting, configure env vars — 10 manual steps. Should be: `clear deploy` → live URL. The compiler already generates Dockerfiles (`clear package`). Deploy closes the loop from .clear file to production. | 2 days |
+| 6 | **Package manager + registry** | `use 'auth-flow' from registry` — share reusable Clear modules. Currently `use 'helpers'` works for local files but there's no ecosystem. A registry means: auth flows, payment integrations, email templates, dashboard layouts — all shareable. The package manager needs the formal grammar (for dependency resolution) and type system (for interface contracts). | 3 days |
+| 7 | **Incremental compilation** | Recompile only what changed. Currently the compiler reprocesses everything on every build. Fine for 50-line apps, painful for 500+ line apps with multiple modules. Needs: file dependency graph, AST caching, change detection. Low priority because most Clear apps are small — but becomes essential as apps grow. | 2 days |
+| 8 | **Formatter + linter** | `clear fmt` auto-formats Clear code to canonical style. `clear lint` catches style issues and suspicious patterns beyond what the validator catches. Both depend on formal grammar. Low priority because AI writes most Clear code (and AI already follows style conventions), but essential for human editing. | 1 day |
+
+**Why formal grammar is #1:** It's the foundation for LSP, formatter, linter, and any future tooling.
+Without it, every tool re-parses Clear from scratch using the same hand-written parser. With it,
+you get a single source of truth that generates all downstream tools.
+
+**Why type system is #3 (not #1):** Types are important but Clear's target audience is non-developers
+reading AI-generated code. They won't write type annotations. The type system should be 100% inferred
+— no syntax changes, just compile-time checks that catch `'hello' * 5` before it reaches production.
+
+**Why deploy is #5 (not #1):** Deployment is a one-time setup problem. The compiler's job is to
+generate correct code. Once the code is correct, deploying it is configuration — not a language
+feature. But it's high-leverage because it eliminates the biggest gap between "I wrote an app" and
+"my app is live."
+
+**Total: ~17 days for 8 features.** Tiers 1-4 (grammar, LSP, types, source maps) are the critical
+path — ~9 days. They turn Clear from "a compiler" into "a language with professional tooling."
 
