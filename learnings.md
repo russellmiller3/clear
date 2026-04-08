@@ -288,3 +288,16 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **`thenBranch` can be a single node OR an array.** The `checkNodes` recursion in `validateCallTargets` must handle both: `if (Array.isArray(node.thenBranch)) checkNodes(...)` for block-if, else treat as single expression.
 - **Type inference from expressions is conservative.** `inferType()` returns `'unknown'` for anything it can't prove — function calls, member access chains, ternary expressions. This means the member access warning only fires when the variable was assigned a literal or arithmetic result, not for computed values. Good: no false positives. Bad: misses some cases.
 - **Workflow names normalize to lowercase.** `validateCallTargets` normalizes with `.toLowerCase().replace(/\s+/g, '_')` to match the compiler's function naming. Without normalization, `run workflow 'Support Ticket'` wouldn't match `workflow 'Support Ticket'` because spaces → underscores.
+
+## Session 11: Playground IDE (2026-04-08)
+
+### Security
+- **Command injection via `&&` in exec endpoint.** Whitelist prefix (`node `, `curl `, `ls `, `cat `) is necessary but NOT sufficient — `node -e "1" && rm -rf /` passes the prefix check. Must also block `&&`, `;`, `|`, `$()`, backticks with a regex guard.
+- **`express.static` serves `index.html` before route handlers.** If `playground/` has both `index.html` and `ide.html`, `GET /` serves `index.html` even with an explicit `app.get('/')` route — because `express.static` runs first. Fix: put the route handler BEFORE `app.use(express.static(...))`.
+
+### Architecture
+- **Compiled CJS in ESM repo.** The compiler output uses `require('express')` but `package.json` has `"type": "module"`. Child processes for `POST /api/run` need their own `package.json` with `{}` (no type field) so Node treats `.js` as CJS.
+- **`compileProgram("")` returns unexpected shape.** Empty string input doesn't crash the parser but returns a result without the expected keys. The compile endpoint must short-circuit empty/whitespace input and return a clean empty response.
+- **CodeMirror bundle is 443kb.** Bundling CodeMirror 6 via esbuild into a single ESM file avoids CDN dependency. Install packages temporarily, run esbuild, uninstall — keeps package.json clean.
+- **Claude agent tools are better than syntax-lookup tools.** Instead of giving Claude tools to fetch SYNTAX.md sections (slow, multi-turn), give it action tools (edit_code, run_command, compile, run_app, http_request) with syntax knowledge in the system prompt. This makes Claude a real agent, not a chatbot.
+- **Save endpoint writes to Desktop.** `process.env.HOME + '/Desktop'` works on Mac/Linux. Fall back to `process.cwd()` if Desktop doesn't exist. Save both `main.clear` source and full `build/` directory with runtime files.

@@ -15,7 +15,9 @@ Compiles plain English to JavaScript, Python, and HTML.
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1482 tests)
+- Run all tests: `node clear.test.js` (1482 compiler tests)
+- Run playground tests: `node playground/server.test.js` (85 playground tests)
+- Total: 1567 tests
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -113,10 +115,15 @@ npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-c
 ## No External Dependencies
 The compiler is pure ESM JavaScript. Zero npm packages. Runs in Node and browser.
 
-## Playground
-`playground/` is self-contained (index.html + compiler bundle). Serve with any
-static server. Full-stack apps run via browser server (fetch interception with
-real DB runtime, validation, and CRUD).
+## Playground IDE
+Run `node playground/server.js` → opens `http://localhost:3456`.
+Three-panel IDE: CodeMirror editor + preview/terminal + Claude agent chat.
+43 template apps in dropdown. Light/dark theme. Save to Desktop.
+Claude has tools: edit_code, run_command, compile, run_app, stop_app, http_request.
+Tests: `node playground/server.test.js` (85 tests).
+
+`playground/index.html` is the old static playground (compiler bundle only).
+`playground/ide.html` is the new full IDE with server backend.
 
 ## GAN Design Method (MANDATORY for all UI work)
 Never edit the compiler or playground HTML directly to "make it look better." Always:

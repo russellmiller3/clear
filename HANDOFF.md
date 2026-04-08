@@ -2,67 +2,52 @@
 
 ## Current State
 - **Branch:** main
-- **Tests:** 1482 passing
-- **Apps:** 43+ template apps (4 agent GAN apps, 1 workflow GAN app)
+- **Tests:** 1567 (1482 compiler + 85 playground)
 - **Node types:** 99
+- **Apps:** 43+ templates
 - **Working tree:** Clean
 
 ## What Was Done This Session
 
-### 1. Tier 8: Agent Workflows — Phases 85-90 (LangGraph Parity)
-All 6 workflow phases implemented in both JS and Python:
-- **Phase 85:** Workflow state (`state has:` with typed fields + defaults)
-- **Phase 86:** Conditional routing (`if state's X is Y:` + `otherwise:`)
-- **Phase 87:** Retry loops (`repeat until condition, max N times:`)
-- **Phase 88:** Durable execution (`save progress to Table` + `runs on temporal`)
-- **Phase 89:** Parallel branches (`at the same time:` + `saves to state's field`)
-- **Phase 90:** Observability (`track workflow progress` → `_history` array)
+### 1. Tier 8: Agent Workflows (Phases 85-90)
+Stateful multi-step AI workflows with retry loops, conditional routing, parallel branches, DB checkpoints, Temporal.io, and observability. Both JS and Python.
 
-### 2. Python Streaming AI
-- `_ask_ai()` and `_ask_ai_stream()` utility functions in Python backend
-- Python text agents stream by default via async generator
-- `import httpx` for async HTTP, `import asyncio` for parallel
+### 2. Python Streaming + Python Workflows (Phase 91)
+`_ask_ai_stream()` async generator in Python backend. Workflows compile to Python with asyncio.gather for parallel.
 
-### 3. Canonical Syntax Changes
-- `agent 'Name' receives var:` (was `receiving` — both still work)
-- `returning JSON text:` for structured output (was `returning:` — both work)
+### 3. Canonical Syntax (Phase 92)
+`agent 'Name' receives var:` and `returning JSON text:` — both old forms still work.
 
-### 4. First-Class Errors
-- **validateCallTargets:** errors on undefined agent/pipeline/workflow calls
-- **validateMemberAccessTypes:** warns on field access on number/boolean
-- **Orphan endpoints** promoted from warning → compile error
-- **Runtime:** `Number("")` coerces to `null` not `0`
+### 4. First-Class Errors (Phase 92)
+validateCallTargets (undefined agent/pipeline/workflow), validateMemberAccessTypes (field on number), orphan endpoints promoted to error, Number("") → null.
 
-### 5. Enact Guard Policies (30+ runtime safety guards)
-New `POLICY` node type with `policy:` block syntax:
-```clear
-policy:
-  block schema changes
-  block deletes without filter
-  protect tables: AuditLog
-  block prompt injection
-  require role 'admin'
-  no mass emails
-```
-Covers: database safety, prompt injection, access control, code freeze,
-email/Slack, filesystem, git safety, CRM, cloud storage.
+### 5. Enact Guard Policies (Phase 93)
+30+ runtime safety guards: `policy:` block with database safety, prompt injection, access control, code freeze, email/Slack, filesystem, git safety, CRM, cloud storage.
 
-### 6. Roadmap Reprioritized
-Rewrote Tier 8 from open-source tooling (formal grammar, LSP) to hosted
-platform architecture (CodeMirror editor, compile API, one-click deploy).
+### 6. Local Playground IDE
+`node playground/server.js` → `http://localhost:3456`
+- CodeMirror 6 editor with Clear syntax highlighting (bundled, zero deps)
+- 43 template apps in dropdown
+- Auto-compile on keystroke (debounced)
+- Live preview (iframe with browserServer)
+- Terminal with server logs
+- Run: starts compiled Express app as child process
+- Save: writes main.clear + build/ to Desktop
+- Claude agent chat with 6 tools (edit_code, run_command, compile, run_app, stop_app, http_request)
+- Light/dark theme toggle
+- Compile shimmer animation, button effects, toast notifications
+- 85 automated tests (security, lifecycle, errors, CLI)
 
-## Key Decisions
-- `receives` reads as a complete English sentence (better than gerund `receiving`)
-- `returning JSON text:` signals structured data to smart non-dev readers
-- Enact policies compile to runtime middleware wrapping db operations
-- CSRF on POST stays as warning (too many legit unauthenticated POST endpoints)
-- Orphan endpoints promoted to error (frontend fetching non-existent backend = always a bug)
+### 7. Roadmap Reprioritized
+Hosted platform architecture: CodeMirror → compile API → deploy → types.
+Formal grammar + LSP deprioritized (closed-source, hosted editor model).
 
 ## Known Issues
-- Python workflow compilation doesn't support Temporal target (JS only for `runs on temporal`)
-- `no_repeat_emails` and `require_human_approval_for_delete` are registered but need cloud DB backend
-- Playground bundle needs Vercel deploy for public demo
+- Playground CodeMirror syntax highlighting doesn't rebuild on theme toggle (colors use CSS vars but HighlightStyle is static)
+- `no_repeat_emails` and `require_human_approval_for_delete` policies registered but need cloud DB
+- Python Temporal workflow not supported
+- Save test artifacts need gitignore (done)
 
 ## Resume Prompt
 
-> Read HANDOFF.md, CLAUDE.md. 1482 tests. Session 11: Tier 8 Workflows (Phases 85-90) + Python streaming + canonical syntax (receives, returning JSON text) + first-class errors + 30+ Enact guard policies. Agent roadmap 100% complete. Roadmap reprioritized for hosted platform. Next: CodeMirror Clear mode for hosted editor, hosted compile API, one-click deploy, type system (inferred).
+> Read HANDOFF.md, CLAUDE.md. 1567 tests (1482 compiler + 85 playground). Session 11: Workflows (85-90), Python streaming (91), canonical syntax + errors (92), Enact policies (93), local playground IDE with Claude agent. Run: `node playground/server.js`. Next: one-click deploy, type system, JS module import, playground visual polish.
