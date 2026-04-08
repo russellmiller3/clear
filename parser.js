@@ -1364,6 +1364,11 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['set', (ctx) => {
+    // Function def: "create function X:" / "make function X:"
+    if (ctx.tokens.length > 1 && ctx.tokens[1].canonical === 'function') {
+      const result = parseFunctionDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (result.node) { ctx.body.push(result.node); return result.endIdx; }
+    }
     // Data shape: "create a Users table:" / "create data shape User:"
     if (ctx.tokens.length > 2 &&
         (ctx.tokens[1].canonical === 'data_shape' ||
@@ -1435,6 +1440,15 @@ const CANONICAL_DISPATCH = new Map([
     const result = parseFunctionDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
+  }],
+  ['to_connector', (ctx) => {
+    // "to greet with name:" — function definition alias
+    if (ctx.tokens.length > 1 &&
+        (ctx.tokens[1].type === TokenType.IDENTIFIER || ctx.tokens[1].type === TokenType.KEYWORD)) {
+      const result = parseFunctionDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (result.node) { ctx.body.push(result.node); return result.endIdx; }
+    }
+    return undefined; // not a function — fall through to other handlers
   }],
   ['call_api', (ctx) => {
     // Standalone: call api 'url': + config block
@@ -1656,7 +1670,9 @@ const CANONICAL_DISPATCH = new Map([
       else ctx.body.push(parsed.node);
       return ctx.i + 1;
     }
-    // Function: define function X(args): — fall through to 'function' canonical handler
+    // Function: define function X(args): OR define X with Y:
+    const result = parseFunctionDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) { ctx.body.push(result.node); return result.endIdx; }
     return undefined;
   }],
 ]);
@@ -1804,91 +1820,10 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
       // --- END DISPATCH TABLE LOOKUP ---
 
-      // target, build: handled by CANONICAL_DISPATCH
-
-      // ---- ADAPTERS & CONFIG (database, email, scraper, pdf, ml) ----
-
-      // Database declaration: "database is local memory" / "database is PostgreSQL at env('DB_URL')"
-      if (firstToken.value === 'database' && tokens.length >= 3 &&
-          (tokens[1].canonical === 'is' || tokens[1].type === TokenType.ASSIGN)) {
-        const parts = tokens.slice(2).map(t => t.value);
-        // Find "at" to split backend name from connection string
-        const atIdx = parts.indexOf('at');
-        const backend = atIdx >= 0 ? parts.slice(0, atIdx).join(' ') : parts.join(' ');
-        let connectionExpr = null;
-        if (atIdx >= 0 && atIdx + 1 < parts.length) {
-          // Parse the connection expression (could be env('URL') or a string)
-          connectionExpr = parseExpression(tokens, 2 + atIdx + 1, line);
-          if (connectionExpr.error) connectionExpr = null;
-          else connectionExpr = connectionExpr.node;
-        }
-        body.push({ type: NodeType.DATABASE_DECL, backend: backend.toLowerCase(), connection: connectionExpr, line });
-        i++;
-        continue;
-      }
-
-      // log_requests + allow_cors: handled by CANONICAL_DISPATCH
-
-      // write_file: handled by CANONICAL_DISPATCH
-
-      // connect_to_database: handled by CANONICAL_DISPATCH
-
-      // raw_run: handled by CANONICAL_DISPATCH
-
-      // External API call (standalone): call api 'url': + config block
-      if (firstToken.canonical === 'call_api') {
-        let urlNode;
-        if (tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
-          urlNode = literalString(tokens[1].value, line);
-        } else if (tokens.length >= 2) {
-          urlNode = variableRef(tokens[1].value, line);
-        } else {
-          errors.push({ line, message: "call api needs a URL. Example: call api 'https://api.example.com'" });
-          i++; continue;
-        }
-        const config = { method: null, headers: [], body: null, timeout: null };
-        let j = i + 1;
-        while (j < lines.length && lines[j].indent > indent) {
-          const cfgTokens = lines[j].tokens;
-          if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
-          const key = cfgTokens[0].value?.toLowerCase();
-          if (key === 'method' && cfgTokens.length >= 3) {
-            const valIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
-            if (valIdx >= 0) config.method = cfgTokens[valIdx].value;
-          } else if (key === 'header' && cfgTokens.length >= 4) {
-            const nameIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
-            if (nameIdx >= 0) {
-              const headerName = cfgTokens[nameIdx].value;
-              const isIdx = cfgTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
-              if (isIdx >= 0) {
-                const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
-                if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
-              }
-            }
-          } else if (key === 'body' && cfgTokens.length >= 3) {
-            const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
-            if (isIdx >= 0) {
-              const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
-              if (!valExpr.error) config.body = valExpr.node;
-            }
-          } else if (key === 'timeout' && cfgTokens.length >= 3) {
-            const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
-            if (numIdx >= 0) {
-              const val = cfgTokens[numIdx].value;
-              let unit = 'seconds';
-              if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
-              config.timeout = { value: val, unit };
-            }
-          }
-          j++;
-        }
-        body.push({ type: NodeType.HTTP_REQUEST, url: urlNode, config, line });
-        i = j;
-        continue;
-      }
-
-      // respond (sendgrid/email/API/respond): handled by CANONICAL_DISPATCH router
-      // needs_login, configure_email: handled by CANONICAL_DISPATCH
+      // --- ALL KEYWORD BRANCHES HANDLED BY DISPATCH TABLES ABOVE ---
+      // target, build, database, call_api, respond, sendgrid, SMTP,
+      // log_requests, allow_cors, write_file, connect_to_database, raw_run,
+      // needs_login, configure_email: all in CANONICAL_DISPATCH or RAW_DISPATCH
 
       // Text block: NAME is text block: + indented raw text lines
       // e.g. message is text block:\n  Hello {name}\n  Welcome
@@ -1959,128 +1894,11 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // PDF: create pdf 'path': + indented content elements
-      // create_pdf: handled by CANONICAL_DISPATCH
-
-      // save_csv, append_to_file: handled by CANONICAL_DISPATCH
-
-      // ---- UI & DISPLAY (show, display, toast, content elements) ----
-
-      // show (toast/display/content/component/expression): handled by CANONICAL_DISPATCH router
-
-      // chart 'Title' as line showing data
-      if (firstToken.value === 'chart' && tokens.length >= 4 && tokens[1].type === TokenType.STRING) {
-        const parsed = parseChart(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // (show display/content/expression branches removed — handled by dispatch router above)
-
-      // Return statement
-      // return, break, continue: handled by CANONICAL_DISPATCH
-
-      // define (component/as): handled by CANONICAL_DISPATCH router
-      // define falls through to assignment for define-as and to 'function' for function defs
-
-      // Agent definition: agent 'Name' receiving varName:
-      if (firstToken.value === 'agent' && tokens.length >= 2) {
-        const result = parseAgent(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Function definition:
-      //   CANONICAL: "define function greet with input name"
-      //   Aliases: "function greet with name", "to greet with name", "define greet with name"
-      if (firstToken.canonical === 'function' ||
-          firstToken.canonical === 'define' ||
-          (firstToken.canonical === 'to_connector' && tokens.length > 1 &&
-           (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD)) ||
-          (firstToken.canonical === 'set' && tokens.length > 1 && tokens[1].canonical === 'function')) {
-        const result = parseFunctionDef(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // repeat, for_each, while, try: handled by CANONICAL_DISPATCH
-
-      // Transaction: "as one operation:" — all-or-nothing database operations
-      if (firstToken.canonical === 'as_format' && tokens.length >= 2 &&
-          tokens[1].value === 'one' &&
-          tokens.some(t => t.value === 'operation')) {
-        const { body: txBody, endIdx: txEnd } = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.TRANSACTION, body: txBody, line });
-        i = txEnd;
-        continue;
-      }
-
-      // Retry: "retry 3 times:" — retry block up to N times on failure
-      if (firstToken.value === 'retry' && tokens.length >= 3) {
-        const count = typeof tokens[1].value === 'number' ? tokens[1].value : parseInt(tokens[1].value, 10) || 3;
-        const { body: retryBody, endIdx: retryEnd } = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.RETRY, count, body: retryBody, line });
-        i = retryEnd;
-        continue;
-      }
-
-      // Timeout: "with timeout 5 seconds:" — cancel if block takes too long
-      if (firstToken.canonical === 'with' && tokens.length >= 3 &&
-          tokens[1].value === 'timeout') {
-        const amount = typeof tokens[2].value === 'number' ? tokens[2].value : parseInt(tokens[2].value, 10) || 5;
-        // Detect unit: seconds or minutes
-        let ms = amount * 1000; // default seconds
-        if (tokens.length >= 4 && (tokens[3].value === 'minutes' || tokens[3].value === 'minute')) {
-          ms = amount * 60000;
-        }
-        const { body: timeoutBody, endIdx: timeoutEnd } = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.TIMEOUT, ms, body: timeoutBody, line });
-        i = timeoutEnd;
-        continue;
-      }
-
-      // Race: "first to finish:" — run multiple tasks, take first result
-      if (firstToken.value === 'first' && tokens.length >= 2 &&
-          tokens.some(t => t.value === 'finish')) {
-        const { body: raceBody, endIdx: raceEnd } = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.RACE, body: raceBody, line });
-        i = raceEnd;
-        continue;
-      }
-
-      // use: handled by CANONICAL_DISPATCH
-
-      // theme: handled by CANONICAL_DISPATCH
-
-      // Script block: script: + indented raw JavaScript (escape hatch)
-      if (firstToken.value === 'script') {
-        const scriptLines = [];
-        let j = i + 1;
-        while (j < lines.length && lines[j].indent > indent) {
-          // Capture raw text (the original source line, not parsed tokens)
-          scriptLines.push(lines[j].raw || lines[j].tokens.map(t => t.value).join(' '));
-          j++;
-        }
-        if (scriptLines.length === 0) {
-          errors.push({ line, message: "script: block is empty — add indented JavaScript code below it" });
-        } else {
-          body.push({ type: NodeType.SCRIPT, code: scriptLines.join('\n'), line });
-        }
-        i = j;
-        continue;
-      }
-
-      // store, restore: handled by RAW_DISPATCH
-
-      // Style block: style card: + indented properties
-      // style, page, section, ask_for: handled by CANONICAL_DISPATCH
+      // All keyword branches (show, chart, agent, function, define, retry, with,
+      // first, script, store, restore, style, page, section, ask_for, create_pdf,
+      // save_csv, append_to_file, return, break, continue, repeat, for_each,
+      // while, try, use, theme, as_format, button, deploy_to, requires_auth,
+      // requires_role, define_role, guard): handled by DISPATCH TABLES above
 
       // Label-first input syntax:
       //   CANONICAL: 'Label' is a text input that saves to var
@@ -2119,51 +1937,9 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         // If parseLabelFirstInput returns null, it wasn't an input — fall through
       }
 
-      // Type-first input syntax (alias): text input 'Name', dropdown 'Color' with [...]
-      // Guard: "toggle the X panel" is a panel action, not a checkbox
-      const isCheckboxNotPanel = firstToken.canonical === 'checkbox' &&
-        !(tokens.length >= 2 && (tokens[1].value === 'the' || tokens[1].value === 'this'));
-      if (firstToken.canonical === 'text_input' || firstToken.canonical === 'number_input' ||
-          firstToken.canonical === 'dropdown' || isCheckboxNotPanel ||
-          firstToken.canonical === 'text_area') {
-        const parsed = parseNewInput(tokens, line, firstToken.canonical);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // Static content: heading, subheading, text, bold text, italic text, small text, link, divider
-      // Note: 'text' (content_text) only matches when followed by a string literal.
-      // 'text is ...' is a variable assignment, not a content element.
-      if (firstToken.canonical === 'heading' || firstToken.canonical === 'subheading' ||
-          (firstToken.canonical === 'content_text' && tokens.length > 1 && tokens[1].type === TokenType.STRING) ||
-          firstToken.canonical === 'bold_text' || firstToken.canonical === 'italic_text' ||
-          firstToken.canonical === 'small_text' || firstToken.canonical === 'link' ||
-          firstToken.canonical === 'divider' || firstToken.canonical === 'code_block') {
-        const parsed = parseContent(tokens, line, firstToken.canonical);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // button: handled by CANONICAL_DISPATCH
-
-      // Tab: tab 'Name': + indented content (inside a tabs section)
-      if (firstToken.value === 'tab' && tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
-        const tabTitle = tokens[1].value;
-        const { body: tabBody, endIdx: tabEnd } = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.TAB, title: tabTitle, body: tabBody, line });
-        i = tabEnd;
-        continue;
-      }
+      // text_input, number_input, dropdown, checkbox, text_area,
+      // heading, subheading, content_text, bold_text, italic_text, small_text,
+      // link, divider, code_block, button, tab: handled by DISPATCH TABLES
 
       // Panel actions: toggle/open/close [the] X panel/modal
       // "toggle the Help panel", "open the Confirm modal", "close modal"
@@ -2196,84 +1972,11 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       // accept_file, data_from, checkout, usage_limit, webhook, oauth,
       // validate, responds_with, rate_limit: handled by CANONICAL_DISPATCH
 
-      // Phase 20: background 'name': (or: background job 'name':)
-      // Not in dispatch — needs raw-value + canonical check
-      if (firstToken.canonical === 'background_job'
-          || (firstToken.value === 'background' && tokens.length > 1 && tokens[1].type === TokenType.STRING)) {
-        const result = parseBackground(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // when X notifies: handled by 'if' router in CANONICAL_DISPATCH (when→if synonym)
-
-      // ---- ENDPOINTS & DATA (REST routes, data shapes, CRUD, auth) ----
-
-      // Backend endpoint: when user calls GET /api/users: (or: on GET /api/users:)
-      // when_user_calls, on_method: handled by CANONICAL_DISPATCH
-
-      // respond, respond_with: handled by CANONICAL_DISPATCH router
-      // set (data_shape, map_set): handled by CANONICAL_DISPATCH router (falls through for assignment)
-
-      // set (data_shape): handled by CANONICAL_DISPATCH router
-
-      // save_to, remove_from: handled by CANONICAL_DISPATCH
-
-      // test, match_kw: handled by CANONICAL_DISPATCH
-
-      // on_page_load: handled by CANONICAL_DISPATCH
-
-      // when X changes: handled by 'if' router in CANONICAL_DISPATCH (when→if synonym)
-
-      // go_to: handled by CANONICAL_DISPATCH
-
-      // Frontend API calls:
-      //   "send name and email to '/api/signup'" (canonical — friendly)
-      // "get todos from '/api/todos'" -- named fetch (standalone statement)
-      // Pattern: get_key + IDENTIFIER + 'from' + STRING
-      if (firstToken.canonical === 'get_key' && tokens.length >= 4 &&
-          tokens[1].type === TokenType.IDENTIFIER) {
-        const fromIdx = tokens.findIndex((t, idx) => idx >= 2 && t.value === 'from');
-        if (fromIdx > 0 && fromIdx + 1 < tokens.length && tokens[fromIdx + 1].type === TokenType.STRING) {
-          const targetVar = tokens[1].value;
-          const url = tokens[fromIdx + 1].value;
-          body.push({ type: NodeType.API_CALL, method: 'GET', url, targetVar, fields: [], line });
-          i++;
-          continue;
-        }
-      }
-
-      //   "post to '/api/signup'" (terse alias)
-      // post_to, get_from, put_to, delete_from: handled by CANONICAL_DISPATCH
-      // "add X to Y" — list push
-      if (firstToken.canonical === 'add' && tokens.length >= 3) {
-        // Find "to" keyword
-        let toPos = -1;
-        for (let k = 1; k < tokens.length; k++) {
-          if (tokens[k].canonical === 'to_connector') { toPos = k; break; }
-        }
-        if (toPos > 0 && toPos + 1 < tokens.length) {
-          // Value is everything between add and to
-          const valExpr = parseExpression(tokens, 1, line, toPos);
-          const listName = tokens[toPos + 1].value;
-          if (!valExpr.error) {
-            body.push({ type: NodeType.LIST_PUSH, list: listName, value: valExpr.node, line });
-            i++;
-            continue;
-          }
-        }
-      }
-
-      // set (map_set), remove (CRUD/list), sort_by: handled by CANONICAL_DISPATCH routers
-      if (false) { /* set map_set + remove CRUD/list removed — now in dispatch */
-      }
-
-      // expect: handled by CANONICAL_DISPATCH
-
-      // if (guard/block/inline) + when (notifies/changes): handled by CANONICAL_DISPATCH router
-
-      // increase, decrease: handled by CANONICAL_DISPATCH
+      // background_job, background, when (notifies/changes), when_user_calls,
+      // on_method, respond, respond_with, set (data_shape/map_set), save_to,
+      // remove_from, test, match_kw, on_page_load, go_to, get_key, add,
+      // post_to, get_from, put_to, delete_from: handled by DISPATCH TABLES
+      // (dead if/else branches removed — all handled by dispatch tables)
 
       // Math-style function definition: total_value(item) = item's price * item's quantity
       // Detected BEFORE assignment because it looks like assignment but has (params) on the left
