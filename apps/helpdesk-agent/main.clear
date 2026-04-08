@@ -1,18 +1,36 @@
 # ┌──────────────────────────────────────────────────────────┐
 # │  IT Helpdesk — Multi-Agent Support System               │
-# │                                                         │
-# │  DATAFLOW:                                              │
-# │  User message                                           │
-# │    → Triage Agent (classify + priority)                 │
-# │    → Router (parallel: Knowledge + Sentiment)           │
-# │    → Specialist (Software / Hardware / Network)         │
-# │    → Resolution Agent (answer + follow-up)              │
-# │                                                         │
-# │  PIPELINE: Triage → Specialist → Resolution             │
-# │  PARALLEL: Knowledge search + Sentiment analysis        │
-# │                                                         │
-# │  TABLES: Tickets, KnowledgeBase, AgentLogs, Approvals   │
 # └──────────────────────────────────────────────────────────┘
+#
+# AGENT FLOW:
+#
+# POST /api/support
+#   │
+#   ├──── parallel ─────────────────┐
+#   │                               │
+#   v                               v
+# Knowledge Agent               Sentiment Agent
+# [skills: Knowledge Search]    [tracking]
+# [RAG: KnowledgeBase]
+# [guardrails, tracking]
+#   │                               │
+#   └───────────┬───────────────────┘
+#               │
+#               v
+#   ┌── Pipeline 'Full Support' ──────────────────┐
+#   │                                              │
+#   │  Triage Agent ──> Software Specialist ──> Resolution Agent
+#   │  [skills: Ticket   [skills: Ticket Mgmt,    [skills: Ticket Mgmt,
+#   │   Management]       Knowledge Search]         Escalation]
+#   │  [guardrails,      [guardrails,              [guardrails,
+#   │   tracking]         tracking]                 tracking]
+#   │                                              │
+#   └──────────────────────────────────────────────┘
+#               │
+#               v
+#           Response
+#
+# TABLES: Tickets, KnowledgeBase, AgentLogs, Approvals
 
 build for javascript backend
 database is local memory

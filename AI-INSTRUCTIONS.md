@@ -105,6 +105,40 @@ before committing.
 7. Keep it under 15 lines — this is a map, not documentation
 8. **The diagram is the source of truth.** Update it before changing code
 
+**Agent flow diagram** — MANDATORY for any app with 2+ agents, pipelines, or parallel execution:
+```
+# AGENT FLOW:
+#
+# User message
+#   │
+#   ├──> Triage Agent [tools, guardrails, tracking]
+#   │       │
+#   │       ├── category = 'software' ──> Software Specialist [tools, RAG]
+#   │       ├── category = 'hardware' ──> Hardware Specialist [tools]
+#   │       └── otherwise ──> General Agent
+#   │                              │
+#   │    ┌─── parallel ────────────┤
+#   │    │                         │
+#   │    v                         v
+#   │  Knowledge Agent         Sentiment Agent
+#   │  [RAG, tracking]        [tracking]
+#   │    │                         │
+#   │    └──────────┬──────────────┘
+#   │               │
+#   │               v
+#   │         Resolution Agent [tools, guardrails, tracking]
+#   │               │
+#   v               v
+# Response ──> User
+```
+
+**When editing agents, ALWAYS update the agent flow diagram:**
+1. Adding/removing an agent? Update the flow diagram
+2. Changing pipeline steps? Update the flow diagram
+3. Adding tools/skills/guardrails to an agent? Update the `[...]` annotations
+4. Adding parallel execution? Show the fork and join in the diagram
+5. The compiled output auto-generates a text version — but the source diagram is richer and is the source of truth
+
 ## Minimize Cognitive Load (First Principle)
 
 Every Clear program should be readable in one pass without backtracking.

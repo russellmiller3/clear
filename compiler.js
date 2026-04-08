@@ -5332,7 +5332,13 @@ function generateDiagram(body, commentPrefix = '//') {
       pages.push({ title: node.title, route: node.route || '/', line: node.line, file: node._sourceFile });
     }
     if (node.type === NodeType.AGENT) {
-      agents.push({ name: node.name, line: node.line });
+      agents.push({
+        name: node.name, line: node.line,
+        tools: node.tools, skills: node.skills, restrictions: node.restrictions,
+        trackDecisions: node.trackDecisions, rememberConversation: node.rememberConversation,
+        rememberPreferences: node.rememberPreferences, knowsAbout: node.knowsAbout,
+        streamResponse: node.streamResponse, schedule: node.schedule,
+      });
     }
   }
 
@@ -5377,7 +5383,64 @@ function generateDiagram(body, commentPrefix = '//') {
     lines.push(`${p}`);
     lines.push(`${p} AGENTS:`);
     for (const a of agents) {
-      lines.push(`${p}   '${a.name}' (line ${a.line})`);
+      const directives = [];
+      if (a.tools?.length > 0) directives.push(`tools: ${a.tools.map(t => t.name || t.description).join(', ')}`);
+      if (a.skills?.length > 0) directives.push(`skills: ${a.skills.join(', ')}`);
+      if (a.restrictions?.length > 0) directives.push(`guardrails: ${a.restrictions.length}`);
+      if (a.trackDecisions) directives.push('tracking');
+      if (a.rememberConversation) directives.push('conversation');
+      if (a.rememberPreferences) directives.push('memory');
+      if (a.knowsAbout?.length > 0) directives.push(`RAG: ${a.knowsAbout.join(', ')}`);
+      if (a.streamResponse === true || (a.streamResponse === null && !a.schedule)) directives.push('streaming');
+      const dStr = directives.length > 0 ? ` [${directives.join(', ')}]` : '';
+      lines.push(`${p}   '${a.name}'${dStr} (line ${a.line})`);
+    }
+  }
+
+  // Agent flow diagrams
+  const pipelines = body.filter(n => n.type === NodeType.PIPELINE);
+  const parallelBlocks = body.flatMap(n =>
+    n.type === NodeType.ENDPOINT ? (n.body || []).filter(b => b.type === NodeType.PARALLEL_AGENTS) : []
+  );
+
+  if (pipelines.length > 0 || parallelBlocks.length > 0 || agents.length > 1) {
+    lines.push(`${p}`);
+    lines.push(`${p} AGENT FLOW:`);
+
+    for (const pipeline of pipelines) {
+      const chain = pipeline.steps.map(s => s.agentName).join(' → ');
+      lines.push(`${p}   Pipeline '${pipeline.name}': ${chain}`);
+    }
+
+    for (const par of parallelBlocks) {
+      const names = par.assignments.map(a => {
+        const agentName = a.expression?.agentName || '?';
+        return agentName;
+      });
+      lines.push(`${p}   Parallel: ${names.join(' + ')}`);
+    }
+
+    // Show endpoint → agent call chains
+    for (const ep of body.filter(n => n.type === NodeType.ENDPOINT)) {
+      const agentCalls = [];
+      const pipelineCalls = [];
+      (function findCalls(nodes) {
+        for (const n of nodes) {
+          if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_AGENT) {
+            agentCalls.push(n.expression.agentName);
+          }
+          if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_PIPELINE) {
+            pipelineCalls.push(n.expression.pipelineName);
+          }
+          if (n.body) findCalls(n.body);
+          if (n.thenBranch) findCalls(n.thenBranch);
+          if (n.otherwiseBranch) findCalls(n.otherwiseBranch);
+        }
+      })(ep.body || []);
+      if (agentCalls.length > 0 || pipelineCalls.length > 0) {
+        const calls = [...pipelineCalls.map(p => `pipeline '${p}'`), ...agentCalls.map(a => `'${a}'`)];
+        lines.push(`${p}   ${ep.method.toUpperCase()} ${ep.path} → ${calls.join(', ')}`);
+      }
     }
   }
 
