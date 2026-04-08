@@ -9677,7 +9677,7 @@ describe('Agent primitives - validator', () => {
   it('errors when agent has no receiving var', () => {
     const result = compileProgram("build for javascript backend\nagent 'T':\n  send back 1");
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0].message).toContain('receiving');
+    expect(result.errors[0].message).toContain('receives');
   });
 });
 
@@ -17585,6 +17585,86 @@ when user calls POST /api/support sending data:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('await workflow_support(');
+  });
+});
+
+// =============================================================================
+// CANONICAL SYNTAX: receives + returning JSON text
+// =============================================================================
+
+describe('Agent receives keyword (canonical)', () => {
+  it('parses agent with receives', () => {
+    const src = `agent 'Helper' receives question:
+  send back question`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const agent = ast.body.find(n => n.type === NodeType.AGENT);
+    expect(agent).toBeTruthy();
+    expect(agent.name).toBe('Helper');
+    expect(agent.receivingVar).toBe('question');
+  });
+
+  it('receives compiles identically to receiving', () => {
+    const src1 = `build for javascript backend
+agent 'Bot' receives msg:
+  response = ask claude 'Help' with msg
+  send back response`;
+    const src2 = src1.replace('receives', 'receiving');
+    const r1 = compileProgram(src1);
+    const r2 = compileProgram(src2);
+    expect(r1.errors).toHaveLength(0);
+    expect(r2.errors).toHaveLength(0);
+    // Both produce the same agent function
+    expect(r1.javascript).toContain('async function');
+    expect(r1.javascript).toContain('agent_bot(msg)');
+  });
+
+  it('receiving still works (backward compatible)', () => {
+    const src = `agent 'Bot' receiving data:
+  send back data`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+  });
+});
+
+describe('Returning JSON text (structured output)', () => {
+  it('parses returning JSON text: with field block', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receives text:
+  result = ask claude 'Classify this' with text returning JSON text:
+    category
+    confidence (number)
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAI(');
+    expect(result.javascript).toContain('"category"');
+    expect(result.javascript).toContain('"confidence"');
+  });
+
+  it('returning: still works without JSON text', () => {
+    const src = `build for javascript backend
+agent 'Scorer' receives data:
+  result = ask claude 'Score it' with data returning:
+    score (number)
+    reason
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('"score"');
+  });
+
+  it('returning JSON text works in Python', () => {
+    const src = `build for python backend
+agent 'Classifier' receives text:
+  result = ask claude 'Classify' with text returning JSON text:
+    category
+    confidence (number)
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('_ask_ai(');
+    expect(result.python).toContain('"category"');
   });
 });
 

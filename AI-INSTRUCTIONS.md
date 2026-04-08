@@ -954,13 +954,13 @@ set score to ask ai 'Rate this company 1-10 for enterprise potential.' with lead
 
 ### Use structured output when you need multiple fields
 
-When the AI should return an object (not just a string), use `returning:`
+When the AI should return an object (not just a string), use `returning JSON text:`
 with an indented field block. Each field has an optional type: `(number)`,
 `(boolean)`, `(list)`, or plain (defaults to text).
 
 ```
 # GOOD: structured output -- result is an object with typed fields
-set result to ask ai 'Analyze this lead for enterprise potential' with lead returning:
+set result to ask ai 'Analyze this lead for enterprise potential' with lead returning JSON text:
   score (number)
   reasoning
   qualified (boolean)
@@ -980,7 +980,7 @@ Every production agent should have guards. Place directives at the top of the
 agent body, before any executable code:
 
 ```clear
-agent 'Customer Support' receiving message:
+agent 'Customer Support' receives message:
   # --- DIRECTIVES (order doesn't matter, but group them at top) ---
   can use: look_up_orders, check_status, send_email
   must not: delete records, modify prices, access admin tables
@@ -1035,13 +1035,13 @@ skill 'Email Support':
     Use professional tone. Include order number in subject.
 
 # Both agents share the same tools + instructions
-agent 'Support' receiving message:
+agent 'Support' receives message:
   uses skills: 'Order Management', 'Email Support'
   must not: delete records
   response = ask claude 'Help' with message
   send back response
 
-agent 'Returns' receiving request:
+agent 'Returns' receives request:
   uses skills: 'Order Management'
   must not: modify prices
   response = ask claude 'Process return' with request
@@ -1053,7 +1053,7 @@ agent 'Returns' receiving request:
 Never cram instructions into a single-line string. Use text blocks with interpolation:
 
 ```clear
-agent 'Support' receiving message:
+agent 'Support' receives message:
   today = format date current time as 'YYYY-MM-DD'
 
   system_prompt is text block:

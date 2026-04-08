@@ -963,7 +963,7 @@ renting your software and owning it.
 Three node types for AI agents, all implemented and tested (931 tests passing):
 
 ```clear
-agent 'Lead Scorer' receiving lead:
+agent 'Lead Scorer' receives lead:
   check lead's company is not missing, otherwise error 'Company is required'
   set lead's score to ask ai 'Rate 1-10 for enterprise potential.' with lead's company
   send back lead
@@ -974,7 +974,7 @@ when user calls POST /api/score sending lead_data:
   send back saved with success message
 ```
 
-- `agent 'Name' receiving var:` -- named async function with guards and send back
+- `agent 'Name' receives var:` -- named async function with guards and send back
 - `ask ai 'prompt' with context` -- mid-flow LLM call, BYOK via CLEAR_AI_KEY
 - `call 'Agent' with data` -- invoke an agent from an endpoint or another agent
 - `check X, otherwise error 'msg'` -- explicit guard (throws in agents, 403 in endpoints)
@@ -1542,9 +1542,9 @@ These make Clear apps smarter than hand-coded equivalents.
 All 10 phases + Skills implemented. 1407 tests passing. 70 new tests. GAN app: `apps/support-agent/main.clear` (80 lines → 300 lines JS).
 
 **What's built:**
-- `agent 'Name' receiving data:` — define an agent function
+- `agent 'Name' receives data:` — define an agent function
 - `ask claude 'prompt' with context` — single LLM call
-- `ask claude 'prompt' with data returning:` — structured output (JSON schema)
+- `ask claude 'prompt' with data returning JSON text:` — structured output (JSON schema)
 - `call 'Agent' with data` — invoke agent from endpoint
 - `agent 'Name' runs every 1 hour:` — scheduled agents (cron)
 - `using 'claude-opus-4-6'` — model selection
@@ -1558,7 +1558,7 @@ All 10 phases + Skills implemented. 1407 tests passing. 70 new tests. GAN app: `
 Agent declares which functions it can call. The compiler maps Clear functions and CRUD operations to Anthropic tool_use API tool definitions. Agent decides at runtime which tools to invoke.
 
 ```clear
-agent 'Customer Support' receiving message:
+agent 'Customer Support' receives message:
   can use: look_up_orders, check_status, send_email
 
   response = ask claude 'Help this customer resolve their issue' with message
@@ -1594,7 +1594,7 @@ create a Conversations table:
   messages, default '[]'
   created_at (timestamp), auto
 
-agent 'Assistant' receiving message:
+agent 'Assistant' receives message:
   remember conversation context
   can use: look_up_contacts, create_task
 
@@ -1624,19 +1624,19 @@ Compiles to: conversation history loaded from DB on each call, appended after re
 Output of one agent feeds as input to the next. Error at any step stops the chain and reports which step failed. Useful for multi-stage processing.
 
 ```clear
-agent 'Classifier' receiving text:
-  result = ask claude 'Classify this as sales, support, or billing' with text returning:
+agent 'Classifier' receives text:
+  result = ask claude 'Classify this as sales, support, or billing' with text returning JSON text:
     category
     confidence (number)
   send back result
 
-agent 'Scorer' receiving lead:
-  score = ask claude 'Score this lead 1-10' with lead returning:
+agent 'Scorer' receives lead:
+  score = ask claude 'Score this lead 1-10' with lead returning JSON text:
     score (number)
     reason
   send back score
 
-agent 'Router' receiving scored_lead:
+agent 'Router' receives scored_lead:
   if scored_lead's score is greater than 7:
     send back 'fast-track'
   otherwise:
@@ -1667,7 +1667,7 @@ create a Documents table:
   content, required
   category
 
-agent 'Knowledge Bot' receiving question:
+agent 'Knowledge Bot' receives question:
   knows about: Documents, Products, FAQ
   using 'claude-sonnet-4-6'
 
@@ -1689,7 +1689,7 @@ create a Memories table:
   fact, required
   created_at (timestamp), auto
 
-agent 'Personal Assistant' receiving message:
+agent 'Personal Assistant' receives message:
   remember user's preferences
   can use: create_task, send_email, check_calendar
 
@@ -1706,18 +1706,18 @@ Compiles to: (1) on each call, load recent memories for this user from Memories 
 Run multiple agent calls simultaneously. Useful for fan-out patterns (analyze from multiple angles, then merge).
 
 ```clear
-agent 'Sentiment' receiving text:
-  result = ask claude 'Rate sentiment 1-10' with text returning:
+agent 'Sentiment' receives text:
+  result = ask claude 'Rate sentiment 1-10' with text returning JSON text:
     score (number)
   send back result
 
-agent 'Topic' receiving text:
-  result = ask claude 'Identify the main topic' with text returning:
+agent 'Topic' receives text:
+  result = ask claude 'Identify the main topic' with text returning JSON text:
     topic
   send back result
 
-agent 'Language' receiving text:
-  result = ask claude 'Detect the language' with text returning:
+agent 'Language' receives text:
+  result = ask claude 'Detect the language' with text returning JSON text:
     language
   send back result
 
@@ -1750,7 +1750,7 @@ create a Approvals table:
   decided_by
   decided_at (timestamp)
 
-agent 'Refund Processor' receiving request:
+agent 'Refund Processor' receives request:
   can use: look_up_order, process_refund
 
   order = look_up_order(request's order_id)
@@ -1784,7 +1784,7 @@ create a AgentLogs table:
   latency_ms (number)
   created_at (timestamp), auto
 
-agent 'Support Bot' receiving message:
+agent 'Support Bot' receives message:
   log agent decisions
   can use: search_faq, escalate
 
@@ -1805,7 +1805,7 @@ Compiles to: wrapper around every `_askAI` call that records timing, token count
 Compile-time constraints on what an agent can access. The compiler verifies that the agent's tool set does not include restricted tables or operations. Violations are compile errors, not runtime checks.
 
 ```clear
-agent 'Public Bot' receiving question:
+agent 'Public Bot' receives question:
   can use: search_products, check_availability
   must not: modify prices, delete records, access users
 
@@ -1879,7 +1879,7 @@ create a AgentLogs table:
   latency_ms (number)
   created_at (timestamp), auto
 
-agent 'Customer Support' receiving message:
+agent 'Customer Support' receives message:
   can use: look_up_orders, check_status, send_email, escalate
   must not: delete records, modify prices, access admin tables
   knows about: Products, Orders, FAQ

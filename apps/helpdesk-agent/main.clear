@@ -126,7 +126,7 @@ skill 'Escalation':
 
 # === AGENTS ===
 
-agent 'Triage Agent' receiving message:
+agent 'Triage Agent' receives message:
   uses skills: 'Ticket Management'
   track agent decisions
   must not:
@@ -139,14 +139,14 @@ agent 'Triage Agent' receiving message:
     Assign priority: P1 (service down), P2 (degraded), P3 (question/request).
     Create a ticket if one doesn't exist for this issue.
 
-  result = ask claude prompt with message returning:
+  result = ask claude prompt with message returning JSON text:
     category
     priority
     summary
     ticket_id (number)
   send back result
 
-agent 'Knowledge Agent' receiving query:
+agent 'Knowledge Agent' receives query:
   uses skills: 'Knowledge Search'
   knows about: KnowledgeBase
   track agent decisions
@@ -159,22 +159,22 @@ agent 'Knowledge Agent' receiving query:
     Find relevant articles for the user's issue.
     Summarize the most relevant solution steps.
 
-  result = ask claude prompt with query returning:
+  result = ask claude prompt with query returning JSON text:
     articles_found (number)
     suggested_solution
     confidence (number)
   send back result
 
-agent 'Sentiment Agent' receiving message:
+agent 'Sentiment Agent' receives message:
   track agent decisions
 
-  result = ask claude 'Analyze the customer sentiment. Rate frustration 1-10.' with message returning:
+  result = ask claude 'Analyze the customer sentiment. Rate frustration 1-10.' with message returning JSON text:
     frustration (number)
     tone
     urgency (boolean)
   send back result
 
-agent 'Software Specialist' receiving context:
+agent 'Software Specialist' receives context:
   uses skills: 'Ticket Management', 'Knowledge Search'
   track agent decisions
   must not:
@@ -186,14 +186,14 @@ agent 'Software Specialist' receiving context:
     Provide step-by-step resolution instructions.
     If the fix requires admin access, recommend escalation.
 
-  result = ask claude prompt with context returning:
+  result = ask claude prompt with context returning JSON text:
     diagnosis
     steps
     requires_escalation (boolean)
     confidence (number)
   send back result
 
-agent 'Resolution Agent' receiving context:
+agent 'Resolution Agent' receives context:
   uses skills: 'Ticket Management', 'Escalation'
   track agent decisions
   must not:
@@ -206,7 +206,7 @@ agent 'Resolution Agent' receiving context:
     If escalation is needed, explain why to the user.
     Always ask if the solution resolved the issue.
 
-  result = ask claude prompt with context returning:
+  result = ask claude prompt with context returning JSON text:
     response
     resolved (boolean)
     follow_up

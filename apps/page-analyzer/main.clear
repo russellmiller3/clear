@@ -8,7 +8,7 @@ create a Pages table:
   link_count (number), default 0
   analyzed_at_date, auto
 
-agent 'Page Analyzer' receiving page_data:
+agent 'Page Analyzer' receives page_data:
   guard page_data's url is not nothing or 'URL is required'
   page_data's title is 'Analyzed'
   page_data's link_count is 42

@@ -147,7 +147,7 @@ section 'Layout' with style app_layout:
 
 ### AI Agents
 ```clear
-agent 'Lead Scorer' receiving lead:
+agent 'Lead Scorer' receives lead:
   check lead's company is not missing, otherwise error 'Company required'
   set result to ask ai 'Rate 1-10 for enterprise potential' with lead returning:
     score (number)

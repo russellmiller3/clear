@@ -53,7 +53,7 @@ skill 'FAQ Search':
 
 # --- Agent ---
 
-agent 'Customer Support' receiving message:
+agent 'Customer Support' receives message:
   uses skills: 'Order Management', 'FAQ Search'
   track agent decisions
   knows about: FAQ

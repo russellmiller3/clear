@@ -70,7 +70,7 @@ skill 'Evaluation Recording':
 
 # === AGENTS ===
 
-agent 'Resume Screener' receiving candidate_id:
+agent 'Resume Screener' receives candidate_id:
   uses skills: 'Candidate Lookup'
   track agent decisions
   knows about: JobDescriptions
@@ -84,14 +84,14 @@ agent 'Resume Screener' receiving candidate_id:
     Score 1-10 based on qualifications match.
     Focus on: relevant experience, skills alignment, career trajectory.
 
-  result = ask claude prompt with candidate_id returning:
+  result = ask claude prompt with candidate_id returning JSON text:
     score (number)
     strengths
     gaps
     recommendation
   send back result
 
-agent 'Technical Assessor' receiving screening:
+agent 'Technical Assessor' receives screening:
   uses skills: 'Candidate Lookup', 'Evaluation Recording'
   track agent decisions
   must not:
@@ -102,14 +102,14 @@ agent 'Technical Assessor' receiving screening:
     Based on the screening results, evaluate technical depth.
     Score 1-10 based on: problem-solving ability, technical knowledge, system design thinking.
 
-  result = ask claude prompt with screening returning:
+  result = ask claude prompt with screening returning JSON text:
     score (number)
     technical_strengths
     areas_to_probe
     recommendation
   send back result
 
-agent 'Culture Fit Analyzer' receiving assessment:
+agent 'Culture Fit Analyzer' receives assessment:
   track agent decisions
   must not:
     delete any records
@@ -120,14 +120,14 @@ agent 'Culture Fit Analyzer' receiving assessment:
     evaluate alignment with team values and communication style.
     Score 1-10.
 
-  result = ask claude prompt with assessment returning:
+  result = ask claude prompt with assessment returning JSON text:
     score (number)
     cultural_strengths
     concerns
     recommendation
   send back result
 
-agent 'Final Decision Maker' receiving evaluations:
+agent 'Final Decision Maker' receives evaluations:
   track agent decisions
   must not:
     delete any records
@@ -139,7 +139,7 @@ agent 'Final Decision Maker' receiving evaluations:
     Make a final hire/no-hire decision with justification.
     Consider: technical ability, culture fit, growth potential.
 
-  result = ask claude prompt with evaluations returning:
+  result = ask claude prompt with evaluations returning JSON text:
     decision
     confidence (number)
     justification
