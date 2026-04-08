@@ -16058,5 +16058,112 @@ agent 'ShopBot' receiving msg:
   });
 });
 
+// =============================================================================
+// MULTI-TURN CONVERSATION (Phase 76) + AGENT MEMORY (Phase 79)
+// =============================================================================
+
+describe('Multi-turn conversation - parser', () => {
+  it('parses remember conversation context directive', () => {
+    const src = `build for javascript backend
+agent 'Assistant' receiving message:
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.rememberConversation).toBe(true);
+  });
+
+  it('non-conversation agent has rememberConversation false', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  send back data`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.rememberConversation).toBe(false);
+  });
+});
+
+describe('Multi-turn conversation - compiler', () => {
+  it('conversation agent has _userId parameter', () => {
+    const src = `build for javascript backend
+agent 'Chat' receiving message:
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('agent_chat(message, _userId)');
+  });
+
+  it('emits conversation history load/save', () => {
+    const src = `build for javascript backend
+agent 'Chat' receiving message:
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Conversations');
+    expect(result.javascript).toContain('_history');
+    expect(result.javascript).toContain('JSON.parse');
+    expect(result.javascript).toContain('JSON.stringify');
+  });
+
+  it('non-conversation agent has no history code', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_history');
+    expect(result.javascript).not.toContain('Conversations');
+  });
+});
+
+describe('Agent memory - parser', () => {
+  it('parses remember user preferences directive', () => {
+    const src = `build for javascript backend
+agent 'PA' receiving message:
+  remember user's preferences
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.rememberPreferences).toBe(true);
+  });
+});
+
+describe('Agent memory - compiler', () => {
+  it('memory agent has _userId parameter', () => {
+    const src = `build for javascript backend
+agent 'PA' receiving message:
+  remember user's preferences
+  response = ask claude 'Help the user' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_userId');
+    expect(result.javascript).toContain('Memories');
+    expect(result.javascript).toContain('_memContext');
+  });
+
+  it('memory agent extracts REMEMBER tags', () => {
+    const src = `build for javascript backend
+agent 'PA' receiving message:
+  remember user's preferences
+  response = ask claude 'Help the user' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('REMEMBER');
+    expect(result.javascript).toContain("db.insert('Memories'");
+  });
+});
+
 run();
 

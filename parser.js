@@ -2478,6 +2478,8 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     trackDecisions: false,
     tools: null,        // [{type:'ref', name:'fn1'}, ...] or [{type:'inline', description:'...'}]
     restrictions: null, // [{text:'delete any records', category:'delete'}, ...]
+    rememberConversation: false,
+    rememberPreferences: false,
   };
   let bodyStartIdx = startIdx + 1;
   while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
@@ -2552,6 +2554,22 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
         }
         bodyStartIdx++;
       }
+      continue;
+    }
+
+    // remember conversation context
+    if (dTokens[0].value === 'remember' && dTokens.length >= 3 &&
+        dTokens[1].value === 'conversation' && dTokens[2].value === 'context') {
+      directives.rememberConversation = true;
+      bodyStartIdx++;
+      continue;
+    }
+
+    // remember user's preferences
+    if (dTokens[0].value === 'remember' && dTokens.length >= 2 &&
+        (dTokens[1].value === "user's" || (dTokens[1].value === 'user' && dTokens.length >= 3))) {
+      directives.rememberPreferences = true;
+      bodyStartIdx++;
       continue;
     }
 

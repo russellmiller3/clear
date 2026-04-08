@@ -1710,6 +1710,70 @@ function compileAgent(node, ctx, pad) {
     }
   }
 
+  // Multi-turn conversation: remember conversation context
+  // Wraps agent with conversation history load/save
+  if (node.rememberConversation) {
+    const params = param ? `${param}, _userId` : '_userId';
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${params}):\n`;
+      code += `${innerPad}_conv = await db.find_one("Conversations", {"user_id": _userId})\n`;
+      code += `${innerPad}if not _conv:\n`;
+      code += `${innerPad}    _conv = await db.insert("Conversations", {"user_id": _userId, "messages": "[]"})\n`;
+      code += `${innerPad}import json\n`;
+      code += `${innerPad}_history = json.loads(_conv.get("messages", "[]"))\n`;
+      code += `${innerPad}_history.append({"role": "user", "content": str(${param}) if isinstance(${param}, str) else json.dumps(${param})})\n`;
+      code += bodyCode + '\n';
+      code += `${innerPad}# _history updated by _ask_ai when history param is passed\n`;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${params}) {\n`;
+    code += `${innerPad}let _conv = db.findAll ? (await db.findAll('Conversations', { user_id: _userId }))[0] : null;\n`;
+    code += `${innerPad}if (!_conv) _conv = await db.insert('Conversations', { user_id: _userId, messages: '[]' });\n`;
+    code += `${innerPad}const _history = JSON.parse(_conv.messages || '[]');\n`;
+    code += `${innerPad}_history.push({ role: 'user', content: typeof ${param} === 'string' ? ${param} : JSON.stringify(${param}) });\n`;
+    // Emit body code — _askAI calls should get _history appended
+    const wrappedBody = bodyCode.replace(
+      /await _askAI\(([^)]*)\)/g,
+      (match, args) => `await _askAI(${args}, null, null, _history)`
+    );
+    code += wrappedBody + '\n';
+    code += `${innerPad}_history.push({ role: 'assistant', content: typeof response === 'string' ? response : JSON.stringify(response) });\n`;
+    code += `${innerPad}try { await db.update('Conversations', { ..._conv, messages: JSON.stringify(_history.slice(-50)) }); } catch(e) { console.warn('[clear:conversation]', e.message); }\n`;
+    code += `${pad}}`;
+    return code;
+  }
+
+  // Agent memory: remember user's preferences
+  if (node.rememberPreferences) {
+    const params = param ? `${param}, _userId` : '_userId';
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${params}):\n`;
+      code += `${innerPad}_memories = await db.find_all("Memories", {"user_id": _userId})\n`;
+      code += `${innerPad}_mem_context = ""\n`;
+      code += `${innerPad}if _memories:\n`;
+      code += `${innerPad}    _mem_context = "\\nUser preferences: " + "; ".join(m.get("fact","") for m in _memories)\n`;
+      code += bodyCode;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${params}) {\n`;
+    code += `${innerPad}const _memories = db.findAll ? await db.findAll('Memories', { user_id: _userId }) : [];\n`;
+    code += `${innerPad}const _memContext = _memories.length ? '\\nUser preferences: ' + _memories.map(m => m.fact).join('; ') : '';\n`;
+    // Inject memory context into _askAI prompt
+    const wrappedBody = bodyCode.replace(
+      /await _askAI\("([^"]*)",/g,
+      (match, prompt) => `await _askAI("${prompt}" + _memContext,`
+    );
+    code += wrappedBody + '\n';
+    // Extract [REMEMBER: ...] tags from response
+    code += `${innerPad}// Extract new memories from response\n`;
+    code += `${innerPad}if (typeof response === 'string') {\n`;
+    code += `${innerPad}  const _newFacts = response.match(/\\[REMEMBER: (.+?)\\]/g);\n`;
+    code += `${innerPad}  if (_newFacts) for (const f of _newFacts) { try { await db.insert('Memories', { user_id: _userId, fact: f.replace(/\\[REMEMBER: (.+)\\]/, '$1') }); } catch(e) {} }\n`;
+    code += `${innerPad}}\n`;
+    code += `${pad}}`;
+    return code;
+  }
+
   if (ctx.lang === 'python') {
     return `${pad}async def ${fnName}(${param}):\n${bodyCode}`;
   }
