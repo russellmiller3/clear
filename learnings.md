@@ -20,6 +20,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [App Output Quality (Phase 29.1)](#session-app-output-quality-phase-291) | CSS reset kills Tailwind, context-aware rendering, single theme CSS, landing page presets |
 | [Session 7: Major Feature Sprint](#session-7-major-feature-sprint-2026-04-07) | Explicit > auto-inferred, synonym collisions in display, event delegation, file input read-only, phone test prevents jargon, OWASP security validators |
 | [Session 9: Error Translator + Silent Bug Guards](#session-9-error-translator--silent-bug-guards-2026-04-07) | _clearTry wrapping, _clearMap source map, blind agent testing, PUT data loss is systemic, Number("") returns 0, isSeedEndpoint ordering, runtime guards > compile-time guards |
+| [Session 10: Playground Animation](#session-10-playground-animation-2026-04-08) | Proportional line mapping, cancel in-flight animations, separate manual vs auto paths |
 
 ---
 
@@ -234,3 +235,11 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **`auth` Substring Collision.** Test checking `not.toContain('auth')` broke when `_clearError` was added because it contains "Authentication required". Fix: check for the specific import string, not bare substring.
 - **Two HTTP_REQUEST Paths.** `call api` has two code paths: one in `_compileNodeInner` (statement) and one in `exprToCode` (expression/assignment). Both need `_clearCtx` for error context. Easy to fix one and miss the other.
 - **Research Validates Guard Priorities.** OWASP 2025, CWE Top 25, and CodeRabbit AI study (470 repos) all confirm: type coercion (#1 JS crash), wrong status codes (70% of API bugs), and null property access (#1 crash) are the top bug classes. Our guards address exactly these three.
+
+---
+
+## Session 10: Playground Animation (2026-04-08)
+
+- **Proportional Line Mapping Over SourceMap.** For the compile animation, we considered using `sourceMap: true` to get exact `// clear:N` markers mapping output to input lines. This would require either compiling twice (once for mapping, once for clean output) or stripping markers post-compile. The proportional approach (distribute output lines evenly across input lines) gives the same visual effect with zero overhead — the mapping doesn't need to be semantically accurate for a visual animation.
+- **Cancel In-Flight Animations.** When re-compiling mid-animation, the old `setInterval` timer keeps running and appends to a now-detached DOM element. Always track animation timers (`_streamTimer`) and scan elements (`_streamScanEl`) globally, and cancel them at the start of each new compile.
+- **Separate Manual vs Auto Animation Paths.** Auto-compile (on keystrokes) needs a quick, subtle animation (0.4s sweep). Manual compile (button click) can afford a 3-second line-by-line animation. Sharing one animation path makes one use case worse. Two paths with shared cleanup is cleaner.
