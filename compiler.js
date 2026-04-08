@@ -357,6 +357,37 @@ const UTILITY_FUNCTIONS = [
   }
   throw new Error("Agent exceeded maximum tool use turns (10)");
 }`, deps: [] },
+  { name: '_askAIStream', code: `async function* _askAIStream(prompt, context, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
+  const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  const content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 4096, stream: true, messages: [{ role: "user", content }] });
+  const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+  const r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(60000) });
+  if (!r.ok) { const e = await r.text(); throw new Error("AI stream failed: " + r.status + " " + e); }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6);
+      if (data === "[DONE]") return;
+      try {
+        const evt = JSON.parse(data);
+        if (evt.type === "content_block_delta" && evt.delta?.text) {
+          yield evt.delta.text;
+        }
+      } catch {}
+    }
+  }
+}`, deps: [] },
 ];
 
 // Tree-shake: scan compiled code and return only used utility function definitions
@@ -1915,8 +1946,40 @@ function compileAgent(node, ctx, pad) {
 
   // === COMPOSABLE AGENT FEATURES ===
   // All features modify bodyCode and/or preamble, then the final code is assembled at the end.
-  // Order matters: model → skills → tools → tracking → conversation/memory/RAG
+  // Order matters: stream → model → skills → tools → tracking → conversation/memory/RAG
   let preamble = ''; // Code inserted at top of agent function body
+
+  // -1. Streaming: explicit opt-in with `stream response`, auto-disabled for structured output
+  //   stream response  → stream (unless has returning: which forces non-stream)
+  //   do not stream    → never stream
+  //   default (null)   → non-streaming (explicit > implicit)
+  let shouldStream = false;
+  if (node.streamResponse === true) {
+    // Check if any ask_ai call has structured output — can't stream JSON
+    let hasStructuredOutput = false;
+    (function checkStructured(nodes) {
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI && n.expression.schema?.length > 0) hasStructuredOutput = true;
+        if (n.body) checkStructured(n.body);
+        if (n.thenBranch) checkStructured(n.thenBranch);
+        if (n.otherwiseBranch) checkStructured(n.otherwiseBranch);
+      }
+    })(node.body);
+    shouldStream = !hasStructuredOutput;
+  }
+
+  if (shouldStream && ctx.lang !== 'python') {
+    // Replace _askAI calls with _askAIStream (async generator)
+    bodyCode = bodyCode.replace(
+      /await _askAI\(([^)]*)\)/g,
+      '_askAIStream($1)'
+    );
+    // Replace `return response;` with `yield* response;` (response is now an async generator)
+    bodyCode = bodyCode.replace(
+      /return (\w+);/g,
+      'for await (const _chunk of $1) { yield _chunk; }'
+    );
+  }
 
   // 0. Model selection: using 'claude-sonnet-4-6' — inject model param into _askAI calls
   if (node.model) {
@@ -2036,124 +2099,76 @@ function compileAgent(node, ctx, pad) {
     }
   }
 
-  // Multi-turn conversation: remember conversation context
-  // Wraps agent with conversation history load/save
-  if (node.rememberConversation) {
-    const params = param ? `${param}, _userId` : '_userId';
-    if (ctx.lang === 'python') {
-      let code = `${pad}async def ${fnName}(${params}):\n`;
-      code += `${innerPad}_conv = await db.find_one("Conversations", {"user_id": _userId})\n`;
-      code += `${innerPad}if not _conv:\n`;
-      code += `${innerPad}    _conv = await db.insert("Conversations", {"user_id": _userId, "messages": "[]"})\n`;
-      code += `${innerPad}import json\n`;
-      code += `${innerPad}_history = json.loads(_conv.get("messages", "[]"))\n`;
-      code += `${innerPad}_history.append({"role": "user", "content": str(${param}) if isinstance(${param}, str) else json.dumps(${param})})\n`;
-      code += bodyCode + '\n';
-      code += `${innerPad}# _history updated by _ask_ai when history param is passed\n`;
-      return code;
-    }
-    let code = `${pad}async function ${fnName}(${params}) {\n`;
-    code += `${innerPad}let _conv = db.findAll ? (await db.findAll('Conversations', { user_id: _userId }))[0] : null;\n`;
-    code += `${innerPad}if (!_conv) _conv = await db.insert('Conversations', { user_id: _userId, messages: '[]' });\n`;
-    code += `${innerPad}const _history = JSON.parse(_conv.messages || '[]');\n`;
-    code += `${innerPad}_history.push({ role: 'user', content: typeof ${param} === 'string' ? ${param} : JSON.stringify(${param}) });\n`;
-    // Emit body code — _askAI calls should get _history appended
-    const wrappedBody = bodyCode.replace(
-      /await _askAI\(([^)]*)\)/g,
-      (match, args) => `await _askAI(${args}, null, null, _history)`
-    );
-    code += wrappedBody + '\n';
-    code += `${innerPad}_history.push({ role: 'assistant', content: typeof response === 'string' ? response : JSON.stringify(response) });\n`;
-    code += `${innerPad}try { await db.update('Conversations', { ..._conv, messages: JSON.stringify(_history.slice(-50)) }); } catch(e) { console.warn('[clear:conversation]', e.message); }\n`;
-    code += `${pad}}`;
-    return code;
+  // 4. Conversation: remember conversation context — load/save history in preamble + postamble
+  let postamble = ''; // Code appended after body
+  if (node.rememberConversation && ctx.lang !== 'python') {
+    preamble += `${innerPad}let _conv = db.findAll ? (await db.findAll('Conversations', { user_id: _userId }))[0] : null;\n`;
+    preamble += `${innerPad}if (!_conv) _conv = await db.insert('Conversations', { user_id: _userId, messages: '[]' });\n`;
+    preamble += `${innerPad}const _history = JSON.parse(_conv.messages || '[]');\n`;
+    preamble += `${innerPad}_history.push({ role: 'user', content: typeof ${param} === 'string' ? ${param} : JSON.stringify(${param}) });\n`;
+    postamble += `${innerPad}_history.push({ role: 'assistant', content: typeof response === 'string' ? response : JSON.stringify(response) });\n`;
+    postamble += `${innerPad}try { await db.update('Conversations', { ..._conv, messages: JSON.stringify(_history.slice(-50)) }); } catch(e) { console.warn('[clear:conversation]', e.message); }\n`;
   }
 
-  // Agent memory: remember user's preferences
-  if (node.rememberPreferences) {
-    const params = param ? `${param}, _userId` : '_userId';
-    if (ctx.lang === 'python') {
-      let code = `${pad}async def ${fnName}(${params}):\n`;
-      code += `${innerPad}_memories = await db.find_all("Memories", {"user_id": _userId})\n`;
-      code += `${innerPad}_mem_context = ""\n`;
-      code += `${innerPad}if _memories:\n`;
-      code += `${innerPad}    _mem_context = "\\nUser preferences: " + "; ".join(m.get("fact","") for m in _memories)\n`;
-      code += bodyCode;
-      return code;
-    }
-    let code = `${pad}async function ${fnName}(${params}) {\n`;
-    code += `${innerPad}const _memories = db.findAll ? await db.findAll('Memories', { user_id: _userId }) : [];\n`;
-    code += `${innerPad}const _memContext = _memories.length ? '\\nUser preferences: ' + _memories.map(m => m.fact).join('; ') : '';\n`;
-    // Inject memory context into _askAI prompt
-    const wrappedBody = bodyCode.replace(
-      /await _askAI\("([^"]*)",/g,
-      (match, prompt) => `await _askAI("${prompt}" + _memContext,`
+  // 5. Memory: remember user's preferences — load facts, inject into prompt, extract REMEMBER tags
+  if (node.rememberPreferences && ctx.lang !== 'python') {
+    preamble += `${innerPad}const _memories = db.findAll ? await db.findAll('Memories', { user_id: _userId }) : [];\n`;
+    preamble += `${innerPad}const _memContext = _memories.length ? '\\nUser preferences: ' + _memories.map(m => m.fact).join('; ') : '';\n`;
+    // Inject memory context into prompt
+    bodyCode = bodyCode.replace(
+      /await (_askAI(?:WithTools|Stream)?)\("([^"]*)",/g,
+      (m, fn, prompt) => `await ${fn}("${prompt}" + _memContext,`
     );
-    code += wrappedBody + '\n';
-    // Extract [REMEMBER: ...] tags from response
-    code += `${innerPad}// Extract new memories from response\n`;
-    code += `${innerPad}if (typeof response === 'string') {\n`;
-    code += `${innerPad}  const _newFacts = response.match(/\\[REMEMBER: (.+?)\\]/g);\n`;
-    code += `${innerPad}  if (_newFacts) for (const f of _newFacts) { try { await db.insert('Memories', { user_id: _userId, fact: f.replace(/\\[REMEMBER: (.+)\\]/, '$1') }); } catch(e) {} }\n`;
-    code += `${innerPad}}\n`;
-    code += `${pad}}`;
-    return code;
+    bodyCode = bodyCode.replace(
+      /await (_askAI(?:WithTools|Stream)?)\(([a-zA-Z_]\w+),/g,
+      (m, fn, varName) => `await ${fn}(${varName} + _memContext,`
+    );
+    postamble += `${innerPad}if (typeof response === 'string') {\n`;
+    postamble += `${innerPad}  const _newFacts = response.match(/\\[REMEMBER: (.+?)\\]/g);\n`;
+    postamble += `${innerPad}  if (_newFacts) for (const f of _newFacts) { try { await db.insert('Memories', { user_id: _userId, fact: f.replace(/\\[REMEMBER: (.+)\\]/, '$1') }); } catch(e) {} }\n`;
+    postamble += `${innerPad}}\n`;
   }
 
-  // RAG: knows about: Table1, Table2 — keyword search before _askAI
-  if (node.knowsAbout && node.knowsAbout.length > 0) {
+  // 6. RAG: knows about: Table1, Table2 — keyword search before _askAI
+  if (node.knowsAbout && node.knowsAbout.length > 0 && ctx.lang !== 'python') {
     const tables = node.knowsAbout;
-    if (ctx.lang === 'python') {
-      let code = `${pad}async def ${fnName}(${param}):\n`;
-      code += `${innerPad}# RAG: search knowledge base\n`;
-      code += `${innerPad}_query = str(${param}).lower().split() if isinstance(${param}, str) else str(${param}).lower().split()\n`;
-      code += `${innerPad}_rag_context = []\n`;
-      for (const table of tables) {
-        code += `${innerPad}for _rec in await db.find_all("${table}", {}):\n`;
-        code += `${innerPad}    _text = " ".join(str(v) for v in _rec.values()).lower()\n`;
-        code += `${innerPad}    _score = sum(1 for w in _query if w in _text)\n`;
-        code += `${innerPad}    if _score > 0: _rag_context.append({"source": "${table}", "data": _rec, "score": _score})\n`;
-      }
-      code += `${innerPad}_rag_context.sort(key=lambda x: x["score"], reverse=True)\n`;
-      code += `${innerPad}_rag_context = _rag_context[:5]\n`;
-      // Inject context into _askAI calls
-      const wrappedBody = bodyCode.replace(
-        /await _ask_ai\("([^"]*)",/g,
-        (m, prompt) => `await _ask_ai("${prompt}\\n\\nRelevant context:\\n" + "\\n".join(str(r["data"]) for r in _rag_context),`
-      );
-      code += wrappedBody;
-      return code;
-    }
-    let code = `${pad}async function ${fnName}(${param}) {\n`;
-    code += preamble;
-    code += `${innerPad}// RAG: search knowledge base by keywords\n`;
-    code += `${innerPad}const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);\n`;
-    code += `${innerPad}const _ragContext = [];\n`;
+    preamble += `${innerPad}const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);\n`;
+    preamble += `${innerPad}const _ragContext = [];\n`;
     for (const table of tables) {
-      code += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${table}', {}) : [];\n`;
-      code += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${table}', data: _rec, score: _score }); } }\n`;
+      preamble += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${table}', {}) : [];\n`;
+      preamble += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${table}', data: _rec, score: _score }); } }\n`;
     }
-    code += `${innerPad}_ragContext.sort((a, b) => b.score - a.score);\n`;
-    code += `${innerPad}const _ragTop = _ragContext.slice(0, 5);\n`;
-    code += `${innerPad}const _ragStr = _ragTop.length ? '\\n\\nRelevant context:\\n' + _ragTop.map(r => JSON.stringify(r.data)).join('\\n') : '';\n`;
-    // Inject RAG context into _askAI calls (handles both string literal and variable prompts)
-    let wrappedBody = bodyCode.replace(
-      /await (_askAI(?:WithTools)?)\("([^"]*)",/g,
+    preamble += `${innerPad}_ragContext.sort((a, b) => b.score - a.score);\n`;
+    preamble += `${innerPad}const _ragStr = _ragContext.slice(0, 5).length ? '\\n\\nRelevant context:\\n' + _ragContext.slice(0, 5).map(r => JSON.stringify(r.data)).join('\\n') : '';\n`;
+    // Inject RAG context into prompts
+    bodyCode = bodyCode.replace(
+      /await (_askAI(?:WithTools|Stream)?)\("([^"]*)",/g,
       (m, fn, prompt) => `await ${fn}("${prompt}" + _ragStr,`
     );
-    wrappedBody = wrappedBody.replace(
-      /await (_askAI(?:WithTools)?)\(([a-zA-Z_]\w+),/g,
+    bodyCode = bodyCode.replace(
+      /await (_askAI(?:WithTools|Stream)?)\(([a-zA-Z_]\w+),/g,
       (m, fn, varName) => `await ${fn}(${varName} + _ragStr,`
     );
-    code += wrappedBody + '\n';
-    code += `${pad}}`;
-    return code;
+    // Also handle _askAIStream (no await prefix for generators)
+    bodyCode = bodyCode.replace(
+      /(_askAIStream)\("([^"]*)",/g,
+      (m, fn, prompt) => `${fn}("${prompt}" + _ragStr,`
+    );
+    bodyCode = bodyCode.replace(
+      /(_askAIStream)\(([a-zA-Z_]\w+),/g,
+      (m, fn, varName) => `${fn}(${varName} + _ragStr,`
+    );
   }
 
+  // Final assembly — add _userId param for conversation/memory agents
+  const genStar = shouldStream && ctx.lang !== 'python' ? '*' : '';
+  const finalParam = (node.rememberConversation || node.rememberPreferences)
+    ? (param ? `${param}, _userId` : '_userId')
+    : param;
   if (ctx.lang === 'python') {
-    return `${pad}async def ${fnName}(${param}):\n${preamble}${bodyCode}`;
+    return `${pad}async def ${fnName}(${finalParam}):\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}`;
   }
-  return `${pad}async function ${fnName}(${param}) {\n${preamble}${bodyCode}\n${pad}}`;
+  return `${pad}async function${genStar} ${fnName}(${finalParam}) {\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}\n${pad}}`;
 }
 
 function compileValidate(node, ctx, pad) {
@@ -2598,13 +2613,19 @@ function _compileNodeInner(node, ctx) {
     case NodeType.FOR_EACH: {
       const varName = sanitizeName(node.variable);
       const iter = exprToCode(node.iterable, ctx);
+      // Use `for await` when iterating over async generators (streaming AI)
+      const isAsync = iter.includes('_askAIStream') || iter.includes('_stream') || ctx.streamMode;
       if (ctx.lang === 'python') {
         const bodyCode = compileBody(node.body, ctx);
-        return `${pad}for ${varName} in ${iter}:\n${bodyCode}`;
+        return isAsync
+          ? `${pad}async for ${varName} in ${iter}:\n${bodyCode}`
+          : `${pad}for ${varName} in ${iter}:\n${bodyCode}`;
       }
       const loopDeclared = new Set(ctx.declared);
       const bodyCode = compileBody(node.body, ctx, { declared: loopDeclared });
-      return `${pad}for (const ${varName} of ${iter}) {\n${bodyCode}\n${pad}}`;
+      return isAsync
+        ? `${pad}for await (const ${varName} of ${iter}) {\n${bodyCode}\n${pad}}`
+        : `${pad}for (const ${varName} of ${iter}) {\n${bodyCode}\n${pad}}`;
     }
 
     case NodeType.WHILE: {
@@ -3765,6 +3786,10 @@ export function exprToCode(expr, ctx) {
       const context = expr.context ? exprToCode(expr.context, ctx) : null;
       const schema = expr.schema ? JSON.stringify(expr.schema) : null;
       const model = expr.model ? JSON.stringify(expr.model) : null;
+      // Streaming mode: use _askAIStream async generator
+      if (ctx.streamMode) {
+        return context ? `_askAIStream(${prompt}, ${context}, ${model || 'null'})` : `_askAIStream(${prompt}, null, ${model || 'null'})`;
+      }
       if (ctx.lang === 'python') {
         if (schema) return `await _ask_ai(${prompt}, ${context || 'None'}, ${schema})`;
         return context ? `await _ask_ai(${prompt}, ${context})` : `await _ask_ai(${prompt})`;
