@@ -151,15 +151,23 @@ Run tests → 1337 pass (no behavior change, just new field)
 
 ### Phase B: Wire `resolveCanonical()` to use `rawValue` (Task 1 activation)
 
-**Read first:** parser.js ZONE_OVERRIDES section, synonyms.js full file
+**Read first:** parser.js lines 736-753 (existing ZONE_OVERRIDES + resolveCanonical)
 
-1. In synonyms.js, export `ZONE_OVERRIDES` with the first real override:
+**⚠️ ZONE_OVERRIDES already exists in parser.js line 736.** Do NOT create a duplicate
+in synonyms.js. Update the existing one in parser.js.
+
+1. Update `ZONE_OVERRIDES` in parser.js (line 736) — add the first real override:
    ```javascript
-   export const ZONE_OVERRIDES = {
-     ui: { delete: 'action_delete' },
+   const ZONE_OVERRIDES = {
+     ui: {
+       delete: 'action_delete',  // In display context, 'delete' = action button
+     },
+     crud: {},    // delete -> 'remove' is the default (token.canonical), no override needed
+     comparison: {},  // 'is' context-sensitivity already handled by parser
    };
    ```
-2. Update `resolveCanonical()` in parser.js:
+
+2. Update `resolveCanonical()` in parser.js (line 751) to use rawValue:
    ```javascript
    function resolveCanonical(token, zone) {
      if (zone && token.rawValue) {
@@ -171,12 +179,14 @@ Run tests → 1337 pass (no behavior change, just new field)
      return token.canonical || null;
    }
    ```
-3. In `parseDisplay()` (line ~3832), replace `canon === 'remove'` with `resolveCanonical(tokens[pos], 'ui') === 'action_delete'` OR keep checking `remove` (both work since display context has the guard)
-4. Add 3 tests:
-   - `resolveCanonical` with no zone returns token.canonical
-   - `resolveCanonical` with 'ui' zone and 'delete' rawValue returns 'action_delete'
-   - `resolveCanonical` with 'crud' zone and 'delete' rawValue returns 'remove' (fallback)
-5. Run tests → 1337 pass + 3 new
+
+3. In `parseDisplay()` (line 3852), the check `if (canon === 'remove')` already works.
+   Optionally update to use resolveCanonical for consistency, but NOT required for correctness.
+   Keep it as-is for now — the zone system is proven by the tests below.
+
+4. Run tests → 1337 pass (no behavior change yet — ZONE_OVERRIDES.ui.delete
+   is only used when someone calls resolveCanonical with 'ui' zone, which
+   no existing code does yet)
 
 ### Phase C: Router functions for `show`, `if`, `define` (Task 2, batch 1)
 
@@ -196,13 +206,28 @@ For each:
 
 ### Phase D: Router functions for `set`, `remove`, `respond` (Task 2, batch 2)
 
-**Read first:** parser.js lines 1815-1980 (set/remove/respond blocks)
+**Read first:** parser.js lines 1859-1856, 1958-1995 (set/remove/respond blocks)
 
-1. `handleSet(ctx)` — routes to data_shape / map_set / falls through to assignment
-2. `handleRemove(ctx)` — routes to CRUD delete / list remove
+1. `handleSet(ctx)` — routes to data_shape / map_set / returns `undefined` for assignment
+2. `handleRemove(ctx)` — routes to CRUD delete (4+ tokens) / list remove (3 tokens)
 3. `handleRespond(ctx)` — routes to sendgrid / SMTP email / API call / send back
 
-**Critical for `handleSet`:** This router must return `undefined` for the assignment case so it falls through to the PATTERNS section. The `set` canonical matches both `set key in scope to value` (map set) and `set x = 5` (assignment). The router handles map_set and data_shape, returns `undefined` for everything else.
+**⚠️ `respond` has 4 sub-routes spread across the if/else chain:**
+- Line 1360: sendgrid (`respond` + `email` + `via` + `sendgrid`)
+- Line 1375: SMTP email (`respond` + `email` + indented block)
+- Line 1815: API call (`respond` + ... + `to` + STRING URL)
+- Line 1847: general respond/send back (`respond` or `respond_with`)
+
+The router must check in this EXACT order (most specific first):
+1. sendgrid (4 tokens: email + via + sendgrid)
+2. SMTP email (2 tokens: email + indented block)
+3. API call (has `to_connector` + STRING)
+4. General respond (fallback)
+
+**⚠️ `handleSet` MUST return `undefined` for assignment.** The `set` canonical matches
+`create`/`make`/`let`/`set`. The router handles data_shape and map_set only. Everything
+else (including `set x = 5`, `create person:`) returns `undefined` → falls through to
+PATTERNS → caught by `isAssignmentLine`.
 
 ### Phase E: Router functions for remaining branches (Task 2, batch 3)
 

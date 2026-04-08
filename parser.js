@@ -735,22 +735,19 @@ function parseConfigBlock(lines, startIdx, parentIndent) {
 // with the appropriate zone in each parser function.
 const ZONE_OVERRIDES = {
   ui: {
-    // In UI context (display table actions), 'delete' means action button, not CRUD
-    // Currently handled by parser guard: checks 'remove' canonical, emits 'delete' action
+    delete: 'action_delete',  // In display context, 'delete' = action button, not CRUD remove
   },
-  crud: {
-    // In CRUD context, 'delete' means remove from database
-    // This is the tokenizer's default behavior (delete -> remove)
-  },
-  comparison: {
-    // In comparison context, 'is' means equals (==), not assignment
-    // Already context-sensitive in the parser
-  },
+  crud: {},    // delete -> 'remove' is the default (token.canonical), no override needed
+  comparison: {},  // 'is' context-sensitivity already handled by parser
 };
 
-function resolveCanonical(token, _zone) {
-  // Currently returns the tokenizer-resolved canonical (identity behavior).
-  // When zones are activated, this will check ZONE_OVERRIDES[zone] first.
+function resolveCanonical(token, zone) {
+  if (zone && token.rawValue) {
+    const overrides = ZONE_OVERRIDES[zone];
+    if (overrides && overrides[token.rawValue]) {
+      return overrides[token.rawValue];
+    }
+  }
   return token.canonical || null;
 }
 
@@ -1195,10 +1192,545 @@ const CANONICAL_DISPATCH = new Map([
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
+  // --- ROUTER FUNCTIONS (check tokens[1+] for sub-routing) ---
+  ['show', (ctx) => {
+    // Toast: show toast 'message' [as warning/error/success]
+    if (ctx.tokens.length >= 3 && ctx.tokens[1].value === 'toast') {
+      let tPos = 2;
+      let message = '';
+      if (tPos < ctx.tokens.length && ctx.tokens[tPos].type === TokenType.STRING) {
+        message = ctx.tokens[tPos].value; tPos++;
+      }
+      let variant = 'success';
+      if (tPos < ctx.tokens.length && (ctx.tokens[tPos].value === 'as' || ctx.tokens[tPos].canonical === 'as_format')) {
+        tPos++;
+        if (tPos < ctx.tokens.length) variant = ctx.tokens[tPos].value.toLowerCase();
+      }
+      ctx.body.push({ type: NodeType.TOAST, message, variant, line: ctx.line });
+      return ctx.i + 1;
+    }
+    // Display with modifiers: display X as Y called Z
+    if (hasDisplayModifiers(ctx.tokens)) {
+      const parsed = parseDisplay(ctx.tokens, ctx.line);
+      if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+      else ctx.body.push(parsed.node);
+      return ctx.i + 1;
+    }
+    // Plain show
+    if (ctx.tokens.length <= 1) {
+      ctx.errors.push({ line: ctx.line, message: "Show needs a value to display. Example: show heading 'Welcome' or show total" });
+      return ctx.i + 1;
+    }
+    // Content keyword after show: show heading 'Welcome'
+    const contentCanonicals = ['heading', 'subheading', 'content_text', 'bold_text', 'italic_text', 'small_text', 'link', 'divider', 'code_block'];
+    if (contentCanonicals.includes(ctx.tokens[1].canonical)) {
+      const contentTokens = ctx.tokens.slice(1);
+      const parsed = parseContent(contentTokens, ctx.line, ctx.tokens[1].canonical);
+      if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+      else ctx.body.push(parsed.node);
+      return ctx.i + 1;
+    }
+    // Component with children: show Card: + indented block
+    if (ctx.tokens.length === 2 &&
+        (ctx.tokens[1].type === TokenType.IDENTIFIER || ctx.tokens[1].type === TokenType.KEYWORD) &&
+        ctx.i + 1 < ctx.lines.length && ctx.lines[ctx.i + 1].indent > ctx.indent) {
+      const compName = ctx.tokens[1].value;
+      const { body: childBody, endIdx: childEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+      ctx.body.push({ type: NodeType.COMPONENT_USE, name: compName, children: childBody, props: [], line: ctx.line });
+      return childEnd;
+    }
+    // Default: show expression
+    const expr = parseExpression(ctx.tokens, 1, ctx.line);
+    if (expr.error) ctx.errors.push({ line: ctx.line, message: expr.error });
+    else ctx.body.push(showNode(expr.node, ctx.line));
+    return ctx.i + 1;
+  }],
+  ['if', (ctx) => {
+    // "when X notifies" and "when X changes" — these tokenize as canonical 'if'
+    // because 'when' is a synonym for 'if'. Check raw value first.
+    if (ctx.tokens[0].rawValue === 'when' || ctx.tokens[0].value === 'when') {
+      // "when X notifies '/path':" — webhook
+      if (ctx.tokens.length >= 4 && ctx.tokens[2].value === 'notifies' &&
+          ctx.tokens[3].type === TokenType.STRING) {
+        const service = ctx.tokens[1].value;
+        const path = ctx.tokens[3].value;
+        const result = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+        ctx.body.push({ type: NodeType.WEBHOOK, path, service, body: result.body, line: ctx.line });
+        return result.endIdx;
+      }
+      // "when X changes:" — reactive input handler
+      if (ctx.tokens.length >= 3 && ctx.tokens[2].value === 'changes') {
+        const varName = ctx.tokens[1].value;
+        let debounceMs = 0;
+        if (ctx.tokens.length >= 5 && ctx.tokens[3].value === 'after') {
+          const delayVal = ctx.tokens[4].value;
+          if (typeof delayVal === 'number') {
+            debounceMs = delayVal;
+          } else {
+            const match = String(delayVal).match(/^(\d+)(ms)?$/);
+            if (match) debounceMs = parseInt(match[1], 10);
+          }
+        }
+        const { body: changeBody, endIdx: changeEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+        ctx.body.push({ type: NodeType.ON_CHANGE, variable: varName, debounceMs, body: changeBody, line: ctx.line });
+        return changeEnd;
+      }
+      // Fall through to normal if/guard handling
+    }
+    // Guard: "check X, otherwise error 'msg'" (check tokenizes as 'if')
+    let otherwiseIdx = -1;
+    for (let k = 1; k < ctx.tokens.length; k++) {
+      if (ctx.tokens[k].canonical === 'otherwise' && k + 1 < ctx.tokens.length && ctx.tokens[k + 1].value === 'error') {
+        otherwiseIdx = k; break;
+      }
+    }
+    if (otherwiseIdx !== -1) {
+      const errorMsgIdx = otherwiseIdx + 2;
+      const guardMessage = (errorMsgIdx < ctx.tokens.length && ctx.tokens[errorMsgIdx].type === TokenType.STRING)
+        ? ctx.tokens[errorMsgIdx].value : 'Validation failed';
+      let condEnd = otherwiseIdx;
+      if (condEnd > 1 && ctx.tokens[condEnd - 1].type === TokenType.COMMA) condEnd--;
+      const result = parseExpression(ctx.tokens, 1, ctx.line, condEnd);
+      if (result.error) ctx.errors.push({ line: ctx.line, message: result.error });
+      else ctx.body.push(guardNode(result.node, ctx.line, guardMessage));
+      return ctx.i + 1;
+    }
+    // Block if: no "then" keyword → parseIfBlock
+    const hasThen = ctx.tokens.some(t => t.canonical === 'then');
+    if (!hasThen) {
+      const result = parseIfBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (result.node) { ctx.body.push(result.node); return result.endIdx; }
+    }
+    // Inline if-then
+    const parsed = parseIfThen(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['respond', (ctx) => {
+    // Order matters — most specific first
+    // 1. sendgrid: send email via sendgrid: + config block
+    if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'email' &&
+        ctx.tokens[2].value === 'via' && ctx.tokens[3].value === 'sendgrid' &&
+        ctx.i + 1 < ctx.lines.length && ctx.lines[ctx.i + 1].indent > ctx.indent) {
+      const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+      ctx.body.push({ type: NodeType.SERVICE_CALL, service: 'sendgrid', config, line: ctx.line });
+      return endIdx;
+    }
+    // 2. SMTP email: send email: + config block
+    if (ctx.tokens.length >= 2 && ctx.tokens[1].value === 'email' &&
+        ctx.i + 1 < ctx.lines.length && ctx.lines[ctx.i + 1].indent > ctx.indent) {
+      const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+      ctx.body.push({ type: NodeType.SEND_EMAIL, config, line: ctx.line });
+      return endIdx;
+    }
+    // 3. API call: send X to '/url'
+    if (ctx.tokens.length >= 3) {
+      let toPos = -1;
+      for (let k = 1; k < ctx.tokens.length; k++) {
+        if (ctx.tokens[k].canonical === 'to_connector' && k + 1 < ctx.tokens.length && ctx.tokens[k + 1].type === TokenType.STRING) {
+          toPos = k; break;
+        }
+      }
+      if (toPos > 0) {
+        const fields = [];
+        const SKIP_WORDS = new Set(['as', 'a', 'an', 'new', 'the']);
+        let inAsClause = false;
+        for (let k = 1; k < toPos; k++) {
+          if (ctx.tokens[k].canonical === 'and' || ctx.tokens[k].type === TokenType.COMMA) continue;
+          const val = ctx.tokens[k].value?.toLowerCase();
+          if (val === 'as') { inAsClause = true; continue; }
+          if (inAsClause) continue;
+          if (SKIP_WORDS.has(val)) continue;
+          if (ctx.tokens[k].type === TokenType.IDENTIFIER || ctx.tokens[k].type === TokenType.KEYWORD) {
+            fields.push(ctx.tokens[k].value);
+          }
+        }
+        const url = ctx.tokens[toPos + 1].value;
+        ctx.body.push({ type: NodeType.API_CALL, method: 'POST', url, fields, line: ctx.line });
+        return ctx.i + 1;
+      }
+    }
+    // 4. General respond: send back data
+    const parsed = parseRespond(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['respond_with', (ctx) => {
+    const parsed = parseRespond(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['set', (ctx) => {
+    // Data shape: "create a Users table:" / "create data shape User:"
+    if (ctx.tokens.length > 2 &&
+        (ctx.tokens[1].canonical === 'data_shape' ||
+         (ctx.tokens.length > 3 && ctx.tokens.some(t => t.canonical === 'data_shape')))) {
+      const result = parseDataShape(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (result.node) ctx.body.push(result.node);
+      return result.endIdx;
+    }
+    // Map set: "set key in scope to value"
+    if (ctx.tokens.length >= 5) {
+      let inPos = -1, toPos = -1;
+      for (let k = 1; k < ctx.tokens.length; k++) {
+        if (ctx.tokens[k].canonical === 'in' && inPos < 0) inPos = k;
+        if (ctx.tokens[k].canonical === 'to_connector' && inPos > 0) { toPos = k; break; }
+      }
+      if (inPos > 0 && toPos > inPos && toPos + 1 < ctx.tokens.length) {
+        const keyExpr = parseExpression(ctx.tokens, 1, ctx.line, inPos);
+        const mapExpr = parseExpression(ctx.tokens, inPos + 1, ctx.line, toPos);
+        const valExpr = parseExpression(ctx.tokens, toPos + 1, ctx.line);
+        if (!keyExpr.error && !mapExpr.error && !valExpr.error) {
+          ctx.body.push({ type: NodeType.MAP_SET, map: mapExpr.node, key: keyExpr.node, value: valExpr.node, line: ctx.line });
+          return ctx.i + 1;
+        }
+      }
+    }
+    // Everything else (set x = 5, create person:) → fall through to assignment
+    return undefined;
+  }],
+  ['remove', (ctx) => {
+    // CRUD delete: "delete the Todo with this id" (4+ tokens, table pattern)
+    if (ctx.tokens.length >= 4) {
+      let dPos = 1;
+      if (ctx.tokens[dPos]?.value === 'the' || ctx.tokens[dPos]?.value === 'this') dPos++;
+      if (dPos + 2 < ctx.tokens.length && dPos < ctx.tokens.length &&
+          (ctx.tokens[dPos + 1]?.value === 'with' || ctx.tokens[dPos + 1]?.value === 'whose') &&
+          (ctx.tokens[dPos + 2]?.value === 'this' || ctx.tokens[dPos + 2]?.value === 'that')) {
+        const tableName = ctx.tokens[dPos].value;
+        let paramName = 'id';
+        if (dPos + 3 < ctx.tokens.length) paramName = ctx.tokens[dPos + 3].value;
+        const condition = {
+          type: NodeType.BINARY_OP, operator: '==',
+          left: { type: NodeType.VARIABLE_REF, name: paramName, line: ctx.line },
+          right: { type: NodeType.MEMBER_ACCESS, object: { type: NodeType.VARIABLE_REF, name: 'incoming', line: ctx.line }, member: paramName, line: ctx.line },
+          line: ctx.line
+        };
+        ctx.body.push(crudNode('remove', null, tableName, condition, ctx.line));
+        return ctx.i + 1;
+      }
+    }
+    // List remove: "remove X from Y" (3 tokens)
+    if (ctx.tokens.length >= 3) {
+      let fromPos = -1;
+      for (let k = 1; k < ctx.tokens.length; k++) {
+        if (ctx.tokens[k].canonical === 'in' || ctx.tokens[k].value === 'from') { fromPos = k; break; }
+      }
+      if (fromPos > 0 && fromPos + 1 < ctx.tokens.length) {
+        const valExpr = parseExpression(ctx.tokens, 1, ctx.line, fromPos);
+        const listName = ctx.tokens[fromPos + 1].value;
+        if (!valExpr.error) {
+          ctx.body.push({ type: NodeType.LIST_REMOVE, list: listName, value: valExpr.node, line: ctx.line });
+          return ctx.i + 1;
+        }
+      }
+    }
+    return undefined;
+  }],
+  ['function', (ctx) => {
+    // Also matches 'define function' — 'define' router falls through here
+    const result = parseFunctionDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+  }],
+  ['call_api', (ctx) => {
+    // Standalone: call api 'url': + config block
+    let urlPos = 1;
+    if (urlPos < ctx.tokens.length && ctx.tokens[urlPos].type === TokenType.STRING) {
+      const urlNode = { type: NodeType.LITERAL_STRING, value: ctx.tokens[urlPos].value, line: ctx.line };
+      const config = { method: null, headers: [], body: null, timeout: null };
+      let j = ctx.i + 1;
+      while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+        const cfgTokens = ctx.lines[j].tokens;
+        if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
+        const key = cfgTokens[0].value?.toLowerCase();
+        if (key === 'method' && cfgTokens.length >= 3) {
+          const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+          if (isIdx >= 0 && isIdx + 1 < cfgTokens.length) config.method = cfgTokens[isIdx + 1].value.toUpperCase();
+        } else if (key === 'headers' && cfgTokens.length >= 2) {
+          j++;
+          while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent + 2) {
+            const hTokens = ctx.lines[j].tokens;
+            if (hTokens.length >= 3) {
+              const headerName = hTokens[0].value;
+              const nameIdx = 0;
+              const isIdx = hTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+              if (isIdx >= 0) {
+                const valExpr = parseExpression(hTokens, isIdx + 1, ctx.lines[j].tokens[0].line);
+                if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
+              }
+            }
+            j++;
+          }
+          continue;
+        } else if (key === 'body' && cfgTokens.length >= 3) {
+          const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+          if (isIdx >= 0) {
+            const valExpr = parseExpression(cfgTokens, isIdx + 1, ctx.lines[j].tokens[0].line);
+            if (!valExpr.error) config.body = valExpr.node;
+          }
+        } else if (key === 'timeout' && cfgTokens.length >= 3) {
+          const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
+          if (numIdx >= 0) {
+            const val = cfgTokens[numIdx].value;
+            let unit = 'seconds';
+            if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
+            config.timeout = { value: val, unit };
+          }
+        }
+        j++;
+      }
+      ctx.body.push({ type: NodeType.HTTP_REQUEST, url: urlNode, config, line: ctx.line });
+      return j;
+    }
+    return undefined;
+  }],
+  ['as_format', (ctx) => {
+    // Transaction: "as one operation:"
+    if (ctx.tokens.length >= 2 && ctx.tokens[1].value === 'one' &&
+        ctx.tokens.some(t => t.value === 'operation')) {
+      const { body: txBody, endIdx: txEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+      ctx.body.push({ type: NodeType.TRANSACTION, body: txBody, line: ctx.line });
+      return txEnd;
+    }
+    return undefined;
+  }],
+  ['with', (ctx) => {
+    // Timeout: "with timeout 5 seconds:"
+    if (ctx.tokens.length >= 3 && ctx.tokens[1].value === 'timeout') {
+      const amount = typeof ctx.tokens[2].value === 'number' ? ctx.tokens[2].value : parseInt(ctx.tokens[2].value, 10) || 5;
+      let ms = amount * 1000;
+      if (ctx.tokens.length >= 4 && (ctx.tokens[3].value === 'minutes' || ctx.tokens[3].value === 'minute')) {
+        ms = amount * 60000;
+      }
+      const { body: toBody, endIdx: toEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+      ctx.body.push({ type: NodeType.TIMEOUT, ms, body: toBody, line: ctx.line });
+      return toEnd;
+    }
+    return undefined;
+  }],
+  ['text_input', (ctx) => {
+    const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['number_input', (ctx) => {
+    const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['dropdown', (ctx) => {
+    const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['text_area', (ctx) => {
+    const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['checkbox', (ctx) => {
+    // Guard: "toggle the X panel" is a panel action, not a checkbox
+    if (ctx.tokens.length >= 2 && (ctx.tokens[1].value === 'the' || ctx.tokens[1].value === 'this')) {
+      return undefined; // fall through to panel action handler
+    }
+    const parsed = parseNewInput(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['heading', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['subheading', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['content_text', (ctx) => {
+    // Guard: 'text' only acts as content when followed by a STRING literal
+    // 'text is join(words)' is an assignment, not content
+    if (ctx.tokens.length <= 1 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['bold_text', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['italic_text', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['small_text', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['link', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['divider', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['code_block', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['background_job', (ctx) => {
+    const result = parseBackground(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+  }],
+  ['get_key', (ctx) => {
+    // "get X from '/url'" — standalone named fetch
+    if (ctx.tokens.length >= 4 && ctx.tokens[1].type === TokenType.IDENTIFIER) {
+      const fromIdx = ctx.tokens.findIndex((t, idx) => idx >= 2 && t.value === 'from');
+      if (fromIdx > 0 && fromIdx + 1 < ctx.tokens.length && ctx.tokens[fromIdx + 1].type === TokenType.STRING) {
+        const targetVar = ctx.tokens[1].value;
+        const url = ctx.tokens[fromIdx + 1].value;
+        ctx.body.push({ type: NodeType.API_CALL, method: 'GET', url, targetVar, fields: [], line: ctx.line });
+        return ctx.i + 1;
+      }
+    }
+    return undefined;
+  }],
+  ['add', (ctx) => {
+    // "add X to Y" — list push
+    if (ctx.tokens.length >= 3) {
+      let toPos = -1;
+      for (let k = 1; k < ctx.tokens.length; k++) {
+        if (ctx.tokens[k].canonical === 'to_connector') { toPos = k; break; }
+      }
+      if (toPos > 0 && toPos + 1 < ctx.tokens.length) {
+        const valExpr = parseExpression(ctx.tokens, 1, ctx.line, toPos);
+        const listName = ctx.tokens[toPos + 1].value;
+        if (!valExpr.error) {
+          ctx.body.push({ type: NodeType.LIST_PUSH, list: listName, value: valExpr.node, line: ctx.line });
+          return ctx.i + 1;
+        }
+      }
+    }
+    return undefined;
+  }],
+  ['define', (ctx) => {
+    // Component: define component X receiving a, b:
+    if (ctx.tokens.length >= 3 && ctx.tokens[1].canonical === 'component') {
+      const result = parseComponentDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+      if (result.node) ctx.body.push(result.node);
+      return result.endIdx;
+    }
+    // Define-as: define X as: expr
+    if (ctx.tokens.length >= 3 &&
+        (ctx.tokens[1].type === TokenType.IDENTIFIER || ctx.tokens[1].type === TokenType.KEYWORD) &&
+        (ctx.tokens[2].canonical === 'as_format' || ctx.tokens[2].canonical === 'as' ||
+         (typeof ctx.tokens[2].value === 'string' && ctx.tokens[2].value.toLowerCase() === 'as'))) {
+      const parsed = parseDefineAs(ctx.tokens, ctx.line);
+      if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+      else ctx.body.push(parsed.node);
+      return ctx.i + 1;
+    }
+    // Function: define function X(args): — fall through to 'function' canonical handler
+    return undefined;
+  }],
 ]);
 
 // Raw-value handlers (keyed on firstToken.value, for keywords not in synonym table)
 const RAW_DISPATCH = new Map([
+  ['database', (ctx) => {
+    if (ctx.tokens.length < 3 || !(ctx.tokens[1].canonical === 'is' || ctx.tokens[1].type === TokenType.ASSIGN)) return undefined;
+    const parts = ctx.tokens.slice(2).map(t => t.value);
+    const atIdx = parts.indexOf('at');
+    const backend = atIdx >= 0 ? parts.slice(0, atIdx).join(' ') : parts.join(' ');
+    let connectionExpr = null;
+    if (atIdx >= 0 && atIdx + 1 < parts.length) {
+      connectionExpr = parseExpression(ctx.tokens, 2 + atIdx + 1, ctx.line);
+      if (connectionExpr.error) connectionExpr = null;
+      else connectionExpr = connectionExpr.node;
+    }
+    ctx.body.push({ type: NodeType.DATABASE_DECL, backend: backend.toLowerCase(), connection: connectionExpr, line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['chart', (ctx) => {
+    if (ctx.tokens.length < 4 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
+    const parsed = parseChart(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['agent', (ctx) => {
+    if (ctx.tokens.length < 2) return undefined;
+    const result = parseAgent(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+  }],
+  ['script', (ctx) => {
+    const scriptLines = [];
+    let j = ctx.i + 1;
+    while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+      scriptLines.push(ctx.lines[j].raw || ctx.lines[j].tokens.map(t => t.value).join(' '));
+      j++;
+    }
+    if (scriptLines.length === 0) {
+      ctx.errors.push({ line: ctx.line, message: "script: block is empty — add indented JavaScript code below it" });
+    } else {
+      ctx.body.push({ type: NodeType.SCRIPT, code: scriptLines.join('\n'), line: ctx.line });
+    }
+    return j;
+  }],
+  ['tab', (ctx) => {
+    if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
+    const tabTitle = ctx.tokens[1].value;
+    const { body: tabBody, endIdx: tabEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+    ctx.body.push({ type: NodeType.TAB, title: tabTitle, body: tabBody, line: ctx.line });
+    return tabEnd;
+  }],
+  ['retry', (ctx) => {
+    if (ctx.tokens.length < 3) return undefined;
+    const count = typeof ctx.tokens[1].value === 'number' ? ctx.tokens[1].value : parseInt(ctx.tokens[1].value, 10) || 3;
+    const { body: retryBody, endIdx: retryEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+    ctx.body.push({ type: NodeType.RETRY, count, body: retryBody, line: ctx.line });
+    return retryEnd;
+  }],
+  ['first', (ctx) => {
+    if (ctx.tokens.length < 2 || !ctx.tokens.some(t => t.value === 'finish')) return undefined;
+    const { body: raceBody, endIdx: raceEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+    ctx.body.push({ type: NodeType.RACE, body: raceBody, line: ctx.line });
+    return raceEnd;
+  }],
+  ['background', (ctx) => {
+    // Only match if followed by STRING (not CSS background)
+    if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
+    const result = parseBackground(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+  }],
   ['store', (ctx) => {
     if (ctx.tokens.length < 2) return undefined;
     const varName = ctx.tokens[1].value;
@@ -1355,31 +1887,8 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // charge_via_stripe, send_sms_via_twilio: handled by CANONICAL_DISPATCH
-      // send email via sendgrid: (must check BEFORE send email: SMTP)
-      if (firstToken.canonical === 'respond' &&
-          tokens.length >= 4 && tokens[1].value === 'email' &&
-          tokens[2].value === 'via' && tokens[3].value === 'sendgrid' &&
-          i + 1 < lines.length && lines[i + 1].indent > indent) {
-        const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
-        body.push({ type: NodeType.SERVICE_CALL, service: 'sendgrid', config, line });
-        i = endIdx;
-        continue;
-      }
-
+      // respond (sendgrid/email/API/respond): handled by CANONICAL_DISPATCH router
       // needs_login, configure_email: handled by CANONICAL_DISPATCH
-
-      // Email: send email: + indented config (NOT 'send email to URL' which is an API call)
-      // Detect: first token canonical is 'respond' (send), second is 'email',
-      // and next line is indented (block form). No colon token — tokenizer strips it.
-      if (firstToken.canonical === 'respond' &&
-          tokens.length >= 2 && tokens[1].value === 'email' &&
-          i + 1 < lines.length && lines[i + 1].indent > indent) {
-        const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
-        body.push({ type: NodeType.SEND_EMAIL, config, line });
-        i = endIdx;
-        continue;
-      }
 
       // Text block: NAME is text block: + indented raw text lines
       // e.g. message is text block:\n  Hello {name}\n  Welcome
@@ -1457,25 +1966,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
 
       // ---- UI & DISPLAY (show, display, toast, content elements) ----
 
-      // Show/display/print statement
-      // Check for Phase 4 display modifiers FIRST: "display X as Y called Z"
-      // show toast 'message' [as warning/error/success] -- must come BEFORE display modifier check
-      if (firstToken.canonical === 'show' && tokens.length >= 3 && tokens[1].value === 'toast') {
-        let tPos = 2;
-        let message = '';
-        if (tPos < tokens.length && tokens[tPos].type === TokenType.STRING) {
-          message = tokens[tPos].value;
-          tPos++;
-        }
-        let variant = 'success'; // default
-        if (tPos < tokens.length && (tokens[tPos].value === 'as' || tokens[tPos].canonical === 'as_format')) {
-          tPos++;
-          if (tPos < tokens.length) variant = tokens[tPos].value.toLowerCase();
-        }
-        body.push({ type: NodeType.TOAST, message, variant, line });
-        i++;
-        continue;
-      }
+      // show (toast/display/content/component/expression): handled by CANONICAL_DISPATCH router
 
       // chart 'Title' as line showing data
       if (firstToken.value === 'chart' && tokens.length >= 4 && tokens[1].type === TokenType.STRING) {
@@ -1489,91 +1980,13 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      if (firstToken.canonical === 'show' && hasDisplayModifiers(tokens)) {
-        const parsed = parseDisplay(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      //   show name                  -> show a variable's value
-      //   show 'hello'               -> show a literal string
-      if (firstToken.canonical === 'show') {
-        if (tokens.length <= 1) {
-          errors.push({ line, message: "Show needs a value to display. Example: show heading 'Welcome' or show total" });
-          i++;
-          continue;
-        }
-        // Check if next token is a content keyword: heading, subheading, text, bold text, etc.
-        const contentCanonicals = ['heading', 'subheading', 'content_text', 'bold_text', 'italic_text', 'small_text', 'link', 'divider', 'code_block'];
-        if (contentCanonicals.includes(tokens[1].canonical)) {
-          // Shift tokens: remove "show" and parse as content
-          const contentTokens = tokens.slice(1);
-          const parsed = parseContent(contentTokens, line, tokens[1].canonical);
-          if (parsed.error) {
-            errors.push({ line, message: parsed.error });
-          } else {
-            body.push(parsed.node);
-          }
-          i++;
-          continue;
-        }
-        // Check for component use with children: show Card: + indented block
-        // Detect: show + single identifier + next line is indented
-        if (tokens.length === 2 &&
-            (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD) &&
-            i + 1 < lines.length && lines[i + 1].indent > indent) {
-          const compName = tokens[1].value;
-          const { body: childBody, endIdx: childEnd } = parseBlock(lines, i + 1, indent, errors);
-          body.push({ type: NodeType.COMPONENT_USE, name: compName, children: childBody, props: [], line });
-          i = childEnd;
-          continue;
-        }
-        // Check for component call: show Card(args)
-        // (Already handled by expression parser — CALL node becomes SHOW)
-
-        // Otherwise: show a value/expression
-        const expr = parseExpression(tokens, 1, line);
-        if (expr.error) {
-          errors.push({ line, message: expr.error });
-        } else {
-          body.push(showNode(expr.node, line));
-        }
-        i++;
-        continue;
-      }
+      // (show display/content/expression branches removed — handled by dispatch router above)
 
       // Return statement
       // return, break, continue: handled by CANONICAL_DISPATCH
 
-      // "define component X receiving a, b:" (must be checked BEFORE define-as and function def)
-      if (firstToken.canonical === 'define' && tokens.length >= 3 &&
-          tokens[1].canonical === 'component') {
-        const result = parseComponentDef(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // "define X as:" assignment (must be checked BEFORE function def)
-      // e.g. "define total as: price + tax" or "define name as 'Alice'"
-      if (firstToken.canonical === 'define' && tokens.length >= 3 &&
-          (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD) &&
-          (tokens[2].canonical === 'as_format' || tokens[2].canonical === 'as' ||
-           (typeof tokens[2].value === 'string' && tokens[2].value.toLowerCase() === 'as'))) {
-        const parsed = parseDefineAs(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // define (component/as): handled by CANONICAL_DISPATCH router
+      // define falls through to assignment for define-as and to 'function' for function defs
 
       // Agent definition: agent 'Name' receiving varName:
       if (firstToken.value === 'agent' && tokens.length >= 2) {
@@ -1793,77 +2206,17 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Phase 45: when X notifies '/path': (natural webhook syntax)
-      // Not in dispatch — complex condition on tokens[2]
-      if (firstToken.value === 'when' &&
-          tokens.length >= 4 && tokens[2].value === 'notifies' &&
-          tokens[3].type === TokenType.STRING) {
-        const service = tokens[1].value;
-        const path = tokens[3].value;
-        const result = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.WEBHOOK, path, service, body: result.body, line });
-        i = result.endIdx;
-        continue;
-      }
+      // when X notifies: handled by 'if' router in CANONICAL_DISPATCH (when→if synonym)
 
       // ---- ENDPOINTS & DATA (REST routes, data shapes, CRUD, auth) ----
 
       // Backend endpoint: when user calls GET /api/users: (or: on GET /api/users:)
       // when_user_calls, on_method: handled by CANONICAL_DISPATCH
 
-      // "send X and Y to '/url'" — frontend API call (must check BEFORE send back)
-      if (firstToken.canonical === 'respond' && tokens.length >= 3) {
-        let toPos = -1;
-        for (let k = 1; k < tokens.length; k++) {
-          if (tokens[k].canonical === 'to_connector' && k + 1 < tokens.length && tokens[k + 1].type === TokenType.STRING) {
-            toPos = k;
-            break;
-          }
-        }
-        if (toPos > 0) {
-          const fields = [];
-          // Strip "as a new X" decoration: "send todo as a new todo to URL" -> fields = [todo]
-          const SKIP_WORDS = new Set(['as', 'a', 'an', 'new', 'the']);
-          let inAsClause = false;
-          for (let k = 1; k < toPos; k++) {
-            if (tokens[k].canonical === 'and' || tokens[k].type === TokenType.COMMA) continue;
-            const val = tokens[k].value?.toLowerCase();
-            if (val === 'as') { inAsClause = true; continue; }
-            if (inAsClause) continue; // skip everything after "as" until "to"
-            if (SKIP_WORDS.has(val)) continue;
-            if (tokens[k].type === TokenType.IDENTIFIER || tokens[k].type === TokenType.KEYWORD) {
-              fields.push(tokens[k].value);
-            }
-          }
-          const url = tokens[toPos + 1].value;
-          body.push({ type: NodeType.API_CALL, method: 'POST', url, fields, line });
-          i++;
-          continue;
-        }
-      }
+      // respond, respond_with: handled by CANONICAL_DISPATCH router
+      // set (data_shape, map_set): handled by CANONICAL_DISPATCH router (falls through for assignment)
 
-      // Send back: send back data (or: respond with data)
-      // send_back: handled by CANONICAL_DISPATCH
-      if (firstToken.canonical === 'respond' || firstToken.canonical === 'respond_with') {
-        const parsed = parseRespond(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // Data shape / table: "create data shape User:" or "create a Users table:"
-      if (firstToken.canonical === 'set' && tokens.length > 2 &&
-          (tokens[1].canonical === 'data_shape' || // create data shape User
-           (tokens.length > 3 && tokens.some(t => t.canonical === 'data_shape')))) { // create a Users table
-        const result = parseDataShape(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // set (data_shape): handled by CANONICAL_DISPATCH router
 
       // save_to, remove_from: handled by CANONICAL_DISPATCH
 
@@ -1871,25 +2224,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
 
       // on_page_load: handled by CANONICAL_DISPATCH
 
-      // "when X changes:" / "when X changes after 250ms:" — reactive input handler
-      if (firstToken.value === 'when' && tokens.length >= 3 && tokens[2].value === 'changes') {
-        const varName = tokens[1].value;
-        let debounceMs = 0;
-        // Check for "after N ms" or "after 250ms" debounce
-        if (tokens.length >= 5 && tokens[3].value === 'after') {
-          const delayVal = tokens[4].value;
-          if (typeof delayVal === 'number') {
-            debounceMs = delayVal;
-          } else {
-            const match = String(delayVal).match(/^(\d+)(ms)?$/);
-            if (match) debounceMs = parseInt(match[1], 10);
-          }
-        }
-        const { body: changeBody, endIdx: changeEnd } = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.ON_CHANGE, variable: varName, debounceMs, body: changeBody, line });
-        i = changeEnd;
-        continue;
-      }
+      // when X changes: handled by 'if' router in CANONICAL_DISPATCH (when→if synonym)
 
       // go_to: handled by CANONICAL_DISPATCH
 
@@ -1930,125 +2265,13 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         }
       }
 
-      // "set key in scope to value" — dynamic map set
-      if (firstToken.canonical === 'set' && tokens.length >= 5) {
-        // Check for pattern: set <key> in <map> to <value>
-        let inPos = -1;
-        let toPos = -1;
-        for (let k = 1; k < tokens.length; k++) {
-          if (tokens[k].canonical === 'in' && inPos < 0) inPos = k;
-          if (tokens[k].canonical === 'to_connector' && inPos > 0) { toPos = k; break; }
-        }
-        if (inPos > 0 && toPos > inPos && toPos + 1 < tokens.length) {
-          const keyExpr = parseExpression(tokens, 1, line, inPos);
-          const mapExpr = parseExpression(tokens, inPos + 1, line, toPos);
-          const valExpr = parseExpression(tokens, toPos + 1, line);
-          if (!keyExpr.error && !mapExpr.error && !valExpr.error) {
-            body.push({ type: NodeType.MAP_SET, map: mapExpr.node, key: keyExpr.node, value: valExpr.node, line });
-            i++;
-            continue;
-          }
-        }
-      }
-
-      // sort_by: handled by CANONICAL_DISPATCH
-
-      // "delete the Todo with this id" -> CRUD remove by URL param
-      // Pattern: remove/delete [the] TABLE with/whose this PARAM
-      if (firstToken.canonical === 'remove' && tokens.length >= 4) {
-        let dPos = 1;
-        // Skip optional "the"
-        if (dPos < tokens.length && (tokens[dPos].canonical === 'the' || tokens[dPos].canonical === 'a' || tokens[dPos].value === 'the' || tokens[dPos].value === 'a')) dPos++;
-        if (dPos + 2 < tokens.length && dPos < tokens.length &&
-            (tokens[dPos + 1]?.value === 'with' || tokens[dPos + 1]?.value === 'whose') &&
-            (tokens[dPos + 2]?.value === 'this' || tokens[dPos + 2]?.value === 'that')) {
-          const tableName = tokens[dPos].value;
-          let paramName = 'id';
-          if (dPos + 3 < tokens.length) paramName = tokens[dPos + 3].value;
-          const condition = {
-            type: NodeType.BINARY_OP, operator: '==',
-            left: { type: NodeType.VARIABLE_REF, name: paramName, line },
-            right: { type: NodeType.MEMBER_ACCESS, object: { type: NodeType.VARIABLE_REF, name: 'incoming', line }, member: paramName, line },
-            line
-          };
-          body.push(crudNode('remove', null, tableName, condition, line));
-          i++;
-          continue;
-        }
-      }
-
-      // "remove X from Y" — list remove (not CRUD — CRUD uses remove_from canonical)
-      if (firstToken.canonical === 'remove' && tokens.length >= 3) {
-        let fromPos = -1;
-        for (let k = 1; k < tokens.length; k++) {
-          if (tokens[k].canonical === 'in' || tokens[k].value === 'from') { fromPos = k; break; }
-        }
-        if (fromPos > 0 && fromPos + 1 < tokens.length) {
-          const valExpr = parseExpression(tokens, 1, line, fromPos);
-          const listName = tokens[fromPos + 1].value;
-          if (!valExpr.error) {
-            body.push({ type: NodeType.LIST_REMOVE, list: listName, value: valExpr.node, line });
-            i++;
-            continue;
-          }
-        }
+      // set (map_set), remove (CRUD/list), sort_by: handled by CANONICAL_DISPATCH routers
+      if (false) { /* set map_set + remove CRUD/list removed — now in dispatch */
       }
 
       // expect: handled by CANONICAL_DISPATCH
 
-      // Check: "check X, otherwise error 'msg'" → guard node
-      // `check` tokenizes as canonical `if`, so detect the `otherwise error` pattern here
-      if (firstToken.canonical === 'if') {
-        // Look for ", otherwise error 'message'" pattern → treat as guard
-        let otherwiseIdx = -1;
-        for (let k = 1; k < tokens.length; k++) {
-          if (tokens[k].canonical === 'otherwise' && k + 1 < tokens.length && tokens[k + 1].value === 'error') {
-            otherwiseIdx = k;
-            break;
-          }
-        }
-        if (otherwiseIdx !== -1) {
-          const errorMsgIdx = otherwiseIdx + 2;
-          const guardMessage = (errorMsgIdx < tokens.length && tokens[errorMsgIdx].type === TokenType.STRING)
-            ? tokens[errorMsgIdx].value
-            : 'Validation failed';
-          // Parse the condition between 'check' and ', otherwise'
-          // Skip comma before 'otherwise' if present
-          let condEnd = otherwiseIdx;
-          if (condEnd > 1 && tokens[condEnd - 1].type === TokenType.COMMA) condEnd--;
-          const result = parseExpression(tokens, 1, line, condEnd);
-          if (result.error) {
-            errors.push({ line, message: result.error });
-          } else {
-            body.push(guardNode(result.node, line, guardMessage));
-          }
-          i++;
-          continue;
-        }
-      }
-
-      // If/then conditional (must be checked BEFORE assignment)
-      if (firstToken.canonical === 'if') {
-        // Check for block form: "if condition:" (no "then" keyword, has indented body)
-        const hasThen = tokens.some(t => t.canonical === 'then');
-        if (!hasThen) {
-          const result = parseIfBlock(lines, i, indent, errors);
-          if (result.node) {
-            body.push(result.node);
-            i = result.endIdx;
-            continue;
-          }
-        }
-        // Inline form: "if condition then action"
-        const parsed = parseIfThen(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // if (guard/block/inline) + when (notifies/changes): handled by CANONICAL_DISPATCH router
 
       // increase, decrease: handled by CANONICAL_DISPATCH
 
