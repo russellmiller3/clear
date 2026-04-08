@@ -1,0 +1,337 @@
+# ┌──────────────────────────────────────────────────────────┐
+# │  IT Helpdesk — Multi-Agent Support System               │
+# │                                                         │
+# │  DATAFLOW:                                              │
+# │  User message                                           │
+# │    → Triage Agent (classify + priority)                 │
+# │    → Router (parallel: Knowledge + Sentiment)           │
+# │    → Specialist (Software / Hardware / Network)         │
+# │    → Resolution Agent (answer + follow-up)              │
+# │                                                         │
+# │  PIPELINE: Triage → Specialist → Resolution             │
+# │  PARALLEL: Knowledge search + Sentiment analysis        │
+# │                                                         │
+# │  TABLES: Tickets, KnowledgeBase, AgentLogs, Approvals   │
+# └──────────────────────────────────────────────────────────┘
+
+build for javascript backend
+database is local memory
+
+# === DATABASE ===
+
+create a Tickets table:
+  user_email, required
+  subject, required
+  description, required
+  category
+  priority
+  status, default 'open'
+  assigned_to
+  resolution
+  created_at (timestamp), auto
+
+create a KnowledgeBase table:
+  title, required
+  content, required
+  category
+  tags
+
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+  decided_by
+  decided_at (timestamp)
+
+# === TOOL FUNCTIONS ===
+
+define function search_tickets(user_email):
+  tickets = look up all Tickets where user_email is user_email
+  return tickets
+
+define function get_ticket(ticket_id):
+  ticket = look up Ticket where id is ticket_id
+  return ticket
+
+define function update_ticket(ticket_id, status, resolution):
+  ticket = look up Ticket where id is ticket_id
+  return ticket
+
+define function create_ticket(user_email, subject, description, category, priority):
+  create new_ticket:
+    user_email is user_email
+    subject is subject
+    description is description
+    category is category
+    priority is priority
+  saved = save new_ticket as new Ticket
+  return saved
+
+define function search_knowledge(query):
+  articles = look up all KnowledgeBase where category is query
+  return articles
+
+define function escalate_ticket(ticket_id, reason):
+  ticket = look up Ticket where id is ticket_id
+  return ticket
+
+# === SKILLS ===
+
+skill 'Ticket Management':
+  can: search_tickets, get_ticket, update_ticket, create_ticket
+  instructions:
+    Always look up existing tickets before creating new ones.
+    Include ticket ID in all responses.
+    Set priority based on business impact: P1 = service down, P2 = degraded, P3 = question.
+
+skill 'Knowledge Search':
+  can: search_knowledge
+  instructions:
+    Search the knowledge base before suggesting solutions.
+    Quote article titles when referencing solutions.
+    If no article matches, say so and suggest creating one.
+
+skill 'Escalation':
+  can: escalate_ticket
+  instructions:
+    Escalate only when the issue requires admin access or is P1 severity.
+    Always document the reason for escalation.
+    Never escalate P3 tickets without attempting resolution first.
+
+# === AGENTS ===
+
+agent 'Triage Agent' receiving message:
+  uses skills: 'Ticket Management'
+  track agent decisions
+  must not:
+    delete any records
+    access AgentLogs table
+
+  prompt is text block:
+    You are an IT helpdesk triage agent.
+    Classify the issue into: software, hardware, network, or account.
+    Assign priority: P1 (service down), P2 (degraded), P3 (question/request).
+    Create a ticket if one doesn't exist for this issue.
+
+  result = ask claude prompt with message returning:
+    category
+    priority
+    summary
+    ticket_id (number)
+  send back result
+
+agent 'Knowledge Agent' receiving query:
+  uses skills: 'Knowledge Search'
+  knows about: KnowledgeBase
+  track agent decisions
+  must not:
+    delete any records
+    modify Tickets table
+
+  prompt is text block:
+    You are a knowledge base search specialist.
+    Find relevant articles for the user's issue.
+    Summarize the most relevant solution steps.
+
+  result = ask claude prompt with query returning:
+    articles_found (number)
+    suggested_solution
+    confidence (number)
+  send back result
+
+agent 'Sentiment Agent' receiving message:
+  track agent decisions
+
+  result = ask claude 'Analyze the customer sentiment. Rate frustration 1-10.' with message returning:
+    frustration (number)
+    tone
+    urgency (boolean)
+  send back result
+
+agent 'Software Specialist' receiving context:
+  uses skills: 'Ticket Management', 'Knowledge Search'
+  track agent decisions
+  must not:
+    delete any records
+
+  prompt is text block:
+    You are a software support specialist.
+    Diagnose software issues: crashes, errors, configuration problems.
+    Provide step-by-step resolution instructions.
+    If the fix requires admin access, recommend escalation.
+
+  result = ask claude prompt with context returning:
+    diagnosis
+    steps
+    requires_escalation (boolean)
+    confidence (number)
+  send back result
+
+agent 'Resolution Agent' receiving context:
+  uses skills: 'Ticket Management', 'Escalation'
+  track agent decisions
+  must not:
+    delete any records
+    access AgentLogs table
+
+  prompt is text block:
+    You are the resolution agent. Compile the final response.
+    Include: diagnosis, solution steps, and next actions.
+    If escalation is needed, explain why to the user.
+    Always ask if the solution resolved the issue.
+
+  result = ask claude prompt with context returning:
+    response
+    resolved (boolean)
+    follow_up
+    escalated (boolean)
+  send back result
+
+# === PIPELINES ===
+
+pipeline 'Full Support' with ticket:
+  'Triage Agent'
+  'Software Specialist'
+  'Resolution Agent'
+
+# === ENDPOINTS ===
+
+when user calls POST /api/support sending data:
+  # Parallel: knowledge search + sentiment analysis
+  do these at the same time:
+    knowledge = call 'Knowledge Agent' with data's message
+    sentiment = call 'Sentiment Agent' with data's message
+  # Sequential: triage → specialist → resolution
+  result = call pipeline 'Full Support' with data's message
+  send back result
+
+when user calls POST /api/triage sending data:
+  result = call 'Triage Agent' with data
+  send back result
+
+when user calls POST /api/tickets sending data:
+  saved = save data as new Ticket
+  send back saved with success message
+
+when user calls GET /api/tickets:
+  tickets = get all Tickets
+  send back tickets
+
+when user calls POST /api/knowledge sending data:
+  saved = save data as new KnowledgeBase
+  send back saved with success message
+
+when user calls GET /api/knowledge:
+  articles = get all KnowledgeBase
+  send back articles
+
+when user calls GET /api/agent-logs:
+  logs = get all AgentLogs
+  send back logs
+
+when user calls POST /api/escalate sending data:
+  if data's priority is 'P1':
+    ask user to confirm 'Escalate P1 ticket to on-call engineer?'
+  result = call 'Resolution Agent' with data
+  send back result
+
+# === SEED DATA ===
+
+when user calls POST /api/seed:
+  # Seed knowledge base articles
+  create kb1:
+    title is 'VPN Connection Troubleshooting'
+    content is 'Step 1: Restart VPN client. Step 2: Clear DNS cache. Step 3: Check network settings. Step 4: Contact network team if still failing.'
+    category is 'network'
+    tags is 'vpn, connection, network'
+  save kb1 as new KnowledgeBase
+
+  create kb2:
+    title is 'Email Client Configuration'
+    content is 'Open Settings > Accounts > Add Account. Use IMAP server: mail.company.com, port 993, SSL enabled. Username is your employee ID.'
+    category is 'software'
+    tags is 'email, outlook, configuration'
+  save kb2 as new KnowledgeBase
+
+  create kb3:
+    title is 'Password Reset Process'
+    content is 'Go to identity.company.com/reset. Enter your employee ID. Check your personal email for the reset link. New password must be 12+ characters.'
+    category is 'account'
+    tags is 'password, reset, account'
+  save kb3 as new KnowledgeBase
+
+  send back 'Seeded 3 knowledge base articles' with success message
+
+# === TESTS ===
+
+test 'triage classifies software issue':
+  mock claude responding:
+    category is 'software'
+    priority is 'P2'
+    summary is 'User reports Outlook crashing on startup'
+    ticket_id = 1
+  result = call 'Triage Agent' with 'Outlook keeps crashing when I open it'
+  expect result's category is 'software'
+  expect result's priority is 'P2'
+
+test 'knowledge agent finds articles':
+  mock claude responding:
+    articles_found = 2
+    suggested_solution is 'Try reconfiguring email client per KB article'
+    confidence = 0.85
+  result = call 'Knowledge Agent' with 'email not working'
+  expect result's articles_found is 2
+
+test 'sentiment detects frustrated user':
+  mock claude responding:
+    frustration = 8
+    tone is 'frustrated'
+    urgency is true
+  result = call 'Sentiment Agent' with 'This is broken AGAIN! I need this fixed NOW!'
+  expect result's frustration is 8
+  expect result's urgency is true
+
+test 'software specialist diagnoses issue':
+  mock claude responding:
+    diagnosis is 'Corrupt Outlook profile'
+    steps is '1. Close Outlook. 2. Run outlook.exe /resetnavpane. 3. Restart.'
+    requires_escalation is false
+    confidence = 0.9
+  result = call 'Software Specialist' with 'Outlook crashes on startup'
+  expect result's requires_escalation is false
+
+test 'resolution agent compiles final response':
+  mock claude responding:
+    response is 'We identified a corrupt Outlook profile. Please follow these steps to resolve.'
+    resolved is false
+    follow_up is 'Let us know if the steps resolve the issue within 24 hours.'
+    escalated is false
+  result = call 'Resolution Agent' with 'diagnosis and steps'
+  expect result's escalated is false
+
+test 'pipeline processes full support flow':
+  mock claude responding:
+    category is 'software'
+    priority is 'P2'
+    summary is 'Outlook crash'
+    ticket_id = 1
+  mock claude responding:
+    diagnosis is 'Corrupt profile'
+    steps is 'Reset nav pane'
+    requires_escalation is false
+    confidence = 0.9
+  mock claude responding:
+    response is 'Issue resolved with profile reset.'
+    resolved is true
+    follow_up is 'No follow-up needed.'
+    escalated is false
+  result = call pipeline 'Full Support' with 'Outlook crashes'
+  expect result's resolved is true

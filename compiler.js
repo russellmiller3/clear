@@ -2517,7 +2517,9 @@ function _compileNodeInner(node, ctx) {
       // JS: functions get their own scope — params are pre-declared
       const fnDeclared = new Set(node.params.map(sanitizeName));
       const bodyCode = compileBody(node.body, ctx, { declared: fnDeclared });
-      return `${pad}function ${sanitizeName(node.name)}(${params}) {\n${bodyCode}\n${pad}}`;
+      // Auto-detect async: if body contains await (CRUD, API calls, agent calls), make function async
+      const isAsync = bodyCode.includes('await ');
+      return `${pad}${isAsync ? 'async ' : ''}function ${sanitizeName(node.name)}(${params}) {\n${bodyCode}\n${pad}}`;
     }
 
     case NodeType.AGENT:
@@ -3049,16 +3051,20 @@ function _compileNodeInner(node, ctx) {
         });
         let code = `${pad}test(${JSON.stringify(node.name)}, async () => {\n`;
         code += `${pad}  const _origAskAI = typeof _askAI !== 'undefined' ? _askAI : null;\n`;
+        code += `${pad}  const _origAskAITools = typeof _askAIWithTools !== 'undefined' ? _askAIWithTools : null;\n`;
         if (mocks.length === 1) {
           code += `${pad}  _askAI = async () => (${mocks[0]});\n`;
+          code += `${pad}  _askAIWithTools = async () => (${mocks[0]});\n`;
         } else {
           code += `${pad}  const _mockResponses = [${mocks.join(', ')}];\n`;
           code += `${pad}  let _mockIdx = 0;\n`;
-          code += `${pad}  _askAI = async () => _mockResponses[_mockIdx++];\n`;
+          code += `${pad}  const _mockFn = async () => _mockResponses[_mockIdx++];\n`;
+          code += `${pad}  _askAI = _mockFn;\n`;
+          code += `${pad}  _askAIWithTools = _mockFn;\n`;
         }
         code += `${pad}  try {\n`;
         code += bodyCode.split('\n').map(l => '  ' + l).join('\n') + '\n';
-        code += `${pad}  } finally { if (_origAskAI) _askAI = _origAskAI; }\n`;
+        code += `${pad}  } finally { if (_origAskAI) _askAI = _origAskAI; if (_origAskAITools) _askAIWithTools = _origAskAITools; }\n`;
         code += `${pad}});`;
         return code;
       }
