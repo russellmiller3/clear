@@ -1,4 +1,4 @@
-# Handoff — 2026-04-08 (Session 10)
+# Handoff — 2026-04-08 (Session 10, continued)
 
 ## Current State
 - **Branch:** main
@@ -8,42 +8,42 @@
 
 ## What Was Done This Session
 
-### Compiler Internal Refactor (Phase 47)
-Five systemic fixes from learnings.md analysis. All internal-only — no language surface changes, identical compiled output.
+### Phase 47: Compiler Internal Refactor (5 systemic fixes)
+- Unified HTTP_REQUEST + RAW_QUERY compilation paths (compileHttpRequest, compileRawQueryExpr)
+- Normalized parser return types (removed isCrud wrapper, parseTarget returns { node })
+- Tokenizer preserves colons as COLON tokens (trailing stripped at token level)
+- Added COLON, LBRACE, RBRACE to TokenType enum
 
-1. **Parser Dispatch Tables** — Replaced parseBlock's 97-branch if/else waterfall with `CANONICAL_DISPATCH` (60 entries) and `RAW_DISPATCH` (2 entries) Maps. 63 branches migrated. Assignment is guaranteed last. Adding a new keyword = adding one Map entry.
+### Phase 47b: Context-Sensitive Synonyms + Full Dispatch Table
+- Added `rawValue` field to all KEYWORD tokens in tokenizer
+- Wired `resolveCanonical(token, zone)` with ZONE_OVERRIDES (first override: ui.delete → action_delete)
+- **93 of 97** parseBlock branches migrated to CANONICAL_DISPATCH (60+ entries) and RAW_DISPATCH (10+ entries)
+- Only **1 keyword branch** remains: the assignment fallback
+- Pattern matchers stay: STRING-first inputs, math-style functions, text_block, do_all
+- Router functions for complex branches: show, if, define, set, remove, respond (6 routers)
+- Parser reduced from 6185 to 5888 lines (-297 lines of dead if/else code)
+- 8 bugs found and fixed during migration (tab title, script empty error, content_text guard, timeout ms, function def routing, define-as routing, when→if synonym routing, set+function routing)
 
-2. **Normalized Return Types** — Removed `isCrud` wrapper from parser return types. `parseTarget` returns `{ node }` instead of `{ value }`. Callers check `parsed.node` instead of `parsed.isCrud`.
-
-3. **Unified Compilation Paths** — Extracted `compileHttpRequest()` and `compileRawQueryExpr()` from compiler.js. Both statement and expression paths call the same function. No more dual-path drift.
-
-4. **Tokenizer Preserves Colons** — Colons tokenized as COLON tokens instead of stripped from raw strings. Trailing COLON (block opener) popped at token level. Mid-line colons preserved for route params. Added COLON, LBRACE, RBRACE to TokenType.
-
-5. **resolveCanonical Foundation** — Added `resolveCanonical(token, zone)` function and `ZONE_OVERRIDES` definitions for ui, crud, and comparison contexts. Currently identity behavior — ready for full activation.
-
-### Design Discussion
-- Wrote `docs/design-discussion-zero-deps-one-op.md` — analysis of why zero dependencies and one-op-per-line are the load-bearing walls of Clear's architecture
-- Created and red-teamed `plans/plan-compiler-refactor-04-08-2026.md`
-
-## What's Not Done (deferred)
-- **Full context-sensitive synonyms:** Changing tokenizer to defer single-word synonym resolution to parser. Highest risk change — needs its own focused session. `resolveCanonical()` foundation is ready.
-- **Remaining 34 router branches:** Complex branches that check tokens[1+] (show, if, define, set, remove, respond, database, call_api, when). These have multi-condition logic that doesn't fit a simple Map entry.
+### Design Discussion + Planning
+- Wrote design discussion: zero deps + one-op-per-line consequences
+- Created + red-teamed compiler refactor plan (Phase 47)
+- Created + red-teamed context synonyms + router dispatch plan (Phase 47b)
 
 ## Key Architecture Decisions
-- **Two Maps, not one:** 13 branches dispatch on raw value (not canonical) because the word isn't in the synonym table or its canonical conflicts. `RAW_DISPATCH` checked before `CANONICAL_DISPATCH`.
-- **targetValue propagation:** Map handlers set `ctx._targetValue`, dispatch lookup propagates back to parseBlock local variable.
-- **Token-level colon stripping:** Tokenizer pops trailing COLON after tokenizeLine(), before storing in result array. All sub-parsers see clean tokens.
+- **Two dispatch Maps**: RAW_DISPATCH (raw firstToken.value) checked before CANONICAL_DISPATCH (firstToken.canonical)
+- **Router functions**: Complex branches that check tokens[1+] are wrapped in router functions inside the Maps
+- **rawValue field**: Tokens keep .canonical (backward compatible) AND .rawValue (for zone overrides)
+- **resolveCanonical()**: Single point for synonym resolution, zone-aware, currently identity for most cases
 
 ## Known Issues
 - Browser server may 404 on some routes (untested in real browser)
 - `ui's Card()` in web target crashes buildHTML (namespaced component calls)
-- DaisyUI v5 themes use `--color-base-100: oklch(%)` format
+- Full context-sensitive synonym activation (changing tokenizer to defer all single-word resolution) deferred to future session
 
 ## Resume Prompt
 ```
-Read HANDOFF.md, learnings.md, intent.md. Session 10 completed compiler
-internal refactor (Phase 47): dispatch tables, normalized returns, unified
-compilation, tokenizer colon preservation, resolveCanonical foundation.
-1337 tests passing. Next: full context-sensitive synonyms (Phase 2
-deepening) or new feature work from ROADMAP.md.
+Read HANDOFF.md, learnings.md, intent.md. Session 10 completed Phase 47
+(compiler refactor) and Phase 47b (dispatch tables + context synonyms).
+93/97 parseBlock branches in Maps. 1337 tests. Parser 5888 lines.
+Next: new feature work from ROADMAP.md, or full synonym zone activation.
 ```
