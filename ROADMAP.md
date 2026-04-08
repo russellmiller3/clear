@@ -999,7 +999,7 @@ All live-tested with real Anthropic API calls. 18/18 E2E pass.
 - ~~RAG / knowledge base (`knows about:`)~~ DONE (session 10)
 - ~~Skills / reusable tool bundles (`skill 'Name':`)~~ DONE (session 10)
 - ~~Variable prompts / text blocks in agents~~ DONE (session 10)
-- Streaming AI responses (SSE from ask ai)
+- ~~Streaming AI responses (SSE from ask ai)~~ DONE (session 11) — JS already streamed, Python now streams via `_ask_ai_stream` async generator
 
 ---
 

@@ -2,8 +2,9 @@
 
 ## Current State
 - **Branch:** main
-- **Tests:** 1446 passing
+- **Tests:** 1457 passing
 - **Apps:** 43+ template apps (4 agent GAN apps, 1 workflow GAN app)
+- **Python parity:** Agents stream, workflows compile, asyncio.gather for parallel
 - **Working tree:** Clean
 
 ## What Was Done This Session
@@ -38,4 +39,4 @@ All 6 workflow phases implemented, tested, and shipping:
 
 ## Resume Prompt
 
-> Read HANDOFF.md, CLAUDE.md. 1446 tests. Session 11: Tier 8 Agent Workflows complete (Phases 85-90) — workflow state, conditional routing, retry cycles, durable execution (DB + Temporal), parallel branches with join, observability. LangGraph parity achieved. GAN app: content-pipeline. Next: update USER-GUIDE workflow chapter, Python workflow target, Tier 1 production (real DB + deploy), playground Vercel deploy.
+> Read HANDOFF.md, CLAUDE.md. 1457 tests. Session 11: Tier 8 Agent Workflows (Phases 85-90) + Python streaming + Python workflows all complete. LangGraph parity achieved in both JS and Python. Agent roadmap 100% done. GAN app: content-pipeline. Next: USER-GUIDE workflow chapter, formal grammar (PEG/EBNF), Tier 1 production (real DB + deploy), playground Vercel deploy.
