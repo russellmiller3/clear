@@ -159,7 +159,11 @@ function enforceTypes(record, schema) {
   for (const [field, config] of Object.entries(schema)) {
     if (record[field] === undefined || record[field] === null) continue;
     if (config.type === 'number') {
-      if (record[field] === '' || (typeof record[field] === 'string' && record[field].trim() === '')) continue;
+      // Empty string → null (not 0). Number("") === 0 is a silent data corruption bug.
+      if (record[field] === '' || (typeof record[field] === 'string' && record[field].trim() === '')) {
+        record[field] = null;
+        continue;
+      }
       const num = Number(record[field]);
       if (isNaN(num)) {
         throw new Error(field + ' must be a number, got ' + JSON.stringify(record[field]));

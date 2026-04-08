@@ -10972,6 +10972,10 @@ create a Todos table:
 when user calls GET /api/todos:
   all_todos = get all Todos
   send back all_todos
+when user calls POST /api/todos sending data:
+  requires auth
+  saved = save data to Todos
+  send back saved
 page 'App' at '/':
   'Task' is a text input saved as a todo
   button 'Add':
@@ -17746,6 +17750,46 @@ name = price's label`;
 result = person's name`;
     const result = compileProgram(src);
     expect(result.warnings.filter(w => w.message?.includes('not an object'))).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// PROMOTED ERRORS + RUNTIME GUARDS
+// =============================================================================
+
+describe('Orphan endpoint URL is now a compile error', () => {
+  it('errors when frontend POSTs to non-existent endpoint', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  items = get all Items
+  send back items
+page 'App' at '/':
+  button 'Add':
+    send name to '/api/items'`;
+    const result = compileProgram(src);
+    expect(result.errors.some(e => e.message?.includes("no backend endpoint handles POST"))).toBe(true);
+  });
+
+  it('no error when frontend URL matches backend', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Items table:
+  name, required
+when user calls GET /api/items:
+  items = get all Items
+  send back items
+when user calls POST /api/items sending data:
+  requires auth
+  saved = save data to Items
+  send back saved
+page 'App' at '/':
+  button 'Add':
+    send name to '/api/items'`;
+    const result = compileProgram(src);
+    expect(result.errors.filter(e => e.message?.includes("no backend endpoint"))).toHaveLength(0);
   });
 });
 
