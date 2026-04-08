@@ -298,6 +298,7 @@ export function tokenizeLine(line, lineNumber = 1) {
           type: TokenType.KEYWORD,
           value: matchedSynonym,
           canonical,
+          rawValue: matchedSynonym,
           line: lineNumber,
           column: pos + 1,
         });
@@ -318,6 +319,7 @@ export function tokenizeLine(line, lineNumber = 1) {
           type: TokenType.KEYWORD,
           value: word,
           canonical,
+          rawValue: lower,
           line: lineNumber,
           column: start + 1,
         });
