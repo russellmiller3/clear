@@ -2348,7 +2348,7 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
   const agentIndent = lines[startIdx].indent;
   const directives = {
     trackDecisions: false,
-    streamResponse: false,
+    streamResponse: null,  // null = auto (default), true = force stream, false = force no stream
     tools: null,
     restrictions: null,
     skills: null,
@@ -2378,10 +2378,16 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
         dTokens[1].value === 'agent' && dTokens[2].value === 'decisions') {
       directives.trackDecisions = true; bodyStartIdx++; continue;
     }
-    // stream response — agent streams AI output token-by-token
+    // stream response — explicit opt-in to streaming
     if (dTokens[0].canonical === 'stream' && dTokens.length >= 2 &&
         dTokens[1].value === 'response') {
       directives.streamResponse = true; bodyStartIdx++; continue;
+    }
+    // do not stream — explicit opt-out (for pipeline steps needing full response)
+    if (dTokens[0].canonical === 'then' && dTokens[0].value === 'do' &&
+        dTokens.length >= 3 && dTokens[1].value === 'not' &&
+        dTokens[2].canonical === 'stream') {
+      directives.streamResponse = false; bodyStartIdx++; continue;
     }
     // using 'model-name'
     if ((dTokens[0].value === 'using' || dTokens[0].canonical === 'with') &&

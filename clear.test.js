@@ -16830,6 +16830,45 @@ when user calls POST /api/chat sending data:
     expect(result.javascript).toContain('async function* agent_chat');
     expect(result.javascript).toContain('_askAIStream');
   });
+
+  it('stream response auto-disabled for structured output', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receiving text:
+  stream response
+  result = ask claude 'Classify' with text returning:
+    category
+    confidence (number)
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Should NOT stream — structured output requires full JSON
+    expect(result.javascript).not.toContain('_askAIStream');
+    expect(result.javascript).not.toContain('async function*');
+    expect(result.javascript).toContain('_askAI(');
+  });
+
+  it('do not stream directive prevents streaming', () => {
+    const src = `build for javascript backend
+agent 'Summarizer' receiving text:
+  do not stream
+  summary = ask claude 'Summarize' with text
+  send back summary`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_askAIStream');
+    expect(result.javascript).not.toContain('async function*');
+  });
+
+  it('default (no directive) is non-streaming', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving msg:
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_askAIStream');
+    expect(result.javascript).toContain('_askAI(');
+  });
 });
 
 // =============================================================================

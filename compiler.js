@@ -1949,8 +1949,26 @@ function compileAgent(node, ctx, pad) {
   // Order matters: stream → model → skills → tools → tracking → conversation/memory/RAG
   let preamble = ''; // Code inserted at top of agent function body
 
-  // -1. Streaming: stream response — replace _askAI with _askAIStream + async generator
-  if (node.streamResponse && ctx.lang !== 'python') {
+  // -1. Streaming: explicit opt-in with `stream response`, auto-disabled for structured output
+  //   stream response  → stream (unless has returning: which forces non-stream)
+  //   do not stream    → never stream
+  //   default (null)   → non-streaming (explicit > implicit)
+  let shouldStream = false;
+  if (node.streamResponse === true) {
+    // Check if any ask_ai call has structured output — can't stream JSON
+    let hasStructuredOutput = false;
+    (function checkStructured(nodes) {
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI && n.expression.schema?.length > 0) hasStructuredOutput = true;
+        if (n.body) checkStructured(n.body);
+        if (n.thenBranch) checkStructured(n.thenBranch);
+        if (n.otherwiseBranch) checkStructured(n.otherwiseBranch);
+      }
+    })(node.body);
+    shouldStream = !hasStructuredOutput;
+  }
+
+  if (shouldStream && ctx.lang !== 'python') {
     // Replace _askAI calls with _askAIStream (async generator)
     bodyCode = bodyCode.replace(
       /await _askAI\(([^)]*)\)/g,
@@ -2143,7 +2161,7 @@ function compileAgent(node, ctx, pad) {
   }
 
   // Final assembly — add _userId param for conversation/memory agents
-  const genStar = node.streamResponse ? '*' : '';
+  const genStar = shouldStream && ctx.lang !== 'python' ? '*' : '';
   const finalParam = (node.rememberConversation || node.rememberPreferences)
     ? (param ? `${param}, _userId` : '_userId')
     : param;
