@@ -6,3 +6,4 @@ apps/*/build/node_modules/
 apps/*/build/clear-data.json
 clear-data.json
 .clear-test-runner.*
+playground/.playground-build/
