@@ -752,8 +752,8 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         if (parsed.error) {
           errors.push({ line, message: parsed.error });
         } else {
-          targetValue = parsed.value;
-          body.push(targetNode(parsed.value, line));
+          targetValue = parsed.node.value;
+          body.push(parsed.node);
         }
         i++;
         continue;
@@ -2145,7 +2145,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
           i++;
           continue;
         }
-        if (parsed.isCrud) {
+        if (parsed.node) {
           body.push(parsed.node);
           i++;
           continue;
@@ -3706,7 +3706,7 @@ function parseLookUpAssignment(name, tokens, pos, line) {
       }
     }
   }
-  return { name, isCrud: true, node };
+  return { node };
 }
 
 // CRUD in assignment context: new_todo = save incoming as Todo
@@ -3732,7 +3732,7 @@ function parseSaveAssignment(name, tokens, pos, line) {
 
   const node = crudNode('save', variable, target, null, line);
   node.resultVar = name; // "new_todo = save incoming as Todo" -> resultVar is new_todo
-  return { name, isCrud: true, node };
+  return { node };
 }
 
 // =============================================================================
@@ -5030,29 +5030,29 @@ function parseTarget(tokens, line) {
 
   // Compound targets: "web and javascript backend", "web and python backend"
   if (phrase === 'web and javascript backend' || phrase === 'web and js backend') {
-    return { value: 'web_and_js_backend' };
+    return { node: targetNode('web_and_js_backend', line) };
   }
   if (phrase === 'web and python backend') {
-    return { value: 'web_and_python_backend' };
+    return { node: targetNode('web_and_python_backend', line) };
   }
   // Backend-only with language: "javascript backend", "python backend"
   if (phrase === 'javascript backend' || phrase === 'js backend') {
-    return { value: 'js_backend' };
+    return { node: targetNode('js_backend', line) };
   }
   if (phrase === 'python backend') {
-    return { value: 'python_backend' };
+    return { node: targetNode('python_backend', line) };
   }
 
   // Simple targets
   const targetToken = tokens[pos];
   const canonical = targetToken.canonical || targetToken.value;
   if (['web', 'backend', 'both'].includes(canonical)) {
-    return { value: canonical };
+    return { node: targetNode(canonical, line) };
   }
 
   // Handle "both frontend and backend" as alias
   if (canonical === 'both' || phrase.includes('frontend') && phrase.includes('backend')) {
-    return { value: 'both' };
+    return { node: targetNode('both', line) };
   }
 
   return { error: `"${targetToken.value}" isn't a platform Clear can build for — use web, backend, or both. Example: build for web and python backend` };
@@ -5581,7 +5581,7 @@ function parseAssignment(tokens, line) {
         }
       }
     }
-    return { name, isCrud: true, node };
+    return { node };
   }
 
   // Shorthand: "get todos from '/api/url'" -> named API fetch
