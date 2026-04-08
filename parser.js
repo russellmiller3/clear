@@ -161,6 +161,8 @@ export const NodeType = Object.freeze({
   ASK_AI: 'ask_ai',
   RUN_AGENT: 'run_agent',
   PARALLEL_AGENTS: 'parallel_agents',
+  PIPELINE: 'pipeline',
+  RUN_PIPELINE: 'run_pipeline',
 
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
@@ -1247,6 +1249,14 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       // Agent definition: agent 'Name' receiving varName:
       if (firstToken.value === 'agent' && tokens.length >= 2) {
         const result = parseAgent(lines, i, indent, errors);
+        if (result.node) body.push(result.node);
+        i = result.endIdx;
+        continue;
+      }
+
+      // Pipeline definition: pipeline 'Name' with var:
+      if (firstToken.value === 'pipeline' && tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
+        const result = parsePipeline(lines, i, indent, errors);
         if (result.node) body.push(result.node);
         i = result.endIdx;
         continue;
@@ -2467,6 +2477,70 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
   return {
     node: { type: NodeType.AGENT, name, receivingVar, body: result.body, line },
     endIdx: result.endIdx,
+  };
+}
+
+// Pipeline definition: pipeline 'Name' with var: + indented steps
+// Each step: varname with 'Agent Name'
+function parsePipeline(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  let pos = 1; // skip 'pipeline'
+
+  // Parse pipeline name (must be a quoted string)
+  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+    errors.push({ line, message: "pipeline needs a quoted name. Example: pipeline 'Process Data' with input:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const name = tokens[pos].value;
+  pos++;
+
+  // Parse 'with' keyword
+  if (pos >= tokens.length || (tokens[pos].value !== 'with' && tokens[pos].canonical !== 'with')) {
+    errors.push({ line, message: `pipeline '${name}' needs 'with' and an input variable. Example: pipeline '${name}' with data:` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  pos++;
+
+  // Parse input variable name
+  if (pos >= tokens.length || (tokens[pos].type !== TokenType.IDENTIFIER && tokens[pos].type !== TokenType.KEYWORD)) {
+    errors.push({ line, message: `pipeline '${name}' needs a variable name after 'with'. Example: pipeline '${name}' with data:` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const inputVar = tokens[pos].value;
+
+  // Parse indented steps — each step is an agent name in quotes
+  // Syntax: 'Agent Name' on each line (just the quoted name)
+  // OR: step_name with 'Agent Name' (if no synonym collision)
+  const pipelineIndent = lines[startIdx].indent;
+  const steps = [];
+  let j = startIdx + 1;
+  while (j < lines.length && lines[j].indent > pipelineIndent) {
+    const stepTokens = lines[j].tokens;
+    const stepLine = stepTokens.length > 0 ? stepTokens[0].line : j + 1;
+    if (stepTokens.length === 1 && stepTokens[0].type === TokenType.STRING) {
+      // Simple form: just 'Agent Name'
+      const agentName = stepTokens[0].value;
+      steps.push({ agentName, line: stepLine });
+    } else if (stepTokens.length >= 2 &&
+               stepTokens[stepTokens.length - 1].type === TokenType.STRING) {
+      // Any form ending in a quoted string — the last token is the agent name
+      // Handles: "step with 'Agent'" (3 tokens), "predict_with 'Agent'" (2 tokens from synonym collision)
+      const agentName = stepTokens[stepTokens.length - 1].value;
+      steps.push({ agentName, line: stepLine });
+    } else if (stepTokens.length > 0) {
+      errors.push({ line: stepLine, message: `Each pipeline step needs an agent name in quotes. Example: 'Classifier'` });
+    }
+    j++;
+  }
+
+  if (steps.length === 0) {
+    errors.push({ line, message: `pipeline '${name}' is empty — add steps inside. Example:\n  pipeline '${name}' with ${inputVar}:\n    'Classifier'\n    'Scorer'` });
+  }
+
+  return {
+    node: { type: NodeType.PIPELINE, name, inputVar, steps, line },
+    endIdx: j,
   };
 }
 
@@ -5242,6 +5316,25 @@ function parseAssignment(tokens, line) {
       hasSchema = true;
     }
     return { name, expression: { type: NodeType.ASK_AI, prompt, context, model, line }, hasSchema };
+  }
+
+  // Check for "call pipeline 'Name' with data" on the right side of assignment
+  // e.g. result = call pipeline 'Process Inbound' with data
+  // Must come BEFORE call 'Agent' check (call + STRING)
+  if (pos < tokens.length && tokens[pos].value === 'call' &&
+      pos + 1 < tokens.length && tokens[pos + 1].value === 'pipeline' &&
+      pos + 2 < tokens.length && tokens[pos + 2].type === TokenType.STRING) {
+    pos += 2; // skip 'call pipeline'
+    const pipelineName = tokens[pos].value;
+    pos++;
+    let argument = null;
+    if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
+      pos++;
+      const expr = parseExpression(tokens, pos, line);
+      if (expr.error) return { error: expr.error };
+      argument = expr.node;
+    }
+    return { name, expression: { type: NodeType.RUN_PIPELINE, pipelineName, argument, line } };
   }
 
   // Check for "call 'Agent Name' with data" on the right side of assignment

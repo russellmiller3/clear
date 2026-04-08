@@ -1956,6 +1956,30 @@ function _compileNodeInner(node, ctx) {
     case NodeType.AGENT:
       return compileAgent(node, ctx, pad);
 
+    case NodeType.PIPELINE: {
+      const fnName = 'pipeline_' + sanitizeName(node.name.toLowerCase().replace(/\s+/g, '_'));
+      const param = sanitizeName(node.inputVar);
+      if (ctx.lang === 'python') {
+        let code = `${pad}async def ${fnName}(${param}):\n`;
+        code += `${pad}    _pipe = ${param}\n`;
+        for (const step of node.steps) {
+          const agentFn = 'agent_' + sanitizeName(step.agentName.toLowerCase().replace(/\s+/g, '_'));
+          code += `${pad}    _pipe = await ${agentFn}(_pipe)\n`;
+        }
+        code += `${pad}    return _pipe`;
+        return code;
+      }
+      let code = `${pad}async function ${fnName}(${param}) {\n`;
+      code += `${pad}  let _pipe = ${param};\n`;
+      for (const step of node.steps) {
+        const agentFn = 'agent_' + sanitizeName(step.agentName.toLowerCase().replace(/\s+/g, '_'));
+        code += `${pad}  _pipe = await ${agentFn}(_pipe);\n`;
+      }
+      code += `${pad}  return _pipe;\n`;
+      code += `${pad}}`;
+      return code;
+    }
+
     case NodeType.PARALLEL_AGENTS: {
       const names = node.assignments.map(a => sanitizeName(a.name));
       const calls = node.assignments.map(a => exprToCode(a.expression, ctx));
@@ -3126,6 +3150,12 @@ export function exprToCode(expr, ctx) {
 
     case NodeType.RUN_AGENT: {
       const fnName = 'agent_' + sanitizeName(expr.agentName.toLowerCase().replace(/\s+/g, '_'));
+      const arg = expr.argument ? exprToCode(expr.argument, ctx) : '';
+      return `await ${fnName}(${arg})`;
+    }
+
+    case NodeType.RUN_PIPELINE: {
+      const fnName = 'pipeline_' + sanitizeName(expr.pipelineName.toLowerCase().replace(/\s+/g, '_'));
       const arg = expr.argument ? exprToCode(expr.argument, ctx) : '';
       return `await ${fnName}(${arg})`;
     }
@@ -4876,7 +4906,7 @@ function compileToBrowserServer(body, errors) {
   for (const node of body) {
     if (node.type === NodeType.DATA_SHAPE || node.type === NodeType.ENDPOINT ||
         node.type === NodeType.AGENT || node.type === NodeType.ASSIGN ||
-        node.type === NodeType.FUNCTION_DEF) {
+        node.type === NodeType.FUNCTION_DEF || node.type === NodeType.PIPELINE) {
       const result = compileNode(node, ctx);
       if (result !== null) bodyLines.push(result);
     }
@@ -4934,7 +4964,7 @@ function compileToBrowserServer(body, errors) {
 
   // Compile agent functions (needed by endpoints that call agents)
   for (const node of body) {
-    if (node.type === NodeType.AGENT || node.type === NodeType.FUNCTION_DEF) {
+    if (node.type === NodeType.AGENT || node.type === NodeType.FUNCTION_DEF || node.type === NodeType.PIPELINE) {
       const result = compileNode(node, ctx);
       if (result !== null) lines.push(result);
     }

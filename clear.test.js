@@ -15484,5 +15484,151 @@ when user calls POST /api/test sending data:
   });
 });
 
+// =============================================================================
+// AGENT PIPELINES (Phase 77)
+// =============================================================================
+
+describe('Agent pipelines - parser', () => {
+  it('parses pipeline definition with steps', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receiving text:
+  send back text
+agent 'Scorer' receiving lead:
+  send back lead
+pipeline 'Process Inbound' with text:
+  classify with 'Classifier'
+  score with 'Scorer'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const pipeline = result.ast.body.find(n => n.type === 'pipeline');
+    expect(pipeline).toBeDefined();
+    expect(pipeline.name).toBe('Process Inbound');
+    expect(pipeline.inputVar).toBe('text');
+    expect(pipeline.steps).toHaveLength(2);
+    expect(pipeline.steps[0].agentName).toBe('Classifier');
+    expect(pipeline.steps[1].agentName).toBe('Scorer');
+  });
+
+  it('parses call pipeline in assignment', () => {
+    const src = `build for javascript backend
+agent 'Echo' receiving data:
+  send back data
+pipeline 'Simple' with data:
+  echo with 'Echo'
+when user calls POST /api/test sending data:
+  result = call pipeline 'Simple' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const assign = endpoint.body.find(n => n.type === 'assign');
+    expect(assign.expression.type).toBe('run_pipeline');
+    expect(assign.expression.pipelineName).toBe('Simple');
+  });
+
+  it('errors on empty pipeline', () => {
+    const src = `build for javascript backend
+pipeline 'Empty' with data:
+when user calls GET /api/test:
+  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes('empty'))).toBe(true);
+  });
+});
+
+describe('Agent pipelines - compiler', () => {
+  it('compiles pipeline to sequential await chain', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receiving text:
+  send back text
+agent 'Scorer' receiving lead:
+  send back lead
+agent 'Router' receiving scored:
+  send back scored
+pipeline 'Process' with text:
+  classify with 'Classifier'
+  score with 'Scorer'
+  route with 'Router'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function pipeline_process(text)');
+    expect(result.javascript).toContain('let _pipe = text');
+    expect(result.javascript).toContain('_pipe = await agent_classifier(_pipe)');
+    expect(result.javascript).toContain('_pipe = await agent_scorer(_pipe)');
+    expect(result.javascript).toContain('_pipe = await agent_router(_pipe)');
+    expect(result.javascript).toContain('return _pipe');
+  });
+
+  it('compiles call pipeline to await', () => {
+    const src = `build for javascript backend
+agent 'Echo' receiving data:
+  send back data
+pipeline 'Simple' with data:
+  echo with 'Echo'
+when user calls POST /api/test sending data:
+  result = call pipeline 'Simple' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('await pipeline_simple(');
+  });
+
+  it('compiles pipeline to Python', () => {
+    const src = `build for python backend
+agent 'Alpha' receiving data:
+  send back data
+agent 'Beta' receiving data:
+  send back data
+pipeline 'Flow' with data:
+  step1 with 'Alpha'
+  step2 with 'Beta'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('async def pipeline_flow(data)');
+    expect(result.python).toContain('_pipe = data');
+    expect(result.python).toContain('_pipe = await agent_alpha(_pipe)');
+  });
+
+  it('2-step pipeline (minimum)', () => {
+    const src = `build for javascript backend
+agent 'First' receiving data:
+  send back data
+agent 'Second' receiving data:
+  send back data
+pipeline 'Duo' with data:
+  step1 with 'First'
+  step2 with 'Second'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function pipeline_duo(data)');
+    expect(result.javascript).toContain('agent_first');
+    expect(result.javascript).toContain('agent_second');
+  });
+
+  it('E2E: 3-step pipeline with endpoint compiles', () => {
+    const src = `build for javascript backend
+agent 'Classify' receiving text:
+  send back text
+agent 'Score' receiving lead:
+  send back lead
+agent 'Route' receiving scored:
+  send back scored
+pipeline 'Inbound' with text:
+  classify with 'Classify'
+  score with 'Score'
+  route with 'Route'
+when user calls POST /api/inbound sending data:
+  result = call pipeline 'Inbound' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('pipeline_inbound');
+    // Pipeline is sequential — NO Promise.all, uses let _pipe chain
+    expect(result.javascript).toContain('let _pipe');
+    expect(result.javascript).toContain('await pipeline_inbound(');
+  });
+});
+
 run();
 

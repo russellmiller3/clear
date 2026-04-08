@@ -114,6 +114,7 @@ function validateForwardReferences(body, errors) {
       if (node.type === NodeType.FUNCTION_DEF) functionNames.add(node.name);
       if (node.type === NodeType.COMPONENT_DEF) functionNames.add(node.name);
       if (node.type === NodeType.AGENT) functionNames.add('agent_' + node.name.toLowerCase().replace(/\s+/g, '_'));
+      if (node.type === NodeType.PIPELINE) functionNames.add('pipeline_' + node.name.toLowerCase().replace(/\s+/g, '_'));
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         collectFunctions(node.body);
       }
