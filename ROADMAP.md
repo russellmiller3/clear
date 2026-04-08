@@ -23,10 +23,19 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28, 30-46b -- All Complete)
+## What's Built (Phases 1-28, 30-46b, 47 -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
 1337 tests, all passing.
+
+### Compiler Internal Refactor (Phase 47)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Parser dispatch tables | Done | 63/97 branches in CANONICAL_DISPATCH + RAW_DISPATCH Maps |
+| Normalized return types | Done | Removed isCrud wrapper, parseTarget returns { node } |
+| Unified compilation paths | Done | HTTP_REQUEST + RAW_QUERY: one function, two call sites |
+| Tokenizer preserves colons | Done | COLON token type, trailing stripped at token level |
+| resolveCanonical foundation | Done | Zone-based synonym resolution infrastructure |
 
 ### Core Language (Phase 1-3)
 | Feature | Status | Canonical Syntax |

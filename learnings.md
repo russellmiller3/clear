@@ -19,7 +19,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Parser / DSL Extension](#parser--dsl-extension-2026-03-17) | New keywords go BEFORE continuation logic |
 | [App Output Quality (Phase 29.1)](#session-app-output-quality-phase-291) | CSS reset kills Tailwind, context-aware rendering, single theme CSS, landing page presets |
 | [Session 7: Major Feature Sprint](#session-7-major-feature-sprint-2026-04-07) | Explicit > auto-inferred, synonym collisions in display, event delegation, file input read-only, phone test prevents jargon, OWASP security validators |
-| [Session 9: Error Translator + Silent Bug Guards](#session-9-error-translator--silent-bug-guards-2026-04-07) | _clearTry wrapping, _clearMap source map, blind agent testing, PUT data loss is systemic, Number("") returns 0, isSeedEndpoint ordering, runtime guards > compile-time guards |
+| [Session 10: Compiler Refactor](#session-10-compiler-internal-refactor-2026-04-08) | Dispatch tables eliminate ordering bugs, unified compilation paths prevent dual-path drift, tokenizer should never destroy information, Map handlers need exact behavior match |
 
 ---
 
@@ -234,3 +234,15 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **`auth` Substring Collision.** Test checking `not.toContain('auth')` broke when `_clearError` was added because it contains "Authentication required". Fix: check for the specific import string, not bare substring.
 - **Two HTTP_REQUEST Paths.** `call api` has two code paths: one in `_compileNodeInner` (statement) and one in `exprToCode` (expression/assignment). Both need `_clearCtx` for error context. Easy to fix one and miss the other.
 - **Research Validates Guard Priorities.** OWASP 2025, CWE Top 25, and CodeRabbit AI study (470 repos) all confirm: type coercion (#1 JS crash), wrong status codes (70% of API bugs), and null property access (#1 crash) are the top bug classes. Our guards address exactly these three.
+
+---
+
+## Session 10: Compiler Internal Refactor (2026-04-08)
+
+- **Dispatch Tables Eliminate Parser Ordering Bugs.** Replacing parseBlock's 97-branch if/else chain with `CANONICAL_DISPATCH` and `RAW_DISPATCH` Maps makes keyword dispatch order-independent. Adding a new keyword = adding one Map entry. Can't accidentally put it after the assignment check. 63 of 97 branches migrated; 34 complex routers remain as if/else.
+- **Raw Value vs Canonical: Two Maps, Not One.** 13 branches dispatch on `firstToken.value` (raw text), not `firstToken.canonical`. Examples: `database`, `chart`, `agent`, `script`, `store`, `restore`, `tab`, `when`, `toggle`, `background`. These words are either not in the synonym table or their canonical conflicts (e.g., `when` → `if`). Must use a separate `RAW_DISPATCH` Map, checked before `CANONICAL_DISPATCH`.
+- **Unified Compilation Prevents Dual-Path Drift.** HTTP_REQUEST had two implementations: statement path (in `_compileNodeInner`, 50 lines, has Python) and expression path (in `exprToCode`, 30 lines, JS-only). Bugs fixed in one missed the other. Extracting `compileHttpRequest()` called from both eliminates this class. Same for RAW_QUERY → `compileRawQueryExpr()`.
+- **Map Handler Behavior Must Match Exactly.** When migrating an if/else branch to a Map handler, copy the EXACT logic. Three bugs found: (1) `parseUpdateDatabase` returns `nodes` (plural), not `node`; (2) `guardNode()` takes `(condition, line, message)` — arg order matters; (3) `defineRoleNode()` requires a `body` arg even when empty. Always diff the old and new code.
+- **targetValue Needs Context Propagation.** The `target`/`build` handler sets `targetValue` — a local variable in parseBlock. Map handlers can't access local vars. Fix: handlers set `ctx._targetValue`, and the dispatch lookup propagates it back: `if (ctx._targetValue) targetValue = ctx._targetValue`.
+- **Tokenizer Should Strip At Token Level, Not String Level.** Stripping trailing colons via `trimmed.slice(0, -1)` destroyed route param colons. Fix: tokenize the full line (colons become COLON tokens), then `tokens.pop()` the trailing one. Mid-line colons preserved. Parser reads clean tokens, sub-parsers that read `lines[i].tokens` directly also get clean tokens.
+- **resolveCanonical() is the Foundation for Context-Sensitive Synonyms.** Zone-based synonym resolution (CRUD vs UI vs comparison) requires a single resolution point in the parser. `resolveCanonical(token, zone)` provides this. Currently identity behavior — full activation (changing tokenizer to defer single-word resolution) is the next step.

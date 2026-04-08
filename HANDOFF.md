@@ -1,4 +1,4 @@
-# Handoff — 2026-04-07 (Session 9)
+# Handoff — 2026-04-08 (Session 10)
 
 ## Current State
 - **Branch:** main
@@ -8,63 +8,42 @@
 
 ## What Was Done This Session
 
-### Phase 46: Runtime Error Translator
-- Implemented `_clearTry` (context-aware CRUD wrapping), `_clearError` (3-level debug output), `_clearMap` (conditional source map with table schemas + endpoint info)
-- `suggested_fix` generates minimal diffs for fixable errors (missing field → table location, missing auth → add_line_after)
-- PII auto-redaction in verbose mode. Python first-class with CLEAR_DEBUG-aware FastAPI formatting
-- Frontend fetch errors log `[clear:LINE file.clear]` to browser console
-- External API errors (Stripe/SendGrid/Twilio/call api) carry service-specific `_clearCtx`
-- Multi-file `_sourceFile` tagging in resolveModules
-- 50 blind-agent acceptance tests (AT-1 through AT-27 + 15 hard-bug + 8 guard-bug): all scored A or B
+### Compiler Internal Refactor (Phase 47)
+Five systemic fixes from learnings.md analysis. All internal-only — no language surface changes, identical compiled output.
 
-### Phase 46b: Silent Bug Guards
-- **enforceTypes()**: coerces numeric strings to numbers, rejects non-numeric for number fields
-- **validateForeignKeys()**: checks FK references exist in parent tables before insert
-- **Update 404**: db.update throws 404 when no record matches by id
-- **validateArithmetic()**: compile-time warning on balance/stock subtraction without guard
-- **validateFieldMismatch()**: compile-time warning when frontend field names don't match table schema
-- **validateCapacity()**: compile-time warning on insert into child of capacity table without guard
-- **Seed idempotency**: compiled seed endpoints use findOne-before-insert for unique fields
+1. **Parser Dispatch Tables** — Replaced parseBlock's 97-branch if/else waterfall with `CANONICAL_DISPATCH` (60 entries) and `RAW_DISPATCH` (2 entries) Maps. 63 branches migrated. Assignment is guaranteed last. Adding a new keyword = adding one Map entry.
 
-### Compiler Bugs Found by Blind Agents
-- Stripe/SendGrid/Twilio IIFE closing `)()` → `})()` (syntax error)
-- PUT endpoints returned partial data (no re-fetch after update)
-- Update path lacked `_pick` schema filtering (mass assignment vulnerability)
-- `isReactiveApp()` missed ON_PAGE_LOAD + table DISPLAY triggers
-- `createTable()` no-oped on existing tables → stale schemas from disk
-- `_validate` had no format matchers for time/phone/url
+2. **Normalized Return Types** — Removed `isCrud` wrapper from parser return types. `parseTarget` returns `{ node }` instead of `{ value }`. Callers check `parsed.node` instead of `parsed.isCrud`.
 
-## Key Decisions Made
+3. **Unified Compilation Paths** — Extracted `compileHttpRequest()` and `compileRawQueryExpr()` from compiler.js. Both statement and expression paths call the same function. No more dual-path drift.
 
-1. **Runtime guards > compile-time guards** — putting type enforcement, FK checks, and update-not-found in `runtime/db.js` covers ALL code paths. One fix, every app.
-2. **Blind agent testing as acceptance criteria** — the real test is: can a fresh agent fix the bug from the error + files alone? Not unit tests, not human review.
-3. **Research-backed priorities** — OWASP 2025, CWE Top 25, CodeRabbit AI study (470 repos) ranked the guards. Type coercion, wrong status codes, null access are the top 3.
-4. **`Number("")` returns 0** — empty strings must NOT silently coerce to 0 for non-required number fields. Guard skips empty/whitespace before coercion.
-5. **Compile-time warnings for business logic** — balance checks, capacity limits, and field mismatches are warnings, not errors. The compiler can't safely infer business rules.
+4. **Tokenizer Preserves Colons** — Colons tokenized as COLON tokens instead of stripped from raw strings. Trailing COLON (block opener) popped at token level. Mid-line colons preserved for route params. Added COLON, LBRACE, RBRACE to TokenType.
 
-## Known Issues / Bugs
+5. **resolveCanonical Foundation** — Added `resolveCanonical(token, zone)` function and `ZONE_OVERRIDES` definitions for ui, crud, and comparison contexts. Currently identity behavior — ready for full activation.
 
-- Browser server doesn't inline module endpoints from `use everything from`
-- `data from` synonym collision with variable name `data`
-- Single `_editing_id` shared across tables (edit mode collision in multi-table UIs)
+### Design Discussion
+- Wrote `docs/design-discussion-zero-deps-one-op.md` — analysis of why zero dependencies and one-op-per-line are the load-bearing walls of Clear's architecture
+- Created and red-teamed `plans/plan-compiler-refactor-04-08-2026.md`
 
-## Next Steps (Priority Order)
+## What's Not Done (deferred)
+- **Full context-sensitive synonyms:** Changing tokenizer to defer single-word synonym resolution to parser. Highest risk change — needs its own focused session. `resolveCanonical()` foundation is ready.
+- **Remaining 34 router branches:** Complex branches that check tokens[1+] (show, if, define, set, remove, respond, database, call_api, when). These have multi-condition logic that doesn't fit a simple Map entry.
 
-1. **Deploy playground to Vercel** — AI proxy ready, just needs `vercel deploy`
-2. **Client portal + admin dashboard templates** — complete Phase 43
-3. **Clear Cloud MVP** — hosted compile + deploy
-4. **Streaming iterators** — `for each line in stream file`
+## Key Architecture Decisions
+- **Two Maps, not one:** 13 branches dispatch on raw value (not canonical) because the word isn't in the synonym table or its canonical conflicts. `RAW_DISPATCH` checked before `CANONICAL_DISPATCH`.
+- **targetValue propagation:** Map handlers set `ctx._targetValue`, dispatch lookup propagates back to parseBlock local variable.
+- **Token-level colon stripping:** Tokenizer pops trailing COLON after tokenizeLine(), before storing in result array. All sub-parsers see clean tokens.
 
-## Files to Read First
-
-| File | Why |
-|------|-----|
-| `HANDOFF.md` | This file — session context |
-| `CLAUDE.md` | Startup reading order, all rules, 1337 tests |
-| `learnings.md` | Scan TOC — Session 9 has error translator + guard gotchas |
-| `ROADMAP.md` | Phases 30-46b complete, 1337 tests |
-| `plans/plan-silent-bug-guards-04-07-2026.md` | Guard implementation details |
+## Known Issues
+- Browser server may 404 on some routes (untested in real browser)
+- `ui's Card()` in web target crashes buildHTML (namespaced component calls)
+- DaisyUI v5 themes use `--color-base-100: oklch(%)` format
 
 ## Resume Prompt
-
-> Read HANDOFF.md, CLAUDE.md. 1337 tests passing. 33 apps. Phases 30-46b complete. Phase 46: runtime error translator (_clearTry, _clearError, _clearMap, suggested_fix, PII redaction, Python first-class). Phase 46b: silent bug guards (type enforcement, FK check, update-not-found 404, balance/field/capacity warnings, seed idempotency). 50 blind-agent acceptance tests all A/B. 6 compiler bugs found and fixed by agents. Next: deploy playground to Vercel, client portal templates, Clear Cloud MVP.
+```
+Read HANDOFF.md, learnings.md, intent.md. Session 10 completed compiler
+internal refactor (Phase 47): dispatch tables, normalized returns, unified
+compilation, tokenizer colon preservation, resolveCanonical foundation.
+1337 tests passing. Next: full context-sensitive synonyms (Phase 2
+deepening) or new feature work from ROADMAP.md.
+```
