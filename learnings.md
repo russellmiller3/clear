@@ -20,6 +20,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [App Output Quality (Phase 29.1)](#session-app-output-quality-phase-291) | CSS reset kills Tailwind, context-aware rendering, single theme CSS, landing page presets |
 | [Session 7: Major Feature Sprint](#session-7-major-feature-sprint-2026-04-07) | Explicit > auto-inferred, synonym collisions in display, event delegation, file input read-only, phone test prevents jargon, OWASP security validators |
 | [Session 9: Error Translator + Silent Bug Guards](#session-9-error-translator--silent-bug-guards-2026-04-07) | _clearTry wrapping, _clearMap source map, blind agent testing, PUT data loss is systemic, Number("") returns 0, isSeedEndpoint ordering, runtime guards > compile-time guards |
+| [Session 10: Agent Tier 7 — Phase 80](#session-10-agent-tier-7--phase-80-parallel-agents-2026-04-08) | `do` is synonym for `then`, `log` is synonym for `show`, `run` is synonym for `raw_run`, reserved words as variable names, parseBlock indent vs line indent, validator must know new node types |
 
 ---
 
@@ -234,3 +235,19 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **`auth` Substring Collision.** Test checking `not.toContain('auth')` broke when `_clearError` was added because it contains "Authentication required". Fix: check for the specific import string, not bare substring.
 - **Two HTTP_REQUEST Paths.** `call api` has two code paths: one in `_compileNodeInner` (statement) and one in `exprToCode` (expression/assignment). Both need `_clearCtx` for error context. Easy to fix one and miss the other.
 - **Research Validates Guard Priorities.** OWASP 2025, CWE Top 25, and CodeRabbit AI study (470 repos) all confirm: type coercion (#1 JS crash), wrong status codes (70% of API bugs), and null property access (#1 crash) are the top bug classes. Our guards address exactly these three.
+
+---
+
+## Session 10: Agent Tier 7 — Phase 80 Parallel Agents (2026-04-08)
+
+### Synonym Traps (three collisions discovered during planning)
+- **`do` is a synonym for `then`.** `do these at the same time:` tokenized as `then these at the same time:`. Fix: register `do these at the same time` as a 6-word multi-word synonym (`do_parallel`). Longest-match greedy wins over single-word `do` → `then`. Always check the SYNONYM_TABLE for single-word collisions before designing new syntax.
+- **`run` is a synonym for `raw_run` (SQL execution).** The roadmap syntax `run these at the same time:` and `run pipeline` both break. `run` maps to `raw_run` at synonyms.js line 350. Fix: changed to `do these at the same time:` and `call pipeline`.
+- **`log` is a synonym for `show`.** `log agent decisions` tokenized as `show agent decisions`, parsed as a SHOW statement. Fix: changed to `track agent decisions`. Pattern: any common English verb is probably already a synonym for something.
+- **`can` is already a synonym.** Used in RLS role definitions (`can read`, `can update`). Safe in this case because RLS parsing only happens inside `define role` blocks, not in main `parseBlock`. But it required explicit verification.
+
+### Parser / Compiler Patterns
+- **`parseBlock`'s `indent` variable is the PARENT block indent, not the current line's indent.** When parsing children of a new block statement (like `do these at the same time:`), use `lines[i].indent` (the actual line indent) not `indent` (the parseBlock context). Getting this wrong means children at the wrong depth are grabbed.
+- **Reserved words can't be test variable names.** `a`, `an`, `the` are reserved keywords (canonical type `keyword`). `a = call 'Agent' with data` fails in `parseAssignment` because `a` at pos 0 is treated as an article and skipped. Use descriptive names (`alpha`, `sentiment`, `result`) in tests, not single letters.
+- **Validator must register variables from new node types.** Adding `PARALLEL_AGENTS` to the parser and compiler isn't enough — the validator's `checkNode` function tracks defined variables via `localDefined.add()`. Without a `case NodeType.PARALLEL_AGENTS:` block, variables declared in the parallel block are "undefined" to the validator, causing false forward-reference errors.
+- **Bump SYNONYM_VERSION and update the version test.** Adding any synonym requires: (1) increment `SYNONYM_VERSION` in synonyms.js, (2) update the version assertion in clear.test.js. The test exists specifically to catch stale synonym caches.
