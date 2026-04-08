@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BookIt</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="flex h-screen overflow-hidden">
+    <div class="w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden">
+    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">BookIt</span></div>
+    <nav class="flex-1 overflow-y-auto py-3 px-3">
+      <ul class="menu menu-sm gap-0.5 p-0">
+    <li><a class="text-sm">Calendar</a></li>
+    <li><a class="text-sm">Services</a></li>
+    <li><a class="text-sm">Clients</a></li>
+      </ul>
+    </nav>
+    </div>
+    <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0">
+    <h1 class="text-base font-semibold text-base-content">Upcoming Bookings</h1>
+    </div>
+    <div class="flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5">
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">New Booking</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Client Name</legend>
+      <input id="input_client_name" class="input input-bordered w-full" type="text" placeholder="Client Name">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Service</legend>
+      <input id="input_service" class="input input-bordered w-full" type="select" placeholder="Service">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Date</legend>
+      <input id="input_date" class="input input-bordered w-full" type="text" placeholder="Date">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Time</legend>
+      <input id="input_time" class="input input-bordered w-full" type="text" placeholder="Time">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Notes</legend>
+      <textarea id="input_notes" class="textarea textarea-bordered w-full" placeholder="Notes" rows="6"></textarea>
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Book">Book</button>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">All Bookings</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Bookings">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Bookings</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Bookings_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    <div class="bg-base-200 rounded-box p-5">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Manage Services</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Service Name</legend>
+      <input id="input_service_name" class="input input-bordered w-full" type="text" placeholder="Service Name">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Duration (min)</legend>
+      <input id="input_duration" class="input input-bordered w-full" type="number" placeholder="Duration (min)">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Price</legend>
+      <input id="input_price" class="input input-bordered w-full" type="number" placeholder="Price">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Add_Service">Add Service</button>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Services">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Services</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Services_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Services: name*, duration, price, created_at_date (line 24)
+   Clients: name*, email*!, phone, created_at_date (line 30)
+   Bookings: client_name*, service_name*, date*, time*, status, notes, created_at_date (line 36)
+
+ ENDPOINTS:
+   POST /api/seed (line 54)
+   GET /api/services (line 82)
+   POST /api/services [auth] (line 86)
+   DELETE /api/services/:id [auth] (line 95)
+   GET /api/clients (line 101)
+   POST /api/clients [auth] (line 105)
+   GET /api/bookings (line 115)
+   POST /api/bookings [auth] (line 119)
+   DELETE /api/bookings/:id [auth] (line 130)
+
+ PAGES:
+   'BookIt' at / (line 136)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "BookIt";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  client_name: "",
+  service: "",
+  date: "",
+  time: "",
+  notes: "",
+  service_name: "",
+  duration: 0,
+  price: 0,
+  bookings: null,
+  services: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:22
+  // Database: local memory (JSON file backup)
+  {
+    const _tableEl = document.getElementById('output_Bookings_table');
+    const _data = _state.bookings;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["client_name","service_name","date","time","status"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td class="text-right">' + '<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>' + '</td>' + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Services_table');
+    const _data = _state.services;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","duration","price"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td class="text-right">' + '<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>' + '</td>' + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_client_name').value = _state.client_name;
+  document.getElementById('input_service').value = _state.service;
+  document.getElementById('input_date').value = _state.date;
+  document.getElementById('input_time').value = _state.time;
+  document.getElementById('input_notes').value = _state.notes;
+  document.getElementById('input_service_name').value = _state.service_name;
+  document.getElementById('input_duration').value = _state.duration;
+  document.getElementById('input_price').value = _state.price;
+}
+
+// --- Input listeners ---
+document.getElementById('input_client_name').addEventListener('input', function(e) {
+  _state.client_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_service').addEventListener('input', function(e) {
+  _state.service = e.target.value;
+  _recompute();
+});
+document.getElementById('input_date').addEventListener('input', function(e) {
+  _state.date = e.target.value;
+  _recompute();
+});
+document.getElementById('input_time').addEventListener('input', function(e) {
+  _state.time = e.target.value;
+  _recompute();
+});
+document.getElementById('input_notes').addEventListener('input', function(e) {
+  _state.notes = e.target.value;
+  _recompute();
+});
+document.getElementById('input_service_name').addEventListener('input', function(e) {
+  _state.service_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_duration').addEventListener('input', function(e) {
+  _state.duration = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_price').addEventListener('input', function(e) {
+  _state.price = Number(e.target.value) || 0;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Book').addEventListener('click', async function() {
+    if (_state.client_name === '' || _state.client_name == null) { _toast('client name is required', 'error'); return; }
+    if (_state.service === '' || _state.service == null) { _toast('service is required', 'error'); return; }
+    if (_state.date === '' || _state.date == null) { _toast('date is required', 'error'); return; }
+    if (_state.time === '' || _state.time == null) { _toast('time is required', 'error'); return; }
+    if (_state.notes === '' || _state.notes == null) { _toast('notes is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Book');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/bookings", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: _state.client_name, service: _state.service, date: _state.date, time: _state.time, notes: _state.notes }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.bookings = await fetch("/api/bookings").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/bookings]', e.message); return _state.bookings; });
+    _state.client_name = "";
+    _state.notes = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Add_Service').addEventListener('click', async function() {
+    if (_state.service_name === '' || _state.service_name == null) { _toast('service name is required', 'error'); return; }
+    if (_state.duration === '' || _state.duration == null) { _toast('duration is required', 'error'); return; }
+    if (_state.price === '' || _state.price == null) { _toast('price is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Service');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/services", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ service_name: _state.service_name, duration: _state.duration, price: _state.price }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.services = await fetch("/api/services").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/services]', e.message); return _state.services; });
+    _state.service_name = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- Table action handlers for bookings ---
+document.getElementById('output_Bookings_table').addEventListener('click', async function(e) {
+  const deleteBtn = e.target.closest('[data-delete-id]');
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.deleteId;
+    await fetch("/api/bookings/" + id, { method: 'DELETE' }).catch(e => console.error(e));
+    _state.bookings = await fetch("/api/bookings").then(r => r.json()).catch(e => { console.error(e); return _state.bookings; });
+    _recompute();
+    return;
+  }
+});
+
+// --- Table action handlers for services ---
+document.getElementById('output_Services_table').addEventListener('click', async function(e) {
+  const deleteBtn = e.target.closest('[data-delete-id]');
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.deleteId;
+    await fetch("/api/services/" + id, { method: 'DELETE' }).catch(e => console.error(e));
+    _state.services = await fetch("/api/services").then(r => r.json()).catch(e => { console.error(e); return _state.services; });
+    _recompute();
+    return;
+  }
+});
+
+// --- On Page Load ---
+(async () => {
+  { const _r = await fetch("/api/seed", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nothing: _state.nothing }) });
+    if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+  _state.bookings = await fetch("/api/bookings").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/bookings]', e.message); return _state.bookings; });
+  _state.services = await fetch("/api/services").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/services]', e.message); return _state.services; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+build for javascript backend
+database is local memory
+
+create a Contacts table:
+  name, required
+
+when user calls DELETE /api/contacts/:id:
+  delete the Contact with this id
+  send back 'deleted'

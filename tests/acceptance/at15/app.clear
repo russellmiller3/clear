@@ -1,0 +1,5 @@
+build for web
+page 'Dashboard' at '/':
+  on page load get deals from '/api/deals'
+  chart 'Pipeline' as bar showing deals
+  display deals as table showing title, value

@@ -5,13 +5,59 @@
 // PURPOSE: Clear is a programming language designed for AI to WRITE and humans
 // to READ. This tokenizer turns Clear source text into tokens for the parser.
 //
-// Handles:
-//   - Multi-word synonym matching (greedy, longest-first)
-//   - Resolving synonyms to canonical forms
-//   - Number literals, string literals, operators, identifiers
-//   - Possessive access (person's name)
-//   - Trailing colons stripped (visual block openers like "try:" or "repeat 5 times:")
-//   - Comments (# to end of line)
+// !! MAINTENANCE RULE: Update this diagram whenever you change the tokenizer's
+// !! data flow, add new token types, or change synonym resolution.
+//
+// ARCHITECTURE:
+//
+//   Clear Source Text
+//       │
+//       ▼
+//   ┌─────────────────────────────────────────────────────┐
+//   │  tokenize(source)                                    │
+//   │                                                      │
+//   │  1. Split into lines (preserving indent depth)       │
+//   │  2. For each line:                                   │
+//   │     ┌──────────────────────────────────────────┐     │
+//   │     │  tokenizeLine(text)                      │     │
+//   │     │                                          │     │
+//   │     │  a. Skip comments (# to EOL)             │     │
+//   │     │  b. Match multi-word synonyms FIRST      │     │
+//   │     │     (greedy, longest match wins)          │     │
+//   │     │  c. Resolve single-word synonyms          │     │
+//   │     │  d. Parse: strings, numbers, operators,   │     │
+//   │     │     possessives (person's name),          │     │
+//   │     │     identifiers, parens, brackets         │     │
+//   │     │  e. Strip trailing colons (block openers) │     │
+//   │     └──────────────────────────────────────────┘     │
+//   │                                                      │
+//   │  Output: [{ indent, tokens: [Token] }]               │
+//   └─────────────────────────────────────────────────────┘
+//       │
+//       ▼
+//   Array of TokenizedLine → fed to parser.js
+//
+// TOKEN TYPES:
+//   KEYWORD ...... canonical keyword (resolved from synonym table)
+//   IDENTIFIER ... variable or function name
+//   NUMBER ....... numeric literal (JS number, not string)
+//   STRING ....... string literal (single or double quotes)
+//   OPERATOR ..... arithmetic: + - * / % **
+//   ASSIGN ....... =
+//   COMPARE ...... > < >= <=
+//   LPAREN/RPAREN  ( )
+//   LBRACKET/RBRACKET  [ ]
+//   COMMA ........ ,
+//   POSSESSIVE ... 's (person's → object + member)
+//   COLON ........ : (block opener, stripped from line end)
+//   DOT .......... . (decimal or member access)
+//
+// KEY INVARIANT: Synonyms are resolved during tokenization. By the time the
+// parser sees tokens, every keyword is in canonical form. The parser never
+// sees "define", "create", "make" — it sees the canonical equivalent.
+//
+// DEPENDENCIES: synonyms.js (REVERSE_LOOKUP, MULTI_WORD_SYNONYMS)
+// DEPENDENTS:   parser.js (consumes tokenized output)
 //
 // =============================================================================
 
@@ -35,6 +81,9 @@ export const TokenType = Object.freeze({
   POSSESSIVE: 'possessive',  // 's (person's name)
   COMMENT: 'comment',       // # rest of line
   NEWLINE: 'newline',       // End of line
+  COLON: 'colon',           // : (block opener or route param)
+  LBRACE: 'lbrace',         // {
+  RBRACE: 'rbrace',         // }
 });
 
 // Single-character token map
@@ -199,6 +248,25 @@ export function tokenizeLine(line, lineNumber = 1) {
       continue;
     }
 
+    // Colon: block opener or route param — parser decides meaning
+    if (line[pos] === ':') {
+      tokens.push({ type: TokenType.COLON, value: ':', line: lineNumber, column: pos + 1 });
+      pos++;
+      continue;
+    }
+
+    // Braces: interpolation — parser decides meaning
+    if (line[pos] === '{') {
+      tokens.push({ type: TokenType.LBRACE, value: '{', line: lineNumber, column: pos + 1 });
+      pos++;
+      continue;
+    }
+    if (line[pos] === '}') {
+      tokens.push({ type: TokenType.RBRACE, value: '}', line: lineNumber, column: pos + 1 });
+      pos++;
+      continue;
+    }
+
     // Single-character tokens
     if (SINGLE_CHAR_TOKENS[line[pos]]) {
       tokens.push({
@@ -330,11 +398,13 @@ export function tokenize(source) {
       else break;
     }
 
-    // Strip trailing colon — purely visual block opener (like Python)
-    // "try:" → "try", "repeat 5 times:" → "repeat 5 times"
-    const cleaned = trimmed.endsWith(':') ? trimmed.slice(0, -1).trimEnd() : trimmed;
-
-    const tokens = tokenizeLine(cleaned, i + 1);
+    // Tokenize the full line — colons are preserved as COLON tokens.
+    // Strip trailing COLON (block opener) at tokenizer level so all parsers
+    // see a clean token array. Mid-line colons (route params) are preserved.
+    const tokens = tokenizeLine(trimmed, i + 1);
+    if (tokens.length > 0 && tokens[tokens.length - 1].type === TokenType.COLON) {
+      tokens.pop();
+    }
     result.push({ tokens, indent, raw: trimmed });
   }
   return result;

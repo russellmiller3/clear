@@ -12,6 +12,107 @@
 // Errors are first-class: every error message tells the user what to DO,
 // not what they did wrong. Every error includes an example.
 //
+// !! MAINTENANCE RULE: Update this diagram AND the TOC whenever you add,
+// !! remove, or move a section. Use section names (not line numbers).
+//
+// ARCHITECTURE:
+//
+//   Tokenized Lines (from tokenizer.js)
+//       │
+//       ▼
+//   ┌──────────────────────────────────────────────────────┐
+//   │  parse(source)                                        │
+//   │                                                       │
+//   │  1. tokenize(source) → lines[]                        │
+//   │  2. parseBlock(lines, 0, 0) → AST body[]              │
+//   │     ┌──────────────────────────────────────────┐      │
+//   │     │  parseBlock(lines, startLine, indent)    │      │
+//   │     │                                          │      │
+//   │     │  For each line at this indent level:     │      │
+//   │     │    Match first token against patterns:   │      │
+//   │     │                                          │      │
+//   │     │    ┌─ build for → TARGET                 │      │
+//   │     │    ├─ theme → THEME                      │      │
+//   │     │    ├─ database is → DATABASE_DECL        │      │
+//   │     │    ├─ create a X table → DATA_SHAPE      │      │
+//   │     │    ├─ when user calls → ENDPOINT         │      │
+//   │     │    ├─ page 'X' at → PAGE                 │      │
+//   │     │    ├─ agent 'X' → AGENT                  │      │
+//   │     │    ├─ define function → FUNCTION_DEF     │      │
+//   │     │    ├─ if/while/repeat/for → CONTROL FLOW │      │
+//   │     │    ├─ save/look up/delete → CRUD         │      │
+//   │     │    ├─ send back → RESPOND                │      │
+//   │     │    ├─ validate → VALIDATE                │      │
+//   │     │    ├─ 'Label' is a → ASK_FOR (input)     │      │
+//   │     │    ├─ display X as → DISPLAY             │      │
+//   │     │    ├─ button 'X' → BUTTON                │      │
+//   │     │    ├─ X = expr → ASSIGN                  │      │
+//   │     │    └─ (many more — see TOC)              │      │
+//   │     │                                          │      │
+//   │     │  Indented lines → recursive parseBlock   │      │
+//   │     └──────────────────────────────────────────┘      │
+//   │                                                       │
+//   │  Output: { body: [ASTNode], errors: [{line, msg}] }   │
+//   └──────────────────────────────────────────────────────┘
+//       │
+//       ▼
+//   AST → fed to validator.js then compiler.js
+//
+// KEY INVARIANTS:
+//   - Every node has a .type (NodeType enum) and .line (source line number)
+//   - Page/section/endpoint/function nodes have .body (child nodes)
+//   - DATA_SHAPE nodes have .fields (array of field definitions)
+//   - CRUD nodes have .operation, .target, .variable, .condition
+//   - Parser sets .ui metadata on UI nodes (pre-computed HTML attributes)
+//   - Parser NEVER generates code — that's the compiler's job
+//
+// DEPENDENCIES: tokenizer.js (tokenize function)
+// DEPENDENTS:   validator.js (validates AST), compiler.js (compiles AST)
+//
+//
+// !! MAINTENANCE RULE: Update this TOC whenever you add, remove, or move
+// !! a section. Use section names (not line numbers) since lines drift.
+//
+// TABLE OF CONTENTS:
+//   AST NODE TYPES ..................... NodeType enum + builder helpers
+//   PARSER ............................ parse(), parseConfigBlock(), parseBlock()
+//   BLOCK-LEVEL PARSERS ............... parseComponentDef, parseFunctionDef, parseAgent,
+//                                      parseMatch, parseIfBlock, parseRepeatLoop,
+//                                      parseForEachLoop, parseWhileLoop
+//   USE / IMPORT MODULES .............. parseUse()
+//   PAGE DECLARATION .................. parsePage()
+//   SECTION ........................... parseSection()
+//   STYLE DEF ......................... parseStyleDef()
+//   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
+//   STATIC CONTENT ELEMENTS ........... parseContent()
+//   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
+//   CRUD OPERATIONS ................... parseSave, parseRemoveFrom, parseDefineAs,
+//                                      parseLookUpAssignment, parseSaveAssignment
+//   TEST BLOCKS ....................... parseTestDef(), parseExpect()
+//   ASK FOR (legacy) .................. parseAskFor()
+//   DISPLAY ........................... parseDisplay() — includes "with delete/edit"
+//   CHART ............................. parseChart() — ECharts (line, bar, pie, area)
+//   BUTTON ............................ parseButton()
+//   ENDPOINT .......................... parseEndpoint()
+//   ADVANCED FEATURES ................. parseStream, parseBackground, parseSubscribe,
+//                                      parseUpdateDatabase, parseMigration, parseWait
+//   FILE UPLOADS & EXTERNAL APIS ...... parseAcceptFile, parseExternalFetch
+//   BILLING & PAYMENTS ................ parseCheckout, parseUsageLimit
+//   WEBHOOKS & OAUTH .................. parseWebhook, parseOAuthConfig
+//   INPUT VALIDATION .................. parseValidateBlock, parseFieldRule,
+//                                      parseRespondsWithBlock, parseRateLimit
+//   RESPOND ........................... parseRespond()
+//   MATH-STYLE FUNCTION DEFS .......... parseMathStyleFunction()
+//   TRY / HANDLE ...................... parseTryHandle()
+//   INCREASE / DECREASE ............... parseIncDec()
+//   OBJECT DEFINITION ................. tryParseObjectDef()
+//   LINE-LEVEL PARSERS ................ parseTarget, parseAssignment, parseIfThen,
+//                                      parseStatementInline
+//   EXPRESSION PARSER ................. parseExpression, parseExprPrec, parsePrimary,
+//                                      parseListLiteral, parseEachExpression,
+//                                      parseFunctionCall
+//   OPERATOR HELPERS .................. getOperatorKey, normalizeOperator, findCanonical
+//
 // =============================================================================
 
 import { tokenize, TokenType } from './tokenizer.js';
@@ -76,6 +177,7 @@ export const NodeType = Object.freeze({
   PAGE: 'page',
   ASK_FOR: 'ask_for',
   DISPLAY: 'display',
+  CHART: 'chart',
   BUTTON: 'button',
 
   // Layout (Phase 7)
@@ -121,6 +223,10 @@ export const NodeType = Object.freeze({
   ACCEPT_FILE: 'accept_file',
   EXTERNAL_FETCH: 'external_fetch',
 
+  // External API Calls (Phase 45)
+  HTTP_REQUEST: 'http_request',
+  SERVICE_CALL: 'service_call',
+
   // Advanced features (Phase 20)
   STREAM: 'stream',
   BACKGROUND: 'background',
@@ -134,6 +240,11 @@ export const NodeType = Object.freeze({
   LIST_SORT: 'list_sort',
 
   ON_PAGE_LOAD: 'on_page_load',
+  TRANSACTION: 'transaction',
+  ON_CHANGE: 'on_change',
+  RETRY: 'retry',
+  TIMEOUT: 'timeout',
+  RACE: 'race',
   MATCH: 'match',
   MATCH_WHEN: 'match_when',
   MAP_GET: 'map_get',
@@ -333,6 +444,7 @@ function askForNode(variable, inputType, label, line) {
   let htmlType = 'text';
   let tag = 'input';
   if (baseType === 'number' || baseType === 'percent') htmlType = 'number';
+  else if (baseType === 'file') htmlType = 'file';
   else if (baseType === 'yes/no') { htmlType = 'checkbox'; tag = 'input'; }
   else if (baseType === 'long text') { htmlType = 'textarea'; tag = 'textarea'; }
   else if (baseType === 'choice') { htmlType = 'select'; tag = 'select'; }
@@ -608,6 +720,507 @@ function parseConfigBlock(lines, startIdx, parentIndent) {
   return { config, endIdx: j };
 }
 
+// =============================================================================
+// SYNONYM RESOLUTION — context-aware canonical lookup
+// =============================================================================
+// Phase 2 foundation: resolveCanonical() provides a single point for synonym
+// resolution. Currently delegates to the tokenizer's REVERSE_LOOKUP (same
+// behavior as before). Future: zone-based resolution where 'delete' means
+// different things in CRUD vs UI contexts.
+
+// Zone-specific synonym overrides.
+// When a zone is active, these take precedence over the tokenizer's canonical.
+// Currently unused — the tokenizer still resolves all synonyms.
+// To activate: change tokenizer to emit raw words, then call resolveCanonical()
+// with the appropriate zone in each parser function.
+const ZONE_OVERRIDES = {
+  ui: {
+    // In UI context (display table actions), 'delete' means action button, not CRUD
+    // Currently handled by parser guard: checks 'remove' canonical, emits 'delete' action
+  },
+  crud: {
+    // In CRUD context, 'delete' means remove from database
+    // This is the tokenizer's default behavior (delete -> remove)
+  },
+  comparison: {
+    // In comparison context, 'is' means equals (==), not assignment
+    // Already context-sensitive in the parser
+  },
+};
+
+function resolveCanonical(token, _zone) {
+  // Currently returns the tokenizer-resolved canonical (identity behavior).
+  // When zones are activated, this will check ZONE_OVERRIDES[zone] first.
+  return token.canonical || null;
+}
+
+// =============================================================================
+// DISPATCH TABLES — Map-based keyword dispatch for parseBlock
+// =============================================================================
+// Handlers take { lines, i, indent, tokens, line, errors, body } and return
+// the new value of i, or undefined to fall through to the if/else chain.
+// Assignment is NEVER in these maps — it's always the last resort in parseBlock.
+
+// Canonical-keyword handlers (keyed on firstToken.canonical)
+const CANONICAL_DISPATCH = new Map([
+  // --- Simple single-line nodes ---
+  ['log_requests', (ctx) => { ctx.body.push({ type: NodeType.LOG_REQUESTS, line: ctx.line }); return ctx.i + 1; }],
+  ['allow_cors', (ctx) => { ctx.body.push({ type: NodeType.ALLOW_CORS, line: ctx.line }); return ctx.i + 1; }],
+  ['break', (ctx) => { ctx.body.push(breakNode(ctx.line)); return ctx.i + 1; }],
+  ['continue', (ctx) => { ctx.body.push(continueNode(ctx.line)); return ctx.i + 1; }],
+  ['requires_auth', (ctx) => { ctx.body.push(requiresAuthNode(ctx.line)); return ctx.i + 1; }],
+  ['needs_login', (ctx) => { ctx.body.push({ type: NodeType.REQUIRES_AUTH, line: ctx.line }); return ctx.i + 1; }],
+  ['target', (ctx) => {
+    const parsed = parseTarget(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else { ctx._targetValue = parsed.node.value; ctx.body.push(parsed.node); }
+    return ctx.i + 1;
+  }],
+  ['build', (ctx) => {
+    const parsed = parseTarget(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else { ctx._targetValue = parsed.node.value; ctx.body.push(parsed.node); }
+    return ctx.i + 1;
+  }],
+  ['connect_to_database', (ctx) => {
+    const config = {};
+    let j = ctx.i + 1;
+    while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+      const cfgTokens = ctx.lines[j].tokens;
+      if (cfgTokens.length >= 3) {
+        const key = cfgTokens[0].value;
+        const val = cfgTokens.slice(2).map(t => t.value).join('');
+        config[key] = val;
+      }
+      j++;
+    }
+    ctx.body.push({ type: NodeType.CONNECT_DB, config, line: ctx.line });
+    return j;
+  }],
+  ['raw_run', (ctx) => {
+    let qPos = 1;
+    if (qPos < ctx.tokens.length && ctx.tokens[qPos].type === TokenType.STRING) {
+      const sql = ctx.tokens[qPos].value;
+      qPos++;
+      let params = null;
+      if (qPos < ctx.tokens.length && (ctx.tokens[qPos].value === 'with' || ctx.tokens[qPos].canonical === 'with')) {
+        qPos++;
+        const expr = parseExpression(ctx.tokens, qPos, ctx.line);
+        if (!expr.error) params = expr.node;
+      }
+      ctx.body.push({ type: NodeType.RAW_QUERY, sql, params, variable: null, operation: 'run', line: ctx.line });
+    }
+    return ctx.i + 1;
+  }],
+  ['charge_via_stripe', (ctx) => {
+    const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+    ctx.body.push({ type: NodeType.SERVICE_CALL, service: 'stripe', config, line: ctx.line });
+    return endIdx;
+  }],
+  ['send_sms_via_twilio', (ctx) => {
+    const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+    ctx.body.push({ type: NodeType.SERVICE_CALL, service: 'twilio', config, line: ctx.line });
+    return endIdx;
+  }],
+  ['configure_email', (ctx) => {
+    const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+    ctx.body.push({ type: NodeType.CONFIGURE_EMAIL, config, line: ctx.line });
+    return endIdx;
+  }],
+  ['save_csv', (ctx) => {
+    const parsed = parseSaveCsv(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['append_to_file', (ctx) => {
+    const parsed = parseAppendToFile(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['requires_role', (ctx) => {
+    let role = 'user';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
+      role = ctx.tokens[1].value;
+    } else if (ctx.tokens.length > 1 && (ctx.tokens[1].type === TokenType.IDENTIFIER || ctx.tokens[1].type === TokenType.KEYWORD)) {
+      role = ctx.tokens[1].value;
+    }
+    ctx.body.push(requiresRoleNode(role, ctx.line));
+    return ctx.i + 1;
+  }],
+  ['when_user_calls', (ctx) => {
+    const parsed = parseEndpoint(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['on_method', (ctx) => {
+    const parsed = parseEndpoint(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['send_back', (ctx) => {
+    const parsed = parseRespond(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['go_to', (ctx) => {
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
+      url = ctx.tokens[1].value;
+    }
+    ctx.body.push({ type: NodeType.NAVIGATE, url, line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['theme', (ctx) => {
+    if (ctx.tokens.length < 2) {
+      ctx.errors.push({ line: ctx.line, message: "theme needs a name — try: theme 'midnight', theme 'ivory', or theme 'nova'" });
+      return ctx.i + 1;
+    }
+    const nameToken = ctx.tokens[1];
+    const themeName = nameToken.value.replace(/^['"]|['"]$/g, '');
+    const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss'];
+    if (!validThemes.includes(themeName)) {
+      ctx.errors.push({ line: ctx.line, message: `'${themeName}' isn't a theme Clear knows — try: ${validThemes.join(', ')}` });
+    } else {
+      ctx.body.push({ type: NodeType.THEME, name: themeName, line: ctx.line });
+    }
+    return ctx.i + 1;
+  }],
+  ['define_role', (ctx) => {
+    if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) {
+      ctx.errors.push({ line: ctx.line, message: "define role needs a name. Example: define role 'admin':" });
+      return ctx.i + 1;
+    }
+    const roleName = ctx.tokens[1].value;
+    const permissions = [];
+    let j = ctx.i + 1;
+    while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+      const permTokens = ctx.lines[j].tokens;
+      if (permTokens.length >= 2 && permTokens[0].canonical === 'can') {
+        const action = permTokens.slice(1).map(t => t.value).join(' ');
+        permissions.push(action);
+      }
+      j++;
+    }
+    ctx.body.push(defineRoleNode(roleName, permissions, [], ctx.line));
+    return j;
+  }],
+  ['guard', (ctx) => {
+    let endPos = ctx.tokens.length;
+    let guardMessage = null;
+    for (let k = ctx.tokens.length - 1; k > 1; k--) {
+      if (ctx.tokens[k].type === TokenType.STRING && k > 0 && ctx.tokens[k-1].canonical === 'or') {
+        guardMessage = ctx.tokens[k].value;
+        endPos = k - 1;
+        break;
+      }
+    }
+    const result = parseExpression(ctx.tokens, 1, ctx.line, endPos);
+    if (result.error) {
+      ctx.errors.push({ line: ctx.line, message: result.error });
+    } else {
+      ctx.body.push(guardNode(result.node, ctx.line, guardMessage));
+    }
+    return ctx.i + 1;
+  }],
+  ['on_page_load', (ctx) => {
+    // Inline form: "on page load get todos from '/api/todos'"
+    if (ctx.tokens.length > 1) {
+      const restTokens = ctx.tokens.slice(1);
+      const firstRest = restTokens[0];
+      if (firstRest && (firstRest.canonical === 'get_from' || firstRest.canonical === 'get_key')) {
+        const fromIdx = restTokens.findIndex(t => t.value === 'from');
+        if (fromIdx > 0 && fromIdx + 1 < restTokens.length && restTokens[fromIdx + 1].type === TokenType.STRING) {
+          const targetVar = fromIdx > 1 ? restTokens[1].value : 'response';
+          const url = restTokens[fromIdx + 1].value;
+          ctx.body.push({ type: NodeType.ON_PAGE_LOAD, body: [
+            { type: NodeType.API_CALL, method: 'GET', url, targetVar, fields: [], line: ctx.line }
+          ], line: ctx.line });
+          return ctx.i + 1;
+        }
+      }
+    }
+    // Block form
+    const { body: loadBody, endIdx: loadEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+    ctx.body.push({ type: NodeType.ON_PAGE_LOAD, body: loadBody, line: ctx.line });
+    return loadEnd;
+  }],
+  ['create_pdf', (ctx) => {
+    let pathExpr;
+    if (ctx.tokens.length >= 2 && ctx.tokens[1].type === TokenType.STRING) {
+      pathExpr = { type: NodeType.LITERAL_STRING, value: ctx.tokens[1].value, line: ctx.line };
+    } else if (ctx.tokens.length >= 2 && ctx.tokens[1].type === TokenType.IDENTIFIER) {
+      pathExpr = { type: NodeType.VARIABLE_REF, name: ctx.tokens[1].value, line: ctx.line };
+    } else {
+      ctx.errors.push({ line: ctx.line, message: "create pdf needs a file path. Example: create pdf 'report.pdf':" });
+      return ctx.i + 1;
+    }
+    const block = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+    ctx.body.push({ type: NodeType.CREATE_PDF, path: pathExpr, content: block.body, line: ctx.line });
+    return block.endIdx;
+  }],
+  ['post_to', (ctx) => {
+    const methodMap = { post_to: 'POST', get_from: 'GET', put_to: 'PUT', delete_from: 'DELETE' };
+    const method = methodMap[ctx.tokens[0].canonical];
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['get_from', (ctx) => {
+    const method = 'GET';
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['put_to', (ctx) => {
+    const method = 'PUT';
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['delete_from', (ctx) => {
+    const method = 'DELETE';
+    let url = '';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['sort_by', (ctx) => {
+    if (ctx.tokens.length < 3) return undefined;
+    let byPos = -1;
+    for (let k = 1; k < ctx.tokens.length; k++) {
+      if (ctx.tokens[k].canonical === 'by') { byPos = k; break; }
+    }
+    if (byPos > 0 && byPos + 1 < ctx.tokens.length) {
+      const listName = ctx.tokens[1].value;
+      const field = ctx.tokens[byPos + 1].value;
+      const descending = ctx.tokens.some(t => t.value === 'descending' || t.value === 'desc');
+      ctx.body.push({ type: NodeType.LIST_SORT, list: listName, field, descending, line: ctx.line });
+      return ctx.i + 1;
+    }
+    return undefined;
+  }],
+  ['deploy_to', (ctx) => {
+    let platform = 'vercel';
+    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) {
+      platform = ctx.tokens[1].value;
+    } else if (ctx.tokens.length > 1 && (ctx.tokens[1].type === TokenType.IDENTIFIER || ctx.tokens[1].type === TokenType.KEYWORD)) {
+      platform = ctx.tokens[1].value;
+    }
+    ctx.body.push(deployNode(platform, ctx.line));
+    return ctx.i + 1;
+  }],
+
+  // --- Single-line parse-function handlers ---
+  ['return', (ctx) => {
+    const expr = parseExpression(ctx.tokens, 1, ctx.line);
+    if (expr.error) ctx.errors.push({ line: ctx.line, message: expr.error });
+    else ctx.body.push(returnNode(expr.node, ctx.line));
+    return ctx.i + 1;
+  }],
+  ['write_file', (ctx) => {
+    const parsed = parseWriteFile(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['save_to', (ctx) => {
+    const parsed = parseSave(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['remove_from', (ctx) => {
+    const parsed = parseRemoveFrom(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['wait_kw', (ctx) => {
+    const parsed = parseWait(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['expect', (ctx) => {
+    const parsed = parseExpect(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['rate_limit', (ctx) => {
+    const parsed = parseRateLimit(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['increase', (ctx) => {
+    const parsed = parseIncDec(ctx.tokens, ctx.line, 'increase');
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['decrease', (ctx) => {
+    const parsed = parseIncDec(ctx.tokens, ctx.line, 'decrease');
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+
+  // --- Multi-line parse-function handlers ---
+  ['repeat', (ctx) => {
+    const parsed = parseRepeatLoop(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['for_each', (ctx) => {
+    const parsed = parseForEachLoop(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['while', (ctx) => {
+    const parsed = parseWhileLoop(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['try', (ctx) => {
+    const parsed = parseTryHandle(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['use', (ctx) => {
+    const parsed = parseUse(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['page', (ctx) => {
+    const parsed = parsePage(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['section', (ctx) => {
+    const parsed = parseSection(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['style', (ctx) => {
+    const parsed = parseStyleDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['ask_for', (ctx) => {
+    const parsed = parseAskFor(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['button', (ctx) => {
+    const parsed = parseButton(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['test', (ctx) => {
+    const parsed = parseTestDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['match_kw', (ctx) => {
+    const parsed = parseMatch(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['stream', (ctx) => {
+    const parsed = parseStream(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['subscribe_to', (ctx) => {
+    const parsed = parseSubscribe(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['update_database', (ctx) => {
+    const parsed = parseUpdateDatabase(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.nodes) { for (const n of parsed.nodes) ctx.body.push(n); }
+    return parsed.endIdx;
+  }],
+  ['migration_kw', (ctx) => {
+    const parsed = parseMigration(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['accept_file', (ctx) => {
+    const parsed = parseAcceptFile(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['data_from', (ctx) => {
+    const parsed = parseExternalFetch(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['checkout', (ctx) => {
+    const parsed = parseCheckout(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['usage_limit', (ctx) => {
+    const parsed = parseUsageLimit(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['webhook', (ctx) => {
+    const parsed = parseWebhook(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['oauth', (ctx) => {
+    const parsed = parseOAuthConfig(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['validate', (ctx) => {
+    const parsed = parseValidateBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['responds_with', (ctx) => {
+    const parsed = parseRespondsWithBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+]);
+
+// Raw-value handlers (keyed on firstToken.value, for keywords not in synonym table)
+const RAW_DISPATCH = new Map([
+  ['store', (ctx) => {
+    if (ctx.tokens.length < 2) return undefined;
+    const varName = ctx.tokens[1].value;
+    let key = varName;
+    if (ctx.tokens.length >= 4 && (ctx.tokens[2].canonical === 'as_format' || ctx.tokens[2].value === 'as') && ctx.tokens[3].type === TokenType.STRING) {
+      key = ctx.tokens[3].value;
+    }
+    ctx.body.push({ type: NodeType.STORE, variable: varName, key, line: ctx.line });
+    return ctx.i + 1;
+  }],
+  ['restore', (ctx) => {
+    if (ctx.tokens.length < 2) return undefined;
+    const varName = ctx.tokens[1].value;
+    let key = varName;
+    if (ctx.tokens.length >= 4 && (ctx.tokens[2].canonical === 'as_format' || ctx.tokens[2].value === 'as') && ctx.tokens[3].type === TokenType.STRING) {
+      key = ctx.tokens[3].value;
+    }
+    ctx.body.push({ type: NodeType.RESTORE, variable: varName, key, line: ctx.line });
+    return ctx.i + 1;
+  }],
+]);
+
 function parseBlock(lines, startIdx, parentIndent, errors) {
   const body = [];
   let targetValue = null;
@@ -634,18 +1247,32 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Target declaration: "build for web" or "target: web"
-      if (firstToken.canonical === 'target' || firstToken.canonical === 'build') {
-        const parsed = parseTarget(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          targetValue = parsed.value;
-          body.push(targetNode(parsed.value, line));
+      // --- DISPATCH TABLE LOOKUP ---
+      // Try Map-based dispatch first (order-independent, O(1) lookup).
+      // Raw-value dispatch (for keywords not in synonym table or with canonical conflicts)
+      if (typeof firstToken.value === 'string') {
+        const rawHandler = RAW_DISPATCH.get(firstToken.value);
+        if (rawHandler) {
+          const ctx = { lines, i, indent, tokens, line, errors, body };
+          const newI = rawHandler(ctx);
+          if (newI !== undefined) { i = newI; continue; }
         }
-        i++;
-        continue;
       }
+      // Canonical dispatch (for synonym-resolved keywords)
+      if (firstToken.canonical) {
+        const canonHandler = CANONICAL_DISPATCH.get(firstToken.canonical);
+        if (canonHandler) {
+          const ctx = { lines, i, indent, tokens, line, errors, body };
+          const newI = canonHandler(ctx);
+          if (newI !== undefined) {
+            if (ctx._targetValue) targetValue = ctx._targetValue;
+            i = newI; continue;
+          }
+        }
+      }
+      // --- END DISPATCH TABLE LOOKUP ---
+
+      // target, build: handled by CANONICAL_DISPATCH
 
       // ---- ADAPTERS & CONFIG (database, email, scraper, pdf, ml) ----
 
@@ -668,78 +1295,79 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Production hardening directives
-      if (firstToken.canonical === 'log_requests') {
-        body.push({ type: NodeType.LOG_REQUESTS, line });
-        i++;
-        continue;
-      }
-      if (firstToken.canonical === 'allow_cors') {
-        body.push({ type: NodeType.ALLOW_CORS, line });
-        i++;
-        continue;
-      }
+      // log_requests + allow_cors: handled by CANONICAL_DISPATCH
 
-      // File I/O: write file 'path' with data
-      if (firstToken.canonical === 'write_file') {
-        const parsed = parseWriteFile(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
+      // write_file: handled by CANONICAL_DISPATCH
+
+      // connect_to_database: handled by CANONICAL_DISPATCH
+
+      // raw_run: handled by CANONICAL_DISPATCH
+
+      // External API call (standalone): call api 'url': + config block
+      if (firstToken.canonical === 'call_api') {
+        let urlNode;
+        if (tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
+          urlNode = literalString(tokens[1].value, line);
+        } else if (tokens.length >= 2) {
+          urlNode = variableRef(tokens[1].value, line);
         } else {
-          body.push(parsed.node);
+          errors.push({ line, message: "call api needs a URL. Example: call api 'https://api.example.com'" });
+          i++; continue;
         }
-        i++;
-        continue;
-      }
-
-      // Database: connect to database: + indented config
-      if (firstToken.canonical === 'connect_to_database') {
-        const config = {};
+        const config = { method: null, headers: [], body: null, timeout: null };
         let j = i + 1;
         while (j < lines.length && lines[j].indent > indent) {
           const cfgTokens = lines[j].tokens;
-          if (cfgTokens.length >= 3) {
-            const key = cfgTokens[0].value;
-            // skip 'is' or '=' (token index 1), reconstruct full value from remaining tokens
-            const val = cfgTokens.slice(2).map(t => t.value).join('');
-            config[key] = val;
+          if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
+          const key = cfgTokens[0].value?.toLowerCase();
+          if (key === 'method' && cfgTokens.length >= 3) {
+            const valIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+            if (valIdx >= 0) config.method = cfgTokens[valIdx].value;
+          } else if (key === 'header' && cfgTokens.length >= 4) {
+            const nameIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+            if (nameIdx >= 0) {
+              const headerName = cfgTokens[nameIdx].value;
+              const isIdx = cfgTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+              if (isIdx >= 0) {
+                const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+                if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
+              }
+            }
+          } else if (key === 'body' && cfgTokens.length >= 3) {
+            const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+            if (isIdx >= 0) {
+              const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+              if (!valExpr.error) config.body = valExpr.node;
+            }
+          } else if (key === 'timeout' && cfgTokens.length >= 3) {
+            const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
+            if (numIdx >= 0) {
+              const val = cfgTokens[numIdx].value;
+              let unit = 'seconds';
+              if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
+              config.timeout = { value: val, unit };
+            }
           }
           j++;
         }
-        body.push({ type: NodeType.CONNECT_DB, config, line });
+        body.push({ type: NodeType.HTTP_REQUEST, url: urlNode, config, line });
         i = j;
         continue;
       }
 
-      // Database: query 'SQL' with params  OR  run 'SQL' with params
-      if (firstToken.canonical === 'raw_query' || firstToken.canonical === 'raw_run') {
-        // Handled as assignment: results = query 'SQL' with params
-        // Standalone: run 'SQL' with params
-        if (firstToken.canonical === 'raw_run') {
-          let qPos = 1;
-          if (qPos < tokens.length && tokens[qPos].type === TokenType.STRING) {
-            const sql = tokens[qPos].value;
-            qPos++;
-            let params = null;
-            if (qPos < tokens.length && (tokens[qPos].value === 'with' || tokens[qPos].canonical === 'with')) {
-              qPos++;
-              const expr = parseExpression(tokens, qPos, line);
-              if (!expr.error) params = expr.node;
-            }
-            body.push({ type: NodeType.RAW_QUERY, sql, params, variable: null, operation: 'run', line });
-          }
-          i++;
-          continue;
-        }
-      }
-
-      // Email: configure email: + indented config
-      if (firstToken.canonical === 'configure_email') {
+      // charge_via_stripe, send_sms_via_twilio: handled by CANONICAL_DISPATCH
+      // send email via sendgrid: (must check BEFORE send email: SMTP)
+      if (firstToken.canonical === 'respond' &&
+          tokens.length >= 4 && tokens[1].value === 'email' &&
+          tokens[2].value === 'via' && tokens[3].value === 'sendgrid' &&
+          i + 1 < lines.length && lines[i + 1].indent > indent) {
         const { config, endIdx } = parseConfigBlock(lines, i + 1, indent);
-        body.push({ type: NodeType.CONFIGURE_EMAIL, config, line });
+        body.push({ type: NodeType.SERVICE_CALL, service: 'sendgrid', config, line });
         i = endIdx;
         continue;
       }
+
+      // needs_login, configure_email: handled by CANONICAL_DISPATCH
 
       // Email: send email: + indented config (NOT 'send email to URL' which is an API call)
       // Detect: first token canonical is 'respond' (send), second is 'email',
@@ -823,48 +1451,9 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       // PDF: create pdf 'path': + indented content elements
-      if (firstToken.canonical === 'create_pdf') {
-        // Next token should be the file path (string) or a variable
-        let pathExpr;
-        if (tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
-          pathExpr = { type: NodeType.LITERAL_STRING, value: tokens[1].value, line };
-        } else if (tokens.length >= 2 && tokens[1].type === TokenType.IDENTIFIER) {
-          pathExpr = { type: NodeType.VARIABLE_REF, name: tokens[1].value, line };
-        } else {
-          errors.push({ line, message: "create pdf needs a file path. Example: create pdf 'report.pdf':" });
-          i++;
-          continue;
-        }
-        // Parse indented content block
-        const block = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.CREATE_PDF, path: pathExpr, content: block.body, line });
-        i = block.endIdx;
-        continue;
-      }
+      // create_pdf: handled by CANONICAL_DISPATCH
 
-      // Data: save csv 'path' with data
-      if (firstToken.canonical === 'save_csv') {
-        const parsed = parseSaveCsv(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // File I/O: append to file 'path' with data
-      if (firstToken.canonical === 'append_to_file') {
-        const parsed = parseAppendToFile(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // save_csv, append_to_file: handled by CANONICAL_DISPATCH
 
       // ---- UI & DISPLAY (show, display, toast, content elements) ----
 
@@ -884,6 +1473,18 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
           if (tPos < tokens.length) variant = tokens[tPos].value.toLowerCase();
         }
         body.push({ type: NodeType.TOAST, message, variant, line });
+        i++;
+        continue;
+      }
+
+      // chart 'Title' as line showing data
+      if (firstToken.value === 'chart' && tokens.length >= 4 && tokens[1].type === TokenType.STRING) {
+        const parsed = parseChart(tokens, line);
+        if (parsed.error) {
+          errors.push({ line, message: parsed.error });
+        } else {
+          body.push(parsed.node);
+        }
         i++;
         continue;
       }
@@ -947,30 +1548,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       // Return statement
-      if (firstToken.canonical === 'return') {
-        const expr = parseExpression(tokens, 1, line);
-        if (expr.error) {
-          errors.push({ line, message: expr.error });
-        } else {
-          body.push(returnNode(expr.node, line));
-        }
-        i++;
-        continue;
-      }
-
-      // Break statement
-      if (firstToken.canonical === 'break') {
-        body.push(breakNode(line));
-        i++;
-        continue;
-      }
-
-      // Continue statement
-      if (firstToken.canonical === 'continue') {
-        body.push(continueNode(line));
-        i++;
-        continue;
-      }
+      // return, break, continue: handled by CANONICAL_DISPATCH
 
       // "define component X receiving a, b:" (must be checked BEFORE define-as and function def)
       if (firstToken.canonical === 'define' && tokens.length >= 3 &&
@@ -1019,67 +1597,54 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Repeat loop: repeat <N> times
-      if (firstToken.canonical === 'repeat') {
-        const result = parseRepeatLoop(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
+      // repeat, for_each, while, try: handled by CANONICAL_DISPATCH
+
+      // Transaction: "as one operation:" — all-or-nothing database operations
+      if (firstToken.canonical === 'as_format' && tokens.length >= 2 &&
+          tokens[1].value === 'one' &&
+          tokens.some(t => t.value === 'operation')) {
+        const { body: txBody, endIdx: txEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.TRANSACTION, body: txBody, line });
+        i = txEnd;
         continue;
       }
 
-      // For-each loop: for each <var> in <iterable>
-      if (firstToken.canonical === 'for_each') {
-        const result = parseForEachLoop(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
+      // Retry: "retry 3 times:" — retry block up to N times on failure
+      if (firstToken.value === 'retry' && tokens.length >= 3) {
+        const count = typeof tokens[1].value === 'number' ? tokens[1].value : parseInt(tokens[1].value, 10) || 3;
+        const { body: retryBody, endIdx: retryEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.RETRY, count, body: retryBody, line });
+        i = retryEnd;
         continue;
       }
 
-      // While loop: while <condition>
-      if (firstToken.canonical === 'while') {
-        const result = parseWhileLoop(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Try/handle error handling
-      if (firstToken.canonical === 'try') {
-        const result = parseTryHandle(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Use/import module: use "helpers"
-      if (firstToken.canonical === 'use') {
-        const parsed = parseUse(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
+      // Timeout: "with timeout 5 seconds:" — cancel if block takes too long
+      if (firstToken.canonical === 'with' && tokens.length >= 3 &&
+          tokens[1].value === 'timeout') {
+        const amount = typeof tokens[2].value === 'number' ? tokens[2].value : parseInt(tokens[2].value, 10) || 5;
+        // Detect unit: seconds or minutes
+        let ms = amount * 1000; // default seconds
+        if (tokens.length >= 4 && (tokens[3].value === 'minutes' || tokens[3].value === 'minute')) {
+          ms = amount * 60000;
         }
-        i++;
+        const { body: timeoutBody, endIdx: timeoutEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.TIMEOUT, ms, body: timeoutBody, line });
+        i = timeoutEnd;
         continue;
       }
 
-      // Theme directive: theme 'midnight' / theme 'ivory' / theme 'nova'
-      if (firstToken.canonical === 'theme') {
-        if (tokens.length < 2) {
-          errors.push({ line, message: "theme needs a name — try: theme 'midnight', theme 'ivory', or theme 'nova'" });
-        } else {
-          const nameToken = tokens[1];
-          const themeName = nameToken.value.replace(/^['"]|['"]$/g, '');
-          const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss'];
-          if (!validThemes.includes(themeName)) {
-            errors.push({ line, message: `'${themeName}' isn't a theme Clear knows — try: ${validThemes.join(', ')}` });
-          } else {
-            body.push({ type: NodeType.THEME, name: themeName, line });
-          }
-        }
-        i++;
+      // Race: "first to finish:" — run multiple tasks, take first result
+      if (firstToken.value === 'first' && tokens.length >= 2 &&
+          tokens.some(t => t.value === 'finish')) {
+        const { body: raceBody, endIdx: raceEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.RACE, body: raceBody, line });
+        i = raceEnd;
         continue;
       }
+
+      // use: handled by CANONICAL_DISPATCH
+
+      // theme: handled by CANONICAL_DISPATCH
 
       // Script block: script: + indented raw JavaScript (escape hatch)
       if (firstToken.value === 'script') {
@@ -1099,65 +1664,10 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Browser storage: store X / restore X
-      if (firstToken.value === 'store' && tokens.length >= 2) {
-        const varName = tokens[1].value;
-        let key = varName;
-        // Optional: store X as 'custom-key'
-        if (tokens.length >= 4 && (tokens[2].canonical === 'as' || tokens[2].value === 'as') && tokens[3].type === TokenType.STRING) {
-          key = tokens[3].value;
-        }
-        body.push({ type: NodeType.STORE, variable: varName, key, line });
-        i++;
-        continue;
-      }
-
-      if (firstToken.value === 'restore' && tokens.length >= 2) {
-        const varName = tokens[1].value;
-        let key = varName;
-        if (tokens.length >= 4 && (tokens[2].canonical === 'as' || tokens[2].value === 'as') && tokens[3].type === TokenType.STRING) {
-          key = tokens[3].value;
-        }
-        body.push({ type: NodeType.RESTORE, variable: varName, key, line });
-        i++;
-        continue;
-      }
+      // store, restore: handled by RAW_DISPATCH
 
       // Style block: style card: + indented properties
-      if (firstToken.canonical === 'style') {
-        const result = parseStyleDef(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Page declaration: page "My App"
-      if (firstToken.canonical === 'page') {
-        const result = parsePage(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Section: section "Title" + indented body
-      if (firstToken.canonical === 'section') {
-        const result = parseSection(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Ask for (input): ask for price as number called "Price" (legacy)
-      if (firstToken.canonical === 'ask_for') {
-        const parsed = parseAskFor(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // style, page, section, ask_for: handled by CANONICAL_DISPATCH
 
       // Label-first input syntax:
       //   CANONICAL: 'Label' is a text input that saves to var
@@ -1231,13 +1741,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Button: button "Click Me" + indented body
-      if (firstToken.canonical === 'button') {
-        const result = parseButton(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // button: handled by CANONICAL_DISPATCH
 
       // Tab: tab 'Name': + indented content (inside a tabs section)
       if (firstToken.value === 'tab' && tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
@@ -1266,96 +1770,21 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Deploy: deploy to 'vercel'
-      if (firstToken.canonical === 'deploy_to') {
-        let platform = 'vercel';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          platform = tokens[1].value;
-        } else if (tokens.length > 1 && (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD)) {
-          platform = tokens[1].value;
-        }
-        body.push(deployNode(platform, line));
-        i++;
-        continue;
-      }
+      // deploy_to, requires_auth: handled by CANONICAL_DISPATCH
 
-      // Auth: requires auth
-      if (firstToken.canonical === 'requires_auth') {
-        body.push(requiresAuthNode(line));
-        i++;
-        continue;
-      }
+      // requires_role: handled by CANONICAL_DISPATCH
 
-      // Auth: requires role 'admin'
-      if (firstToken.canonical === 'requires_role') {
-        let role = 'user';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          role = tokens[1].value;
-        } else if (tokens.length > 1 && (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD)) {
-          role = tokens[1].value;
-        }
-        body.push(requiresRoleNode(role, line));
-        i++;
-        continue;
-      }
+      // define_role: handled by CANONICAL_DISPATCH
 
-      // Auth: define role 'admin': (block with permissions)
-      if (firstToken.canonical === 'define_role') {
-        let role = 'user';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          role = tokens[1].value;
-        } else if (tokens.length > 1 && (tokens[1].type === TokenType.IDENTIFIER || tokens[1].type === TokenType.KEYWORD)) {
-          role = tokens[1].value;
-        }
-        // Parse body lines directly — look for "can <action>" lines
-        const permissions = [];
-        let j = i + 1;
-        while (j < lines.length && lines[j].indent > indent) {
-          const bodyTokens = lines[j].tokens;
-          if (bodyTokens.length > 0 && bodyTokens[0].canonical === 'can') {
-            const permText = bodyTokens.slice(1).map(t => t.value).join(' ');
-            permissions.push(permText);
-          }
-          j++;
-        }
-        body.push(defineRoleNode(role, permissions, [], line));
-        i = j;
-        continue;
-      }
+      // guard: handled by CANONICAL_DISPATCH
 
-      // Auth: guard <expression>
-      if (firstToken.canonical === 'guard') {
-        // Check for "or 'message'" at the end
-        let endPos = tokens.length;
-        let guardMessage = null;
-        for (let k = tokens.length - 1; k > 1; k--) {
-          if (tokens[k].type === TokenType.STRING && k > 0 && tokens[k-1].canonical === 'or') {
-            guardMessage = tokens[k].value;
-            endPos = k - 1;
-            break;
-          }
-        }
-        const result = parseExpression(tokens, 1, line, endPos);
-        if (result.error) {
-          errors.push({ line, message: result.error });
-        } else {
-          body.push(guardNode(result.node, line, guardMessage));
-        }
-        i++;
-        continue;
-      }
-
-      // ---- BACKEND FEATURES (phases 16-20: real-time, billing, webhooks, validation) ----
-
-      // Phase 20: stream: + indented body
-      if (firstToken.canonical === 'stream') {
-        const result = parseStream(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // ---- BACKEND FEATURES ----
+      // stream, subscribe_to, update_database, migration_kw, wait_kw,
+      // accept_file, data_from, checkout, usage_limit, webhook, oauth,
+      // validate, responds_with, rate_limit: handled by CANONICAL_DISPATCH
 
       // Phase 20: background 'name': (or: background job 'name':)
+      // Not in dispatch — needs raw-value + canonical check
       if (firstToken.canonical === 'background_job'
           || (firstToken.value === 'background' && tokens.length > 1 && tokens[1].type === TokenType.STRING)) {
         const result = parseBackground(lines, i, indent, errors);
@@ -1364,129 +1793,23 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Phase 20: subscribe to 'channel':
-      if (firstToken.canonical === 'subscribe_to') {
-        const result = parseSubscribe(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
+      // Phase 45: when X notifies '/path': (natural webhook syntax)
+      // Not in dispatch — complex condition on tokens[2]
+      if (firstToken.value === 'when' &&
+          tokens.length >= 4 && tokens[2].value === 'notifies' &&
+          tokens[3].type === TokenType.STRING) {
+        const service = tokens[1].value;
+        const path = tokens[3].value;
+        const result = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.WEBHOOK, path, service, body: result.body, line });
         i = result.endIdx;
-        continue;
-      }
-
-      // "update database:" — friendly migration syntax
-      if (firstToken.canonical === 'update_database') {
-        const result = parseUpdateDatabase(lines, i, indent, errors);
-        if (result.nodes) {
-          for (const n of result.nodes) body.push(n);
-        }
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 20: migration 'name': (terse alias)
-      if (firstToken.canonical === 'migration_kw') {
-        const result = parseMigration(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 20: wait 100ms
-      if (firstToken.canonical === 'wait_kw') {
-        const parsed = parseWait(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
-
-      // Phase 19: accept file: + indented config
-      if (firstToken.canonical === 'accept_file') {
-        const result = parseAcceptFile(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 19: data from 'url': + indented config
-      if (firstToken.canonical === 'data_from') {
-        const result = parseExternalFetch(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 18: checkout 'Pro Plan':
-      if (firstToken.canonical === 'checkout') {
-        const result = parseCheckout(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 18: limit 'ai_generations':
-      if (firstToken.canonical === 'usage_limit') {
-        const result = parseUsageLimit(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 17: webhook '/path' signed with env('SECRET'):
-      if (firstToken.canonical === 'webhook') {
-        const result = parseWebhook(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 17: oauth 'github':
-      if (firstToken.canonical === 'oauth') {
-        const result = parseOAuthConfig(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 16: validate incoming: + indented field rules
-      if (firstToken.canonical === 'validate') {
-        const result = parseValidateBlock(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 16: responds with: + indented fields
-      if (firstToken.canonical === 'responds_with') {
-        const result = parseRespondsWithBlock(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // Phase 16: rate limit 10 per minute
-      if (firstToken.canonical === 'rate_limit') {
-        const parsed = parseRateLimit(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
         continue;
       }
 
       // ---- ENDPOINTS & DATA (REST routes, data shapes, CRUD, auth) ----
 
       // Backend endpoint: when user calls GET /api/users: (or: on GET /api/users:)
-      if (firstToken.canonical === 'when_user_calls' || firstToken.canonical === 'on_method') {
-        const result = parseEndpoint(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // when_user_calls, on_method: handled by CANONICAL_DISPATCH
 
       // "send X and Y to '/url'" — frontend API call (must check BEFORE send back)
       if (firstToken.canonical === 'respond' && tokens.length >= 3) {
@@ -1520,7 +1843,8 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       // Send back: send back data (or: respond with data)
-      if (firstToken.canonical === 'send_back' || firstToken.canonical === 'respond' || firstToken.canonical === 'respond_with') {
+      // send_back: handled by CANONICAL_DISPATCH
+      if (firstToken.canonical === 'respond' || firstToken.canonical === 'respond_with') {
         const parsed = parseRespond(tokens, line);
         if (parsed.error) {
           errors.push({ line, message: parsed.error });
@@ -1541,83 +1865,33 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Save: save X to Y
-      if (firstToken.canonical === 'save_to') {
-        const parsed = parseSave(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // save_to, remove_from: handled by CANONICAL_DISPATCH
 
-      // Remove from: remove from Users where ...
-      if (firstToken.canonical === 'remove_from') {
-        const parsed = parseRemoveFrom(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // test, match_kw: handled by CANONICAL_DISPATCH
 
-      // Test block: test 'name': + indented body
-      if (firstToken.canonical === 'test') {
-        const result = parseTestDef(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
+      // on_page_load: handled by CANONICAL_DISPATCH
 
-      // "match X:" — pattern matching block
-      if (firstToken.canonical === 'match_kw') {
-        const result = parseMatch(lines, i, indent, errors);
-        if (result.node) body.push(result.node);
-        i = result.endIdx;
-        continue;
-      }
-
-      // "on page load:" — runs code when page first loads
-      if (firstToken.canonical === 'on_page_load') {
-        // Inline form: "on page load get todos from '/api/todos'" (rest of line is the action)
-        if (tokens.length > 1) {
-          // Parse the remaining tokens as a statement by constructing a fake single-line block
-          const restTokens = tokens.slice(1);
-          // Check for "get IDENTIFIER from 'URL'" pattern inline
-          if (restTokens.length >= 3 && restTokens[0].canonical === 'get_key') {
-            const fromIdx = restTokens.findIndex(t => t.value === 'from');
-            if (fromIdx > 0 && fromIdx + 1 < restTokens.length && restTokens[fromIdx + 1].type === TokenType.STRING) {
-              const targetVar = fromIdx > 1 ? restTokens[1].value : 'response';
-              const url = restTokens[fromIdx + 1].value;
-              body.push({ type: NodeType.ON_PAGE_LOAD, body: [
-                { type: NodeType.API_CALL, method: 'GET', url, targetVar, fields: [], line }
-              ], line });
-              i++;
-              continue;
-            }
+      // "when X changes:" / "when X changes after 250ms:" — reactive input handler
+      if (firstToken.value === 'when' && tokens.length >= 3 && tokens[2].value === 'changes') {
+        const varName = tokens[1].value;
+        let debounceMs = 0;
+        // Check for "after N ms" or "after 250ms" debounce
+        if (tokens.length >= 5 && tokens[3].value === 'after') {
+          const delayVal = tokens[4].value;
+          if (typeof delayVal === 'number') {
+            debounceMs = delayVal;
+          } else {
+            const match = String(delayVal).match(/^(\d+)(ms)?$/);
+            if (match) debounceMs = parseInt(match[1], 10);
           }
         }
-        // Block form: "on page load:" + indented body
-        const { body: loadBody, endIdx: loadEnd } = parseBlock(lines, i + 1, indent, errors);
-        body.push({ type: NodeType.ON_PAGE_LOAD, body: loadBody, line });
-        i = loadEnd;
+        const { body: changeBody, endIdx: changeEnd } = parseBlock(lines, i + 1, indent, errors);
+        body.push({ type: NodeType.ON_CHANGE, variable: varName, debounceMs, body: changeBody, line });
+        i = changeEnd;
         continue;
       }
 
-      // "go to '/signup'" — page navigation
-      if (firstToken.canonical === 'go_to') {
-        let url = '';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          url = tokens[1].value;
-        }
-        body.push({ type: NodeType.NAVIGATE, url, line });
-        i++;
-        continue;
-      }
+      // go_to: handled by CANONICAL_DISPATCH
 
       // Frontend API calls:
       //   "send name and email to '/api/signup'" (canonical — friendly)
@@ -1636,19 +1910,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       //   "post to '/api/signup'" (terse alias)
-      //   "get from '/api/items'" (terse alias)
-      if (firstToken.canonical === 'post_to' || firstToken.canonical === 'get_from' ||
-          firstToken.canonical === 'put_to' || firstToken.canonical === 'delete_from') {
-        const methodMap = { post_to: 'POST', get_from: 'GET', put_to: 'PUT', delete_from: 'DELETE' };
-        const method = methodMap[firstToken.canonical];
-        let url = '';
-        if (tokens.length > 1 && tokens[1].type === TokenType.STRING) {
-          url = tokens[1].value;
-        }
-        body.push({ type: NodeType.API_CALL, method, url, fields: [], line });
-        i++;
-        continue;
-      }
+      // post_to, get_from, put_to, delete_from: handled by CANONICAL_DISPATCH
       // "add X to Y" — list push
       if (firstToken.canonical === 'add' && tokens.length >= 3) {
         // Find "to" keyword
@@ -1689,25 +1951,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         }
       }
 
-      // "sort X by Y" / "sort X by Y descending"
-      if (firstToken.canonical === 'sort_by' && tokens.length >= 3) {
-        let byPos = -1;
-        for (let k = 1; k < tokens.length; k++) {
-          if (tokens[k].canonical === 'by') { byPos = k; break; }
-        }
-        if (byPos > 0 && byPos + 1 < tokens.length) {
-          const listName = tokens[1].value;
-          const field = tokens[byPos + 1].value;
-          let descending = false;
-          if (byPos + 2 < tokens.length && tokens[byPos + 2].value &&
-              (tokens[byPos + 2].value.toLowerCase() === 'descending' || tokens[byPos + 2].value.toLowerCase() === 'desc')) {
-            descending = true;
-          }
-          body.push({ type: NodeType.LIST_SORT, list: listName, field, descending, line });
-          i++;
-          continue;
-        }
-      }
+      // sort_by: handled by CANONICAL_DISPATCH
 
       // "delete the Todo with this id" -> CRUD remove by URL param
       // Pattern: remove/delete [the] TABLE with/whose this PARAM
@@ -1750,17 +1994,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         }
       }
 
-      // Expect statement (inside test blocks)
-      if (firstToken.canonical === 'expect') {
-        const parsed = parseExpect(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // expect: handled by CANONICAL_DISPATCH
 
       // Check: "check X, otherwise error 'msg'" → guard node
       // `check` tokenizes as canonical `if`, so detect the `otherwise error` pattern here
@@ -1816,17 +2050,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         continue;
       }
 
-      // Increase/decrease: "increase counter by 1" → counter = counter + 1
-      if (firstToken.canonical === 'increase' || firstToken.canonical === 'decrease') {
-        const parsed = parseIncDec(tokens, line, firstToken.canonical);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
-      }
+      // increase, decrease: handled by CANONICAL_DISPATCH
 
       // Math-style function definition: total_value(item) = item's price * item's quantity
       // Detected BEFORE assignment because it looks like assignment but has (params) on the left
@@ -1861,7 +2085,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
           i++;
           continue;
         }
-        if (parsed.isCrud) {
+        if (parsed.node) {
           body.push(parsed.node);
           i++;
           continue;
@@ -1892,6 +2116,54 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
             errors.push({ line, message: "returning: needs at least one field. Example:\n  returning:\n    score (number)\n    reasoning" });
           }
           parsed.expression.schema = schema;
+          body.push(assignNode(parsed.name, parsed.expression, line));
+          i = j;
+          continue;
+        }
+        // API call with config block: "result = call api 'url':" + indented config
+        if (parsed.needsBlock && parsed.expression && parsed.expression.type === NodeType.HTTP_REQUEST) {
+          const config = { method: null, headers: [], body: null, timeout: null };
+          let j = i + 1;
+          while (j < lines.length && lines[j].indent > indent) {
+            const cfgTokens = lines[j].tokens;
+            if (cfgTokens.length === 0 || cfgTokens[0].type === TokenType.COMMENT) { j++; continue; }
+            const key = cfgTokens[0].value?.toLowerCase();
+            if (key === 'method' && cfgTokens.length >= 3) {
+              // method is 'POST'
+              const valIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+              if (valIdx >= 0) config.method = cfgTokens[valIdx].value;
+            } else if (key === 'header' && cfgTokens.length >= 4) {
+              // header 'Authorization' is 'Bearer ...'
+              const nameIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.STRING);
+              if (nameIdx >= 0) {
+                const headerName = cfgTokens[nameIdx].value;
+                // Parse the value expression (everything after 'is')
+                const isIdx = cfgTokens.findIndex((t, idx) => idx > nameIdx && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+                if (isIdx >= 0) {
+                  const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+                  if (!valExpr.error) config.headers.push({ name: headerName, value: valExpr.node });
+                }
+              }
+            } else if (key === 'body' && cfgTokens.length >= 3) {
+              // body is data_var
+              const isIdx = cfgTokens.findIndex((t, idx) => idx > 0 && (t.canonical === 'is' || t.type === TokenType.ASSIGN));
+              if (isIdx >= 0) {
+                const valExpr = parseExpression(cfgTokens, isIdx + 1, lines[j].tokens[0].line);
+                if (!valExpr.error) config.body = valExpr.node;
+              }
+            } else if (key === 'timeout' && cfgTokens.length >= 3) {
+              // timeout is 10 seconds
+              const numIdx = cfgTokens.findIndex((t, idx) => idx > 0 && t.type === TokenType.NUMBER);
+              if (numIdx >= 0) {
+                const val = cfgTokens[numIdx].value;
+                let unit = 'seconds';
+                if (numIdx + 1 < cfgTokens.length) unit = cfgTokens[numIdx + 1].value?.toLowerCase() || 'seconds';
+                config.timeout = { value: val, unit };
+              }
+            }
+            j++;
+          }
+          parsed.expression.config = config;
           body.push(assignNode(parsed.name, parsed.expression, line));
           i = j;
           continue;
@@ -2605,7 +2877,7 @@ function parseStyleDef(lines, startIdx, blockIndent, errors) {
 // 'Hourly Rate' as number input saves to rate
 
 function isInputType(token) {
-  return ['text_input', 'number_input', 'dropdown', 'checkbox', 'text_area'].includes(token.canonical);
+  return ['text_input', 'number_input', 'file_input', 'dropdown', 'checkbox', 'text_area'].includes(token.canonical);
 }
 
 // 'Label' is a text input that saves to var
@@ -2619,6 +2891,7 @@ function parseLabelIsInput(tokens, line) {
   let inputType = null;
   if (typeToken.canonical === 'text_input') inputType = 'text';
   else if (typeToken.canonical === 'number_input') inputType = 'number';
+  else if (typeToken.canonical === 'file_input') inputType = 'file';
   else if (typeToken.canonical === 'dropdown') inputType = 'choice';
   else if (typeToken.canonical === 'checkbox') inputType = 'yes/no';
   else if (typeToken.canonical === 'text_area') inputType = 'long text';
@@ -2954,6 +3227,7 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
   // Parse field lines and RLS policy lines directly from tokens
   const fields = [];
   const policies = [];
+  const compoundUniques = [];
   let j = startIdx + 1;
   while (j < lines.length && lines[j].indent > blockIndent) {
     const fieldTokens = lines[j].tokens;
@@ -2967,6 +3241,23 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
         (firstCanonical === 'role' && fieldTokens.length > 1 && fieldTokens[1].type === TokenType.STRING)) {
       const policy = parseRLSPolicy(fieldTokens, fieldLine);
       if (policy) policies.push(policy);
+      j++;
+      continue;
+    }
+
+    // Compound unique: "one per student and course"
+    // Means: only one row per combination of these fields
+    if (fieldTokens[0].value === 'one' && fieldTokens.length >= 3 && fieldTokens[1].value === 'per') {
+      const uniqueFields = [];
+      for (let u = 2; u < fieldTokens.length; u++) {
+        if (fieldTokens[u].value === 'and' || fieldTokens[u].value === ',') continue;
+        if (fieldTokens[u].type === TokenType.IDENTIFIER || fieldTokens[u].type === TokenType.KEYWORD) {
+          uniqueFields.push(fieldTokens[u].value);
+        }
+      }
+      if (uniqueFields.length >= 2) {
+        compoundUniques.push(uniqueFields);
+      }
       j++;
       continue;
     }
@@ -3087,7 +3378,9 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
     errors.push({ line, message: `The ${name} table is empty -- add fields inside. Example:\n  create a ${name} table:\n    name, required\n    email, required, unique` });
   }
 
-  return { node: dataShapeNode(name, fields, line, policies), endIdx: j };
+  const shapeNode = dataShapeNode(name, fields, line, policies);
+  if (compoundUniques.length > 0) shapeNode.compoundUniques = compoundUniques;
+  return { node: shapeNode, endIdx: j };
 }
 
 // =============================================================================
@@ -3102,16 +3395,25 @@ function parseSave(tokens, line) {
   const variable = tokens[pos].value;
   pos++;
 
-  // expect "to"
-  if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
+  // expect "to" or "as" connector: "save X to Y" or "save X as new Y"
+  let isInsert = false;
+  if (pos < tokens.length && (tokens[pos].canonical === 'as_format' || tokens[pos].canonical === 'as'
+      || (typeof tokens[pos].value === 'string' && tokens[pos].value.toLowerCase() === 'as'))) {
+    isInsert = true; // "save X as Y" = insert new record
     pos++;
+  } else if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
+    pos++; // "save X to Y" = update existing
   }
+  // Skip optional "new": "save X as new Model"
+  if (pos < tokens.length && tokens[pos].value === 'new') { isInsert = true; pos++; }
   if (pos >= tokens.length) {
     return { error: 'The save statement needs a target. Example: save new_user to Users' };
   }
   const target = tokens[pos].value;
 
-  return { node: crudNode('save', variable, target, null, line) };
+  const node = crudNode('save', variable, target, null, line);
+  if (isInsert) node.isInsert = true;
+  return { node };
 }
 
 function parseRemoveFrom(tokens, line) {
@@ -3332,7 +3634,19 @@ function parseLookUpAssignment(name, tokens, pos, line) {
 
   const node = crudNode('lookup', name, target, condition, line);
   node.lookupAll = lookupAll;
-  return { name, isCrud: true, node };
+  // Optional pagination: "page N, M per page"
+  if (pos < tokens.length && tokens[pos].value === 'page') {
+    pos++;
+    if (pos < tokens.length) {
+      node.page = tokens[pos].type === TokenType.NUMBER ? tokens[pos].value : tokens[pos].value;
+      pos++;
+      if (pos < tokens.length && tokens[pos].value === ',') pos++;
+      if (pos < tokens.length && tokens[pos].type === TokenType.NUMBER) {
+        node.perPage = tokens[pos].value;
+      }
+    }
+  }
+  return { node };
 }
 
 // CRUD in assignment context: new_todo = save incoming as Todo
@@ -3358,7 +3672,7 @@ function parseSaveAssignment(name, tokens, pos, line) {
 
   const node = crudNode('save', variable, target, null, line);
   node.resultVar = name; // "new_todo = save incoming as Todo" -> resultVar is new_todo
-  return { name, isCrud: true, node };
+  return { node };
 }
 
 // =============================================================================
@@ -3518,6 +3832,7 @@ function parseDisplay(tokens, line) {
     pos++;
     columns = [];
     while (pos < tokens.length) {
+      if (tokens[pos].canonical === 'with') break;
       if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
         columns.push(tokens[pos].value);
       }
@@ -3527,9 +3842,85 @@ function parseDisplay(tokens, line) {
     }
   }
 
+  // Optional: with delete / with edit / with delete and edit
+  let actions = null;
+  if (pos < tokens.length && tokens[pos].canonical === 'with') {
+    pos++;
+    actions = [];
+    while (pos < tokens.length) {
+      const canon = tokens[pos].canonical;
+      if (canon === 'remove') {
+        actions.push('delete');
+      } else if (tokens[pos].value.toLowerCase() === 'edit') {
+        actions.push('edit');
+      }
+      pos++;
+      if (pos < tokens.length && (tokens[pos].value === ',' || tokens[pos].value === 'and')) pos++;
+    }
+  }
+
   const node = displayNode(expr.node, format, label, line);
-  if (columns) node.columns = columns;
+  node.columns = columns;
+  if (actions && actions.length > 0) node.actions = actions;
   return { node };
+}
+
+// =============================================================================
+// CHART (Phase 30)
+// =============================================================================
+// CANONICAL: chart 'Title' as line showing data_var
+// Also: chart 'Title' as bar showing data_var
+//        chart 'Title' as pie showing data_var by field_name
+//        chart 'Title' as area showing data_var
+
+function parseChart(tokens, line) {
+  let pos = 1; // skip "chart"
+
+  // Title (required, string)
+  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+    return { error: 'Chart needs a title in quotes. Example: chart \'Revenue\' as line showing sales' };
+  }
+  const title = tokens[pos].value;
+  pos++;
+
+  // "as" <chartType> (required)
+  if (pos >= tokens.length || tokens[pos].canonical !== 'as_format') {
+    return { error: 'Chart needs a type after "as". Example: chart \'Revenue\' as line showing sales' };
+  }
+  pos++;
+  if (pos >= tokens.length) {
+    return { error: 'Chart needs a type (line, bar, pie, area). Example: chart \'Revenue\' as line showing sales' };
+  }
+  const chartType = tokens[pos].value.toLowerCase();
+  if (!['line', 'bar', 'pie', 'area'].includes(chartType)) {
+    return { error: `Unknown chart type '${chartType}'. Use: line, bar, pie, or area.` };
+  }
+  pos++;
+
+  // "showing" <data_var> (required)
+  if (pos >= tokens.length || tokens[pos].value !== 'showing') {
+    return { error: 'Chart needs "showing" followed by your data variable. Example: chart \'Revenue\' as line showing sales' };
+  }
+  pos++;
+  if (pos >= tokens.length) {
+    return { error: 'Chart needs a data variable after "showing". Example: chart \'Revenue\' as line showing sales' };
+  }
+  const dataVar = tokens[pos].value;
+  pos++;
+
+  // Optional: "by" <field> (for pie charts — groups by this field)
+  let groupBy = null;
+  if (pos < tokens.length && tokens[pos].value === 'by') {
+    pos++;
+    if (pos < tokens.length) {
+      groupBy = tokens[pos].value;
+      pos++;
+    }
+  }
+
+  const slug = sanitizeForId(title.replace(/\s+/g, '_'));
+  const ui = { tag: 'chart', id: `chart_${slug}`, label: title };
+  return { node: { type: NodeType.CHART, title, chartType, dataVar, groupBy, line, ui } };
 }
 
 // =============================================================================
@@ -4579,29 +4970,29 @@ function parseTarget(tokens, line) {
 
   // Compound targets: "web and javascript backend", "web and python backend"
   if (phrase === 'web and javascript backend' || phrase === 'web and js backend') {
-    return { value: 'web_and_js_backend' };
+    return { node: targetNode('web_and_js_backend', line) };
   }
   if (phrase === 'web and python backend') {
-    return { value: 'web_and_python_backend' };
+    return { node: targetNode('web_and_python_backend', line) };
   }
   // Backend-only with language: "javascript backend", "python backend"
   if (phrase === 'javascript backend' || phrase === 'js backend') {
-    return { value: 'js_backend' };
+    return { node: targetNode('js_backend', line) };
   }
   if (phrase === 'python backend') {
-    return { value: 'python_backend' };
+    return { node: targetNode('python_backend', line) };
   }
 
   // Simple targets
   const targetToken = tokens[pos];
   const canonical = targetToken.canonical || targetToken.value;
   if (['web', 'backend', 'both'].includes(canonical)) {
-    return { value: canonical };
+    return { node: targetNode(canonical, line) };
   }
 
   // Handle "both frontend and backend" as alias
   if (canonical === 'both' || phrase.includes('frontend') && phrase.includes('backend')) {
-    return { value: 'both' };
+    return { node: targetNode('both', line) };
   }
 
   return { error: `"${targetToken.value}" isn't a platform Clear can build for — use web, backend, or both. Example: build for web and python backend` };
@@ -4697,11 +5088,29 @@ function parseAssignment(tokens, line) {
     return { name, expression: literalList([], line) };
   }
 
-  // Check for "ask ai 'prompt'" on the right side of assignment
+  // Check for "call api 'url'" on the right side of assignment
+  // e.g. result = call api 'https://api.stripe.com/v1/charges'
+  if (pos < tokens.length && tokens[pos].canonical === 'call_api') {
+    pos++; // skip 'call api'
+    if (pos >= tokens.length) {
+      return { error: "call api needs a URL. Example: result = call api 'https://api.example.com'" };
+    }
+    // URL can be a string literal or a variable
+    let url;
+    if (tokens[pos].type === TokenType.STRING) {
+      url = literalString(tokens[pos].value, line);
+    } else {
+      url = variableRef(tokens[pos].value, line);
+    }
+    return { name, expression: { type: NodeType.HTTP_REQUEST, url, line }, needsBlock: true };
+  }
+
+  // Check for "ask ai/claude 'prompt'" on the right side of assignment
   // e.g. answer = ask ai 'Summarize this' with context_data
+  // e.g. answer = ask claude 'Summarize this' with context_data
   if (pos < tokens.length && tokens[pos].value === 'ask' &&
-      pos + 1 < tokens.length && tokens[pos + 1].value === 'ai') {
-    pos += 2; // skip 'ask ai'
+      pos + 1 < tokens.length && (tokens[pos + 1].value === 'ai' || tokens[pos + 1].value === 'claude')) {
+    pos += 2; // skip 'ask ai' / 'ask claude'
     if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
       return { error: "ask ai needs a quoted prompt. Example: answer = ask ai 'Summarize this' with data" };
     }
@@ -4710,24 +5119,34 @@ function parseAssignment(tokens, line) {
     let context = null;
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
       pos++;
-      // Parse context, but stop before 'returning' if present
-      const returningIdx = tokens.findIndex((t, i) => i >= pos && t.value === 'returning');
-      const endPos = returningIdx >= 0 ? returningIdx : undefined;
+      // Parse context, but stop before 'returning' or 'using' if present
+      const stopIdx = tokens.findIndex((t, i) => i >= pos && (t.value === 'returning' || t.value === 'using'));
+      const endPos = stopIdx >= 0 ? stopIdx : undefined;
       const expr = parseExpression(tokens, pos, line, endPos);
       if (expr.error) return { error: expr.error };
       context = expr.node;
       pos = expr.nextPos;
+    }
+    // Check for "using 'model-name'" clause
+    let model = null;
+    if (pos < tokens.length && tokens[pos].value === 'using') {
+      pos++;
+      if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+        model = tokens[pos].value;
+        pos++;
+      }
     }
     // Check for "returning:" at end of line (structured output schema follows as indented block)
     let hasSchema = false;
     if (pos < tokens.length && tokens[pos].value === 'returning') {
       hasSchema = true;
     }
-    return { name, expression: { type: NodeType.ASK_AI, prompt, context, line }, hasSchema };
+    return { name, expression: { type: NodeType.ASK_AI, prompt, context, model, line }, hasSchema };
   }
 
   // Check for "call 'Agent Name' with data" on the right side of assignment
   // e.g. result = call 'Lead Scorer' with lead_data
+  // NOTE: call api is handled above (canonical call_api), so this only matches call + STRING
   if (pos < tokens.length && tokens[pos].value === 'call' &&
       pos + 1 < tokens.length && tokens[pos + 1].type === TokenType.STRING) {
     pos++; // skip 'call'
@@ -5081,14 +5500,28 @@ function parseAssignment(tokens, line) {
   }
 
   // Shorthand: "get all Todos" -> CRUD lookup all
-  // e.g. all_todos = get all Todos
+  // Also: "get all Todos page 2, 25 per page" -> paginated lookup
   if (pos < tokens.length && tokens[pos].canonical === 'get_key' &&
       pos + 1 < tokens.length && tokens[pos + 1].value === 'all' &&
       pos + 2 < tokens.length) {
     const tableName = tokens[pos + 2].value;
     const node = crudNode('lookup', name, tableName, null, line);
     node.lookupAll = true;
-    return { name, isCrud: true, node };
+    // Optional pagination: "page N, M per page"
+    let pPos = pos + 3;
+    if (pPos < tokens.length && tokens[pPos].value === 'page') {
+      pPos++;
+      if (pPos < tokens.length) {
+        node.page = tokens[pPos].type === TokenType.NUMBER ? tokens[pPos].value : tokens[pPos].value;
+        pPos++;
+        // Skip comma
+        if (pPos < tokens.length && tokens[pPos].value === ',') pPos++;
+        if (pPos < tokens.length && tokens[pPos].type === TokenType.NUMBER) {
+          node.perPage = tokens[pPos].value;
+        }
+      }
+    }
+    return { node };
   }
 
   // Shorthand: "get todos from '/api/url'" -> named API fetch

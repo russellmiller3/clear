@@ -1,0 +1,4 @@
+build for web
+page 'App' at '/':
+  'Name' is a text input saved as a name
+  text name
