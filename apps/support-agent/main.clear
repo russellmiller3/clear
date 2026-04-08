@@ -1,0 +1,101 @@
+build for javascript backend
+database is local memory
+
+# --- Database ---
+
+create a Orders table:
+  email, required
+  product, required
+  status, default 'pending'
+  amount (number)
+
+create a FAQ table:
+  question, required
+  answer, required
+  category
+
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+
+# --- Tools ---
+
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+
+define function check_order_status(order_id):
+  order = look up Order where id is order_id
+  return order
+
+define function search_faq(query):
+  results = look up all FAQ where category is query
+  return results
+
+# --- Skills ---
+
+skill 'Order Management':
+  can: look_up_orders, check_order_status
+  instructions:
+    Always look up the customer's order before answering shipping questions.
+    Include the order number and status in your response.
+    If an order is delayed, apologize and offer to check again in 24 hours.
+
+skill 'FAQ Search':
+  can: search_faq
+  instructions:
+    Search the FAQ before answering general questions.
+    Quote the FAQ answer directly when relevant.
+
+# --- Agent ---
+
+agent 'Customer Support' receiving message:
+  uses skills: 'Order Management', 'FAQ Search'
+  track agent decisions
+  knows about: FAQ
+  must not:
+    delete any records
+    access AgentLogs table
+
+  system_prompt is text block:
+    You are a friendly customer support agent for Acme Corp.
+    Be professional but warm. Keep responses concise.
+    If you cannot resolve an issue, say so honestly.
+    Never make up order information - always look it up.
+
+  response = ask claude system_prompt with message
+  send back response
+
+# --- Endpoints ---
+
+when user calls POST /api/chat sending data:
+  result = call 'Customer Support' with data
+  send back result
+
+when user calls GET /api/orders:
+  orders = get all Orders
+  send back orders
+
+when user calls POST /api/seed:
+  save incoming as new Order
+  send back incoming with success message
+
+# --- Tests ---
+
+test 'agent handles order question':
+  mock claude responding:
+    answer is 'Your order #42 is shipped and arriving tomorrow.'
+    action is 'respond'
+  result = call 'Customer Support' with 'Where is my order?'
+  expect result's action is 'respond'
+
+test 'agent handles FAQ question':
+  mock claude responding:
+    answer is 'You can return items within 30 days.'
+    action is 'respond'
+  result = call 'Customer Support' with 'What is the return policy?'
+  expect result's answer contains 'return'

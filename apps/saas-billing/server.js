@@ -31,6 +31,7 @@ function _validate(body, rules) {
 // SaaS Billing Service -- Stress Test App #5
 // Tests: subscriptions, usage metering, tiered limits, upgrade/downgrade
 // --- Data ---
+// clear:8
 // Data shape: User
 const UserSchema = {
   email: { type: "text", required: true, unique: true },
@@ -39,6 +40,7 @@ const UserSchema = {
   created_at: { type: "timestamp", auto: true }
 };
 db.createTable('users', UserSchema);
+// clear:14
 // Data shape: Usage
 const UsageSchema = {
   user_id: { type: "text", required: true },
@@ -49,6 +51,7 @@ const UsageSchema = {
 };
 db.createTable('usages', UsageSchema);
 // --- Billing Config ---
+// clear:23
 // Checkout config: Pro Plan
 const CHECKOUT_PRO_PLAN = {
   price: 'price_pro_monthly',
@@ -56,6 +59,7 @@ const CHECKOUT_PRO_PLAN = {
   success_url: '/billing/success',
   cancel_url: '/billing',
 };
+// clear:29
 // Checkout config: Enterprise Plan
 const CHECKOUT_ENTERPRISE_PLAN = {
   price: 'price_enterprise_monthly',
@@ -64,12 +68,14 @@ const CHECKOUT_ENTERPRISE_PLAN = {
   cancel_url: '/billing',
 };
 // --- Usage Limits ---
+// clear:37
 // Usage limits: api_calls
 const LIMITS_API_CALLS = {
   'free': { max: 100, period: 'month' },
   'pro': { max: 10000, period: 'month' },
   'enterprise': { max: Infinity, period: 'month' },
 };
+// clear:42
 // Usage limits: file_uploads
 const LIMITS_FILE_UPLOADS = {
   'free': { max: 5, period: 'month' },
@@ -77,6 +83,7 @@ const LIMITS_FILE_UPLOADS = {
   'enterprise': { max: Infinity, period: 'month' },
 };
 // --- Endpoints ---
+// clear:49
 app.get('/api/billing/plans', async (req, res) => {
   try {
     return res.json({ message: "plans" });
@@ -84,6 +91,7 @@ app.get('/api/billing/plans', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:52
 app.get('/api/billing/usage', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -93,6 +101,7 @@ app.get('/api/billing/usage', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:57
 app.post('/api/billing/subscribe', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -107,12 +116,14 @@ app.post('/api/billing/subscribe', async (req, res) => {
   }
 });
 // --- Webhook ---
+// clear:65
 app.post('/stripe/billing-events', async (req, res) => {
   const incoming = req.body;
   const crypto = require('crypto');
   const signature = req.headers['stripe-signature'] || '';
   const expected = crypto.createHmac('sha256', (process.env["STRIPE_BILLING_SECRET"] || "")).update(JSON.stringify(req.body)).digest('hex');
   if (signature !== expected) { return res.status(401).json({ error: "Invalid signature" }); }
+  // clear:66
   return res.json({ message: "ok" });
 });
 

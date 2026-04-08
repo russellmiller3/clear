@@ -1,0 +1,13 @@
+build for web
+
+style outer:
+  padding = 32
+  background is '#f0f0f0'
+
+style inner:
+  padding = 16
+
+page 'App' at '/':
+  section 'Outer' with style outer:
+    section 'Inner' with style inner:
+      text 'Hello'

@@ -41,6 +41,7 @@ function _validate(body, rules) {
 // Job Queue -- Stress Test App #8
 // Tests: background jobs, scheduling, retry, status tracking
 // --- Data ---
+// clear:8
 // Data shape: Job
 const JobSchema = {
   type: { type: "text", required: true },
@@ -54,6 +55,7 @@ const JobSchema = {
 db.createTable('jobs', JobSchema);
 // --- Config ---
 // --- Endpoints ---
+// clear:23
 app.post('/api/jobs', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -68,6 +70,7 @@ app.post('/api/jobs', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:30
 app.get('/api/jobs', async (req, res) => {
   try {
     if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }
@@ -77,6 +80,7 @@ app.get('/api/jobs', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:35
 app.get('/api/jobs/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -87,6 +91,7 @@ app.get('/api/jobs/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:40
 app.delete('/api/jobs/:id', async (req, res) => {
   try {
     const incoming = req.params;
@@ -99,10 +104,12 @@ app.delete('/api/jobs/:id', async (req, res) => {
   }
 });
 // --- Workers ---
+// clear:48
 // Background job: process-pending-jobs
 setInterval(async () => {
 
 }, 30000);
+// clear:51
 // Background job: cleanup-old-jobs
 setInterval(async () => {
 

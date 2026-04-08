@@ -14,7 +14,7 @@ Clear is a programming language designed for AI to write and humans to read. You
 ## Before writing any Clear code
 
 1. Read `clear/SYNTAX.md` -- the complete syntax reference
-2. Read `clear/AI-STYLE-GUIDE.md` -- canonical forms and conventions
+2. Read `clear/AI-INSTRUCTIONS.md` -- canonical forms and conventions
 3. Skim `clear/PHILOSOPHY.md` -- design rules (one operation per line, no nesting, etc.)
 
 ## Core Rules

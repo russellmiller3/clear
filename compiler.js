@@ -7,6 +7,107 @@
 // JavaScript, Python, or both. Same input ALWAYS produces the same output.
 // No AI in the compile step — it's a pure function.
 //
+// !! MAINTENANCE RULE: Update this TOC AND this diagram whenever you add,
+// !! remove, or move a section. Use section names (not line numbers).
+//
+// ARCHITECTURE:
+//
+//   AST (from parser.js, validated by validator.js)
+//       │
+//       ▼
+//   ┌──────────────────────────────────────────────────────┐
+//   │  compileProgram(source, options)                      │
+//   │                                                       │
+//   │  1. tokenize(source) → parse(tokens) → AST            │
+//   │  2. resolveModules(AST) → inline imported files        │
+//   │  3. validate(AST) → errors/warnings                   │
+//   │  4. Detect target(s) from AST:                        │
+//   │     ┌─ web ──────────→ compileToReactiveJS()          │
+//   │     │                  compileToHTML()                 │
+//   │     ├─ js backend ──→ compileToJSBackend()            │
+//   │     ├─ python ──────→ compileToPythonBackend()        │
+//   │     └─ web + backend → all of the above               │
+//   │                                                       │
+//   │  Output: { html, javascript, serverJS, python,        │
+//   │           errors, warnings }                          │
+//   └──────────────────────────────────────────────────────┘
+//
+//   COMPILATION PIPELINE (for each output target):
+//
+//   AST body[]
+//       │
+//       ▼
+//   ┌──────────────────────────────────────────────────────┐
+//   │  compileNode(node, ctx) → string                      │
+//   │                                                       │
+//   │  ctx = { lang, indent, declared, stateVars, mode,     │
+//   │         sourceMap, schemaNames, dbBackend,             │
+//   │         endpointMethod, endpointHasId, isSeedEndpoint,│
+//   │         insideAgent, _astBody }                       │
+//   │                                                       │
+//   │  Dispatches to _compileNodeInner → switch(node.type): │
+//   │    ASSIGN ────→ const x = expr;                       │
+//   │    ENDPOINT ──→ compileEndpoint() → app.get(...)      │
+//   │    CRUD ──────→ compileCrud() → db.insert/update/etc  │
+//   │    RESPOND ───→ compileRespond() → res.json(...)      │
+//   │    AGENT ─────→ compileAgent() → async function       │
+//   │    VALIDATE ──→ compileValidate() → _validate(...)    │
+//   │    DATA_SHAPE → compileDataShape() → schema + table   │
+//   │    IF_THEN ───→ if (...) { ... }                      │
+//   │    (96 node types total — see _compileNodeInner)       │
+//   │                                                       │
+//   │  Expressions: exprToCode(expr, ctx) → string          │
+//   │    Handles: literals, variables, binary ops,           │
+//   │    member access, function calls, ask_ai, http_request │
+//   └──────────────────────────────────────────────────────┘
+//
+//   UTILITY FUNCTIONS (tree-shaken, inlined in output):
+//   │  _clearTry ... error context wrapping for CRUD
+//   │  _clearError .. 3-level debug output (off/true/verbose)
+//   │  _validate .... field-level validation
+//   │  _pick ........ schema field filtering (mass assignment protection)
+//   │  _esc ......... HTML entity escaping
+//   │  _toast ....... UI toast notifications
+//   │  _askAI ....... Anthropic API call with structured output
+//   │  _clear_* ..... string/array/number utilities
+//   └─ Only emitted when actually used (tree-shaking via _getUsedUtilities)
+//
+// 5 TOP-LEVEL OUTPUT PATHS:
+//   1. Non-reactive JS (simple scripts, no UI state)
+//   2. Reactive JS (inputs + state + _recompute cycle)
+//   3. Backend JS (Express server with middleware + CRUD)
+//   4. Backend Python (FastAPI server)
+//   5. HTML scaffold (DaisyUI + Tailwind + theme CSS)
+//
+// DEPENDENCIES: parser.js (NodeType, parse)
+// DEPENDENTS:   index.js (public API), cli/clear.js (CLI commands)
+//
+//
+// TABLE OF CONTENTS:
+//   PUBLIC API ........................ compileProgram(), compile(), resolveModules()
+//   E2E TEST GENERATION .............. generateE2ETests()
+//   DEPLOY CONFIG .................... generateDeployConfig()
+//   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
+//     Node compilers ................. compileEndpoint, compileCrud, compileRespond,
+//                                     compileAgent, compileValidate, compileDataShape,
+//                                     compileExternalFetch, compileWebhook, compilePdf
+//     _compileNodeInner .............. Main switch over all NodeTypes
+//     exprToCode ..................... Expression-to-code for all expression nodes
+//   RLS POLICY COMPILER .............. compileRLSPolicy()
+//   JAVASCRIPT COMPILER .............. compileToJS(), isReactiveApp()
+//   REACTIVE JS COMPILER ............. compileToReactiveJS() — state, _recompute,
+//                                     inputs, buttons, table action buttons,
+//                                     event delegation, on-page-load
+//   PYTHON COMPILER .................. compileToPython()
+//   HTML SCAFFOLD .................... INLINE_LAYOUT_MODIFIERS, buildHTML(),
+//                                     formatInlineText(), compileToHTML()
+//   BACKEND SCAFFOLD ................. compileToJSBackend(), compileToBrowserServer(),
+//                                     compileToPythonBackend()
+//   STYLE BLOCK CSS .................. friendlyPropToCSS(), extractStyles(), stylesToCSS()
+//   RUNTIME & CSS .................... CSS_RESET, THEME_CSS, _buildCSS(),
+//                                     _clear_* utility functions
+//   NAME & OPERATOR MAPPING .......... sanitizeName(), operatorToCode()
+//
 // =============================================================================
 
 import { NodeType, parse } from './parser.js';
@@ -48,19 +149,41 @@ const UTILITY_FUNCTIONS = [
   { name: '_clear_format', code: "function _clear_format(v, f) {\n  if (v === null || v === undefined) return '';\n  if (f === 'dollars') return '$' + Number(v).toFixed(2);\n  if (f === 'percent') return (Number(v) * 100).toFixed(1) + '%';\n  return String(v);\n}", deps: [] },
   { name: '_clear_fetch', code: "async function _clear_fetch(url) {\n  const r = await fetch(url);\n  if (!r.ok) throw new Error('Could not load data from ' + url + ' (status ' + r.status + ')');\n  return await r.json();\n}", deps: [] },
   { name: '_clear_env', code: "function _clear_env(name) {\n  if (typeof process !== 'undefined' && process.env) return process.env[name] || '';\n  return '';\n}", deps: [] },
-  { name: '_toast', code: `function _toast(msg, cls) {
+  { name: '_toast', code: `function _toast(msg, type) {
   let c = document.getElementById('_toast_container');
-  if (!c) { c = document.createElement('div'); c.id = '_toast_container'; c.className = 'toast toast-end'; c.style.cssText = 'position:fixed;bottom:1rem;right:1rem;z-index:100'; document.body.appendChild(c); }
-  const el = document.createElement('div'); el.className = 'alert ' + cls + ' shadow-lg'; el.innerHTML = '<span>' + msg + '</span>';
-  c.appendChild(el); setTimeout(() => { el.remove(); }, 3000);
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
 }`, deps: [] },
   { name: '_esc', code: "function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }", deps: [] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema)); }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
   for (const r of rules) {
-    const v = body[r.field];
+    let v = body[r.field];
     if (r.required && (v == null || v === '')) return r.field + ' is required';
     if (v == null) continue;
+    if (r.type === 'number' && typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) { body[r.field] = Number(v); v = body[r.field]; }
     if (r.type === 'number' && typeof v !== 'number') return r.field + ' must be a number';
     if (r.type === 'boolean' && typeof v !== 'boolean') return r.field + ' must be true or false';
     if (r.min != null && r.type === 'text' && String(v).length < r.min) return r.field + ' must be at least ' + r.min + (r.min === 1 ? ' character' : ' characters');
@@ -68,20 +191,109 @@ const UTILITY_FUNCTIONS = [
     if (r.min != null && r.type !== 'text' && v < r.min) return r.field + ' must be at least ' + r.min;
     if (r.max != null && r.type !== 'text' && v > r.max) return r.field + ' must be at most ' + r.max;
     if (r.matches === 'email' && !/^[^@]+@[^@]+\\.[^@]+$/.test(v)) return r.field + ' must be a valid email';
+    if (r.matches === 'time' && !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(v)) return r.field + ' must be a valid time (HH:MM)';
+    if (r.matches === 'phone' && !/^[\\+]?[\\d\\s\\-\\.\\(\\)]{7,15}$/.test(v)) return r.field + ' must be a valid phone number';
+    if (r.matches === 'url' && !/^https?:\\/\\/.+/.test(v)) return r.field + ' must be a valid URL';
     if (r.oneOf && !r.oneOf.includes(v)) return r.field + ' must be one of: ' + r.oneOf.join(', ');
   }
   return null;
 }`, deps: [] },
-  { name: '_askAI', code: `async function _askAI(prompt, context, schema) {
-  const key = process.env.CLEAR_AI_KEY;
-  if (!key) throw new Error("Set CLEAR_AI_KEY environment variable with your Anthropic API key");
+  { name: '_clearError', code: `function _clearError(err, ctx) {
+  const debug = typeof process !== 'undefined' && process.env.CLEAR_DEBUG;
+  const status = err.status || (err.message && (err.message.includes('required') || err.message.includes('must be') || err.message.includes('must be unique') || err.message.includes('already exists')) ? 400 : 500);
+  const safeMsg = status === 400 ? err.message : 'Something went wrong';
+  if (!debug) return { status, response: { error: safeMsg } };
+  const PII_FIELDS = ['password','secret','token','key','credit_card','ssn','api_key','api_secret'];
+  function redact(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    const out = Array.isArray(obj) ? [...obj] : { ...obj };
+    for (const k of Object.keys(out)) {
+      if (PII_FIELDS.some(p => k.toLowerCase().includes(p))) out[k] = '[REDACTED]';
+      else if (typeof out[k] === 'object') out[k] = redact(out[k]);
+    }
+    return out;
+  }
+  const map = typeof _clearMap !== 'undefined' ? _clearMap : null;
+  let hint = '';
+  const msg = err.message || '';
+  if (msg.includes('required')) {
+    const field = msg.match(/^(\\w+) is required/);
+    let tableInfo = ctx.table || 'this table';
+    if (field && map && map.tables && ctx.table && map.tables[ctx.table]) {
+      const t = map.tables[ctx.table];
+      tableInfo = ctx.table + " (defined at " + t.file + " line " + t.line + ")";
+    }
+    hint = field ? "'" + field[1] + "' is required in " + tableInfo + ". Add it to the form or remove 'required' from the table definition." : msg;
+  } else if (msg.includes('must be unique') || msg.includes('already exists')) {
+    hint = "A record with this value already exists. Check for duplicates before saving.";
+  } else if (msg.includes('Authentication required') || msg.includes('No token')) {
+    hint = "This endpoint needs login. Add 'needs login' to the endpoint definition.";
+  } else if (msg.includes('Requires role') || msg.includes('requires role')) {
+    const role = msg.match(/role '?(\\w+)'?/);
+    hint = role ? "User needs '" + role[1] + "' role." : "User does not have the required role.";
+  } else if (msg.includes('must be a')) {
+    hint = msg + ". Check the form or API call.";
+  } else if (msg.includes('API') || msg.includes('api')) {
+    const svc = ctx.service || 'external';
+    hint = svc + " API call failed. Check the API key and account.";
+  } else if (msg.includes('aborted') || msg.includes('timed out') || msg.includes('timeout')) {
+    hint = "Request timed out. Check if the service is running.";
+  } else {
+    hint = msg;
+  }
+  let suggested_fix = null;
+  if (map) {
+    if (msg.includes('required')) {
+      const field = msg.match(/^(\\w+) is required/);
+      if (field && ctx.table && map.tables && map.tables[ctx.table]) {
+        const t = map.tables[ctx.table];
+        suggested_fix = { file: t.file, line: t.line, action: 'info', explanation: "Ensure '" + field[1] + "' is included in the request body. The table at " + t.file + " line " + t.line + " requires it." };
+      }
+    } else if (msg.includes('Authentication required') || msg.includes('No token')) {
+      if (ctx.line && ctx.file) {
+        suggested_fix = { file: ctx.file, line: ctx.line, action: 'add_line_after', content: "  needs login", explanation: "Add 'needs login' to the endpoint definition." };
+      }
+    }
+  }
+  const result = {
+    status,
+    response: {
+      error: safeMsg,
+      clear_line: ctx.line || null,
+      clear_file: ctx.file || null,
+      clear_source: ctx.source || null,
+      hint: hint,
+      technical: msg
+    }
+  };
+  if (suggested_fix) result.response.suggested_fix = suggested_fix;
+  if (debug === 'verbose' && ctx) {
+    const tableSchema = (map && map.tables && ctx.table) ? map.tables[ctx.table] : null;
+    result.response.context = redact({
+      endpoint: ctx.endpoint || null,
+      input: ctx.input || null,
+      schema: tableSchema ? tableSchema.fields : (ctx.schema || null),
+      table: ctx.table || null
+    });
+  }
+  return result;
+}`, deps: [] },
+  { name: '_clearTry', code: `async function _clearTry(fn, ctx) {
+  try { return await fn(); } catch (err) {
+    err._clearCtx = ctx;
+    throw err;
+  }
+}`, deps: ['_clearError'] },
+  { name: '_askAI', code: `async function _askAI(prompt, context, schema, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
   const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
   let content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
   if (schema) {
     const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\\n");
     content += "\\n\\nRespond with ONLY a JSON object in this exact shape, no other text:\\n{\\n" + fields + "\\n}";
   }
-  const payload = JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
+  const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
   const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
   function parseResult(text) {
     if (!schema) return text;
@@ -111,6 +323,39 @@ const UTILITY_FUNCTIONS = [
       return parseResult(data.content[0].text);
     } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
   }
+}`, deps: [] },
+  { name: '_askAIWithTools', code: `async function _askAIWithTools(prompt, context, tools, toolFns, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
+  const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+  const _model = model || "claude-sonnet-4-20250514";
+  const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === "string" ? context : JSON.stringify(context)) : prompt;
+  const messages = [{ role: "user", content: userContent }];
+  const maxTurns = 10;
+  for (let i = 0; i < maxTurns; i++) {
+    const payload = { model: _model, max_tokens: 4096, messages, tools };
+    const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
+    if (!r.ok) { const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e); }
+    const data = await r.json();
+    const msg = data.content;
+    messages.push({ role: "assistant", content: msg });
+    const toolUses = msg.filter(b => b.type === "tool_use");
+    if (toolUses.length === 0) return msg.find(b => b.type === "text")?.text || "";
+    const results = [];
+    for (const tu of toolUses) {
+      const fn = toolFns[tu.name];
+      if (!fn) { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: "Unknown tool: " + tu.name }), is_error: true }); continue; }
+      try {
+        const result = await fn(...Object.values(tu.input));
+        results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result) });
+      } catch (toolErr) {
+        results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: toolErr.message }), is_error: true });
+      }
+    }
+    messages.push({ role: "user", content: results });
+  }
+  throw new Error("Agent exceeded maximum tool use turns (10)");
 }`, deps: [] },
 ];
 
@@ -186,9 +431,15 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
     for (const err of nestedErrors) {
       errors.push({ line: node.line, message: `In module '${moduleName}': ${err.message}` });
     }
-    const importedNodes = moduleAst.body.filter(n =>
-      n.type === NodeType.FUNCTION_DEF || n.type === NodeType.ASSIGN || n.type === NodeType.COMPONENT_DEF
-    );
+    // For inline-all (use everything from), import ALL node types.
+    // For selective/namespaced imports, only functions/assigns/components.
+    const importedNodes = node.importAll
+      ? moduleAst.body.filter(n =>
+          n.type !== NodeType.TARGET && n.type !== NodeType.THEME && n.type !== NodeType.DATABASE_DECL
+        )
+      : moduleAst.body.filter(n =>
+          n.type === NodeType.FUNCTION_DEF || n.type === NodeType.ASSIGN || n.type === NodeType.COMPONENT_DEF
+        );
 
     // Inline-all import: use everything from 'helpers'
     if (node.importAll) {
@@ -205,7 +456,15 @@ export function resolveModules(ast, moduleResolver, resolutionStack = []) {
       }
       node._resolved = true;
       if (!hasCollision) {
-        node._selectiveNodes = importedNodes;
+        // Tag each imported node with its source file for error translator
+        for (const n of importedNodes) {
+          n._sourceFile = moduleName;
+          if (n.body) for (const child of n.body) child._sourceFile = child._sourceFile || moduleName;
+        }
+        // Splice imported nodes directly into the parent AST so all compile paths
+        // (server JS, reactive JS, HTML scaffold) can see pages, endpoints, etc.
+        ast.body.splice(i + 1, 0, ...importedNodes);
+        i += importedNodes.length; // skip past spliced nodes
       }
       continue;
     }
@@ -459,6 +718,9 @@ function generateE2ETests(body) {
   function testValueForRule(rule) {
     if (rule.fieldType === 'number') return 42;
     if (rule.constraints?.matches === 'email') return 'test@example.com';
+    if (rule.constraints?.matches === 'time') return '09:00';
+    if (rule.constraints?.matches === 'phone') return '+1-555-0100';
+    if (rule.constraints?.matches === 'url') return 'https://example.com';
     if (rule.constraints?.oneOf) return rule.constraints.oneOf[0];
     return 'Test value';
   }
@@ -873,6 +1135,20 @@ function extractFilterKey(expr, ctx) {
   return null;
 }
 
+// Extracts equality pairs from a condition for Supabase .eq() chaining
+function extractEqPairs(condExpr, ctx) {
+  const pairs = [];
+  if (condExpr.operator === '==' || condExpr.operator === '===') {
+    const key = extractFilterKey(condExpr.left, ctx);
+    const val = exprToCode(condExpr.right, ctx);
+    if (key) pairs.push([key, val]);
+  } else if (condExpr.operator === '&&') {
+    pairs.push(...extractEqPairs(condExpr.left, ctx));
+    pairs.push(...extractEqPairs(condExpr.right, ctx));
+  }
+  return pairs;
+}
+
 function extractAndPairs(expr, ctx) {
   if (expr.type === NodeType.BINARY_OP && expr.operator === '&&') {
     const left = extractAndPairs(expr.left, ctx);
@@ -1005,6 +1281,7 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.CHECKOUT, NodeType.USAGE_LIMIT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
   NodeType.STREAM, NodeType.BACKGROUND, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
+  NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
 ]);
 
 // Helper: compile a list of AST nodes into joined code lines.
@@ -1024,7 +1301,7 @@ function compileEndpoint(node, ctx, pad) {
   if (ctx.lang === 'python') {
     const pyPath = node.path.replace(/:(\w+)/g, '{$1}');
     const handlerName = `${node.method.toLowerCase()}_${sanitizeName(node.path.replace(/[/:]/g, '_'))}`;
-    const bodyCtx = { ...ctx, indent: ctx.indent + 2, endpointMethod: node.method };
+    const bodyCtx = { ...ctx, indent: ctx.indent + 2, endpointMethod: node.method, endpointHasId: node.path.includes(':id') };
     const bodyCode = node.body.map(n => compileNode(n, bodyCtx)).filter(Boolean).join('\n');
     let code = `${pad}@app.${node.method.toLowerCase()}("${pyPath}")\n${pad}async def ${handlerName}(request: Request):\n`;
     code += `${pad}    try:\n`;
@@ -1041,14 +1318,26 @@ function compileEndpoint(node, ctx, pad) {
     }
     code += bodyCode + '\n';
     code += `${pad}    except Exception as err:\n`;
-    code += `${pad}        return JSONResponse(content={"error": str(err)}, status_code=500)`;
+    code += `${pad}        _status = 400 if ('required' in str(err) or 'must be' in str(err)) else 500\n`;
+    code += `${pad}        _safe = str(err) if _status == 400 else 'Something went wrong'\n`;
+    code += `${pad}        _debug = os.environ.get('CLEAR_DEBUG', '')\n`;
+    code += `${pad}        if _debug:\n`;
+    code += `${pad}            return JSONResponse(content={"error": _safe, "clear_line": ${node.line}, "clear_file": "${node._sourceFile || 'main.clear'}", "hint": str(err), "technical": str(err)}, status_code=_status)\n`;
+    code += `${pad}        return JSONResponse(content={"error": _safe}, status_code=_status)`;
     return code;
   }
 
   const epDeclared = new Set();
-  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method });
-  let epCode = `${pad}app.${node.method.toLowerCase()}('${node.path}', async (req, res) => {\n`;
+  const hasIdParam = node.path.includes(':id');
+  const isSeedEndpoint = node.path.includes('/seed') || node.path.includes('/setup') || node.path.includes('/init');
+  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
+  let epCode = `${pad}// clear:${node.line} — ${node.method.toUpperCase()} ${node.path}\n`;
+  epCode += `${pad}app.${node.method.toLowerCase()}('${node.path}', async (req, res) => {\n`;
   epCode += `${pad}  try {\n`;
+  // Guard seed endpoints from running in production
+  if (isSeedEndpoint) {
+    epCode += `${pad}    if (process.env.NODE_ENV === 'production') return res.status(403).json({ error: 'Seed endpoint is disabled in production' });\n`;
+  }
   if (needsBinding) {
     if (node.receivingVar) {
       epCode += `${pad}    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });\n`;
@@ -1062,17 +1351,88 @@ function compileEndpoint(node, ctx, pad) {
     }
   }
   epCode += bodyCode + '\n';
+  const srcFile = node._sourceFile || 'main.clear';
   epCode += `${pad}  } catch (err) {\n`;
-  epCode += `${pad}    res.status(500).json({ error: err.message });\n`;
+  epCode += `${pad}    console.error('[${node.method.toUpperCase()} ${node.path}] Error:', err.message);\n`;
+  epCode += `${pad}    const _ctx = Object.assign({ endpoint: '${node.method.toUpperCase()} ${node.path}', line: ${node.line}, file: '${srcFile}' }, err._clearCtx || {});\n`;
+  if (needsBinding && node.receivingVar) {
+    epCode += `${pad}    if (typeof process !== 'undefined' && process.env.CLEAR_DEBUG === 'verbose') _ctx.input = req.body;\n`;
+  }
+  epCode += `${pad}    const _info = _clearError(err, _ctx);\n`;
+  epCode += `${pad}    res.status(_info.status).json(_info.response);\n`;
   epCode += `${pad}  }\n`;
   epCode += `${pad}});`;
   return epCode;
 }
 
+// Pluralize a word: Activity -> activities, Model -> models, Address -> addresses
+function pluralizeName(word) {
+  const lower = word.toLowerCase();
+  if (lower.endsWith('s') || lower.endsWith('es')) return lower;
+  if (lower.endsWith('y') && !'aeiou'.includes(lower[lower.length - 2])) {
+    return lower.slice(0, -1) + 'ies'; // activity -> activities
+  }
+  if (lower.endsWith('sh') || lower.endsWith('ch') || lower.endsWith('x') || lower.endsWith('z')) {
+    return lower + 'es'; // address -> addresses (approx)
+  }
+  return lower + 's';
+}
+
+// Find the first unique field in a CRUD target's schema (for seed idempotency)
+function findUniqueField(node, ctx) {
+  if (!ctx.schemaNames) return null;
+  // Walk up to find the DATA_SHAPE for this CRUD target
+  // We can't access the AST here, but we can check the schemaNames set
+  // The actual unique info is in the compiled Schema variable, not available at compile time.
+  // Instead, check the AST body passed through context for DATA_SHAPE nodes.
+  if (!ctx._astBody) return null;
+  const target = node.target;
+  const targetPlural = target ? target[0].toUpperCase() + pluralizeName(target).slice(1) : '';
+  for (const n of ctx._astBody) {
+    if (n.type !== NodeType.DATA_SHAPE) continue;
+    if (n.name === target || n.name === targetPlural || n.name + 's' === target) {
+      const uniqueField = n.fields.find(f => f.unique);
+      return uniqueField ? uniqueField.name : null;
+    }
+  }
+  return null;
+}
+
 function compileCrud(node, ctx, pad) {
-  const table = node.target ? node.target.toLowerCase() + (node.target.toLowerCase().endsWith('s') ? '' : 's') : 'unknown';
+  const table = node.target ? pluralizeName(node.target) : 'unknown';
+  const lineComment = node.line ? ` // clear:${node.line}` : '';
 
   if (ctx.lang === 'python') {
+    // Supabase Python path (supabase-py SDK)
+    if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+      if (node.operation === 'lookup') {
+        const varName = sanitizeName(node.variable);
+        const isSingle = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
+        let query = `supabase.table("${table}").select("*")`;
+        if (node.condition) {
+          const pairs = extractEqPairs(node.condition, ctx);
+          for (const [k, v] of pairs) query += `.eq("${k}", ${v})`;
+        }
+        if (isSingle) query += '.single()';
+        return `${pad}_resp = ${query}.execute()\n${pad}${varName} = _resp.data`;
+      }
+      if (node.operation === 'save') {
+        const varCode = sanitizeName(node.variable);
+        if (node.resultVar) {
+          return `${pad}_resp = supabase.table("${table}").insert(${varCode}).execute()\n${pad}${sanitizeName(node.resultVar)} = _resp.data[0] if _resp.data else {}`;
+        }
+        return `${pad}supabase.table("${table}").update(${varCode}).eq("id", ${varCode}["id"]).execute()`;
+      }
+      if (node.operation === 'remove') {
+        let query = `supabase.table("${table}").delete()`;
+        if (node.condition) {
+          const pairs = extractEqPairs(node.condition, ctx);
+          for (const [k, v] of pairs) query += `.eq("${k}", ${v})`;
+        }
+        return `${pad}${query}.execute()`;
+      }
+    }
+    // Default Python path (in-memory db)
     if (node.operation === 'lookup') {
       const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
       const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
@@ -1089,10 +1449,60 @@ function compileCrud(node, ctx, pad) {
     return `${pad}# CRUD: ${node.operation}`;
   }
 
+  if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+    if (node.operation === 'lookup') {
+      const varName = sanitizeName(node.variable);
+      const isSingle = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
+      let query = `supabase.from('${table}').select('*')`;
+      if (node.condition) {
+        const pairs = extractEqPairs(node.condition, ctx);
+        for (const [k, v] of pairs) query += `.eq('${k}', ${v})`;
+      }
+      if (isSingle) query += '.single()';
+      // Pagination: .range(start, end)
+      if (node.page && node.perPage) {
+        const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
+        const page = typeof node.page === 'number' ? node.page : `(${exprToCode({ type: NodeType.VARIABLE_REF, name: String(node.page) }, ctx)})`;
+        query += `.range((${page} - 1) * ${perPage}, ${page} * ${perPage} - 1)`;
+      }
+      return `${pad}const { data: ${varName}, error: _err } = await ${query};\n${pad}if (_err) throw _err;`;
+    }
+    if (node.operation === 'save') {
+      const varCode = sanitizeName(node.variable);
+      const names = ctx.schemaNames || new Set();
+      let schemaName;
+      if (names.has(node.target)) schemaName = node.target + 'Schema';
+      else if (names.has(node.target + 's')) schemaName = node.target + 's' + 'Schema';
+      else if (names.has(node.target.replace(/s$/, ''))) schemaName = node.target.replace(/s$/, '') + 'Schema';
+      else schemaName = node.target + 'Schema';
+      if (node.resultVar) {
+        return `${pad}const { data: ${sanitizeName(node.resultVar)}, error: _err } = await supabase.from('${table}').insert(_pick(${varCode}, ${schemaName})).select().single();\n${pad}if (_err) throw _err;`;
+      }
+      return `${pad}const { error: _err } = await supabase.from('${table}').update(${varCode}).eq('id', ${varCode}.id);\n${pad}if (_err) throw _err;`;
+    }
+    if (node.operation === 'remove') {
+      let query = `supabase.from('${table}').delete()`;
+      if (node.condition) {
+        const pairs = extractEqPairs(node.condition, ctx);
+        for (const [k, v] of pairs) query += `.eq('${k}', ${v})`;
+      }
+      return `${pad}const { error: _err } = await ${query};\n${pad}if (_err) throw _err;`;
+    }
+  }
+
   if (node.operation === 'lookup') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
-    return `${pad}const ${sanitizeName(node.variable)} = await db.${isSingleLookup ? 'findOne' : 'findAll'}('${table}'${where});`;
+    let lookupCode = `${pad}const ${sanitizeName(node.variable)} = await db.${isSingleLookup ? 'findOne' : 'findAll'}('${table}'${where});`;
+    // Pagination: slice the result array
+    if (node.page && node.perPage && !isSingleLookup) {
+      const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
+      const varName = sanitizeName(node.variable);
+      const pageExpr = typeof node.page === 'number' ? node.page : sanitizeName(String(node.page));
+      lookupCode = `${pad}const _all_${varName} = await db.findAll('${table}'${where});\n`;
+      lookupCode += `${pad}const ${varName} = _all_${varName}.slice((${pageExpr} - 1) * ${perPage}, ${pageExpr} * ${perPage});`;
+    }
+    return lookupCode;
   }
   if (node.operation === 'save') {
     const varCode = sanitizeName(node.variable);
@@ -1101,16 +1511,50 @@ function compileCrud(node, ctx, pad) {
     // Look up the actual declared name from ctx.schemaNames.
     const names = ctx.schemaNames || new Set();
     let schemaName;
+    // Try exact match, then pluralized, then de-pluralized
+    const pluralized = node.target[0].toUpperCase() + pluralizeName(node.target).slice(1);
     if (names.has(node.target)) schemaName = node.target + 'Schema';
     else if (names.has(node.target + 's')) schemaName = node.target + 's' + 'Schema';
+    else if (names.has(pluralized)) schemaName = pluralized + 'Schema';
     else if (names.has(node.target.replace(/s$/, ''))) schemaName = node.target.replace(/s$/, '') + 'Schema';
+    else if (names.has(node.target.replace(/ies$/, 'y'))) schemaName = node.target.replace(/ies$/, 'y') + 'Schema';
     else schemaName = node.target + 'Schema'; // fallback
-    if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await db.insert('${table}', _pick(${varCode}, ${schemaName}));`;
-    return `${pad}await db.update('${table}', ${varCode});`;
+    const srcFile = node._sourceFile || 'main.clear';
+    const tryCtx = `{ op: 'insert', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    // Seed idempotency: for seed/setup/init endpoints, check if record exists before inserting
+    if (ctx.isSeedEndpoint) {
+      // Find unique fields in schema to use as dedup key
+      const uniqueField = findUniqueField(node, ctx);
+      if (uniqueField) {
+        const existingVar = `_existing_${sanitizeName(varCode)}`;
+        const dedupCheck = `${pad}const ${existingVar} = await db.findOne('${table}', { ${uniqueField}: ${varCode}.${uniqueField} });\n`;
+        if (node.resultVar) {
+          return dedupCheck +
+            `${pad}const ${sanitizeName(node.resultVar)} = ${existingVar} || await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+        }
+        return dedupCheck +
+          `${pad}if (!${existingVar}) await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+      }
+    }
+    if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+    if (node.isInsert) return `${pad}await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+    // In PUT endpoints with :id, inject the URL param so db.update finds the right record
+    const updateCtx = `{ op: 'update', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    if (ctx.endpointHasId) {
+      // Use _pick to filter incoming fields through the schema (mass-assignment protection).
+      // The id comes from the URL param, not the body — set it after picking so db.update
+      // can find the right record. After update, re-fetch the full record from DB so the
+      // variable has all fields with correct types (numeric id, all columns). Without this,
+      // the variable only contains the partial request body, so `send back X` returns an
+      // incomplete response.
+      return `${pad}const _picked_${varCode} = _pick(${varCode}, ${schemaName});\n${pad}_picked_${varCode}.id = req.params.id;\n${pad}await _clearTry(() => db.update('${table}', _picked_${varCode}), ${updateCtx});${lineComment}\n${pad}Object.assign(${varCode}, await db.findOne('${table}', { id: _picked_${varCode}.id }) || {});`;
+    }
+    return `${pad}await _clearTry(() => db.update('${table}', _pick(${varCode}, ${schemaName})), ${updateCtx});${lineComment}`;
   }
   if (node.operation === 'remove') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
-    return `${pad}await db.remove('${table}'${where});`;
+    const removeCtx = `{ op: 'remove', table: '${table}', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    return `${pad}await _clearTry(() => db.remove('${table}'${where}), ${removeCtx});${lineComment}`;
   }
   return `${pad}// CRUD: ${node.operation}`;
 }
@@ -1155,7 +1599,7 @@ function compileRespond(node, ctx, pad) {
 function compileAgent(node, ctx, pad) {
   const fnName = 'agent_' + sanitizeName(node.name.toLowerCase().replace(/\s+/g, '_'));
   const agentDeclared = new Set();
-  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 1, declared: agentDeclared, insideAgent: true });
+  let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 1, declared: agentDeclared, insideAgent: true });
 
   // Scheduled agent: runs on interval, no input parameter
   if (node.schedule) {
@@ -1172,10 +1616,231 @@ function compileAgent(node, ctx, pad) {
   }
 
   const param = node.receivingVar ? sanitizeName(node.receivingVar) : '';
-  if (ctx.lang === 'python') {
-    return `${pad}async def ${fnName}(${param}):\n${bodyCode}`;
+  const innerPad = pad + '  ';
+
+  // === COMPOSABLE AGENT FEATURES ===
+  // All features modify bodyCode and/or preamble, then the final code is assembled at the end.
+  // Order matters: skills merge tools → tools replace _askAI → tracking wraps _askAI calls
+  let preamble = ''; // Code inserted at top of agent function body
+
+  // 1. Skills: merge skill tools + instructions into agent (mutates node.tools + bodyCode)
+  if (node.skills && node.skills.length > 0) {
+    const astBody = ctx._astBody || [];
+    let skillInstructions = '';
+    for (const skillName of node.skills) {
+      const skillNode = astBody.find(n => n.type === NodeType.SKILL && n.name === skillName);
+      if (!skillNode) continue;
+      if (skillNode.tools && skillNode.tools.length > 0) {
+        if (!node.tools) node.tools = [];
+        for (const toolName of skillNode.tools) {
+          if (!node.tools.some(t => t.type === 'ref' && t.name === toolName)) {
+            node.tools.push({ type: 'ref', name: toolName });
+          }
+        }
+      }
+      if (skillNode.instructions && skillNode.instructions.length > 0) {
+        skillInstructions += skillNode.instructions.join('\\n') + '\\n';
+      }
+    }
+    if (skillInstructions) {
+      const safeInstr = skillInstructions.replace(/"/g, '\\"');
+      // Handle both string literal prompts and variable prompts
+      bodyCode = bodyCode.replace(
+        /await _askAI\(("([^"]*)")/g,
+        (m, fullMatch, prompt) => `await _askAI("${safeInstr}\\n${prompt}"`
+      );
+      bodyCode = bodyCode.replace(
+        /await _askAI\(([a-zA-Z_]\w*),/g,
+        (m, varName) => `await _askAI("${safeInstr}\\n" + ${varName},`
+      );
+    }
   }
-  return `${pad}async function ${fnName}(${param}) {\n${bodyCode}\n${pad}}`;
+
+  // 2. Tool use: can use: fn1, fn2 — add _tools/_toolFns preamble, replace _askAI with _askAIWithTools
+  if (node.tools && node.tools.length > 0) {
+    const refTools = node.tools.filter(t => t.type === 'ref');
+    if (refTools.length > 0) {
+      const astBody = ctx._astBody || [];
+      const toolDefs = [];
+      const toolFnNames = [];
+      for (const tool of refTools) {
+        const fnDef = astBody.find(n => n.type === NodeType.FUNCTION_DEF && n.name === tool.name);
+        const params = fnDef ? fnDef.params : [];
+        const properties = {};
+        for (const p of params) {
+          properties[p] = { type: 'string' };
+        }
+        const required = params.length > 0 ? params : undefined;
+        toolDefs.push({
+          name: tool.name,
+          description: `${tool.name}(${params.join(', ')})`,
+          input_schema: { type: 'object', properties, ...(required ? { required } : {}) },
+        });
+        toolFnNames.push(sanitizeName(tool.name));
+      }
+      const toolsJson = JSON.stringify(toolDefs);
+      const toolFnsObj = toolFnNames.map(n => `${n}`).join(', ');
+      preamble += `${innerPad}const _tools = ${toolsJson};\n`;
+      preamble += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
+      // Replace _askAI calls with _askAIWithTools in bodyCode
+      bodyCode = bodyCode.replace(
+        /await _askAI\(([^)]*)\)/g,
+        'await _askAIWithTools($1, _tools, _toolFns)'
+      );
+    }
+  }
+
+  // 3. Observability: track agent decisions — wrap _askAI/_askAIWithTools calls with logging
+  if (node.trackDecisions) {
+    const agentNameStr = JSON.stringify(node.name);
+    if (ctx.lang === 'python') {
+      preamble += `${innerPad}import time as _time\n`;
+      preamble += `${innerPad}async def _agent_log(action, _input, fn):\n`;
+      preamble += `${innerPad}    _start = _time.time()\n`;
+      preamble += `${innerPad}    _result = await fn()\n`;
+      preamble += `${innerPad}    _ms = int((_time.time() - _start) * 1000)\n`;
+      preamble += `${innerPad}    await db.insert("AgentLogs", {"agent_name": ${agentNameStr}, "action": action, "input": str(_input)[:500], "output": str(_result)[:500], "latency_ms": _ms})\n`;
+      preamble += `${innerPad}    return _result\n`;
+      bodyCode = bodyCode.replace(
+        /await _ask_ai\(([^)]+)\)/g,
+        `await _agent_log("ask_ai", ${param}, lambda: _ask_ai($1))`
+      );
+    } else {
+      preamble += `${innerPad}const _agentLog = async (action, _input, fn) => {\n`;
+      preamble += `${innerPad}  const _start = Date.now();\n`;
+      preamble += `${innerPad}  const _result = await fn();\n`;
+      preamble += `${innerPad}  const _ms = Date.now() - _start;\n`;
+      preamble += `${innerPad}  try { await db.insert('AgentLogs', { agent_name: ${agentNameStr}, action, input: JSON.stringify(_input).slice(0, 500), output: JSON.stringify(_result).slice(0, 500), latency_ms: _ms }); } catch(e) { console.warn('[clear:agent-log]', e.message); }\n`;
+      preamble += `${innerPad}  return _result;\n`;
+      preamble += `${innerPad}};\n`;
+    }
+    // Wrap _askAI and _askAIWithTools calls with logging
+    if (ctx.lang !== 'python') {
+      bodyCode = bodyCode.replace(
+        /await (_askAI(?:WithTools)?)\(([^)]*)\)/g,
+        (m, fn, args) => `await _agentLog("ask_ai", ${param}, () => ${fn}(${args}))`
+    );
+    }
+  }
+
+  // Multi-turn conversation: remember conversation context
+  // Wraps agent with conversation history load/save
+  if (node.rememberConversation) {
+    const params = param ? `${param}, _userId` : '_userId';
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${params}):\n`;
+      code += `${innerPad}_conv = await db.find_one("Conversations", {"user_id": _userId})\n`;
+      code += `${innerPad}if not _conv:\n`;
+      code += `${innerPad}    _conv = await db.insert("Conversations", {"user_id": _userId, "messages": "[]"})\n`;
+      code += `${innerPad}import json\n`;
+      code += `${innerPad}_history = json.loads(_conv.get("messages", "[]"))\n`;
+      code += `${innerPad}_history.append({"role": "user", "content": str(${param}) if isinstance(${param}, str) else json.dumps(${param})})\n`;
+      code += bodyCode + '\n';
+      code += `${innerPad}# _history updated by _ask_ai when history param is passed\n`;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${params}) {\n`;
+    code += `${innerPad}let _conv = db.findAll ? (await db.findAll('Conversations', { user_id: _userId }))[0] : null;\n`;
+    code += `${innerPad}if (!_conv) _conv = await db.insert('Conversations', { user_id: _userId, messages: '[]' });\n`;
+    code += `${innerPad}const _history = JSON.parse(_conv.messages || '[]');\n`;
+    code += `${innerPad}_history.push({ role: 'user', content: typeof ${param} === 'string' ? ${param} : JSON.stringify(${param}) });\n`;
+    // Emit body code — _askAI calls should get _history appended
+    const wrappedBody = bodyCode.replace(
+      /await _askAI\(([^)]*)\)/g,
+      (match, args) => `await _askAI(${args}, null, null, _history)`
+    );
+    code += wrappedBody + '\n';
+    code += `${innerPad}_history.push({ role: 'assistant', content: typeof response === 'string' ? response : JSON.stringify(response) });\n`;
+    code += `${innerPad}try { await db.update('Conversations', { ..._conv, messages: JSON.stringify(_history.slice(-50)) }); } catch(e) { console.warn('[clear:conversation]', e.message); }\n`;
+    code += `${pad}}`;
+    return code;
+  }
+
+  // Agent memory: remember user's preferences
+  if (node.rememberPreferences) {
+    const params = param ? `${param}, _userId` : '_userId';
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${params}):\n`;
+      code += `${innerPad}_memories = await db.find_all("Memories", {"user_id": _userId})\n`;
+      code += `${innerPad}_mem_context = ""\n`;
+      code += `${innerPad}if _memories:\n`;
+      code += `${innerPad}    _mem_context = "\\nUser preferences: " + "; ".join(m.get("fact","") for m in _memories)\n`;
+      code += bodyCode;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${params}) {\n`;
+    code += `${innerPad}const _memories = db.findAll ? await db.findAll('Memories', { user_id: _userId }) : [];\n`;
+    code += `${innerPad}const _memContext = _memories.length ? '\\nUser preferences: ' + _memories.map(m => m.fact).join('; ') : '';\n`;
+    // Inject memory context into _askAI prompt
+    const wrappedBody = bodyCode.replace(
+      /await _askAI\("([^"]*)",/g,
+      (match, prompt) => `await _askAI("${prompt}" + _memContext,`
+    );
+    code += wrappedBody + '\n';
+    // Extract [REMEMBER: ...] tags from response
+    code += `${innerPad}// Extract new memories from response\n`;
+    code += `${innerPad}if (typeof response === 'string') {\n`;
+    code += `${innerPad}  const _newFacts = response.match(/\\[REMEMBER: (.+?)\\]/g);\n`;
+    code += `${innerPad}  if (_newFacts) for (const f of _newFacts) { try { await db.insert('Memories', { user_id: _userId, fact: f.replace(/\\[REMEMBER: (.+)\\]/, '$1') }); } catch(e) {} }\n`;
+    code += `${innerPad}}\n`;
+    code += `${pad}}`;
+    return code;
+  }
+
+  // RAG: knows about: Table1, Table2 — keyword search before _askAI
+  if (node.knowsAbout && node.knowsAbout.length > 0) {
+    const tables = node.knowsAbout;
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${param}):\n`;
+      code += `${innerPad}# RAG: search knowledge base\n`;
+      code += `${innerPad}_query = str(${param}).lower().split() if isinstance(${param}, str) else str(${param}).lower().split()\n`;
+      code += `${innerPad}_rag_context = []\n`;
+      for (const table of tables) {
+        code += `${innerPad}for _rec in await db.find_all("${table}", {}):\n`;
+        code += `${innerPad}    _text = " ".join(str(v) for v in _rec.values()).lower()\n`;
+        code += `${innerPad}    _score = sum(1 for w in _query if w in _text)\n`;
+        code += `${innerPad}    if _score > 0: _rag_context.append({"source": "${table}", "data": _rec, "score": _score})\n`;
+      }
+      code += `${innerPad}_rag_context.sort(key=lambda x: x["score"], reverse=True)\n`;
+      code += `${innerPad}_rag_context = _rag_context[:5]\n`;
+      // Inject context into _askAI calls
+      const wrappedBody = bodyCode.replace(
+        /await _ask_ai\("([^"]*)",/g,
+        (m, prompt) => `await _ask_ai("${prompt}\\n\\nRelevant context:\\n" + "\\n".join(str(r["data"]) for r in _rag_context),`
+      );
+      code += wrappedBody;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${param}) {\n`;
+    code += preamble;
+    code += `${innerPad}// RAG: search knowledge base by keywords\n`;
+    code += `${innerPad}const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);\n`;
+    code += `${innerPad}const _ragContext = [];\n`;
+    for (const table of tables) {
+      code += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${table}', {}) : [];\n`;
+      code += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${table}', data: _rec, score: _score }); } }\n`;
+    }
+    code += `${innerPad}_ragContext.sort((a, b) => b.score - a.score);\n`;
+    code += `${innerPad}const _ragTop = _ragContext.slice(0, 5);\n`;
+    code += `${innerPad}const _ragStr = _ragTop.length ? '\\n\\nRelevant context:\\n' + _ragTop.map(r => JSON.stringify(r.data)).join('\\n') : '';\n`;
+    // Inject RAG context into _askAI calls (handles both string literal and variable prompts)
+    let wrappedBody = bodyCode.replace(
+      /await (_askAI(?:WithTools)?)\("([^"]*)",/g,
+      (m, fn, prompt) => `await ${fn}("${prompt}" + _ragStr,`
+    );
+    wrappedBody = wrappedBody.replace(
+      /await (_askAI(?:WithTools)?)\(([a-zA-Z_]\w+),/g,
+      (m, fn, varName) => `await ${fn}(${varName} + _ragStr,`
+    );
+    code += wrappedBody + '\n';
+    code += `${pad}}`;
+    return code;
+  }
+
+  if (ctx.lang === 'python') {
+    return `${pad}async def ${fnName}(${param}):\n${preamble}${bodyCode}`;
+  }
+  return `${pad}async function ${fnName}(${param}) {\n${preamble}${bodyCode}\n${pad}}`;
 }
 
 function compileValidate(node, ctx, pad) {
@@ -1206,6 +1871,12 @@ function compileValidate(node, ctx, pad) {
       }
       if (rule.constraints.matches === 'email')
         vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"[^@]+@[^@]+\\.[^@]+", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid email")`);
+      if (rule.constraints.matches === 'time')
+        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^([01]\\d|2[0-3]):[0-5]\\d$", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid time (HH:MM)")`);
+      if (rule.constraints.matches === 'phone')
+        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^[\\+]?[\\d\\s\\-\\.\\(\\)]{7,15}$", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid phone number")`);
+      if (rule.constraints.matches === 'url')
+        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^https?://.+", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid URL")`);
       if (rule.constraints.oneOf) {
         const opts = rule.constraints.oneOf.map(o => `"${o}"`).join(', ');
         vlines.push(`${pad}if ${acc} not in [${opts}]:\n${pad}    raise HTTPException(status_code=400, detail="${f} must be one of: ${rule.constraints.oneOf.join(', ')}")`);
@@ -1230,6 +1901,11 @@ function compileValidate(node, ctx, pad) {
 
 function compileDataShape(node, ctx, pad) {
   if (ctx.lang === 'python') {
+    // Supabase: tables managed in dashboard, emit comment only
+    if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+      const tableName = pluralizeName(node.name);
+      return `${pad}# Data shape: ${node.name} (table '${tableName}' must exist in Supabase dashboard)`;
+    }
     const sqlTypes = { text: 'TEXT', number: 'INTEGER', boolean: 'BOOLEAN', timestamp: 'TIMESTAMP', fk: 'INTEGER' };
     const cols = node.fields.map(f => {
       let col = `${f.name} ${sqlTypes[f.fieldType] || 'TEXT'}`;
@@ -1240,8 +1916,12 @@ function compileDataShape(node, ctx, pad) {
       if (f.fk) col += ` REFERENCES ${f.fk.toLowerCase()}s(id)`;
       return col;
     }).join(', ');
-    const tableName = node.name.toLowerCase() + 's';
-    let result = `${pad}# Data shape: ${node.name}\n${pad}db.execute("CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols})")`;
+    const tableName = pluralizeName(node.name);
+    let uniqueConstraints = '';
+    if (node.compoundUniques) {
+      uniqueConstraints = node.compoundUniques.map(fields => `, UNIQUE(${fields.join(', ')})`).join('');
+    }
+    let result = `${pad}# Data shape: ${node.name}\n${pad}db.execute("CREATE TABLE IF NOT EXISTS ${tableName} (id INTEGER PRIMARY KEY, ${cols}${uniqueConstraints})")`;
     if (node.policies && node.policies.length > 0) {
       result += `\n${pad}db.execute("ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY")`;
       for (const policy of node.policies) {
@@ -1259,10 +1939,12 @@ function compileDataShape(node, ctx, pad) {
     if (f.fk) props.push(`ref: "${f.fk}"`);
     return `  ${sanitizeName(f.name)}: { ${props.join(', ')} }`;
   }).join(',\n');
-  const tableName = node.name.toLowerCase() + (node.name.toLowerCase().endsWith('s') ? '' : 's');
+  const tableName = pluralizeName(node.name);
   let result = `${pad}// Data shape: ${node.name}\n${pad}const ${node.name}Schema = {\n${fields}\n${pad}};`;
-  if (ctx.mode === 'backend') {
+  if (ctx.mode === 'backend' && !(ctx.dbBackend && ctx.dbBackend.includes('supabase'))) {
     result += `\n${pad}db.createTable('${tableName}', ${node.name}Schema);`;
+  } else if (ctx.mode === 'backend' && ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+    result += `\n${pad}// Table '${tableName}' must exist in Supabase dashboard`;
   }
   return result;
 }
@@ -1302,7 +1984,7 @@ function compileExternalFetch(node, ctx, pad) {
     code += `${pad}  _fetched_data = ${exprToCode(node.config.errorFallback, ctx)};\n`;
   } else {
     code += `${pad}} catch (_err) {\n`;
-    code += `${pad}  throw new Error(\`External fetch failed: \${_err.message}\`);\n`;
+    code += `${pad}  const _fetchErr = new Error(\`External API call failed: \${_err.message}\`); _fetchErr._clearCtx = { service: 'external', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'call api ${node.url}' }; throw _fetchErr;\n`;
   }
   code += `${pad}}`;
   return code;
@@ -1528,6 +2210,65 @@ function _compileNodeInner(node, ctx) {
     case NodeType.AGENT:
       return compileAgent(node, ctx, pad);
 
+    case NodeType.PIPELINE: {
+      const fnName = 'pipeline_' + sanitizeName(node.name.toLowerCase().replace(/\s+/g, '_'));
+      const param = sanitizeName(node.inputVar);
+      if (ctx.lang === 'python') {
+        let code = `${pad}async def ${fnName}(${param}):\n`;
+        code += `${pad}    _pipe = ${param}\n`;
+        for (const step of node.steps) {
+          const agentFn = 'agent_' + sanitizeName(step.agentName.toLowerCase().replace(/\s+/g, '_'));
+          code += `${pad}    _pipe = await ${agentFn}(_pipe)\n`;
+        }
+        code += `${pad}    return _pipe`;
+        return code;
+      }
+      let code = `${pad}async function ${fnName}(${param}) {\n`;
+      code += `${pad}  let _pipe = ${param};\n`;
+      for (const step of node.steps) {
+        const agentFn = 'agent_' + sanitizeName(step.agentName.toLowerCase().replace(/\s+/g, '_'));
+        code += `${pad}  _pipe = await ${agentFn}(_pipe);\n`;
+      }
+      code += `${pad}  return _pipe;\n`;
+      code += `${pad}}`;
+      return code;
+    }
+
+    case NodeType.PARALLEL_AGENTS: {
+      const names = node.assignments.map(a => sanitizeName(a.name));
+      const calls = node.assignments.map(a => exprToCode(a.expression, ctx));
+      if (ctx.lang === 'python') {
+        const tasks = calls.join(', ');
+        const vars = names.join(', ');
+        return `${pad}${vars} = await asyncio.gather(${tasks})`;
+      }
+      const tasks = calls.join(', ');
+      const vars = names.join(', ');
+      return `${pad}const [${vars}] = await Promise.all([${tasks}]);`;
+    }
+
+    case NodeType.MOCK_AI:
+      // Consumed by TEST_DEF compilation — emits nothing standalone
+      return null;
+
+    case NodeType.SKILL:
+      // Skills compile to nothing — consumed by agents that use them
+      return null;
+
+    case NodeType.HUMAN_CONFIRM: {
+      const msg = exprToCode(node.message, ctx);
+      if (ctx.lang === 'python') {
+        let code = `${pad}# Human-in-the-loop: create approval request\n`;
+        code += `${pad}_approval = await db.insert("Approvals", {"action": "confirm", "details": str(${msg}), "status": "pending"})\n`;
+        code += `${pad}return JSONResponse(content={"approval_id": _approval.get("id"), "message": ${msg}, "status": "pending"}, status_code=202)`;
+        return code;
+      }
+      let code = `${pad}// Human-in-the-loop: create approval request\n`;
+      code += `${pad}const _approval = await db.insert('Approvals', { action: 'confirm', details: String(${msg}), status: 'pending' });\n`;
+      code += `${pad}return res.status(202).json({ approval_id: _approval.id, message: ${msg}, status: 'pending' });`;
+      return code;
+    }
+
     case NodeType.REPEAT: {
       const count = exprToCode(node.count, ctx);
       if (ctx.lang === 'python') {
@@ -1573,6 +2314,42 @@ function _compileNodeInner(node, ctx) {
       const catchDeclared = new Set(ctx.declared);
       const handleCode = compileBody(node.handleBody, ctx, { declared: catchDeclared });
       return `${pad}try {\n${tryCode}\n${pad}} catch (${node.errorVar}) {\n${handleCode}\n${pad}}`;
+    }
+
+    case NodeType.RETRY: {
+      const n = node.count || 3;
+      const retryBody = compileBody(node.body, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}# Retry up to ${n} times\n${pad}for _attempt in range(${n}):\n${pad}    try:\n${retryBody.split('\n').map(l => '    ' + l).join('\n')}\n${pad}        break\n${pad}    except Exception as _retry_err:\n${pad}        if _attempt == ${n - 1}:\n${pad}            raise _retry_err\n${pad}        import asyncio; await asyncio.sleep(2 ** _attempt)`;
+      }
+      return `${pad}// Retry up to ${n} times\n${pad}for (let _attempt = 0; _attempt < ${n}; _attempt++) {\n${pad}  try {\n${retryBody}\n${pad}    break;\n${pad}  } catch (_retryErr) {\n${pad}    if (_attempt === ${n - 1}) throw _retryErr;\n${pad}    await new Promise(r => setTimeout(r, Math.pow(2, _attempt) * 1000));\n${pad}  }\n${pad}}`;
+    }
+
+    case NodeType.TIMEOUT: {
+      const ms = node.ms || 5000;
+      const timeoutBody = compileBody(node.body, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}# Timeout: ${ms}ms\n${pad}import asyncio\n${pad}try:\n${pad}    await asyncio.wait_for(asyncio.ensure_future((lambda: (${timeoutBody.trim()}))() or asyncio.sleep(0)), timeout=${ms / 1000})\n${pad}except asyncio.TimeoutError:\n${pad}    raise Exception("Operation timed out after ${ms}ms")`;
+      }
+      return `${pad}// Timeout: ${ms}ms\n${pad}await Promise.race([\n${pad}  (async () => {\n${timeoutBody}\n${pad}  })(),\n${pad}  new Promise((_, reject) => setTimeout(() => reject(new Error('Operation timed out after ${ms}ms')), ${ms}))\n${pad}]);`;
+    }
+
+    case NodeType.RACE: {
+      const tasks = node.body.map(n => compileNode(n, ctx)).filter(Boolean);
+      if (ctx.lang === 'python') {
+        const pyTasks = tasks.map((t, i) => `${pad}    asyncio.ensure_future(${t.trim()})`).join(',\n');
+        return `${pad}# First to finish\n${pad}import asyncio\n${pad}_done, _pending = await asyncio.wait([${tasks.map((_, i) => `_task_${i}`).join(', ')}], return_when=asyncio.FIRST_COMPLETED)\n${pad}_result = _done.pop().result()`;
+      }
+      const jsTasks = tasks.map(t => `${pad}  (async () => { ${t.trim()} })()`).join(',\n');
+      return `${pad}// First to finish\n${pad}await Promise.race([\n${jsTasks}\n${pad}]);`;
+    }
+
+    case NodeType.TRANSACTION: {
+      const txBody = compileBody(node.body, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}# As one operation (transaction)\n${pad}try:\n${pad}    await db.execute("BEGIN")\n${txBody}\n${pad}    await db.execute("COMMIT")\n${pad}except Exception as _tx_err:\n${pad}    await db.execute("ROLLBACK")\n${pad}    raise _tx_err`;
+      }
+      return `${pad}// As one operation (transaction)\n${pad}try {\n${pad}  await db.run('BEGIN');\n${txBody}\n${pad}  await db.run('COMMIT');\n${pad}} catch (_txErr) {\n${pad}  await db.run('ROLLBACK');\n${pad}  throw _txErr;\n${pad}}`;
     }
 
     case NodeType.USE:
@@ -1713,6 +2490,7 @@ function _compileNodeInner(node, ctx) {
     case NodeType.DATABASE_DECL: {
       const b = node.backend;
       if (b.includes('local') || b.includes('memory')) {
+        if (ctx.lang === 'python') return `${pad}# Database: local memory`;
         return `${pad}// Database: local memory (JSON file backup)`;
       }
       if (b.includes('sqlite')) {
@@ -1726,6 +2504,10 @@ function _compileNodeInner(node, ctx) {
           return `${pad}import asyncpg\n${pad}_db_pool = None\n${pad}async def _get_db():\n${pad}    global _db_pool\n${pad}    if not _db_pool:\n${pad}        _db_pool = await asyncpg.create_pool(${url})\n${pad}    return _db_pool`;
         }
         return `${pad}const { Pool } = require('pg');\n${pad}const _pool = new Pool({ connectionString: ${url} });`;
+      }
+      if (b.includes('supabase')) {
+        if (ctx.lang === 'python') return `${pad}# Database: Supabase (client initialized at top of file)`;
+        return `${pad}// Database: Supabase (client initialized at top of file)`;
       }
       return `${pad}// Database: ${node.backend}`;
     }
@@ -1792,6 +2574,114 @@ function _compileNodeInner(node, ctx) {
       return `${pad}await _emailTransport.sendMail({ to: ${exprVal('to')}, subject: ${exprVal('subject')}, text: String(${exprVal('body')}) });`;
     }
 
+    // Phase 45: External API calls
+    case NodeType.HTTP_REQUEST: {
+      const urlCode = exprToCode(node.url, ctx);
+      const config = node.config || {};
+      const hasBody = config.body;
+      const method = config.method || (hasBody ? 'POST' : 'GET');
+      // Build headers object
+      let headersCode = '';
+      if (config.headers && config.headers.length > 0) {
+        const headerEntries = config.headers.map(h =>
+          `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`
+        ).join(', ');
+        headersCode = `{ ${headerEntries} }`;
+      }
+      // Build timeout
+      const timeoutMs = config.timeout
+        ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
+        : 30000;
+      // Build body
+      const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
+
+      if (ctx.lang === 'python') {
+        let code = `${pad}import httpx\n`;
+        const headersPy = headersCode ? headersCode.replace(/:/g, ':').replace(/'/g, '"') : 'None';
+        const bodyPy = hasBody ? `json=${exprToCode(config.body, ctx)}` : '';
+        code += `${pad}async with httpx.AsyncClient(timeout=${timeoutMs / 1000}) as _client:\n`;
+        code += `${pad}    _resp = await _client.${method.toLowerCase()}(${urlCode}${headersCode ? ', headers=' + headersPy : ''}${bodyPy ? ', ' + bodyPy : ''})\n`;
+        code += `${pad}    _resp.raise_for_status()\n`;
+        code += `${pad}    _api_result = _resp.json()`;
+        return code;
+      }
+
+      // JS: wrap in async IIFE for result assignment
+      let code = `${pad}await (async () => {\n`;
+      code += `${pad}  const _ctrl = new AbortController();\n`;
+      code += `${pad}  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
+      code += `${pad}  try {\n`;
+      code += `${pad}    const _res = await fetch(${urlCode}, {\n`;
+      code += `${pad}      method: '${method}',\n`;
+      if (headersCode) code += `${pad}      headers: ${headersCode},\n`;
+      if (hasBody) code += `${pad}      body: ${bodyCode},\n`;
+      code += `${pad}      signal: _ctrl.signal\n`;
+      code += `${pad}    });\n`;
+      code += `${pad}    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
+      code += `${pad}    const _ct = _res.headers.get("content-type") || "";\n`;
+      code += `${pad}    return _ct.includes("json") ? _res.json() : _res.text();\n`;
+      code += `${pad}  } finally { clearTimeout(_timer); }\n`;
+      code += `${pad})()`;
+      return code;
+    }
+
+    // Phase 45: Service presets (Stripe, SendGrid, Twilio)
+    case NodeType.SERVICE_CALL: {
+      const svc = node.service;
+      const exprVal = (key) => {
+        const v = node.config[key];
+        if (!v) return 'undefined';
+        if (typeof v === 'object' && v.type) return exprToCode(v, ctx);
+        return JSON.stringify(v);
+      };
+
+      if (svc === 'stripe') {
+        // Stripe Charges API — uses form-encoded, not JSON
+        const code = `${pad}await (async () => {\n` +
+          `${pad}  const _body = new URLSearchParams({ amount: String(${exprVal('amount')}), currency: ${exprVal('currency') || '"usd"'}, source: ${exprVal('token')}, description: ${exprVal('description') || '""'} });\n` +
+          `${pad}  const _res = await fetch('https://api.stripe.com/v1/charges', {\n` +
+          `${pad}    method: 'POST',\n` +
+          `${pad}    headers: { 'Authorization': 'Bearer ' + process.env.STRIPE_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },\n` +
+          `${pad}    body: _body.toString()\n` +
+          `${pad}  });\n` +
+          `${pad}  if (!_res.ok) { const _e = new Error('Stripe API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'Stripe', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'charge via stripe' }; throw _e; }\n` +
+          `${pad}  return _res.json();\n` +
+          `${pad}})()`;
+        return code;
+      }
+
+      if (svc === 'sendgrid') {
+        const code = `${pad}await (async () => {\n` +
+          `${pad}  const _res = await fetch('https://api.sendgrid.com/v3/mail/send', {\n` +
+          `${pad}    method: 'POST',\n` +
+          `${pad}    headers: { 'Authorization': 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' },\n` +
+          `${pad}    body: JSON.stringify({ personalizations: [{ to: [{ email: ${exprVal('to')} }] }], from: { email: ${exprVal('from')} }, subject: ${exprVal('subject')}, content: [{ type: 'text/plain', value: ${exprVal('body')} }] })\n` +
+          `${pad}  });\n` +
+          `${pad}  if (!_res.ok) { const _e = new Error('SendGrid API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'SendGrid', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'send email via sendgrid' }; throw _e; }\n` +
+          `${pad}  return { ok: true, status: _res.status };\n` +
+          `${pad}})()`;
+        return code;
+      }
+
+      if (svc === 'twilio') {
+        const code = `${pad}await (async () => {\n` +
+          `${pad}  const _sid = process.env.TWILIO_SID;\n` +
+          `${pad}  const _token = process.env.TWILIO_TOKEN;\n` +
+          `${pad}  const _body = new URLSearchParams({ To: ${exprVal('to')}, From: process.env.TWILIO_FROM || ${exprVal('from')}, Body: ${exprVal('body')} });\n` +
+          `${pad}  const _res = await fetch(\`https://api.twilio.com/2010-04-01/Accounts/\${_sid}/Messages.json\`, {\n` +
+          `${pad}    method: 'POST',\n` +
+          `${pad}    headers: { 'Authorization': 'Basic ' + Buffer.from(_sid + ':' + _token).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },\n` +
+          `${pad}    body: _body.toString()\n` +
+          `${pad}  });\n` +
+          `${pad}  if (!_res.ok) { const _e = new Error('Twilio API error: ' + _res.status + ' ' + (await _res.text()).slice(0, 200)); _e._clearCtx = { service: 'Twilio', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'send sms via twilio' }; throw _e; }\n` +
+          `${pad}  return _res.json();\n` +
+          `${pad}})()`;
+        return code;
+      }
+
+      return `${pad}// Unknown service: ${svc}`;
+    }
+
     case NodeType.CREATE_PDF:
       return compilePdf(node, ctx, pad);
 
@@ -1827,11 +2717,38 @@ function _compileNodeInner(node, ctx) {
       return compileCrud(node, ctx, pad);
 
     case NodeType.TEST_DEF: {
+      // Check if body contains mock AI nodes
+      const mockNodes = node.body.filter(n => n.type === NodeType.MOCK_AI);
+      const nonMockBody = node.body.filter(n => n.type !== NodeType.MOCK_AI);
       if (ctx.lang === 'python') {
-        const bodyCode = compileBody(node.body, ctx);
+        const bodyCode = compileBody(nonMockBody, ctx);
         return `${pad}def test_${sanitizeName(node.name)}():\n${bodyCode}`;
       }
-      const bodyCode = compileBody(node.body, ctx, { declared: new Set() });
+      const bodyCode = compileBody(nonMockBody, ctx, { declared: new Set() });
+      if (mockNodes.length > 0) {
+        // Build mock responses array
+        const mocks = mockNodes.map(m => {
+          const obj = m.fields.map(f => {
+            const val = typeof f.value === 'string' ? JSON.stringify(f.value) : f.value;
+            return `${JSON.stringify(f.name)}: ${val}`;
+          }).join(', ');
+          return `{ ${obj} }`;
+        });
+        let code = `${pad}test(${JSON.stringify(node.name)}, async () => {\n`;
+        code += `${pad}  const _origAskAI = typeof _askAI !== 'undefined' ? _askAI : null;\n`;
+        if (mocks.length === 1) {
+          code += `${pad}  _askAI = async () => (${mocks[0]});\n`;
+        } else {
+          code += `${pad}  const _mockResponses = [${mocks.join(', ')}];\n`;
+          code += `${pad}  let _mockIdx = 0;\n`;
+          code += `${pad}  _askAI = async () => _mockResponses[_mockIdx++];\n`;
+        }
+        code += `${pad}  try {\n`;
+        code += bodyCode.split('\n').map(l => '  ' + l).join('\n') + '\n';
+        code += `${pad}  } finally { if (_origAskAI) _askAI = _origAskAI; }\n`;
+        code += `${pad}});`;
+        return code;
+      }
       return `${pad}test(${JSON.stringify(node.name)}, () => {\n${bodyCode}\n${pad}});`;
     }
 
@@ -1944,12 +2861,12 @@ function _compileNodeInner(node, ctx) {
         let code = `${pad}# Migration: ${node.name}\n`;
         for (const op of node.operations) {
           if (op.op === 'add_column') {
-            const table = op.table.toLowerCase() + (op.table.endsWith('s') ? '' : 's');
+            const table = pluralizeName(op.table);
             let col = `${op.column} ${sqlTypes[op.type] || 'TEXT'}`;
             if (op.default !== null && op.default !== undefined) col += ` DEFAULT '${op.default}'`;
             code += `${pad}db.execute("ALTER TABLE ${table} ADD COLUMN ${col}")\n`;
           } else if (op.op === 'remove_column') {
-            const table = op.table.toLowerCase() + (op.table.endsWith('s') ? '' : 's');
+            const table = pluralizeName(op.table);
             code += `${pad}db.execute("ALTER TABLE ${table} DROP COLUMN ${op.column}")\n`;
           }
         }
@@ -1958,12 +2875,12 @@ function _compileNodeInner(node, ctx) {
       let code = `${pad}// Migration: ${node.name}\n`;
       for (const op of node.operations) {
         if (op.op === 'add_column') {
-          const table = op.table.toLowerCase() + (op.table.endsWith('s') ? '' : 's');
+          const table = pluralizeName(op.table);
           let col = `${op.column} ${sqlTypes[op.type] || 'TEXT'}`;
           if (op.default !== null && op.default !== undefined) col += ` DEFAULT '${op.default}'`;
           code += `${pad}await db.run('ALTER TABLE ${table} ADD COLUMN ${col}');\n`;
         } else if (op.op === 'remove_column') {
-          const table = op.table.toLowerCase() + (op.table.endsWith('s') ? '' : 's');
+          const table = pluralizeName(op.table);
           code += `${pad}await db.run('ALTER TABLE ${table} DROP COLUMN ${op.column}');\n`;
         }
       }
@@ -2104,7 +3021,8 @@ function _compileNodeInner(node, ctx) {
     case NodeType.RATE_LIMIT: {
       const ms = node.period === 'second' ? 1000 : node.period === 'minute' ? 60000 : node.period === 'hour' ? 3600000 : 60000;
       if (ctx.lang === 'python') {
-        return `${pad}# Rate limit: ${node.count} per ${node.period}\n${pad}@limiter.limit("${node.count}/${node.period}")`;
+        // slowapi rate limiting for FastAPI
+        return `${pad}# Rate limit: ${node.count} per ${node.period}\n${pad}from slowapi import Limiter\n${pad}from slowapi.util import get_remote_address\n${pad}_limiter = Limiter(key_func=get_remote_address)\n${pad}app.state.limiter = _limiter`;
       }
       return `${pad}// Rate limit: ${node.count} per ${node.period}\n${pad}app.use(rateLimit({ windowMs: ${ms}, max: ${node.count} }));`;
     }
@@ -2157,7 +3075,8 @@ function _compileNodeInner(node, ctx) {
       if (ctx.lang === 'python') return `${pad}# API call: ${node.method} ${node.url}`;
       if (node.method === 'GET') {
         const target = node.targetVar ? sanitizeName(node.targetVar) : 'response';
-        return `${pad}_state.${target} = await fetch(${url}).then(r => r.json()).catch(e => { console.error(e); return _state.${target}; });`;
+        const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
+        return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
       }
       // POST/PUT/DELETE: send specific fields or full state
       let bodyExpr;
@@ -2167,7 +3086,34 @@ function _compileNodeInner(node, ctx) {
       } else {
         bodyExpr = '_state';
       }
-      return `${pad}await fetch(${url}, { method: '${node.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).catch(e => console.error(e));`;
+      // Helper: compile a fetch call with error checking
+      const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
+      const fetchWithErrorCheck = (fetchUrl, method, body) => {
+        const lines = [];
+        lines.push(`${pad}{ const _r = await fetch(${fetchUrl}, { method: '${method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${body}) });`);
+        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[${method} ${node.url}]${srcInfo}', _e.error || '${method} failed'); throw new Error(_e.error || _e.message || '${method} failed'); } }`);
+        return lines.join('\n');
+      };
+      // Auto-upsert: if this is a POST and a matching PUT/PATCH endpoint exists,
+      // check _editing_id to decide whether to create or update
+      if (node.method === 'POST' && ctx.updateEndpoints) {
+        const postMatch = node.url.match(/\/api\/(\w+)$/);
+        if (postMatch) {
+          const resource = postMatch[1].toLowerCase();
+          const upInfo = ctx.updateEndpoints[resource];
+          if (upInfo) {
+            const lines = [];
+            lines.push(`${pad}if (_state._editing_id) {`);
+            lines.push(fetchWithErrorCheck(JSON.stringify(upInfo.url) + ' + _state._editing_id', upInfo.method, bodyExpr));
+            lines.push(`${pad}  _state._editing_id = null;`);
+            lines.push(`${pad}} else {`);
+            lines.push(fetchWithErrorCheck(url, node.method, bodyExpr));
+            lines.push(`${pad}}`);
+            return lines.join('\n');
+          }
+        }
+      }
+      return fetchWithErrorCheck(url, node.method, bodyExpr);
     }
 
     case NodeType.COMPONENT_DEF: {
@@ -2301,8 +3247,10 @@ function _compileNodeInner(node, ctx) {
 
     // Nodes handled by dedicated loops in the reactive compiler -- skip here
     case NodeType.ON_PAGE_LOAD:
+    case NodeType.ON_CHANGE:
     case NodeType.ASK_FOR:
     case NodeType.DISPLAY:
+    case NodeType.CHART:
       return null;
 
     default:
@@ -2456,20 +3404,61 @@ export function exprToCode(expr, ctx) {
       return `JSON.stringify(${src})`;
     }
 
+    case NodeType.HTTP_REQUEST: {
+      // call api 'url' as expression (e.g., result = call api 'https://...')
+      const urlCode = exprToCode(expr.url, ctx);
+      const config = expr.config || {};
+      const hasBody = config.body;
+      const method = config.method || (hasBody ? 'POST' : 'GET');
+      const timeoutMs = config.timeout
+        ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
+        : 30000;
+      let headersCode = '';
+      if (config.headers && config.headers.length > 0) {
+        const entries = config.headers.map(h => `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`).join(', ');
+        headersCode = `{ ${entries} }`;
+      }
+      const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
+      let code = `await (async () => {\n`;
+      code += `  const _ctrl = new AbortController();\n`;
+      code += `  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
+      code += `  try {\n`;
+      code += `    const _res = await fetch(${urlCode}, { method: '${method}'`;
+      if (headersCode) code += `, headers: ${headersCode}`;
+      if (hasBody) code += `, body: ${bodyCode}`;
+      code += `, signal: _ctrl.signal });\n`;
+      code += `    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
+      code += `    const _ct = _res.headers.get("content-type") || "";\n`;
+      code += `    return _ct.includes("json") ? _res.json() : _res.text();\n`;
+      code += `  } catch (_err) {\n`;
+      code += `    if (!_err._clearCtx) { _err._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; }\n`;
+      code += `    throw _err;\n`;
+      code += `  } finally { clearTimeout(_timer); }\n`;
+      code += `})()`;
+      return code;
+    }
+
     case NodeType.ASK_AI: {
       const prompt = exprToCode(expr.prompt, ctx);
       const context = expr.context ? exprToCode(expr.context, ctx) : null;
       const schema = expr.schema ? JSON.stringify(expr.schema) : null;
+      const model = expr.model ? JSON.stringify(expr.model) : null;
       if (ctx.lang === 'python') {
         if (schema) return `await _ask_ai(${prompt}, ${context || 'None'}, ${schema})`;
         return context ? `await _ask_ai(${prompt}, ${context})` : `await _ask_ai(${prompt})`;
       }
-      if (schema) return `await _askAI(${prompt}, ${context || 'null'}, ${schema})`;
+      if (schema || model) return `await _askAI(${prompt}, ${context || 'null'}, ${schema || 'null'}, ${model || 'null'})`;
       return context ? `await _askAI(${prompt}, ${context})` : `await _askAI(${prompt})`;
     }
 
     case NodeType.RUN_AGENT: {
       const fnName = 'agent_' + sanitizeName(expr.agentName.toLowerCase().replace(/\s+/g, '_'));
+      const arg = expr.argument ? exprToCode(expr.argument, ctx) : '';
+      return `await ${fnName}(${arg})`;
+    }
+
+    case NodeType.RUN_PIPELINE: {
+      const fnName = 'pipeline_' + sanitizeName(expr.pipelineName.toLowerCase().replace(/\s+/g, '_'));
       const arg = expr.argument ? exprToCode(expr.argument, ctx) : '';
       return `await ${fnName}(${arg})`;
     }
@@ -2706,6 +3695,8 @@ function compileToJS(body, errors, sourceMap = false) {
 
   const lines = [];
   lines.push(`// Generated by Clear v${CLEAR_VERSION}`);
+  const jsDiagram = generateDiagram(body, '//');
+  if (jsDiagram) lines.push(jsDiagram);
   lines.push('');
 
   // Track which variables have been declared (for let vs reassignment)
@@ -2723,12 +3714,23 @@ function compileToJS(body, errors, sourceMap = false) {
 }
 
 /**
- * Check if the AST represents a reactive web app (has inputs or buttons).
+ * Check if the AST represents a reactive web app (has inputs, buttons, or
+ * any pattern that requires the reactive runtime: on-page-load fetches,
+ * table displays, or on-change handlers).
+ *
+ * A page with `on page load: get X from '/api/...'` + `display X as table`
+ * is reactive even if it has no buttons or inputs — it needs the async IIFE
+ * to fetch data and _recompute() to render it into the DOM table.
  */
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
-      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON) return true;
+      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE) return true;
+      if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
+      // A table display requires _recompute() to render rows into the DOM.
+      if (node.type === NodeType.DISPLAY && node.format === 'table') return true;
+      // An on-page-load block with API calls requires the async IIFE + _recompute().
+      if (node.type === NodeType.ON_PAGE_LOAD) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
       }
@@ -2778,6 +3780,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     switch (node.type) {
       case NodeType.ASK_FOR: inputNodes.push(node); break;
       case NodeType.DISPLAY: displayNodes.push(node); break;
+      case NodeType.CHART: break; // Chart nodes handled separately below
       case NodeType.BUTTON: buttonNodes.push(node); break;
       case NodeType.COMMENT:
       case NodeType.TARGET:
@@ -2814,6 +3817,8 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   // 3. State initialization
   lines.push('');
   lines.push('// --- State ---');
+  lines.push('// Reactive model: _state holds all data. _recompute() syncs state to DOM.');
+  lines.push('// Input listeners update _state, buttons run actions, both call _recompute().');
   const stateDefaults = {};
   for (const inp of inputNodes) {
     const name = sanitizeName(inp.variable);
@@ -2854,6 +3859,35 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   const filteredCompute = computeNodes.filter(n =>
     !(n.type === NodeType.ASSIGN && n.expression && literalTypes.has(n.expression.type))
   );
+
+  // Detect DELETE, PUT, and GET endpoints for auto-generating per-row action buttons
+  const deleteEndpoints = {};
+  const updateEndpoints = {};
+  const getRefreshUrls = {};
+  function scanForEndpoints(nodes) {
+    for (const n of nodes) {
+      if (n.type === NodeType.ENDPOINT && n.path) {
+        const match = n.path.match(/\/api\/(\w+)\/:id/);
+        if (match) {
+          const resource = match[1].toLowerCase();
+          if (n.method === 'DELETE') deleteEndpoints[resource] = n.path.replace('/:id', '/');
+          if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method };
+        }
+      }
+      if (n.type === NodeType.API_CALL && n.method === 'GET' && n.targetVar) {
+        getRefreshUrls[sanitizeName(n.targetVar).toLowerCase()] = { url: n.url, varName: sanitizeName(n.targetVar) };
+      }
+      if (n.body) scanForEndpoints(n.body);
+    }
+  }
+  scanForEndpoints(body);
+  scanForEndpoints(flatNodes);
+
+  // Add _editing_id to state only when a display table explicitly requests edit actions
+  const hasEditAction = displayNodes.some(d => d.actions && d.actions.includes('edit'));
+  if (hasEditAction) {
+    stateDefaults['_editing_id'] = 'null';
+  }
 
   const stateEntries = Object.entries(stateDefaults).map(([k, v]) => `  ${k}: ${v}`).join(',\n');
   lines.push(`let _state = {`);
@@ -2968,30 +4002,21 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     }
   }
 
-  // Detect DELETE endpoints for auto-generating per-row delete buttons
-  const deleteEndpoints = {};
-  function scanForEndpoints(nodes) {
-    for (const n of nodes) {
-      if (n.type === NodeType.ENDPOINT && n.method === 'DELETE' && n.path) {
-        // Extract resource name from path like /api/contacts/:id
-        const match = n.path.match(/\/api\/(\w+)\/:id/);
-        if (match) deleteEndpoints[match[1].toLowerCase()] = n.path.replace('/:id', '/');
-      }
-      if (n.body) scanForEndpoints(n.body);
-    }
-  }
-  scanForEndpoints(body);
-
   // Display updates
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
   for (const disp of displayNodes) {
     const outputId = disp.ui._resolvedId || disp.ui.id;
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
-      // Check if this table's data source has a matching DELETE endpoint
+      // Check if user explicitly requested action buttons via "with delete" / "with edit"
       const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
-      const deleteUrl = deleteEndpoints[varName.toLowerCase()];
-      const hasDelete = !!deleteUrl;
+      const resourceKey = varName.toLowerCase();
+      const actions = disp.actions || [];
+      const hasDelete = actions.includes('delete');
+      const hasUpdate = actions.includes('edit');
+      const hasActions = hasDelete || hasUpdate;
+      const deleteUrl = hasDelete ? deleteEndpoints[resourceKey] : null;
+      const updateInfo = hasUpdate ? updateEndpoints[resourceKey] : null;
 
       // Reactive table: render array of objects as HTML table
       lines.push(`  {`);
@@ -3002,12 +4027,25 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         : 'Object.keys(_data[0])';
       lines.push(`    if (_tableEl && Array.isArray(_data) && _data.length > 0) {`);
       lines.push(`      const _keys = ${colsCode};`);
-      if (hasDelete) {
-        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';`);
-        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td><button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button></td>' + '</tr>').join('');`);
+      const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
+      const tdClass = 'text-sm text-base-content';
+      const trClass = 'border-base-300 hover:bg-base-200 transition-colors';
+      const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
+      const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
+      if (hasActions) {
+        let actionBtns = '';
+        if (hasUpdate) {
+          actionBtns += `'<button class="btn btn-ghost btn-xs" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>'`;
+        }
+        if (hasDelete) {
+          if (actionBtns) actionBtns += ` + ' ' + `;
+          actionBtns += `'<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>'`;
+        }
+        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = ${headCols} + '<th class="${thClass}"></th>';`);
+        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="${trClass}">' + ${dataCols} + '<td class="text-right">' + ${actionBtns} + '</td>' + '</tr>').join('');`);
       } else {
-        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');`);
-        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');`);
+        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = ${headCols};`);
+        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="${trClass}">' + ${dataCols} + '</tr>').join('');`);
       }
       lines.push(`    } else if (_tableEl) {`);
       lines.push(`      _tableEl.querySelector('thead tr').innerHTML = '';`);
@@ -3022,8 +4060,53 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     }
   }
 
+  // Chart updates (ECharts)
+  const chartNodes = flatNodes.filter(n => n.type === NodeType.CHART);
+  for (const chart of chartNodes) {
+    const chartId = chart.ui.id;
+    const dataExpr = `_state.${sanitizeName(chart.dataVar)}`;
+    const chartType = chart.chartType;
+    const groupBy = chart.groupBy;
+
+    lines.push(`  {`);
+    lines.push(`    const _chartEl = document.getElementById('${chartId}_canvas');`);
+    lines.push(`    const _data = ${dataExpr};`);
+    lines.push(`    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
+    lines.push(`      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);`);
+
+    if (chartType === 'pie') {
+      if (groupBy) {
+        // Group by field and count
+        lines.push(`      const _counts = {};`);
+        lines.push(`      _data.forEach(r => { const k = r.${sanitizeName(groupBy)} || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });`);
+        lines.push(`      const _pieData = Object.entries(_counts).map(([name, value]) => ({ name, value }));`);
+      } else {
+        // Assume data has name/value-like fields — use first two non-id keys
+        lines.push(`      const _sKeys = Object.keys(_data[0]).filter(k => k !== 'id');`);
+        lines.push(`      const _pieData = _data.map(r => ({ name: String(r[_sKeys[0]] || ''), value: Number(r[_sKeys[1] || _sKeys[0]] || 0) }));`);
+      }
+      lines.push(`      _chart.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: '65%', data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } } }] }, true);`);
+    } else {
+      // line, bar, area — auto-detect x (first string field) and y (first number field)
+      const seriesType = chartType === 'area' ? 'line' : chartType;
+      const areaStyle = chartType === 'area' ? ', areaStyle: {}' : '';
+      lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
+      lines.push(`      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];`);
+      lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
+      lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);`);
+      lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
+      lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}, smooth: true }));`);
+      lines.push(`      _chart.setOption({ tooltip: { trigger: 'axis' }, legend: _yKeys.length > 1 ? { data: _yKeys } : undefined, xAxis: { type: 'category', data: _xData }, yAxis: { type: 'value' }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true } }, true);`);
+    }
+
+    lines.push(`    }`);
+    lines.push(`  }`);
+  }
+
   // Sync input DOM values with state (so clearing state also clears the input)
+  // Skip file inputs — .value is read-only on file inputs
   for (const inp of inputNodes) {
+    if (inp.inputType === 'file') continue;
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     lines.push(`  document.getElementById('${inputId}').value = _state.${name};`);
@@ -3038,8 +4121,11 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     const inputId = `input_${sanitizeName(inp.variable)}`;
     const name = sanitizeName(inp.variable);
     const isNum = inp.inputType === 'number' || inp.inputType === 'percent';
-    lines.push(`document.getElementById('${inputId}').addEventListener('input', function(e) {`);
-    lines.push(`  _state.${name} = ${isNum ? 'Number(e.target.value) || 0' : 'e.target.value'};`);
+    const isFile = inp.inputType === 'file';
+    const eventType = isFile ? 'change' : 'input';
+    const valueExpr = isFile ? 'e.target.files[0] || null' : isNum ? 'Number(e.target.value) || 0' : 'e.target.value';
+    lines.push(`document.getElementById('${inputId}').addEventListener('${eventType}', function(e) {`);
+    lines.push(`  _state.${name} = ${valueExpr};`);
     lines.push(`  _recompute();`);
     lines.push(`});`);
   }
@@ -3051,15 +4137,98 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     for (const btn of buttonNodes) {
       const btnId = `btn_${sanitizeName(btn.label.replace(/\s+/g, '_'))}`;
       const btnDeclared = new Set(recomputeDeclared);
-      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web' };
+      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
       const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL);
       const asyncKw = hasApiCall ? 'async ' : '';
+
+      // Find POST/PUT API calls to determine which fields need validation
+      const postCalls = btn.body.filter(n => n.type === NodeType.API_CALL && (n.method === 'POST' || n.method === 'PUT'));
+      const fieldsToValidate = new Set();
+      for (const call of postCalls) {
+        if (call.fields) call.fields.forEach(f => fieldsToValidate.add(sanitizeName(f)));
+      }
+
       lines.push(`document.getElementById('${btnId}').addEventListener('click', ${asyncKw}function() {`);
-      lines.push(bodyCode);
+
+      // Client-side validation: check required fields aren't empty
+      if (fieldsToValidate.size > 0) {
+        const checks = [...fieldsToValidate].map(f =>
+          `    if (_state.${f} === '' || _state.${f} == null) { _toast('${f.replace(/_/g, ' ')} is required', 'error'); return; }`
+        );
+        lines.push(checks.join('\n'));
+      }
+
+      // Loading state: disable button + show spinner during async work
+      if (hasApiCall) {
+        lines.push(`  const _btn = document.getElementById('${btnId}');`);
+        lines.push(`  const _btnHTML = _btn.innerHTML;`);
+        lines.push(`  _btn.disabled = true;`);
+        lines.push(`  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';`);
+        lines.push(`  try {`);
+        lines.push(bodyCode.split('\n').map(l => '  ' + l).join('\n'));
+        lines.push(`  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }`);
+        lines.push(`  _btn.disabled = false;`);
+        lines.push(`  _btn.innerHTML = _btnHTML;`);
+      } else {
+        lines.push(bodyCode);
+      }
+
       lines.push(`  _recompute();`);
       lines.push(`});`);
     }
+  }
+
+  // 6b. Table action button handlers (delete/edit via event delegation)
+  for (const disp of displayNodes) {
+    if (disp.format !== 'table') continue;
+    const actions = disp.actions || [];
+    if (actions.length === 0) continue;
+    const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
+    const resourceKey = varName.toLowerCase();
+    const deleteUrl = actions.includes('delete') ? deleteEndpoints[resourceKey] : null;
+    const updateInfo = actions.includes('edit') ? updateEndpoints[resourceKey] : null;
+    const refreshInfo = getRefreshUrls[resourceKey];
+    const outputId = disp.ui._resolvedId || disp.ui.id;
+    if (!deleteUrl && !updateInfo) continue;
+
+    lines.push('');
+    lines.push(`// --- Table action handlers for ${varName} ---`);
+    lines.push(`document.getElementById('${outputId}_table').addEventListener('click', async function(e) {`);
+
+    if (deleteUrl) {
+      lines.push(`  const deleteBtn = e.target.closest('[data-delete-id]');`);
+      lines.push(`  if (deleteBtn) {`);
+      lines.push(`    const id = deleteBtn.dataset.deleteId;`);
+      lines.push(`    await fetch(${JSON.stringify(deleteUrl)} + id, { method: 'DELETE' }).catch(e => console.error(e));`);
+      if (refreshInfo) {
+        lines.push(`    _state.${refreshInfo.varName} = await fetch(${JSON.stringify(refreshInfo.url)}).then(r => r.json()).catch(e => { console.error(e); return _state.${refreshInfo.varName}; });`);
+      }
+      lines.push(`    _recompute();`);
+      lines.push(`    return;`);
+      lines.push(`  }`);
+    }
+
+    if (updateInfo) {
+      lines.push(`  const editBtn = e.target.closest('[data-edit-id]');`);
+      lines.push(`  if (editBtn) {`);
+      lines.push(`    const id = editBtn.dataset.editId;`);
+      lines.push(`    const row = JSON.parse(editBtn.dataset.editRow);`);
+      // Populate the form inputs with the row data for editing
+      const colsForEdit = disp.columns || [];
+      for (const col of colsForEdit) {
+        const sName = sanitizeName(col);
+        if (stateVarNames.has(sName)) {
+          lines.push(`    _state.${sName} = row.${sName} != null ? row.${sName} : '';`);
+        }
+      }
+      lines.push(`    _state._editing_id = id;`);
+      lines.push(`    _recompute();`);
+      lines.push(`    return;`);
+      lines.push(`  }`);
+    }
+
+    lines.push(`});`);
   }
 
   // 7. On page load handlers (if any, these call _recompute at the end)
@@ -3083,6 +4252,35 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     lines.push('_recompute();');
   }
 
+  // 8. On-change handlers (reactive input watchers with optional debounce)
+  const changeNodes = flatNodes.filter(n => n.type === NodeType.ON_CHANGE);
+  for (const cn of changeNodes) {
+    const inputId = `input_${sanitizeName(cn.variable)}`;
+    const changeCtx = { lang: 'js', indent: 1, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web' };
+    const bodyCode = cn.body.map(n => compileNode(n, changeCtx)).filter(Boolean).join('\n');
+    const hasApiCall = cn.body.some(n => n.type === NodeType.API_CALL);
+    const asyncKw = hasApiCall ? 'async ' : '';
+
+    lines.push('');
+    lines.push(`// --- When ${cn.variable} changes ---`);
+    if (cn.debounceMs > 0) {
+      const timerId = `_debounce_${sanitizeName(cn.variable)}`;
+      lines.push(`let ${timerId} = null;`);
+      lines.push(`document.getElementById('${inputId}').addEventListener('input', function() {`);
+      lines.push(`  clearTimeout(${timerId});`);
+      lines.push(`  ${timerId} = setTimeout(${asyncKw}function() {`);
+      lines.push(bodyCode);
+      lines.push(`    _recompute();`);
+      lines.push(`  }, ${cn.debounceMs});`);
+      lines.push(`});`);
+    } else {
+      lines.push(`document.getElementById('${inputId}').addEventListener('input', ${asyncKw}function() {`);
+      lines.push(bodyCode);
+      lines.push(`  _recompute();`);
+      lines.push(`});`);
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -3093,6 +4291,8 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
 function compileToPython(body, errors, sourceMap = false) {
   const lines = [];
   lines.push(`# Generated by Clear v${CLEAR_VERSION}`);
+  const pyDiagram = generateDiagram(body, '#');
+  if (pyDiagram) lines.push(pyDiagram);
   // Add standard library imports based on what the program uses
   const hasFileOps = body.some(n =>
     n.type === NodeType.FILE_OP ||
@@ -3134,9 +4334,9 @@ function compileToPython(body, errors, sourceMap = false) {
  */
 // Inline layout modifier map (shared between parser and compiler)
 const INLINE_LAYOUT_MODIFIERS = {
-  'two column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr', gap: '1.5rem' } },
-  'three column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr', gap: '1.5rem' } },
-  'four column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr 1fr', gap: '1.5rem' } },
+  'two column layout': { tailwind: 'grid grid-cols-2 gap-6' },
+  'three column layout': { tailwind: 'grid grid-cols-3 gap-6' },
+  'four column layout': { tailwind: 'grid grid-cols-4 gap-6' },
   'full height': { prop: 'height', val: '100vh' },
   'scrollable': { prop: 'overflow-y', val: 'auto' },
   'fills remaining space': { prop: 'flex', val: '1' },
@@ -3157,6 +4357,7 @@ function buildHTML(body) {
   const inlineStyleBlocks = []; // CSS generated from inline section modifiers
   const usedIds = new Set(); // Track element IDs to prevent duplicates
   let pageTitle = 'Clear App';
+  let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
   const pages = [];
   const sectionStack = []; // Track parent section presets for context-aware rendering
 
@@ -3186,21 +4387,32 @@ function buildHTML(body) {
 
           // Generate inline modifier CSS class if needed
           let inlineClass = '';
+          let tailwindClasses = '';
           if (hasInline) {
             const slug = sanitizeName(node.title.replace(/\s+/g, '_').toLowerCase());
             inlineClass = `section-${slug}`;
             const cssProps = [];
+            const twClasses = [];
             for (const mod of node.inlineModifiers) {
               if (typeof mod === 'string' && INLINE_LAYOUT_MODIFIERS[mod]) {
                 const m = INLINE_LAYOUT_MODIFIERS[mod];
-                cssProps.push(`${m.prop}: ${m.val}`);
-                if (m.extra) Object.entries(m.extra).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
+                if (m.tailwind) {
+                  twClasses.push(m.tailwind);
+                } else {
+                  cssProps.push(`${m.prop}: ${m.val}`);
+                  if (m.extra) Object.entries(m.extra).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
+                }
               } else if (mod && mod.custom && mod.props) {
                 Object.entries(mod.props).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
               }
             }
             if (cssProps.length > 0) {
               inlineStyleBlocks.push(`.${inlineClass} { ${cssProps.join('; ')}; }`);
+            } else {
+              inlineClass = ''; // No custom CSS needed
+            }
+            if (twClasses.length > 0) {
+              tailwindClasses = twClasses.join(' ');
             }
           }
 
@@ -3217,7 +4429,7 @@ function buildHTML(body) {
             // Tabs: generate tab bar + content panels
             const tabs = node.body.filter(n => n.type === NodeType.TAB);
             const otherContent = node.body.filter(n => n.type !== NodeType.TAB);
-            parts.push(`    <div class="${inlineClass} clear-section" id="${panelId}">`);
+            parts.push(`    <div class="${[inlineClass, tailwindClasses, 'clear-section'].filter(Boolean).join(' ')}" id="${panelId}">`);
             // Tab buttons
             parts.push(`    <div class="tabs tabs-bordered" role="tablist">`);
             tabs.forEach((tab, i) => {
@@ -3253,7 +4465,7 @@ function buildHTML(body) {
           if (isSlideIn) {
             const dir = mods.find(m => typeof m === 'string' && m.startsWith('__slidein_'))?.replace('__slidein_', '') || 'right';
             const translateStart = dir === 'left' ? '-100%' : '100%';
-            parts.push(`    <div class="clear-section ${inlineClass}" id="${panelId}" style="display:none">`);
+            parts.push(`    <div class="${['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ')}" id="${panelId}" style="display:none">`);
             walk(node.body);
             parts.push(`    </div>`);
             // Slide-in CSS
@@ -3263,7 +4475,7 @@ function buildHTML(body) {
 
           if (isCollapsible) {
             const display = startsClosed ? 'none' : 'block';
-            parts.push(`    <div class="clear-section ${inlineClass}" id="${panelId}">`);
+            parts.push(`    <div class="${['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ')}" id="${panelId}">`);
             parts.push(`      <h2 class="cursor-pointer select-none" onclick="const c=this.nextElementSibling;c.style.display=c.style.display==='none'?'block':'none'">${node.title} <span class="text-sm opacity-50">&#9662;</span></h2>`);
             parts.push(`      <div class="collapsible-content" style="display:${display}">`);
             walk(node.body);
@@ -3279,7 +4491,14 @@ function buildHTML(body) {
 
           if (presetClasses) {
             // Built-in preset: use Tailwind/DaisyUI classes directly, no custom CSS
-            const cls = [presetClasses, inlineClass].filter(Boolean).join(' ');
+            // Context-aware: cards inside dark sections get dark card styling
+            let resolvedPreset = presetClasses;
+            const parentPresetName = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
+            const inDarkSection = ['page_section_dark', 'section_dark'].includes(parentPresetName);
+            if (inDarkSection && ['card', 'page_card'].includes(node.styleName)) {
+              resolvedPreset = 'bg-neutral-focus/50 rounded-2xl p-8 flex flex-col gap-3 border border-neutral-content/10';
+            }
+            const cls = [resolvedPreset, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             // Only full-width landing page sections get the max-w-5xl inner wrapper.
             // App presets (flex layout) and card-type presets (already constrained) skip it.
             const isAppPreset = node.styleName && node.styleName.startsWith('app_');
@@ -3328,7 +4547,7 @@ function buildHTML(body) {
             parts.push(`    </div>`);
           } else if (hasUserStyle || hasInline) {
             // User-defined style (custom CSS): full-width outer, contained inner
-            const allClasses = [node.ui.cssClass, inlineClass].filter(Boolean).join(' ');
+            const allClasses = [node.ui.cssClass, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             parts.push(`    <div class="${allClasses}">`);
             if (hasUserStyle && !hasInline) {
               parts.push(`      <div class="max-w-5xl mx-auto px-4">`);
@@ -3340,7 +4559,7 @@ function buildHTML(body) {
             parts.push(`    </div>`);
           } else {
             // No style: default card section using DaisyUI utilities
-            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass].filter(Boolean).join(' ');
+            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass, tailwindClasses].filter(Boolean).join(' ');
             parts.push(`    <div class="${allClasses}">
       <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">${node.ui.title}</h2>`);
             walk(node.body);
@@ -3373,10 +4592,15 @@ function buildHTML(body) {
 ${options}
       </select>
     </fieldset>`);
+          } else if (ui.htmlType === 'file') {
+            parts.push(`    <fieldset class="${fieldsetCls}">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <input id="${ui.id}" class="file-input file-input-bordered w-full" type="file">
+    </fieldset>`);
           } else {
             parts.push(`    <fieldset class="${fieldsetCls}">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
-      <input id="${ui.id}" class="input input-bordered w-full" type="${ui.htmlType}" placeholder="${ui.label}">
+      <input id="${ui.id}" class="input input-bordered w-full" type="${ui.htmlType}"${ui.htmlType === 'number' ? ' step="any"' : ''} placeholder="${ui.label}">
     </fieldset>`);
           }
           break;
@@ -3415,6 +4639,16 @@ ${options}
           break;
         }
 
+        case NodeType.CHART: {
+          const chartId = node.ui.id;
+          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden p-4" id="${chartId}">
+      <h3 class="text-sm font-semibold text-base-content mb-2">${node.title}</h3>
+      <div id="${chartId}_canvas" style="width:100%;height:320px;"></div>
+    </div>`);
+          hasChart = true;
+          break;
+        }
+
         case NodeType.BUTTON: {
           const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
           const btnInHeader = btnPreset === 'app_header';
@@ -3449,8 +4683,8 @@ ${options}
           switch (ui.contentType) {
             case 'heading':
               if (inHero) {
-                // Hero/CTA: big display headline
-                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-tight text-base-content">${formatted}</h1>`);
+                // Hero/CTA: massive display headline (Stripe-style)
+                parts.push(`    <h1 class="font-display text-6xl font-extrabold tracking-tight leading-[1.1] text-base-content max-w-3xl">${formatted}</h1>`);
               } else if (inHeader) {
                 parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
@@ -3460,8 +4694,9 @@ ${options}
               } else if (inCard) {
                 parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
               } else if (inPageSection) {
-                // Section heading in landing page
-                parts.push(`    <h2 class="text-3xl font-bold text-base-content tracking-tight mb-8">${formatted}</h2>`);
+                // Section heading in landing page (dark sections use neutral-content)
+                const textColor = parentPreset === 'page_section_dark' || parentPreset === 'section_dark' ? 'text-neutral-content' : 'text-base-content';
+                parts.push(`    <h2 class="font-display text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
               } else {
                 parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
               }
@@ -3524,7 +4759,7 @@ ${options}
 
         case NodeType.SHOW: {
           // Component call: show Card(name) -> container div for reactive rendering
-          if (node.expression && node.expression.type === NodeType.CALL) {
+          if (node.expression && node.expression.type === NodeType.CALL && node.expression.name) {
             const containerId = `component_${sanitizeName(node.expression.name)}_${compRenderCounter++}`;
             parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
           }
@@ -3557,7 +4792,19 @@ ${options}
   let condCounter = 0;
   let compRenderCounter = 0;
   walk(body);
-  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks };
+
+  // Wrap multi-page content in routable divs (process in reverse to keep indices valid)
+  if (pages.length > 1) {
+    for (let i = pages.length - 1; i >= 0; i--) {
+      const p = pages[i];
+      const pageId = sanitizeName(p.title);
+      const hidden = i > 0 ? ' style="display:none"' : '';
+      parts.splice(p.endIdx, 0, `</div>`);
+      parts.splice(p.startIdx, 0, `<div id="page_${pageId}"${hidden}>`);
+    }
+  }
+
+  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks, hasChart };
 }
 
 /**
@@ -3576,7 +4823,7 @@ function formatInlineText(text) {
  * Compile a Clear AST + compiled JS into a complete, runnable index.html.
  */
 function compileToHTML(body, compiledJS) {
-  const { pageTitle, htmlBody, pages, inlineStyleBlocks } = buildHTML(body);
+  const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart } = buildHTML(body);
   const styles = extractStyles(body);
   // Collect top-level variables for style resolution (e.g. primary_color is '#2563eb')
   const styleVars = {};
@@ -3633,9 +4880,10 @@ _router();`;
   // Tree-shake CSS based on what's actually in the HTML
   const css = _buildCSS(htmlBody, userCSS, { fullWidth: hasStyledSections, theme: themeName });
 
-  // Detect if page uses full-width layout
+  // Detect if page uses full-width layout (app presets, grids, flex row, or side-by-side)
   const hasFullLayout = usesAppPresets || htmlBody.includes('style-app_layout') ||
-    css.includes('full_height') || css.includes('column_layout') || css.includes('grid');
+    css.includes('full_height') || css.includes('column_layout') || css.includes('grid') ||
+    css.includes('flex-direction: row') || css.includes('side_by_side');
   const usesLandingPresets = htmlBody.includes('py-24') || htmlBody.includes('py-20');
   const appClass = usesAppPresets ? '' : usesLandingPresets ? '' : hasFullLayout ? 'h-screen' : hasStyledSections ? '' : 'max-w-2xl mx-auto p-8 flex flex-col gap-6';
 
@@ -3650,6 +4898,7 @@ _router();`;
   <title>${pageTitle}</title>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
+${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\\/script>' : ''}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
@@ -3660,6 +4909,7 @@ _router();`;
 ${htmlBody}
   </main>
 
+  <!-- ${generateDiagram(body, '').trim() || 'Clear App'} -->
   <script${scriptType}>
 ${(() => { const utils = _getUsedUtilities(compiledJS + routerJS); return utils.length > 0 ? '// --- Runtime ---\n' + utils.join('\n') + '\n' : ''; })()}${compiledJS}
 ${routerJS}
@@ -3674,6 +4924,96 @@ ${routerJS}
 // =============================================================================
 
 /**
+ * Generate an ASCII architecture diagram from the AST.
+ * Embedded in compiled output so AI agents understand the app structure at a glance.
+ */
+function generateDiagram(body, commentPrefix = '//') {
+  const tables = [];
+  const endpoints = [];
+  const pages = [];
+  const agents = [];
+
+  for (const node of body) {
+    if (node.type === NodeType.DATA_SHAPE) {
+      const fields = (node.fields || []).map(f => {
+        let desc = f.name;
+        if (f.required) desc += '*';
+        if (f.unique) desc += '!';
+        return desc;
+      });
+      tables.push({ name: node.name, fields, line: node.line, file: node._sourceFile });
+    }
+    if (node.type === NodeType.ENDPOINT) {
+      const auth = node.body && node.body.some(b => b.type === NodeType.REQUIRES_AUTH);
+      endpoints.push({ method: node.method.toUpperCase(), path: node.path, auth, line: node.line, file: node._sourceFile });
+    }
+    if (node.type === NodeType.PAGE) {
+      pages.push({ title: node.title, route: node.route || '/', line: node.line, file: node._sourceFile });
+    }
+    if (node.type === NodeType.AGENT) {
+      agents.push({ name: node.name, line: node.line });
+    }
+  }
+
+  if (tables.length === 0 && endpoints.length === 0 && pages.length === 0) return '';
+
+  const p = commentPrefix;
+  const lines = [];
+  lines.push(`${p} ┌─────────────────────────────────────────────┐`);
+  lines.push(`${p} │         CLEAR APP — Architecture            │`);
+  lines.push(`${p} └─────────────────────────────────────────────┘`);
+
+  if (tables.length > 0) {
+    lines.push(`${p}`);
+    lines.push(`${p} TABLES:`);
+    for (const t of tables) {
+      const src = t.file ? ` (${t.file}:${t.line})` : t.line ? ` (line ${t.line})` : '';
+      lines.push(`${p}   ${t.name}: ${t.fields.join(', ')}${src}`);
+    }
+  }
+
+  if (endpoints.length > 0) {
+    lines.push(`${p}`);
+    lines.push(`${p} ENDPOINTS:`);
+    for (const e of endpoints) {
+      const lock = e.auth ? ' [auth]' : '';
+      const src = e.file ? ` (${e.file}:${e.line})` : e.line ? ` (line ${e.line})` : '';
+      const displayPath = commentPrefix === '#' ? e.path.replace(/:(\w+)/g, '{$1}') : e.path;
+      lines.push(`${p}   ${e.method} ${displayPath}${lock}${src}`);
+    }
+  }
+
+  if (pages.length > 0) {
+    lines.push(`${p}`);
+    lines.push(`${p} PAGES:`);
+    for (const pg of pages) {
+      const src = pg.file ? ` (${pg.file}:${pg.line})` : pg.line ? ` (line ${pg.line})` : '';
+      lines.push(`${p}   '${pg.title}' at ${pg.route}${src}`);
+    }
+  }
+
+  if (agents.length > 0) {
+    lines.push(`${p}`);
+    lines.push(`${p} AGENTS:`);
+    for (const a of agents) {
+      lines.push(`${p}   '${a.name}' (line ${a.line})`);
+    }
+  }
+
+  // Data flow
+  if (endpoints.length > 0 && pages.length > 0) {
+    lines.push(`${p}`);
+    lines.push(`${p} DATAFLOW: Frontend ──> API ──> Database`);
+  } else if (endpoints.length > 0) {
+    lines.push(`${p}`);
+    lines.push(`${p} DATAFLOW: Client ──> API ──> Database`);
+  }
+
+  lines.push(`${p}`);
+  return lines.join('\n') + '\n';
+}
+
+/**
  * Compile to a complete, runnable Express.js server.
  */
 function compileToJSBackend(body, errors, sourceMap = false) {
@@ -3686,11 +5026,20 @@ function compileToJSBackend(body, errors, sourceMap = false) {
     n.type === NodeType.ENDPOINT && n.body &&
     n.body.some(b => b.type === NodeType.RATE_LIMIT)
   );
+  const dbBackend = body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
+  const isSupabase = dbBackend.includes('supabase');
 
   const lines = [];
   lines.push(`// Generated by Clear v${CLEAR_VERSION}`);
+  const diagram = generateDiagram(body, '//');
+  if (diagram) lines.push(diagram);
   lines.push("const express = require('express');");
-  lines.push("const db = require('./clear-runtime/db');");
+  if (isSupabase) {
+    lines.push("const { createClient } = require('@supabase/supabase-js');");
+    lines.push("const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);");
+  } else {
+    lines.push("const db = require('./clear-runtime/db');");
+  }
   if (usesAuth) {
     lines.push("const auth = require('./clear-runtime/auth');");
   }
@@ -3743,7 +5092,7 @@ function compileToJSBackend(body, errors, sourceMap = false) {
 
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, dbBackend, _astBody: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
@@ -3757,6 +5106,42 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   if (usedUtils.length > 0) {
     lines.push('// Built-in utilities');
     for (const util of usedUtils) lines.push(util);
+    lines.push('');
+  }
+
+  // _clearMap: conditional source map for runtime error translator
+  // Only emitted when CLEAR_DEBUG is set — zero overhead in production
+  const dataShapes = body.filter(n => n.type === NodeType.DATA_SHAPE);
+  const endpoints = body.filter(n => n.type === NodeType.ENDPOINT);
+  if (dataShapes.length > 0 || endpoints.length > 0) {
+    lines.push('// Source map for error translator (only active with CLEAR_DEBUG)');
+    lines.push('const _clearMap = process.env.CLEAR_DEBUG ? {');
+    // Tables with schemas
+    if (dataShapes.length > 0) {
+      lines.push('  tables: {');
+      for (const ds of dataShapes) {
+        const fields = ds.fields.map(f => {
+          const props = [];
+          if (f.required) props.push('required: true');
+          if (f.unique) props.push('unique: true');
+          if (f.fieldType) props.push(`type: "${f.fieldType}"`);
+          return `${sanitizeName(f.name)}: { ${props.join(', ')} }`;
+        }).join(', ');
+        lines.push(`    ${pluralizeName(ds.name)}: { line: ${ds.line}, file: "${ds._sourceFile || 'main.clear'}", fields: { ${fields} } },`);
+      }
+      lines.push('  },');
+    }
+    // Endpoints
+    if (endpoints.length > 0) {
+      lines.push('  endpoints: {');
+      for (const ep of endpoints) {
+        const key = `${ep.method.toUpperCase()} ${ep.path}`;
+        const hasAuth = ep.body && ep.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE);
+        lines.push(`    "${key}": { line: ${ep.line}, file: "${ep._sourceFile || 'main.clear'}", auth: ${hasAuth} },`);
+      }
+      lines.push('  }');
+    }
+    lines.push('} : null;');
     lines.push('');
   }
 
@@ -3824,7 +5209,7 @@ function compileToBrowserServer(body, errors) {
   for (const node of body) {
     if (node.type === NodeType.DATA_SHAPE || node.type === NodeType.ENDPOINT ||
         node.type === NodeType.AGENT || node.type === NodeType.ASSIGN ||
-        node.type === NodeType.FUNCTION_DEF) {
+        node.type === NodeType.FUNCTION_DEF || node.type === NodeType.PIPELINE) {
       const result = compileNode(node, ctx);
       if (result !== null) bodyLines.push(result);
     }
@@ -3853,7 +5238,8 @@ function compileToBrowserServer(body, errors) {
       const path = node.path;
       // Compile handler body
       const handlerDeclared = new Set();
-      const handlerCtx = { ...ctx, indent: 1, declared: handlerDeclared, insideEndpoint: true };
+      const hasIdParam = path.includes(':id');
+      const handlerCtx = { ...ctx, indent: 1, declared: handlerDeclared, insideEndpoint: true, endpointMethod: method, endpointHasId: hasIdParam };
       const handlerLines = [];
       for (const child of node.body) {
         const compiled = compileNode(child, handlerCtx);
@@ -3881,7 +5267,7 @@ function compileToBrowserServer(body, errors) {
 
   // Compile agent functions (needed by endpoints that call agents)
   for (const node of body) {
-    if (node.type === NodeType.AGENT || node.type === NodeType.FUNCTION_DEF) {
+    if (node.type === NodeType.AGENT || node.type === NodeType.FUNCTION_DEF || node.type === NodeType.PIPELINE) {
       const result = compileNode(node, ctx);
       if (result !== null) lines.push(result);
     }
@@ -3924,6 +5310,19 @@ function compileToBrowserServer(body, errors) {
   lines.push('  return new Response(JSON.stringify({ error: "Not found: " + method + " " + path }), { status: 404, headers: { "Content-Type": "application/json" }});');
   lines.push('};');
 
+  // Override _askAI for browser: route through proxy endpoint instead of direct Anthropic call
+  lines.push('');
+  lines.push('// Browser AI proxy — calls /api/ai-proxy instead of Anthropic directly');
+  lines.push('async function _askAI(prompt, context, schema) {');
+  lines.push('  const proxyUrl = window._clearAIProxy || "/api/ai-proxy";');
+  lines.push('  const schemaObj = schema ? Object.fromEntries(schema.map(f => [f.name, f.type || "text"])) : null;');
+  lines.push('  const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, context, schema: schemaObj }) });');
+  lines.push('  const data = await r.json();');
+  lines.push('  if (!r.ok) throw new Error(data.error || "AI request failed");');
+  lines.push('  if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
+  lines.push('  return data.result;');
+  lines.push('}');
+
   lines.push('})();');
   return lines.join('\n');
 }
@@ -3934,6 +5333,8 @@ function compileToBrowserServer(body, errors) {
 function compileToPythonBackend(body, errors, sourceMap = false) {
   const lines = [];
   lines.push(`# Generated by Clear v${CLEAR_VERSION}`);
+  const pyBeDiagram = generateDiagram(body, '#');
+  if (pyBeDiagram) lines.push(pyBeDiagram);
   lines.push('import os');
   lines.push('import json');
   lines.push('import re');
@@ -3986,9 +5387,26 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('db = _DB()');
   lines.push('');
 
+  // Detect database backend for Supabase support
+  const pyDbBackend = body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
+  const pyIsSupabase = pyDbBackend.includes('supabase');
+  if (pyIsSupabase) {
+    // Replace in-memory db with Supabase client
+    // Clear the db stub lines and replace with supabase init
+    const dbStubStart = lines.findIndex(l => l.includes('# In-memory database'));
+    if (dbStubStart >= 0) {
+      // Remove from '# In-memory database' through 'db = _DB()'
+      const dbStubEnd = lines.findIndex((l, i) => i > dbStubStart && l.includes('db = _DB()'));
+      if (dbStubEnd >= 0) lines.splice(dbStubStart, dbStubEnd - dbStubStart + 2);
+    }
+    lines.push('from supabase import create_client');
+    lines.push('supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])');
+    lines.push('');
+  }
+
   const pySchemaNames = new Set();
   for (const node of body) { if (node.type === NodeType.DATA_SHAPE) pySchemaNames.add(node.name); }
-  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames };
+  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, dbBackend: pyDbBackend };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
@@ -4053,9 +5471,9 @@ const FRIENDLY_CSS = {
   stacked: { css: null, expand: 'display: flex; flex-direction: column' },
   wraps: { css: null, expand: 'flex-wrap: wrap' },
   // Column layouts: "two column layout", "3 column layout", etc.
-  two_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px' },
-  three_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px' },
-  four_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px' },
+  two_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem' },
+  three_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem' },
+  four_column_layout: { css: null, expand: 'display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1.5rem' },
   // Row layouts: "two row layout", "3 row layout", etc.
   two_row_layout: { css: null, expand: 'display: grid; grid-template-rows: 1fr 1fr; gap: 16px' },
   three_row_layout: { css: null, expand: 'display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 16px' },
@@ -4098,19 +5516,20 @@ function friendlyPropToCSS(name, value) {
 // User-defined styles (via `style X:` blocks) still compile to custom CSS.
 const BUILTIN_PRESET_CLASSES = {
   // --- Landing page presets (design-system-v2) ---
-  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6',
-  page_section:      'bg-base-100 py-20 px-6',
-  page_section_dark: 'bg-base-200 py-20 px-6',
-  page_card:         'bg-base-100 rounded-box p-6 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3',
+  page_hero:         'bg-base-100 py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
+  page_section:      'bg-base-100 py-24 px-6',
+  page_section_dark: 'bg-neutral text-neutral-content py-24 px-6',
+  page_card:         'bg-base-100 rounded-2xl p-8 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3 border border-base-300/50',
   page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
+  page_stats:        'bg-base-200 py-16 px-6',
 
   // --- App/dashboard presets (design-system-v2) ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden',
+  app_sidebar:       'w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-100 p-8 flex flex-col gap-6',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-8 bg-base-100 border-b border-base-300 shrink-0',
-  app_card:          'bg-base-200 rounded-box p-6',
+  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0',
+  app_card:          'bg-base-200 rounded-box p-5',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 text-center',
@@ -4159,14 +5578,42 @@ function stylesToCSS(styles, vars = {}) {
   const parts = [];
   for (const style of styles) {
     const className = `style-${sanitizeName(style.name)}`;
-    const props = style.properties.map(p => {
-      // Resolve variable references: if value is a string matching a variable name, use the variable's value
+    // Split properties into base, hover, focus, and transition
+    const baseProps = [];
+    const hoverProps = [];
+    const focusProps = [];
+    let hasTransition = false;
+    for (const p of style.properties) {
       let val = p.value;
       if (typeof val === 'string' && vars[val] !== undefined) val = vars[val];
-      return `  ${friendlyPropToCSS(p.name, val)};`;
-    }).join('\n');
-    let rule = `.${className} {\n${props}\n}`;
-    // If the style sets color, make children inherit it (overrides base CSS explicit colors)
+      if (p.name.startsWith('hover_')) {
+        const cssProp = p.name.slice(6); // strip 'hover_'
+        hoverProps.push(`  ${friendlyPropToCSS(cssProp, val)};`);
+      } else if (p.name.startsWith('focus_')) {
+        const cssProp = p.name.slice(6); // strip 'focus_'
+        focusProps.push(`  ${friendlyPropToCSS(cssProp, val)};`);
+      } else if (p.name === 'transition') {
+        hasTransition = true;
+        baseProps.push(`  transition: ${val};`);
+      } else if (p.name === 'animate' || p.name === 'animation') {
+        baseProps.push(`  animation: ${val};`);
+      } else {
+        baseProps.push(`  ${friendlyPropToCSS(p.name, val)};`);
+      }
+    }
+    // Auto-add transition if hover/focus props exist but no explicit transition
+    if ((hoverProps.length > 0 || focusProps.length > 0) && !hasTransition) {
+      baseProps.push('  transition: all 0.2s ease;');
+    }
+    const lineComment = style.line ? `/* clear:${style.line} */\n` : '';
+    let rule = `${lineComment}.${className} {\n${baseProps.join('\n')}\n}`;
+    if (hoverProps.length > 0) {
+      rule += `\n.${className}:hover {\n${hoverProps.join('\n')}\n}`;
+    }
+    if (focusProps.length > 0) {
+      rule += `\n.${className}:focus-within {\n${focusProps.join('\n')}\n}`;
+    }
+    // If the style sets color, make children inherit it
     const setsColor = style.properties.some(p => p.name === 'color');
     if (setsColor) {
       rule += `\n.${className} h1, .${className} h2, .${className} p, .${className} strong,\n.${className} .clear-text, .${className} .clear-heading, .${className} .clear-subheading,\n.${className} .clear-small { color: inherit; }`;
@@ -4408,6 +5855,7 @@ function _clear_env(name) {
 // =============================================================================
 
 function sanitizeName(name) {
+  if (name == null) return '_unnamed';
   // Preserve dots for property access (person.name → person.name)
   if (name.includes('.')) {
     return name.split('.').map(part => part.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1')).join('.');

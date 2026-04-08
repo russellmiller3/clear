@@ -7,14 +7,14 @@ Compiles plain English to JavaScript, Python, and HTML.
 1. **`intent.md`** -- the authoritative spec. All 96 node types, build targets, compiler passes, synonym collisions, validation rules. If it's not in intent.md, it doesn't exist.
 2. **`learnings.md`** -- scan the TOC before any work. Engineering gotchas: synonym traps, tokenizer quirks, CRUD parse shapes, parser ordering, runtime coercion. Every section is a bug someone already hit.
 3. **`PHILOSOPHY.md`** -- the 14 design rules. 14-year-old test, one op per line, no jargon, source-of-truth rule (Clear is source code, compiled output is build artifact), 1:1 mapping (every output line traces to one Clear line), explicit over terse, possessive access, colons signal blocks, deterministic compilation.
-4. **`AI-STYLE-GUIDE.md`** -- how to WRITE Clear code. `=` for numbers, `is` for strings. Single quotes canonical. Numbers get px in styles. Use built-in presets before custom styles. `sending` not `receiving`. File structure: Database > Backend > Frontend sections.
+4. **`AI-INSTRUCTIONS.md`** -- how to WRITE Clear code and use the CLI. `=` for numbers, `is` for strings. Single quotes canonical. Numbers get px in styles. Use built-in presets before custom styles. `sending` not `receiving`. File structure: Database > Backend > Frontend sections.
 5. **`SYNTAX.md`** -- complete syntax reference with examples for every feature.
 6. **`design-system.md`** -- 3 themes (midnight/ivory/nova), all color tokens, typography, spacing, shadows, animation. DaisyUI v5 + Tailwind v4.
 7. **`ai-build-instructions.md`** -- 10 hard UI rules, CDN imports, component patterns, ECharts config.
-8. **`ROADMAP.md`** -- what's built (phases 1-28 complete), what's planned.
+8. **`ROADMAP.md`** -- what's built (phases 1-46b, 75-84 complete), what's planned.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1005 tests)
+- Run all tests: `node clear.test.js` (1407 tests)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -22,9 +22,26 @@ Compiles plain English to JavaScript, Python, and HTML.
 - `index.js` -- public API, `compileProgram(source)` is the entry point
 - `tokenizer.js` -> `parser.js` -> `validator.js` -> `compiler.js` (the pipeline)
 - `synonyms.js` -- keyword synonym table (check before adding new keywords)
+- `cli/clear.js` -- CLI for AI agents: build, check, info, fix, lint, serve, test
 - `intent.md` -- authoritative spec for all 96 node types
 - `PHILOSOPHY.md` -- design rules (14-year-old test, one op per line, no jargon)
 - `learnings.md` -- scan TOC before starting any work
+
+## CLI (for AI agents)
+The CLI is designed for machines first. Every command supports `--json`.
+```
+clear build <file>     # compile to JS/Python/HTML
+clear check <file>     # validate only (fast, no compilation)
+clear info <file>      # introspect: endpoints, tables, pages, agents
+clear fix <file>       # auto-fix patchable errors
+clear lint <file>      # security + quality warnings
+clear serve <file>     # compile + start local server
+clear test <file>      # run test blocks
+clear dev <file>       # watch + rebuild on changes
+clear init [dir]       # scaffold new project
+clear package <file>   # bundle for deployment (Dockerfile)
+```
+Exit codes: 0=ok, 1=compile error, 2=runtime error, 3=file not found, 4=test fail
 
 ## Core Design Principles (from PHILOSOPHY.md)
 - **Clear is source code.** Compiled JS/Python is build output. Never edit output.
@@ -36,6 +53,13 @@ Compiles plain English to JavaScript, Python, and HTML.
 - **1:1 mapping.** Every compiled output line traces to exactly one Clear line.
 - **Deterministic.** Same input = same output. No AI in the compile step.
 - **Compiler accumulates quality.** Fix a bug once, every app gets the fix on recompile.
+- **Compiled output is self-documenting.** Every compiled file starts with an auto-generated ASCII architecture diagram (tables, endpoints, pages, data flow). Regenerates on every build. The diagram IS the intent file for that app.
+
+## File TOC Rule (MANDATORY)
+Both `parser.js` and `compiler.js` have a TABLE OF CONTENTS at the top.
+**Every time you change either file** — adding, removing, or moving a section —
+update the TOC to match. Use section names, not line numbers (lines drift).
+Read the TOC before working in the file so you know where things are.
 
 ## Compiler Architecture
 - **4 passes:** tokenize -> parse -> validate -> compile
@@ -61,13 +85,17 @@ Compiles plain English to JavaScript, Python, and HTML.
 - **Built-in presets:** `page_hero`, `page_section`, `page_section_dark`, `page_card`, `app_layout`, `app_sidebar`, `app_main`, `app_content`, `app_header`, `app_card`
 - **10 hard rules:** One accent color, one btn-primary per section, hero <= 10 words, 8pt grid, cards bg OR border not both, etc.
 
-## Before Adding New Syntax
-1. Write 3+ example programs using the proposed syntax
-2. Say each line out loud (phone test)
-3. Check synonyms.js for collisions
-4. Check if multi-word phrase appears inside any existing pattern
-5. Write failing tests
-6. Then implement
+## Before Adding New Features or Syntax (MANDATORY)
+1. Use `/write-plan` to create an implementation plan
+2. Use `/red-team-plan` to stress-test the plan before coding
+3. Write 3+ example programs using the proposed syntax
+4. Say each line out loud (phone test)
+5. Check synonyms.js for collisions
+6. Check if multi-word phrase appears inside any existing pattern
+7. Write failing tests
+8. Then implement
+
+Always use these skills — never jump straight to coding a new feature.
 
 ## Compiler is Closed Source
 Do not make this repo public. The playground uses an obfuscated bundle
@@ -111,5 +139,8 @@ Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
 - Playground styling needs visual verification
 - DaisyUI v5 themes use `--color-base-100: oklch(%)` format, not old v4 vars
 - `ui's Card()` in web target crashes buildHTML (namespaced component calls)
+
+## Explain Your Thinking Rule
+When making compiler changes, explain decisions in plain English in the chat as you go. Don't just code silently — the human needs to follow the reasoning, not reverse-engineer it from diffs.
 
 That's it. The compiler has no build step, no config files, no framework. `node clear.test.js` runs everything.

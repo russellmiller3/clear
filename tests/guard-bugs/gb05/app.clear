@@ -1,0 +1,26 @@
+build for web and javascript backend
+database is local memory
+
+create a Employees table:
+  name, required
+  email, required
+  department, required
+
+when user calls POST /api/employees sending employee:
+  needs login
+  new_employee = save employee as new Employee
+  send back new_employee
+
+when user calls GET /api/employees:
+  employees = look up all Employees
+  send back employees
+
+page 'Directory' at '/':
+  on page load get employees from '/api/employees'
+  'Full Name' is a text input saved as a name
+  'Work Email' is a text input saved as an email
+  'Dept' is a text input saved as a department
+  button 'Add Employee':
+    send name, email, department to '/api/employees'
+    get employees from '/api/employees'
+  display employees as table showing name, email, department

@@ -1,0 +1,7 @@
+build for web
+page 'App' at '/':
+  on page load:
+    get contacts from '/api/contacts'
+    get deals from '/api/deals'
+  display contacts as table showing name, email with edit
+  display deals as table showing title, value with edit

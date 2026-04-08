@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- User Styles --- */
+.style-hero {
+  background: #1a1a2e;
+  color: white;
+  padding: 64px;
+  margin-left: auto; margin-right: auto; max-width: 800px;
+}
+.style-hero h1, .style-hero h2, .style-hero p, .style-hero strong,
+.style-hero .clear-text, .style-hero .clear-heading, .style-hero .clear-subheading,
+.style-hero .clear-small { color: inherit; }
+
+.style-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+<div id="page_Clear_Language">
+    <div class="clear-section style-hero">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Clear: AI writes it, humans read it</h1>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">A programming language designed for the AI age</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Write once in Clear. Compile to JavaScript, Python, or both.</p>
+    <a class="link link-primary text-sm" href="/signup">Get Started</a>
+      </div>
+    </div>
+    <div class="clear-section style-card">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Why Clear?</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">One operation per line. No nesting. Verbosity beats cleverness.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">The compiler accumulates quality. Every fix helps every future app.</p>
+    <div class="divider my-4"></div>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Clear is the readable contract between AI and human.</p>
+      </div>
+    </div>
+</div>
+<div id="page_Sign_Up" style="display:none">
+    <div class="clear-section style-card">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Create your account</h1>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Email</legend>
+      <input id="input_email" class="input input-bordered w-full" type="text" placeholder="Email">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Password</legend>
+      <input id="input_password" class="input input-bordered w-full" type="text" placeholder="Password">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Name</legend>
+      <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Name">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Sign_Up">Sign Up</button>
+      </div>
+    </div>
+</div>
+<div id="page_Pricing" style="display:none">
+    <div class="clear-section style-card">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Simple pricing</h1>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Free tier</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">100 API calls per month. 5 file uploads.</p>
+    <div class="divider my-4"></div>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Pro tier</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">10,000 API calls per month. 100 file uploads.</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">$29/month</p>
+      </div>
+    </div>
+</div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ PAGES:
+   'Clear Language' at / (line 22)
+   'Sign Up' at /signup (line 38)
+   'Pricing' at /pricing (line 49) -->
+  <script>
+document.title = "Clear Language";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  email: "",
+  password: "",
+  name: ""
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  document.getElementById('input_email').value = _state.email;
+  document.getElementById('input_password').value = _state.password;
+  document.getElementById('input_name').value = _state.name;
+}
+
+// --- Input listeners ---
+document.getElementById('input_email').addEventListener('input', function(e) {
+  _state.email = e.target.value;
+  _recompute();
+});
+document.getElementById('input_password').addEventListener('input', function(e) {
+  _state.password = e.target.value;
+  _recompute();
+});
+document.getElementById('input_name').addEventListener('input', function(e) {
+  _state.name = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Sign_Up').addEventListener('click', function() {
+  console.log("Signing up...");
+  _recompute();
+});
+
+_recompute();
+
+// --- Hash Router ---
+const _routes = {
+  '/': 'Clear_Language',
+  '/signup': 'Sign_Up',
+  '/pricing': 'Pricing'
+};
+function _router() {
+  const hash = location.hash.slice(1) || '/';
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (hash === route) ? 'block' : 'none';
+  }
+}
+window.addEventListener('hashchange', _router);
+_router();
+  </script>
+</body>
+</html>

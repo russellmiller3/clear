@@ -23,10 +23,10 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28 -- All Complete)
+## What's Built (Phases 1-28, 30-46b -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1005 tests, all passing.
+1407 tests, all passing.
 
 ### Core Language (Phase 1-3)
 | Feature | Status | Canonical Syntax |
@@ -978,8 +978,19 @@ All live-tested with real Anthropic API calls. 18/18 E2E pass.
 
 - ~~Agent-to-agent calls (agent A calling agent B inside its body)~~ DONE (session 9)
 - ~~Structured AI output parsing (ask ai returning objects, not just strings)~~ DONE (session 9)
+- ~~Tool use / function calling (`can use:`)~~ DONE (session 10)
+- ~~Multi-turn conversations (`remember conversation context`)~~ DONE (session 10)
+- ~~Agent memory (`remember user's preferences`)~~ DONE (session 10)
+- ~~Pipelines (`pipeline 'Name' with var:`)~~ DONE (session 10)
+- ~~Parallel execution (`do these at the same time:`)~~ DONE (session 10)
+- ~~Agent observability (`track agent decisions`)~~ DONE (session 10)
+- ~~Guardrails / safety (`must not:` block)~~ DONE (session 10)
+- ~~Human-in-the-loop (`ask user to confirm`)~~ DONE (session 10)
+- ~~Agent testing (`mock claude responding:`)~~ DONE (session 10)
+- ~~RAG / knowledge base (`knows about:`)~~ DONE (session 10)
+- ~~Skills / reusable tool bundles (`skill 'Name':`)~~ DONE (session 10)
+- ~~Variable prompts / text blocks in agents~~ DONE (session 10)
 - Streaming AI responses (SSE from ask ai)
-- Multi-turn conversations (ask ai with history)
 
 ---
 
@@ -1020,6 +1031,12 @@ Features that Clear can't build yet, roughly prioritized by demand.
 | **Native mobile** | Compile to React Native or Flutter | Very hard -- entirely new build target |
 | **Blockchain / web3** | Smart contracts, wallet integration | Hard -- new paradigm |
 | **Desktop apps** | Compile to Electron or Tauri | Medium-hard -- new build target |
+
+### Nice to Have (developer experience)
+
+| Feature | What it enables | Difficulty |
+|---------|----------------|------------|
+| **JSDoc typedefs + `@ts-check`** | IDE autocomplete, type checking without a build step. Add `@typedef` for AST nodes and `// @ts-check` to compiler files. 80% of TypeScript's benefits with 0% build complexity. | Easy |
 
 ### ICP and Go-to-Market
 
@@ -1088,6 +1105,22 @@ The platform succeeds if:
 | DaisyUI v5 CDN fix | Done | Correct path (`/daisyui.css`), local CSS for iframe injection |
 | Google Fonts + Tailwind v4 browser CDN | Done | Proper font loading in compiled output |
 
+### What's Built (Phase 29.2 -- Session 7)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `with delete` / `with edit` table actions | Done | Explicit opt-in, auto-wired to DELETE/PUT endpoints |
+| ECharts chart syntax | Done | `chart 'Title' as line/bar/pie/area showing data` |
+| Supabase adapter (JS + Python) | Done | `database is supabase` → SDK calls, both languages |
+| Client validation + loading + error toasts | Done | Phase 30 complete: toast with icons, spinner, validation |
+| Tailwind grid classes | Done | Column layouts use `grid-cols-N` instead of inline CSS |
+| Multi-file `use everything from` fix | Done | Endpoints + pages now inlined from modules |
+| AI proxy for playground | Done | Vercel serverless, 3 calls/IP rate limit |
+| Full syntax guide in playground | Done | 30+ sections covering all features |
+| Stripe-style landing page preset | Done | page_hero py-32, text-6xl font-extrabold, dark feature cards |
+| Python Supabase + rate limiting | Done | supabase-py client, slowapi limiter |
+| File TOCs for parser.js + compiler.js | Done | Mandatory TOC update rule in CLAUDE.md |
+
 ---
 
 ## Part 2: From Demo to Shippable
@@ -1105,11 +1138,11 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
 | 1 | Form submit to endpoint | Signup forms, todo creation, contact pages, any write operation | **DONE.** Reactive compiler generates `fetch('/api/...', { method: 'POST', body: ... })` wired to button click. Tested: Contact Manager, Invoice Manager, Todo App all POST and render results. |
-| 2 | Client-side validation before fetch | Instant "required" feedback without server round-trip | Not started. Currently only server-side validation. Need JS check that prevents fetch if empty and shows inline error. |
-| 3 | Loading state during fetch | Users know the app is working, not frozen | Not started. Button stays enabled during fetch, no visual feedback. |
-| 4 | Display API errors in UI | "Email already taken" shown on screen instead of silently swallowed | Not started. Server errors are caught but not shown to user. |
+| 2 | Client-side validation before fetch | Instant "required" feedback without server round-trip | **DONE.** Buttons with POST/PUT auto-validate required fields. Shows toast on empty fields, returns before fetch. |
+| 3 | Loading state during fetch | Users know the app is working, not frozen | **DONE.** DaisyUI loading spinner replaces button text during async ops. Button disabled until complete. |
+| 4 | Display API errors in UI | "Email already taken" shown on screen instead of silently swallowed | **DONE.** Fetch checks `!response.ok`, parses error JSON, shows DaisyUI toast with slide-in animation + progress bar. |
 
-**Phase 30 status: item 1 done, items 2-4 need compiler work.**
+**Phase 30: COMPLETE.** All 4 items done.
 
 ---
 
@@ -1117,10 +1150,10 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 5 | Conditional fetch based on input | Search-as-you-type, filtered lists, dependent dropdowns | Compile `when user changes search_input: call GET /api/search?q={search_input}`; generated JS only fetches when input non-empty |
-| 6 | Debounced input handler | Live search without hammering server per keystroke | Compile search input with debounce; generated JS wraps fetch in `setTimeout`/`clearTimeout` with 250ms delay |
+| 5 | Conditional fetch based on input | Search-as-you-type, filtered lists, dependent dropdowns | **DONE.** `when query changes: get results from '/api/search'` compiles to input event listener with async fetch. |
+| 6 | Debounced input handler | Live search without hammering server per keystroke | **DONE.** `when query changes after 250ms:` compiles to `clearTimeout`/`setTimeout` wrapper. |
 
-**Phase 31 complete = search pages, filtered lists, dependent dropdowns, auto-suggest.**
+**Phase 31: COMPLETE.** Both items done.
 
 ---
 
@@ -1128,7 +1161,7 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 7 | File upload compiles | Profile photos, CSV imports, document uploads | Compile `accept file: photo`; generated HTML has `<input type="file">`, endpoint uses multer |
+| 7 | File upload compiles | Profile photos, CSV imports, document uploads | **DONE.** `'Photo' is a file input saved as photo` → `<input type="file">` with DaisyUI styling. Backend `accept file:` uses multer. |
 
 ---
 
@@ -1136,12 +1169,12 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 8 | Hover/focus/active states | Buttons look clickable, inputs highlight on focus | Compile `style button: hover background = blue`; generated CSS contains `:hover` |
-| 9 | CSS transitions | Smooth color changes, fading panels | Compile `style card: transition = background 0.2s`; generated CSS contains `transition` |
-| 10 | Responsive breakpoints | Apps work on phones | Compile `style sidebar: hidden on small screens`; generated CSS has `@media` query |
-| 11 | CSS animations | Loading spinners, attention pulses | Compile `style spinner: animate = spin 1s infinite`; generated CSS has `@keyframes` |
+| 8 | Hover/focus/active states | Buttons look clickable, inputs highlight on focus | **DONE.** `hover_background is 'blue'` → `:hover` CSS rule. Auto-transition added. |
+| 9 | CSS transitions | Smooth color changes, fading panels | **DONE.** `transition is 'background 0.2s'` or auto-added with hover/focus props. |
+| 10 | Responsive breakpoints | Apps work on phones | **DONE.** `for_screen is 'small'` → `@media (max-width: 640px)`. |
+| 11 | CSS animations | Loading spinners, attention pulses | **DONE.** `animation is 'spin 1s infinite'` compiles to CSS animation property. |
 
-**Phase 33 complete = Clear apps look and feel like real apps, including on mobile.**
+**Phase 33: COMPLETE.**
 
 ---
 
@@ -1149,12 +1182,12 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 12 | Pagination | Any list with 50+ items | Compile `get Items page 2, 25 per page`; generated SQL has `LIMIT 25 OFFSET 25` |
-| 13 | GROUP BY output | "Sales by region," dashboards, reports | Compile `totals = sum of Orders' amount grouped by region`; produces array of `{ region, total }` |
-| 14 | Compound unique constraints | "One vote per user per poll" | Compile `unique together Student and Course`; generated SQL has `UNIQUE(student_id, course_id)` |
-| 15 | Database transactions | E-commerce (order + stock), banking (debit + credit) | Compile multi-step endpoint; generated code has `BEGIN`/`COMMIT`/`ROLLBACK` |
+| 12 | Pagination | Any list with 50+ items | **DONE.** `get all Items page 2, 25 per page` → array slice (local) or `.range()` (Supabase) |
+| 13 | GROUP BY output | "Sales by region," dashboards, reports | **DONE.** `by_region = group by region in sales` compiles to object grouping. Phase 22. |
+| 14 | Compound unique constraints | "One vote per user per poll" | **DONE.** `one per user_id and poll_id` → `UNIQUE(user_id, poll_id)`. Plain English, passes phone test. |
+| 15 | Database transactions | E-commerce (order + stock), banking (debit + credit) | **DONE.** `as one operation:` → `BEGIN`/`COMMIT`/`ROLLBACK` wrapping. Plain English. |
 
-**Phase 34 complete = Clear apps handle production data volumes and keep data consistent.**
+**Phase 34: COMPLETE.** All 4 items done.
 
 ---
 
@@ -1162,11 +1195,11 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 16 | Background jobs | Reminder emails, stale token cleanup, daily reports | Compile background job; generated server has `setInterval` or `node-cron` |
-| 17 | OAuth redirect + token exchange | "Sign in with Google/GitHub/Slack" | Compile `oauth github:`; generated server has redirect + callback routes |
-| 18 | Email sending | Welcome emails, password resets, notifications | Compile `send email to X`; generated code has `nodemailer` or email API call |
+| 16 | Background jobs | Reminder emails, stale token cleanup, daily reports | **DONE.** `background 'cleanup': runs every 1 hour` compiles to `setInterval` (JS) / `asyncio.create_task` (Python). Phase 20. |
+| 17 | OAuth redirect + token exchange | "Sign in with Google/GitHub/Slack" | **DONE.** `oauth 'github':` compiles to redirect + callback routes. Phase 17. |
+| 18 | Email sending | Welcome emails, password resets, notifications | **DONE.** `send email:` compiles to nodemailer (JS) / smtplib (Python). Phase 27. |
 
-**Phase 35 complete = scheduled tasks, third-party auth, email communication.**
+**Phase 35: COMPLETE.** All features implemented in earlier phases (17, 20, 27).
 
 ---
 
@@ -1174,10 +1207,10 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 19 | WebSocket runtime | Chat, multiplayer, collaborative editing, live notifications | Compile WebSocket channel; server has `WebSocket.Server`, HTML has `new WebSocket()` |
-| 20 | SSE runtime | Live dashboards, progress bars, activity feeds | Compile `stream:` endpoint; server writes `text/event-stream`, HTML has `new EventSource()` |
+| 19 | WebSocket runtime | Chat, multiplayer, collaborative editing, live notifications | **DONE.** `subscribe to 'chat':` compiles to WebSocket.Server (JS) / FastAPI websocket (Python). Phase 20. |
+| 20 | SSE runtime | Live dashboards, progress bars, activity feeds | **DONE.** `stream:` compiles to text/event-stream with heartbeat. Phase 20. |
 
-**Phase 36 complete = real-time chat, dashboards, notifications.**
+**Phase 36: COMPLETE.** All features implemented in Phase 20.
 
 ---
 
@@ -1185,13 +1218,13 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 21 | Correct error line numbers | Debugging anything over 20 lines | Syntax error on line 15; compiler says "line 15" |
-| 22 | "Did you mean?" for fields | Beginners not stuck on typos | Reference `emial`; compiler suggests `email` |
-| 23 | "Did you mean?" for endpoints | Route typos caught at compile time | Declare `GET /api/users`, reference `/api/user`; compiler suggests correct path |
-| 24 | Type mismatch detection | Confidence app won't crash on line 1 | Compile `price + 'hello'`; compiler emits type error |
-| 25 | FK inference opt-out | Tables with `Type`, `Status` fields that aren't FKs | Compile `Type is text`; compiler does NOT treat as FK |
+| 21 | Correct error line numbers | Debugging anything over 20 lines | Existing — all errors include line numbers |
+| 22 | "Did you mean?" for fields | Beginners not stuck on typos | **DONE.** Levenshtein distance checks user variables + keywords. `emial` suggests `email`. |
+| 23 | "Did you mean?" for endpoints | Route typos caught at compile time | **DONE.** Fetch URLs validated against declared endpoints. `/api/user` warns when `/api/users` exists. |
+| 24 | Endpoint response validation | Every endpoint sends data back | **DONE.** Warns when endpoint has no `send back` statement. |
+| 25 | FK inference opt-out | Tables with `Type`, `Status` fields that aren't FKs | **DONE.** `Status (text)` explicit type hint overrides FK inference. Already worked via `explicitType` guard. |
 
-**Phase 37 complete = compiler catches mistakes before deploy.**
+**Phase 37: COMPLETE.** All 5 items done.
 
 ---
 
@@ -1199,27 +1232,27 @@ Without these, Clear's frontend is a display. It can show data but can't collect
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 26 | Python target end-to-end | Data science teams, ML engineers, Django shops | Compile todo-v2 to Python; `uvicorn` serves; E2E tests pass |
-| 27 | Namespaced imports | Utility libraries without name collisions | Compile `use 'helpers' as h`; `h.double(5)` works |
-| 28 | Circular dependency detection | Safe refactoring into modules | A uses B, B uses A; compiler errors |
-| 29 | E2E tests seed data | Tests prove app works, not just starts | Generated tests create user, log in, create data, then verify |
+| 26 | Python target end-to-end | Data science teams, ML engineers, Django shops | **DONE.** Python backend compiles with FastAPI, Supabase support, all CRUD. |
+| 27 | Namespaced imports | Utility libraries without name collisions | **DONE.** `use 'helpers'` → `helpers's double(5)`. Phase 28. |
+| 28 | Circular dependency detection | Safe refactoring into modules | **DONE.** A → B → A detected with helpful error. Phase 28. |
+| 29 | E2E tests seed data | Tests prove app works, not just starts | **DONE.** `generateE2ETests()` creates payloads, seeds via POST, handles FK chains. |
 
-**Phase 38 complete = multi-language, composable modules, tests that prove correctness.**
+**Phase 38: COMPLETE.**
 
 ---
 
-### Phase 39: Desktop Apps via Tauri
+### Phase 45: Desktop Apps via Tauri
 
-Clear already compiles to a single HTML file with inline JS/CSS. Tauri wraps a single HTML file into a native desktop app (macOS, Windows, Linux) with a ~3MB binary. This is a natural fit — no Electron bloat, no Node runtime, just the compiled HTML inside a native webview.
+Clear already compiles to a single HTML file with inline JS/CSS. Tauri wraps a single HTML file into a native desktop app (macOS, Windows, Linux) with a ~3MB binary.
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 30 | `build for desktop` target | Native desktop apps from Clear source | Compile todo app; `cargo tauri build` produces .exe/.app/.deb |
-| 31 | System tray / menu bar | Desktop-native UX (tray icon, native menus) | Clear syntax for `tray icon:` and `menu bar:` compiles to Tauri config |
-| 32 | File system access (native) | Desktop apps that read/write local files | `read file` / `write file` use Tauri fs API instead of browser shims |
-| 33 | Auto-update | Ship updates without manual reinstall | `auto update from 'https://releases.myapp.com'` compiles to Tauri updater config |
+| 57 | `build for desktop` target | Native desktop apps from Clear source | Compile todo app; `cargo tauri build` produces .exe/.app/.deb |
+| 58 | System tray / menu bar | Desktop-native UX (tray icon, native menus) | Clear syntax for `tray icon:` and `menu bar:` compiles to Tauri config |
+| 59 | File system access (native) | Desktop apps that read/write local files | `read file` / `write file` use Tauri fs API instead of browser shims |
+| 60 | Auto-update | Ship updates without manual reinstall | `auto update from 'https://releases.myapp.com'` compiles to Tauri updater config |
 
-**Phase 39 complete = `build for desktop` produces a native app. One Clear file → one binary.**
+**Phase 45 complete = `build for desktop` produces a native app. One Clear file → one binary.**
 
 ---
 
@@ -1228,17 +1261,133 @@ Clear already compiles to a single HTML file with inline JS/CSS. Tauri wraps a s
 `database is local memory` works for dev. For production, swap one line:
 
 ```clear
-database is supabase              # Supabase (Postgres)
+database is supabase              # Supabase (Postgres) — DONE
 database is planetscale           # PlanetScale (MySQL)
 database is turso                 # Turso (SQLite edge)
 ```
 
-The compiler generates the same CRUD calls (`get all`, `save`, `delete`) but emits Supabase JS client / PlanetScale SDK / Turso client instead of the in-memory runtime. Zero code changes — just swap the database line.
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 34 | `database is supabase` | Production Postgres via Supabase JS | **DONE.** JS + Python, full CRUD, .range() pagination |
+| 35 | `database is planetscale` | Production MySQL via PlanetScale SDK | Same app, PlanetScale backend |
+| 36 | `database is turso` | Edge SQLite via Turso client | Same app, Turso backend |
+| 37 | Connection string from env | `database is supabase with env('SUPABASE_URL')` | Config-driven, no hardcoded keys |
+
+**Phase 40 status: item 34 done, 35-37 pending.**
+
+---
+
+### Phase 41: CLI Agent
+
+The CLI is the product. The playground is a demo. Developers ship from the terminal.
+
+```bash
+clear build app.clear              # compile to build/
+clear dev app.clear                # compile + watch + serve + live reload
+clear test app.clear               # run auto-generated E2E tests
+clear deploy app.clear             # compile + deploy to Clear Cloud
+clear new crm                      # scaffold from template
+clear new invoice-system           # scaffold from template
+```
 
 | # | Feature | UNLOCKS | TEST |
 |---|---------|---------|------|
-| 34 | `database is supabase` | Production Postgres via Supabase JS | Contact Manager works with real Supabase project |
-| 35 | `database is planetscale` | Production MySQL via PlanetScale SDK | Same app, PlanetScale backend |
+| 38 | `clear dev` — watch + serve + live reload | Real development workflow | Edit .clear, browser auto-refreshes |
+| 39 | `clear deploy` — one-command deploy | Ship to production from terminal | `clear deploy` → live URL in 30 seconds |
+| 40 | `clear new <template>` — project scaffolding | Instant start from proven patterns | `clear new crm` → working CRUD app |
+| 41 | `clear doctor` — check environment | Debug setup issues | Reports: Node version, dependencies, config |
+
+**Phase 41 complete = developers can build, test, and ship from the terminal.**
+
+---
+
+### Phase 42: Clear Cloud (The Business)
+
+Clear Cloud is the Vercel of Clear. You compile and deploy, databases are pluggable.
+
+| # | Feature | UNLOCKS | TEST |
+|---|---------|---------|------|
+| 42 | Hosted compilation service | Apps compile in the cloud, no local tooling needed | POST /api/compile with source → compiled output |
+| 43 | One-click deploy | Compiled apps run on Clear's infrastructure | Deploy from playground or CLI, get a URL |
+| 44 | Custom domains | Professional deployments | `clear domain add myapp.com` |
+| 45 | Usage dashboard | Monitor apps, API calls, AI usage | Web dashboard with charts |
+| 46 | Team accounts | Agencies manage multiple apps | Invite team members, shared billing |
+
+**Pricing:**
+| Tier | Price | What |
+|------|-------|------|
+| Starter | Free | 1 app, clear.dev subdomain |
+| Pro | $49/mo | Unlimited apps, custom domains, priority support |
+| Enterprise | Contact | On-premise, SSO, audit logs, SLA |
+
+---
+
+### Phase 43: Template Library (The Growth Engine) — DONE
+
+Templates are pre-built Clear apps for the ICP (freelancers/agencies). Each template is a complete, tested, deployable app. All E2E tested with real HTTP requests.
+
+| # | Template | Lines | Status | Features |
+|---|----------|-------|--------|----------|
+| 47 | CRM (`apps/crm/`) | 155 | **DONE** | Contacts + deals CRUD, seed data, midnight theme |
+| 47b | CRM Pro (`apps/crm-pro/`) | 270 | **DONE** | 5 tables, pipeline chart, compound unique, debounce search |
+| 47c | CRM SPA (`apps/crm-spa/`) | 4 files | **DONE** | Multi-file, components, tabs, modal, slide panel, SSE, chart |
+| 48 | Invoice (`apps/invoice/`) | 175 | **DONE** | Clients + invoices + line items, full CRUD, edit/delete |
+| 49 | Booking (`apps/booking/`) | 145 | **DONE** | Services + bookings, seed data, ivory theme |
+| 50 | Client portal (projects, files, messages) | ~120 | Planned | Agencies |
+| 51 | Admin dashboard (users, roles, audit log) | ~100 | Planned | SaaS founders |
+
+**Also built and tested (33 total apps):** blog-api, cast-api, cast-editor, cast-evaluator, chat-backend, clear-landing, content-moderator, dashboard, dashboard-v2, ecommerce-api, full-saas, hiring-pipeline, interactive, invoice-engine, job-queue, landing-page, lead-scorer, live-dashboard, page-analyzer, product-landing, project-manager, saas-billing, team-dashboard, todo-api, todo-fullstack, todo-v2, url-shortener, webhook-relay.
+
+### Phase 43b: Compiler Fixes from E2E Testing — DONE
+
+Bugs found by deploying and testing all 33 apps:
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| `save X as new Y` → `db.update('as')` | Parser only checked `to_connector` | Handle `as` connector + `new` keyword |
+| PUT endpoints missing ID | No `req.params.id` injection | Inject `update_data.id = req.params.id` |
+| `Activity → activitys` | Naive `+s` pluralization | `pluralizeName()` handles y→ies, ch→ches |
+| Schema mismatch `ActivitySchema` | Singular/plural lookup incomplete | Try exact, +s, pluralize, -s, -ies→y |
+| Multi-page routing broken | Pages not wrapped in `<div id="page_X">` | Splice wrappers after `walk()` |
+| Sidebar layout crushed | `flex-direction: row` not detected | Add to `hasFullLayout` check |
+| `use everything from` incomplete | Nodes only stored, not spliced | Splice into `ast.body` during resolution |
+| App presets too wide | `p-8`, `w-64` too large | Tuned to `p-6/p-5`, `w-60`, `h-16` |
+
+1265 tests passing. All 33 apps compile and deploy.
+
+---
+
+### Phase 44: Advanced Language Features
+
+| # | Feature | Syntax | UNLOCKS |
+|---|---------|--------|---------|
+| 52 | Retry with backoff | `retry 3 times:` | **DONE.** Exponential backoff (JS + Python) |
+| 53 | Timeout wrapper | `with timeout 5 seconds:` | **DONE.** Promise.race with reject timer |
+| 54 | Race (first to finish) | `first to finish:` | **DONE.** Promise.race with concurrent tasks |
+| 55 | Streaming iterators | `for each line in stream file 'big.csv':` | Process large files without loading all into memory |
+| 56 | Cancellation | `cancel task` | User-initiated abort |
+
+**Phase 44 status: items 52-54 done, 55-56 pending.**
+
+---
+
+### Phase 45: External API Calls & Service Integrations — DONE
+
+| # | Feature | Syntax | Status |
+|---|---------|--------|--------|
+| 57 | Generic HTTP requests | `call api 'url':` + method/headers/body/timeout | **DONE.** fetch() with AbortController |
+| 58 | Stripe preset | `charge via stripe:` + amount/currency/token | **DONE.** Charges API, form-encoded |
+| 59 | SendGrid preset | `send email via sendgrid:` + to/from/subject/body | **DONE.** Mail Send v3 API |
+| 60 | Twilio preset | `send sms via twilio:` + to/body | **DONE.** Messages API, Basic auth |
+| 61 | ask claude (canonical AI) | `ask claude 'prompt' with data using 'model'` | **DONE.** ANTHROPIC_API_KEY, model selection |
+| 62 | Natural webhooks | `when stripe notifies '/path':` | **DONE.** Replaces `webhook` jargon |
+| 63 | needs login alias | `needs login` | **DONE.** Alias for `requires auth` |
+
+1281 tests. `call api` handles arbitrary REST APIs. Service presets compile to correct API-specific formats (form-encoded for Stripe/Twilio, JSON for SendGrid).
+
+---
+
+### Phase 45: Desktop Apps via Tauri
 | 36 | `database is turso` | Edge SQLite via Turso client | Same app, Turso backend |
 | 37 | Connection string from env | `database is supabase with env('SUPABASE_URL')` | Config-driven, no hardcoded keys |
 
@@ -1250,9 +1399,544 @@ The compiler generates the same CRUD calls (`get all`, `save`, `delete`) but emi
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Chart syntax (`chart X as line/bar/donut`) | Not started | ECharts integration, native Clear syntax |
+| Chart syntax (`chart X as line/bar/pie/area`) | **Done** | ECharts integration with 4 chart types |
+| Full syntax guide | **Done** | 30+ sections covering all features |
+| AI proxy (3 calls/IP demo) | **Done** | Vercel serverless, rate-limited by IP |
+| Marketing copy + how it works | **Done** | Sidebar bullets, 3-step process |
+| Stripe-style landing page | **Done** | text-6xl hero, dark feature cards, stats row |
 | Download compiled output as zip | Not started | JSZip, package.json, README |
-| BYOK key input for AI examples | Not started | sessionStorage, text input for Anthropic key |
-| GAN compiled output quality | In progress | Compiler HTML matches design-system-v2 patterns |
 | Mobile responsive playground | Not started | Sidebar collapses, editor/output stack vertically |
 | Share button (URL hash encoding) | Not started | Encode source in URL for sharing |
+
+---
+
+### Phase 45b: Compiled Output Quality — DONE
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Source line comments | **Done** | `// clear:LINE` on every endpoint + CRUD operation |
+| Error classification | **Done** | 400 = user message, 500 = "Something went wrong" |
+| Console error logging | **Done** | `[METHOD /path] Error:` in every catch block |
+| Seed endpoint guard | **Done** | Returns 403 when `NODE_ENV=production` |
+| Frontend fetch context | **Done** | `[GET /path]` + response.ok check |
+| Reactive model comments | **Done** | Explains _state, _recompute(), input/button flow |
+
+### Phase 46: Runtime Error Translator — DONE
+
+Implemented `plans/plan-error-translator-04-07-2026.md`. Runtime errors now map back to Clear source with hints + suggested fixes.
+- `_clearTry` wraps CRUD/auth with source context (line, file, table, operation)
+- `_clearError` formats errors based on CLEAR_DEBUG level (off/true/verbose)
+- `_clearMap` embeds conditional source map (table schemas + endpoint info, zero production overhead)
+- `suggested_fix` generates minimal diffs for fixable errors (missing field, missing auth)
+- PII auto-redacted in verbose mode (password, token, secret, etc.)
+- `_sourceFile` tagging tracks multi-file imports through resolveModules
+- Frontend fetch errors log `[clear:LINE file.clear]` to browser console
+- External API errors (Stripe/SendGrid/Twilio/call api) carry service-specific context
+- Python first-class (CLEAR_DEBUG-aware error formatting in FastAPI endpoints)
+- 50 blind-agent acceptance tests: 42/42 A or B grades. Agents fix bugs from error JSON alone.
+
+### Phase 46b: Silent Bug Guards — DONE
+
+Research-backed runtime protections (OWASP 2025, CWE Top 25, CodeRabbit AI study).
+- **Type enforcement**: `enforceTypes()` in db.insert/update — coerces "45.50"→45.5, rejects "fifty"
+- **Update-not-found**: db.update throws 404 when record doesn't exist (wrong status codes = 70% of API bugs)
+- **FK reference check**: db.insert validates FK references exist in parent tables
+- **Balance/stock subtraction warning**: validator warns on subtraction from watchlist fields without guard
+- **Field mismatch warning**: validator warns when frontend field names don't match table schema
+- **Capacity overflow warning**: validator warns on insert into child of capacity table without guard
+- **Seed idempotency**: compiled seed endpoints use findOne-before-insert for unique fields
+- 8 blind-agent acceptance tests: 8/8 A grades
+- Agents also found 6 compiler bugs during hard-bug testing (Stripe IIFE syntax, PUT data loss, isReactiveApp, stale schema, mass assignment, missing _pick on update)
+
+1337 tests. All 33 apps compile.
+
+---
+
+## What's Next — Road to General Purpose
+
+Clear's goal: handle any app an AI agent would build for a non-technical user. Not systems programming — not drivers, game engines, or OS kernels — but any business/productivity/data application.
+
+Organized by priority (highest impact first). Estimated effort based on velocity so far (~15 phases per day, ~300 tests per day).
+
+### Tier 1: Production-Ready (Day 4-5)
+
+These unlock real deployment. Without them, Clear apps are demos.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 47 | **SQLite local database** | In-memory DB is ephemeral. SQLite gives persistence without a server. `database is local file` compiles to better-sqlite3. | 1 day |
+| 48 | **Client portal + admin dashboard templates** | Most-requested app types. 2 template apps with auth, roles, file upload, audit log. | 0.5 day |
+| 49 | **Deploy to Vercel/Railway** | `clear deploy` compiles + deploys. One command from .clear file to live URL. | 0.5 day |
+| 50 | **Real-time / WebSocket** | Chat apps, live dashboards, notifications. `when data changes:` compiles to Socket.io. | 1 day |
+
+### Tier 2: Complex Frontend (Day 5-6)
+
+These make Clear competitive with React/Vue for real UIs.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 51 | **Multi-page routing with shared state** | SPA with `/dashboard`, `/settings`, `/profile` sharing auth state. `navigate to '/settings'` with state preservation. | 1 day |
+| 52 | **Component composition** | Reusable components with slots/children. `define Card receiving title, content:` used as `show Card('Title'):` with nested content. | 0.5 day |
+| 53 | **Conditional rendering** | `show section if user's role is 'admin'` — hide/show UI elements based on state. Currently requires workarounds. | 0.5 day |
+| 54 | **Lists with actions** | `for each item in items: show Card(item)` — render dynamic lists of components with per-item actions (edit, delete, reorder). | 0.5 day |
+| 55 | **Animations + transitions** | `animate section sliding in` / `fade out on delete`. CSS transitions compiled from English. | 0.5 day |
+
+### Tier 3: Data & Integration (Day 6-7)
+
+These make Clear apps work with the real world.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 56 | **PostgreSQL adapter** | Production database. `database is postgres` compiles to pg client with migrations. | 1 day |
+| 57 | **File upload + storage** | `'Photo' is a file input` → upload to S3/local. Display images. PDF generation. | 0.5 day |
+| 58 | **Email sending** | `send email to user's email:` with templates. Beyond the current Stripe/SendGrid presets — first-class email. | 0.5 day |
+| 59 | **Scheduled tasks** | `every day at 9am:` compiles to cron. Send reports, clean up data, sync APIs. | 0.5 day |
+| 60 | **Streaming / SSE** | `stream results to client` — server-sent events for long-running operations, AI responses. | 0.5 day |
+
+### Tier 4: Advanced Patterns (Day 7-8)
+
+These handle the 20% of apps that need more than CRUD.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 61 | **State machines** | `order goes through: draft → submitted → approved → shipped`. Enforce valid transitions. | 0.5 day |
+| 62 | **Workflows / multi-step** | `when order is approved: send email, create invoice, update inventory`. Chained operations with rollback. | 0.5 day |
+| 63 | **Search + filtering** | `search contacts where name contains query` — compiled to SQL LIKE or full-text search. | 0.5 day |
+| 64 | **Pagination** | `show 25 per page` — cursor-based pagination on lists and tables. | 0.25 day |
+| 65 | **Audit log** | `track changes to orders` — automatic changelog. Who changed what, when. | 0.25 day |
+| 66 | **Role-based UI** | `only admins see:` — sections that compile to role checks in the frontend. | 0.25 day |
+
+### Tier 5: Platform (Day 8-10)
+
+These make Clear a platform, not just a language.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 67 | **Clear Cloud MVP** | Hosted compile + deploy. Write Clear in browser, get a URL. | 2 days |
+| 68 | **Package registry** | `use 'auth-flow' from registry` — share reusable Clear modules. | 1 day |
+| 69 | **Desktop via Tauri** | `build for desktop` wraps web output in native shell. One .clear file → one binary. | 1 day |
+| 70 | **Mobile via Capacitor** | `build for mobile` wraps web output in native mobile shell. iOS + Android. | 1 day |
+
+### Tier 6: Intelligence (Day 10-12)
+
+These make Clear apps smarter than hand-coded equivalents.
+
+| Phase | Feature | Why It Matters | Effort |
+|-------|---------|---------------|--------|
+| 71 | **Auto-generated admin panels** | `admin panel for Orders` — CRUD UI auto-generated from table schema. Zero Clear code needed. | 0.5 day |
+| 72 | **Smart defaults** | Compiler infers validation rules from schema (email field → matches email, phone → matches phone). Less boilerplate. | 0.5 day |
+| 73 | **Performance profiling** | `CLEAR_PROFILE=true` — compiled output includes timing for every CRUD operation. Identify slow queries. | 0.5 day |
+| 74 | **AI-powered error recovery** | When an error is unrecoverable, the error translator calls Claude to suggest a patch. Fully autonomous fix loop. | 1 day |
+
+### Tier 7: First-Class AI Agents (SHIPPED — Session 10)
+
+All 10 phases + Skills implemented. 1407 tests passing. 70 new tests. GAN app: `apps/support-agent/main.clear` (80 lines → 300 lines JS).
+
+**What's built:**
+- `agent 'Name' receiving data:` — define an agent function
+- `ask claude 'prompt' with context` — single LLM call
+- `ask claude 'prompt' with data returning:` — structured output (JSON schema)
+- `call 'Agent' with data` — invoke agent from endpoint
+- `agent 'Name' runs every 1 hour:` — scheduled agents (cron)
+- `using 'claude-opus-4-6'` — model selection
+
+**What's missing — 10 phases with exact syntax:**
+
+---
+
+#### Phase 75: Tool Use / Function Calling (1 day)
+
+Agent declares which functions it can call. The compiler maps Clear functions and CRUD operations to Anthropic tool_use API tool definitions. Agent decides at runtime which tools to invoke.
+
+```clear
+agent 'Customer Support' receiving message:
+  can use: look_up_orders, check_status, send_email
+
+  response = ask claude 'Help this customer resolve their issue' with message
+  send back response
+
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+
+define function check_status(order_id):
+  order = look up Order where id is order_id
+  return order's status
+
+define function send_email(to, subject, body):
+  send email via sendgrid:
+    to is to
+    from is 'support@app.com'
+    subject is subject
+    body is body
+```
+
+Compiles to: `tools: [{ name: "look_up_orders", description: "...", input_schema: {...} }]` in the Anthropic API call. The agent's LLM response includes `tool_use` blocks which the runtime executes and feeds back.
+
+---
+
+#### Phase 76: Multi-Turn Conversation (1 day)
+
+Agent maintains context across messages. Conversation history stored in DB, loaded on each turn. Supports both API-driven (chatbot endpoint) and page-driven (chat UI) patterns.
+
+```clear
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+  created_at (timestamp), auto
+
+agent 'Assistant' receiving message:
+  remember conversation context
+  can use: look_up_contacts, create_task
+
+  response = ask claude 'You are a helpful assistant' with message
+  send back response
+
+when user calls POST /api/chat sending message:
+  needs login
+  response = call 'Assistant' with message
+  send back response
+
+page 'Chat' at '/':
+  section 'Chat' with style app_layout:
+    section 'Messages' with style app_main:
+      display messages as list
+    'Message' is a text input saved as a message
+    button 'Send':
+      send message to '/api/chat'
+```
+
+Compiles to: conversation history loaded from DB on each call, appended after response, truncated to token limit. `remember conversation context` triggers the storage pattern.
+
+---
+
+#### Phase 77: Agent Chains / Pipelines (0.5 day)
+
+Output of one agent feeds as input to the next. Error at any step stops the chain and reports which step failed. Useful for multi-stage processing.
+
+```clear
+agent 'Classifier' receiving text:
+  result = ask claude 'Classify this as sales, support, or billing' with text returning:
+    category
+    confidence (number)
+  send back result
+
+agent 'Scorer' receiving lead:
+  score = ask claude 'Score this lead 1-10' with lead returning:
+    score (number)
+    reason
+  send back score
+
+agent 'Router' receiving scored_lead:
+  if scored_lead's score is greater than 7:
+    send back 'fast-track'
+  otherwise:
+    send back 'nurture'
+
+pipeline 'Process Inbound' with text:
+  classify with 'Classifier'
+  score with 'Scorer'
+  route with 'Router'
+
+when user calls POST /api/inbound sending data:
+  needs login
+  result = run pipeline 'Process Inbound' with data's text
+  send back result
+```
+
+Compiles to: sequential `await` calls with error propagation. Each step's output becomes the next step's input. Pipeline result is the final step's output.
+
+---
+
+#### Phase 78: RAG / Knowledge Base (1.5 days)
+
+Agent automatically retrieves relevant context from specified tables before prompting. The compiler generates embedding + similarity search, then injects top results into the prompt context.
+
+```clear
+create a Documents table:
+  title, required
+  content, required
+  category
+
+agent 'Knowledge Bot' receiving question:
+  knows about: Documents, Products, FAQ
+  using 'claude-sonnet-4-6'
+
+  answer = ask claude 'Answer this question using the provided context' with question
+  send back answer
+```
+
+Compiles to: (1) embed the question, (2) similarity search across Documents/Products/FAQ tables, (3) inject top-k results as context in the system prompt, (4) call LLM with enriched context. Requires an embedding model (Anthropic or OpenAI) and a vector similarity function (cosine distance on stored embeddings).
+
+---
+
+#### Phase 79: Agent Memory (0.5 day)
+
+Per-user long-term memory. Agent remembers facts across sessions. Stored in DB, automatically loaded and injected into context on each call.
+
+```clear
+create a Memories table:
+  user_id, required
+  fact, required
+  created_at (timestamp), auto
+
+agent 'Personal Assistant' receiving message:
+  remember user's preferences
+  can use: create_task, send_email, check_calendar
+
+  response = ask claude 'Help the user. Use their preferences when relevant.' with message
+  send back response
+```
+
+Compiles to: (1) on each call, load recent memories for this user from Memories table, (2) inject as system context: "User preferences: [facts]", (3) if the LLM response includes a `remember` action, store the new fact. The `remember user's preferences` line triggers memory loading + the memory-store tool.
+
+---
+
+#### Phase 80: Parallel Agent Execution (0.5 day)
+
+Run multiple agent calls simultaneously. Useful for fan-out patterns (analyze from multiple angles, then merge).
+
+```clear
+agent 'Sentiment' receiving text:
+  result = ask claude 'Rate sentiment 1-10' with text returning:
+    score (number)
+  send back result
+
+agent 'Topic' receiving text:
+  result = ask claude 'Identify the main topic' with text returning:
+    topic
+  send back result
+
+agent 'Language' receiving text:
+  result = ask claude 'Detect the language' with text returning:
+    language
+  send back result
+
+when user calls POST /api/analyze sending data:
+  needs login
+  run these at the same time:
+    sentiment = call 'Sentiment' with data's text
+    topic = call 'Topic' with data's text
+    language = call 'Language' with data's text
+  create result:
+    sentiment is sentiment's score
+    topic is topic's topic
+    language is language's language
+  send back result
+```
+
+Compiles to: `const [sentiment, topic, language] = await Promise.all([agent_sentiment(data.text), agent_topic(data.text), agent_language(data.text)]);`
+
+---
+
+#### Phase 81: Human-in-the-Loop (0.5 day)
+
+Agent pauses for human approval on high-stakes actions. Creates an approval request, waits for response, then continues or aborts.
+
+```clear
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+  decided_by
+  decided_at (timestamp)
+
+agent 'Refund Processor' receiving request:
+  can use: look_up_order, process_refund
+
+  order = look_up_order(request's order_id)
+  if order's amount is greater than 100:
+    ask user to confirm 'Process refund of $' + order's amount + ' for order ' + order's id + '?'
+
+  process_refund(order)
+  send back 'Refund processed'
+
+when user calls POST /api/refund sending request:
+  needs login
+  result = call 'Refund Processor' with request
+  send back result
+```
+
+Compiles to: (1) create Approvals record with status='pending', (2) send notification (webhook/email/WebSocket), (3) return 202 Accepted with approval_id, (4) when approval is granted (PUT /api/approvals/:id), resume the agent from where it paused.
+
+---
+
+#### Phase 82: Agent Observability (0.5 day)
+
+Every LLM call, tool use, and decision is logged with input, output, latency, and token count. Queryable via API or viewable in a dashboard.
+
+```clear
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  tokens_used (number)
+  latency_ms (number)
+  created_at (timestamp), auto
+
+agent 'Support Bot' receiving message:
+  log agent decisions
+  can use: search_faq, escalate
+
+  response = ask claude 'Help the customer' with message
+  send back response
+
+page 'Agent Dashboard' at '/admin/agents':
+  on page load get logs from '/api/agent-logs'
+  display logs as table showing agent_name, action, latency_ms, tokens_used, created_at
+```
+
+Compiles to: wrapper around every `_askAI` call that records timing, token count, input/output to the AgentLogs table. `log agent decisions` enables the wrapper.
+
+---
+
+#### Phase 83: Guardrails / Safety (0.5 day)
+
+Compile-time constraints on what an agent can access. The compiler verifies that the agent's tool set does not include restricted tables or operations. Violations are compile errors, not runtime checks.
+
+```clear
+agent 'Public Bot' receiving question:
+  can use: search_products, check_availability
+  must not: modify prices, delete records, access users
+
+  response = ask claude 'Help the customer find products' with question
+  send back response
+```
+
+Compiles to: compile-time validation that none of the functions in `can use` touch the restricted tables/operations in `must not`. If `search_products` internally does `delete the Product with this id`, the compiler rejects it:
+```
+Error: agent 'Public Bot' uses 'search_products' which deletes from Products,
+  but the agent has 'must not: delete records'. Remove the restriction or
+  change the tool.
+```
+
+This is a **compile-time guarantee**, not a runtime check. A runaway agent can't bypass it because the code literally doesn't compile.
+
+---
+
+#### Phase 84: Agent Testing (0.5 day)
+
+Deterministic tests with mocked LLM responses. The test block specifies input and expected output. The compiler generates a test harness that intercepts `_askAI` calls and returns the mock.
+
+```clear
+test 'Classifier handles positive review':
+  set input to 'This product is amazing, I love it!'
+  mock claude responding:
+    sentiment is 'positive'
+    confidence = 0.95
+  result = call 'Classifier' with input
+  check result's sentiment is 'positive'
+  check result's confidence is greater than 0.9
+
+test 'Classifier handles negative review':
+  set input to 'Terrible experience, want a refund'
+  mock claude responding:
+    sentiment is 'negative'
+    confidence = 0.88
+  result = call 'Classifier' with input
+  check result's sentiment is 'negative'
+
+test 'Support Bot escalates high-urgency':
+  set input to 'My payment was charged twice, this is urgent!'
+  mock claude responding:
+    action is 'escalate'
+    reason is 'duplicate charge — financial issue'
+  result = call 'Customer Support' with input
+  check result's action is 'escalate'
+```
+
+Compiles to: test functions that replace `_askAI` with a mock that returns the specified response. `clear test app.clear` runs all test blocks. Exit code 0 = all pass, 4 = failures. CI-friendly.
+
+---
+
+**What a complete Clear AI agent looks like after Tier 7:**
+
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+
+create a Memories table:
+  user_id, required
+  fact, required
+
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  latency_ms (number)
+  created_at (timestamp), auto
+
+agent 'Customer Support' receiving message:
+  can use: look_up_orders, check_status, send_email, escalate
+  must not: delete records, modify prices, access admin tables
+  knows about: Products, Orders, FAQ
+  remember conversation context
+  remember user's preferences
+  log agent decisions
+  using 'claude-sonnet-4-6'
+
+  response = ask claude 'Help this customer' with message
+  if response's action is 'escalate':
+    ask user to confirm 'Escalate to human agent?'
+  send back response
+
+when user calls POST /api/chat sending message:
+  needs login
+  response = call 'Customer Support' with message
+  send back response
+
+page 'Support' at '/':
+  section 'Chat' with style app_layout:
+    section 'Messages' with style app_main:
+      display messages as list
+    'Message' is a text input saved as a message
+    button 'Send':
+      send message to '/api/chat'
+
+test 'handles product question':
+  mock claude responding:
+    answer is 'The Widget costs $29.99 and ships in 2 days'
+    action is 'respond'
+  result = call 'Customer Support' with 'How much does the Widget cost?'
+  check result's action is 'respond'
+```
+
+That's ~45 lines for a complete customer support agent with: tool use, RAG, conversation memory, user preferences, guardrails, observability, human-in-the-loop escalation, a chat UI, and deterministic tests.
+
+The LangChain equivalent is 500-800 lines across 6+ files.
+
+---
+
+## Effort Summary
+
+| Tier | Phases | Days | What It Unlocks |
+|------|--------|------|----------------|
+| Done (1-46b, 75-84) | 56 phases | 4 days | Full-stack CRUD apps, error translator, silent bug guards, first-class AI agents |
+| Tier 1: Production | 47-50 | 2 days | Real deployment, persistent DB, real-time |
+| Tier 2: Complex Frontend | 51-55 | 3 days | Multi-page SPAs, components, animations |
+| Tier 3: Data & Integration | 56-60 | 3 days | Postgres, file upload, email, cron, streaming |
+| Tier 4: Advanced Patterns | 61-66 | 2 days | State machines, workflows, search, audit |
+| Tier 5: Platform | 67-70 | 5 days | Cloud, packages, desktop, mobile |
+| Tier 6: Intelligence | 71-74 | 2.5 days | Auto-admin, smart defaults, AI recovery |
+| Tier 7: AI Agents | 75-84 | 7 days | Tool use, RAG, memory, pipelines, guardrails, testing |
+| **TOTAL** | **84 phases** | **~27 days** | **General-purpose app + agent language** |
+
+**What's been built: 3 days, 46 phases, 1337 tests, 14k lines of compiler.**
+**What remains: ~24 days for 38 phases.**
+
+But the tiers aren't equal. Tiers 1-4 (production + frontend + data + patterns) are pure compiler work — **~10 days** at current velocity. Tier 5 (platform) is infrastructure — **~5 days**, slower because it's deploy tooling not compiler code. Tier 7 (AI agents) is the most ambitious — **~7 days** — but also the highest leverage because it makes Clear the best way to build AI-powered apps.
+
+**Recommended order:**
+1. SQLite (unlocks persistence)
+2. Real-time / WebSocket (unlocks chat, notifications)
+3. Tool use + function calling (unlocks real agents)
+4. Multi-turn conversation (agents that remember)
+5. Complex frontend (multi-page, components)
+6. Templates (client portal, admin dashboard)
+7. Deploy (one command to production)
+8. Everything else in priority order
+

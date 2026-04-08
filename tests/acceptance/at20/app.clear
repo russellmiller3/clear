@@ -1,0 +1,8 @@
+build for web
+page 'App' at '/':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      text 'Nav'
+    section 'Main' with style app_main:
+      section 'Body' with style app_content:
+        chart 'Revenue' as bar showing data

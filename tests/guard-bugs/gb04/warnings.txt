@@ -1,0 +1,4 @@
+Line 15: subtracting from 'stock' with no guard. Consider adding:
+  check warehouse's stock is at least <amount>, otherwise error 'Insufficient stock'
+
+Your app requires auth but doesn't log requests. Without logging, you can't detect unauthorized access attempts or debug auth issues. Add: log every request

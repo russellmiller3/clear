@@ -1,87 +1,75 @@
-# Handoff — 2026-04-06
+# Handoff — 2026-04-08 (Session 10)
 
 ## Current State
-- **Branch:** main (after merge of feature/app-output-quality)
-- **Tests:** 1005 passing
+- **Branch:** main
+- **Tests:** 1407 passing
+- **Apps:** 34 template apps, all compile
 - **Working tree:** Clean
 
 ## What Was Done This Session
 
-### Compiled App Output Quality (Major)
-- **Root cause fix:** `* { margin: 0; padding: 0; }` in CSS_BASE was overriding every Tailwind utility class. All padding, margin, gap, flex properties rendered as 0px. Fixed to `*, *::before, *::after { box-sizing: border-box; }`.
-- **Context-aware rendering:** `buildHTML()` now tracks parent section presets via `sectionStack`. Headings, text, buttons, links, and small text all adapt based on whether they're inside `app_header`, `metric_card`, `card_bordered`, `page_hero`, `app_sidebar`, etc.
-- **Landing page patterns:** Hero sections use `font-display text-5xl`, centered flex layout, eyebrow badges, `btn btn-primary btn-lg` for CTAs. Section headings use `text-3xl font-bold`. Subheadings use `text-lg text-base-content/60`.
-- **Sidebar nav:** Static text nodes in `app_sidebar` render as `<li><a>` menu items. Brand heading gets `px-5 py-4 border-b` wrapper. Sidebar splits children into brand/nav/other groups.
-- **Flex containers:** Cards (`card`, `card_bordered`, `metric_card`) have `flex flex-col gap-*`. `app_content` has `flex flex-col gap-6`. Form inputs drop `mb-4` when inside flex containers.
-- **Single theme CSS:** Compiler only emits the active theme, not all 5. Split `CSS_BASE` into `CSS_RESET` + `THEME_CSS` map.
-- **Empty section comments suppressed:** JS output no longer has `// Section: Nav` when section body produces no JS.
-- **Table runtime classes:** `<th>` gets uppercase tracking, `<tr>` gets hover states, `<td>` gets proper text sizing.
-- **Per-row delete buttons:** (Started, not finished) Auto-detect DELETE endpoints and add delete buttons to table rows.
+### Tier 7: First-Class AI Agents (11 Phases)
+Complete implementation of AI agent features — Clear is now the best way to build AI agents in plain English.
 
-### Midnight Theme → Tokyo Night
-- Redesigned `midnight` theme: deep navy `#0d1117` bg, electric blue `#4a8cff` accent, light blue text `#c8d8f0`, green `#5dbb7a` for success, warm yellow `#ffbb44` for accent/warning.
+| Phase | Feature | Syntax |
+|-------|---------|--------|
+| 80 | Parallel Agents | `do these at the same time:` |
+| 77 | Pipelines | `pipeline 'Name' with var:` + `call pipeline` |
+| 82 | Observability | `track agent decisions` |
+| 75 | Tool Use | `can use: fn1, fn2` + `_askAIWithTools` agentic loop |
+| 75b | Skills | `skill 'Name':` + `uses skills:` |
+| 83 | Guardrails | `must not:` block (compile-time + runtime policies) |
+| 76 | Conversation | `remember conversation context` |
+| 79 | Memory | `remember user's preferences` |
+| 81 | Human-in-the-Loop | `ask user to confirm 'message'` |
+| 84 | Agent Testing | `mock claude responding:` |
+| 78 | RAG | `knows about: Documents, Products` |
 
-### Playground Overhaul
-- **Single Source tab:** Merged JS/HTML/CSS tabs into one "Source" tab showing the full compiled HTML file.
-- **Download button:** Downloads compiled app as `{name}.html`.
-- **No auto-compile:** Loading examples and typing no longer trigger compilation. Must click Compile.
-- **Slower animation:** Stream animation runs ~3 seconds instead of ~800ms so users can watch it build.
-- **Favicon + logo:** Crystal/prism SVG icon in browser tab and sidebar.
-- **Compile button:** Subtle gradient, proper styling.
-- **Sales Dashboard → ivory:** Default example now uses ivory theme instead of midnight.
+### Additional Features
+- **Variable prompts:** `ask claude variable_name with data` (text blocks work as agent prompts)
+- **Agent directive scanner:** All directives parsed BEFORE parseBlock to avoid synonym collisions
+- **Composable features:** Skills + tools + tracking + RAG all compose on a single agent
 
-### ASCII Diagrams
-- All 6 playground examples have ASCII diagrams at the top.
-- Added "ASCII Diagrams First (MANDATORY)" section to AI-STYLE-GUIDE.md with step-by-step box-drawing technique.
-- Diagrams are source of truth — update before code changes.
-- **Known issue:** Arrow characters (`►`, `◄`) cause character count mismatches with label text. Need simpler arrow syntax (e.g., `=>` instead of `►`). This is the next thing to fix.
-
-### Documentation Updates
-- **CLAUDE.md:** Added Strong Opinion Rule.
-- **AI-STYLE-GUIDE.md:** ASCII diagrams mandatory, box-drawing technique, source of truth rule.
-- **ROADMAP.md:** Added Phase 39 (Desktop Apps via Tauri), Phase 40 (Production Database Connectors — Supabase/PlanetScale/Turso).
-- **design-system-v2.md:** Updated midnight theme to Tokyo Night colors.
-- **Ship skill:** Comprehensive `/ship` with doc updates, bundle rebuild, test gate, merge, push.
-
-## What's NOT Done (Priority Order)
-
-1. **ASCII diagram arrows** — The `►`/`◄` characters cause `.length` mismatches vs label text between boxes. Need to step back and find a simpler approach — maybe `=>` instead of `►`. All 6 diagrams need fixing once the approach is settled.
-
-2. **Per-row delete buttons (CRUD)** — Started in compiler.js (auto-detect DELETE endpoints, add delete column to tables) but not finished. The event delegation handler is not wired up yet. Contact Manager example has the DELETE endpoint but no delete buttons appear in the UI.
-
-3. **GAN grid alignment** — The `section 'Metrics' as two column layout` uses inline CSS `display: grid` instead of Tailwind `grid grid-cols-2 gap-6` classes. Should use Tailwind for consistency.
-
-4. **Phase 30 items 2-4** — Client-side validation before fetch, loading state on buttons during fetch, error display when server returns error.
-
-5. **Chart syntax** — `chart 'Revenue' as line showing data` → ECharts.
-
-6. **Supabase connector** — `database is supabase` compile target (Phase 40, planned).
+### GAN Agent App
+`apps/support-agent/main.clear` — 80 lines of Clear → 300 lines of JS. Exercises skills, tool use, observability, RAG, guardrails, long prompts, text blocks, and mock testing.
 
 ## Key Decisions Made
-1. **Single HTML file output** — Compiled apps are one file with inline CSS/JS. No separate files. This is the right call for Clear's "compile and it works" philosophy.
-2. **GAN Design Method** — Create static HTML mock first, use as acceptance criteria, fix compiler until output matches. The mock is the discriminator, the compiler is the generator.
-3. **Strong Opinion Rule** — Always have an opinionated take backed by facts. Don't hedge.
-4. **ASCII diagrams are source of truth** — Update diagram before changing code. Diagram wins if code disagrees.
-5. **No auto-compile in playground** — User must click Compile explicitly.
-6. **No husky/pre-commit hooks** — Test gate lives in `/ship` skill. Zero npm dependencies preserved.
 
-## Known Issues
-- ASCII diagram right edges don't perfectly align due to `►` character counting
-- Preview screenshots timeout with Tailwind CDN (works fine in real browser)
-- Browser server auth is hard-coded `{ id: 1, role: "admin" }` for dev mode
-- `page_cta` preset has `text-primary-content` which may not work on all themes
+1. **`do` is synonym for `then`** — changed parallel syntax from `run these at the same time:` to `do these at the same time:` (registered as multi-word synonym `do_parallel`)
+2. **`log` is synonym for `show`** — changed observability syntax from `log agent decisions` to `track agent decisions`
+3. **`run` is synonym for `raw_run`** — changed pipeline invocation from `run pipeline` to `call pipeline`
+4. **Directives before parseBlock** — all agent directives (`can use:`, `must not:`, `remember`, `track`, `knows about:`, `uses skills:`) parsed inside `parseAgent()` before `parseBlock()` to avoid synonym collisions
+5. **Skills are compile-time only** — tools merge, instructions concatenate, no runtime overhead
+6. **RAG v1 is keyword search** — no embedding API needed, upgradeable to vectors later
+7. **Composable agent pipeline** — refactored `compileAgent()` from early-return blocks to composable: skills → tools → tracking, all features stack
+
+## Known Issues / Bugs
+
+- **Web target doesn't compose agent features** — `build for web and javascript backend` compiles agent functions through a different code path (browser server) that doesn't include the composable preamble. Backend-only works. Tracked for fix.
+- Browser server doesn't inline module endpoints from `use everything from`
+- `data from` synonym collision with variable name `data`
+- Single `_editing_id` shared across tables (edit mode collision in multi-table UIs)
+- Regex-based code wrapping (`bodyCode.replace(/_askAI/g, ...)`) is fragile for multi-line calls
+
+## Next Steps (Priority Order)
+
+1. **Fix web target agent composition** — make composable pipeline work in `compileToBrowserServer()`
+2. **Multi-agent GAN app** — build a 3-agent pipeline app exercising all features as discriminator test
+3. **Deploy playground to Vercel** — AI proxy ready, just needs `vercel deploy`
+4. **Client portal + admin dashboard templates** — complete Phase 43
+5. **Clear Cloud MVP** — hosted compile + deploy
 
 ## Files to Read First
+
 | File | Why |
 |------|-----|
-| `CLAUDE.md` | Startup reading order, design rules, GAN method, Strong Opinion Rule |
-| `AI-STYLE-GUIDE.md` | ASCII diagrams, assignment conventions, presets |
-| `design-system-v2.md` | All component patterns, 5 themes (midnight is Tokyo Night now) |
-| `learnings.md` | Scan TOC — new session "App Output Quality" at bottom |
-| `compiler.js:3129` | `buildHTML()` with sectionStack context tracking |
-| `compiler.js:3412` | Context-aware CONTENT rendering (headings/text/buttons/links) |
-| `compiler.js:4172` | `CSS_RESET` + `THEME_CSS` (split theme system) |
-| `playground/index.html:241` | All 6 example sources with ASCII diagrams |
+| `HANDOFF.md` | This file — session context |
+| `CLAUDE.md` | Startup reading order, all rules, 1407 tests |
+| `learnings.md` | Scan TOC — Session 10 has agent synonym traps + directive parsing |
+| `ROADMAP.md` | Phases 30-46b, 75-84 complete, 1407 tests |
+| `SYNTAX.md` | New AI Agents section at bottom |
+| `plans/plan-agent-tier7-04-08-2026.md` | Full implementation plan (red-teamed) |
 
 ## Resume Prompt
-> Read HANDOFF.md, CLAUDE.md, and AI-STYLE-GUIDE.md. The big issue: ASCII diagram arrows (`►`/`◄`) cause character count mismatches — step back and find a simpler approach (maybe `=>` instead of `►`, or just use `-->` and `<--`). Fix all 6 playground example diagrams. Then finish the per-row delete buttons for CRUD (compiler.js auto-detects DELETE endpoints, adds delete column to table rows with event delegation). Then GAN the grid layout (Tailwind grid classes instead of inline CSS). Run `node clear.test.js` to verify (1005 tests). Serve playground with `npx http-server ./playground -p 8181 -c-1`.
+
+> Read HANDOFF.md, CLAUDE.md. 1407 tests passing. 34 apps. Phases 30-46b, 75-84 complete. Session 10: Tier 7 AI agents — 11 phases: tool use (can use + _askAIWithTools), skills (reusable tool bundles), guardrails (must not: compile-time + runtime), conversation (remember conversation context), memory (remember user's preferences), pipelines, parallel execution, observability, HITL, agent testing, RAG. Composable: all features stack on one agent. GAN app: apps/support-agent/main.clear. Next: fix web target agent composition, multi-agent GAN app, deploy playground.
