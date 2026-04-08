@@ -245,7 +245,7 @@ Run with `node test.js` (server must be running on localhost:3000).
 | Doc | What |
 |-----|------|
 | [SYNTAX.md](SYNTAX.md) | Complete syntax reference -- every feature with examples |
-| [AI-STYLE-GUIDE.md](AI-STYLE-GUIDE.md) | How AI should write Clear code -- canonical forms and conventions |
+| [AI-INSTRUCTIONS.md](AI-INSTRUCTIONS.md) | How AI should write Clear code -- canonical forms and conventions |
 | [PHILOSOPHY.md](PHILOSOPHY.md) | Why Clear exists, design rules, how it helps AI debug |
 | [intent.md](intent.md) | All node types, compiler structure, synonym collisions |
 | [ROADMAP.md](ROADMAP.md) | What's built, what's planned, capability matrix |

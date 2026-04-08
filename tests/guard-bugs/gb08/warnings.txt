@@ -1,0 +1,4 @@
+Line 17: subtracting from 'balance' with no guard. Consider adding:
+  check from_account's balance is at least <amount>, otherwise error 'Insufficient balance'
+
+Your app requires auth but doesn't log requests. Without logging, you can't detect unauthorized access attempts or debug auth issues. Add: log every request

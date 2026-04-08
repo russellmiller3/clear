@@ -1,0 +1,131 @@
+# CRM SPA — Frontend
+# Multi-page reactive SPA with tabs, modals, debounced search, components, charts
+
+use everything from 'components'
+
+# --- Dashboard Page ---
+page 'CRM Dashboard' at '/':
+
+  on page load:
+    send nothing to '/api/seed'
+    get contacts from '/api/contacts'
+    get deals from '/api/deals'
+    get activities from '/api/activities'
+
+  section 'Layout' with style app_layout:
+
+    section 'Nav' with style app_sidebar:
+      heading 'CRM'
+      divider
+      text 'Dashboard'
+      text 'Contacts'
+      text 'Deals'
+      text 'Pipeline'
+      text 'Activity'
+      divider
+      small text 'v2.0 — Multi-file SPA'
+
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+        'Search contacts...' is a text input saved as a search_query
+
+      section 'Body' with style app_content:
+
+        # --- Debounced search ---
+        when search_query changes after 250ms:
+          get contacts from '/api/contacts'
+
+        # --- Pipeline Chart ---
+        section 'Pipeline' with style app_card:
+          subheading 'Deal Pipeline'
+          chart 'Pipeline' as bar showing deals
+
+        # --- Tabbed Content ---
+        section 'Data' as tabs:
+
+          tab 'Contacts':
+            section 'Contact Form' with style app_card:
+              show ContactForm()
+              button 'Add Contact':
+                send contact_name and contact_email and contact_company and contact_phone and status and source to '/api/contacts'
+                get contacts from '/api/contacts'
+                contact_name is ''
+                contact_email is ''
+                contact_company is ''
+                contact_phone is ''
+            section 'Contact List' with style app_card:
+              display contacts as table showing name, email, company, status with delete and edit
+
+          tab 'Deals':
+            section 'Deal Form' with style app_card:
+              show DealForm()
+              button 'Add Deal':
+                send deal_title and deal_contact_id and deal_value and deal_stage and deal_probability and expected_close to '/api/deals'
+                get deals from '/api/deals'
+                deal_title is ''
+                deal_contact_id is ''
+            section 'Deal List' with style app_card:
+              display deals as table showing title, value, stage, probability with delete and edit
+
+          tab 'Activity':
+            section 'Activity Form' with style app_card:
+              show ActivityForm()
+              button 'Log Activity':
+                send activity_contact_id and activity_action and activity_detail to '/api/activities'
+                get activities from '/api/activities'
+                activity_detail is ''
+            section 'Activity List' with style app_card:
+              display activities as table showing action, detail, performed_by
+
+        # --- Quick Add Modal ---
+        section 'Quick Add' as modal:
+          heading 'Quick Add Contact'
+          'Name' is a text input saved as a quick_name
+          'Email' is a text input saved as a quick_email
+          button 'Save':
+            send quick_name and quick_email to '/api/contacts'
+            get contacts from '/api/contacts'
+            quick_name is ''
+            quick_email is ''
+            close modal
+
+          button 'Cancel':
+            close modal
+
+        button 'Quick Add':
+          open the Quick Add modal
+
+# --- Settings Page ---
+page 'Settings' at '/settings':
+  section 'Layout' with style app_layout:
+    section 'Nav' with style app_sidebar:
+      heading 'CRM'
+      divider
+      link 'Dashboard' to '/'
+      text 'Settings'
+
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Settings'
+
+      section 'Body' with style app_content:
+        section 'Tags' with style app_card:
+          subheading 'Manage Tags'
+          on page load get tags from '/api/tags'
+          'Tag Name' is a text input saved as a tag_name
+          'Color' is a dropdown with ['blue', 'red', 'green', 'purple', 'orange']
+          button 'Add Tag':
+            send tag_name and color to '/api/tags'
+            get tags from '/api/tags'
+            tag_name is ''
+          display tags as table showing name, color
+
+        section 'Help' slides in from right:
+          heading 'CRM Help'
+          text 'Use the Dashboard to manage contacts, deals, and track activity.'
+          text 'The Pipeline chart shows deal values by stage.'
+          text 'Use Quick Add to rapidly create new contacts.'
+
+        button 'Help':
+          toggle the Help panel

@@ -1,0 +1,1 @@
+{"error":"Something went wrong","clear_line":23,"clear_file":"main.clear","clear_source":null,"hint":"Cannot read properties of null (reading 'price')","technical":"Cannot read properties of null (reading 'price')","context":{"endpoint":"POST /api/orders","input":{"product_id":"999","quantity":2},"schema":null,"table":null}}

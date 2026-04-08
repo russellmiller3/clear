@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cast</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+.clear-conditional { }
+
+
+
+/* --- User Styles --- */
+.style-app_layout {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+  height: 100vh;
+}
+
+.style-editor_pane {
+  display: flex; flex-direction: column;
+  background: #1e293b;
+  color: #e2e8f0;
+}
+.style-editor_pane h1, .style-editor_pane h2, .style-editor_pane p, .style-editor_pane strong,
+.style-editor_pane .clear-text, .style-editor_pane .clear-heading, .style-editor_pane .clear-subheading,
+.style-editor_pane .clear-small { color: inherit; }
+
+.style-editor_header {
+  position: sticky; top: 0; z-index: 10; background: inherit;
+  padding: 12px;
+  background: #0f172a;
+}
+
+.style-editor_body {
+  overflow-y: auto; min-height: 0;
+  flex: 1; min-height: 0; min-width: 0;
+  padding: 16px;
+}
+
+.style-results_pane {
+  display: flex; flex-direction: column;
+  background: #f1f5f9;
+}
+
+.style-results_header {
+  position: sticky; top: 0; z-index: 10; background: inherit;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.style-results_body {
+  overflow-y: auto; min-height: 0;
+  flex: 1; min-height: 0; min-width: 0;
+  padding: 16px;
+}
+
+.style-chat_section {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="clear-section style-app_layout">
+      <div class="max-w-5xl mx-auto px-4">
+    <div class="clear-section style-editor_pane">
+      <div class="max-w-5xl mx-auto px-4">
+    <div class="clear-section style-editor_header">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Cast Editor</h1>
+      </div>
+    </div>
+    <div class="clear-section style-editor_body">
+      <div class="max-w-5xl mx-auto px-4">
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Sheet Title</legend>
+      <input id="input_title" class="input input-bordered w-full" type="text" placeholder="Sheet Title">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Code</legend>
+      <textarea id="input_code" class="textarea textarea-bordered w-full" placeholder="Code" rows="6"></textarea>
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Run">Run</button>
+      </div>
+    </div>
+      </div>
+    </div>
+    <div class="clear-section style-results_pane">
+      <div class="max-w-5xl mx-auto px-4">
+    <div class="clear-section style-results_header">
+      <div class="max-w-5xl mx-auto px-4">
+    <button class="btn btn-primary" id="btn_Results">Results</button>
+    <button class="btn btn-primary" id="btn_Chat">Chat</button>
+      </div>
+    </div>
+    <div class="clear-section style-results_body">
+      <div class="max-w-5xl mx-auto px-4">
+    <div id="cond_0" class="clear-conditional" style="display:none">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Output</h1>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Sheets">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Sheets</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Sheets_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+    <div id="cond_1" class="clear-conditional" style="display:none">
+    <div class="clear-section style-chat_section">
+      <div class="max-w-5xl mx-auto px-4">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">AI Assistant</h1>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Ask a question...</legend>
+      <input id="input_chat_input" class="input input-bordered w-full" type="text" placeholder="Ask a question...">
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Send">Send</button>
+      </div>
+    </div>
+    </div>
+      </div>
+    </div>
+      </div>
+    </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Sheets: title*, code*, created_at (line 51)
+   Messages: role*, content*, sheet_id*, created_at (line 56)
+
+ ENDPOINTS:
+   GET /api/sheets (line 65)
+   POST /api/sheets (line 69)
+   POST /api/chat (line 76)
+   GET /api/chat (line 82)
+
+ PAGES:
+   'Cast' at / (line 87)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+document.title = "Cast";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  title: "",
+  code: "",
+  brand: "#2563eb",
+  dark: "#0f172a",
+  surface: "#f1f5f9",
+  tab: 1
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // clear:107
+  if (_state.tab == 1) {
+    document.getElementById('output_Sheets').textContent = sheets;
+  }
+  // clear:112
+  if (_state.tab == 2) {
+    // Section: Chat
+    // Input: Ask a question...
+    document.getElementById('input_chat_input').addEventListener('input', (e) => {
+      _state.chat_input = e.target.value;
+      _recompute();
+    });
+    document.getElementById('btn_Send').addEventListener('click', async () => {
+      { const _r = await fetch("/api/chat", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_input: _state.chat_input }) });
+        if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+      let chat_input = "";
+      _recompute();
+    });
+  }
+  { const _el = document.getElementById('cond_0'); if (_el) _el.style.display = (_state.tab == 1) ? '' : 'none'; }
+  { const _el = document.getElementById('cond_1'); if (_el) _el.style.display = (_state.tab == 2) ? '' : 'none'; }
+  document.getElementById('input_title').value = _state.title;
+  document.getElementById('input_code').value = _state.code;
+}
+
+// --- Input listeners ---
+document.getElementById('input_title').addEventListener('input', function(e) {
+  _state.title = e.target.value;
+  _recompute();
+});
+document.getElementById('input_code').addEventListener('input', function(e) {
+  _state.code = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Run').addEventListener('click', async function() {
+    if (_state.title === '' || _state.title == null) { _toast('title is required', 'error'); return; }
+    if (_state.code === '' || _state.code == null) { _toast('code is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Run');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/sheets", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: _state.title, code: _state.code }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Results').addEventListener('click', function() {
+  _state.tab = 1;
+  _recompute();
+});
+document.getElementById('btn_Chat').addEventListener('click', function() {
+  _state.tab = 2;
+  _recompute();
+});
+
+_recompute();
+
+  </script>
+</body>
+</html>

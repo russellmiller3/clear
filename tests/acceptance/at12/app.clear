@@ -1,0 +1,11 @@
+build for javascript backend
+database is local memory
+
+when user calls POST /api/notify:
+  needs login
+  send email via sendgrid:
+    to is 'test@example.com'
+    from is 'bad-from'
+    subject is 'Hello'
+    body is 'World'
+  send back 'sent'

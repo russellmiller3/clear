@@ -5,13 +5,59 @@
 // PURPOSE: Clear is a programming language designed for AI to WRITE and humans
 // to READ. This tokenizer turns Clear source text into tokens for the parser.
 //
-// Handles:
-//   - Multi-word synonym matching (greedy, longest-first)
-//   - Resolving synonyms to canonical forms
-//   - Number literals, string literals, operators, identifiers
-//   - Possessive access (person's name)
-//   - Trailing colons stripped (visual block openers like "try:" or "repeat 5 times:")
-//   - Comments (# to end of line)
+// !! MAINTENANCE RULE: Update this diagram whenever you change the tokenizer's
+// !! data flow, add new token types, or change synonym resolution.
+//
+// ARCHITECTURE:
+//
+//   Clear Source Text
+//       │
+//       ▼
+//   ┌─────────────────────────────────────────────────────┐
+//   │  tokenize(source)                                    │
+//   │                                                      │
+//   │  1. Split into lines (preserving indent depth)       │
+//   │  2. For each line:                                   │
+//   │     ┌──────────────────────────────────────────┐     │
+//   │     │  tokenizeLine(text)                      │     │
+//   │     │                                          │     │
+//   │     │  a. Skip comments (# to EOL)             │     │
+//   │     │  b. Match multi-word synonyms FIRST      │     │
+//   │     │     (greedy, longest match wins)          │     │
+//   │     │  c. Resolve single-word synonyms          │     │
+//   │     │  d. Parse: strings, numbers, operators,   │     │
+//   │     │     possessives (person's name),          │     │
+//   │     │     identifiers, parens, brackets         │     │
+//   │     │  e. Strip trailing colons (block openers) │     │
+//   │     └──────────────────────────────────────────┘     │
+//   │                                                      │
+//   │  Output: [{ indent, tokens: [Token] }]               │
+//   └─────────────────────────────────────────────────────┘
+//       │
+//       ▼
+//   Array of TokenizedLine → fed to parser.js
+//
+// TOKEN TYPES:
+//   KEYWORD ...... canonical keyword (resolved from synonym table)
+//   IDENTIFIER ... variable or function name
+//   NUMBER ....... numeric literal (JS number, not string)
+//   STRING ....... string literal (single or double quotes)
+//   OPERATOR ..... arithmetic: + - * / % **
+//   ASSIGN ....... =
+//   COMPARE ...... > < >= <=
+//   LPAREN/RPAREN  ( )
+//   LBRACKET/RBRACKET  [ ]
+//   COMMA ........ ,
+//   POSSESSIVE ... 's (person's → object + member)
+//   COLON ........ : (block opener, stripped from line end)
+//   DOT .......... . (decimal or member access)
+//
+// KEY INVARIANT: Synonyms are resolved during tokenization. By the time the
+// parser sees tokens, every keyword is in canonical form. The parser never
+// sees "define", "create", "make" — it sees the canonical equivalent.
+//
+// DEPENDENCIES: synonyms.js (REVERSE_LOOKUP, MULTI_WORD_SYNONYMS)
+// DEPENDENTS:   parser.js (consumes tokenized output)
 //
 // =============================================================================
 

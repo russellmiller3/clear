@@ -165,6 +165,7 @@ const SYNONYM_TABLE = Object.freeze({
   // New input syntax (canonical): text input, number input, dropdown, checkbox, text area
   text_input: Object.freeze(['text input']),
   number_input: Object.freeze(['number input']),
+  file_input: Object.freeze(['file input', 'file upload']),
   dropdown: Object.freeze(['dropdown', 'select']),
   checkbox: Object.freeze(['checkbox', 'toggle']),
   text_area: Object.freeze(['text area', 'textarea']),
@@ -369,6 +370,14 @@ const SYNONYM_TABLE = Object.freeze({
   // Advanced features (Phase 28)
   text_block: Object.freeze(['text block', 'multiline text', 'text template']),
   do_all: Object.freeze(['do all', 'run all', 'all at once']),
+
+  // External APIs (Phase 45)
+  call_api: Object.freeze(['call api']),
+  charge_via_stripe: Object.freeze(['charge via stripe']),
+  send_sms_via_twilio: Object.freeze(['send sms via twilio']),
+  // NOTE: 'send email via sendgrid' is NOT a synonym — collides with 'send email:' (SMTP).
+  // Parser checks for 'via' token after 'send email' to disambiguate.
+  needs_login: Object.freeze(['needs login', 'need login', 'requires login']),
 });
 
 // Build the reverse lookup: synonym string → canonical token
@@ -392,6 +401,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.9.0';
+const SYNONYM_VERSION = '0.10.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

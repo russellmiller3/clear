@@ -1,0 +1,10 @@
+build for javascript backend
+database is local memory
+
+when user calls POST /api/charge:
+  needs login
+  charge via stripe:
+    amount = 2000
+    currency is 'usd'
+    token is 'tok_test'
+  send back 'charged'

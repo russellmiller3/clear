@@ -1,0 +1,15 @@
+build for javascript backend
+database is local memory
+
+create a Contacts table:
+  name, required
+  email, required, unique
+
+when user calls POST /api/contacts sending data:
+  needs login
+  new_contact = save data as new Contact
+  send back new_contact
+
+when user calls GET /api/contacts:
+  contacts = look up all Contacts
+  send back contacts

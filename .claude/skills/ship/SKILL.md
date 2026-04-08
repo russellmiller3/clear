@@ -23,7 +23,7 @@ Review every changed file and update these docs as needed:
 - **`PHILOSOPHY.md`** — Add new design principles if any emerged
 - **`SYNTAX.md`** — Document any new or changed syntax with examples
 - **`design-system-v2.md`** — Reflect theme color changes, new presets, updated component patterns
-- **`AI-STYLE-GUIDE.md`** — Add new coding conventions, update examples
+- **`AI-INSTRUCTIONS.md`** — Add new coding conventions, update examples
 - **`HANDOFF.md`** — Rewrite: what was done, what's next, key decisions, known issues, resume prompt
 - **`CLAUDE.md`** — Verify new rules are present, update test count if tests were added
 
@@ -36,6 +36,9 @@ npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-c
 
 ### Step 2: Run tests (GATE — must pass to continue)
 
+**Skip this step if the branch only changed documentation files** (`.md` files, no `.js` changes). Doc-only ships don't need a test run.
+
+Otherwise:
 ```
 node clear.test.js
 ```

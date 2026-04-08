@@ -1,0 +1,45 @@
+build for web and javascript backend
+database is local memory
+
+create a Tasks table:
+  title, required
+  assignee, required
+  priority, default 'medium'
+  completed, default 'false'
+
+when user calls GET /api/tasks:
+  tasks = look up all Tasks
+  send back tasks
+
+when user calls POST /api/tasks sending task:
+  needs login
+  new_task = save task as new Task
+  send back new_task
+
+when user calls PUT /api/tasks/:id sending task:
+  needs login
+  task's completed = 'true'
+  save task to Tasks
+  send back task
+
+when user calls POST /api/seed:
+  create t1:
+    title is 'Fix login bug'
+    assignee is 'alice'
+    priority is 'high'
+  save t1 as new Task
+  create t2:
+    title is 'Write docs'
+    assignee is 'bob'
+    priority is 'low'
+  save t2 as new Task
+  create t3:
+    title is 'Deploy v2'
+    assignee is 'alice'
+    priority is 'high'
+  save t3 as new Task
+  send back 'seeded'
+
+page 'Tasks' at '/':
+  on page load get tasks from '/api/tasks'
+  display tasks as table showing title, assignee, priority, completed with edit

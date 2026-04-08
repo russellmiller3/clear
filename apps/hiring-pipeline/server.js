@@ -26,19 +26,30 @@ function _validate(body, rules) {
   }
   return null;
 }
-async function _askAI(prompt, context) {
+async function _askAI(prompt, context, schema) {
   const key = process.env.CLEAR_AI_KEY;
   if (!key) throw new Error("Set CLEAR_AI_KEY environment variable with your Anthropic API key");
   const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
-  const content = context ? prompt + "\n\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  let content = context ? prompt + "\n\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  if (schema) {
+    const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\n");
+    content += "\n\nRespond with ONLY a JSON object in this exact shape, no other text:\n{\n" + fields + "\n}";
+  }
   const payload = JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, messages: [{ role: "user", content }] });
   const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+  function parseResult(text) {
+    if (!schema) return text;
+    // Extract JSON from response (may have markdown fences)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("AI did not return valid JSON. Response: " + text.slice(0, 200));
+    try { return JSON.parse(jsonMatch[0]); } catch (e) { throw new Error("AI returned invalid JSON: " + e.message + ". Response: " + text.slice(0, 200)); }
+  }
   // Use fetch (works in most environments). If behind a proxy, fall back to curl.
   try {
     const r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(30000) });
     if (!r.ok) { const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e); }
     const data = await r.json();
-    return data.content[0].text;
+    return parseResult(data.content[0].text);
   } catch (fetchErr) {
     if (!process.env.HTTP_PROXY && !process.env.HTTPS_PROXY && !process.env.http_proxy) throw fetchErr;
     // Proxy environment: fetch may not respect HTTP_PROXY, fall back to curl
@@ -51,7 +62,7 @@ async function _askAI(prompt, context) {
       require("fs").unlinkSync(tmp);
       const data = JSON.parse(out);
       if (data.error) throw new Error("AI error: " + data.error.message);
-      return data.content[0].text;
+      return parseResult(data.content[0].text);
     } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
   }
 }

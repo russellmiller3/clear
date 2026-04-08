@@ -4,82 +4,158 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Results Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="style.css">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- User Styles --- */
+.style-metric_card {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.style-card {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+/* --- Inline Layout --- */
+.section-app { display: flex; flex-direction: row; height: 100vh; }
+.section-sidebar { background: #0f172a; color: #f8fafc; overflow-y: auto; width: 280px; flex-shrink: 0; }
+.section-main { flex: 1; display: flex; flex-direction: column; }
+.section-header { position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); padding: 1.5rem; }
+.section-tabs { padding: 1.5rem; }
+.section-content { overflow-y: auto; padding: 1.5rem; }</style>
 </head>
 <body class="min-h-screen bg-base-100">
-  <main id="app" class="h-screen">
+  <main id="app" class="">
     <div class="clear-section section-app">
     <div class="clear-section section-sidebar">
-    <h1 class="text-3xl font-bold tracking-tight mb-6">Models</h1>
-    <p class="text-base text-base-content/80 leading-relaxed mb-3">Your trained models and results.</p>
-    <div class="divider my-8"></div>
-    <div class="form-control mb-4">
-      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="input_search">Search</label>
-      <input id="input_search" class="input input-bordered w-full bg-base-200" type="text" placeholder="Search">
-    </div>
-    <div class="divider my-8"></div>
-    <h2 class="text-xl font-semibold mt-6 mb-3">Recent</h2>
-    <div class="overflow-hidden rounded-xl border border-base-300/50 bg-base-200 mb-4" id="output_Models">
-      <div class="text-xs font-medium text-base-content/50 uppercase tracking-wide px-4 pt-3">Models</div>
-      <table class="table table-sm" id="output_Models_table">
-        <thead><tr class="bg-base-300/30 text-xs uppercase tracking-wide text-base-content/40"></tr></thead>
-        <tbody class="text-sm"></tbody>
-      </table>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Models</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Your trained models and results.</p>
+    <div class="divider my-4"></div>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Search</legend>
+      <input id="input_search" class="input input-bordered w-full" type="text" placeholder="Search">
+    </fieldset>
+    <div class="divider my-4"></div>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Recent</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Models">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Models</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Models_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
     </div>
     <div class="clear-section section-main">
     <div class="clear-section section-header">
-    <h1 class="text-3xl font-bold tracking-tight mb-6">Results Dashboard</h1>
-    <div class="form-control mb-4">
-      <label class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-1" for="input_model_name">Model Name</label>
-      <input id="input_model_name" class="input input-bordered w-full bg-base-200" type="text" placeholder="Model Name">
-    </div>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Results Dashboard</h1>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Model Name</legend>
+      <input id="input_model_name" class="input input-bordered w-full" type="text" placeholder="Model Name">
+    </fieldset>
     </div>
     <div class="clear-section section-tabs">
-    <button class="btn btn-primary btn-sm" id="btn_Overview">Overview</button>
-    <button class="btn btn-primary btn-sm" id="btn_Add_Model">Add Model</button>
+    <button class="btn btn-primary" id="btn_Overview">Overview</button>
+    <button class="btn btn-primary" id="btn_Add_Model">Add Model</button>
     </div>
     <div class="clear-section section-content">
-    <div class="clear-section section-metrics">
+    <div class="clear-section grid grid-cols-2 gap-6">
     <div class="clear-section style-metric_card">
       <div class="max-w-5xl mx-auto px-4">
-    <h1 class="text-3xl font-bold tracking-tight mb-6">92.4%</h1>
-    <p class="text-base text-base-content/80 leading-relaxed mb-3">Model Accuracy</p>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">92.4%</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Model Accuracy</p>
       </div>
     </div>
     <div class="clear-section style-metric_card">
       <div class="max-w-5xl mx-auto px-4">
-    <h1 class="text-3xl font-bold tracking-tight mb-6">89.1%</h1>
-    <p class="text-base text-base-content/80 leading-relaxed mb-3">Precision Score</p>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">89.1%</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Precision Score</p>
       </div>
     </div>
     <div class="clear-section style-metric_card">
       <div class="max-w-5xl mx-auto px-4">
-    <h1 class="text-3xl font-bold tracking-tight mb-6">94.7%</h1>
-    <p class="text-base text-base-content/80 leading-relaxed mb-3">Recall Score</p>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">94.7%</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Recall Score</p>
       </div>
     </div>
     <div class="clear-section style-metric_card">
       <div class="max-w-5xl mx-auto px-4">
-    <h1 class="text-3xl font-bold tracking-tight mb-6">91.8%</h1>
-    <p class="text-base text-base-content/80 leading-relaxed mb-3">F1 Score</p>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">91.8%</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">F1 Score</p>
       </div>
     </div>
     </div>
-    <div class="divider my-8"></div>
+    <div class="divider my-4"></div>
     <div class="clear-section style-card">
       <div class="max-w-5xl mx-auto px-4">
-    <h2 class="text-xl font-semibold mt-6 mb-3">All Models</h2>
-    <div class="overflow-hidden rounded-xl border border-base-300/50 bg-base-200 mb-4" id="output_Models_2">
-      <div class="text-xs font-medium text-base-content/50 uppercase tracking-wide px-4 pt-3">Models</div>
-      <table class="table table-sm" id="output_Models_2_table">
-        <thead><tr class="bg-base-300/30 text-xs uppercase tracking-wide text-base-content/40"></tr></thead>
-        <tbody class="text-sm"></tbody>
-      </table>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">All Models</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Models_2">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Models</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Models_2_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
-    <button class="btn btn-primary btn-sm" id="btn_Refresh">Refresh</button>
+    <button class="btn btn-primary" id="btn_Refresh">Refresh</button>
       </div>
     </div>
     </div>
@@ -89,6 +165,33 @@
 
   <script>
 // --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
 function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 document.title = "Results Dashboard";
 
@@ -108,8 +211,8 @@ function _recompute() {
     const _data = _state.models;
     if (_tableEl && Array.isArray(_data) && _data.length > 0) {
       const _keys = ["name","status"];
-      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
     } else if (_tableEl) {
       _tableEl.querySelector('thead tr').innerHTML = '';
       _tableEl.querySelector('tbody').innerHTML = '';
@@ -120,8 +223,8 @@ function _recompute() {
     const _data = _state.models;
     if (_tableEl && Array.isArray(_data) && _data.length > 0) {
       const _keys = ["name","accuracy","status"];
-      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th>' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr>' + _keys.map(k => '<td>' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
     } else if (_tableEl) {
       _tableEl.querySelector('thead tr').innerHTML = '';
       _tableEl.querySelector('tbody').innerHTML = '';
@@ -143,17 +246,43 @@ document.getElementById('input_model_name').addEventListener('input', function(e
 
 // --- Button handlers ---
 document.getElementById('btn_Overview').addEventListener('click', async function() {
-  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  const _btn = document.getElementById('btn_Overview');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
   _recompute();
 });
 document.getElementById('btn_Add_Model').addEventListener('click', async function() {
-  await fetch("/api/models", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_name: _state.model_name }) }).catch(e => console.error(e));
-  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
-  _state.model_name = "";
+    if (_state.model_name === '' || _state.model_name == null) { _toast('model name is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Model');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/models", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_name: _state.model_name }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+    _state.model_name = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
   _recompute();
 });
 document.getElementById('btn_Refresh').addEventListener('click', async function() {
-  _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  const _btn = document.getElementById('btn_Refresh');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    _state.models = await fetch("/api/models").then(r => r.json()).catch(e => { console.error(e); return _state.models; });
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
   _recompute();
 });
 
