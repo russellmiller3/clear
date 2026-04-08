@@ -17793,5 +17793,173 @@ page 'App' at '/':
   });
 });
 
+// =============================================================================
+// ENACT GUARD POLICIES
+// =============================================================================
+
+describe('Policy block - parser', () => {
+  it('parses policy block with multiple rules', () => {
+    const src = `policy:
+  block schema changes
+  block deletes without filter
+  block updates without filter
+  protect tables: Users, AuditLog
+  block prompt injection
+  no mass emails`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const policy = ast.body.find(n => n.type === NodeType.POLICY);
+    expect(policy).toBeTruthy();
+    expect(policy.rules).toHaveLength(6);
+    expect(policy.rules[0].kind).toBe('block_ddl');
+    expect(policy.rules[1].kind).toBe('dont_delete_without_where');
+    expect(policy.rules[2].kind).toBe('dont_update_without_where');
+    expect(policy.rules[3].kind).toBe('protect_tables');
+    expect(policy.rules[3].tables).toContain('AuditLog');
+    expect(policy.rules[4].kind).toBe('block_prompt_injection');
+    expect(policy.rules[5].kind).toBe('no_mass_emails');
+  });
+
+  it('parses access control rules', () => {
+    const src = `policy:
+  require role 'admin'
+  block reads on CreditCards, AuditLog
+  block direct messages`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const policy = ast.body.find(n => n.type === NodeType.POLICY);
+    expect(policy.rules[0].kind).toBe('require_role');
+    expect(policy.rules[0].roles).toContain('admin');
+    expect(policy.rules[1].kind).toBe('dont_read_sensitive_tables');
+    expect(policy.rules[2].kind).toBe('block_dms');
+  });
+
+  it('parses filesystem and git rules', () => {
+    const src = `policy:
+  block file deletion
+  block file types: '.env', '.key', '.pem'
+  restrict paths: '/app', '/data'
+  block push to main
+  max files per commit = 10
+  require branch prefix 'feature/'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const policy = ast.body.find(n => n.type === NodeType.POLICY);
+    expect(policy.rules[0].kind).toBe('dont_delete_file');
+    expect(policy.rules[1].kind).toBe('block_extensions');
+    expect(policy.rules[2].kind).toBe('restrict_paths');
+    expect(policy.rules[3].kind).toBe('dont_push_to_main');
+    expect(policy.rules[4].kind).toBe('max_files_per_commit');
+    expect(policy.rules[4].max).toBe(10);
+    expect(policy.rules[5].kind).toBe('require_branch_prefix');
+    expect(policy.rules[5].prefix).toBe('feature/');
+  });
+});
+
+describe('Policy block - compiler', () => {
+  it('compiles database safety guards to JS', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+policy:
+  block schema changes
+  block deletes without filter
+  protect tables: AuditLog`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('POLICY GUARDS');
+    expect(result.javascript).toContain('block_ddl');
+    expect(result.javascript).toContain('dont_delete_without_where');
+    expect(result.javascript).toContain('protect_tables');
+    expect(result.javascript).toContain('_origInsert');
+    expect(result.javascript).toContain('_origRemove');
+  });
+
+  it('compiles prompt injection guard', () => {
+    const src = `build for javascript backend
+database is local memory
+policy:
+  block prompt injection`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('block_prompt_injection');
+    expect(result.javascript).toContain('ignore.*(?:previous|above|prior)');
+  });
+
+  it('compiles code freeze guard', () => {
+    const src = `build for javascript backend
+policy:
+  code freeze active`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('ENACT_FREEZE');
+  });
+
+  it('compiles email guard', () => {
+    const src = `build for javascript backend
+policy:
+  no mass emails`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('no_mass_emails');
+    expect(result.javascript).toContain('>1 recipient');
+  });
+
+  it('compiles to Python', () => {
+    const src = `build for python backend
+policy:
+  block schema changes
+  block prompt injection
+  no mass emails`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('_policy_guards');
+    expect(result.python).toContain('block_ddl');
+    expect(result.python).toContain('block_prompt_injection');
+    expect(result.python).toContain('no_mass_emails');
+  });
+});
+
+describe('GAN: Full policy + agent app', () => {
+  it('compiles a secured agent app with policies', () => {
+    const src = `build for web and javascript backend
+database is local memory
+
+create a Contacts table:
+  name, required
+  email, required
+
+policy:
+  block schema changes
+  block deletes without filter
+  protect tables: AuditLog
+  block prompt injection
+  no mass emails
+
+agent 'Helper' receives msg:
+  response = ask claude 'Help the user' with msg
+  send back response
+
+when user calls GET /api/contacts:
+  contacts = get all Contacts
+  send back contacts
+
+when user calls POST /api/contacts sending data:
+  requires auth
+  saved = save data to Contacts
+  send back saved
+
+page 'App' at '/':
+  button 'Ask':
+    send question to '/api/contacts'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.serverJS).toContain('POLICY GUARDS');
+    expect(result.serverJS).toContain('block_ddl');
+    expect(result.serverJS).toContain('block_prompt_injection');
+  });
+});
+
 run();
 

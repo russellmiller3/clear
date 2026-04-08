@@ -1352,6 +1352,73 @@ with timestamps. Great for debugging and audit trails.
 
 ## What's Next? (You Did It!)
 
+## Chapter 20: Policies (Safety Guardrails)
+
+Your AI agent is smart. But smart doesn't mean safe. What happens when it
+tries to delete every record in your database? Or sends 10,000 emails? Or
+drops a table?
+
+Policies are guardrails. They're rules your app enforces at runtime — not
+suggestions, not warnings, but hard blocks that throw errors.
+
+### The Basics
+
+```clear
+policy:
+  block schema changes
+  block deletes without filter
+  block prompt injection
+```
+
+Three lines. Your app now:
+- Can't DROP, ALTER, or TRUNCATE tables (even if an agent tries)
+- Can't delete all rows (requires a WHERE filter)
+- Scans all input for prompt injection attempts
+
+### Protecting Sensitive Data
+
+```clear
+policy:
+  protect tables: AuditLog, Payments
+  block reads on CreditCards
+  require role 'admin'
+```
+
+The `AuditLog` and `Payments` tables can't be modified by any operation.
+Nobody can read from `CreditCards`. And all API calls require an admin role.
+
+### Email and Communication Safety
+
+```clear
+policy:
+  no mass emails
+  block direct messages
+```
+
+Agents can't accidentally mass-email your contact list. And they can't
+send Slack DMs to individual users.
+
+### The Full List
+
+Clear supports 30+ policy types covering: database safety, prompt injection,
+access control, code freeze, maintenance windows, email, Slack, filesystem,
+git safety, CRM, and cloud storage. See `SYNTAX.md` for the complete reference.
+
+### When to Use Policies
+
+**Always.** Every production app should have at minimum:
+```clear
+policy:
+  block schema changes
+  block deletes without filter
+  block prompt injection
+```
+
+These three rules prevent the most common AI agent failure modes. They cost
+nothing to add and they'll save you the first time an agent goes off-script.
+
+---
+
 You just learned an entire programming language. Not bad for one sitting.
 
 Here's where to go from here:

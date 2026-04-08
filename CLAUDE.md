@@ -15,7 +15,7 @@ Compiles plain English to JavaScript, Python, and HTML.
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1473 tests)
+- Run all tests: `node clear.test.js` (1482 tests)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -24,7 +24,7 @@ Compiles plain English to JavaScript, Python, and HTML.
 - `tokenizer.js` -> `parser.js` -> `validator.js` -> `compiler.js` (the pipeline)
 - `synonyms.js` -- keyword synonym table (check before adding new keywords)
 - `cli/clear.js` -- CLI for AI agents: build, check, info, fix, lint, serve, test
-- `intent.md` -- authoritative spec for all 98 node types
+- `intent.md` -- authoritative spec for all 99 node types
 - `PHILOSOPHY.md` -- design rules (14-year-old test, one op per line, no jargon)
 - `learnings.md` -- scan TOC before starting any work
 

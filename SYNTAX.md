@@ -1325,6 +1325,69 @@ agent 'Daily Report' runs every 1 day:
   send back leads
 ```
 
+## Policies (Enact Guards)
+
+App-level safety policies. Pure runtime guards — no LLMs, just deterministic checks.
+
+### Database Safety
+```clear
+policy:
+  block schema changes
+  block deletes without filter
+  block updates without filter
+  protect tables: Users, AuditLog
+```
+
+### Prompt Injection
+```clear
+policy:
+  block prompt injection
+```
+
+### Access Control
+```clear
+policy:
+  require role 'admin'
+  block reads on CreditCards, AuditLog
+```
+
+### Code Freeze & Maintenance
+```clear
+policy:
+  code freeze active
+```
+
+### Email, Slack, Filesystem
+```clear
+policy:
+  no mass emails
+  block direct messages
+  block file deletion
+  block file types: '.env', '.key', '.pem'
+  restrict paths: '/app', '/data'
+```
+
+### Git Safety
+```clear
+policy:
+  block push to main
+  block merge to main
+  block deleting branches
+  max files per commit = 10
+  require branch prefix 'feature/'
+```
+
+### CRM & Cloud
+```clear
+policy:
+  block duplicate contacts
+  require human approval for gdrive delete
+```
+
+All guards compile to runtime middleware that wraps db operations. Policy violations return 403 with a clear error message.
+
+---
+
 ## Workflows (Stateful Agent Graphs)
 
 ### Basic Workflow

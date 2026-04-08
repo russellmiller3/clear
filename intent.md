@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (98 total)
+## Node Types (99 total)
 
 ### Core Language
 
@@ -241,6 +241,14 @@ Agent directives (metadata on AGENT node, not separate nodes):
 | `remember user's preferences` | Per-user long-term memory |
 | `track agent decisions` | Observability — logs _askAI calls with timing |
 | `knows about: Table1, Table2` | RAG — keyword search before prompting |
+
+### App-Level Policies (Enact Guards)
+
+| Node Type | Syntax | Compiles To |
+|-----------|--------|-------------|
+| `POLICY` | `policy:` + indented rules | Runtime guard middleware wrapping db operations |
+
+30+ built-in policy rules: `block schema changes`, `block deletes without filter`, `protect tables: X`, `block prompt injection`, `require role 'admin'`, `no mass emails`, `block file types: '.env'`, `code freeze active`, `block push to main`, etc.
 
 ### Workflow Primitives (Phases 85-90)
 

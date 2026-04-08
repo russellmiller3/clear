@@ -171,6 +171,9 @@ export const NodeType = Object.freeze({
   WORKFLOW: 'workflow',
   RUN_WORKFLOW: 'run_workflow',
 
+  // App-level policies (Enact guard types)
+  POLICY: 'policy',
+
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
 
@@ -1803,6 +1806,22 @@ const RAW_DISPATCH = new Map([
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
   }],
+  ['policy', (ctx) => {
+    const policyIndent = ctx.lines[ctx.i].indent;
+    const rules = [];
+    let j = ctx.i + 1;
+    while (j < ctx.lines.length && ctx.lines[j].indent > policyIndent) {
+      const rTokens = ctx.lines[j].tokens;
+      if (rTokens.length > 0) {
+        const raw = rTokens.map(t => t.value).join(' ');
+        const rule = parsePolicyRule(raw, rTokens, rTokens[0].line);
+        if (rule) rules.push(rule);
+      }
+      j++;
+    }
+    if (rules.length > 0) ctx.body.push({ type: NodeType.POLICY, rules, line: ctx.line });
+    return j;
+  }],
   ['ask', (ctx) => {
     // Human-in-the-loop: ask user to confirm 'message'
     if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'user' &&
@@ -2576,6 +2595,119 @@ function parseSkill(lines, startIdx, blockIndent, errors) {
 // Supports: state has (Phase 85), conditional routing (Phase 86),
 //   repeat until (Phase 87), runs on temporal / save progress to (Phase 88),
 //   at the same time (Phase 89), track workflow progress (Phase 90)
+// Policy rule parser — maps English policy declarations to structured guard objects
+// Covers all Enact guard categories: database safety, prompt injection, access control,
+// git safety, filesystem, email, CRM, cloud storage, code freeze, maintenance windows
+function parsePolicyRule(raw, tokens, line) {
+  const r = raw.toLowerCase();
+
+  // Database Safety
+  if (r.includes('block schema changes') || r.includes('block ddl')) return { kind: 'block_ddl', line };
+  if (r.includes('block all deletes') || r === 'block deletes') return { kind: 'dont_delete_row', line };
+  if (r.includes('block deletes without filter') || r.includes('block deletes without where')) return { kind: 'dont_delete_without_where', line };
+  if (r.includes('block updates without filter') || r.includes('block updates without where')) return { kind: 'dont_update_without_where', line };
+  if (r.startsWith('protect tables')) {
+    const tables = tokens.filter(t => t.type === TokenType.IDENTIFIER || t.type === TokenType.STRING)
+      .map(t => t.value).filter(v => v !== 'protect' && v !== 'tables');
+    return { kind: 'protect_tables', tables, line };
+  }
+
+  // Code Freeze & Time
+  if (r.includes('code freeze') || r.includes('freeze active')) return { kind: 'code_freeze_active', line };
+  if (r.includes('maintenance window')) {
+    const times = raw.match(/(\d{1,2}:\d{2})/g) || [];
+    return { kind: 'maintenance_window', start: times[0] || '00:00', end: times[1] || '06:00', line };
+  }
+
+  // Prompt Injection
+  if (r.includes('block prompt injection')) {
+    const fields = tokens.filter(t => t.type === TokenType.STRING).map(t => t.value);
+    return { kind: 'block_prompt_injection', fields: fields.length > 0 ? fields : null, line };
+  }
+
+  // Access Control
+  if (r.includes('block reads on') || r.includes('block reading')) {
+    const tables = tokens.filter(t => t.type === TokenType.IDENTIFIER || t.type === TokenType.STRING)
+      .map(t => t.value).filter(v => !['block', 'reads', 'on', 'reading', 'tables'].includes(v));
+    return { kind: 'dont_read_sensitive_tables', tables, line };
+  }
+  if (r.includes('require role') || r.includes('require actor role')) {
+    const roles = tokens.filter(t => t.type === TokenType.STRING).map(t => t.value);
+    return { kind: 'require_role', roles, line };
+  }
+  if (r.includes('contractors cannot write pii') || r.includes('contractor cannot write pii')) return { kind: 'contractor_cannot_write_pii', line };
+  if (r.includes('require clearance')) {
+    const level = tokens.find(t => t.type === TokenType.NUMBER);
+    return { kind: 'require_clearance', level: level ? level.value : 1, line };
+  }
+
+  // Git Safety
+  if (r.includes('block push to main') || r.includes('block pushes to main')) return { kind: 'dont_push_to_main', line };
+  if (r.includes('block merge to main') || r.includes('block merges to main')) return { kind: 'dont_merge_to_main', line };
+  if (r.includes('block branch deletion') || r.includes('block deleting branches')) return { kind: 'dont_delete_branch', line };
+  if (r.includes('max files per commit')) {
+    const n = tokens.find(t => t.type === TokenType.NUMBER);
+    return { kind: 'max_files_per_commit', max: n ? n.value : 10, line };
+  }
+  if (r.includes('require branch prefix')) {
+    const prefix = tokens.find(t => t.type === TokenType.STRING);
+    return { kind: 'require_branch_prefix', prefix: prefix ? prefix.value : 'feature/', line };
+  }
+
+  // Filesystem
+  if (r.includes('block file deletion') || r.includes('block deleting files')) return { kind: 'dont_delete_file', line };
+  if (r.startsWith('restrict paths') || r.includes('restrict to paths')) {
+    const paths = tokens.filter(t => t.type === TokenType.STRING).map(t => t.value);
+    return { kind: 'restrict_paths', paths, line };
+  }
+  if (r.includes('block file types') || r.includes('block extensions')) {
+    const exts = tokens.filter(t => t.type === TokenType.STRING || (t.type === TokenType.IDENTIFIER && t.value.startsWith('.'))).map(t => t.value);
+    return { kind: 'block_extensions', extensions: exts, line };
+  }
+  if (r.includes('restrict paths')) {
+    const paths = tokens.filter(t => t.type === TokenType.STRING).map(t => t.value);
+    return { kind: 'restrict_paths', paths, line };
+  }
+  if (r.includes('block reading sensitive paths') || r.includes('block sensitive paths')) {
+    const paths = tokens.filter(t => t.type === TokenType.STRING).map(t => t.value);
+    return { kind: 'dont_read_sensitive_paths', paths: paths.length > 0 ? paths : ['/etc', '/root', 'secrets/'], line };
+  }
+
+  // CRM
+  if (r.includes('block duplicate contacts') || r.includes('no duplicate contacts')) return { kind: 'dont_duplicate_contacts', line };
+  if (r.includes('limit tasks per contact')) {
+    const n = tokens.find(t => t.type === TokenType.NUMBER);
+    return { kind: 'limit_tasks_per_contact', max: n ? n.value : 5, line };
+  }
+
+  // Slack
+  if (r.includes('require channel allowlist') || r.includes('allowed channels')) {
+    const channels = tokens.filter(t => t.type === TokenType.STRING).map(t => t.value);
+    return { kind: 'require_channel_allowlist', channels, line };
+  }
+  if (r.includes('block direct messages') || r.includes('block dms')) return { kind: 'block_dms', line };
+
+  // Email
+  if (r.includes('no mass emails') || r.includes('block mass emails')) return { kind: 'no_mass_emails', line };
+  if (r.includes('no repeat emails') || r.includes('block repeat emails')) return { kind: 'no_repeat_emails', line };
+
+  // Cloud Storage
+  if (r.includes('require human approval for') && r.includes('delete')) {
+    const service = r.includes('gdrive') ? 'gdrive' : r.includes('s3') ? 's3' : 'any';
+    return { kind: 'require_human_approval_for_delete', service, line };
+  }
+
+  // Generic: require role for specific operation
+  if (r.includes('require role') && r.includes('for')) {
+    const roles = tokens.filter(t => t.type === TokenType.STRING).map(t => t.value);
+    const op = r.includes('delete') ? 'delete' : r.includes('update') ? 'update' : r.includes('write') ? 'write' : 'any';
+    return { kind: 'require_role_for_operation', roles, operation: op, line };
+  }
+
+  // Fallback: store as custom policy text
+  return { kind: 'custom', text: raw, line };
+}
+
 function parseWorkflow(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
