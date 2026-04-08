@@ -15630,5 +15630,110 @@ when user calls POST /api/inbound sending data:
   });
 });
 
+// =============================================================================
+// AGENT OBSERVABILITY (Phase 82)
+// =============================================================================
+
+describe('Agent observability - parser', () => {
+  it('parses track agent decisions directive', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  track agent decisions
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent).toBeDefined();
+    expect(agent.trackDecisions).toBe(true);
+    expect(agent.body.length).toBeGreaterThan(0);
+  });
+
+  it('directive is consumed — not in agent body', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  track agent decisions
+  send back message`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    // Body should NOT contain a node for 'track agent decisions'
+    const hasTrackNode = agent.body.some(n =>
+      n.type === 'assign' && n.name === 'track'
+    );
+    expect(hasTrackNode).toBe(false);
+    expect(agent.trackDecisions).toBe(true);
+  });
+
+  it('agent without track directive has trackDecisions false', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  send back data`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.trackDecisions).toBe(false);
+  });
+});
+
+describe('Agent observability - compiler', () => {
+  it('tracking agent emits _agentLog wrapper', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  track agent decisions
+  response = ask claude 'Help the customer' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_agentLog');
+    expect(result.javascript).toContain('Date.now()');
+    expect(result.javascript).toContain("db.insert('AgentLogs'");
+    expect(result.javascript).toContain('"Bot"');
+  });
+
+  it('non-tracking agent has no logging code', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_agentLog');
+    expect(result.javascript).not.toContain('AgentLogs');
+  });
+
+  it('compiled output includes db.insert to AgentLogs', () => {
+    const src = `build for javascript backend
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+agent 'Support' receiving message:
+  track agent decisions
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('AgentLogs');
+    expect(result.javascript).toContain('latency_ms');
+  });
+
+  it('compiles tracking agent to Python', () => {
+    const src = `build for python backend
+agent 'Bot' receiving message:
+  track agent decisions
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('_agent_log');
+    expect(result.python).toContain('_time.time()');
+    expect(result.python).toContain('"AgentLogs"');
+  });
+});
+
 run();
 

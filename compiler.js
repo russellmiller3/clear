@@ -1583,6 +1583,47 @@ function compileAgent(node, ctx, pad) {
   }
 
   const param = node.receivingVar ? sanitizeName(node.receivingVar) : '';
+  const innerPad = pad + '  ';
+
+  // Agent observability: track agent decisions
+  // Wraps _askAI calls with timing + logging to AgentLogs table
+  if (node.trackDecisions) {
+    const agentNameStr = JSON.stringify(node.name);
+    if (ctx.lang === 'python') {
+      let code = `${pad}async def ${fnName}(${param}):\n`;
+      code += `${innerPad}import time as _time\n`;
+      code += `${innerPad}async def _agent_log(action, _input, fn):\n`;
+      code += `${innerPad}    _start = _time.time()\n`;
+      code += `${innerPad}    _result = await fn()\n`;
+      code += `${innerPad}    _ms = int((_time.time() - _start) * 1000)\n`;
+      code += `${innerPad}    await db.insert("AgentLogs", {"agent_name": ${agentNameStr}, "action": action, "input": str(_input)[:500], "output": str(_result)[:500], "latency_ms": _ms})\n`;
+      code += `${innerPad}    return _result\n`;
+      // Replace _askAI calls in body with wrapped versions
+      const wrappedBody = bodyCode.replace(
+        /await _ask_ai\(([^)]+)\)/g,
+        `await _agent_log("ask_ai", ${param}, lambda: _ask_ai($1))`
+      );
+      code += wrappedBody;
+      return code;
+    }
+    let code = `${pad}async function ${fnName}(${param}) {\n`;
+    code += `${innerPad}const _agentLog = async (action, _input, fn) => {\n`;
+    code += `${innerPad}  const _start = Date.now();\n`;
+    code += `${innerPad}  const _result = await fn();\n`;
+    code += `${innerPad}  const _ms = Date.now() - _start;\n`;
+    code += `${innerPad}  try { await db.insert('AgentLogs', { agent_name: ${agentNameStr}, action, input: JSON.stringify(_input).slice(0, 500), output: JSON.stringify(_result).slice(0, 500), latency_ms: _ms }); } catch(e) { console.warn('[clear:agent-log]', e.message); }\n`;
+    code += `${innerPad}  return _result;\n`;
+    code += `${innerPad}};\n`;
+    // Replace _askAI calls in body with wrapped versions
+    const wrappedBody = bodyCode.replace(
+      /await _askAI\(([^)]*)\)/g,
+      `await _agentLog("ask_ai", ${param}, () => _askAI($1))`
+    );
+    code += wrappedBody + '\n';
+    code += `${pad}}`;
+    return code;
+  }
+
   if (ctx.lang === 'python') {
     return `${pad}async def ${fnName}(${param}):\n${bodyCode}`;
   }

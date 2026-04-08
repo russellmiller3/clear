@@ -2467,15 +2467,46 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
   }
   const receivingVar = tokens[pos].value;
 
-  // Parse indented body
-  const result = parseBlock(lines, startIdx + 1, blockIndent, errors);
+  // Scan upcoming indented lines for agent directives BEFORE calling parseBlock.
+  // Directives are metadata on the agent node, not executable code.
+  // Must be consumed here because some keywords collide with synonyms:
+  //   - `use` in `can use:` → synonym for module import
+  //   - `log` (if used) → synonym for `show`
+  // Directives must appear before any executable code in the agent body.
+  const agentIndent = lines[startIdx].indent;
+  const directives = {
+    trackDecisions: false,
+    // Future: tools, restrictions, skills, rememberConversation, rememberPreferences, knowsAbout
+  };
+  let bodyStartIdx = startIdx + 1;
+  while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
+    const dTokens = lines[bodyStartIdx].tokens;
+    if (dTokens.length === 0) { bodyStartIdx++; continue; }
 
-  if (result.body.length === 0) {
+    // track agent decisions
+    if (dTokens[0].value === 'track' && dTokens.length >= 3 &&
+        dTokens[1].value === 'agent' && dTokens[2].value === 'decisions') {
+      directives.trackDecisions = true;
+      bodyStartIdx++;
+      continue;
+    }
+
+    // Not a directive — stop scanning, rest is body code
+    break;
+  }
+
+  // Parse indented body (starting after any consumed directives)
+  const result = parseBlock(lines, bodyStartIdx, blockIndent, errors);
+
+  if (result.body.length === 0 && !directives.trackDecisions) {
     errors.push({ line, message: `agent '${name}' is empty — add code inside. Example:\n  agent '${name}' receiving ${receivingVar}:\n    send back ${receivingVar}` });
   }
 
   return {
-    node: { type: NodeType.AGENT, name, receivingVar, body: result.body, line },
+    node: {
+      type: NodeType.AGENT, name, receivingVar, body: result.body, line,
+      ...directives,
+    },
     endIdx: result.endIdx,
   };
 }
