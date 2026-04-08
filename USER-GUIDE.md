@@ -54,7 +54,8 @@ The rule: `=` for numbers, `is` for everything else.
 When you want to give a value a descriptive name:
 
 ```clear
-define tax_rate as: 0.08
+price = 100
+tax_rate = 0.08
 define full_name as: 'Alice Smith'
 define total_cost as: price + (price * tax_rate)
 ```
@@ -74,6 +75,7 @@ if total is greater than 100 then show 'Big order!'
 ### If/Otherwise (block)
 
 ```clear
+age = 20
 if age is at least 18:
   show 'Welcome'
   discount = 0
@@ -86,6 +88,12 @@ otherwise:
 Clear uses English words for comparisons:
 
 ```clear
+price = 75
+count = 3
+name is 'Alice'
+status is 'active'
+age = 25
+score = 88
 if price is greater than 50 then show 'expensive'
 if count is less than 10 then show 'low stock'
 if name is 'Alice' then show 'hi Alice'
@@ -110,6 +118,9 @@ add 'green' to colors
 ### Looping Through Items
 
 ```clear
+colors is an empty list
+add 'red' to colors
+add 'blue' to colors
 for each color in colors:
   show color
 ```
@@ -133,22 +144,23 @@ while count is less than 10:
 ### Working with Lists
 
 ```clear
+prices is an empty list
+add 10 to prices
+add 20 to prices
+items is an empty list
+add 5 to items
+add 15 to items
+
 # Get the total of a list of numbers
 define total_price as: sum of prices
-define average_score as: avg of scores
-define highest as: max of scores
 define item_count as: count of items
 
 # Get specific items
 define first_item as: first of items
 define last_item as: last of items
 
-# Transform lists
-define all_names as: each user's name in users
-
 # Sort
 sort items by price
-sort items by date descending
 ```
 
 ---
@@ -166,6 +178,9 @@ full_name(first, last) = first + ' ' + last
 Use them:
 
 ```clear
+double(x) = x * 2
+tax(amount) = amount * 0.08
+full_name(first, last) = first + ' ' + last
 result = double(21)
 my_tax = tax(100)
 name = full_name('Alice', 'Smith')
@@ -360,9 +375,7 @@ An input field and a button. When clicked, the button:
 2. Refreshes the list
 3. Clears the input
 
-```clear
-  display todos as table showing task, completed with delete
-```
+The line `display todos as table showing task, completed with delete`
 
 Shows all todos in a table with a delete button on each row.
 
@@ -536,6 +549,12 @@ The AI returns a structured object with exactly the fields you specify.
 ### AI Agents
 
 ```clear
+define function look_up_orders(customer_id):
+  return customer_id
+
+define function check_status(order_id):
+  return order_id
+
 agent 'Customer Support' receiving message:
   can use: look_up_orders, check_status
   must not: share customer passwords, modify billing
@@ -589,10 +608,10 @@ divider
 ### Display Formatting
 
 ```clear
+price = 29.99
+rate = 0.15
 display price as dollars
 display rate as percent
-display users as table showing name, email, role
-display orders as table showing item, total with delete and edit
 ```
 
 ---
@@ -644,29 +663,32 @@ Guards check a condition and return an error if it fails.
 
 ## Chapter 13: Working with Data
 
-### Creating Records
+All CRUD operations happen inside endpoint bodies. Here's the full pattern:
 
 ```clear
-new_user = save user_data as new User
-```
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+  email, required
 
-### Reading Records
+when user calls POST /api/users sending user_data:
+  new_user = save user_data as new User
+  send back new_user with success message
 
-```clear
-all_users = get all Users
-define active_users as: look up records in Users table where active is true
-```
+when user calls GET /api/users:
+  all_users = get all Users
+  send back all_users
 
-### Updating Records
+when user calls PUT /api/users/:id sending update_data:
+  requires auth
+  save update_data to Users
+  send back update_data with success message
 
-```clear
-save update_data to Users
-```
-
-### Deleting Records
-
-```clear
-delete the User with this id
+when user calls DELETE /api/users/:id:
+  requires auth
+  delete the User with this id
+  send back 'deleted' with success message
 ```
 
 ### Environment Variables
@@ -708,34 +730,182 @@ with timeout 5 seconds:
 
 ### Splitting Code Across Files
 
-**helpers.clear:**
+Create a **helpers.clear** file with shared functions:
+
 ```clear
 double(x) = x * 2
 tax(amount) = amount * 0.08
 ```
 
-**main.clear:**
-```clear
+Then import it in **main.clear**:
+
+```
 use 'helpers'
 result = helpers's double(21)
 ```
 
-### Importing Specific Functions
+Or import specific functions:
 
-```clear
+```
 use double from 'helpers'
 result = double(21)
 ```
 
-### Importing Everything
+Or import everything:
 
-```clear
+```
 use everything from 'backend'
 ```
 
+(Module imports require multiple files, so these examples show the syntax
+without the ` ```clear ` tag — they can't compile standalone.)
+
 ---
 
-## Chapter 16: Testing
+## Chapter 16: The Clear CLI
+
+Clear has a command-line tool designed for both humans and AI agents. Every
+command supports `--json` for machine-readable output.
+
+### Build
+
+Compile a .clear file to JS/Python/HTML:
+
+```bash
+clear build main.clear
+```
+
+This generates a `build/` directory:
+```
+build/
+  index.html         # Frontend (if web target)
+  server.js          # Backend (if JS backend target)
+  server.py          # Backend (if Python backend target)
+  style.css          # Fallback styles
+  clear-runtime/     # Database, auth, rate limiting
+```
+
+### Check (Validate Without Compiling)
+
+Fast validation — parses and checks for errors without generating output:
+
+```bash
+clear check main.clear
+```
+
+Great for quick feedback while editing. Catches undefined variables,
+missing fields, security issues, and typos.
+
+### Run
+
+Compile and immediately run a backend server:
+
+```bash
+clear run main.clear
+```
+
+### Serve
+
+Compile and start a local development server with static file serving:
+
+```bash
+clear serve main.clear
+```
+
+Your app is at `http://localhost:3000`.
+
+### Dev (Watch Mode)
+
+Compile, serve, and auto-rebuild when files change:
+
+```bash
+clear dev main.clear
+```
+
+### Info (Introspect)
+
+List all endpoints, tables, pages, and agents in a Clear file:
+
+```bash
+clear info main.clear
+```
+
+Output:
+```
+Tables: Todos (task, completed, created_at)
+Endpoints: GET /api/todos, POST /api/todos, DELETE /api/todos/:id
+Pages: Todo App (/)
+```
+
+### Lint (Security + Quality)
+
+Check for security vulnerabilities and code quality issues:
+
+```bash
+clear lint main.clear
+```
+
+Catches: unauthenticated DELETE endpoints, missing validation, SQL injection
+risks, open CORS without auth, and more.
+
+### Fix (Auto-Patch)
+
+Automatically fix patchable errors:
+
+```bash
+clear fix main.clear
+```
+
+### Package (Deploy Bundle)
+
+Generate a Dockerfile and package.json for deployment:
+
+```bash
+clear package main.clear
+```
+
+### Init (New Project)
+
+Scaffold a new Clear project:
+
+```bash
+clear init my-app
+```
+
+Creates `my-app/main.clear` with a starter template.
+
+### Agent (List Agents)
+
+List all agents with their tools, skills, and guardrails:
+
+```bash
+clear agent main.clear
+```
+
+### Global Flags
+
+```bash
+clear build main.clear --json      # Machine-readable JSON output
+clear build main.clear --quiet     # Suppress non-essential output
+clear build main.clear --no-test   # Skip test gate
+clear build main.clear --auto-fix  # Auto-patch errors during build
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Compile error |
+| 2 | Runtime error |
+| 3 | File not found |
+| 4 | Test failure |
+
+---
+
+## Chapter 17: Testing
+
+Clear has built-in testing. Write tests directly in your .clear file:
 
 ```clear
 test 'addition works':
@@ -748,40 +918,125 @@ test 'tax calculation':
   expect tax is 8
 ```
 
-Run tests:
+### Running Tests
 
 ```bash
 clear test main.clear
 ```
 
+Output:
+```
+✅ addition works
+✅ tax calculation
+2 passed, 0 failed
+```
+
+### What You Can Test
+
+**Values:**
+```clear
+test 'string operations':
+  name is 'Alice'
+  expect name is 'Alice'
+
+test 'math':
+  price = 100
+  tax = price * 0.08
+  expect tax is 8
+```
+
+**Functions:**
+```clear
+double(x) = x * 2
+
+test 'double works':
+  result = double(5)
+  expect result is 10
+```
+
+### Testing AI Agents
+
+Use `mock claude responding:` to test agents without calling the real API:
+
+```clear
+agent 'Classifier' receiving feedback:
+  analysis = ask claude 'Classify this feedback' with feedback returning:
+    sentiment
+    score (number)
+  send back analysis
+
+test 'classifier returns sentiment':
+  mock claude responding:
+    sentiment is 'positive'
+    score = 9
+  result = call 'Classifier' with 'Great product!'
+  expect result's sentiment is 'positive'
+```
+
+### Running Agent Evals
+
+For more thorough agent testing, use evals:
+
+```bash
+clear eval main.clear              # Schema checks (fast, no API calls)
+clear eval main.clear --graded     # LLM-graded scorecard (calls Claude)
+```
+
 ---
 
-## Chapter 17: Deploying Your App
+## Chapter 18: Deploying Your App
 
-### Build
+### Step 1: Build
 
 ```bash
 clear build main.clear
 ```
 
-This generates your `build/` directory with all compiled files.
-
-### Run Locally
+### Step 2: Run Locally
 
 ```bash
 cd build
+npm install express    # First time only
 node server.js
 ```
 
 Your app is at `http://localhost:3000`.
 
-### Package for Deployment
+### Step 3: Package for Production
 
 ```bash
 clear package main.clear
 ```
 
-This generates a Dockerfile for containerized deployment.
+This generates:
+- `Dockerfile` — containerized deployment
+- `package.json` — Node.js dependencies
+
+### Step 4: Deploy
+
+**Option A: Docker**
+```bash
+cd build
+docker build -t my-app .
+docker run -p 3000:3000 my-app
+```
+
+**Option B: Any Node.js host**
+
+Upload the `build/` directory to Vercel, Railway, Render, Fly.io, or any
+Node.js hosting. The entry point is `server.js`.
+
+### Environment Variables
+
+If your app uses `env('API_KEY')`, set the environment variable on your host:
+
+```bash
+# Local
+API_KEY=sk-xxx node server.js
+
+# Docker
+docker run -e API_KEY=sk-xxx -p 3000:3000 my-app
+```
 
 ---
 
