@@ -2,41 +2,67 @@
 
 ## Current State
 - **Branch:** main
-- **Tests:** 1471 passing
+- **Tests:** 1482 passing
 - **Apps:** 43+ template apps (4 agent GAN apps, 1 workflow GAN app)
-- **Python parity:** Agents stream, workflows compile, asyncio.gather for parallel
+- **Node types:** 99
 - **Working tree:** Clean
 
 ## What Was Done This Session
 
-### Tier 8: Agent Workflows — Complete (6 phases, LangGraph parity)
-All 6 workflow phases implemented, tested, and shipping:
+### 1. Tier 8: Agent Workflows — Phases 85-90 (LangGraph Parity)
+All 6 workflow phases implemented in both JS and Python:
+- **Phase 85:** Workflow state (`state has:` with typed fields + defaults)
+- **Phase 86:** Conditional routing (`if state's X is Y:` + `otherwise:`)
+- **Phase 87:** Retry loops (`repeat until condition, max N times:`)
+- **Phase 88:** Durable execution (`save progress to Table` + `runs on temporal`)
+- **Phase 89:** Parallel branches (`at the same time:` + `saves to state's field`)
+- **Phase 90:** Observability (`track workflow progress` → `_history` array)
 
-- **Phase 85: Workflow State** — `workflow 'Name' with state:` + `state has:` block with typed fields (number, boolean, timestamp) and defaults. Compiles to `async function workflow_name(state)` with `Object.assign` initialization.
-- **Phase 86: Conditional Routing** — `if state's field is value:` + `otherwise:` inside workflow body. Compiles to if/else chains between step calls.
-- **Phase 87: Cycles & Retry Loops** — `repeat until condition, max N times:` with nested conditionals. Compiles to `for` loop with break condition and max iteration guard.
-- **Phase 88: Durable Execution** — Two tiers: `save progress to Workflows table` (DB checkpoint at each step) and `runs on temporal` (compiles to Temporal.io workflow + activity proxies).
-- **Phase 89: Parallel Branches** — `at the same time:` + `step 'X' with 'Agent' saves to state's field`. Compiles to `Promise.all` with targeted state field assignment.
-- **Phase 90: Workflow Observability** — `track workflow progress` logs state snapshots after each step into `_history` array.
+### 2. Python Streaming AI
+- `_ask_ai()` and `_ask_ai_stream()` utility functions in Python backend
+- Python text agents stream by default via async generator
+- `import httpx` for async HTTP, `import asyncio` for parallel
 
-### New Node Types
-- `WORKFLOW` — workflow definition with state, directives, and step body
-- `RUN_WORKFLOW` — workflow invocation: `result = run workflow 'Name' with data`
+### 3. Canonical Syntax Changes
+- `agent 'Name' receives var:` (was `receiving` — both still work)
+- `returning JSON text:` for structured output (was `returning:` — both work)
 
-### GAN App
-`apps/content-pipeline/main.clear` — 90 lines exercising all 6 phases: research → write → quality-gated retry loop → parallel sentiment+SEO analysis → publish, with DB checkpoints and observability.
+### 4. First-Class Errors
+- **validateCallTargets:** errors on undefined agent/pipeline/workflow calls
+- **validateMemberAccessTypes:** warns on field access on number/boolean
+- **Orphan endpoints** promoted from warning → compile error
+- **Runtime:** `Number("")` coerces to `null` not `0`
+
+### 5. Enact Guard Policies (30+ runtime safety guards)
+New `POLICY` node type with `policy:` block syntax:
+```clear
+policy:
+  block schema changes
+  block deletes without filter
+  protect tables: AuditLog
+  block prompt injection
+  require role 'admin'
+  no mass emails
+```
+Covers: database safety, prompt injection, access control, code freeze,
+email/Slack, filesystem, git safety, CRM, cloud storage.
+
+### 6. Roadmap Reprioritized
+Rewrote Tier 8 from open-source tooling (formal grammar, LSP) to hosted
+platform architecture (CodeMirror editor, compile API, one-click deploy).
 
 ## Key Decisions
-- Workflow steps thread a `_state` object (pass-by-reference, not pipeline-style). Each agent receives and returns full state.
-- `at the same time` in workflows is structurally different from `do these at the same time` (Phase 80). Workflow parallel uses `step` declarations with `saves to`; Phase 80 uses assignment expressions.
-- State var references in conditions are rewritten from `state.X` to `_state.X` via regex in the compiler.
-- `saves to` is a multi-word synonym (canonical `saves_to`) — parser checks canonical, not raw value.
+- `receives` reads as a complete English sentence (better than gerund `receiving`)
+- `returning JSON text:` signals structured data to smart non-dev readers
+- Enact policies compile to runtime middleware wrapping db operations
+- CSRF on POST stays as warning (too many legit unauthenticated POST endpoints)
+- Orphan endpoints promoted to error (frontend fetching non-existent backend = always a bug)
 
 ## Known Issues
-- Workflow compilation is JS-only (no Python target yet — would need `asyncio.gather` for parallel, `async def` for functions)
-- Temporal import is generated inline (would need a separate worker file in real deployments)
-- No workflow-specific test syntax yet (`run workflow 'X' with ...` in test blocks uses standard `run workflow` assignment)
+- Python workflow compilation doesn't support Temporal target (JS only for `runs on temporal`)
+- `no_repeat_emails` and `require_human_approval_for_delete` are registered but need cloud DB backend
+- Playground bundle needs Vercel deploy for public demo
 
 ## Resume Prompt
 
-> Read HANDOFF.md, CLAUDE.md. 1457 tests. Session 11: Tier 8 Agent Workflows (Phases 85-90) + Python streaming + Python workflows all complete. LangGraph parity achieved in both JS and Python. Agent roadmap 100% done. GAN app: content-pipeline. Next: USER-GUIDE workflow chapter, formal grammar (PEG/EBNF), Tier 1 production (real DB + deploy), playground Vercel deploy.
+> Read HANDOFF.md, CLAUDE.md. 1482 tests. Session 11: Tier 8 Workflows (Phases 85-90) + Python streaming + canonical syntax (receives, returning JSON text) + first-class errors + 30+ Enact guard policies. Agent roadmap 100% complete. Roadmap reprioritized for hosted platform. Next: CodeMirror Clear mode for hosted editor, hosted compile API, one-click deploy, type system (inferred).
