@@ -1,0 +1,90 @@
+build for web and javascript backend
+
+# Database
+database is local memory
+create a Messages table:
+  sender, required
+  content, required
+  room, default 'general'
+  created_at, auto
+
+create a Rooms table:
+  name, required, unique
+  description
+
+# Backend
+allow server to accept requests from frontend
+log every request
+
+# Rooms
+when user calls GET /api/rooms:
+  all_rooms = get all Rooms
+  send back all_rooms
+
+when user calls POST /api/rooms sending room_data:
+  validate room_data:
+    name is text, required, min 1, max 50
+  new_room = save room_data as new Room
+  send back new_room with success message
+
+# Messages
+when user calls GET /api/messages:
+  all_messages = get all Messages
+  send back all_messages
+
+when user calls POST /api/messages sending message_data:
+  validate message_data:
+    sender is text, required, min 1, max 50
+    content is text, required, min 1, max 1000
+    room is text
+  new_message = save message_data as new Message
+  send back new_message with success message
+
+when user calls DELETE /api/messages/:id:
+  requires auth
+  delete the Message with this id
+  send back 'deleted' with success message
+
+# Real-time: stream new messages via SSE
+stream:
+  all_messages = get all Messages
+  send back all_messages
+
+# Background: clean up old messages every hour
+background 'cleanup':
+  runs every 1 hour
+
+# Frontend
+page 'Live Chat' at '/':
+  on page load get messages from '/api/messages'
+
+  heading 'Live Chat'
+
+  section 'Send Message' with style card:
+    'Your Name' is a text input saved as a sender
+    'Message' is a text input saved as a content
+    button 'Send':
+      send sender and content as a new message to '/api/messages'
+      get messages from '/api/messages'
+      content is ''
+
+  section 'Messages':
+    display messages as table showing sender, content, created_at
+
+page 'Rooms' at '/rooms':
+  on page load get rooms from '/api/rooms'
+
+  heading 'Chat Rooms'
+  text 'Create and browse chat rooms'
+
+  section 'New Room' with style card:
+    'Room Name' is a text input saved as a room_name
+    'Description' is a text input saved as a room_desc
+    button 'Create Room':
+      send room_name and room_desc as a new room to '/api/rooms'
+      get rooms from '/api/rooms'
+      room_name is ''
+      room_desc is ''
+
+  section 'All Rooms':
+    display rooms as table showing name, description
