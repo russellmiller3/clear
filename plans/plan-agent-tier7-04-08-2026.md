@@ -2,7 +2,7 @@
 
 **Branch:** `feature/agent-tier7`
 **Date:** 2026-04-08
-**Status:** Red-teamed. 6 issues found, all patched.
+**Status:** Red-teamed (2 rounds). 9 issues found, all patched.
 
 ---
 
@@ -295,6 +295,17 @@ agent 'Support Bot' receiving message:
 ```
 
 Inline tools are auto-inferred from table schemas. `look up orders by email` compiles to a tool with `{ name: "look_up_orders_by_email", input_schema: { email: "string" } }` and a function that does `db.findAll('Orders', { email })`. No boilerplate.
+
+**Red Team note — inline tool parsing complexity:** The parser must match natural-language descriptions against declared DATA_SHAPE nodes. Pattern: `look up <TABLE> by <FIELD>`. The table name must be a declared table (capitalize check). The field must exist in that table's schema. Multi-word table names use the same capitalization rule as CRUD parsing (e.g., `SupportTickets`). If the description doesn't match a known pattern, emit a parser error: `inline tool 'X' doesn't match a known pattern. Use 'look up TABLE by FIELD' or reference a defined function.`
+
+Supported inline patterns (v1):
+- `look up TABLE by FIELD` → `db.findAll(TABLE, { FIELD: input })`
+- `look up TABLE by id` → `db.findOne(TABLE, { id: input })`
+- `update TABLE FIELD` → `db.update(TABLE, { FIELD: input })`
+- `delete TABLE by id` → `db.remove(TABLE, { id: input })`
+- `send email via sendgrid` → maps to existing SEND_EMAIL node
+
+Keep v1 small — only these patterns. Function references handle everything else.
 
 **Rule:** Single-line `can use: fn1, fn2` = function references. Block-form `can use:` with indented lines = inline tool definitions. Parser detects by checking if next line is indented.
 
@@ -943,34 +954,67 @@ This is much simpler, works without an embedding API, and can be upgraded to vec
 ```
 // After parsing receivingVar, before parseBlock:
 // Scan upcoming indented lines for directives
+// NOTE: Some directives are single-line, some are blocks with indented sub-lines.
+//   Single-line: `can use: fn1, fn2` / `remember conversation context` / `track agent decisions`
+//   Block: `can use:` (inline tools) / `must not:` (policies) / `knows about:` (tables)
+// Block directives must consume ALL their indented sub-lines, or parseBlock will choke on them.
+
 const directives = { tools: null, restrictions: null, skills: null, rememberConversation: false,
                      rememberPreferences: false, trackDecisions: false, knowsAbout: null };
+const agentIndent = blockIndent + 1;  // directives are indented one level inside agent
 let bodyStartIdx = startIdx + 1;
 while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > blockIndent) {
   const dTokens = lines[bodyStartIdx].tokens;
+
   if (dTokens[0]?.value === 'can' && dTokens[1]?.canonical === 'use') {
-    // parse comma-separated tool names after colon
-    directives.tools = [...];
-    bodyStartIdx++;
+    // Check if single-line (has names after colon) or block (next lines are indented deeper)
+    if (dTokens.length > 2) {
+      // Single-line: can use: fn1, fn2 — parse comma-separated names from remaining tokens
+      directives.tools = [...]; // [{type:'ref', name:'fn1'}, ...]
+      bodyStartIdx++;
+    } else {
+      // Block-form: can use: (then indented inline tool descriptions)
+      bodyStartIdx++;
+      directives.tools = [];
+      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
+        // Each sub-line is an inline tool description
+        directives.tools.push({ type: 'inline', description: lines[bodyStartIdx].raw });
+        bodyStartIdx++;
+      }
+    }
   } else if (dTokens[0]?.value === 'must' && dTokens[1]?.value === 'not') {
-    directives.restrictions = [...];
+    // Block-form always: must not: + indented policy lines
     bodyStartIdx++;
+    directives.restrictions = [];
+    while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
+      const policyText = lines[bodyStartIdx].tokens.map(t => t.value).join(' ');
+      directives.restrictions.push({ text: policyText, ... });
+      bodyStartIdx++;
+    }
   } else if (dTokens[0]?.value === 'remember') {
-    // check for 'conversation context' or 'user's preferences'
+    // Single-line: check for 'conversation context' or 'user's preferences'
     bodyStartIdx++;
   } else if (dTokens[0]?.value === 'track') {
     directives.trackDecisions = true;
     bodyStartIdx++;
   } else if (dTokens[0]?.value === 'knows') {
-    directives.knowsAbout = [...];
+    // Single-line: knows about: Table1, Table2
+    directives.knowsAbout = [...]; // parse comma-separated table names
     bodyStartIdx++;
   } else if (dTokens[0]?.value === 'uses' && dTokens[1]?.value === 'skills') {
-    // parse comma-separated skill names after colon
-    directives.skills = [...];
+    // Single-line: uses skills: Skill1, Skill2
+    directives.skills = [...]; // parse comma-separated skill names
     bodyStartIdx++;
+  } else if (dTokens[0]?.canonical === 'using') {
+    // Single-line: using 'claude-sonnet-4-6' — model selection (already exists, just skip it)
+    // Leave it in the body for parseBlock to handle via existing ASK_AI model parsing
+    break;
   } else break; // first non-directive line = start of body
 }
 const result = parseBlock(lines, bodyStartIdx, blockIndent, errors);
+```
+
+**Critical:** Block-form directives (`must not:`, block `can use:`) must consume ALL their indented sub-lines with the inner while loop. If they only `bodyStartIdx++` once, the sub-lines fall through to `parseBlock` which will error on them.
 ```
 
 This is the single most important architectural decision in this plan. Get it wrong and synonym collisions break everything.
