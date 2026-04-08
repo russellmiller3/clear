@@ -5,3 +5,4 @@ apps/*/build/package-lock.json
 apps/*/build/node_modules/
 apps/*/build/clear-data.json
 clear-data.json
+.clear-test-runner.*
