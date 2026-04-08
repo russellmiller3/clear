@@ -3,43 +3,31 @@
 ## Current State
 - **Branch:** main
 - **Tests:** 1413 passing
-- **Parser:** 6166 lines (was 6185 start of session)
+- **Apps:** 36 template apps (3 new agent apps), all compile
 - **Working tree:** Clean
 
 ## What Was Done This Session
 
-### Phase 47: Compiler Internal Refactor
-- Unified HTTP_REQUEST + RAW_QUERY compilation paths
-- Normalized parser return types (removed isCrud wrapper)
-- Tokenizer preserves colons as COLON tokens
-- Added COLON, LBRACE, RBRACE to TokenType
+### Tier 7: First-Class AI Agents (11 Phases + Skills)
 
-### Phase 47b: Full Dispatch Table + Context-Sensitive Synonyms
-- **97 of 97** parseBlock keyword branches now handled by dispatch system
-- CANONICAL_DISPATCH (60+ entries) + RAW_DISPATCH (96 entries) Maps
-- Router functions for show, if, define, set, remove, respond
-- `resolveCanonical(token, zone)` with ZONE_OVERRIDES (ui, crud, agent)
-- `rawValue` field on all KEYWORD tokens
-- Panel actions (toggle/open/close) moved to RAW_DISPATCH
-- parseBlock structure: comment → dispatch → patterns → assignment
+| Phase | Feature | Syntax |
+|-------|---------|--------|
+| 80 | Parallel Agents | `do these at the same time:` |
+| 77 | Pipelines | `pipeline 'Name' with var:` + `call pipeline` |
+| 82 | Observability | `track agent decisions` / `log agent decisions` |
+| 75 | Tool Use | `can use: fn1, fn2` + agentic loop |
+| 75b | Skills | `skill 'Name':` + `uses skills:` |
+| 83 | Guardrails | `must not:` (compile-time + runtime) |
+| 76 | Conversation | `remember conversation context` |
+| 79 | Memory | `remember user's preferences` |
+| 81 | Human-in-the-Loop | `ask user to confirm 'msg'` |
+| 84 | Agent Testing | `mock claude responding:` |
+| 78 | RAG | `knows about: Tables` |
 
-### Fix: data-from Multi-Word Synonym Collision
-- Tokenizer only matches `data from`/`fetch from` at line start
-- Resolved documented bug: `get data from '/url'` now registers `data` as variable
-
-### Design + Planning
-- Design discussion doc: zero deps + one-op-per-line consequences
-- Two plans written + red-teamed (compiler refactor, context synonyms)
-
-## Architecture
-- parseBlock: comment → RAW_DISPATCH → CANONICAL_DISPATCH → patterns (text_block, do_all, label-input, math-function) → assignment → bare expression
-- Adding a new keyword: one Map entry, zero ordering risk
-- Synonym collisions: add ZONE_OVERRIDES entry + resolveCanonical() call
+### CLI: agent + eval + eval --graded
+### GAN: 3 agent apps, 4 compiler bugs found and fixed
+### Auto-generated evals: schema checks + LLM-graded scorecards
 
 ## Resume Prompt
-```
-Read HANDOFF.md, learnings.md, intent.md. Session 10 completed full
-compiler refactor: dispatch tables (97/97 branches), context-sensitive
-synonyms, data-from collision fix. 1413 tests. Next: build real apps
-to stress-test, or new features from ROADMAP.md.
-```
+
+> Read HANDOFF.md, CLAUDE.md. 1413 tests. 36 apps. Session 10: Tier 7 complete — 11 phases + skills. CLI: agent, eval, eval --graded. 3 GAN apps. Next: streaming AI, compose conversation+RAG, deploy playground.
