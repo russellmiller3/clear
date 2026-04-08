@@ -1,0 +1,14 @@
+build for javascript backend
+database is local memory
+
+create a Contacts table:
+  email, required, unique
+
+when user calls POST /api/seed:
+  create c1:
+    email is 'alice@test.com'
+  save c1 as new Contact
+  create c2:
+    email is 'alice@test.com'
+  save c2 as new Contact
+  send back 'ok'

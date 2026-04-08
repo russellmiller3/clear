@@ -1,0 +1,14 @@
+build for javascript backend
+database is local memory
+
+create a Invoices table:
+  title, required
+
+create a LineItems table:
+  invoice_id, required
+  description, required
+
+when user calls POST /api/line-items sending data:
+  needs login
+  new_item = save data as new LineItem
+  send back new_item

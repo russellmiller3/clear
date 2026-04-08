@@ -1,0 +1,7 @@
+Line 24: frontend sends 'full_name' to POST /api/employees, but the Employees table has no 'full_name' field. Did you mean 'name'?
+
+Line 24: frontend sends 'work_email' to POST /api/employees, but the Employees table has no 'work_email' field. Did you mean 'email'?
+
+Line 24: frontend sends 'dept' to POST /api/employees, but the Employees table has no 'dept' field.
+
+Your app requires auth but doesn't log requests. Without logging, you can't detect unauthorized access attempts or debug auth issues. Add: log every request

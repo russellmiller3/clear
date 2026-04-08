@@ -1,0 +1,54 @@
+build for web and javascript backend
+
+# Database
+database is local memory
+create a Expenses table:
+  description, required
+  amount (number), required
+  category, default 'other'
+  created_at, auto
+
+# Backend
+allow server to accept requests from frontend
+log every request
+
+when user calls GET /api/expenses:
+  all_expenses = get all Expenses
+  send back all_expenses
+
+when user calls POST /api/expenses sending expense_data:
+  validate expense_data:
+    description is text, required, min 1, max 200
+    amount is number, required
+    category is text
+  new_expense = save expense_data as new Expense
+  send back new_expense with success message
+
+when user calls DELETE /api/expenses/:id:
+  requires auth
+  delete the Expense with this id
+  send back 'deleted' with success message
+
+# Frontend
+page 'Expense Tracker':
+  on page load get expenses from '/api/expenses'
+
+  heading 'Expense Tracker'
+  subheading 'Track your spending'
+
+  section 'Add Expense' with style card:
+    'Description' is a text input saved as a description
+    'Amount' is a number input saved as a amount
+    'Category' is a dropdown with ['Food', 'Transport', 'Entertainment', 'Bills', 'Other'] saved as a category
+    button 'Add Expense':
+      send description, amount and category as a new expense to '/api/expenses'
+      get expenses from '/api/expenses'
+      description is ''
+      amount is 0
+
+  section 'Summary':
+    define total_spent as: sum of expenses
+    display total_spent as dollars called 'Total Spent'
+
+  section 'All Expenses':
+    display expenses as table showing description, amount, category with delete

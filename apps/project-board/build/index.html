@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Board</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-2xl mx-auto p-8 flex flex-col gap-6">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Project Board</h1>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Track your team tasks</h2>
+    <div class="bg-base-100 rounded-box p-6 flex flex-col gap-3">
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Task Title</legend>
+      <input id="input_title" class="input input-bordered w-full" type="text" placeholder="Task Title">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Priority</legend>
+      <input id="input_priority" class="input input-bordered w-full" type="select" placeholder="Priority">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Assigned To</legend>
+      <input id="input_assigned_to" class="input input-bordered w-full" type="text" placeholder="Assigned To">
+    </fieldset>
+    <button class="btn btn-primary w-full" id="btn_Add_Task">Add Task</button>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Task Board</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Tasks">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Tasks</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Tasks_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Tasks: title*, status, priority, assigned_to, created_at (line 5)
+
+ ENDPOINTS:
+   GET /api/tasks (line 16)
+   POST /api/tasks (line 20)
+   PUT /api/tasks/:id [auth] (line 29)
+   DELETE /api/tasks/:id [auth] (line 34)
+
+ PAGES:
+   'Project Board' at / (line 40)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "Project Board";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  title: "",
+  priority: "",
+  assigned_to: "",
+  tasks: null,
+  _editing_id: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  {
+    const _tableEl = document.getElementById('output_Tasks_table');
+    const _data = _state.tasks;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["title","status","priority","assigned_to"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td class="text-right">' + '<button class="btn btn-ghost btn-xs" data-edit-id="' + _esc(row.id) + '" data-edit-row="' + _esc(JSON.stringify(row)) + '">Edit</button>' + ' ' + '<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>' + '</td>' + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_title').value = _state.title;
+  document.getElementById('input_priority').value = _state.priority;
+  document.getElementById('input_assigned_to').value = _state.assigned_to;
+}
+
+// --- Input listeners ---
+document.getElementById('input_title').addEventListener('input', function(e) {
+  _state.title = e.target.value;
+  _recompute();
+});
+document.getElementById('input_priority').addEventListener('input', function(e) {
+  _state.priority = e.target.value;
+  _recompute();
+});
+document.getElementById('input_assigned_to').addEventListener('input', function(e) {
+  _state.assigned_to = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Add_Task').addEventListener('click', async function() {
+    if (_state.title === '' || _state.title == null) { _toast('title is required', 'error'); return; }
+    if (_state.priority === '' || _state.priority == null) { _toast('priority is required', 'error'); return; }
+    if (_state.assigned_to === '' || _state.assigned_to == null) { _toast('assigned to is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Task');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    if (_state._editing_id) {
+    { const _r = await fetch("/api/tasks/" + _state._editing_id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: _state.title, priority: _state.priority, assigned_to: _state.assigned_to }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[PUT /api/tasks] [clear:51]', _e.error || 'PUT failed'); throw new Error(_e.error || _e.message || 'PUT failed'); } }
+      _state._editing_id = null;
+    } else {
+    { const _r = await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: _state.title, priority: _state.priority, assigned_to: _state.assigned_to }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/tasks] [clear:51]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    }
+    _state.tasks = await fetch("/api/tasks").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tasks] [clear:52]', e.message); return _state.tasks; });
+    _state.title = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- Table action handlers for tasks ---
+document.getElementById('output_Tasks_table').addEventListener('click', async function(e) {
+  const deleteBtn = e.target.closest('[data-delete-id]');
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.deleteId;
+    await fetch("/api/tasks/" + id, { method: 'DELETE' }).catch(e => console.error(e));
+    _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+    _recompute();
+    return;
+  }
+  const editBtn = e.target.closest('[data-edit-id]');
+  if (editBtn) {
+    const id = editBtn.dataset.editId;
+    const row = JSON.parse(editBtn.dataset.editRow);
+    _state.title = row.title != null ? row.title : '';
+    _state.priority = row.priority != null ? row.priority : '';
+    _state.assigned_to = row.assigned_to != null ? row.assigned_to : '';
+    _state._editing_id = id;
+    _recompute();
+    return;
+  }
+});
+
+// --- On Page Load ---
+(async () => {
+  _state.tasks = await fetch("/api/tasks").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tasks] [clear:41]', e.message); return _state.tasks; });
+  _recompute();
+})();
+
+  </script>
+</body>
+</html>

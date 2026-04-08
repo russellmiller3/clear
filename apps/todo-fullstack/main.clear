@@ -1,49 +1,47 @@
+# DATAFLOW:
+# ┌──────────┐  POST /api/todos  ┌──────────┐  save  ┌──────────┐
+# │ Frontend │ ──────────────> │ Backend  │ ─────> │    DB    │
+# │  (form)  │ <────────────── │ (server) │ <───── │ (memory) │
+# └──────────┘  GET /api/todos  └──────────┘  query └──────────┘
+
 build for web and javascript backend
 
-# Todo App — Full Stack
-# Frontend: page with input, button, table
-# Backend: CRUD API with validation
-
-# --- Data ---
+# Database
+database is local memory
 
 create a Todos table:
   title, required
   completed, default false
-  created_at, auto
+  created_at_date, auto
 
-# --- Config ---
-
-log every request
+# Backend
 allow cross-origin requests
 
-# --- Backend ---
-
 when user calls GET /api/todos:
-  define all_todos as: look up all records in Todos table
+  all_todos = get all Todos
   send back all_todos
 
-when user calls POST /api/todos receiving post_data:
-  validate post_data:
+when user calls POST /api/todos sending todo_data:
+  validate todo_data:
     title is text, required, min 1, max 500
-  define new_todo as: save post_data as Todo
-  send back new_todo status 201
+  new_todo = save todo_data as new Todo
+  send back new_todo with success message
 
 when user calls DELETE /api/todos/:id:
-  this endpoint requires auth
-  remove from Todos where id is incoming's id
-  send back 'deleted'
+  requires auth
+  delete the Todo with this id
+  send back 'deleted' with success message
 
-# --- Frontend ---
+# Frontend
+page 'Todo App' at '/':
+  on page load get todos from '/api/todos'
 
-page 'Todo App':
-  heading 'Todos'
-  'What needs to be done?' is a text input that saves to title
-  button 'Add':
-    send title to '/api/todos'
-    get from '/api/todos'
-    title is ''
-  button 'Refresh':
-    get from '/api/todos'
-  display response as table called 'My Todos'
-  on page load:
-    get from '/api/todos'
+  section 'Form' with style card_bordered:
+    heading 'My Todos'
+    'What needs to be done?' is a text input saved as a title
+    button 'Add':
+      send title to '/api/todos'
+      get todos from '/api/todos'
+      title is ''
+
+  display todos as table showing title, completed with delete

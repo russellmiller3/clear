@@ -1,0 +1,71 @@
+build for web and javascript backend
+database is local memory
+
+create a Recipes table:
+  name, required
+  cuisine, required
+  prep_time (number), required
+  servings (number), required
+  difficulty, default 'medium'
+
+create a Ingredients table:
+  recipe_id, required
+  name, required
+  quantity, required
+
+when user calls GET /api/recipes:
+  recipes = look up all Recipes
+  send back recipes
+
+when user calls POST /api/recipes sending recipe:
+  needs login
+  validate recipe:
+    name is text, required
+    cuisine is text, required
+    prep_time is number, required, min 1
+    servings is number, required, min 1
+  new_recipe = save recipe as new Recipe
+  send back new_recipe
+
+when user calls POST /api/ingredients sending ingredient:
+  needs login
+  validate ingredient:
+    recipe_id is number, required
+    name is text, required
+    quantity is text, required
+  new_ingredient = save ingredient as new Ingredient
+  send back new_ingredient
+
+when user calls GET /api/recipes/:id:
+  recipe = look up records in Recipes table where id is incoming's id
+  send back recipe
+
+when user calls POST /api/seed:
+  create r1:
+    name is 'Pasta Carbonara'
+    cuisine is 'Italian'
+    prep_time = 30
+    servings = 4
+  save r1 as new Recipe
+  create i1:
+    recipe_id = 1
+    name is 'Spaghetti'
+    quantity is '400g'
+  save i1 as new Ingredient
+  create i2:
+    recipe_id = 1
+    name is 'Pancetta'
+    quantity is '200g'
+  save i2 as new Ingredient
+  send back 'seeded'
+
+page 'Recipes' at '/':
+  on page load get recipes from '/api/recipes'
+  'Name' is a text input saved as a name
+  'Cuisine' is a text input saved as a cuisine
+  'Prep Time (minutes)' is a number input saved as a prep_time
+  'Servings' is a number input saved as a servings
+  button 'Add Recipe':
+    send name and cuisine and prep_time and servings to '/api/recipes'
+    get recipes from '/api/recipes'
+  display recipes as table showing name, cuisine, prep_time, servings, difficulty

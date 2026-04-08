@@ -53,20 +53,54 @@ page 'Clear Language' at '/':
     text 'Chain multiple agents into pipelines: screen, then score, then summarize, then save.'
 
   section 'Compiler' with style section_dark:
-    heading 'Bugs the compiler catches for you'
+    heading 'The compiler catches bugs before your client does'
     text 'Auth missing on a DELETE endpoint? Compiler error.'
     text 'Validation missing a required field? Compiler error.'
     text 'User data exposed without row-level security? Compiler error.'
-    text 'Every bug the compiler catches is a bug your client never sees. Every fix improves every app.'
+    text 'Inline API secret in your source code? Compiler error.'
+    text 'Every bug the compiler catches is a bug your client never sees. Every fix improves every app on the next build.'
+
+  section 'Translate' with style section_light:
+    heading 'When bugs happen, the AI fixes them'
+    text 'AI-generated code has 1.7x more bugs than human-written code (OWASP 2026). 86% of AI code fails basic XSS defense. 60% of bugs are invisible -- the code runs but produces wrong output.'
+    text 'Clear solves this with a runtime error translator. When compiled code throws an error, the app tells the AI exactly what went wrong, which Clear file and line caused it, and how to fix it.'
+    subheading 'Three levels of context'
+    text 'Level 1 (production): The user sees "Something went wrong." No database internals leaked.'
+    text 'Level 2 (development): The AI sees the Clear source line, a plain-English hint, and a suggested fix -- a minimal diff that solves the problem.'
+    text 'Level 3 (deep debug): Full schema context, sanitized request data, cross-file dependency map. PII is auto-redacted.'
+    subheading 'The AI reads the error. The AI writes the fix. You review it.'
+    text 'The error translator gives AI agents the same context a senior developer would have: what tables exist, what fields are required, which file defined the endpoint, and what the frontend is sending. No more guessing.'
+
+  section 'Diagrams' with style section_dark:
+    heading 'Every compiled file documents itself'
+    text 'The compiler auto-generates an architecture diagram at the top of every compiled file. Tables, endpoints, auth requirements, page routes, and data flow -- all visible at a glance.'
+    text 'The diagram regenerates on every build. It cannot be stale. It is the intent file for your app.'
+    code block '// TABLES:\n//   Contacts: name*, email*!, company, status (line 12)\n//   Deals: contact_id*, title*, value, stage (line 22)\n//\n// ENDPOINTS:\n//   GET /api/contacts (line 35)\n//   POST /api/contacts [auth] (line 40)\n//   PUT /api/contacts/:id [auth] (line 55)\n//\n// PAGES:\n//   \'CRM Dashboard\' at / (line 70)\n//\n// DATAFLOW: Frontend --> API --> Database'
+    text 'An AI agent opening any compiled file instantly understands the entire app without reading a single line of business logic.'
+
+  section 'APIs' with style section_light:
+    heading 'Call any API. Stripe, SendGrid, Twilio built in.'
+    text 'Connect to any REST API with call api -- custom headers, auth, body, timeout. Or use a service preset with zero config.'
+    code block 'charge via stripe:\n  amount = 2000\n  currency is \'usd\'\n  token is payment_token\n\nsend email via sendgrid:\n  to is customer\'s email\n  subject is \'Invoice sent\'\n  body is email_body\n\nsend sms via twilio:\n  to is customer\'s phone\n  body is \'Your booking is confirmed\''
+    text 'Set your API key as an environment variable. The compiler refuses to compile inline secrets.'
+    text 'Generic API calls work too -- call any URL with custom headers and auth for services we do not have presets for yet.'
+
+  section 'AI' with style section_dark:
+    heading 'First-class AI integration'
+    text 'Call Claude directly from your backend. Structured output, model selection, and bring-your-own-key.'
+    code block 'answer = ask claude \'Summarize this article\' with article_text\n\nresult = ask claude \'Analyze this lead\' with data returning:\n  score (number)\n  reasoning\n  qualified (boolean)\n\nanswer = ask claude \'Quick answer\' with data using \'claude-haiku-4-5-20251001\''
+    text 'The prompt is in the source code. Your client can read it. You can audit it. No black-box AI.'
 
   section 'Compare' with style section_light:
     heading 'Clear vs the alternatives'
     subheading 'vs Lovable / Bolt / v0'
-    text 'Those tools generate code you cannot read. When it breaks, you are stuck. Clear generates readable source from a readable blueprint. You own both.'
+    text 'Those tools generate code you cannot read. When it breaks, you are stuck. Clear generates readable source from a readable blueprint. When it breaks, the error tells you exactly which line to fix.'
+    subheading 'vs Cursor / Copilot / AI coding assistants'
+    text 'AI assistants write code with 1.7x more bugs and no way to trace errors back to intent. Clear compiles to self-documenting output with architecture diagrams, source line mapping, and suggested fixes. The AI assistant that wrote the bug can read the error and fix it autonomously.'
     subheading 'vs hiring a developer'
-    text 'A developer builds one app at a time. Clear templates let you build five apps a week with the same quality.'
+    text 'A developer builds one app at a time. Clear templates let you build five apps a week with the same quality. And when the developer leaves, the code is still readable.'
     subheading 'vs doing it yourself in Express/Next.js'
-    text 'You already know how. But you also know that auth, validation, error handling, and security take 80% of the time. The compiler does that part.'
+    text 'You already know how. But you also know that auth, validation, error handling, and security take 80% of the time. The compiler does that part -- and catches the OWASP Top 10 at compile time.'
 
   section 'CTA' with style hero:
     heading 'Ship your next client app this week.'
@@ -98,17 +132,21 @@ page 'Examples' at '/examples':
     text 'All agent apps use BYOK (bring your own key). Your API key, direct to Anthropic. No markup.'
 
   section 'FullStack' with style section_dark:
-    heading 'Full-Stack Apps'
-    text 'Todo app -- reactive frontend + REST backend, 37 lines total'
-    text 'Project manager -- dashboard with tables, forms, status filters'
-    text 'URL shortener -- create, redirect, track clicks'
+    heading 'Full-Stack Apps (33 templates)'
+    text 'CRM -- contacts, deals, pipeline chart, debounced search, midnight theme'
+    text 'CRM Pro -- 5 tables, compound unique constraints, SSE streaming, multi-file with reusable components'
+    text 'Invoice -- clients, invoices, line items, full CRUD with inline edit and delete'
+    text 'Booking -- services, appointments, confirmations, ivory theme'
+    text 'Project manager -- teams, projects, tasks, comments, role-based access'
+    text 'Plus: todo, dashboard, URL shortener, ecommerce, SaaS billing, chat, and 20 more.'
 
   section 'Infra' with style section_light:
-    heading 'Infrastructure'
-    text 'Every compiled app includes: Express/FastAPI server, JSON body parsing, error handling, graceful shutdown.'
-    text 'Auth: JWT tokens, role-based access, middleware. Database: local memory, PostgreSQL, SQLite.'
-    text 'Rate limiting, CORS, request logging, webhook signature verification, file uploads.'
-    text 'Auto-generated E2E test scripts for every endpoint.'
+    heading 'Production infrastructure, zero config'
+    text 'Every compiled app includes: Express/FastAPI server, error handling with source line mapping, graceful shutdown.'
+    text 'Auth: HMAC-signed tokens, role-based access, middleware. Database: local memory, PostgreSQL, Supabase.'
+    text 'External APIs: Stripe payments, SendGrid email, Twilio SMS, plus generic call api for any REST endpoint.'
+    text 'Security: inline secret detection, SSRF blocking, auth enforcement on write endpoints, seed endpoint production guards.'
+    text 'Auto-generated architecture diagrams and E2E test scripts for every endpoint.'
 
 # --- Get Started Page ---
 

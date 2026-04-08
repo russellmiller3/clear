@@ -2,66 +2,18 @@
 
 // Clear Language -- Landing Page
 // Target: Freelancers and small agencies who build the same CRUD apps repeatedly
-// --- Theme ---
-// clear:7
-let primary = "#2563eb";
-// clear:8
-let dark = "#0f172a";
-// clear:9
-let light = "#f8fafc";
+// Uses built-in DaisyUI presets: hero, section_light, section_dark, card, code_box
 // --- Hero ---
-// clear:42
+// clear:10
 // Page: Clear Language
 document.title = "Clear Language";
-// clear:43
-// Section: Hero
-
-// clear:51
-// Section: Problem
-
-// clear:57
-// Section: Solution
-
-// clear:63
-// Section: How
-
-// clear:74
-// Section: Example
-
-// clear:80
-// Section: Agents
-
-// clear:87
-// Section: Compiler
-
-// clear:94
-// Section: Compare
-
-// clear:103
-// Section: CTA
 
 // --- Examples Page ---
-// clear:111
+// clear:79
 // Page: Examples
 document.title = "Examples";
-// clear:112
-// Section: Overview
-
-// clear:116
-// Section: APIs
-
-// clear:125
-// Section: Agents
-
-// clear:132
-// Section: FullStack
-
-// clear:138
-// Section: Infra
 
 // --- Get Started Page ---
-// clear:147
+// clear:115
 // Page: Get Started
 document.title = "Get Started";
-// clear:148
-// Section: Start

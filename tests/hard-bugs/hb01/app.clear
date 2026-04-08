@@ -1,0 +1,33 @@
+build for web and javascript backend
+database is local memory
+
+create a Invoices table:
+  client_name, required
+  amount (number), required
+  status, default 'draft'
+  due_date, required
+
+when user calls POST /api/invoices sending invoice:
+  needs login
+  new_invoice = save invoice as new Invoice
+  send back new_invoice
+
+when user calls GET /api/invoices:
+  invoices = look up all Invoices
+  send back invoices
+
+when user calls PUT /api/invoices/:id sending invoice:
+  needs login
+  invoice's status is 'sent'
+  save invoice to Invoices
+  send back 'updated'
+
+page 'Invoices' at '/':
+  on page load get invoices from '/api/invoices'
+  'Client' is a text input saved as a client_name
+  'Amount' is a text input saved as a amount
+  'Due Date' is a text input saved as a due_date
+  button 'Create Invoice':
+    send client_name, amount, due_date to '/api/invoices'
+    get invoices from '/api/invoices'
+  display invoices as table showing client_name, amount, status, due_date

@@ -1,0 +1,62 @@
+build for web and javascript backend
+database is local memory
+
+create a Candidates table:
+  name, required
+  email, required, unique
+  position, required
+  stage, default 'applied'
+  rating (number)
+
+when user calls GET /api/candidates:
+  candidates = look up all Candidates
+  send back candidates
+
+when user calls POST /api/candidates sending candidate:
+  needs login
+  validate candidate:
+    name is text, required
+    email is text, required, matches email
+    position is text, required
+  new_candidate = save candidate as new Candidate
+  send back new_candidate
+
+when user calls PUT /api/candidates/:id sending candidate:
+  needs login
+  save candidate to Candidates
+  send back 'updated'
+
+when user calls POST /api/seed:
+  create c1:
+    name is 'Alice Chen'
+    email is 'alice@example.com'
+    position is 'Senior Engineer'
+    stage is 'interview'
+    rating = 4
+  save c1 as new Candidate
+  create c2:
+    name is 'Bob Smith'
+    email is 'bob@example.com'
+    position is 'Product Manager'
+    stage is 'applied'
+  save c2 as new Candidate
+  create c3:
+    name is 'Carol Jones'
+    email is 'carol@example.com'
+    position is 'Senior Engineer'
+    stage is 'offer'
+    rating = 5
+  save c3 as new Candidate
+  send back 'seeded'
+
+page 'Hiring' at '/':
+  on page load get candidates from '/api/candidates'
+  'Name' is a text input saved as a name
+  'Email' is a text input saved as a email
+  'Position' is a text input saved as a position
+  'Stage' is a dropdown with ['applied', 'interview', 'offer', 'hired', 'rejected'] saved as a stage
+  'Rating' is a number input saved as a rating
+  button 'Add Candidate':
+    send name, email, position, stage, rating to '/api/candidates'
+    get candidates from '/api/candidates'
+  display candidates as table showing name, email, position, stage, rating with edit

@@ -106,9 +106,9 @@ page 'Cast' at '/':
       section 'Results Body' with style results_body:
         if tab is 1:
           heading 'Output'
-          display response as table called 'Sheets'
+          display sheets as table called 'Sheets'
           on page load:
-            get from '/api/sheets'
+            get sheets from '/api/sheets'
         if tab is 2:
           section 'Chat' with style chat_section:
             heading 'AI Assistant'

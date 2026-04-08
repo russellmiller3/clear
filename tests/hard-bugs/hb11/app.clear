@@ -1,0 +1,70 @@
+build for web and javascript backend
+database is local memory
+
+create a Students table:
+  name, required
+  email, required, unique
+  grade (number)
+  enrolled, default 'true'
+
+create a Courses table:
+  title, required
+  instructor, required
+  capacity (number), required
+
+create a Enrollments table:
+  student_id, required
+  course_id, required
+
+when user calls GET /api/students:
+  students = look up all Students
+  send back students
+
+when user calls GET /api/courses:
+  courses = look up all Courses
+  send back courses
+
+when user calls POST /api/students sending student:
+  needs login
+  new_student = save student as new Student
+  send back new_student
+
+when user calls POST /api/courses sending course:
+  needs login
+  new_course = save course as new Course
+  send back new_course
+
+when user calls POST /api/enrollments sending enrollment:
+  needs login
+  new_enrollment = save enrollment as new Enrollment
+  send back new_enrollment
+
+when user calls POST /api/seed:
+  create s1:
+    name is 'Maya Patel'
+    email is 'maya@school.edu'
+    grade = 11
+  save s1 as new Student
+  create s2:
+    name is 'James Wilson'
+    email is 'james@school.edu'
+    grade = 10
+  save s2 as new Student
+  create c1:
+    title is 'AP Physics'
+    instructor is 'Dr. Smith'
+    capacity = 30
+  save c1 as new Course
+  create c2:
+    title is 'Calculus II'
+    instructor is 'Prof. Lee'
+    capacity = 25
+  save c2 as new Course
+  send back 'seeded'
+
+page 'School' at '/':
+  on page load:
+    get students from '/api/students'
+    get courses from '/api/courses'
+  display students as table showing name, email, grade
+  display courses as table showing title, instructor, capacity

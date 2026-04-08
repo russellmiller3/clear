@@ -252,6 +252,45 @@ display count called 'Items'
 display todos as table showing todo, completed        # column whitelist
 display users as table showing name, email, role      # only these columns shown
 display response as table called 'Results'            # all columns (no 'showing')
+
+# Action buttons — compiler auto-wires to matching endpoints
+display contacts as table showing name, email with delete
+display contacts as table showing name, email with edit
+display contacts as table showing name, email with delete and edit
+# "with delete" adds a Delete button per row (needs DELETE /api/contacts/:id)
+# "with edit" adds an Edit button that populates the form (needs PUT /api/contacts/:id)
+```
+
+## Charts (ECharts)
+
+```clear
+# Line chart — auto-detects x (string field) and y (number fields)
+chart 'Revenue' as line showing sales
+
+# Bar chart
+chart 'Sales by Region' as bar showing sales
+
+# Area chart (line with fill)
+chart 'Trend' as area showing monthly_data
+
+# Pie chart — groups by field and counts
+chart 'Status Breakdown' as pie showing tasks by status
+```
+
+Chart types: `line`, `bar`, `pie`, `area`. Data comes from a state variable (array of objects).
+For line/bar/area, the compiler auto-detects x-axis (first string field) and y-axis (number fields).
+For pie, use `by <field>` to group and count. ECharts CDN is only included when charts are used.
+
+## Reactive Input Handlers
+
+```clear
+# Run code when an input changes
+when query changes:
+  get results from '/api/search?q={query}'
+
+# Debounced: wait 250ms after last keystroke before firing
+when search changes after 250ms:
+  get suggestions from '/api/suggest?q={search}'
 ```
 
 ## Conditional UI
@@ -526,9 +565,52 @@ button 'Delete':
 ```clear
 # Explicit storage backend (at top of file)
 database is local memory                        # default: in-memory with JSON backup
+database is supabase                            # production: Supabase (set SUPABASE_URL + SUPABASE_ANON_KEY)
 database is SQLite at 'todos.db'                # file-based
-database is PostgreSQL at env('DATABASE_URL')   # production
+database is PostgreSQL at env('DATABASE_URL')   # raw PostgreSQL
 ```
+
+When using Supabase, CRUD operations compile to Supabase SDK calls:
+- `get all Contacts` → `supabase.from('contacts').select('*')`
+- `save X as new Contact` → `supabase.from('contacts').insert(X).select().single()`
+- `delete the Contact with this id` → `supabase.from('contacts').delete().eq('id', id)`
+
+Tables must exist in your Supabase dashboard — the compiler doesn't create them.
+
+## Retry, Timeout, Race (Production Resilience)
+
+```clear
+# Retry with exponential backoff (1s, 2s, 4s between attempts)
+retry 3 times:
+  send order to '/api/payment'
+
+# Timeout — cancel if it takes too long
+with timeout 5 seconds:
+  result = call 'Lead Scorer' with lead_data
+
+# Timeout in minutes
+with timeout 2 minutes:
+  data = fetch page 'https://slow-api.example.com'
+
+# Race — run multiple tasks, take the first result
+first to finish:
+  fetch page 'https://api-east.example.com'
+  fetch page 'https://api-west.example.com'
+```
+
+Retry compiles to a for loop with exponential backoff. Timeout compiles to `Promise.race` with a reject timer. Race compiles to `Promise.race` with multiple concurrent tasks. All three work in both JS and Python.
+
+## Compound Unique Constraints
+
+```clear
+create a Votes table:
+  user_id, required
+  poll_id, required
+  choice, required
+  one per user_id and poll_id    # only one vote per user per poll
+```
+
+`one per field1 and field2` prevents duplicate combinations. Compiles to `UNIQUE(field1, field2)`.
 
 ## Backend
 
@@ -929,10 +1011,47 @@ are NOT treated as file imports.
 
 Run tests: `node cli/clear.js test myfile.clear`
 
+## CLI (for AI Agents)
+
+The Clear CLI is designed for machines first, humans second. Every command supports `--json`.
+
+```bash
+# Validate without compiling (fast)
+clear check app.clear --json
+
+# Introspect: list endpoints, tables, pages, agents
+clear info app.clear --json
+
+# Security + quality analysis
+clear lint app.clear --json
+
+# Auto-fix patchable errors (e.g. missing auth guards)
+clear fix app.clear
+
+# Compile
+clear build app.clear --out dist/
+
+# Compile + start local server
+clear serve app.clear --port 3000
+
+# Watch + rebuild on changes
+clear dev app.clear
+
+# Bundle for deployment (Dockerfile + package.json)
+clear package app.clear --out deploy/
+
+# Scaffold new project
+clear init my-app
+```
+
+Exit codes: `0` success, `1` compile error, `2` runtime error, `3` file not found, `4` test failure.
+
+All commands return structured JSON with `--json` flag for agent consumption.
+
 ## Build & Deploy
 
 ```bash
-# Build (runs 854 compiler tests first, blocks on failure)
+# Build
 node cli/clear.js build app.clear --out dist/
 
 # Build without test gate
@@ -957,4 +1076,343 @@ node cli/clear.js package app.clear --out deploy/
 # Docker
 docker build -t myapp deploy/
 docker run -p 3000:3000 myapp
+```
+
+## External API Calls
+
+Call any REST API with custom headers, body, and timeout:
+
+```clear
+# Simple GET
+data = call api 'https://api.github.com/users/octocat'
+
+# Full POST with headers and timeout
+result = call api 'https://api.example.com/data':
+  method is 'POST'
+  header 'Authorization' is 'Bearer ' + env('API_KEY')
+  header 'Content-Type' is 'application/json'
+  body is request_data
+  timeout is 10 seconds
+```
+
+Defaults: GET without body, POST with body. 30-second timeout if not specified.
+Compiles to `fetch()` with `AbortController`. Auto-detects JSON vs text responses.
+
+## Service Presets
+
+Zero-config wrappers for common services. Just set the env var.
+
+```clear
+# Stripe — charge a card (requires STRIPE_KEY)
+charge via stripe:
+  amount = 2000
+  currency is 'usd'
+  token is payment_token
+
+# SendGrid — send an email (requires SENDGRID_KEY)
+send email via sendgrid:
+  to is customer's email
+  from is 'team@myapp.com'
+  subject is 'Invoice sent'
+  body is email_body
+
+# Twilio — send SMS (requires TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM)
+send sms via twilio:
+  to is customer's phone
+  body is 'Your booking is confirmed'
+```
+
+## AI Integration
+
+```clear
+# Anthropic (canonical form)
+answer = ask claude 'Summarize this article' with article_text
+
+# With model selection
+answer = ask claude 'Write a poem' with topic using 'claude-haiku-4-5-20251001'
+
+# Structured output
+result = ask claude 'Analyze this lead' with lead_data returning:
+  score (number)
+  reasoning
+  qualified (boolean)
+
+# ask ai still works as an alias
+answer = ask ai 'Summarize this' with data
+```
+
+Requires `ANTHROPIC_API_KEY` (falls back to `CLEAR_AI_KEY`).
+
+## Webhooks (Natural Syntax)
+
+```clear
+# When a service sends events to your server
+when stripe notifies '/stripe/events':
+  if event is 'payment.succeeded':
+    update order's status to 'paid'
+
+when twilio notifies '/sms-received':
+  save message as new IncomingMessage
+
+# Legacy syntax still works:
+webhook '/stripe/events' signed with env('STRIPE_SECRET'):
+  send back 'ok'
+```
+
+## Auth Aliases
+
+```clear
+# Both work — needs login is the natural form
+needs login
+requires auth
+```
+
+---
+
+## AI Agents
+
+### Basic Agent
+```clear
+agent 'Lead Scorer' receiving lead:
+  check lead's company is not missing, otherwise error 'Company required'
+  score = ask claude 'Rate 1-10 for enterprise potential' with lead's company
+  send back score
+```
+
+### Agent with Tool Use
+```clear
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+
+agent 'Support' receiving message:
+  can use: look_up_orders
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
+### Skills (Reusable Tool Bundles)
+```clear
+skill 'Order Management':
+  can: look_up_orders, check_status
+  instructions:
+    Always verify customer identity before changes.
+    Include order number in responses.
+
+agent 'Support' receiving message:
+  uses skills: 'Order Management'
+  response = ask claude 'Help' with message
+  send back response
+```
+
+### Guardrails
+```clear
+agent 'Public Bot' receiving question:
+  can use: search_products
+  must not:
+    delete any records
+    access Users table
+    call more than 5 tools per request
+  response = ask claude 'Help find products' with question
+  send back response
+```
+
+### Multi-Turn Conversation
+```clear
+agent 'Chat' receiving message:
+  remember conversation context
+  response = ask claude 'You are a helpful assistant' with message
+  send back response
+```
+
+### Agent Memory
+```clear
+agent 'PA' receiving message:
+  remember user's preferences
+  response = ask claude 'Help the user' with message
+  send back response
+```
+
+### RAG / Knowledge Base
+```clear
+agent 'KnowledgeBot' receiving question:
+  knows about: Documents, Products, FAQ
+  answer = ask claude 'Answer using context' with question
+  send back answer
+```
+
+### Observability
+```clear
+agent 'Bot' receiving message:
+  track agent decisions
+  response = ask claude 'Help' with message
+  send back response
+```
+
+### Long Prompts (Text Blocks)
+```clear
+agent 'Bot' receiving message:
+  today = format date current time as 'YYYY-MM-DD'
+  prompt is text block:
+    You are a support agent. Today is {today}.
+    Be concise and professional.
+  response = ask claude prompt with message
+  send back response
+```
+
+### Pipelines
+```clear
+pipeline 'Process Inbound' with text:
+  'Classifier'
+  'Scorer'
+  'Router'
+
+result = call pipeline 'Process Inbound' with data
+```
+
+### Parallel Execution
+```clear
+do these at the same time:
+  sentiment = call 'Sentiment' with text
+  topic = call 'Topic' with text
+  lang = call 'Language' with text
+```
+
+### Human-in-the-Loop
+```clear
+agent 'Refund' receiving request:
+  if request's amount is greater than 100:
+    ask user to confirm 'Process large refund?'
+  send back 'Refund processed'
+```
+
+### Agent Testing
+```clear
+test 'handles product question':
+  mock claude responding:
+    answer is 'The Widget costs $29.99'
+    action is 'respond'
+  result = call 'Support' with 'How much is the Widget?'
+  expect result's action is 'respond'
+```
+
+### Streaming (Default for Text Agents)
+Text agents stream by default — token-by-token via SSE. No directive needed.
+```clear
+# Streams automatically (text response, no returning:)
+agent 'Chat' receiving message:
+  response = ask claude 'Help the user' with message
+  send back response
+
+# Auto non-streaming (structured output can't stream partial JSON)
+agent 'Classifier' receiving text:
+  result = ask claude 'Classify' with text returning:
+    category
+    confidence (number)
+  send back result
+
+# Explicit opt-out (pipeline step needs full response)
+agent 'Summarizer' receiving text:
+  do not stream
+  summary = ask claude 'Summarize in one sentence' with text
+  send back summary
+```
+
+### Scheduled Agents
+```clear
+agent 'Daily Report' runs every 1 day:
+  leads = get all Leads where status is 'new'
+  send back leads
+```
+
+## Workflows (Stateful Agent Graphs)
+
+### Basic Workflow
+```clear
+workflow 'Support Ticket' with state:
+  state has:
+    message, required
+    category
+    status, default 'new'
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+```
+
+### Conditional Routing
+```clear
+workflow 'Router' with state:
+  state has:
+    message, required
+    category
+  step 'Triage' with 'Triage Agent'
+  if state's category is 'software':
+    step 'Software Fix' with 'Software Specialist'
+  otherwise:
+    step 'General' with 'General Agent'
+  step 'Done' with 'Closer Agent'
+```
+
+### Retry Loops
+```clear
+workflow 'Content Review' with state:
+  state has:
+    draft, required
+    quality_score (number), default 0
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer Agent'
+  step 'Publish' with 'Publisher Agent'
+```
+
+### Parallel Branches
+```clear
+workflow 'Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    topics
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'Topics' with 'Topic Agent' saves to state's topics
+  step 'Report' with 'Report Agent'
+```
+
+### Durable Execution (DB Checkpoint)
+```clear
+workflow 'Onboarding' with state:
+  save progress to Workflows table
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'
+```
+
+### Durable Execution (Temporal.io)
+```clear
+workflow 'Onboarding' with state:
+  runs on temporal
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'
+```
+
+### Workflow Observability
+```clear
+workflow 'Support' with state:
+  track workflow progress
+  state has:
+    message, required
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+# _state._history contains state snapshots at each step
+```
+
+### Running a Workflow
+```clear
+when user calls POST /api/support sending data:
+  result = run workflow 'Support' with data
+  send back result
 ```

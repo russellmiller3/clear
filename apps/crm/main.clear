@@ -1,0 +1,194 @@
+# ┌──────────┬──────────────────────────────┐
+# │ Sidebar  │  Header             [Q2 2026]│
+# │          ├──────────────────────────────┤
+# │ Dashboard│  ┌────────┐┌────────┐┌─────┐│
+# │ Contacts │  │Contacts││ Deals  ││Rev. ││
+# │ Deals    │  │  247   ││  18    ││$42k ││
+# │ Activity │  └────────┘└────────┘└─────┘│
+# │          │  ┌──────────────────────────┐│
+# │          │  │ Recent Contacts (table)  ││
+# │          │  └──────────────────────────┘│
+# └──────────┴──────────────────────────────┘
+#
+# DATAFLOW:
+# ┌──────────┐  POST /api/contacts  ┌──────────┐  save   ┌────────┐
+# │ Frontend │ ───────────────────> │ Backend  │ ──────> │  DB    │
+# │  (forms) │ <─────────────────── │ (server) │ <────── │(memory)│
+# └──────────┘  GET /api/contacts   └──────────┘  query  └────────┘
+
+build for web and javascript backend
+
+theme 'midnight'
+
+# Database
+database is local memory
+
+create a Contacts table:
+  name, required
+  email, required, unique
+  company
+  status, default 'lead'
+  phone
+  created_at_date, auto
+
+create a Deals table:
+  contact_id, required
+  title, required
+  value (number), default 0
+  stage, default 'prospect'
+  created_at_date, auto
+
+create a Activities table:
+  contact_id, required
+  action, required
+  detail
+  created_at_date, auto
+
+# Backend
+
+# Allow the frontend to talk to the backend
+allow cross-origin requests
+
+# Print every request to the console for debugging
+log every request
+
+# --- Seed data for demo ---
+when user calls POST /api/seed:
+  create alice:
+    name is 'Alice Chen'
+    email is 'alice@acme.co'
+    company is 'Acme Inc'
+    status is 'active'
+  save alice as new Contact
+  create bob:
+    name is 'Bob Smith'
+    email is 'bob@globex.io'
+    company is 'Globex'
+    status is 'lead'
+  save bob as new Contact
+  create deal1:
+    contact_id is '1'
+    title is 'Acme Enterprise'
+    value = 25000
+    stage is 'proposal'
+  save deal1 as new Deal
+  create deal2:
+    contact_id is '2'
+    title is 'Globex Pilot'
+    value = 17300
+    stage is 'prospect'
+  save deal2 as new Deal
+  send back 'seeded' with success message
+
+# --- Contacts ---
+when user calls GET /api/contacts:
+  all_contacts = get all Contacts
+  send back all_contacts
+
+when user calls POST /api/contacts sending contact_data:
+  requires auth
+  validate contact_data:
+    name is text, required, min 1, max 100
+    email is text, required, matches email
+    company is text
+    status is text
+    phone is text
+  new_contact = save contact_data as new Contact
+  send back new_contact with success message
+
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  delete the Contact with this id
+  send back 'deleted' with success message
+
+# --- Deals ---
+when user calls GET /api/deals:
+  all_deals = get all Deals
+  send back all_deals
+
+when user calls POST /api/deals sending deal_data:
+  requires auth
+  validate deal_data:
+    contact_id is text, required
+    title is text, required
+    value is number
+    stage is text
+  new_deal = save deal_data as new Deal
+  send back new_deal with success message
+
+when user calls DELETE /api/deals/:id:
+  requires auth
+  delete the Deal with this id
+  send back 'deleted' with success message
+
+# --- Activities ---
+when user calls GET /api/activities:
+  all_activities = get all Activities
+  send back all_activities
+
+when user calls POST /api/activities sending activity_data:
+  requires auth
+  validate activity_data:
+    contact_id is text, required
+    action is text, required
+    detail is text
+  new_activity = save activity_data as new Activity
+  send back new_activity with success message
+
+# Frontend
+page 'CRM' at '/':
+
+  on page load:
+    send nothing to '/api/seed'
+    get contacts from '/api/contacts'
+    get deals from '/api/deals'
+
+  section 'Layout' with style app_layout:
+
+    section 'Nav' with style app_sidebar:
+      heading 'CRM'
+      text 'Dashboard'
+      text 'Contacts'
+      text 'Deals'
+
+    section 'Right' with style app_main:
+      section 'Top' with style app_header:
+        heading 'Dashboard'
+
+      section 'Body' with style app_content:
+
+        # --- Add Contact Form ---
+        section 'Add Contact' with style app_card:
+          subheading 'New Contact'
+          'Name' is a text input saved as a name
+          'Email' is a text input saved as an email
+          'Company' is a text input saved as a company
+          'Status' is a dropdown with ['lead', 'active', 'churned']
+          button 'Add Contact':
+            send name and email and company and status to '/api/contacts'
+            get contacts from '/api/contacts'
+            name is ''
+            email is ''
+            company is ''
+
+        # --- Contacts Table ---
+        section 'Contacts' with style app_card:
+          subheading 'All Contacts'
+          display contacts as table showing name, email, company, status with delete
+
+        # --- Add Deal Form ---
+        section 'Add Deal' with style app_card:
+          subheading 'New Deal'
+          'Deal Title' is a text input saved as a deal_title
+          'Contact ID' is a text input saved as a deal_contact_id
+          'Value' is a number input saved as a deal_value
+          'Stage' is a dropdown with ['prospect', 'proposal', 'negotiation', 'closed-won', 'closed-lost']
+          button 'Add Deal':
+            send deal_title and deal_contact_id and deal_value and stage to '/api/deals'
+            get deals from '/api/deals'
+            deal_title is ''
+
+        # --- Deals Table ---
+        section 'Deals' with style app_card:
+          subheading 'All Deals'
+          display deals as table showing title, value, stage with delete

@@ -14,7 +14,7 @@ Clear is a programming language designed for AI to write and humans to read. You
 ## Before writing any Clear code
 
 1. Read `clear/SYNTAX.md` -- the complete syntax reference
-2. Read `clear/AI-STYLE-GUIDE.md` -- canonical forms and conventions
+2. Read `clear/AI-INSTRUCTIONS.md` -- canonical forms and conventions
 3. Skim `clear/PHILOSOPHY.md` -- design rules (one operation per line, no nesting, etc.)
 
 ## Core Rules
@@ -177,6 +177,10 @@ node test.js
 **Backend:** REST endpoints, validation, auth guards, role-based access, rate limiting, CORS, logging, webhooks (HMAC), OAuth, Stripe checkout, background jobs, SSE streaming, WebSocket
 
 **Data:** in-memory DB, PostgreSQL/SQLite declaration, table schemas with constraints, row-level security, migrations, CSV load/save/filter/sort/group, JSON parse/stringify
+
+**AI Agents:** agent definitions, ask claude, tool use, skills, guardrails, conversation memory, user preferences, RAG, observability, pipelines, parallel agents, human-in-the-loop, agent testing, streaming
+
+**Workflows:** stateful workflows with state threading, conditional routing, retry loops (`repeat until, max N times`), durable execution (DB checkpoint + Temporal.io), parallel branches (`at the same time` + `saves to`), workflow observability
 
 **Utilities:** file I/O, regex, dates, email, web scraping, PDF generation, machine learning, parallel execution, multi-line strings with interpolation, string interpolation
 

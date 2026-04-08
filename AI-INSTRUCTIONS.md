@@ -1,8 +1,8 @@
-# Clear — AI Style Guide
+# Clear — AI Instructions
 
-This file tells Claude HOW to write Clear code. The compiler is permissive
-(accepts aliases, both quote styles, etc.) but Claude should always write
-the canonical form for maximum readability.
+How to write Clear code and use the Clear CLI. This is the instruction manual
+for AI agents building apps in Clear. The compiler accepts aliases and both
+quote styles, but always write the canonical form for maximum readability.
 
 ## ASCII Diagrams First (MANDATORY — Source of Truth)
 
@@ -35,12 +35,12 @@ to match. If the code disagrees with the diagram, the diagram wins.
 ```
 # DATAFLOW:
 # ┌──────────┐    POST /api/contacts    ┌──────────┐    save    ┌────────┐
-# │ Frontend │ ──────────────────────► │ Backend  │ ────────► │   DB   │
-# │  (form)  │ ◄────────────────────── │ (server) │ ◄──────── │(memory)│
-# └──────────┘    GET /api/contacts     └──────────┘   query   └────────┘
+# │ Frontend │ ──────────────────────> │ Backend  │ ────────> │   DB   │
+# │  (form)  │ <────────────────────── │ (server) │ <──────── │(memory)│
+# └──────────┘    GET /api/contacts    └──────────┘   query   └────────┘
 #      │                                     │
-#      │  on page load ──► GET ──► table     │  DELETE /api/contacts/:id
-#      │  button click ──► POST ──► refresh  │  ──► remove row ──► refresh
+#      │  on page load --> GET --> table      │  DELETE /api/contacts/:id
+#      │  button click --> POST --> refresh   │  --> remove row --> refresh
 ```
 
 **Landing page section diagram** — for marketing/content pages:
@@ -62,11 +62,11 @@ to match. If the code disagrees with the diagram, the diagram wins.
 ```
 # DATAFLOW:
 # ┌────────┐  POST /api/leads  ┌───────────────┐  ask ai  ┌──────┐
-# │ Client │ ────────────────► │ Lead Scorer   │ ───────► │  AI  │
-# └────────┘                   │   (agent)     │ ◄─────── │      │
+# │ Client │ ────────────────> │ Lead Scorer   │ ───────> │  AI  │
+# └────────┘                   │   (agent)     │ <─────── │      │
 #                              └───────┬───────┘          └──────┘
 #                                      │ save
-#                              ┌───────▼───────┐
+#                              ┌───────v───────┐
 #                              │   Leads DB    │
 #                              └───────────────┘
 ```
@@ -91,7 +91,7 @@ before committing.
 #
 # Step 4: Arrows between boxes — use consistent spacing
 #   ┌────────┐  label  ┌───────────────┐
-#   │ Client │ ──────► │ Lead Scorer   │
+#   │ Client │ ──────> │ Lead Scorer   │
 #   └────────┘         └───────────────┘
 ```
 
@@ -101,9 +101,43 @@ before committing.
 3. **Every row inside a box must be the same character width.** Count characters. Pad with spaces.
 4. Preview in monospace before committing — if edges don't line up, fix the padding
 5. Label every section, data source, and API endpoint
-6. Show the direction of data flow with arrows (`──►`, `◄──`, `─►`, `▼`)
+6. Show the direction of data flow with arrows (`──>`, `<──`, `->`, `v`). Use plain ASCII `>`, `<`, `v` — never Unicode arrows (`►`, `◄`, `▼`) which cause width mismatches.
 7. Keep it under 15 lines — this is a map, not documentation
 8. **The diagram is the source of truth.** Update it before changing code
+
+**Agent flow diagram** — MANDATORY for any app with 2+ agents, pipelines, or parallel execution:
+```
+# AGENT FLOW:
+#
+# User message
+#   │
+#   ├──> Triage Agent [tools, guardrails, tracking]
+#   │       │
+#   │       ├── category = 'software' ──> Software Specialist [tools, RAG]
+#   │       ├── category = 'hardware' ──> Hardware Specialist [tools]
+#   │       └── otherwise ──> General Agent
+#   │                              │
+#   │    ┌─── parallel ────────────┤
+#   │    │                         │
+#   │    v                         v
+#   │  Knowledge Agent         Sentiment Agent
+#   │  [RAG, tracking]        [tracking]
+#   │    │                         │
+#   │    └──────────┬──────────────┘
+#   │               │
+#   │               v
+#   │         Resolution Agent [tools, guardrails, tracking]
+#   │               │
+#   v               v
+# Response ──> User
+```
+
+**When editing agents, ALWAYS update the agent flow diagram:**
+1. Adding/removing an agent? Update the flow diagram
+2. Changing pipeline steps? Update the flow diagram
+3. Adding tools/skills/guardrails to an agent? Update the `[...]` annotations
+4. Adding parallel execution? Show the fork and join in the diagram
+5. The compiled output auto-generates a text version — but the source diagram is richer and is the source of truth
 
 ## Minimize Cognitive Load (First Principle)
 
@@ -286,6 +320,85 @@ If the program uses a database adapter, add a Database section at the top.
 If there's no backend, skip the Backend section. The comments are for the
 human reading the file -- the compiler ignores them.
 
+## Multi-File Architecture (When Apps Get Complex)
+
+**First decision: is this a simple or complex app?**
+
+| Simple (one file) | Complex (multiple files) |
+|-------------------|------------------------|
+| 1 page | 3+ pages |
+| 1-2 database tables | 4+ tables |
+| < 100 lines | > 150 lines |
+| No reusable components | Shared components across pages |
+| 1 agent or none | Multiple agents |
+
+**If simple, keep everything in one file.** One file is always easier to read,
+debug, and hand to someone new. Don't split prematurely.
+
+**If complex, use this file structure:**
+
+```
+my-app/
+  main.clear           # Build target, database, shared config
+  backend.clear         # All API endpoints
+  frontend.clear        # All pages and UI
+  components.clear      # Reusable UI components (if needed)
+  agents.clear          # AI agents (if needed)
+```
+
+**Rules for splitting:**
+
+1. **`main.clear` is the entry point.** It has `build for`, `database is`,
+   `create a X table`, `allow cross-origin requests`, and `use` imports.
+   It's the table of contents for the whole app.
+
+2. **Split by concern, not by page.** All endpoints go in `backend.clear`,
+   all pages go in `frontend.clear`. Don't make one file per page — that
+   scatters related code.
+
+3. **Extract a component when it's used 3+ times.** Not before. Three
+   similar sections of HTML is better than a premature abstraction. When
+   you do extract, put it in `components.clear`.
+
+4. **Agents get their own file when there are 2+.** One agent can live
+   in `backend.clear`. Multiple agents go in `agents.clear`.
+
+5. **Never split a table definition from its endpoints.** If `backend.clear`
+   has `when user calls GET /api/users`, then `main.clear` must have
+   `create a Users table`. The reader finds the schema in main, the
+   logic in backend.
+
+**Example main.clear for a complex app:**
+```clear
+build for web and javascript backend
+
+# Database
+database is local memory
+
+create a Users table:
+  name, required
+  email, required, unique
+  role, default 'member'
+
+create a Projects table:
+  title, required
+  owner, required
+  status, default 'active'
+
+# Config
+allow cross-origin requests
+log every request
+
+# Import modules
+use 'backend'
+use 'frontend'
+```
+
+**When in doubt, keep it in one file.** Splitting adds navigation overhead.
+A 200-line file with clear section comments is better than 5 files with
+40 lines each where the reader has to jump between files to understand
+the flow.
+
 ## Infrastructure Lines
 
 **Always explain infrastructure lines with a comment.**
@@ -464,13 +577,18 @@ This tells the reader where data lives and makes it easy to change later:
 
 ```
 # Database
-database is local memory                    # default: in-memory with JSON file backup
-database is SQLite at 'todos.db'            # file-based
-database is PostgreSQL at env('DATABASE_URL') # production
+database is local memory                    # default: in-memory, JSON file backup
+database is supabase                        # production: Supabase (recommended)
+database is PostgreSQL at env('DATABASE_URL') # raw PostgreSQL
 ```
 
+**Use `local memory` for prototyping** — zero setup, data persists to a JSON file.
+**Use `supabase` for production** — real database, auth, and RLS out of the box.
+Switching is one line: change `local memory` to `supabase` and create the tables
+in your Supabase dashboard. All CRUD operations compile to Supabase SDK calls
+automatically. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars.
+
 If no `database is` declaration is present, the compiler uses local memory.
-This is fine for development but the reader should know that's what's happening.
 
 ## Data Tables
 
@@ -855,3 +973,425 @@ set json_text to ask ai 'Return JSON with score and reasoning' with lead
 
 The compiler tells the AI to respond with JSON matching the schema.
 The runtime parses the JSON response into an object. No manual parsing needed.
+
+### Agent Guards and Directives
+
+Every production agent should have guards. Place directives at the top of the
+agent body, before any executable code:
+
+```clear
+agent 'Customer Support' receiving message:
+  # --- DIRECTIVES (order doesn't matter, but group them at top) ---
+  can use: look_up_orders, check_status, send_email
+  must not: delete records, modify prices, access admin tables
+  knows about: Products, FAQ
+  remember conversation context
+  track agent decisions
+  using 'claude-sonnet-4-6'
+
+  # --- BODY (executable code below directives) ---
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
+**Always add these guards for production agents:**
+
+1. **`must not:`** — compile-time safety. The compiler rejects code that violates these policies:
+   ```clear
+   must not: delete records, access Users table
+   # OR block form for complex policies:
+   must not:
+     delete any records
+     modify Products prices
+     call more than 5 tools per request
+     spend more than 10000 tokens
+   ```
+
+2. **`track agent decisions`** — observability. Logs every AI call with timing:
+   ```clear
+   track agent decisions
+   # Requires: AgentLogs table with agent_name, action, latency_ms, created_at
+   ```
+
+3. **`using 'model'`** — explicit model selection, no surprises:
+   ```clear
+   using 'claude-sonnet-4-6'
+   ```
+
+### Use Skills for Reusable Tool Bundles
+
+Don't repeat `can use:` lists across agents. Define skills once, attach everywhere:
+
+```clear
+skill 'Order Management':
+  can: look_up_orders, update_order, cancel_order
+  instructions:
+    Always verify customer identity before changes.
+    Include order number in all responses.
+
+skill 'Email Support':
+  can: send_email, check_inbox
+  instructions:
+    Use professional tone. Include order number in subject.
+
+# Both agents share the same tools + instructions
+agent 'Support' receiving message:
+  uses skills: 'Order Management', 'Email Support'
+  must not: delete records
+  response = ask claude 'Help' with message
+  send back response
+
+agent 'Returns' receiving request:
+  uses skills: 'Order Management'
+  must not: modify prices
+  response = ask claude 'Process return' with request
+  send back response
+```
+
+### Use Text Blocks for Long System Prompts
+
+Never cram instructions into a single-line string. Use text blocks with interpolation:
+
+```clear
+agent 'Support' receiving message:
+  today = format date current time as 'YYYY-MM-DD'
+
+  system_prompt is text block:
+    You are a customer support agent for Acme Corp.
+    Today is {today}. Be friendly but professional.
+    Always look up the customer's order before answering.
+    Never reveal internal pricing or margins.
+    If you cannot resolve the issue, say so honestly.
+
+  response = ask claude system_prompt with message
+  send back response
+```
+
+### Always Write Tests for Agents
+
+Every agent should have at least one test with mocked AI responses:
+
+```clear
+test 'support agent handles order question':
+  mock claude responding:
+    answer is 'Your order #42 is shipped, arriving tomorrow.'
+    action is 'respond'
+  result = call 'Support' with 'Where is my order?'
+  expect result's action is 'respond'
+
+test 'support agent escalates billing issues':
+  mock claude responding:
+    answer is 'I need to transfer you to billing.'
+    action is 'escalate'
+  result = call 'Support' with 'I was double charged!'
+  expect result's action is 'escalate'
+```
+
+Multiple mocks are consumed in order (first AI call gets first mock, second gets second).
+
+### Agent Tables (Required Infrastructure)
+
+Production agents need these tables. Create them before the agent definition:
+
+```clear
+# For conversation memory:
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+
+# For long-term memory:
+create a Memories table:
+  user_id, required
+  fact, required
+  created_at (timestamp), auto
+
+# For observability:
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+
+# For human-in-the-loop:
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+  decided_by
+  decided_at (timestamp)
+```
+
+### Pipeline vs Parallel
+
+Use **pipelines** when each step depends on the previous (sequential):
+```clear
+pipeline 'Hiring' with candidate_id:
+  'Resume Screener'
+  'Technical Assessor'
+  'Culture Fit'
+
+result = call pipeline 'Hiring' with candidate_id
+```
+
+Use **parallel** when steps are independent (fan-out):
+```clear
+do these at the same time:
+  sentiment = call 'Sentiment' with text
+  topic = call 'Topic' with text
+  lang = call 'Language' with text
+```
+
+### Workflows (Stateful Multi-Step Graphs)
+
+Use **workflows** when you need shared state, conditional routing, retry loops, or durable execution:
+```clear
+workflow 'Content Pipeline' with state:
+  save progress to Workflows table
+  track workflow progress
+  state has:
+    topic, required
+    draft
+    quality_score (number), default 0
+    published (boolean), default false
+
+  step 'Research' with 'Research Agent'
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer Agent'
+  step 'Publish' with 'Publisher Agent'
+```
+
+Workflow directives (before steps):
+- `state has:` — define state shape with types and defaults
+- `save progress to TableName table` — DB checkpoint at each step
+- `track workflow progress` — state history array
+- `runs on temporal` — compile to Temporal.io workflow
+
+Invoke with: `result = run workflow 'Content Pipeline' with data`
+
+## CLI Workflow (How Agents Build Apps)
+
+When building a Clear app, use the CLI for fast feedback loops:
+
+```bash
+# 1. Scaffold
+clear init my-app
+
+# 2. Write main.clear (the agent writes this)
+
+# 3. Fast validation (no compilation, just parse + validate)
+clear check main.clear --json
+
+# 4. Security audit
+clear lint main.clear --json
+
+# 5. Auto-fix patchable errors (e.g. missing auth on DELETE)
+clear fix main.clear
+
+# 6. Compile
+clear build main.clear --out build/
+
+# 7. Introspect what was built
+clear info main.clear --json
+
+# 8. Serve locally for testing
+clear serve main.clear --port 3000
+
+# 9. Package for deployment
+clear package main.clear --out deploy/
+```
+
+**Always use `--json` when the agent is parsing output.** Human-readable output is
+for terminal display only. JSON output has structured errors, warnings, file lists,
+and metadata the agent can act on programmatically.
+
+**Use `check` before `build`.** `check` is faster — it validates without compiling.
+Use it in the tight edit loop. Use `build` when you need the output files.
+
+**Use `lint` before shipping.** It categorizes warnings into security, quality, and
+other. Zero security warnings is the bar for shipping.
+
+## Charts
+
+**Use charts for any numeric data from an API.** If you're displaying a table of
+numbers, add a chart above it for visual context:
+
+```
+chart 'Revenue Trend' as line showing sales
+chart 'Deals by Month' as bar showing sales
+chart 'Status Breakdown' as pie showing tasks by status
+chart 'Growth' as area showing monthly_data
+```
+
+**Chart types:** `line` (trends over time), `bar` (comparisons), `pie` (proportions),
+`area` (cumulative trends). The compiler auto-detects x-axis (first string field)
+and y-axis (number fields). For pie charts, use `by field` to group and count.
+
+**Always pair charts with seed data** so the chart has something to show on first load:
+
+```
+when user calls POST /api/seed:
+  create jan:
+    month is 'Jan'
+    revenue = 31200
+  save jan as new Sale
+  send back 'seeded'
+
+page 'Dashboard' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get sales from '/api/sales'
+  chart 'Revenue' as bar showing sales
+```
+
+## Table Action Buttons
+
+**Use `with delete` when the user should be able to remove rows.** Use `with edit`
+when they should be able to modify rows. Use both when appropriate:
+
+```
+display contacts as table showing name, email with delete
+display contacts as table showing name, email with edit
+display contacts as table showing name, email with delete and edit
+```
+
+The compiler auto-wires these to matching DELETE and PUT endpoints. The validator
+warns if you write `with delete` but have no DELETE endpoint. **This is explicit —
+the compiler never adds buttons the user didn't ask for.**
+
+## Reactive Input Handlers
+
+**Use `when X changes:` for search-as-you-type and live filtering.** Always debounce
+API calls to avoid hammering the server:
+
+```
+'Search' is a text input saved as a query
+
+# Without debounce (fires on every keystroke)
+when query changes:
+  get results from '/api/search?q={query}'
+
+# With debounce (waits 250ms after last keystroke — preferred)
+when query changes after 250ms:
+  get results from '/api/search?q={query}'
+```
+
+**Always use debounce for API calls.** 250ms is the right default. Without it,
+every keystroke fires a network request.
+
+## Transactions
+
+**Use `as one operation:` for multi-step database changes that must all succeed
+or all fail.** E-commerce checkouts, bank transfers, inventory updates:
+
+```
+when user calls POST /api/checkout sending order:
+  requires auth
+  as one operation:
+    decrease product's stock by order's quantity
+    save order as new Order
+    send email:
+      to is order's email
+      subject is 'Order confirmed'
+```
+
+This compiles to `BEGIN`/`COMMIT`/`ROLLBACK`. If any step fails, all changes
+are rolled back. Never do multi-step data changes without a transaction.
+
+## Compound Unique Constraints
+
+**Use `one per X and Y` to prevent duplicates on combinations:**
+
+```
+create a Votes table:
+  user_id, required
+  poll_id, required
+  choice, required
+  one per user_id and poll_id    # one vote per user per poll
+```
+
+This is clearer than `unique together` — say it out loud and a 14-year-old
+understands "one per user and poll."
+
+## Pagination
+
+**Use `page N, M per page` for any list that might have 50+ items:**
+
+```
+items = get all Items page 1, 25 per page
+```
+
+For Supabase, this compiles to `.range()`. For local memory, it compiles to
+array `.slice()`. Always paginate production endpoints.
+
+## File Uploads
+
+```
+'Profile Photo' is a file input saved as a photo
+```
+
+File inputs use `<input type="file">` with DaisyUI styling. The value is a
+`File` object in state, accessible in button handlers. Uses `change` event
+(not `input`).
+
+## CSS Hover, Focus, and Transitions
+
+**Use `hover_` and `focus_` prefixes in style blocks for interactive states:**
+
+```
+style card:
+  background is 'white'
+  hover_background is '#f0f0f0'
+  focus_border is '2px solid blue'
+  transition is 'all 0.2s ease'
+```
+
+The compiler auto-adds `transition: all 0.2s` when hover/focus props exist
+but no explicit transition is set. Use `for_screen is 'small'` for responsive.
+
+## Database: Local Memory vs Supabase
+
+```
+# Development (default) — data persists to JSON file
+database is local memory
+
+# Production — real Postgres via Supabase
+database is supabase
+```
+
+**Start with `local memory`.** Switch to `supabase` when deploying. It's a
+one-line change — all CRUD operations compile to Supabase SDK calls
+automatically. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars.
+
+## Retry, Timeout, and Race (Production Resilience)
+
+**Use `retry` for flaky external calls.** Exponential backoff is built in:
+
+```
+retry 3 times:
+  send order to '/api/payment'
+```
+
+**Use `with timeout` to prevent hanging operations:**
+
+```
+with timeout 5 seconds:
+  result = call 'Lead Scorer' with lead_data
+```
+
+**Use `first to finish` when you have redundant sources:**
+
+```
+first to finish:
+  fetch page 'https://api-east.example.com'
+  fetch page 'https://api-west.example.com'
+```
+
+These compile to `try/catch` with backoff (retry), `Promise.race` with reject
+timer (timeout), and `Promise.race` with concurrent tasks (race). All three
+work in both JS and Python.
+

@@ -49,6 +49,7 @@ function _validate(body, rules) {
 // Chat Backend -- Stress Test App #7
 // Tests: WebSocket, message persistence, presence, rooms
 // --- Data ---
+// clear:8
 // Data shape: Message
 const MessageSchema = {
   room: { type: "text", required: true },
@@ -57,6 +58,7 @@ const MessageSchema = {
   created_at: { type: "timestamp", auto: true }
 };
 db.createTable('messages', MessageSchema);
+// clear:14
 // Data shape: Room
 const RoomSchema = {
   name: { type: "text", required: true, unique: true },
@@ -66,6 +68,7 @@ const RoomSchema = {
 db.createTable('rooms', RoomSchema);
 // --- Config ---
 // --- REST Endpoints ---
+// clear:26
 app.get('/api/rooms', async (req, res) => {
   try {
     const all_rooms = await db.findAll('rooms');
@@ -74,6 +77,7 @@ app.get('/api/rooms', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:30
 app.post('/api/rooms', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -88,6 +92,7 @@ app.post('/api/rooms', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:37
 app.get('/api/rooms/:id/messages', async (req, res) => {
   try {
     const room_messages = await db.findAll('messages');
@@ -96,6 +101,7 @@ app.get('/api/rooms/:id/messages', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// clear:41
 app.post('/api/messages', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });
@@ -111,6 +117,7 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 // --- WebSocket ---
+// clear:52
 // Subscribe: chat
 const WebSocket = require('ws');
 const wss_chat = new WebSocket.Server({ noServer: true });
@@ -121,6 +128,7 @@ wss_chat.on('connection', (ws) => {
   ws._isAlive = true;
   ws.on('pong', () => { ws._isAlive = true; });
   ws.on('message', (message) => {
+  // clear:53
   console.log("message received");
   });
   ws.on('close', () => {
@@ -136,6 +144,7 @@ setInterval(() => {
   });
 }, 30000);
 // --- Health ---
+// clear:57
 app.get('/api/health', async (req, res) => {
   try {
     return res.json({ message: "ok" });

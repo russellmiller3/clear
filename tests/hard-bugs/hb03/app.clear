@@ -1,0 +1,49 @@
+build for web and javascript backend
+database is local memory
+
+create a Users table:
+  email, required, unique
+  name, required
+  role, default 'member'
+
+create a Teams table:
+  name, required
+  owner_id, required
+
+create a Memberships table:
+  user_id, required
+  team_id, required
+
+when user calls POST /api/users sending user:
+  needs login
+  new_user = save user as new User
+  send back new_user
+
+when user calls POST /api/teams sending team:
+  needs login
+  team's owner_id = 1
+  new_team = save team as new Team
+  send back new_team
+
+when user calls POST /api/memberships sending membership:
+  needs login
+  new_membership = save membership as new Membership
+  send back new_membership
+
+when user calls GET /api/teams:
+  needs login
+  teams = look up all Teams
+  send back teams
+
+when user calls DELETE /api/teams/:id:
+  needs login
+  delete the Team with this id
+  send back 'deleted'
+
+page 'Teams' at '/':
+  on page load get teams from '/api/teams'
+  'Team Name' is a text input saved as a team_name
+  button 'Create Team':
+    send team_name to '/api/teams'
+    get teams from '/api/teams'
+  display teams as table showing name, owner_id
