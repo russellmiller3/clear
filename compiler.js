@@ -90,7 +90,8 @@
 //   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
 //     Node compilers ................. compileEndpoint, compileCrud, compileRespond,
 //                                     compileAgent, compileValidate, compileDataShape,
-//                                     compileExternalFetch, compileWebhook, compilePdf
+//                                     compileExternalFetch, compileWebhook, compilePdf,
+//                                     compileHttpRequest, compileRawQueryExpr
 //     _compileNodeInner .............. Main switch over all NodeTypes
 //     exprToCode ..................... Expression-to-code for all expression nodes
 //   RLS POLICY COMPILER .............. compileRLSPolicy()
@@ -1843,6 +1844,71 @@ function compilePdf(node, ctx, pad) {
   return code;
 }
 
+// Unified HTTP_REQUEST compiler — used by both _compileNodeInner and exprToCode
+function compileHttpRequest(node, ctx, pad) {
+  const urlCode = exprToCode(node.url, ctx);
+  const config = node.config || {};
+  const hasBody = config.body;
+  const method = config.method || (hasBody ? 'POST' : 'GET');
+  let headersCode = '';
+  if (config.headers && config.headers.length > 0) {
+    const headerEntries = config.headers.map(h =>
+      `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`
+    ).join(', ');
+    headersCode = `{ ${headerEntries} }`;
+  }
+  const timeoutMs = config.timeout
+    ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
+    : 30000;
+  const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
+
+  if (ctx.lang === 'python') {
+    let code = `${pad}import httpx\n`;
+    const headersPy = headersCode ? headersCode.replace(/:/g, ':').replace(/'/g, '"') : 'None';
+    const bodyPy = hasBody ? `json=${exprToCode(config.body, ctx)}` : '';
+    code += `${pad}async with httpx.AsyncClient(timeout=${timeoutMs / 1000}) as _client:\n`;
+    code += `${pad}    _resp = await _client.${method.toLowerCase()}(${urlCode}${headersCode ? ', headers=' + headersPy : ''}${bodyPy ? ', ' + bodyPy : ''})\n`;
+    code += `${pad}    _resp.raise_for_status()\n`;
+    code += `${pad}    _api_result = _resp.json()`;
+    return code;
+  }
+
+  // JS: wrap in async IIFE
+  let code = `${pad}await (async () => {\n`;
+  code += `${pad}  const _ctrl = new AbortController();\n`;
+  code += `${pad}  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
+  code += `${pad}  try {\n`;
+  code += `${pad}    const _res = await fetch(${urlCode}, {\n`;
+  code += `${pad}      method: '${method}',\n`;
+  if (headersCode) code += `${pad}      headers: ${headersCode},\n`;
+  if (hasBody) code += `${pad}      body: ${bodyCode},\n`;
+  code += `${pad}      signal: _ctrl.signal\n`;
+  code += `${pad}    });\n`;
+  code += `${pad}    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${node.line || 0}, file: '${node._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
+  code += `${pad}    const _ct = _res.headers.get("content-type") || "";\n`;
+  code += `${pad}    return _ct.includes("json") ? _res.json() : _res.text();\n`;
+  code += `${pad}  } catch (_err) {\n`;
+  code += `${pad}    if (!_err._clearCtx) { _err._clearCtx = { service: 'external', line: ${node.line || 0}, file: '${node._sourceFile || 'main.clear'}', source: 'call api' }; }\n`;
+  code += `${pad}    throw _err;\n`;
+  code += `${pad}  } finally { clearTimeout(_timer); }\n`;
+  code += `${pad}})()`;
+  return code;
+}
+
+// Unified RAW_QUERY compiler — used by both _compileNodeInner and exprToCode
+function compileRawQueryExpr(node, ctx) {
+  const sql = JSON.stringify(node.sql);
+  const params = node.params ? exprToCode(node.params, ctx) : null;
+  if (ctx.lang === 'python') {
+    return params
+      ? `await (await _get_db()).fetch(${sql}, ${params})`
+      : `await (await _get_db()).fetch(${sql})`;
+  }
+  return params
+    ? `(await _pool.query(${sql}, [${params}])).rows`
+    : `(await _pool.query(${sql})).rows`;
+}
+
 function _compileNodeInner(node, ctx) {
   // Skip backend-only nodes when compiling for web frontend
   if (ctx.mode === 'web' && BACKEND_ONLY_NODES.has(node.type)) return null;
@@ -2215,25 +2281,23 @@ function _compileNodeInner(node, ctx) {
     case NodeType.RAW_QUERY: {
       const sql = JSON.stringify(node.sql);
       const params = node.params ? exprToCode(node.params, ctx) : null;
-      if (ctx.lang === 'python') {
-        if (node.operation === 'run') {
+      // "run" operation — execute without return value
+      if (node.operation === 'run') {
+        if (ctx.lang === 'python') {
           return params
             ? `${pad}await (await _get_db()).execute(${sql}, ${params})`
             : `${pad}await (await _get_db()).execute(${sql})`;
         }
         return params
-          ? `${pad}${sanitizeName(node.variable)} = await (await _get_db()).fetch(${sql}, ${params})`
-          : `${pad}${sanitizeName(node.variable)} = await (await _get_db()).fetch(${sql})`;
-      }
-      if (node.operation === 'run') {
-        return params
           ? `${pad}await _pool.query(${sql}, [${params}]);`
           : `${pad}await _pool.query(${sql});`;
       }
-      const varName = sanitizeName(node.variable);
-      return params
-        ? `${pad}const ${varName} = (await _pool.query(${sql}, [${params}])).rows;`
-        : `${pad}const ${varName} = (await _pool.query(${sql})).rows;`;
+      // "fetch" operation — query with result assignment
+      const expr = compileRawQueryExpr(node, ctx);
+      if (ctx.lang === 'python') {
+        return `${pad}${sanitizeName(node.variable)} = ${expr}`;
+      }
+      return `${pad}const ${sanitizeName(node.variable)} = ${expr};`;
     }
 
     case NodeType.CONFIGURE_EMAIL: {
@@ -2262,55 +2326,8 @@ function _compileNodeInner(node, ctx) {
     }
 
     // Phase 45: External API calls
-    case NodeType.HTTP_REQUEST: {
-      const urlCode = exprToCode(node.url, ctx);
-      const config = node.config || {};
-      const hasBody = config.body;
-      const method = config.method || (hasBody ? 'POST' : 'GET');
-      // Build headers object
-      let headersCode = '';
-      if (config.headers && config.headers.length > 0) {
-        const headerEntries = config.headers.map(h =>
-          `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`
-        ).join(', ');
-        headersCode = `{ ${headerEntries} }`;
-      }
-      // Build timeout
-      const timeoutMs = config.timeout
-        ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
-        : 30000;
-      // Build body
-      const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
-
-      if (ctx.lang === 'python') {
-        let code = `${pad}import httpx\n`;
-        const headersPy = headersCode ? headersCode.replace(/:/g, ':').replace(/'/g, '"') : 'None';
-        const bodyPy = hasBody ? `json=${exprToCode(config.body, ctx)}` : '';
-        code += `${pad}async with httpx.AsyncClient(timeout=${timeoutMs / 1000}) as _client:\n`;
-        code += `${pad}    _resp = await _client.${method.toLowerCase()}(${urlCode}${headersCode ? ', headers=' + headersPy : ''}${bodyPy ? ', ' + bodyPy : ''})\n`;
-        code += `${pad}    _resp.raise_for_status()\n`;
-        code += `${pad}    _api_result = _resp.json()`;
-        return code;
-      }
-
-      // JS: wrap in async IIFE for result assignment
-      let code = `${pad}await (async () => {\n`;
-      code += `${pad}  const _ctrl = new AbortController();\n`;
-      code += `${pad}  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
-      code += `${pad}  try {\n`;
-      code += `${pad}    const _res = await fetch(${urlCode}, {\n`;
-      code += `${pad}      method: '${method}',\n`;
-      if (headersCode) code += `${pad}      headers: ${headersCode},\n`;
-      if (hasBody) code += `${pad}      body: ${bodyCode},\n`;
-      code += `${pad}      signal: _ctrl.signal\n`;
-      code += `${pad}    });\n`;
-      code += `${pad}    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
-      code += `${pad}    const _ct = _res.headers.get("content-type") || "";\n`;
-      code += `${pad}    return _ct.includes("json") ? _res.json() : _res.text();\n`;
-      code += `${pad}  } finally { clearTimeout(_timer); }\n`;
-      code += `${pad})()`;
-      return code;
-    }
+    case NodeType.HTTP_REQUEST:
+      return compileHttpRequest(node, ctx, pad);
 
     // Phase 45: Service presets (Stripe, SendGrid, Twilio)
     case NodeType.SERVICE_CALL: {
@@ -3064,39 +3081,8 @@ export function exprToCode(expr, ctx) {
       return `JSON.stringify(${src})`;
     }
 
-    case NodeType.HTTP_REQUEST: {
-      // call api 'url' as expression (e.g., result = call api 'https://...')
-      const urlCode = exprToCode(expr.url, ctx);
-      const config = expr.config || {};
-      const hasBody = config.body;
-      const method = config.method || (hasBody ? 'POST' : 'GET');
-      const timeoutMs = config.timeout
-        ? (config.timeout.unit === 'minutes' ? config.timeout.value * 60000 : config.timeout.value * 1000)
-        : 30000;
-      let headersCode = '';
-      if (config.headers && config.headers.length > 0) {
-        const entries = config.headers.map(h => `${JSON.stringify(h.name)}: ${exprToCode(h.value, ctx)}`).join(', ');
-        headersCode = `{ ${entries} }`;
-      }
-      const bodyCode = hasBody ? `JSON.stringify(${exprToCode(config.body, ctx)})` : 'undefined';
-      let code = `await (async () => {\n`;
-      code += `  const _ctrl = new AbortController();\n`;
-      code += `  const _timer = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n`;
-      code += `  try {\n`;
-      code += `    const _res = await fetch(${urlCode}, { method: '${method}'`;
-      if (headersCode) code += `, headers: ${headersCode}`;
-      if (hasBody) code += `, body: ${bodyCode}`;
-      code += `, signal: _ctrl.signal });\n`;
-      code += `    if (!_res.ok) { const _e = new Error(\`External API error: \${_res.status} \${_res.statusText}\`); _e._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; throw _e; }\n`;
-      code += `    const _ct = _res.headers.get("content-type") || "";\n`;
-      code += `    return _ct.includes("json") ? _res.json() : _res.text();\n`;
-      code += `  } catch (_err) {\n`;
-      code += `    if (!_err._clearCtx) { _err._clearCtx = { service: 'external', line: ${expr.line || 0}, file: '${expr._sourceFile || 'main.clear'}', source: 'call api' }; }\n`;
-      code += `    throw _err;\n`;
-      code += `  } finally { clearTimeout(_timer); }\n`;
-      code += `})()`;
-      return code;
-    }
+    case NodeType.HTTP_REQUEST:
+      return compileHttpRequest(expr, ctx, '');
 
     case NodeType.ASK_AI: {
       const prompt = exprToCode(expr.prompt, ctx);
@@ -3117,18 +3103,8 @@ export function exprToCode(expr, ctx) {
       return `await ${fnName}(${arg})`;
     }
 
-    case NodeType.RAW_QUERY: {
-      const sql = JSON.stringify(expr.sql);
-      const params = expr.params ? exprToCode(expr.params, ctx) : null;
-      if (ctx.lang === 'python') {
-        return params
-          ? `await (await _get_db()).fetch(${sql}, ${params})`
-          : `await (await _get_db()).fetch(${sql})`;
-      }
-      return params
-        ? `(await _pool.query(${sql}, [${params}])).rows`
-        : `(await _pool.query(${sql})).rows`;
-    }
+    case NodeType.RAW_QUERY:
+      return compileRawQueryExpr(expr, ctx);
 
     case NodeType.COUNT_BY: {
       const list = sanitizeName(expr.list);
