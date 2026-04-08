@@ -160,6 +160,12 @@ export const NodeType = Object.freeze({
   AGENT: 'agent',
   ASK_AI: 'ask_ai',
   RUN_AGENT: 'run_agent',
+  PARALLEL_AGENTS: 'parallel_agents',
+  PIPELINE: 'pipeline',
+  RUN_PIPELINE: 'run_pipeline',
+  HUMAN_CONFIRM: 'human_confirm',
+  MOCK_AI: 'mock_ai',
+  SKILL: 'skill',
 
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
@@ -1767,7 +1773,100 @@ const RAW_DISPATCH = new Map([
     ctx.body.push({ type: NodeType.RESTORE, variable: varName, key, line: ctx.line });
     return ctx.i + 1;
   }],
+  // Agent Tier 7 features
+  ['pipeline', (ctx) => {
+    if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
+    const result = parsePipeline(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+  }],
+  ['skill', (ctx) => {
+    if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
+    const result = parseSkill(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+  }],
+  ['ask', (ctx) => {
+    // Human-in-the-loop: ask user to confirm 'message'
+    if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'user' &&
+        (ctx.tokens[2].canonical === 'to_connector' || ctx.tokens[2].value === 'to') &&
+        ctx.tokens[3].value === 'confirm') {
+      let messageExpr = null;
+      if (ctx.tokens.length > 4) {
+        const expr = parseExpression(ctx.tokens, 4, ctx.line);
+        if (!expr.error) messageExpr = expr.node;
+      }
+      if (!messageExpr) {
+        ctx.errors.push({ line: ctx.line, message: "ask user to confirm needs a message. Example: ask user to confirm 'Proceed?'" });
+        return ctx.i + 1;
+      }
+      ctx.body.push({ type: NodeType.HUMAN_CONFIRM, message: messageExpr, line: ctx.line });
+      return ctx.i + 1;
+    }
+    return undefined; // fall through to ask_for or other handlers
+  }],
+  ['mock', (ctx) => {
+    // Mock AI response in test blocks: mock claude responding: + indented fields
+    if (ctx.tokens.length >= 3 &&
+        (ctx.tokens[1].value === 'claude' || ctx.tokens[1].value === 'ai') &&
+        ctx.tokens[2].value === 'responding') {
+      const mockIndent = ctx.lines[ctx.i].indent;
+      const fields = [];
+      let j = ctx.i + 1;
+      while (j < ctx.lines.length && ctx.lines[j].indent > mockIndent) {
+        const fieldTokens = ctx.lines[j].tokens;
+        if (fieldTokens.length >= 3) {
+          const fieldName = fieldTokens[0].value;
+          if (fieldTokens[1].canonical === 'is' || fieldTokens[1].type === TokenType.ASSIGN) {
+            const valToken = fieldTokens[2];
+            let value;
+            if (valToken.type === TokenType.STRING) value = valToken.value;
+            else if (valToken.type === TokenType.NUMBER) value = valToken.value;
+            else if (valToken.value === 'true') value = true;
+            else if (valToken.value === 'false') value = false;
+            else value = valToken.value;
+            fields.push({ name: fieldName, value });
+          }
+        }
+        j++;
+      }
+      ctx.body.push({ type: NodeType.MOCK_AI, fields, line: ctx.line });
+      return j;
+    }
+    return undefined;
+  }],
 ]);
+
+// Canonical dispatch for do_parallel
+CANONICAL_DISPATCH.set('do_parallel', (ctx) => {
+  const assignments = [];
+  const parallelIndent = ctx.lines[ctx.i].indent;
+  let j = ctx.i + 1;
+  while (j < ctx.lines.length && ctx.lines[j].indent > parallelIndent) {
+    const childTokens = ctx.lines[j].tokens;
+    if (childTokens.length > 0) {
+      const childLine = childTokens[0].line;
+      if (childTokens.length >= 2 && childTokens[1].type === TokenType.ASSIGN) {
+        const varName = childTokens[0].value;
+        const rhsResult = parseAssignment(childTokens, childLine);
+        if (rhsResult.error) {
+          ctx.errors.push({ line: childLine, message: rhsResult.error });
+        } else if (rhsResult.expression) {
+          assignments.push({ name: varName, expression: rhsResult.expression, line: childLine });
+        }
+      } else {
+        ctx.errors.push({ line: childLine, message: "Each line inside 'do these at the same time' must be an assignment. Example: result = call 'Agent' with data" });
+      }
+    }
+    j++;
+  }
+  if (assignments.length === 0) {
+    ctx.errors.push({ line: ctx.line, message: "'do these at the same time' needs indented agent calls." });
+    return ctx.i + 1;
+  }
+  ctx.body.push({ type: NodeType.PARALLEL_AGENTS, assignments, line: ctx.line });
+  return j;
+});
 
 function parseBlock(lines, startIdx, parentIndent, errors) {
   const body = [];
@@ -2283,17 +2382,214 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
   }
   const receivingVar = tokens[pos].value;
 
-  // Parse indented body
-  const result = parseBlock(lines, startIdx + 1, blockIndent, errors);
+  // Scan upcoming indented lines for agent directives BEFORE calling parseBlock.
+  // Directives are metadata on the agent node, not executable code.
+  // Must be consumed here because some keywords collide with synonyms:
+  //   - `use` in `can use:` → synonym for module import
+  //   - `log` → synonym for `show`
+  const agentIndent = lines[startIdx].indent;
+  const directives = {
+    trackDecisions: false,
+    tools: null,
+    restrictions: null,
+    skills: null,
+    rememberConversation: false,
+    rememberPreferences: false,
+    knowsAbout: null,
+    model: null,
+  };
 
-  if (result.body.length === 0) {
+  function categorizePolicy(policyText) {
+    let category = 'compile', limit = null;
+    if (policyText.startsWith('delete')) category = 'delete';
+    else if (policyText.startsWith('modify')) category = 'modify';
+    else if (policyText.startsWith('access')) category = 'access';
+    else if (policyText.includes('call more than')) { category = 'max_calls'; const m = policyText.match(/call more than (\d+)/); if (m) limit = parseInt(m[1], 10); }
+    else if (policyText.includes('spend more than')) { category = 'max_tokens'; const m = policyText.match(/spend more than (\d+)/); if (m) limit = parseInt(m[1], 10); }
+    return { text: policyText, category, limit };
+  }
+
+  let bodyStartIdx = startIdx + 1;
+  while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
+    const dTokens = lines[bodyStartIdx].tokens;
+    if (dTokens.length === 0) { bodyStartIdx++; continue; }
+
+    // track agent decisions / log agent decisions
+    if ((dTokens[0].value === 'track' || dTokens[0].value === 'log') && dTokens.length >= 3 &&
+        dTokens[1].value === 'agent' && dTokens[2].value === 'decisions') {
+      directives.trackDecisions = true; bodyStartIdx++; continue;
+    }
+    // using 'model-name'
+    if ((dTokens[0].value === 'using' || dTokens[0].canonical === 'with') &&
+        dTokens.length >= 2 && dTokens[1].type === TokenType.STRING) {
+      directives.model = dTokens[1].value; bodyStartIdx++; continue;
+    }
+    // can use: fn1, fn2 (single-line) OR can use: (block with indented inline tools)
+    if ((dTokens[0].value === 'can' || dTokens[0].canonical === 'can') &&
+        dTokens.length >= 2 && (dTokens[1].canonical === 'use' || dTokens[1].value === 'use')) {
+      directives.tools = [];
+      if (dTokens.length > 2) {
+        for (let t = 2; t < dTokens.length; t++) {
+          if (dTokens[t].type === TokenType.COMMA) continue;
+          if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) {
+            directives.tools.push({ type: 'ref', name: dTokens[t].value });
+          }
+        }
+        bodyStartIdx++;
+      } else {
+        bodyStartIdx++;
+        const toolIndent = lines[bodyStartIdx - 1].indent;
+        while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > toolIndent) {
+          const tTokens = lines[bodyStartIdx].tokens;
+          if (tTokens.length > 0) directives.tools.push({ type: 'inline', description: tTokens.map(t => t.value).join(' ') });
+          bodyStartIdx++;
+        }
+      }
+      continue;
+    }
+    // must not: single-line OR block
+    if (dTokens[0].value === 'must' && dTokens.length >= 2 && dTokens[1].value === 'not') {
+      directives.restrictions = [];
+      if (dTokens.length > 2) {
+        let startPos = 2;
+        if (dTokens[startPos] && (dTokens[startPos].type === 'colon' || dTokens[startPos].value === ':')) startPos++;
+        let cur = [];
+        for (let t = startPos; t < dTokens.length; t++) {
+          if (dTokens[t].type === TokenType.COMMA) { if (cur.length) { directives.restrictions.push(categorizePolicy(cur.join(' '))); cur = []; } }
+          else cur.push(dTokens[t].value);
+        }
+        if (cur.length) directives.restrictions.push(categorizePolicy(cur.join(' ')));
+        bodyStartIdx++;
+      } else {
+        bodyStartIdx++;
+        const mnIndent = lines[bodyStartIdx - 1].indent;
+        while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > mnIndent) {
+          const pTokens = lines[bodyStartIdx].tokens;
+          if (pTokens.length > 0) directives.restrictions.push(categorizePolicy(pTokens.map(t => t.value).join(' ')));
+          bodyStartIdx++;
+        }
+      }
+      continue;
+    }
+    // remember conversation context
+    if (dTokens[0].value === 'remember' && dTokens.length >= 3 &&
+        dTokens[1].value === 'conversation' && dTokens[2].value === 'context') {
+      directives.rememberConversation = true; bodyStartIdx++; continue;
+    }
+    // remember user's preferences
+    if (dTokens[0].value === 'remember' && dTokens.length >= 2 &&
+        (dTokens[1].value === "user's" || (dTokens[1].value === 'user' && dTokens.length >= 3))) {
+      directives.rememberPreferences = true; bodyStartIdx++; continue;
+    }
+    // knows about: Table1, Table2
+    if (dTokens[0].value === 'knows' && dTokens.length >= 3 && dTokens[1].value === 'about') {
+      directives.knowsAbout = [];
+      for (let t = 2; t < dTokens.length; t++) {
+        if (dTokens[t].type === TokenType.COMMA) continue;
+        if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) directives.knowsAbout.push(dTokens[t].value);
+      }
+      bodyStartIdx++; continue;
+    }
+    // uses skills: 'Skill1', 'Skill2'
+    if (dTokens[0].value === 'uses' && dTokens.length >= 3 && dTokens[1].value === 'skills') {
+      directives.skills = [];
+      for (let t = 2; t < dTokens.length; t++) {
+        if (dTokens[t].type === TokenType.COMMA) continue;
+        if (dTokens[t].type === TokenType.STRING) directives.skills.push(dTokens[t].value);
+        else if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) {
+          let sn = dTokens[t].value;
+          while (t + 1 < dTokens.length && dTokens[t + 1].type !== TokenType.COMMA && dTokens[t + 1].type === TokenType.IDENTIFIER) { t++; sn += ' ' + dTokens[t].value; }
+          directives.skills.push(sn);
+        }
+      }
+      bodyStartIdx++; continue;
+    }
+    break; // first non-directive line = start of body
+  }
+
+  const result = parseBlock(lines, bodyStartIdx, blockIndent, errors);
+
+  if (result.body.length === 0 && !directives.trackDecisions) {
     errors.push({ line, message: `agent '${name}' is empty — add code inside. Example:\n  agent '${name}' receiving ${receivingVar}:\n    send back ${receivingVar}` });
   }
 
   return {
-    node: { type: NodeType.AGENT, name, receivingVar, body: result.body, line },
+    node: { type: NodeType.AGENT, name, receivingVar, body: result.body, line, ...directives },
     endIdx: result.endIdx,
   };
+}
+
+// Pipeline definition: pipeline 'Name' with var: + indented steps
+function parsePipeline(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  let pos = 1;
+  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+    errors.push({ line, message: "pipeline needs a quoted name. Example: pipeline 'Process Data' with input:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const name = tokens[pos].value; pos++;
+  if (pos >= tokens.length || (tokens[pos].value !== 'with' && tokens[pos].canonical !== 'with')) {
+    errors.push({ line, message: `pipeline '${name}' needs 'with' and an input variable.` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  pos++;
+  if (pos >= tokens.length || (tokens[pos].type !== TokenType.IDENTIFIER && tokens[pos].type !== TokenType.KEYWORD)) {
+    errors.push({ line, message: `pipeline '${name}' needs a variable name after 'with'.` });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+  const inputVar = tokens[pos].value;
+  const pipelineIndent = lines[startIdx].indent;
+  const steps = [];
+  let j = startIdx + 1;
+  while (j < lines.length && lines[j].indent > pipelineIndent) {
+    const sTokens = lines[j].tokens;
+    const sLine = sTokens.length > 0 ? sTokens[0].line : j + 1;
+    if (sTokens.length === 1 && sTokens[0].type === TokenType.STRING) {
+      steps.push({ agentName: sTokens[0].value, line: sLine });
+    } else if (sTokens.length >= 2 && sTokens[sTokens.length - 1].type === TokenType.STRING) {
+      steps.push({ agentName: sTokens[sTokens.length - 1].value, line: sLine });
+    } else if (sTokens.length > 0) {
+      errors.push({ line: sLine, message: "Each pipeline step needs an agent name in quotes. Example: 'Classifier'" });
+    }
+    j++;
+  }
+  if (steps.length === 0) errors.push({ line, message: `pipeline '${name}' is empty.` });
+  return { node: { type: NodeType.PIPELINE, name, inputVar, steps, line }, endIdx: j };
+}
+
+// Skill definition: skill 'Name': + indented can: and instructions:
+function parseSkill(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  const name = tokens[1].value;
+  const skillIndent = lines[startIdx].indent;
+  const tools = [];
+  const instructions = [];
+  let j = startIdx + 1;
+  while (j < lines.length && lines[j].indent > skillIndent) {
+    const sTokens = lines[j].tokens;
+    if (sTokens.length === 0) { j++; continue; }
+    if ((sTokens[0].value === 'can' || sTokens[0].canonical === 'can') && sTokens.length >= 2) {
+      for (let t = 1; t < sTokens.length; t++) {
+        if (sTokens[t].type === TokenType.COMMA) continue;
+        if (sTokens[t].type === TokenType.IDENTIFIER || sTokens[t].type === TokenType.KEYWORD) tools.push(sTokens[t].value);
+      }
+      j++; continue;
+    }
+    if (sTokens[0].value === 'instructions') {
+      j++;
+      const instrIndent = lines[j - 1].indent;
+      while (j < lines.length && lines[j].indent > instrIndent) {
+        const iTokens = lines[j].tokens;
+        if (iTokens.length > 0) instructions.push(iTokens.map(t => t.value).join(' '));
+        j++;
+      }
+      continue;
+    }
+    j++;
+  }
+  return { node: { type: NodeType.SKILL, name, tools, instructions, line }, endIdx: j };
 }
 
 // Block-form if: "if condition:" + indented body, optional "otherwise:" block
@@ -5037,10 +5333,18 @@ function parseAssignment(tokens, line) {
   if (pos < tokens.length && tokens[pos].value === 'ask' &&
       pos + 1 < tokens.length && (tokens[pos + 1].value === 'ai' || tokens[pos + 1].value === 'claude')) {
     pos += 2; // skip 'ask ai' / 'ask claude'
-    if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
-      return { error: "ask ai needs a quoted prompt. Example: answer = ask ai 'Summarize this' with data" };
+    if (pos >= tokens.length) {
+      return { error: "ask ai needs a prompt. Example: answer = ask ai 'Summarize this' with data" };
     }
-    const prompt = literalString(tokens[pos].value, line);
+    // Prompt can be a quoted string OR a variable reference (for text blocks)
+    let prompt;
+    if (tokens[pos].type === TokenType.STRING) {
+      prompt = literalString(tokens[pos].value, line);
+    } else if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
+      prompt = { type: NodeType.VARIABLE_REF, name: tokens[pos].value, line };
+    } else {
+      return { error: "ask ai needs a prompt (quoted string or variable). Example: answer = ask ai 'Summarize this' with data" };
+    }
     pos++;
     let context = null;
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
@@ -5068,6 +5372,22 @@ function parseAssignment(tokens, line) {
       hasSchema = true;
     }
     return { name, expression: { type: NodeType.ASK_AI, prompt, context, model, line }, hasSchema };
+  }
+
+  // Check for "call pipeline 'Name' with data" (must come BEFORE call 'Agent')
+  if (pos < tokens.length && tokens[pos].value === 'call' &&
+      pos + 1 < tokens.length && tokens[pos + 1].value === 'pipeline' &&
+      pos + 2 < tokens.length && tokens[pos + 2].type === TokenType.STRING) {
+    pos += 2; // skip 'call pipeline'
+    const pipelineName = tokens[pos].value; pos++;
+    let argument = null;
+    if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
+      pos++;
+      const expr = parseExpression(tokens, pos, line);
+      if (expr.error) return { error: expr.error };
+      argument = expr.node;
+    }
+    return { name, expression: { type: NodeType.RUN_PIPELINE, pipelineName, argument, line } };
   }
 
   // Check for "call 'Agent Name' with data" on the right side of assignment
