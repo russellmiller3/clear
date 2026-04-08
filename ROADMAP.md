@@ -1924,7 +1924,7 @@ The LangChain equivalent is 500-800 lines across 6+ files.
 
 | Tier | Phases | Days | What It Unlocks |
 |------|--------|------|----------------|
-| Done (1-46b, 75-90) | 62 phases | 5 days | Full-stack CRUD apps, error translator, silent bug guards, first-class AI agents, workflow engine |
+| Done (1-46b, 75-90, 91-93) | 65 phases | 6 days | Full-stack CRUD, agents, workflows, streaming, policies, first-class errors |
 | Tier 1: Production | 47-50 | 2 days | Real deployment, persistent DB, real-time |
 | Tier 2: Complex Frontend | 51-55 | 3 days | Multi-page SPAs, components, animations |
 | Tier 3: Data & Integration | 56-60 | 3 days | Postgres, file upload, email, cron, streaming |
@@ -1933,7 +1933,54 @@ The LangChain equivalent is 500-800 lines across 6+ files.
 | Tier 6: Intelligence | 71-74 | 2.5 days | Auto-admin, smart defaults, AI recovery |
 | Tier 7: AI Agents | 75-84 | 7 days | Tool use, RAG, memory, pipelines, guardrails, testing |
 | ~~Tier 8: Agent Workflows~~ | 85-90 | DONE | Stateful graphs, durable execution, cycles, routing |
-| **TOTAL** | **90 phases** | **~31 days** | **General-purpose app + agent language** |
+| **TOTAL** | **93+ phases** | **~32 days** | **General-purpose app + agent language + safety policies** |
+
+---
+
+### Session 11 Additions (Phases 91-93, SHIPPED)
+
+#### Phase 91: Python Streaming + Python Workflows (DONE)
+- `_ask_ai()` and `_ask_ai_stream()` utility functions in Python backend
+- Python text agents stream by default via async generator with `yield`
+- `compileWorkflow()` full Python path: dict state, if/else, for/range, asyncio.gather
+- `import httpx` for async HTTP, `import asyncio` auto-added for parallel branches
+
+#### Phase 92: First-Class Errors + Canonical Syntax (DONE)
+- `validateCallTargets`: compile error on undefined agent/pipeline/workflow calls with hints
+- `validateMemberAccessTypes`: warning on field access on number/boolean
+- Orphan endpoint URLs promoted from warning → compile error
+- Runtime: `Number("")` coerces to `null` not `0` (silent data corruption fix)
+- Canonical syntax: `receives` (was `receiving`), `returning JSON text:` (was `returning:`)
+- Both old and new forms accepted — no breaking changes
+
+#### Phase 93: Enact Guard Policies — 30+ Runtime Safety Guards (DONE)
+New `POLICY` node type. App-level `policy:` block compiles to runtime middleware.
+
+```clear
+policy:
+  block schema changes            # Database safety (block_ddl)
+  block deletes without filter    # (dont_delete_without_where)
+  block updates without filter    # (dont_update_without_where)
+  block all deletes               # (dont_delete_row)
+  protect tables: AuditLog        # (protect_tables)
+  block prompt injection          # Prompt injection detection
+  require role 'admin'            # Access control (ABAC)
+  block reads on CreditCards      # (dont_read_sensitive_tables)
+  code freeze active              # Operations (ENACT_FREEZE=1)
+  no mass emails                  # Email safety
+  block direct messages           # Slack safety
+  block file deletion             # Filesystem safety
+  block file types: '.env', '.key'# Block sensitive extensions
+  restrict paths: '/app', '/data' # Confine file operations
+  block push to main              # Git safety
+  max files per commit = 10       # Blast radius cap
+  require branch prefix 'feature/'# Branch naming
+  block duplicate contacts        # CRM safety
+```
+
+All guards compile to JS middleware wrapping `db.insert/update/remove`.
+Python generates `_policy_guards` list. 403 on violation with clear message.
+9 tests. GAN app: secured agent with policies.
 
 ---
 
