@@ -1,0 +1,101 @@
+build for web and javascript backend
+
+# Database
+database is local memory
+create a Workouts table:
+  exercise, required
+  duration (number), required
+  calories (number), default 0
+  intensity, default 'medium'
+  notes
+  created_at, auto
+
+create a Goals table:
+  name, required
+  target (number), required
+  current (number), default 0
+  unit, default 'minutes'
+
+# Backend
+allow server to accept requests from frontend
+log every request
+
+when user calls GET /api/workouts:
+  all_workouts = get all Workouts
+  send back all_workouts
+
+when user calls POST /api/workouts sending workout_data:
+  validate workout_data:
+    exercise is text, required, min 1, max 100
+    duration is number, required
+    calories is number
+    intensity is text
+    notes is text
+  new_workout = save workout_data as new Workout
+  send back new_workout with success message
+
+when user calls DELETE /api/workouts/:id:
+  requires auth
+  delete the Workout with this id
+  send back 'deleted' with success message
+
+when user calls GET /api/goals:
+  all_goals = get all Goals
+  send back all_goals
+
+when user calls POST /api/goals sending goal_data:
+  validate goal_data:
+    name is text, required
+    target is number, required
+    unit is text
+  new_goal = save goal_data as new Goal
+  send back new_goal with success message
+
+# Frontend
+page 'Fitness Tracker' at '/':
+  on page load get workouts from '/api/workouts'
+
+  heading 'Fitness Tracker'
+  subheading 'Log workouts and track your progress'
+
+  section 'Log Workout' with style card:
+    'Exercise' is a text input saved as a exercise
+    'Duration (minutes)' is a number input saved as a duration
+    'Calories Burned' is a number input saved as a calories
+    'Intensity' is a dropdown with ['Light', 'Medium', 'Hard', 'Extreme'] saved as a intensity
+    'Notes' is a text area saved as a notes
+    button 'Log Workout':
+      send exercise, duration, calories, intensity and notes as a new workout to '/api/workouts'
+      get workouts from '/api/workouts'
+      exercise is ''
+      duration is 0
+      calories is 0
+      notes is ''
+
+  section 'Stats':
+    define total_minutes as: sum of workouts
+    define total_calories as: sum of workouts
+    display total_minutes called 'Total Minutes'
+    display total_calories called 'Total Calories'
+    define workout_count as: count of workouts
+    display workout_count called 'Workouts Logged'
+
+  section 'Recent Workouts':
+    display workouts as table showing exercise, duration, calories, intensity with delete
+
+page 'Goals' at '/goals':
+  on page load get goals from '/api/goals'
+
+  heading 'Fitness Goals'
+
+  section 'Set Goal' with style card:
+    'Goal Name' is a text input saved as a goal_name
+    'Target' is a number input saved as a goal_target
+    'Unit' is a dropdown with ['Minutes', 'Calories', 'Workouts', 'Miles'] saved as a goal_unit
+    button 'Add Goal':
+      send goal_name, goal_target and goal_unit as a new goal to '/api/goals'
+      get goals from '/api/goals'
+      goal_name is ''
+
+  section 'My Goals':
+    display goals as table showing name, target, current, unit

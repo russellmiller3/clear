@@ -1,0 +1,100 @@
+build for web and javascript backend
+
+# Database
+database is local memory
+create a Deploys table:
+  app_name, required
+  version, required
+  status, default 'pending'
+  environment, default 'staging'
+  deployed_by
+  created_at, auto
+
+create a Alerts table:
+  message, required
+  severity, default 'info'
+  acknowledged, default false
+  created_at, auto
+
+# Backend
+allow server to accept requests from frontend
+log every request
+
+# Deploy endpoints
+when user calls GET /api/deploys:
+  all_deploys = get all Deploys
+  send back all_deploys
+
+when user calls POST /api/deploys sending deploy_data:
+  validate deploy_data:
+    app_name is text, required, min 1, max 100
+    version is text, required
+    environment is text
+    deployed_by is text
+  new_deploy = save deploy_data as new Deploy
+  send back new_deploy with success message
+
+when user calls PUT /api/deploys/:id sending update_data:
+  requires auth
+  save update_data to Deploys
+  send back update_data with success message
+
+when user calls DELETE /api/deploys/:id:
+  requires auth
+  delete the Deploy with this id
+  send back 'deleted' with success message
+
+# Alert endpoints
+when user calls GET /api/alerts:
+  all_alerts = get all Alerts
+  send back all_alerts
+
+when user calls POST /api/alerts sending alert_data:
+  validate alert_data:
+    message is text, required
+    severity is text
+  new_alert = save alert_data as new Alert
+  send back new_alert with success message
+
+# Webhook: receive deploy notifications from CI/CD
+webhook '/deploy/events' signed with env('DEPLOY_SECRET'):
+  new_alert = save incoming as new Alert
+  send back new_alert
+
+# Background: check deploy health every 5 minutes
+background 'health-check':
+  runs every 5 minutes
+
+# Stream deploy status updates
+stream:
+  all_deploys = get all Deploys
+  send back all_deploys
+
+# Frontend
+page 'Deploy Dashboard' at '/':
+  on page load get deploys from '/api/deploys'
+
+  heading 'Deploy Dashboard'
+  subheading 'Monitor your deployments'
+
+  section 'New Deploy' with style card:
+    'App Name' is a text input saved as a app_name
+    'Version' is a text input saved as a version
+    'Environment' is a dropdown with ['Staging', 'Production', 'Development'] saved as a environment
+    'Deployed By' is a text input saved as a deployed_by
+    button 'Deploy':
+      send app_name, version, environment and deployed_by as a new deploy to '/api/deploys'
+      get deploys from '/api/deploys'
+      app_name is ''
+      version is ''
+
+  section 'Active Deploys':
+    display deploys as table showing app_name, version, status, environment, deployed_by with delete and edit
+
+page 'Alerts' at '/alerts':
+  on page load get alerts from '/api/alerts'
+
+  heading 'Alerts'
+
+  section 'All Alerts':
+    display alerts as table showing message, severity, acknowledged, created_at
