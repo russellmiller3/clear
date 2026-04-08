@@ -6,7 +6,9 @@
 <title>Clear Playground</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-:root {
+
+/* Dark theme (default) */
+:root, [data-theme="dark"] {
   --bg: #0f1117; --bg2: #151821; --bg3: #1c1f2e;
   --bd: rgba(255,255,255,.06); --bd2: rgba(255,255,255,.1);
   --tx: #e2e8f0; --tx2: #a0aec0; --tx3: #5a6578; --tx4: #3a4258;
@@ -18,6 +20,24 @@
   --mono: 'JetBrains Mono', 'Fira Code', monospace;
   --radius: 8px;
   --shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.2);
+  --kw-color: #7aa2f7; --str-color: #9ece6a; --num-color: #ff9e64;
+  --cmt-color: #565f89; --op-color: #89ddff; --var-color: #c0caf5; --type-color: #bb9af7;
+  --iframe-bg: #fff;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --bg: #f8f9fb; --bg2: #eef1f5; --bg3: #e2e7ee;
+  --bd: rgba(0,0,0,.06); --bd2: rgba(0,0,0,.1);
+  --tx: #1a202c; --tx2: #4a5568; --tx3: #a0aec0; --tx4: #cbd5e0;
+  --accent: #4361ee; --accent2: #3a50d9; --accent-glow: rgba(67,97,238,.1);
+  --green: #059669; --green-bg: rgba(5,150,105,.06);
+  --red: #dc2626; --red-bg: rgba(220,38,38,.06);
+  --amber: #d97706; --amber-bg: rgba(217,119,6,.06);
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.05);
+  --kw-color: #2563eb; --str-color: #059669; --num-color: #d97706;
+  --cmt-color: #94a3b8; --op-color: #6366f1; --var-color: #334155; --type-color: #7c3aed;
+  --iframe-bg: #fff;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--tx); font-family: var(--font); font-size: 13px; -webkit-font-smoothing: antialiased; }
@@ -66,7 +86,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .prev-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .prev-tab.active::after { content: ''; position: absolute; bottom: -1px; left: 20%; right: 20%; height: 2px; background: var(--accent); filter: blur(4px); }
 #preview-content { flex: 1; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
-#preview-content iframe { width: 100%; height: 100%; border: none; background: #fff; border-radius: 0; }
+#preview-content iframe { width: 100%; height: 100%; border: none; background: var(--iframe-bg); border-radius: 0; }
 #preview-content pre { padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--tx2); white-space: pre-wrap; }
 #terminal { flex: 1; overflow: auto; padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--tx2); background: var(--bg); scrollbar-width: thin; }
 .term-cmd { color: var(--accent); }
@@ -98,21 +118,41 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #api-key-setup button { background: var(--accent); color: #0f1117; border: none; border-radius: 8px; padding: 8px 20px; cursor: pointer; font-weight: 700; transition: all .15s; }
 #api-key-setup button:hover { background: #8fa8ff; transform: translateY(-1px); }
 
-/* Compile animation */
+/* Compile animation — shimmer bar across toolbar */
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-.status-compiling { animation: pulse .8s ease-in-out infinite; }
+.status-compiling { animation: pulse .6s ease-in-out infinite; }
+@keyframes shimmer { 0% { left: -30%; } 100% { left: 130%; } }
+#compile-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; overflow: hidden; pointer-events: none; }
+#compile-bar.active::after { content: ''; position: absolute; top: 0; width: 30%; height: 100%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: shimmer .8s ease-in-out infinite; }
+
+/* Button ripple */
+.toolbar-btn { position: relative; overflow: hidden; }
+.toolbar-btn::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at var(--ripple-x, 50%) var(--ripple-y, 50%), rgba(255,255,255,.2) 0%, transparent 60%); opacity: 0; transition: opacity .3s; }
+.toolbar-btn:active::after { opacity: 1; transition: opacity 0s; }
+
+/* Theme toggle */
+#theme-toggle { background: none; border: 1px solid var(--bd2); border-radius: 20px; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all .2s; color: var(--tx3); }
+#theme-toggle:hover { border-color: var(--accent); color: var(--accent); transform: rotate(20deg); }
+
+/* Saved toast */
+@keyframes toastIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 8px 20px; font-size: 13px; font-weight: 500; z-index: 1000; animation: toastIn .2s ease, toastOut .3s ease 2s forwards; box-shadow: var(--shadow); }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--tx4); }
+
+/* Smooth transitions for theme switch */
+* { transition: background-color .2s, border-color .2s, color .15s; }
 </style>
 </head>
 <body>
 <div id="app">
   <!-- Toolbar -->
-  <div id="toolbar">
+  <div id="toolbar" style="position:relative;">
     <span style="font-weight:700;color:var(--accent);font-size:15px;letter-spacing:-.3px;">Clear<span style="color:var(--tx3);font-weight:400;font-size:11px;margin-left:4px;">playground</span></span>
     <span class="toolbar-sep"></span>
     <select id="template-picker"><option value="">Load template...</option></select>
@@ -120,7 +160,11 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
     <button class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter">Run</button>
     <button class="toolbar-btn" onclick="doStop()">Stop</button>
+    <span class="toolbar-sep"></span>
+    <button class="toolbar-btn" onclick="doSave()" title="Save to Desktop">Save</button>
+    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
     <span id="status" class="status-ok">Ready</span>
+    <div id="compile-bar"></div>
   </div>
 
   <!-- Editor -->
@@ -212,15 +256,20 @@ const clearLang = StreamLanguage.define({
   },
 });
 
-const clearHighlight = HighlightStyle.define([
-  { tag: tags.keyword, color: '#7aa2f7', fontWeight: '500' },
-  { tag: tags.string, color: '#9ece6a' },
-  { tag: tags.number, color: '#ff9e64' },
-  { tag: tags.comment, color: '#565f89', fontStyle: 'italic' },
-  { tag: tags.operator, color: '#89ddff' },
-  { tag: tags.variableName, color: '#c0caf5' },
-  { tag: tags.typeName, color: '#bb9af7' },
-]);
+// Highlight styles are rebuilt on theme change
+function makeHighlightStyle() {
+  const s = getComputedStyle(document.documentElement);
+  return HighlightStyle.define([
+    { tag: tags.keyword, color: s.getPropertyValue('--kw-color').trim(), fontWeight: '500' },
+    { tag: tags.string, color: s.getPropertyValue('--str-color').trim() },
+    { tag: tags.number, color: s.getPropertyValue('--num-color').trim() },
+    { tag: tags.comment, color: s.getPropertyValue('--cmt-color').trim(), fontStyle: 'italic' },
+    { tag: tags.operator, color: s.getPropertyValue('--op-color').trim() },
+    { tag: tags.variableName, color: s.getPropertyValue('--var-color').trim() },
+    { tag: tags.typeName, color: s.getPropertyValue('--type-color').trim() },
+  ]);
+}
+let clearHighlight = makeHighlightStyle();
 
 // ==========================================================================
 // EDITOR
@@ -560,6 +609,69 @@ function setStatus(type, text) {
 }
 
 function escHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+// ==========================================================================
+// SAVE
+// ==========================================================================
+window.doSave = async function() {
+  const source = editor.state.doc.toString();
+  const templateName = document.getElementById('template-picker').value || 'my-app';
+  try {
+    const r = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, filename: templateName, compiled: lastCompiled }),
+    });
+    const data = await r.json();
+    if (data.saved) {
+      showToast('Saved to ' + data.path);
+    } else {
+      showToast('Save failed: ' + (data.error || 'unknown'));
+    }
+  } catch (err) {
+    showToast('Save failed: ' + err.message);
+  }
+};
+
+// ==========================================================================
+// THEME TOGGLE
+// ==========================================================================
+let currentTheme = localStorage.getItem('clear_theme') || 'dark';
+document.documentElement.setAttribute('data-theme', currentTheme);
+document.getElementById('theme-toggle').textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+
+window.toggleTheme = function() {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  localStorage.setItem('clear_theme', currentTheme);
+  document.getElementById('theme-toggle').textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+};
+
+// ==========================================================================
+// COMPILE BAR ANIMATION
+// ==========================================================================
+function showCompileBar(active) {
+  const bar = document.getElementById('compile-bar');
+  if (active) bar.classList.add('active');
+  else bar.classList.remove('active');
+}
+
+// Override setStatus to include compile bar
+const _origSetStatus = setStatus;
+function setStatus(type, text) {
+  const el = document.getElementById('status');
+  el.className = 'status-' + (type === 'ok' ? 'ok' : type === 'err' ? 'err' : 'compiling');
+  el.textContent = text;
+  showCompileBar(type === 'compiling');
+}
 
 // Boot
 loadTemplates();

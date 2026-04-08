@@ -307,6 +307,77 @@ try {
   }
 
   // =========================================================================
+  // SAVE ENDPOINT
+  // =========================================================================
+  console.log('\n📦 POST /api/save');
+
+  {
+    const { status, data } = await post('/api/save', { source: "show 'hello'", filename: 'test-save' });
+    assert(status === 200, 'saves Clear source');
+    assert(data.saved === true, 'returns saved: true');
+    assert(data.path.includes('test-save'), 'returns path with filename');
+  }
+
+  {
+    const { status, data } = await post('/api/save', {
+      source: "build for web\npage 'App' at '/':\n  heading 'Test'",
+      filename: 'test-save-compiled',
+      compiled: { html: '<html>test</html>', css: 'body{}' },
+    });
+    assert(status === 200, 'saves with compiled output');
+    assert(data.saved === true, 'saves compiled files');
+  }
+
+  {
+    const { status, data } = await post('/api/save', {});
+    assert(status === 400, 'rejects save with no source');
+  }
+
+  // =========================================================================
+  // COMPILE ERROR PATHS
+  // =========================================================================
+  console.log('\n📦 Compile error scenarios');
+
+  {
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nresult = call 'NonExistent' with data" });
+    assert(data.errors.length > 0, 'catches undefined agent call');
+    assert(data.errors.some(e => e.message.includes('not defined')), 'error says agent not defined');
+  }
+
+  {
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nwhen user calls DELETE /api/items/:id:\n  remove from Items with this id\n  send back 'deleted'" });
+    assert(data.errors.length > 0, 'catches DELETE without auth');
+    assert(data.errors.some(e => e.message.includes('auth')), 'error mentions auth');
+  }
+
+  {
+    const { data } = await post('/api/compile', { source: "build for web and javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\npage 'App' at '/':\n  button 'Go':\n    send data to '/api/missing'" });
+    assert(data.errors.length > 0, 'catches orphan endpoint URL');
+    assert(data.errors.some(e => e.message && e.message.includes('no backend endpoint')), 'error says no endpoint');
+  }
+
+  {
+    const { data } = await post('/api/compile', { source: "build for javascript backend\nprice = 9.99\nname = price's label" });
+    assert(data.warnings.length > 0, 'warns on field access on number');
+  }
+
+  // =========================================================================
+  // EXEC — CLI INTEGRATION
+  // =========================================================================
+  console.log('\n📦 CLI integration via exec');
+
+  {
+    const { data } = await post('/api/exec', { command: "node cli/clear.js build apps/todo-fullstack/main.clear --stdout" });
+    assert(data.exitCode === 0, 'clear build succeeds');
+    assert(data.stdout.length > 100, 'build produces output');
+  }
+
+  {
+    const { data } = await post('/api/exec', { command: "node cli/clear.js lint apps/content-pipeline/main.clear --json" });
+    assert(data.exitCode === 0, 'clear lint succeeds');
+  }
+
+  // =========================================================================
   // SYNTAX ENDPOINT
   // =========================================================================
   console.log('\n📦 GET /api/syntax/:topic');

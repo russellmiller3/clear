@@ -192,6 +192,53 @@ app.post('/api/stop', (req, res) => {
 });
 
 // =============================================================================
+// SAVE — write Clear source and compiled output to desktop or cwd
+// =============================================================================
+app.post('/api/save', (req, res) => {
+  const { source, filename, compiled } = req.body;
+  if (!source) return res.status(400).json({ error: 'Missing source' });
+
+  // Determine save directory: desktop if available, else cwd
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const desktop = join(home, 'Desktop');
+  const saveDir = existsSync(desktop) ? desktop : process.cwd();
+  const name = (filename || 'app').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const clearDir = join(saveDir, name);
+  const buildDir = join(clearDir, 'build');
+
+  try {
+    mkdirSync(buildDir, { recursive: true });
+
+    // Save Clear source
+    writeFileSync(join(clearDir, 'main.clear'), source);
+
+    // Save compiled output
+    if (compiled) {
+      if (compiled.html) writeFileSync(join(buildDir, 'index.html'), compiled.html);
+      if (compiled.serverJS) writeFileSync(join(buildDir, 'server.js'), compiled.serverJS);
+      if (compiled.javascript && !compiled.serverJS) writeFileSync(join(buildDir, 'main.js'), compiled.javascript);
+      if (compiled.python) writeFileSync(join(buildDir, 'server.py'), compiled.python);
+      if (compiled.css) writeFileSync(join(buildDir, 'style.css'), compiled.css);
+
+      // Copy runtime files for backend apps
+      if (compiled.serverJS) {
+        const rtDir = join(buildDir, 'clear-runtime');
+        mkdirSync(rtDir, { recursive: true });
+        const runtimeDir = join(ROOT_DIR, 'runtime');
+        for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
+          if (existsSync(join(runtimeDir, f))) copyFileSync(join(runtimeDir, f), join(rtDir, f));
+        }
+        writeFileSync(join(buildDir, 'package.json'), JSON.stringify({ name, private: true, dependencies: { express: "^5.0.0" } }, null, 2));
+      }
+    }
+
+    res.json({ saved: true, path: clearDir });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =============================================================================
 // FETCH — proxy requests to running app
 // =============================================================================
 app.post('/api/fetch', async (req, res) => {
