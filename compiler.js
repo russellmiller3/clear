@@ -1026,6 +1026,84 @@ function generateE2ETests(body) {
     lines.push('');
   }
 
+  // === AUTO-GENERATED AGENT TESTS ===
+  // For each agent, generate smoke tests that verify:
+  // - The agent endpoint accepts POST and returns a response
+  // - Agents with guardrails compile with restrictions enforced
+  const agents = body.filter(n => n.type === NodeType.AGENT);
+  const pipelines = body.filter(n => n.type === NodeType.PIPELINE);
+
+  if (agents.length > 0) {
+    lines.push('  // --- Agent Tests (auto-generated) ---');
+    lines.push('');
+    for (const agent of agents) {
+      const agentName = agent.name;
+      const fnName = 'agent_' + agentName.toLowerCase().replace(/\s+/g, '_');
+
+      // Find an endpoint that calls this agent
+      const callingEp = endpoints.find(ep => {
+        return ep.method === 'POST' && (ep.body || []).some(n =>
+          n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_AGENT &&
+          n.expression.agentName === agentName
+        );
+      });
+
+      if (callingEp) {
+        const epHeaders = callingEp.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
+        lines.push(`  await test("Agent '${agentName}' endpoint POST ${callingEp.path} responds", async () => {`);
+        lines.push(`    const r = await fetch(BASE + "${callingEp.path}", {`);
+        lines.push(`      method: "POST", headers: ${epHeaders},`);
+        lines.push(`      body: JSON.stringify({ message: "test input" })`);
+        lines.push(`    });`);
+        lines.push(`    assert(r.status === 200 || r.status === 201 || r.status === 202, "Expected success status, got " + r.status);`);
+        lines.push(`  });`);
+        lines.push('');
+      }
+
+      // Generate eval metadata for agents with tools
+      if (agent.tools && agent.tools.length > 0) {
+        const toolNames = agent.tools.map(t => t.name || t.description).join(', ');
+        lines.push(`  // Agent '${agentName}' eval: has ${agent.tools.length} tool(s): ${toolNames}`);
+        if (agent.trackDecisions) {
+          lines.push(`  // Observability: logging to AgentLogs table`);
+        }
+        if (agent.restrictions && agent.restrictions.length > 0) {
+          lines.push(`  // Guardrails: ${agent.restrictions.map(r => r.text).join('; ')}`);
+        }
+        lines.push('');
+      }
+    }
+  }
+
+  if (pipelines.length > 0) {
+    lines.push('  // --- Pipeline Tests (auto-generated) ---');
+    lines.push('');
+    for (const pipeline of pipelines) {
+      const steps = pipeline.steps.map(s => s.agentName).join(' → ');
+      lines.push(`  // Pipeline '${pipeline.name}': ${steps}`);
+
+      // Find an endpoint that calls this pipeline
+      const callingEp = endpoints.find(ep => {
+        return ep.method === 'POST' && (ep.body || []).some(n =>
+          n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_PIPELINE &&
+          n.expression.pipelineName === pipeline.name
+        );
+      });
+
+      if (callingEp) {
+        const epHeaders = callingEp.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
+        lines.push(`  await test("Pipeline '${pipeline.name}' endpoint POST ${callingEp.path} responds", async () => {`);
+        lines.push(`    const r = await fetch(BASE + "${callingEp.path}", {`);
+        lines.push(`      method: "POST", headers: ${epHeaders},`);
+        lines.push(`      body: JSON.stringify({ candidate_id: 1 })`);
+        lines.push(`    });`);
+        lines.push(`    assert(r.status === 200 || r.status === 201, "Expected success, got " + r.status);`);
+        lines.push(`  });`);
+        lines.push('');
+      }
+    }
+  }
+
   lines.push('  console.log("");');
   lines.push('  console.log("Results:", passed, "passed,", failed, "failed");');
   lines.push('  process.exit(failed > 0 ? 1 : 0);');

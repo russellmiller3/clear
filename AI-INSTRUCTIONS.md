@@ -940,6 +940,175 @@ set json_text to ask ai 'Return JSON with score and reasoning' with lead
 The compiler tells the AI to respond with JSON matching the schema.
 The runtime parses the JSON response into an object. No manual parsing needed.
 
+### Agent Guards and Directives
+
+Every production agent should have guards. Place directives at the top of the
+agent body, before any executable code:
+
+```clear
+agent 'Customer Support' receiving message:
+  # --- DIRECTIVES (order doesn't matter, but group them at top) ---
+  can use: look_up_orders, check_status, send_email
+  must not: delete records, modify prices, access admin tables
+  knows about: Products, FAQ
+  remember conversation context
+  track agent decisions
+  using 'claude-sonnet-4-6'
+
+  # --- BODY (executable code below directives) ---
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
+**Always add these guards for production agents:**
+
+1. **`must not:`** — compile-time safety. The compiler rejects code that violates these policies:
+   ```clear
+   must not: delete records, access Users table
+   # OR block form for complex policies:
+   must not:
+     delete any records
+     modify Products prices
+     call more than 5 tools per request
+     spend more than 10000 tokens
+   ```
+
+2. **`track agent decisions`** — observability. Logs every AI call with timing:
+   ```clear
+   track agent decisions
+   # Requires: AgentLogs table with agent_name, action, latency_ms, created_at
+   ```
+
+3. **`using 'model'`** — explicit model selection, no surprises:
+   ```clear
+   using 'claude-sonnet-4-6'
+   ```
+
+### Use Skills for Reusable Tool Bundles
+
+Don't repeat `can use:` lists across agents. Define skills once, attach everywhere:
+
+```clear
+skill 'Order Management':
+  can: look_up_orders, update_order, cancel_order
+  instructions:
+    Always verify customer identity before changes.
+    Include order number in all responses.
+
+skill 'Email Support':
+  can: send_email, check_inbox
+  instructions:
+    Use professional tone. Include order number in subject.
+
+# Both agents share the same tools + instructions
+agent 'Support' receiving message:
+  uses skills: 'Order Management', 'Email Support'
+  must not: delete records
+  response = ask claude 'Help' with message
+  send back response
+
+agent 'Returns' receiving request:
+  uses skills: 'Order Management'
+  must not: modify prices
+  response = ask claude 'Process return' with request
+  send back response
+```
+
+### Use Text Blocks for Long System Prompts
+
+Never cram instructions into a single-line string. Use text blocks with interpolation:
+
+```clear
+agent 'Support' receiving message:
+  today = format date current time as 'YYYY-MM-DD'
+
+  system_prompt is text block:
+    You are a customer support agent for Acme Corp.
+    Today is {today}. Be friendly but professional.
+    Always look up the customer's order before answering.
+    Never reveal internal pricing or margins.
+    If you cannot resolve the issue, say so honestly.
+
+  response = ask claude system_prompt with message
+  send back response
+```
+
+### Always Write Tests for Agents
+
+Every agent should have at least one test with mocked AI responses:
+
+```clear
+test 'support agent handles order question':
+  mock claude responding:
+    answer is 'Your order #42 is shipped, arriving tomorrow.'
+    action is 'respond'
+  result = call 'Support' with 'Where is my order?'
+  expect result's action is 'respond'
+
+test 'support agent escalates billing issues':
+  mock claude responding:
+    answer is 'I need to transfer you to billing.'
+    action is 'escalate'
+  result = call 'Support' with 'I was double charged!'
+  expect result's action is 'escalate'
+```
+
+Multiple mocks are consumed in order (first AI call gets first mock, second gets second).
+
+### Agent Tables (Required Infrastructure)
+
+Production agents need these tables. Create them before the agent definition:
+
+```clear
+# For conversation memory:
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+
+# For long-term memory:
+create a Memories table:
+  user_id, required
+  fact, required
+  created_at (timestamp), auto
+
+# For observability:
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+
+# For human-in-the-loop:
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+  decided_by
+  decided_at (timestamp)
+```
+
+### Pipeline vs Parallel
+
+Use **pipelines** when each step depends on the previous (sequential):
+```clear
+pipeline 'Hiring' with candidate_id:
+  'Resume Screener'
+  'Technical Assessor'
+  'Culture Fit'
+
+result = call pipeline 'Hiring' with candidate_id
+```
+
+Use **parallel** when steps are independent (fan-out):
+```clear
+do these at the same time:
+  sentiment = call 'Sentiment' with text
+  topic = call 'Topic' with text
+  lang = call 'Language' with text
+```
+
 ## CLI Workflow (How Agents Build Apps)
 
 When building a Clear app, use the CLI for fast feedback loops:
