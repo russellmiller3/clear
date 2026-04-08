@@ -26,6 +26,7 @@ Review every changed file and update these docs as needed:
 - **`AI-INSTRUCTIONS.md`** — Add new coding conventions, update examples
 - **`HANDOFF.md`** — Rewrite: what was done, what's next, key decisions, known issues, resume prompt
 - **`CLAUDE.md`** — Verify new rules are present, update test count if tests were added
+- **`.claude/skills/write-clear/SKILL.md`** — Update the write-clear skill if new syntax was added, canonical forms changed, or new features need examples
 
 ### Step 1: Rebuild playground bundle
 

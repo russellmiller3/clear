@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goals</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-2xl mx-auto p-8 flex flex-col gap-6">
+<div id="page_Fitness_Tracker">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Fitness Tracker</h1>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Log workouts and track your progress</h2>
+    <div class="bg-base-100 rounded-box p-6 flex flex-col gap-3">
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Exercise</legend>
+      <input id="input_exercise" class="input input-bordered w-full" type="text" placeholder="Exercise">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Duration (minutes)</legend>
+      <input id="input_duration" class="input input-bordered w-full" type="number" step="any" placeholder="Duration (minutes)">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Calories Burned</legend>
+      <input id="input_calories" class="input input-bordered w-full" type="number" step="any" placeholder="Calories Burned">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Intensity</legend>
+      <input id="input_intensity" class="input input-bordered w-full" type="select" placeholder="Intensity">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Notes</legend>
+      <textarea id="input_notes" class="textarea textarea-bordered w-full" placeholder="Notes" rows="6"></textarea>
+    </fieldset>
+    <button class="btn btn-primary w-full" id="btn_Log_Workout">Log Workout</button>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Stats</h2>
+    <div class="bg-base-200 rounded-box p-6 flex flex-col gap-1" id="output_Total_Minutes">
+      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/50">Total Minutes</p>
+      <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="output_Total_Minutes_value"></p>
+    </div>
+    <div class="bg-base-200 rounded-box p-6 flex flex-col gap-1" id="output_Total_Calories">
+      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/50">Total Calories</p>
+      <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="output_Total_Calories_value"></p>
+    </div>
+    <div class="bg-base-200 rounded-box p-6 flex flex-col gap-1" id="output_Workouts_Logged">
+      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/50">Workouts Logged</p>
+      <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="output_Workouts_Logged_value"></p>
+    </div>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Recent Workouts</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Workouts">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Workouts</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Workouts_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+</div>
+<div id="page_Goals" style="display:none">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Fitness Goals</h1>
+    <div class="bg-base-100 rounded-box p-6 flex flex-col gap-3">
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Goal Name</legend>
+      <input id="input_goal_name" class="input input-bordered w-full" type="text" placeholder="Goal Name">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Target</legend>
+      <input id="input_goal_target" class="input input-bordered w-full" type="number" step="any" placeholder="Target">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Unit</legend>
+      <input id="input_unit" class="input input-bordered w-full" type="select" placeholder="Unit">
+    </fieldset>
+    <button class="btn btn-primary w-full" id="btn_Add_Goal">Add Goal</button>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">My Goals</h2>
+    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Goals">
+      <div class="px-6 py-4 border-b border-base-300">
+        <h3 class="text-sm font-semibold text-base-content">Goals</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm w-full" id="output_Goals_table">
+          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+</div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Workouts: exercise*, duration*, calories, intensity, notes, created_at (line 5)
+   Goals: name*, target*, current, unit (line 13)
+
+ ENDPOINTS:
+   GET /api/workouts (line 23)
+   POST /api/workouts (line 27)
+   DELETE /api/workouts/:id [auth] (line 37)
+   GET /api/goals (line 42)
+   POST /api/goals (line 46)
+
+ PAGES:
+   'Fitness Tracker' at / (line 55)
+   'Goals' at /goals (line 86)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+// --- Runtime ---
+function _clear_sum(arr) { return Array.isArray(arr) ? arr.reduce((a, b) => a + b, 0) : 0; }
+function _clear_len(val) { if (val == null) return 0; if (typeof val === "string" || Array.isArray(val)) return val.length; if (typeof val === "object") return Object.keys(val).length; return 0; }
+function _toast(msg, type) {
+  let c = document.getElementById('_toast_container');
+  if (!c) {
+    c = document.createElement('div'); c.id = '_toast_container';
+    c.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;';
+    document.body.appendChild(c);
+  }
+  const icons = {
+    error: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  const cls = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+  const icon = icons[type] || icons.info;
+  const el = document.createElement('div');
+  el.className = 'alert ' + cls + ' shadow-lg text-sm';
+  el.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;min-width:280px;max-width:400px;border-radius:0.75rem;opacity:0;transform:translateX(1rem);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;';
+  el.innerHTML = icon + '<span style="flex:1">' + msg + '</span><div style="position:absolute;bottom:0;left:0;height:3px;background:currentColor;opacity:0.3;animation:_toast_timer 4s linear forwards;width:100%"></div>';
+  if (!document.getElementById('_toast_style')) {
+    const s = document.createElement('style'); s.id = '_toast_style';
+    s.textContent = '@keyframes _toast_timer { from { width: 100% } to { width: 0% } }';
+    document.head.appendChild(s);
+  }
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+document.title = "Fitness Tracker";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  exercise: "",
+  duration: 0,
+  calories: 0,
+  intensity: "",
+  notes: "",
+  goal_name: "",
+  goal_target: 0,
+  unit: "",
+  workouts: null,
+  goals: null
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  let total_minutes = _clear_sum(_state.workouts);
+  let total_calories = _clear_sum(_state.workouts);
+  let workout_count = _clear_len(_state.workouts);
+  document.getElementById('output_Total_Minutes_value').textContent = String(total_minutes);
+  document.getElementById('output_Total_Calories_value').textContent = String(total_calories);
+  document.getElementById('output_Workouts_Logged_value').textContent = String(workout_count);
+  {
+    const _tableEl = document.getElementById('output_Workouts_table');
+    const _data = _state.workouts;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["exercise","duration","calories","intensity"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('') + '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th>';
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '<td class="text-right">' + '<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>' + '</td>' + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  {
+    const _tableEl = document.getElementById('output_Goals_table');
+    const _data = _state.goals;
+    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["name","target","current","unit"];
+      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+    } else if (_tableEl) {
+      _tableEl.querySelector('thead tr').innerHTML = '';
+      _tableEl.querySelector('tbody').innerHTML = '';
+    }
+  }
+  document.getElementById('input_exercise').value = _state.exercise;
+  document.getElementById('input_duration').value = _state.duration;
+  document.getElementById('input_calories').value = _state.calories;
+  document.getElementById('input_intensity').value = _state.intensity;
+  document.getElementById('input_notes').value = _state.notes;
+  document.getElementById('input_goal_name').value = _state.goal_name;
+  document.getElementById('input_goal_target').value = _state.goal_target;
+  document.getElementById('input_unit').value = _state.unit;
+}
+
+// --- Input listeners ---
+document.getElementById('input_exercise').addEventListener('input', function(e) {
+  _state.exercise = e.target.value;
+  _recompute();
+});
+document.getElementById('input_duration').addEventListener('input', function(e) {
+  _state.duration = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_calories').addEventListener('input', function(e) {
+  _state.calories = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_intensity').addEventListener('input', function(e) {
+  _state.intensity = e.target.value;
+  _recompute();
+});
+document.getElementById('input_notes').addEventListener('input', function(e) {
+  _state.notes = e.target.value;
+  _recompute();
+});
+document.getElementById('input_goal_name').addEventListener('input', function(e) {
+  _state.goal_name = e.target.value;
+  _recompute();
+});
+document.getElementById('input_goal_target').addEventListener('input', function(e) {
+  _state.goal_target = Number(e.target.value) || 0;
+  _recompute();
+});
+document.getElementById('input_unit').addEventListener('input', function(e) {
+  _state.unit = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_Log_Workout').addEventListener('click', async function() {
+    if (_state.exercise === '' || _state.exercise == null) { _toast('exercise is required', 'error'); return; }
+    if (_state.duration === '' || _state.duration == null) { _toast('duration is required', 'error'); return; }
+    if (_state.calories === '' || _state.calories == null) { _toast('calories is required', 'error'); return; }
+    if (_state.intensity === '' || _state.intensity == null) { _toast('intensity is required', 'error'); return; }
+    if (_state.notes === '' || _state.notes == null) { _toast('notes is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Log_Workout');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/workouts", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exercise: _state.exercise, duration: _state.duration, calories: _state.calories, intensity: _state.intensity, notes: _state.notes }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/workouts] [clear:68]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.workouts = await fetch("/api/workouts").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/workouts] [clear:69]', e.message); return _state.workouts; });
+    _state.exercise = "";
+    _state.duration = 0;
+    _state.calories = 0;
+    _state.notes = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+document.getElementById('btn_Add_Goal').addEventListener('click', async function() {
+    if (_state.goal_name === '' || _state.goal_name == null) { _toast('goal name is required', 'error'); return; }
+    if (_state.goal_target === '' || _state.goal_target == null) { _toast('goal target is required', 'error'); return; }
+    if (_state.goal_unit === '' || _state.goal_unit == null) { _toast('goal unit is required', 'error'); return; }
+  const _btn = document.getElementById('btn_Add_Goal');
+  const _btnHTML = _btn.innerHTML;
+  _btn.disabled = true;
+  _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    { const _r = await fetch("/api/goals", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal_name: _state.goal_name, goal_target: _state.goal_target, goal_unit: _state.goal_unit }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/goals] [clear:96]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.goals = await fetch("/api/goals").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/goals] [clear:97]', e.message); return _state.goals; });
+    _state.goal_name = "";
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+  _btn.disabled = false;
+  _btn.innerHTML = _btnHTML;
+  _recompute();
+});
+
+// --- Table action handlers for workouts ---
+document.getElementById('output_Workouts_table').addEventListener('click', async function(e) {
+  const deleteBtn = e.target.closest('[data-delete-id]');
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.deleteId;
+    await fetch("/api/workouts/" + id, { method: 'DELETE' }).catch(e => console.error(e));
+    _state.workouts = await fetch("/api/workouts").then(r => r.json()).catch(e => { console.error(e); return _state.workouts; });
+    _recompute();
+    return;
+  }
+});
+
+// --- On Page Load ---
+(async () => {
+  _state.workouts = await fetch("/api/workouts").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/workouts] [clear:56]', e.message); return _state.workouts; });
+  _state.goals = await fetch("/api/goals").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/goals] [clear:87]', e.message); return _state.goals; });
+  _recompute();
+})();
+
+// --- Hash Router ---
+const _routes = {
+  '/': 'Fitness_Tracker',
+  '/goals': 'Goals'
+};
+function _router() {
+  const hash = location.hash.slice(1) || '/';
+  for (const [route, pageId] of Object.entries(_routes)) {
+    const el = document.getElementById('page_' + pageId);
+    if (el) el.style.display = (hash === route) ? 'block' : 'none';
+  }
+}
+window.addEventListener('hashchange', _router);
+_router();
+  </script>
+</body>
+</html>
