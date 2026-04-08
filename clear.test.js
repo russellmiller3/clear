@@ -9661,10 +9661,10 @@ describe('Agent primitives - validator', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('errors when ask ai prompt is not a string', () => {
+  it('allows variable as ask ai prompt (for text blocks)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai d\n  send back answer");
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0].message).toContain('quoted prompt');
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAI(d');
   });
 
   it('errors when agent has no name', () => {
@@ -16423,6 +16423,213 @@ agent 'Plain' receiving data:
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).not.toContain('_ragContext');
     expect(result.javascript).not.toContain('_ragStr');
+  });
+});
+
+// =============================================================================
+// SKILLS (Phase 75b) + LONG PROMPTS + GAN AGENT APP
+// =============================================================================
+
+describe('Skills - parser', () => {
+  it('parses skill definition with tools and instructions', () => {
+    const src = `build for javascript backend
+define function look_up_orders(email):
+  return email
+define function cancel_order(order_id):
+  return order_id
+skill 'Order Management':
+  can: look_up_orders, cancel_order
+  instructions:
+    Always verify customer identity.
+    Never cancel shipped orders.
+agent 'Bot' receiving msg:
+  uses skills: 'Order Management'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const skill = result.ast.body.find(n => n.type === 'skill');
+    expect(skill).toBeDefined();
+    expect(skill.name).toBe('Order Management');
+    expect(skill.tools).toEqual(['look_up_orders', 'cancel_order']);
+    expect(skill.instructions).toHaveLength(2);
+    expect(skill.instructions[0]).toContain('verify customer');
+  });
+
+  it('agent with uses skills directive', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+skill 'Basic':
+  can: helper
+  instructions:
+    Be helpful.
+agent 'Bot' receiving msg:
+  uses skills: 'Basic'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.skills).toEqual(['Basic']);
+  });
+});
+
+describe('Skills - compiler', () => {
+  it('merges skill tools into agent', () => {
+    const src = `build for javascript backend
+define function look_up_orders(email):
+  return email
+define function send_email(msg):
+  return msg
+skill 'Support':
+  can: look_up_orders, send_email
+  instructions:
+    Be professional.
+agent 'Bot' receiving msg:
+  uses skills: 'Support'
+  response = ask claude 'Help customer' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAIWithTools');
+    expect(result.javascript).toContain('look_up_orders');
+    expect(result.javascript).toContain('send_email');
+  });
+
+  it('skill instructions prepended to prompt', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+skill 'Polite':
+  can: helper
+  instructions:
+    Always say please.
+agent 'Bot' receiving msg:
+  uses skills: 'Polite'
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Always say please');
+  });
+});
+
+describe('Long prompts - text blocks in agents', () => {
+  it('text block as ask ai prompt compiles', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  prompt is text block:
+    You are a helpful assistant.
+    Be concise and clear.
+  response = ask claude prompt with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('You are a helpful assistant');
+    expect(result.javascript).toContain('_askAI(prompt');
+  });
+
+  it('text block with interpolation compiles', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving message:
+  today = format date current time as 'YYYY-MM-DD'
+  prompt is text block:
+    Today is {today}.
+    Help the user.
+  response = ask claude prompt with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('today');
+  });
+});
+
+describe('GAN: Complete customer support agent', () => {
+  it('full agent with all features compiles', () => {
+    const src = `build for javascript backend
+database is local memory
+
+create a Orders table:
+  email, required
+  product, required
+  status, default 'pending'
+  amount (number)
+
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+
+create a Memories table:
+  user_id, required
+  fact, required
+
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+
+create a Approvals table:
+  action, required
+  details, required
+  status, default 'pending'
+
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+
+define function check_status(order_id):
+  order = look up Order where id is order_id
+  return order
+
+define function process_refund(order_id):
+  order = look up Order where id is order_id
+  return order
+
+skill 'Order Support':
+  can: look_up_orders, check_status
+  instructions:
+    Always look up the customer order before answering.
+    Include order number in responses.
+
+agent 'Customer Support' receiving message:
+  uses skills: 'Order Support'
+  track agent decisions
+  must not:
+    delete any records
+
+  system_prompt is text block:
+    You are a customer support agent for Acme Corp.
+    Be friendly but professional.
+    If the customer wants a refund over 100 dollars ask for confirmation.
+
+  response = ask claude system_prompt with message
+  send back response
+
+when user calls POST /api/chat sending data:
+  result = call 'Customer Support' with data
+  send back result
+
+test 'handles order lookup':
+  mock claude responding:
+    answer is 'Your order 123 is being shipped'
+    action is 'respond'
+  result = call 'Customer Support' with 'Where is my order?'
+  expect result's action is 'respond'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Verify all features are present in compiled output
+    expect(result.javascript).toContain('_askAIWithTools');     // tool use
+    expect(result.javascript).toContain('_agentLog');           // observability
+    expect(result.javascript).toContain('AgentLogs');           // logging table
+    expect(result.javascript).toContain('look_up_orders');      // tools
+    expect(result.javascript).toContain('_tools');              // tool definitions
+    expect(result.javascript).toContain('customer support');    // agent name in logs
+    expect(result.javascript).toContain('You are a customer');  // long prompt
+    expect(result.javascript).toContain('_origAskAI');          // mock in test
   });
 });
 

@@ -165,6 +165,7 @@ export const NodeType = Object.freeze({
   RUN_PIPELINE: 'run_pipeline',
   HUMAN_CONFIRM: 'human_confirm',
   MOCK_AI: 'mock_ai',
+  SKILL: 'skill',
 
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
@@ -1251,6 +1252,14 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       // Agent definition: agent 'Name' receiving varName:
       if (firstToken.value === 'agent' && tokens.length >= 2) {
         const result = parseAgent(lines, i, indent, errors);
+        if (result.node) body.push(result.node);
+        i = result.endIdx;
+        continue;
+      }
+
+      // Skill definition: skill 'Name':
+      if (firstToken.value === 'skill' && tokens.length >= 2 && tokens[1].type === TokenType.STRING) {
+        const result = parseSkill(lines, i, indent, errors);
         if (result.node) body.push(result.node);
         i = result.endIdx;
         continue;
@@ -2532,6 +2541,7 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     trackDecisions: false,
     tools: null,        // [{type:'ref', name:'fn1'}, ...] or [{type:'inline', description:'...'}]
     restrictions: null, // [{text:'delete any records', category:'delete'}, ...]
+    skills: null,       // ['Order Management', 'Email Support']
     rememberConversation: false,
     rememberPreferences: false,
     knowsAbout: null,   // ['Documents', 'Products', 'FAQ']
@@ -2642,6 +2652,30 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
       continue;
     }
 
+    // uses skills: Skill1, Skill2
+    if (dTokens[0].value === 'uses' && dTokens.length >= 3 &&
+        dTokens[1].value === 'skills') {
+      directives.skills = [];
+      for (let t = 2; t < dTokens.length; t++) {
+        if (dTokens[t].type === TokenType.COMMA) continue;
+        if (dTokens[t].type === TokenType.STRING) {
+          directives.skills.push(dTokens[t].value);
+        } else if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) {
+          // Support unquoted skill names (multi-word will be separate tokens)
+          // Collect until next comma or end
+          let skillName = dTokens[t].value;
+          while (t + 1 < dTokens.length && dTokens[t + 1].type !== TokenType.COMMA &&
+                 dTokens[t + 1].type === TokenType.IDENTIFIER) {
+            t++;
+            skillName += ' ' + dTokens[t].value;
+          }
+          directives.skills.push(skillName);
+        }
+      }
+      bodyStartIdx++;
+      continue;
+    }
+
     // Not a directive — stop scanning, rest is body code
     break;
   }
@@ -2664,6 +2698,58 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
 
 // Pipeline definition: pipeline 'Name' with var: + indented steps
 // Each step: varname with 'Agent Name'
+// Skill definition: skill 'Name': + indented can: and instructions:
+function parseSkill(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  const name = tokens[1].value;
+
+  const skillIndent = lines[startIdx].indent;
+  const tools = [];
+  const instructions = [];
+  let j = startIdx + 1;
+
+  while (j < lines.length && lines[j].indent > skillIndent) {
+    const sTokens = lines[j].tokens;
+    if (sTokens.length === 0) { j++; continue; }
+
+    // can: fn1, fn2, fn3
+    if ((sTokens[0].value === 'can' || sTokens[0].canonical === 'can') && sTokens.length >= 2) {
+      // Skip 'can' (and optional colon was already stripped by tokenizer)
+      for (let t = 1; t < sTokens.length; t++) {
+        if (sTokens[t].type === TokenType.COMMA) continue;
+        if (sTokens[t].type === TokenType.IDENTIFIER || sTokens[t].type === TokenType.KEYWORD) {
+          tools.push(sTokens[t].value);
+        }
+      }
+      j++;
+      continue;
+    }
+
+    // instructions: + indented text lines
+    if (sTokens[0].value === 'instructions') {
+      j++;
+      const instrIndent = lines[j - 1].indent;
+      while (j < lines.length && lines[j].indent > instrIndent) {
+        const instrTokens = lines[j].tokens;
+        if (instrTokens.length > 0) {
+          // Reconstruct the raw text from tokens
+          instructions.push(instrTokens.map(t => t.value).join(' '));
+        }
+        j++;
+      }
+      continue;
+    }
+
+    j++;
+  }
+
+  return {
+    node: { type: NodeType.SKILL, name, tools, instructions, line },
+    endIdx: j,
+  };
+}
+
 function parsePipeline(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
@@ -5467,10 +5553,18 @@ function parseAssignment(tokens, line) {
   if (pos < tokens.length && tokens[pos].value === 'ask' &&
       pos + 1 < tokens.length && (tokens[pos + 1].value === 'ai' || tokens[pos + 1].value === 'claude')) {
     pos += 2; // skip 'ask ai' / 'ask claude'
-    if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
-      return { error: "ask ai needs a quoted prompt. Example: answer = ask ai 'Summarize this' with data" };
+    if (pos >= tokens.length) {
+      return { error: "ask ai needs a prompt. Example: answer = ask ai 'Summarize this' with data" };
     }
-    const prompt = literalString(tokens[pos].value, line);
+    // Prompt can be a quoted string OR a variable reference (for text blocks)
+    let prompt;
+    if (tokens[pos].type === TokenType.STRING) {
+      prompt = literalString(tokens[pos].value, line);
+    } else if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
+      prompt = { type: NodeType.VARIABLE_REF, name: tokens[pos].value, line };
+    } else {
+      return { error: "ask ai needs a prompt (quoted string or variable). Example: answer = ask ai 'Summarize this' with data" };
+    }
     pos++;
     let context = null;
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {

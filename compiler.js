@@ -1599,7 +1599,7 @@ function compileRespond(node, ctx, pad) {
 function compileAgent(node, ctx, pad) {
   const fnName = 'agent_' + sanitizeName(node.name.toLowerCase().replace(/\s+/g, '_'));
   const agentDeclared = new Set();
-  const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 1, declared: agentDeclared, insideAgent: true });
+  let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 1, declared: agentDeclared, insideAgent: true });
 
   // Scheduled agent: runs on interval, no input parameter
   if (node.schedule) {
@@ -1618,50 +1618,48 @@ function compileAgent(node, ctx, pad) {
   const param = node.receivingVar ? sanitizeName(node.receivingVar) : '';
   const innerPad = pad + '  ';
 
-  // Agent observability: track agent decisions
-  // Wraps _askAI calls with timing + logging to AgentLogs table
-  if (node.trackDecisions) {
-    const agentNameStr = JSON.stringify(node.name);
-    if (ctx.lang === 'python') {
-      let code = `${pad}async def ${fnName}(${param}):\n`;
-      code += `${innerPad}import time as _time\n`;
-      code += `${innerPad}async def _agent_log(action, _input, fn):\n`;
-      code += `${innerPad}    _start = _time.time()\n`;
-      code += `${innerPad}    _result = await fn()\n`;
-      code += `${innerPad}    _ms = int((_time.time() - _start) * 1000)\n`;
-      code += `${innerPad}    await db.insert("AgentLogs", {"agent_name": ${agentNameStr}, "action": action, "input": str(_input)[:500], "output": str(_result)[:500], "latency_ms": _ms})\n`;
-      code += `${innerPad}    return _result\n`;
-      // Replace _askAI calls in body with wrapped versions
-      const wrappedBody = bodyCode.replace(
-        /await _ask_ai\(([^)]+)\)/g,
-        `await _agent_log("ask_ai", ${param}, lambda: _ask_ai($1))`
-      );
-      code += wrappedBody;
-      return code;
+  // === COMPOSABLE AGENT FEATURES ===
+  // All features modify bodyCode and/or preamble, then the final code is assembled at the end.
+  // Order matters: skills merge tools → tools replace _askAI → tracking wraps _askAI calls
+  let preamble = ''; // Code inserted at top of agent function body
+
+  // 1. Skills: merge skill tools + instructions into agent (mutates node.tools + bodyCode)
+  if (node.skills && node.skills.length > 0) {
+    const astBody = ctx._astBody || [];
+    let skillInstructions = '';
+    for (const skillName of node.skills) {
+      const skillNode = astBody.find(n => n.type === NodeType.SKILL && n.name === skillName);
+      if (!skillNode) continue;
+      if (skillNode.tools && skillNode.tools.length > 0) {
+        if (!node.tools) node.tools = [];
+        for (const toolName of skillNode.tools) {
+          if (!node.tools.some(t => t.type === 'ref' && t.name === toolName)) {
+            node.tools.push({ type: 'ref', name: toolName });
+          }
+        }
+      }
+      if (skillNode.instructions && skillNode.instructions.length > 0) {
+        skillInstructions += skillNode.instructions.join('\\n') + '\\n';
+      }
     }
-    let code = `${pad}async function ${fnName}(${param}) {\n`;
-    code += `${innerPad}const _agentLog = async (action, _input, fn) => {\n`;
-    code += `${innerPad}  const _start = Date.now();\n`;
-    code += `${innerPad}  const _result = await fn();\n`;
-    code += `${innerPad}  const _ms = Date.now() - _start;\n`;
-    code += `${innerPad}  try { await db.insert('AgentLogs', { agent_name: ${agentNameStr}, action, input: JSON.stringify(_input).slice(0, 500), output: JSON.stringify(_result).slice(0, 500), latency_ms: _ms }); } catch(e) { console.warn('[clear:agent-log]', e.message); }\n`;
-    code += `${innerPad}  return _result;\n`;
-    code += `${innerPad}};\n`;
-    // Replace _askAI calls in body with wrapped versions
-    const wrappedBody = bodyCode.replace(
-      /await _askAI\(([^)]*)\)/g,
-      `await _agentLog("ask_ai", ${param}, () => _askAI($1))`
-    );
-    code += wrappedBody + '\n';
-    code += `${pad}}`;
-    return code;
+    if (skillInstructions) {
+      const safeInstr = skillInstructions.replace(/"/g, '\\"');
+      // Handle both string literal prompts and variable prompts
+      bodyCode = bodyCode.replace(
+        /await _askAI\(("([^"]*)")/g,
+        (m, fullMatch, prompt) => `await _askAI("${safeInstr}\\n${prompt}"`
+      );
+      bodyCode = bodyCode.replace(
+        /await _askAI\(([a-zA-Z_]\w*),/g,
+        (m, varName) => `await _askAI("${safeInstr}\\n" + ${varName},`
+      );
+    }
   }
 
-  // Tool use: can use: fn1, fn2 — generate _tools array + _toolFns map + use _askAIWithTools
+  // 2. Tool use: can use: fn1, fn2 — add _tools/_toolFns preamble, replace _askAI with _askAIWithTools
   if (node.tools && node.tools.length > 0) {
     const refTools = node.tools.filter(t => t.type === 'ref');
     if (refTools.length > 0) {
-      // Look up function definitions in the AST to build tool schemas
       const astBody = ctx._astBody || [];
       const toolDefs = [];
       const toolFnNames = [];
@@ -1682,31 +1680,46 @@ function compileAgent(node, ctx, pad) {
       }
       const toolsJson = JSON.stringify(toolDefs);
       const toolFnsObj = toolFnNames.map(n => `${n}`).join(', ');
-
-      if (ctx.lang === 'python') {
-        let code = `${pad}async def ${fnName}(${param}):\n`;
-        code += `${innerPad}_tools = ${toolsJson}\n`;
-        code += `${innerPad}_tool_fns = {${toolFnNames.map(n => `"${n}": ${n}`).join(', ')}}\n`;
-        // Replace _askAI with _askAIWithTools in body
-        const wrappedBody = bodyCode.replace(
-          /await _ask_ai\(([^)]+)\)/g,
-          'await _ask_ai_with_tools($1, _tools, _tool_fns)'
-        );
-        code += wrappedBody;
-        return code;
-      }
-
-      let code = `${pad}async function ${fnName}(${param}) {\n`;
-      code += `${innerPad}const _tools = ${toolsJson};\n`;
-      code += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
-      // Replace _askAI calls with _askAIWithTools
-      const wrappedBody = bodyCode.replace(
+      preamble += `${innerPad}const _tools = ${toolsJson};\n`;
+      preamble += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
+      // Replace _askAI calls with _askAIWithTools in bodyCode
+      bodyCode = bodyCode.replace(
         /await _askAI\(([^)]*)\)/g,
         'await _askAIWithTools($1, _tools, _toolFns)'
       );
-      code += wrappedBody + '\n';
-      code += `${pad}}`;
-      return code;
+    }
+  }
+
+  // 3. Observability: track agent decisions — wrap _askAI/_askAIWithTools calls with logging
+  if (node.trackDecisions) {
+    const agentNameStr = JSON.stringify(node.name);
+    if (ctx.lang === 'python') {
+      preamble += `${innerPad}import time as _time\n`;
+      preamble += `${innerPad}async def _agent_log(action, _input, fn):\n`;
+      preamble += `${innerPad}    _start = _time.time()\n`;
+      preamble += `${innerPad}    _result = await fn()\n`;
+      preamble += `${innerPad}    _ms = int((_time.time() - _start) * 1000)\n`;
+      preamble += `${innerPad}    await db.insert("AgentLogs", {"agent_name": ${agentNameStr}, "action": action, "input": str(_input)[:500], "output": str(_result)[:500], "latency_ms": _ms})\n`;
+      preamble += `${innerPad}    return _result\n`;
+      bodyCode = bodyCode.replace(
+        /await _ask_ai\(([^)]+)\)/g,
+        `await _agent_log("ask_ai", ${param}, lambda: _ask_ai($1))`
+      );
+    } else {
+      preamble += `${innerPad}const _agentLog = async (action, _input, fn) => {\n`;
+      preamble += `${innerPad}  const _start = Date.now();\n`;
+      preamble += `${innerPad}  const _result = await fn();\n`;
+      preamble += `${innerPad}  const _ms = Date.now() - _start;\n`;
+      preamble += `${innerPad}  try { await db.insert('AgentLogs', { agent_name: ${agentNameStr}, action, input: JSON.stringify(_input).slice(0, 500), output: JSON.stringify(_result).slice(0, 500), latency_ms: _ms }); } catch(e) { console.warn('[clear:agent-log]', e.message); }\n`;
+      preamble += `${innerPad}  return _result;\n`;
+      preamble += `${innerPad}};\n`;
+    }
+    // Wrap _askAI and _askAIWithTools calls with logging
+    if (ctx.lang !== 'python') {
+      bodyCode = bodyCode.replace(
+        /await (_askAI(?:WithTools)?)\(([^)]*)\)/g,
+        (m, fn, args) => `await _agentLog("ask_ai", ${param}, () => ${fn}(${args}))`
+    );
     }
   }
 
@@ -1799,6 +1812,7 @@ function compileAgent(node, ctx, pad) {
       return code;
     }
     let code = `${pad}async function ${fnName}(${param}) {\n`;
+    code += preamble;
     code += `${innerPad}// RAG: search knowledge base by keywords\n`;
     code += `${innerPad}const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);\n`;
     code += `${innerPad}const _ragContext = [];\n`;
@@ -1809,10 +1823,14 @@ function compileAgent(node, ctx, pad) {
     code += `${innerPad}_ragContext.sort((a, b) => b.score - a.score);\n`;
     code += `${innerPad}const _ragTop = _ragContext.slice(0, 5);\n`;
     code += `${innerPad}const _ragStr = _ragTop.length ? '\\n\\nRelevant context:\\n' + _ragTop.map(r => JSON.stringify(r.data)).join('\\n') : '';\n`;
-    // Inject context into _askAI calls
-    const wrappedBody = bodyCode.replace(
-      /await _askAI\("([^"]*)",/g,
-      (m, prompt) => `await _askAI("${prompt}" + _ragStr,`
+    // Inject RAG context into _askAI calls (handles both string literal and variable prompts)
+    let wrappedBody = bodyCode.replace(
+      /await (_askAI(?:WithTools)?)\("([^"]*)",/g,
+      (m, fn, prompt) => `await ${fn}("${prompt}" + _ragStr,`
+    );
+    wrappedBody = wrappedBody.replace(
+      /await (_askAI(?:WithTools)?)\(([a-zA-Z_]\w+),/g,
+      (m, fn, varName) => `await ${fn}(${varName} + _ragStr,`
     );
     code += wrappedBody + '\n';
     code += `${pad}}`;
@@ -1820,9 +1838,9 @@ function compileAgent(node, ctx, pad) {
   }
 
   if (ctx.lang === 'python') {
-    return `${pad}async def ${fnName}(${param}):\n${bodyCode}`;
+    return `${pad}async def ${fnName}(${param}):\n${preamble}${bodyCode}`;
   }
-  return `${pad}async function ${fnName}(${param}) {\n${bodyCode}\n${pad}}`;
+  return `${pad}async function ${fnName}(${param}) {\n${preamble}${bodyCode}\n${pad}}`;
 }
 
 function compileValidate(node, ctx, pad) {
@@ -2231,6 +2249,10 @@ function _compileNodeInner(node, ctx) {
 
     case NodeType.MOCK_AI:
       // Consumed by TEST_DEF compilation — emits nothing standalone
+      return null;
+
+    case NodeType.SKILL:
+      // Skills compile to nothing — consumed by agents that use them
       return null;
 
     case NodeType.HUMAN_CONFIRM: {
