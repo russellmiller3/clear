@@ -153,6 +153,14 @@ html, body { font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100%;
   pointer-events: none;
   box-shadow: 0 0 8px var(--green), 0 0 20px rgba(30,106,138,0.2);
 }
+.compile-line-scan {
+  position: absolute; left: 0; right: 0; height: 21px; z-index: 3;
+  background: linear-gradient(90deg, rgba(30,106,138,0.12), rgba(30,106,138,0.04));
+  border-left: 2px solid var(--green);
+  pointer-events: none;
+  transition: top 0.06s ease-out, opacity 0.2s;
+  box-shadow: 0 0 10px rgba(30,106,138,0.06);
+}
 @keyframes pulse-badge { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 .compiling-pulse { animation: pulse-badge 0.3s ease-in-out 2; }
 </style>
@@ -722,6 +730,8 @@ Object.keys(EXAMPLES).forEach(name => {
 
 // ─── Compile ───────────────────────────────────────────────
 let _isManualCompile = false;
+let _streamTimer = null;
+let _streamScanEl = null;
 
 function doCompile(manual) {
   _isManualCompile = !!manual;
@@ -729,11 +739,17 @@ function doCompile(manual) {
   statusBadge.className = 'status-warn compiling-pulse'; statusBadge.querySelector('.ok-dot').style.background = 'var(--amber)';
   statusText.textContent = 'Compiling\u2026';
 
-  // Add scan line to editor
-  const scanEl = document.createElement('div');
-  scanEl.className = 'compile-scan';
-  document.getElementById('ed-body').appendChild(scanEl);
-  scanEl.addEventListener('animationend', () => scanEl.remove());
+  // Cancel any running stream animation
+  if (_streamTimer) { clearInterval(_streamTimer); _streamTimer = null; }
+  if (_streamScanEl) { _streamScanEl.remove(); _streamScanEl = null; }
+
+  // Add sweep scan line for auto-compiles only (manual uses line-by-line)
+  if (!manual) {
+    const scanEl = document.createElement('div');
+    scanEl.className = 'compile-scan';
+    document.getElementById('ed-body').appendChild(scanEl);
+    scanEl.addEventListener('animationend', () => scanEl.remove());
+  }
 
   try {
     compiled = clear.compileProgram(ta.value);
@@ -1052,30 +1068,75 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-// ─── Stream code output (line-by-line reveal) ──────────────
+// ─── Stream code output (line-by-line scan + reveal) ────────
 function streamCode(code) {
-  const lines = code.split('\n');
+  const outputLines = code.split('\n');
+  const inputLines = ta.value.split('\n');
+  const inputCount = inputLines.length;
+  const outputCount = outputLines.length;
+
+  // Switch to Source tab visually
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'source'));
+  activeTab = 'source';
+
+  // Set up output container
   const pre = document.createElement('pre');
   pre.className = 'code-out';
   pre.style.whiteSpace = 'pre';
   prevWrap.innerHTML = '';
   prevWrap.appendChild(pre);
 
-  // Switch to Source tab visually
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'source'));
-  activeTab = 'source';
+  // Create line-level scan highlight on input editor
+  const edBody = document.getElementById('ed-body');
+  const edScroll = document.getElementById('ed-scroll');
+  const lineHeight = 21; // matches CSS line-height
+  const scanHL = document.createElement('div');
+  scanHL.className = 'compile-line-scan';
+  scanHL.style.top = '0px';
+  edBody.appendChild(scanHL);
+  _streamScanEl = scanHL;
 
-  let i = 0;
-  // Slower animation: ~3 seconds total, 1-2 lines at a time so users can watch it build
-  const interval = Math.max(20, Math.min(60, 3000 / lines.length));
-  const batch = Math.max(1, Math.ceil(lines.length / 150));
-  const timer = setInterval(() => {
-    if (i >= lines.length) { clearInterval(timer); return; }
-    for (let b = 0; b < batch && i < lines.length; b++, i++) {
-      pre.textContent += (i > 0 ? '\n' : '') + lines[i];
+  let inputIdx = 0;
+  let outputIdx = 0;
+  const outputPerInput = outputCount / inputCount;
+
+  // ~3 seconds total, clamped per-line timing
+  const msPerLine = Math.max(15, Math.min(80, 3000 / inputCount));
+
+  _streamTimer = setInterval(() => {
+    if (inputIdx >= inputCount) {
+      // Flush any remaining output lines
+      while (outputIdx < outputCount) {
+        pre.textContent += (outputIdx > 0 ? '\n' : '') + outputLines[outputIdx];
+        outputIdx++;
+      }
+      clearInterval(_streamTimer);
+      _streamTimer = null;
+      // Fade out and remove highlight
+      scanHL.style.opacity = '0';
+      setTimeout(() => { scanHL.remove(); _streamScanEl = null; }, 200);
+      return;
     }
-    pre.scrollTop = pre.scrollHeight;
-  }, interval);
+
+    // Move highlight to current input line
+    scanHL.style.top = (inputIdx * lineHeight) + 'px';
+
+    // Auto-scroll editor to keep highlight visible
+    const hlTop = inputIdx * lineHeight;
+    if (hlTop > edScroll.scrollTop + edScroll.clientHeight - lineHeight * 3) {
+      edScroll.scrollTop = hlTop - edScroll.clientHeight / 2;
+    }
+
+    // Reveal proportional output lines for this input line
+    const targetOutput = Math.round((inputIdx + 1) * outputPerInput);
+    while (outputIdx < targetOutput && outputIdx < outputCount) {
+      pre.textContent += (outputIdx > 0 ? '\n' : '') + outputLines[outputIdx];
+      outputIdx++;
+    }
+    prevWrap.scrollTop = prevWrap.scrollHeight;
+
+    inputIdx++;
+  }, msPerLine);
 }
 
 // ─── Init ──────────────────────────────────────────────────
