@@ -26,7 +26,7 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 ## What's Built (Phases 1-28, 30-46b -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1337 tests, all passing.
+1407 tests, all passing.
 
 ### Core Language (Phase 1-3)
 | Feature | Status | Canonical Syntax |
@@ -978,8 +978,19 @@ All live-tested with real Anthropic API calls. 18/18 E2E pass.
 
 - ~~Agent-to-agent calls (agent A calling agent B inside its body)~~ DONE (session 9)
 - ~~Structured AI output parsing (ask ai returning objects, not just strings)~~ DONE (session 9)
+- ~~Tool use / function calling (`can use:`)~~ DONE (session 10)
+- ~~Multi-turn conversations (`remember conversation context`)~~ DONE (session 10)
+- ~~Agent memory (`remember user's preferences`)~~ DONE (session 10)
+- ~~Pipelines (`pipeline 'Name' with var:`)~~ DONE (session 10)
+- ~~Parallel execution (`do these at the same time:`)~~ DONE (session 10)
+- ~~Agent observability (`track agent decisions`)~~ DONE (session 10)
+- ~~Guardrails / safety (`must not:` block)~~ DONE (session 10)
+- ~~Human-in-the-loop (`ask user to confirm`)~~ DONE (session 10)
+- ~~Agent testing (`mock claude responding:`)~~ DONE (session 10)
+- ~~RAG / knowledge base (`knows about:`)~~ DONE (session 10)
+- ~~Skills / reusable tool bundles (`skill 'Name':`)~~ DONE (session 10)
+- ~~Variable prompts / text blocks in agents~~ DONE (session 10)
 - Streaming AI responses (SSE from ask ai)
-- Multi-turn conversations (ask ai with history)
 
 ---
 
@@ -1517,11 +1528,11 @@ These make Clear apps smarter than hand-coded equivalents.
 | 73 | **Performance profiling** | `CLEAR_PROFILE=true` — compiled output includes timing for every CRUD operation. Identify slow queries. | 0.5 day |
 | 74 | **AI-powered error recovery** | When an error is unrecoverable, the error translator calls Claude to suggest a patch. Fully autonomous fix loop. | 1 day |
 
-### Tier 7: First-Class AI Agents (Day 10-14)
+### Tier 7: First-Class AI Agents (SHIPPED — Session 10)
 
-Clear already has basic agents (`agent 'Name' receiving data:` + `ask claude`). These phases make Clear the best way to build AI agents — better than LangChain, CrewAI, or raw Python.
+All 10 phases + Skills implemented. 1407 tests passing. 70 new tests. GAN app: `apps/support-agent/main.clear` (80 lines → 300 lines JS).
 
-**What exists today:**
+**What's built:**
 - `agent 'Name' receiving data:` — define an agent function
 - `ask claude 'prompt' with context` — single LLM call
 - `ask claude 'prompt' with data returning:` — structured output (JSON schema)
@@ -1904,7 +1915,7 @@ The LangChain equivalent is 500-800 lines across 6+ files.
 
 | Tier | Phases | Days | What It Unlocks |
 |------|--------|------|----------------|
-| Done (1-46b) | 46 phases | 3 days | Full-stack CRUD apps, error translator, silent bug guards |
+| Done (1-46b, 75-84) | 56 phases | 4 days | Full-stack CRUD apps, error translator, silent bug guards, first-class AI agents |
 | Tier 1: Production | 47-50 | 2 days | Real deployment, persistent DB, real-time |
 | Tier 2: Complex Frontend | 51-55 | 3 days | Multi-page SPAs, components, animations |
 | Tier 3: Data & Integration | 56-60 | 3 days | Postgres, file upload, email, cron, streaming |
