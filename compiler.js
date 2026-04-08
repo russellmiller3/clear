@@ -1983,7 +1983,24 @@ function compileAgent(node, ctx, pad) {
   }
 
   // Only actually stream if the body has _askAI calls to replace
-  if (shouldStream && ctx.lang !== 'python' && bodyCode.includes('_askAI(')) {
+  if (shouldStream && ctx.lang === 'python' && bodyCode.includes('_ask_ai(')) {
+    // Python streaming: replace _ask_ai with _ask_ai_stream
+    const streamVars = new Set();
+    bodyCode = bodyCode.replace(
+      /(\w+) = await _ask_ai\(([^)]*)\)/g,
+      (m, varName, args) => { streamVars.add(varName); return `${varName} = _ask_ai_stream(${args})`; }
+    );
+    if (streamVars.size > 0) {
+      for (const v of streamVars) {
+        bodyCode = bodyCode.replace(
+          new RegExp(`return ${v}`, 'g'),
+          `async for _chunk in ${v}:\n${pad}        yield _chunk`
+        );
+      }
+    } else {
+      shouldStream = false;
+    }
+  } else if (shouldStream && ctx.lang !== 'python' && bodyCode.includes('_askAI(')) {
     // Track which variables hold stream results (so we know which returns to convert)
     const streamVars = new Set();
     bodyCode = bodyCode.replace(
@@ -2019,6 +2036,11 @@ function compileAgent(node, ctx, pad) {
       bodyCode = bodyCode.replace(
         /await _ask_ai\(([^)]+)\)/g,
         `await _ask_ai($1, ${modelStr})`
+      );
+      // Also handle streaming: _ask_ai_stream(prompt, context) → _ask_ai_stream(prompt, context, model)
+      bodyCode = bodyCode.replace(
+        /_ask_ai_stream\(([^)]*)\)/g,
+        (m, args) => `_ask_ai_stream(${args}, ${modelStr})`
       );
     } else {
       // _askAI(prompt, context) → _askAI(prompt, context, null, model)
@@ -2233,8 +2255,11 @@ function compileWorkflow(node, ctx, pad) {
   // Helper: rewrite state var references in expressions to _state
   function rewriteStateRef(code) {
     if (stateVarName === '_state') return code;
-    // Replace stateVar.field with _state.field (word-boundary safe)
-    return code.replace(new RegExp('\\b' + stateVarName + '\\.', 'g'), '_state.');
+    // Replace stateVar.field with _state.field (JS dot notation)
+    code = code.replace(new RegExp('\\b' + stateVarName + '\\.', 'g'), '_state.');
+    // Replace stateVar["field"] with _state["field"] (Python bracket notation)
+    code = code.replace(new RegExp('\\b' + stateVarName + '\\[', 'g'), '_state[');
+    return code;
   }
 
   // Observability: state history tracking (Phase 90)
@@ -2348,7 +2373,105 @@ function compileWorkflow(node, ctx, pad) {
     return code;
   }
 
-  // Standard workflow (non-Temporal)
+  // Python workflow
+  if (ctx.lang === 'python') {
+    const pyPad = pad;
+    const pyInner = pad + '    ';
+
+    // State initialization (Python dict)
+    let pyStateInit = `${pyInner}_state = {${defaults.map(d => {
+      // Convert JS syntax to Python
+      return d.replace(': null', ': None').replace(': true', ': True').replace(': false', ': False');
+    }).join(', ')}}\n`;
+    pyStateInit += `${pyInner}_state.update(${stateVarName})\n`;
+
+    if (node.trackProgress) {
+      pyStateInit += `${pyInner}_history = []\n`;
+    }
+
+    function pyCompileStep(step, indent) {
+      const p = ' '.repeat(indent);
+      const agentFn = 'agent_' + sanitizeName(step.agentName.toLowerCase().replace(/\s+/g, '_'));
+      let code = '';
+      if (node.trackProgress) {
+        code += `${p}_history.append({"step": ${JSON.stringify(step.name)}, "state": dict(_state), "timestamp": datetime.datetime.now().isoformat()})\n`;
+      }
+      if (node.saveProgressTo) {
+        code += `${p}db.save("${node.saveProgressTo.toLowerCase()}", {"workflow": ${JSON.stringify(node.name)}, "step": ${JSON.stringify(step.name)}, "state": json.dumps(_state), "created_at": datetime.datetime.now().isoformat()})\n`;
+      }
+      if (step.savesTo) {
+        code += `${p}_state["${sanitizeName(step.savesTo)}"] = (await ${agentFn}(_state))["${sanitizeName(step.savesTo)}"]\n`;
+      } else {
+        code += `${p}_state = await ${agentFn}(_state)\n`;
+      }
+      return code;
+    }
+
+    function pyCompileSteps(steps, indent) {
+      const p = ' '.repeat(indent);
+      let code = '';
+      for (const step of steps) {
+        if (step.kind === 'step') {
+          code += pyCompileStep(step, indent);
+        } else if (step.kind === 'conditional') {
+          const condCode = step.condition ? rewriteStateRef(exprToCode(step.condition, ctx)) : 'True';
+          // Convert JS comparisons to Python
+          const pyCond = condCode.replace(/ == /g, ' == ').replace(/\bnull\b/g, 'None');
+          code += `${p}if ${pyCond}:\n`;
+          code += pyCompileSteps(step.thenSteps, indent + 4);
+          if (step.elseSteps && step.elseSteps.length > 0) {
+            code += `${p}else:\n`;
+            code += pyCompileSteps(step.elseSteps, indent + 4);
+          }
+        } else if (step.kind === 'repeat') {
+          const condCode = step.condition ? rewriteStateRef(exprToCode(step.condition, ctx)) : 'True';
+          const pyCond = condCode.replace(/\bnull\b/g, 'None');
+          const max = step.maxIterations || 10;
+          code += `${p}for _iter in range(${max}):\n`;
+          code += `${p}    if ${pyCond}:\n`;
+          code += `${p}        break\n`;
+          code += pyCompileSteps(step.steps, indent + 4);
+        } else if (step.kind === 'parallel') {
+          const tempNames = step.steps.map((_, i) => `_p${i}`);
+          const calls = step.steps.map(ps => {
+            const agentFn = 'agent_' + sanitizeName(ps.agentName.toLowerCase().replace(/\s+/g, '_'));
+            return `${agentFn}(_state)`;
+          });
+          if (node.trackProgress) {
+            code += `${p}_history.append({"step": "parallel", "branches": ${JSON.stringify(step.steps.map(s => s.name))}, "timestamp": datetime.datetime.now().isoformat()})\n`;
+          }
+          code += `${p}${tempNames.join(', ')} = await asyncio.gather(${calls.join(', ')})\n`;
+          for (let si = 0; si < step.steps.length; si++) {
+            const ps = step.steps[si];
+            if (ps.savesTo) {
+              code += `${p}_state["${sanitizeName(ps.savesTo)}"] = ${tempNames[si]}.get("${sanitizeName(ps.savesTo)}")\n`;
+            }
+          }
+          const noSave = step.steps.filter(s => !s.savesTo);
+          if (noSave.length > 0 && step.steps.every(s => !s.savesTo)) {
+            code += `${p}_state.update(${tempNames[tempNames.length - 1]})\n`;
+          }
+        }
+      }
+      return code;
+    }
+
+    let pyBody = pyCompileSteps(node.steps, pad.length + 4);
+
+    let pyTrack = '';
+    if (node.trackProgress) {
+      pyTrack = `${pyInner}_state["_history"] = _history\n`;
+    }
+
+    let code = `${pyPad}async def ${fnName}(${stateVarName}):\n`;
+    code += pyStateInit;
+    code += pyBody;
+    code += pyTrack;
+    code += `${pyInner}return _state`;
+    return code;
+  }
+
+  // Standard workflow (non-Temporal, JavaScript)
   let code = `${pad}async function ${fnName}(${sanitizeName(node.stateVar)}) {\n`;
   code += stateInit;
   code += bodyCode;
@@ -6066,7 +6189,71 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('db = _DB()');
   lines.push('');
 
-  // Detect database backend for Supabase support
+  // Python _ask_ai utility (Anthropic API call)
+  const hasAgents = body.some(n => n.type === NodeType.AGENT || n.type === NodeType.WORKFLOW);
+  if (hasAgents) {
+    lines.push('# AI utility — calls Anthropic API');
+    lines.push('import httpx');
+    lines.push('');
+    lines.push('async def _ask_ai(prompt, context=None, schema=None, model=None):');
+    lines.push('    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLEAR_AI_KEY")');
+    lines.push('    if not key: raise Exception("Set ANTHROPIC_API_KEY environment variable")');
+    lines.push('    endpoint = os.environ.get("CLEAR_AI_ENDPOINT", "https://api.anthropic.com/v1/messages")');
+    lines.push('    content = prompt');
+    lines.push('    if context: content += "\\n\\nContext: " + (context if isinstance(context, str) else json.dumps(context))');
+    lines.push('    if schema:');
+    lines.push('        fields = ", ".join(f\'"{f["name"]}": <{f.get("type","string")}>\' for f in schema)');
+    lines.push('        content += f"\\n\\nRespond with ONLY a JSON object: {{{fields}}}"');
+    lines.push('    payload = {"model": model or "claude-sonnet-4-20250514", "max_tokens": 1024, "messages": [{"role": "user", "content": content}]}');
+    lines.push('    headers = {"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}');
+    lines.push('    async with httpx.AsyncClient(timeout=30) as client:');
+    lines.push('        r = await client.post(endpoint, json=payload, headers=headers)');
+    lines.push('        r.raise_for_status()');
+    lines.push('        text = r.json()["content"][0]["text"]');
+    lines.push('    if not schema: return text');
+    lines.push('    import re as _re');
+    lines.push('    m = _re.search(r"\\{[\\s\\S]*\\}", text)');
+    lines.push('    if not m: raise Exception("AI did not return valid JSON")');
+    lines.push('    return json.loads(m.group())');
+    lines.push('');
+    lines.push('async def _ask_ai_stream(prompt, context=None, model=None):');
+    lines.push('    """Async generator — yields text chunks from Anthropic streaming API."""');
+    lines.push('    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLEAR_AI_KEY")');
+    lines.push('    if not key: raise Exception("Set ANTHROPIC_API_KEY environment variable")');
+    lines.push('    endpoint = os.environ.get("CLEAR_AI_ENDPOINT", "https://api.anthropic.com/v1/messages")');
+    lines.push('    content = prompt');
+    lines.push('    if context: content += "\\n\\nContext: " + (context if isinstance(context, str) else json.dumps(context))');
+    lines.push('    payload = {"model": model or "claude-sonnet-4-20250514", "max_tokens": 4096, "stream": True, "messages": [{"role": "user", "content": content}]}');
+    lines.push('    headers = {"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}');
+    lines.push('    async with httpx.AsyncClient(timeout=60) as client:');
+    lines.push('        async with client.stream("POST", endpoint, json=payload, headers=headers) as r:');
+    lines.push('            r.raise_for_status()');
+    lines.push('            buffer = ""');
+    lines.push('            async for chunk in r.aiter_text():');
+    lines.push('                buffer += chunk');
+    lines.push('                while "\\n" in buffer:');
+    lines.push('                    line, buffer = buffer.split("\\n", 1)');
+    lines.push('                    if not line.startswith("data: "): continue');
+    lines.push('                    data = line[6:]');
+    lines.push('                    if data == "[DONE]": return');
+    lines.push('                    try:');
+    lines.push('                        evt = json.loads(data)');
+    lines.push('                        if evt.get("type") == "content_block_delta" and evt.get("delta", {}).get("text"):');
+    lines.push('                            yield evt["delta"]["text"]');
+    lines.push('                    except json.JSONDecodeError: pass');
+    lines.push('');
+  }
+
+  // Add asyncio import if parallel agents or workflows are used
+  const hasParallel = body.some(n =>
+    n.type === NodeType.PARALLEL_AGENTS ||
+    (n.type === NodeType.WORKFLOW && n.steps?.some(s => s.kind === 'parallel'))
+  );
+  if (hasParallel) {
+    // Insert asyncio import after datetime
+    const dtIdx = lines.findIndex(l => l === 'import datetime');
+    if (dtIdx >= 0) lines.splice(dtIdx + 1, 0, 'import asyncio');
+  }
   const pyDbBackend = body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
   const pyIsSupabase = pyDbBackend.includes('supabase');
   if (pyIsSupabase) {
