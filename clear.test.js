@@ -16776,5 +16776,103 @@ test 'handles product question':
   });
 });
 
+// =============================================================================
+// STREAMING AI RESPONSES
+// =============================================================================
+
+describe('Streaming AI - compiler', () => {
+  it('stream response directive uses _askAIStream', () => {
+    const src = `build for javascript backend
+agent 'Storyteller' receiving prompt:
+  stream response
+  response = ask claude 'Tell a story' with prompt
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAIStream');
+    expect(result.javascript).toContain('async function*');
+    expect(result.javascript).toContain('for await');
+  });
+
+  it('_askAIStream utility is tree-shaken in', () => {
+    const src = `build for javascript backend
+agent 'Streamer' receiving msg:
+  stream response
+  result = ask claude 'Help' with msg
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function* _askAIStream');
+  });
+
+  it('non-streaming agent still uses _askAI', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving msg:
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_askAIStream');
+    expect(result.javascript).toContain('_askAI(');
+  });
+
+  it('streaming agent compiles to async generator', () => {
+    const src = `build for javascript backend
+agent 'Chat' receiving message:
+  stream response
+  response = ask claude 'You are helpful' with message
+  send back response
+when user calls POST /api/chat sending data:
+  result = call 'Chat' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function* agent_chat');
+    expect(result.javascript).toContain('_askAIStream');
+  });
+});
+
+// =============================================================================
+// COMPOSABLE CONVERSATION + RAG
+// =============================================================================
+
+describe('Composable conversation + RAG + tools', () => {
+  it('agent with conversation + tools composes correctly', () => {
+    const src = `build for javascript backend
+create a Conversations table:
+  user_id, required
+  messages, default '[]'
+define function helper(data):
+  return data
+agent 'Chat' receiving message:
+  can use: helper
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Should have both conversation + tool use
+    expect(result.javascript).toContain('_history');
+    expect(result.javascript).toContain('_tools');
+  });
+
+  it('agent with RAG + tools composes correctly', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+define function search(query):
+  return query
+agent 'Bot' receiving question:
+  can use: search
+  knows about: Products
+  response = ask claude 'Help' with question
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_ragContext');
+    expect(result.javascript).toContain('_tools');
+  });
+});
+
 run();
 

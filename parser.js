@@ -2348,6 +2348,7 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
   const agentIndent = lines[startIdx].indent;
   const directives = {
     trackDecisions: false,
+    streamResponse: false,
     tools: null,
     restrictions: null,
     skills: null,
@@ -2376,6 +2377,11 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     if ((dTokens[0].value === 'track' || dTokens[0].value === 'log') && dTokens.length >= 3 &&
         dTokens[1].value === 'agent' && dTokens[2].value === 'decisions') {
       directives.trackDecisions = true; bodyStartIdx++; continue;
+    }
+    // stream response — agent streams AI output token-by-token
+    if (dTokens[0].canonical === 'stream' && dTokens.length >= 2 &&
+        dTokens[1].value === 'response') {
+      directives.streamResponse = true; bodyStartIdx++; continue;
     }
     // using 'model-name'
     if ((dTokens[0].value === 'using' || dTokens[0].canonical === 'with') &&
