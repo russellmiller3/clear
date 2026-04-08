@@ -2184,6 +2184,10 @@ function _compileNodeInner(node, ctx) {
       return `${pad}const [${vars}] = await Promise.all([${tasks}]);`;
     }
 
+    case NodeType.MOCK_AI:
+      // Consumed by TEST_DEF compilation — emits nothing standalone
+      return null;
+
     case NodeType.HUMAN_CONFIRM: {
       const msg = exprToCode(node.message, ctx);
       if (ctx.lang === 'python') {
@@ -2646,11 +2650,38 @@ function _compileNodeInner(node, ctx) {
       return compileCrud(node, ctx, pad);
 
     case NodeType.TEST_DEF: {
+      // Check if body contains mock AI nodes
+      const mockNodes = node.body.filter(n => n.type === NodeType.MOCK_AI);
+      const nonMockBody = node.body.filter(n => n.type !== NodeType.MOCK_AI);
       if (ctx.lang === 'python') {
-        const bodyCode = compileBody(node.body, ctx);
+        const bodyCode = compileBody(nonMockBody, ctx);
         return `${pad}def test_${sanitizeName(node.name)}():\n${bodyCode}`;
       }
-      const bodyCode = compileBody(node.body, ctx, { declared: new Set() });
+      const bodyCode = compileBody(nonMockBody, ctx, { declared: new Set() });
+      if (mockNodes.length > 0) {
+        // Build mock responses array
+        const mocks = mockNodes.map(m => {
+          const obj = m.fields.map(f => {
+            const val = typeof f.value === 'string' ? JSON.stringify(f.value) : f.value;
+            return `${JSON.stringify(f.name)}: ${val}`;
+          }).join(', ');
+          return `{ ${obj} }`;
+        });
+        let code = `${pad}test(${JSON.stringify(node.name)}, async () => {\n`;
+        code += `${pad}  const _origAskAI = typeof _askAI !== 'undefined' ? _askAI : null;\n`;
+        if (mocks.length === 1) {
+          code += `${pad}  _askAI = async () => (${mocks[0]});\n`;
+        } else {
+          code += `${pad}  const _mockResponses = [${mocks.join(', ')}];\n`;
+          code += `${pad}  let _mockIdx = 0;\n`;
+          code += `${pad}  _askAI = async () => _mockResponses[_mockIdx++];\n`;
+        }
+        code += `${pad}  try {\n`;
+        code += bodyCode.split('\n').map(l => '  ' + l).join('\n') + '\n';
+        code += `${pad}  } finally { if (_origAskAI) _askAI = _origAskAI; }\n`;
+        code += `${pad}});`;
+        return code;
+      }
       return `${pad}test(${JSON.stringify(node.name)}, () => {\n${bodyCode}\n${pad}});`;
     }
 

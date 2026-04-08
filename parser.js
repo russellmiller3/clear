@@ -164,6 +164,7 @@ export const NodeType = Object.freeze({
   PIPELINE: 'pipeline',
   RUN_PIPELINE: 'run_pipeline',
   HUMAN_CONFIRM: 'human_confirm',
+  MOCK_AI: 'mock_ai',
 
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
@@ -1466,6 +1467,37 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         }
         body.push({ type: NodeType.HUMAN_CONFIRM, message: messageExpr, line });
         i++;
+        continue;
+      }
+
+      // Mock AI response in test blocks: mock claude responding: + indented fields
+      if (firstToken.value === 'mock' && tokens.length >= 3 &&
+          (tokens[1].value === 'claude' || tokens[1].value === 'ai') &&
+          tokens[2].value === 'responding') {
+        // Parse indented field definitions (like structured output schema)
+        const mockIndent = lines[i].indent;
+        const fields = [];
+        let j = i + 1;
+        while (j < lines.length && lines[j].indent > mockIndent) {
+          const fieldTokens = lines[j].tokens;
+          if (fieldTokens.length >= 3) {
+            const fieldName = fieldTokens[0].value;
+            // field is 'value' or field = number
+            if (fieldTokens[1].canonical === 'is' || fieldTokens[1].type === TokenType.ASSIGN) {
+              const valToken = fieldTokens[2];
+              let value;
+              if (valToken.type === TokenType.STRING) value = valToken.value;
+              else if (valToken.type === TokenType.NUMBER) value = valToken.value;
+              else if (valToken.value === 'true') value = true;
+              else if (valToken.value === 'false') value = false;
+              else value = valToken.value;
+              fields.push({ name: fieldName, value });
+            }
+          }
+          j++;
+        }
+        body.push({ type: NodeType.MOCK_AI, fields, line });
+        i = j;
         continue;
       }
 

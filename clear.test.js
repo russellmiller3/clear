@@ -16229,5 +16229,102 @@ when user calls POST /api/process sending data:
   });
 });
 
+// =============================================================================
+// AGENT TESTING (Phase 84)
+// =============================================================================
+
+describe('Agent testing - parser', () => {
+  it('parses mock claude responding with fields', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receiving text:
+  result = ask claude 'Classify this' with text returning:
+    sentiment
+    confidence (number)
+  send back result
+test 'handles positive':
+  set input to 'Amazing product!'
+  mock claude responding:
+    sentiment is 'positive'
+    confidence = 0.95
+  result = call 'Classifier' with input
+  expect result's sentiment is 'positive'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('mock has correct fields', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving data:
+  response = ask claude 'Help' with data
+  send back response
+test 'test mock':
+  mock claude responding:
+    answer is 'hello'
+    score = 42
+  result = call 'Bot' with 'test'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Find the test block
+    const testNode = result.ast.body.find(n => n.type === 'test_def');
+    const mockNode = testNode.body.find(n => n.type === 'mock_ai');
+    expect(mockNode).toBeDefined();
+    expect(mockNode.fields).toHaveLength(2);
+    expect(mockNode.fields[0].name).toBe('answer');
+    expect(mockNode.fields[0].value).toBe('hello');
+    expect(mockNode.fields[1].name).toBe('score');
+    expect(mockNode.fields[1].value).toBe(42);
+  });
+});
+
+describe('Agent testing - compiler', () => {
+  it('test with mock emits _askAI override and try/finally', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving data:
+  response = ask claude 'Help' with data
+  send back response
+test 'basic mock':
+  mock claude responding:
+    answer is 'mocked'
+  result = call 'Bot' with 'test'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_origAskAI');
+    expect(result.javascript).toContain('_askAI = async');
+    expect(result.javascript).toContain('"mocked"');
+    expect(result.javascript).toContain('finally');
+  });
+
+  it('multiple mocks use array with counter', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving data:
+  response = ask claude 'Help' with data
+  send back response
+test 'multi mock':
+  mock claude responding:
+    step is 'first'
+  mock claude responding:
+    step is 'second'
+  result = call 'Bot' with 'test'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_mockResponses');
+    expect(result.javascript).toContain('_mockIdx');
+    expect(result.javascript).toContain('"first"');
+    expect(result.javascript).toContain('"second"');
+  });
+
+  it('test without mock has no mock code', () => {
+    const src = `build for javascript backend
+test 'simple test':
+  price = 10
+  tax = 2
+  expect price + tax is 12`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_origAskAI');
+    expect(result.javascript).not.toContain('_mockResponses');
+  });
+});
+
 run();
 
