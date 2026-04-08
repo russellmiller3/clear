@@ -280,3 +280,11 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Python `async def` with `yield` is automatically an async generator.** No `async def*` syntax needed (unlike JS's `async function*`). Python handles this natively — if the body contains `yield`, it's a generator.
 - **`asyncio` import needed for `asyncio.gather`.** The `PARALLEL_AGENTS` node compiles to `asyncio.gather()` in Python but `asyncio` isn't imported by default. Added auto-detection: scan body for `PARALLEL_AGENTS` or workflow parallel branches, inject `import asyncio` after `import datetime`.
 - **Python dict initialization syntax differs from JS.** JS uses `Object.assign({field: null}, input)`, Python uses `_state = {...defaults}; _state.update(input)`. The defaults must convert `null` → `None`, `true` → `True`, `false` → `False`.
+
+## Session 11: First-Class Errors (2026-04-08)
+
+### Validation Gotchas
+- **New validation passes break existing tests.** Adding `validateCallTargets` correctly flagged `call 'Agent'` and `run workflow 'X'` in tests that defined no matching agent/workflow. Fix: add the required definition to the test source. This is the right behavior — the validator is catching real bugs.
+- **`thenBranch` can be a single node OR an array.** The `checkNodes` recursion in `validateCallTargets` must handle both: `if (Array.isArray(node.thenBranch)) checkNodes(...)` for block-if, else treat as single expression.
+- **Type inference from expressions is conservative.** `inferType()` returns `'unknown'` for anything it can't prove — function calls, member access chains, ternary expressions. This means the member access warning only fires when the variable was assigned a literal or arithmetic result, not for computed values. Good: no false positives. Bad: misses some cases.
+- **Workflow names normalize to lowercase.** `validateCallTargets` normalizes with `.toLowerCase().replace(/\s+/g, '_')` to match the compiler's function naming. Without normalization, `run workflow 'Support Ticket'` wouldn't match `workflow 'Support Ticket'` because spaces → underscores.
