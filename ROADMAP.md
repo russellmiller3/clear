@@ -2240,30 +2240,30 @@ Browser: CodeMirror 6 + Clear language mode
 
 **Priority order — what creates the most revenue leverage:**
 
-| Priority | Feature | Why This Order | Effort |
-|----------|---------|---------------|--------|
-| 1 | **First-class errors** | Compile-time AND runtime errors must be clear, actionable, and complete. Bad errors = users can't self-serve = support tickets = churn. This is the foundation everything else sits on. | 1-2 days |
-| 2 | **CodeMirror Clear mode** | Syntax highlighting + keyword autocomplete in the hosted editor. Uses keyword list from tokenizer.js + synonyms.js. ~100 lines of CodeMirror StreamLanguage. No formal grammar needed. | 1 day |
-| 3 | **Hosted compile API** | Thin HTTP wrapper around `compileProgram()`. Returns `{ errors, warnings, html, javascript, python }`. The editor calls this on every change. SSE for streaming compile feedback. | 0.5 day |
-| 4 | **One-click deploy** | "Deploy" button in the editor. Compiles → writes to user's container → returns live URL. The compiler already generates Dockerfiles (`clear package`). This closes the loop. | 2 days |
-| 5 | **Type system (inferred)** | `price = 'hello'` then `total = price * 1.08` should be a compile error, not a runtime crash. 100% inferred — no type annotations. Catches the #1 class of bugs before deploy. | 3 days |
-| 6 | **Live preview** | The editor's right pane shows the running app. Compile on save, hot-reload the preview. For full-stack apps: browser server intercepts fetch calls (playground already does this). | 1 day |
-| 7 | **Source maps** | When a deployed app crashes, map the error back to the Clear line. The `clear:LINE` comments exist but real source maps enable "click to see the Clear line that failed." | 1 day |
-| 8 | **Package registry** | `use 'auth-flow' from registry` — shareable Clear modules. Auth flows, payment integrations, dashboard layouts. Enables a marketplace. | 3 days |
+| Priority | Feature | Status | Effort |
+|----------|---------|--------|--------|
+| ~~1~~ | ~~**First-class errors**~~ | **DONE** — Session 11: call target validation, member access types, orphan endpoints promoted | — |
+| ~~2~~ | ~~**CodeMirror Clear mode**~~ | **DONE** — Session 11: playground/ide.html with syntax highlighting, keyword colors | — |
+| ~~3~~ | ~~**Hosted compile API + playground**~~ | **DONE** — Session 11: playground/server.js with compile, run, exec, chat, templates | — |
+| 4 | **One-click deploy** | Deploy button in editor → compile → container → live URL | 2 days |
+| 5 | **Type system (inferred)** | `price = 'hello'` then `price * 1.08` = compile error. 100% inferred, no annotations. | 3 days |
+| 6 | **JS module import** | `use 'lodash'` or `use './helpers.js'` — import arbitrary JS/npm modules into Clear apps. Needed for: integrating JS libraries, calling native Node APIs, using npm packages. | 2 days |
+| 7 | **Child process / system exec** | `run command 'npm install'` or `run shell 'ffmpeg ...'` — spawn child processes from Clear backend. Needed for: deployment scripts, file processing, external tool integration. | 1 day |
+| 8 | **Raw JS escape hatch** | `script:` block already exists but is limited. Extend to support: importing from node_modules, accessing request/response objects, calling arbitrary JS functions inline. | 1 day |
+| 9 | **Live preview** | Editor right pane shows running app with hot-reload. Browser server intercepts fetch. | 1 day |
+| 10 | **Source maps** | Runtime errors map back to Clear line. `clear:LINE` comments exist, need real `.map` files. | 1 day |
+| 11 | **Package registry** | `use 'auth-flow' from registry` — shareable Clear modules. Enables marketplace. | 3 days |
 
-**Why errors are #1:** In a hosted product, the error message IS your customer support.
-If a user writes bad code and gets "Unexpected token", they leave. If they get
-"Line 5: 'username' hasn't been created yet — add it on an earlier line", they fix it
-and stay. Error quality directly determines retention.
+**Why JS module import is #6:** Clear apps can't use npm packages or call native Node APIs.
+This blocks: image processing (sharp), PDF generation (puppeteer), payment processing
+(stripe SDK), any integration that needs a JS library. Until this works, Clear apps are
+limited to what the compiler generates natively.
 
-**Why CodeMirror before compile API:** Syntax highlighting is instant visual feedback
-that makes the editor feel professional. The compile API is the backend for deeper
-feedback (errors, preview), but users judge quality in the first 3 seconds of typing.
+**Why child process is #7:** Clear can't run external commands (ffmpeg, imagemagick, git,
+npm). This blocks: file conversion, deployment automation, CI/CD integration. Simple to
+implement — just need a `run command 'X'` syntax that compiles to `child_process.execSync`.
 
-**Why deploy before type system:** Deploy generates revenue. Types improve quality.
-Revenue first, quality second — but both happen fast (days, not weeks).
-
-**Total: ~13 days for 8 features.** First 4 (errors, editor, API, deploy) are the
-MVP hosted product — ~5 days. That's a usable product: write Clear → see errors →
-preview → deploy → live URL.
+**Total: ~14 days for remaining 8 features.** First 3 done. Next 3 (deploy, types, JS import)
+are the critical path — ~7 days. They turn Clear from "a playground" into "a platform you
+ship production apps on."
 

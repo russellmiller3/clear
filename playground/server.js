@@ -26,7 +26,8 @@ app.use(express.static(__dirname));
 app.post('/api/compile', (req, res) => {
   try {
     const { source } = req.body;
-    if (!source) return res.status(400).json({ error: 'Missing source' });
+    if (!source && source !== '') return res.status(400).json({ error: 'Missing source' });
+    if (!source.trim()) return res.json({ errors: [], warnings: [], html: null, javascript: null, serverJS: null, python: null, browserServer: null, css: null });
     const result = compileProgram(source);
     res.json({
       errors: result.errors || [],
@@ -80,9 +81,14 @@ app.post('/api/exec', (req, res) => {
   const { command } = req.body;
   if (!command) return res.status(400).json({ error: 'Missing command' });
 
-  // Security: whitelist
+  // Security: whitelist prefix
   const allowed = ALLOWED_PREFIXES.some(p => command.startsWith(p));
   if (!allowed) return res.status(403).json({ error: `Command not allowed. Allowed prefixes: ${ALLOWED_PREFIXES.join(', ')}` });
+
+  // Security: block command chaining/injection
+  if (/[;&|`$]/.test(command) || command.includes('$(') || command.includes('>{')) {
+    return res.status(403).json({ error: 'Command chaining (&&, ||, ;, |, $()) is not allowed' });
+  }
 
   try {
     const stdout = execSync(command, {
