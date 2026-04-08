@@ -1,0 +1,230 @@
+build for javascript backend
+database is local memory
+
+# === DATABASE ===
+
+create a Candidates table:
+  name, required
+  email, required, unique
+  role, required
+  experience (number)
+  resume
+
+create a Evaluations table:
+  candidate_id (number), required
+  stage, required
+  score (number)
+  feedback
+  created_at (timestamp), auto
+
+create a JobDescriptions table:
+  title, required
+  requirements, required
+  department
+
+create a AgentLogs table:
+  agent_name, required
+  action, required
+  input
+  output
+  latency_ms (number)
+  created_at (timestamp), auto
+
+# === TOOLS ===
+
+define function look_up_candidate(candidate_id):
+  candidate = look up Candidate where id is candidate_id
+  return candidate
+
+define function save_evaluation(candidate_id, stage, score, feedback):
+  create evaluation:
+    candidate_id is candidate_id
+    stage is stage
+    score is score
+    feedback is feedback
+  saved = save evaluation as new Evaluation
+  return saved
+
+define function search_candidates(role):
+  candidates = look up all Candidates where role is role
+  return candidates
+
+define function get_job_description(title):
+  job = look up JobDescription where title is title
+  return job
+
+# === SKILLS ===
+
+skill 'Candidate Lookup':
+  can: look_up_candidate, search_candidates
+  instructions:
+    Always look up the candidate record before evaluating.
+    Reference specific details from their resume and experience.
+
+skill 'Evaluation Recording':
+  can: save_evaluation
+  instructions:
+    Score candidates on a scale of 1 to 10.
+    Provide specific, actionable feedback.
+    Be fair and consistent across all candidates.
+
+# === AGENTS ===
+
+agent 'Resume Screener' receiving candidate_id:
+  uses skills: 'Candidate Lookup'
+  track agent decisions
+  knows about: JobDescriptions
+  must not:
+    delete any records
+    access AgentLogs table
+
+  prompt is text block:
+    You are a resume screening specialist.
+    Review the candidate's resume and experience.
+    Score 1-10 based on qualifications match.
+    Focus on: relevant experience, skills alignment, career trajectory.
+
+  result = ask claude prompt with candidate_id returning:
+    score (number)
+    strengths
+    gaps
+    recommendation
+  send back result
+
+agent 'Technical Assessor' receiving screening:
+  uses skills: 'Candidate Lookup', 'Evaluation Recording'
+  track agent decisions
+  must not:
+    delete any records
+
+  prompt is text block:
+    You are a technical interview assessor.
+    Based on the screening results, evaluate technical depth.
+    Score 1-10 based on: problem-solving ability, technical knowledge, system design thinking.
+
+  result = ask claude prompt with screening returning:
+    score (number)
+    technical_strengths
+    areas_to_probe
+    recommendation
+  send back result
+
+agent 'Culture Fit Analyzer' receiving assessment:
+  track agent decisions
+  must not:
+    delete any records
+
+  prompt is text block:
+    You are a culture fit analyst.
+    Based on the candidate's profile and previous assessments,
+    evaluate alignment with team values and communication style.
+    Score 1-10.
+
+  result = ask claude prompt with assessment returning:
+    score (number)
+    cultural_strengths
+    concerns
+    recommendation
+  send back result
+
+agent 'Final Decision Maker' receiving evaluations:
+  track agent decisions
+  must not:
+    delete any records
+    modify Candidates table
+
+  prompt is text block:
+    You are the hiring committee lead.
+    Review all evaluation scores and recommendations.
+    Make a final hire/no-hire decision with justification.
+    Consider: technical ability, culture fit, growth potential.
+
+  result = ask claude prompt with evaluations returning:
+    decision
+    confidence (number)
+    justification
+    suggested_offer_level
+  send back result
+
+# === PIPELINE ===
+
+pipeline 'Hiring Pipeline' with candidate_id:
+  'Resume Screener'
+  'Technical Assessor'
+  'Culture Fit Analyzer'
+
+# === ENDPOINTS ===
+
+when user calls POST /api/candidates sending data:
+  saved = save data as new Candidate
+  send back saved with success message
+
+when user calls GET /api/candidates:
+  candidates = get all Candidates
+  send back candidates
+
+when user calls POST /api/evaluate sending data:
+  pipeline_result = call pipeline 'Hiring Pipeline' with data's candidate_id
+  final = call 'Final Decision Maker' with pipeline_result
+  send back final
+
+when user calls POST /api/parallel-evaluate sending data:
+  do these at the same time:
+    screening = call 'Resume Screener' with data's candidate_id
+    culture = call 'Culture Fit Analyzer' with data's candidate_id
+  create combined:
+    screening_score is screening's score
+    culture_score is culture's score
+  send back combined
+
+when user calls POST /api/jobs sending data:
+  saved = save data as new JobDescription
+  send back saved with success message
+
+when user calls GET /api/evaluations:
+  evaluations = get all Evaluations
+  send back evaluations
+
+when user calls GET /api/agent-logs:
+  logs = get all AgentLogs
+  send back logs
+
+# === TESTS ===
+
+test 'resume screener returns structured result':
+  mock claude responding:
+    score = 8
+    strengths is 'Strong backend experience'
+    gaps is 'No frontend skills'
+    recommendation is 'Advance to technical'
+  result = call 'Resume Screener' with 1
+  expect result's score is 8
+  expect result's recommendation contains 'technical'
+
+test 'pipeline processes sequentially':
+  mock claude responding:
+    score = 7
+    strengths is 'Good skills'
+    gaps is 'None'
+    recommendation is 'Pass'
+  mock claude responding:
+    score = 8
+    technical_strengths is 'Strong'
+    areas_to_probe is 'System design'
+    recommendation is 'Pass'
+  mock claude responding:
+    score = 9
+    cultural_strengths is 'Great communicator'
+    concerns is 'None'
+    recommendation is 'Hire'
+  result = call pipeline 'Hiring Pipeline' with 1
+  expect result's score is 9
+
+test 'final decision maker recommends hire':
+  mock claude responding:
+    decision is 'hire'
+    confidence = 0.85
+    justification is 'Strong candidate across all dimensions'
+    suggested_offer_level is 'senior'
+  result = call 'Final Decision Maker' with 'evaluation data'
+  expect result's decision is 'hire'
