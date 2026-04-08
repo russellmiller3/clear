@@ -12,17 +12,17 @@ create a Candidates table:
   summary
   applied_at_date, auto
 
-agent 'Screener' receiving candidate:
+agent 'Screener' receives candidate:
   check candidate's name is not missing, otherwise error 'Name is required'
   check candidate's role is not missing, otherwise error 'Role is required'
   set candidate's screening_pass to ask ai 'Does this candidate meet minimum qualifications? Reply YES or NO only.' with candidate's experience
   send back candidate
 
-agent 'Scorer' receiving candidate:
+agent 'Scorer' receives candidate:
   set candidate's score to ask ai 'Rate this candidate 1-10 based on skills fit. Reply with just the number.' with candidate's skills
   send back candidate
 
-agent 'Summarizer' receiving candidate:
+agent 'Summarizer' receives candidate:
   set candidate's summary to ask ai 'Write a 2-sentence hiring recommendation.' with candidate's experience
   send back candidate
 

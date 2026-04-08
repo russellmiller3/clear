@@ -1132,7 +1132,7 @@ answer = ask claude 'Summarize this article' with article_text
 answer = ask claude 'Write a poem' with topic using 'claude-haiku-4-5-20251001'
 
 # Structured output
-result = ask claude 'Analyze this lead' with lead_data returning:
+result = ask claude 'Analyze this lead' with lead_data returning JSON text:
   score (number)
   reasoning
   qualified (boolean)
@@ -1173,7 +1173,7 @@ requires auth
 
 ### Basic Agent
 ```clear
-agent 'Lead Scorer' receiving lead:
+agent 'Lead Scorer' receives lead:
   check lead's company is not missing, otherwise error 'Company required'
   score = ask claude 'Rate 1-10 for enterprise potential' with lead's company
   send back score
@@ -1185,7 +1185,7 @@ define function look_up_orders(customer_email):
   orders = look up all Orders where email is customer_email
   return orders
 
-agent 'Support' receiving message:
+agent 'Support' receives message:
   can use: look_up_orders
   response = ask claude 'Help this customer' with message
   send back response
@@ -1199,7 +1199,7 @@ skill 'Order Management':
     Always verify customer identity before changes.
     Include order number in responses.
 
-agent 'Support' receiving message:
+agent 'Support' receives message:
   uses skills: 'Order Management'
   response = ask claude 'Help' with message
   send back response
@@ -1207,7 +1207,7 @@ agent 'Support' receiving message:
 
 ### Guardrails
 ```clear
-agent 'Public Bot' receiving question:
+agent 'Public Bot' receives question:
   can use: search_products
   must not:
     delete any records
@@ -1219,7 +1219,7 @@ agent 'Public Bot' receiving question:
 
 ### Multi-Turn Conversation
 ```clear
-agent 'Chat' receiving message:
+agent 'Chat' receives message:
   remember conversation context
   response = ask claude 'You are a helpful assistant' with message
   send back response
@@ -1227,7 +1227,7 @@ agent 'Chat' receiving message:
 
 ### Agent Memory
 ```clear
-agent 'PA' receiving message:
+agent 'PA' receives message:
   remember user's preferences
   response = ask claude 'Help the user' with message
   send back response
@@ -1235,7 +1235,7 @@ agent 'PA' receiving message:
 
 ### RAG / Knowledge Base
 ```clear
-agent 'KnowledgeBot' receiving question:
+agent 'KnowledgeBot' receives question:
   knows about: Documents, Products, FAQ
   answer = ask claude 'Answer using context' with question
   send back answer
@@ -1243,7 +1243,7 @@ agent 'KnowledgeBot' receiving question:
 
 ### Observability
 ```clear
-agent 'Bot' receiving message:
+agent 'Bot' receives message:
   track agent decisions
   response = ask claude 'Help' with message
   send back response
@@ -1251,7 +1251,7 @@ agent 'Bot' receiving message:
 
 ### Long Prompts (Text Blocks)
 ```clear
-agent 'Bot' receiving message:
+agent 'Bot' receives message:
   today = format date current time as 'YYYY-MM-DD'
   prompt is text block:
     You are a support agent. Today is {today}.
@@ -1280,7 +1280,7 @@ do these at the same time:
 
 ### Human-in-the-Loop
 ```clear
-agent 'Refund' receiving request:
+agent 'Refund' receives request:
   if request's amount is greater than 100:
     ask user to confirm 'Process large refund?'
   send back 'Refund processed'
@@ -1299,20 +1299,20 @@ test 'handles product question':
 ### Streaming (Default for Text Agents)
 Text agents stream by default — token-by-token via SSE. No directive needed.
 ```clear
-# Streams automatically (text response, no returning:)
-agent 'Chat' receiving message:
+# Streams automatically (text response, no returning JSON text:)
+agent 'Chat' receives message:
   response = ask claude 'Help the user' with message
   send back response
 
 # Auto non-streaming (structured output can't stream partial JSON)
-agent 'Classifier' receiving text:
-  result = ask claude 'Classify' with text returning:
+agent 'Classifier' receives text:
+  result = ask claude 'Classify' with text returning JSON text:
     category
     confidence (number)
   send back result
 
 # Explicit opt-out (pipeline step needs full response)
-agent 'Summarizer' receiving text:
+agent 'Summarizer' receives text:
   do not stream
   summary = ask claude 'Summarize in one sentence' with text
   send back summary

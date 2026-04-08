@@ -11,31 +11,31 @@ create a Workflows table:
 
 # --- Agents ---
 
-agent 'Research Agent' receiving state:
+agent 'Research Agent' receives state:
   set state's research to ask ai 'Research the topic and provide key findings' with state's topic
   send back state
 
-agent 'Writer Agent' receiving state:
+agent 'Writer Agent' receives state:
   set state's draft to ask ai 'Write a draft article based on the research' with state's research
   send back state
 
-agent 'Reviewer Agent' receiving state:
-  set result to ask ai 'Review this draft for quality. Score 1-10.' with state's draft returning:
+agent 'Reviewer Agent' receives state:
+  set result to ask ai 'Review this draft for quality. Score 1-10.' with state's draft returning JSON text:
     quality_score (number)
     feedback
   set state's quality_score to result's quality_score
   set state's feedback to result's feedback
   send back state
 
-agent 'Publisher Agent' receiving state:
+agent 'Publisher Agent' receives state:
   set state's published to true
   send back state
 
-agent 'Sentiment Agent' receiving state:
+agent 'Sentiment Agent' receives state:
   set state's sentiment to ask ai 'Rate sentiment 1-10' with state's draft
   send back state
 
-agent 'SEO Agent' receiving state:
+agent 'SEO Agent' receives state:
   set state's seo_score to ask ai 'Rate SEO quality 1-10' with state's draft
   send back state
 

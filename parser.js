@@ -2336,9 +2336,9 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     };
   }
 
-  // Parse 'receiving' keyword
-  if (pos >= tokens.length || tokens[pos].value !== 'receiving') {
-    errors.push({ line, message: `agent '${name}' needs 'receiving' or 'runs every'. Example: agent '${name}' receiving data:  OR  agent '${name}' runs every 1 hour:` });
+  // Parse 'receives' keyword (also accepts 'receiving' for compatibility)
+  if (pos >= tokens.length || (tokens[pos].value !== 'receives' && tokens[pos].value !== 'receiving')) {
+    errors.push({ line, message: `agent '${name}' needs 'receives' or 'runs every'. Example: agent '${name}' receives data:  OR  agent '${name}' runs every 1 hour:` });
     return { node: null, endIdx: startIdx + 1 };
   }
   pos++;
@@ -5656,10 +5656,14 @@ function parseAssignment(tokens, line) {
         pos++;
       }
     }
-    // Check for "returning:" at end of line (structured output schema follows as indented block)
+    // Check for "returning:" or "returning JSON text:" at end of line
+    // (structured output schema follows as indented block)
     let hasSchema = false;
     if (pos < tokens.length && tokens[pos].value === 'returning') {
       hasSchema = true;
+      pos++;
+      // Skip optional "JSON" and "text" qualifier words
+      while (pos < tokens.length && (tokens[pos].value === 'JSON' || tokens[pos].value === 'json' || tokens[pos].value === 'text')) pos++;
     }
     return { name, expression: { type: NodeType.ASK_AI, prompt, context, model, line }, hasSchema };
   }

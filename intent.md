@@ -218,9 +218,9 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `(nu
 
 | Node Type | Canonical Syntax | Terse Alias | JS |
 |-----------|-----------------|-------------|-----|
-| `AGENT` | `agent 'Name' receiving data:` + body | (same) | `async function agent_name(data) { ... }` |
+| `AGENT` | `agent 'Name' receives data:` + body | (same) | `async function agent_name(data) { ... }` |
 | `ASK_AI` | `set answer to ask ai 'prompt' with context` | `answer = ask ai 'prompt' with context` | `await _askAI("prompt", context)` |
-| `ASK_AI` (structured) | `set result to ask ai 'prompt' with context returning:` + fields | (same) | `await _askAI("prompt", context, schema)` |
+| `ASK_AI` (structured) | `set result to ask ai 'prompt' with context returning JSON text:` + fields | (same) | `await _askAI("prompt", context, schema)` |
 | `RUN_AGENT` | `set result to call 'Name' with data` | `result = call 'Name' with data` | `await agent_name(data)` |
 | `GUARD` | `check X is not missing, otherwise error 'msg'` | `guard X is not nothing or 'msg'` | `throw new Error("msg")` (in agent) / `res.status(403)` (in endpoint) |
 | `PARALLEL_AGENTS` | `do these at the same time:` + assignments | (same) | `const [a, b] = await Promise.all([...])` |
@@ -270,11 +270,12 @@ Workflow step types (inside workflow body):
 
 `missing` is a synonym for `nothing` (null). Both work everywhere.
 
-**Structured AI output:** Add `returning:` after the `ask ai` call with an indented block of fields.
+**Structured AI output:** Add `returning JSON text:` after the `ask ai` call with an indented block of fields.
 Each field is `name` (defaults to text) or `name (type)` where type is `text`, `number`, `boolean`, or `list`.
 The runtime appends a JSON schema instruction to the prompt and parses the AI's JSON response into an object.
+`returning:` (without `JSON text`) also works for brevity.
 ```
-set result to ask ai 'Analyze this' with data returning:
+set result to ask ai 'Analyze this' with data returning JSON text:
   score (number)
   reasoning
   qualified (boolean)

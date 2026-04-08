@@ -9,7 +9,7 @@ create a Reviews table:
   reason
   reviewed_at_date, auto
 
-agent 'Moderator' receiving review:
+agent 'Moderator' receives review:
   check review's content is not missing, otherwise error 'Content is required'
   set review's verdict to ask ai 'Is this content safe? Reply SAFE or UNSAFE on line 1, then a one-sentence reason on line 2.' with review's content
   send back review

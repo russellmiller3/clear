@@ -606,7 +606,7 @@ define function look_up_orders(customer_id):
 define function check_status(order_id):
   return order_id
 
-agent 'Customer Support' receiving message:
+agent 'Customer Support' receives message:
   can use: look_up_orders, check_status
   must not: share customer passwords, modify billing
   remember conversation context
@@ -1029,7 +1029,7 @@ test 'double works':
 Use `mock claude responding:` to test agents without calling the real API:
 
 ```clear
-agent 'Classifier' receiving feedback:
+agent 'Classifier' receives feedback:
   analysis = ask claude 'Classify this feedback' with feedback returning:
     sentiment
     score (number)
@@ -1198,13 +1198,165 @@ page 'My App':
 
 ---
 
+## Chapter 19: Workflows (Multi-Step AI Pipelines)
+
+Chapter 10 showed you how to build AI agents. But real-world AI work often needs
+multiple agents working together — one researches, another writes, another reviews,
+and they keep going until the quality is good enough. That's a workflow.
+
+### Your First Workflow
+
+```clear
+build for web and javascript backend
+database is local memory
+
+agent 'Writer' receives topic:
+  set topic's draft to ask claude 'Write a short article about this topic' with topic's topic
+  send back topic
+
+agent 'Reviewer' receives state:
+  set result to ask claude 'Score this draft 1-10 for quality' with state's draft returning JSON text:
+    quality_score (number)
+    feedback
+  set state's quality_score to result's quality_score
+  set state's feedback to result's feedback
+  send back state
+
+workflow 'Article Pipeline' with state:
+  state has:
+    topic, required
+    draft
+    quality_score (number), default 0
+    feedback
+
+  step 'Write' with 'Writer'
+  step 'Review' with 'Reviewer'
+```
+
+Read that out loud: *"The Article Pipeline workflow has state with a topic (required),
+draft, quality score (starts at 0), and feedback. Step one: Write. Step two: Review."*
+
+Each step passes the full state to an agent. The agent modifies it and passes it back.
+
+### Conditional Routing
+
+What if you want different agents for different situations?
+
+```clear
+workflow 'Support Router' with state:
+  state has:
+    message, required
+    category
+    resolution
+
+  step 'Classify' with 'Classifier Agent'
+  if state's category is 'billing':
+    step 'Billing' with 'Billing Specialist'
+  otherwise:
+    step 'General' with 'General Support'
+  step 'Close' with 'Closer Agent'
+```
+
+After classification, billing questions go to the billing specialist.
+Everything else goes to general support. Then both paths converge at "Close."
+
+### Retry Loops (Quality Gates)
+
+The killer feature. Repeat steps until they're good enough:
+
+```clear
+workflow 'Content Review' with state:
+  state has:
+    draft, required
+    quality_score (number), default 0
+
+  step 'Write' with 'Writer'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer'
+  step 'Publish' with 'Publisher'
+```
+
+Write once, review, and if the score is below 8, revise and try again — up to 3 times.
+Then publish. The `max 3 times` is a safety net so it never loops forever.
+
+### Parallel Branches
+
+Run multiple agents at the same time and merge results:
+
+```clear
+workflow 'Article Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    seo_score
+
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'SEO' with 'SEO Agent' saves to state's seo_score
+  step 'Report' with 'Report Agent'
+```
+
+Sentiment analysis and SEO scoring happen simultaneously. Each result saves to
+a specific field in the state. Then the Report agent gets the combined result.
+
+### Saving Progress (Crash Recovery)
+
+For long-running workflows, save a checkpoint after each step:
+
+```clear
+workflow 'Onboarding' with state:
+  save progress to Workflows table
+  state has:
+    user_id, required
+    welcome_sent (boolean), default false
+    profile_created (boolean), default false
+
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'
+  step 'Tutorial' with 'Tutorial Agent'
+```
+
+If the server crashes mid-workflow, the progress is in the database.
+
+### Running a Workflow
+
+Call it from an endpoint like any other function:
+
+```clear
+when user calls POST /api/content sending data:
+  result = run workflow 'Content Review' with data
+  send back result
+```
+
+The result contains the final state — all fields, updated by every step.
+
+### Tracking What Happened
+
+Add observability to see every step the workflow took:
+
+```clear
+workflow 'Support' with state:
+  track workflow progress
+  state has:
+    message, required
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+```
+
+The result includes `_history` — an array of state snapshots at each step,
+with timestamps. Great for debugging and audit trails.
+
+---
+
 ## What's Next? (You Did It!)
 
 You just learned an entire programming language. Not bad for one sitting.
 
 Here's where to go from here:
 
-1. **Browse the example apps** in the `apps/` directory — 42 apps from simple to ambitious
+1. **Browse the example apps** in the `apps/` directory — 43 apps from simple to ambitious
 2. **Read `SYNTAX.md`** — the complete reference for every feature
 3. **Ask AI to build something** — describe what you want and let it write Clear code
 4. **Read the output** — open `main.clear` and verify it does what you asked
