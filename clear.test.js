@@ -15735,5 +15735,180 @@ agent 'Bot' receiving message:
   });
 });
 
+// =============================================================================
+// TOOL USE / FUNCTION CALLING (Phase 75)
+// =============================================================================
+
+describe('Tool use - parser', () => {
+  it('parses can use: with comma-separated function names', () => {
+    const src = `build for javascript backend
+define function look_up_orders(email):
+  return email
+define function check_status(id):
+  return id
+define function send_email(msg):
+  return msg
+agent 'Support' receiving message:
+  can use: look_up_orders, check_status, send_email
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.tools).toHaveLength(3);
+    expect(agent.tools[0]).toEqual({ type: 'ref', name: 'look_up_orders' });
+    expect(agent.tools[1]).toEqual({ type: 'ref', name: 'check_status' });
+    expect(agent.tools[2]).toEqual({ type: 'ref', name: 'send_email' });
+  });
+
+  it('parses single tool', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving data:
+  can use: helper
+  response = ask claude 'Help' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.tools).toHaveLength(1);
+    expect(agent.tools[0].name).toBe('helper');
+  });
+
+  it('parses can use: with track agent decisions', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  track agent decisions
+  can use: helper
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.trackDecisions).toBe(true);
+    expect(agent.tools).toHaveLength(1);
+  });
+});
+
+describe('Tool use - compiler', () => {
+  it('generates _tools array and _toolFns map', () => {
+    const src = `build for javascript backend
+define function look_up_orders(customer_email):
+  return customer_email
+define function check_status(order_id):
+  return order_id
+agent 'Support' receiving message:
+  can use: look_up_orders, check_status
+  response = ask claude 'Help this customer' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_tools');
+    expect(result.javascript).toContain('look_up_orders');
+    expect(result.javascript).toContain('check_status');
+    expect(result.javascript).toContain('_toolFns');
+    expect(result.javascript).toContain('_askAIWithTools');
+    expect(result.javascript).not.toContain('await _askAI('); // replaced with _askAIWithTools
+  });
+
+  it('tool schema includes function parameters', () => {
+    const src = `build for javascript backend
+define function search_products(query, category):
+  return query
+agent 'Bot' receiving msg:
+  can use: search_products
+  response = ask claude 'Find products' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('"query"');
+    expect(result.javascript).toContain('"category"');
+    expect(result.javascript).toContain('search_products');
+  });
+
+  it('_askAIWithTools utility is tree-shaken in', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('async function _askAIWithTools');
+  });
+
+  it('agent WITHOUT tools still uses _askAI (no regression)', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain('_askAIWithTools');
+    expect(result.javascript).not.toContain('_tools');
+  });
+});
+
+describe('Tool use - validator', () => {
+  it('errors on undefined tool function', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving msg:
+  can use: nonexistent_function
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.message.includes('nonexistent_function') && e.message.includes('no function'))).toBe(true);
+  });
+
+  it('passes when tool function exists', () => {
+    const src = `build for javascript backend
+define function helper(data):
+  return data
+agent 'Bot' receiving msg:
+  can use: helper
+  response = ask claude 'Help' with msg
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe('Tool use - E2E', () => {
+  it('full agent with 3 tools + endpoint compiles', () => {
+    const src = `build for javascript backend
+create a Orders table:
+  email, required
+  status, default 'pending'
+define function look_up_orders(customer_email):
+  orders = look up all Orders where email is customer_email
+  return orders
+define function check_status(order_id):
+  order = look up Order where id is order_id
+  return order
+define function send_notification(message):
+  show message
+  return message
+agent 'Customer Support' receiving message:
+  can use: look_up_orders, check_status, send_notification
+  response = ask claude 'Help this customer resolve their issue' with message
+  send back response
+when user calls POST /api/support sending data:
+  result = call 'Customer Support' with data
+  send back result`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_askAIWithTools');
+    expect(result.javascript).toContain('_tools');
+    expect(result.javascript).toContain('look_up_orders');
+    expect(result.javascript).toContain('async function agent_customer_support');
+  });
+});
+
 run();
 

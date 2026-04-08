@@ -324,6 +324,39 @@ const UTILITY_FUNCTIONS = [
     } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
   }
 }`, deps: [] },
+  { name: '_askAIWithTools', code: `async function _askAIWithTools(prompt, context, tools, toolFns, model) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
+  if (!key) throw new Error("Set ANTHROPIC_API_KEY environment variable with your Anthropic API key");
+  const endpoint = process.env.CLEAR_AI_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+  const _model = model || "claude-sonnet-4-20250514";
+  const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === "string" ? context : JSON.stringify(context)) : prompt;
+  const messages = [{ role: "user", content: userContent }];
+  const maxTurns = 10;
+  for (let i = 0; i < maxTurns; i++) {
+    const payload = { model: _model, max_tokens: 4096, messages, tools };
+    const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
+    if (!r.ok) { const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e); }
+    const data = await r.json();
+    const msg = data.content;
+    messages.push({ role: "assistant", content: msg });
+    const toolUses = msg.filter(b => b.type === "tool_use");
+    if (toolUses.length === 0) return msg.find(b => b.type === "text")?.text || "";
+    const results = [];
+    for (const tu of toolUses) {
+      const fn = toolFns[tu.name];
+      if (!fn) { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: "Unknown tool: " + tu.name }), is_error: true }); continue; }
+      try {
+        const result = await fn(...Object.values(tu.input));
+        results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result) });
+      } catch (toolErr) {
+        results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ error: toolErr.message }), is_error: true });
+      }
+    }
+    messages.push({ role: "user", content: results });
+  }
+  throw new Error("Agent exceeded maximum tool use turns (10)");
+}`, deps: [] },
 ];
 
 // Tree-shake: scan compiled code and return only used utility function definitions
@@ -1622,6 +1655,59 @@ function compileAgent(node, ctx, pad) {
     code += wrappedBody + '\n';
     code += `${pad}}`;
     return code;
+  }
+
+  // Tool use: can use: fn1, fn2 — generate _tools array + _toolFns map + use _askAIWithTools
+  if (node.tools && node.tools.length > 0) {
+    const refTools = node.tools.filter(t => t.type === 'ref');
+    if (refTools.length > 0) {
+      // Look up function definitions in the AST to build tool schemas
+      const astBody = ctx._astBody || [];
+      const toolDefs = [];
+      const toolFnNames = [];
+      for (const tool of refTools) {
+        const fnDef = astBody.find(n => n.type === NodeType.FUNCTION_DEF && n.name === tool.name);
+        const params = fnDef ? fnDef.params : [];
+        const properties = {};
+        for (const p of params) {
+          properties[p] = { type: 'string' };
+        }
+        const required = params.length > 0 ? params : undefined;
+        toolDefs.push({
+          name: tool.name,
+          description: `${tool.name}(${params.join(', ')})`,
+          input_schema: { type: 'object', properties, ...(required ? { required } : {}) },
+        });
+        toolFnNames.push(sanitizeName(tool.name));
+      }
+      const toolsJson = JSON.stringify(toolDefs);
+      const toolFnsObj = toolFnNames.map(n => `${n}`).join(', ');
+
+      if (ctx.lang === 'python') {
+        let code = `${pad}async def ${fnName}(${param}):\n`;
+        code += `${innerPad}_tools = ${toolsJson}\n`;
+        code += `${innerPad}_tool_fns = {${toolFnNames.map(n => `"${n}": ${n}`).join(', ')}}\n`;
+        // Replace _askAI with _askAIWithTools in body
+        const wrappedBody = bodyCode.replace(
+          /await _ask_ai\(([^)]+)\)/g,
+          'await _ask_ai_with_tools($1, _tools, _tool_fns)'
+        );
+        code += wrappedBody;
+        return code;
+      }
+
+      let code = `${pad}async function ${fnName}(${param}) {\n`;
+      code += `${innerPad}const _tools = ${toolsJson};\n`;
+      code += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
+      // Replace _askAI calls with _askAIWithTools
+      const wrappedBody = bodyCode.replace(
+        /await _askAI\(([^)]*)\)/g,
+        'await _askAIWithTools($1, _tools, _toolFns)'
+      );
+      code += wrappedBody + '\n';
+      code += `${pad}}`;
+      return code;
+    }
   }
 
   if (ctx.lang === 'python') {

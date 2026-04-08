@@ -2476,7 +2476,7 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
   const agentIndent = lines[startIdx].indent;
   const directives = {
     trackDecisions: false,
-    // Future: tools, restrictions, skills, rememberConversation, rememberPreferences, knowsAbout
+    tools: null,        // [{type:'ref', name:'fn1'}, ...] or [{type:'inline', description:'...'}]
   };
   let bodyStartIdx = startIdx + 1;
   while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > agentIndent) {
@@ -2488,6 +2488,38 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
         dTokens[1].value === 'agent' && dTokens[2].value === 'decisions') {
       directives.trackDecisions = true;
       bodyStartIdx++;
+      continue;
+    }
+
+    // can use: fn1, fn2, fn3 (single-line) OR can use: (block with indented inline tools)
+    // Note: `can` has canonical 'can', `use` has canonical 'use' (module import synonym)
+    if ((dTokens[0].value === 'can' || dTokens[0].canonical === 'can') &&
+        dTokens.length >= 2 && (dTokens[1].canonical === 'use' || dTokens[1].value === 'use')) {
+      directives.tools = [];
+      if (dTokens.length > 2) {
+        // Single-line form: can use: fn1, fn2, fn3
+        // Tokens after 'can use' are comma-separated identifiers
+        for (let t = 2; t < dTokens.length; t++) {
+          if (dTokens[t].type === TokenType.COMMA) continue;
+          if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) {
+            directives.tools.push({ type: 'ref', name: dTokens[t].value });
+          }
+        }
+        bodyStartIdx++;
+      } else {
+        // Block form: can use: with indented tool descriptions
+        bodyStartIdx++;
+        const toolIndent = lines[bodyStartIdx - 1].indent;
+        while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > toolIndent) {
+          const toolTokens = lines[bodyStartIdx].tokens;
+          if (toolTokens.length > 0) {
+            // Collect the raw text of the line as an inline tool description
+            const desc = toolTokens.map(t => t.value).join(' ');
+            directives.tools.push({ type: 'inline', description: desc });
+          }
+          bodyStartIdx++;
+        }
+      }
       continue;
     }
 

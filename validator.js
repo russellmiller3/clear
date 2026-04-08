@@ -98,6 +98,7 @@ export function validate(ast) {
   validateCapacity(ast.body, warnings);
   validateFieldMismatch(ast.body, warnings);
   validateOWASP(ast.body, errors, warnings);
+  validateAgentTools(ast.body, errors);
   return { errors, warnings };
 }
 
@@ -1250,6 +1251,31 @@ function validateOWASP(body, errors, warnings) {
       `Your app requires auth but doesn't log requests. Without logging, you can't detect ` +
       `unauthorized access attempts or debug auth issues. Add: log every request`
     );
+  }
+}
+
+/**
+ * Validate agent tool references — verify each tool name matches a defined function.
+ */
+function validateAgentTools(body, errors) {
+  // Collect all function names
+  const functionNames = new Set();
+  for (const node of body) {
+    if (node.type === NodeType.FUNCTION_DEF) functionNames.add(node.name);
+  }
+
+  // Check each agent's tools
+  for (const node of body) {
+    if (node.type === NodeType.AGENT && node.tools && node.tools.length > 0) {
+      for (const tool of node.tools) {
+        if (tool.type === 'ref' && !functionNames.has(tool.name)) {
+          errors.push({
+            line: node.line,
+            message: `agent '${node.name}' uses tool '${tool.name}' but no function '${tool.name}' is defined. Add: define function ${tool.name}(...):`
+          });
+        }
+      }
+    }
   }
 }
 
