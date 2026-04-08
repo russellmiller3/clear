@@ -1932,7 +1932,210 @@ The LangChain equivalent is 500-800 lines across 6+ files.
 | Tier 5: Platform | 67-70 | 5 days | Cloud, packages, desktop, mobile |
 | Tier 6: Intelligence | 71-74 | 2.5 days | Auto-admin, smart defaults, AI recovery |
 | Tier 7: AI Agents | 75-84 | 7 days | Tool use, RAG, memory, pipelines, guardrails, testing |
-| **TOTAL** | **84 phases** | **~27 days** | **General-purpose app + agent language** |
+| Tier 8: Agent Workflows | 85-90 | 4 days | Stateful graphs, durable execution, cycles, routing |
+| **TOTAL** | **90 phases** | **~31 days** | **General-purpose app + agent language** |
+
+---
+
+### Tier 8: Agent Workflows — LangGraph Parity (Day 14-18)
+
+Clear has agents, pipelines, and parallel execution. Tier 8 adds the three features that make LangGraph powerful: stateful graphs, durable execution, and cycles. Clear's advantage: these compile to deterministic JS/Python — no framework dependency, no runtime overhead, no vendor lock-in.
+
+**What exists today:**
+- Linear pipelines (`pipeline 'Name' with var:`)
+- Parallel execution (`do these at the same time:`)
+- Agent-to-agent calls (`call 'Agent' with data`)
+- if/else inside agent bodies
+- Database for persistent state
+
+**What's missing — 6 phases with exact syntax:**
+
+---
+
+#### Phase 85: Workflow State (0.5 day)
+
+Explicit shared state object that every step can read and modify. Unlike pipeline's linear pass-through, workflow state is a named, typed object.
+
+```clear
+workflow 'Support Ticket' with state:
+  state has:
+    message, required
+    category
+    priority
+    resolution
+    attempts (number), default 0
+    status, default 'new'
+
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+```
+
+Compiles to: a mutable state object (plain JS object) passed by reference through each step. Each agent receives AND returns the full state. The `state has:` block defines the shape with defaults — like a table schema but for workflow context.
+
+---
+
+#### Phase 86: Conditional Routing (0.5 day)
+
+Route to different agents based on state. Declarative, not buried inside agent bodies.
+
+```clear
+workflow 'Support' with state:
+  state has:
+    message, required
+    category
+    priority
+
+  step 'Triage' with 'Triage Agent'
+  if state's category is 'software':
+    step 'Software Fix' with 'Software Specialist'
+  if state's category is 'hardware':
+    step 'Hardware Fix' with 'Hardware Specialist'
+  otherwise:
+    step 'General' with 'General Agent'
+  step 'Resolution' with 'Resolution Agent'
+```
+
+Compiles to: if/else chain between step calls. The routing is at the workflow level, visible in the Clear source — not hidden inside agent logic.
+
+---
+
+#### Phase 87: Cycles and Retry Loops (1 day)
+
+Agents can loop back for retry, reflection, or re-evaluation. The loop has an explicit exit condition and max iterations (safety).
+
+```clear
+workflow 'Content Review' with state:
+  state has:
+    draft, required
+    quality_score (number), default 0
+    feedback
+    attempts (number), default 0
+
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer Agent'
+  step 'Publish' with 'Publisher Agent'
+```
+
+Compiles to: a while loop with the exit condition + max iteration guard. Each iteration calls the agents in sequence. The `max N times` is mandatory — no infinite loops. The `attempts` counter increments automatically.
+
+---
+
+#### Phase 88: Durable Execution (1 day)
+
+Workflow state is checkpointed to the database after each step. If the server crashes mid-workflow, it resumes from the last checkpoint on restart.
+
+```clear
+workflow 'Onboarding' with state:
+  state has:
+    user_id, required
+    step_completed
+    welcome_sent (boolean), default false
+    profile_created (boolean), default false
+
+  save progress to Workflows table
+  
+  step 'Welcome' with 'Welcome Agent'
+  step 'Profile' with 'Profile Agent'
+  step 'Tutorial' with 'Tutorial Agent'
+```
+
+`save progress to Workflows table` enables checkpointing. After each step, the workflow state is saved with `step_completed` set to the last finished step. On restart, the workflow resumes from the next step.
+
+Compiles to: `await db.update('workflows', state)` after each step. On load, check for existing state with `status !== 'complete'` and resume.
+
+---
+
+#### Phase 89: Parallel Branches with Join (0.5 day)
+
+Fan-out to multiple agents, then merge results back into state.
+
+```clear
+workflow 'Analysis' with state:
+  state has:
+    text, required
+    sentiment
+    topics
+    language
+
+  step 'Triage' with 'Triage Agent'
+  at the same time:
+    step 'Sentiment' with 'Sentiment Agent' saves to state's sentiment
+    step 'Topics' with 'Topic Agent' saves to state's topics
+    step 'Language' with 'Language Agent' saves to state's language
+  step 'Report' with 'Report Agent'
+```
+
+Compiles to: `Promise.all` with results assigned to specific state fields. Unlike `do these at the same time:` which creates new variables, this writes directly to the workflow state.
+
+---
+
+#### Phase 90: Workflow Observability and Testing (0.5 day)
+
+Every step transition is logged with state snapshots. Tests can verify the workflow path.
+
+```clear
+workflow 'Support' with state:
+  track workflow progress
+  state has:
+    message, required
+    category
+    resolved (boolean), default false
+
+  step 'Triage' with 'Triage Agent'
+  step 'Resolve' with 'Resolution Agent'
+
+test 'support workflow routes correctly':
+  mock claude responding:
+    category is 'software'
+  mock claude responding:
+    resolved is true
+  run workflow 'Support' with message is 'My app crashed'
+  expect state's category is 'software'
+  expect state's resolved is true
+```
+
+Compiles to: state history array logged after each step. Test harness provides mock AI and validates the final state.
+
+---
+
+**What a complete Clear workflow looks like after Tier 8:**
+
+```clear
+workflow 'Content Pipeline' with state:
+  save progress to Workflows table
+  track workflow progress
+  state has:
+    topic, required
+    draft
+    quality_score (number), default 0
+    feedback
+    published (boolean), default false
+
+  step 'Research' with 'Research Agent'
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+    if state's quality_score is less than 8:
+      step 'Revise' with 'Writer Agent'
+  step 'Publish' with 'Publisher Agent'
+
+test 'pipeline produces quality content':
+  mock claude responding:
+    research is 'Key findings about AI'
+  mock claude responding:
+    draft is 'AI is transforming...'
+  mock claude responding:
+    quality_score = 9
+    feedback is 'Excellent'
+  run workflow 'Content Pipeline' with topic is 'AI trends'
+  expect state's quality_score is greater than 8
+  expect state's published is true
+```
+
+That's ~30 lines for a durable, retrying content pipeline with quality gates, checkpointing, and tests. The LangGraph equivalent is 200+ lines of Python with framework boilerplate.
 
 **What's been built: 3 days, 46 phases, 1337 tests, 14k lines of compiler.**
 **What remains: ~24 days for 38 phases.**
