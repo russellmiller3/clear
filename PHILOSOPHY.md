@@ -132,7 +132,7 @@ what you can't see.
 - No bundling multiple concerns into one keyword
 
 If you need logging, write `log every request`. If you need CORS, write
-`accept requests from any website`. Every behavior is visible in the Clear source.
+`allow server to accept requests from frontend`. Every behavior is visible in the Clear source.
 
 ## Design Rules
 
@@ -553,7 +553,7 @@ create a Todos table:
 # Backend
 
 # Accept requests from the browser
-accept requests from any website
+allow server to accept requests from frontend
 
 # Print every request to the console for debugging
 log every request
@@ -696,7 +696,7 @@ The reader knows what data exists, what the API does, and what the user sees.
 | Test block | `test 'addition works':` + indented body |
 | Assertion | `expect result is 5` |
 | Request logging | `log every request` |
-| CORS | `accept requests from any website` |
+| CORS | `allow server to accept requests from frontend` |
 | Webhook | `webhook '/stripe/events' signed with env('SECRET'):` |
 | Background job | `background 'cleanup':` + `runs every 1 hour` |
 | Rate limit | `rate limit 10 per minute` |

@@ -9,7 +9,7 @@ create a Expenses table:
   created_at, auto
 
 # Backend
-accept requests from any website
+allow server to accept requests from frontend
 log every request
 
 when user calls GET /api/expenses:
