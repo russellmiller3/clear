@@ -1956,6 +1956,19 @@ function _compileNodeInner(node, ctx) {
     case NodeType.AGENT:
       return compileAgent(node, ctx, pad);
 
+    case NodeType.PARALLEL_AGENTS: {
+      const names = node.assignments.map(a => sanitizeName(a.name));
+      const calls = node.assignments.map(a => exprToCode(a.expression, ctx));
+      if (ctx.lang === 'python') {
+        const tasks = calls.join(', ');
+        const vars = names.join(', ');
+        return `${pad}${vars} = await asyncio.gather(${tasks})`;
+      }
+      const tasks = calls.join(', ');
+      const vars = names.join(', ');
+      return `${pad}const [${vars}] = await Promise.all([${tasks}]);`;
+    }
+
     case NodeType.REPEAT: {
       const count = exprToCode(node.count, ctx);
       if (ctx.lang === 'python') {

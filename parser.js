@@ -160,6 +160,7 @@ export const NodeType = Object.freeze({
   AGENT: 'agent',
   ASK_AI: 'ask_ai',
   RUN_AGENT: 'run_agent',
+  PARALLEL_AGENTS: 'parallel_agents',
 
   // Raw JavaScript escape hatch
   SCRIPT: 'script',
@@ -1012,6 +1013,45 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
           name: varName,
           expression: { type: NodeType.DO_ALL, tasks, line },
           line
+        });
+        i = j;
+        continue;
+      }
+
+      // Parallel agents: do these at the same time: + indented agent call assignments
+      // e.g. do these at the same time:\n  sentiment = call 'Sentiment' with text\n  topic = call 'Topic' with text
+      if (firstToken.canonical === 'do_parallel') {
+        const assignments = [];
+        const parallelIndent = lines[i].indent;
+        let j = i + 1;
+        while (j < lines.length && lines[j].indent > parallelIndent) {
+          const childTokens = lines[j].tokens;
+          if (childTokens.length > 0) {
+            // Each child line should be an assignment: name = call 'Agent' with data
+            const childLine = childTokens[0].line;
+            if (childTokens.length >= 2 && childTokens[1].type === TokenType.ASSIGN) {
+              const varName = childTokens[0].value;
+              const rhsResult = parseAssignment(childTokens, childLine);
+              if (rhsResult.error) {
+                errors.push({ line: childLine, message: rhsResult.error });
+              } else if (rhsResult.expression) {
+                assignments.push({ name: varName, expression: rhsResult.expression, line: childLine });
+              }
+            } else {
+              errors.push({ line: childLine, message: `Each line inside 'do these at the same time' must be an assignment. Example: result = call 'Agent' with data` });
+            }
+          }
+          j++;
+        }
+        if (assignments.length === 0) {
+          errors.push({ line, message: `'do these at the same time' needs indented agent calls. Example:\ndo these at the same time:\n  a = call 'Agent1' with data\n  b = call 'Agent2' with data` });
+          i++;
+          continue;
+        }
+        body.push({
+          type: NodeType.PARALLEL_AGENTS,
+          assignments,
+          line,
         });
         i = j;
         continue;

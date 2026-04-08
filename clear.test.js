@@ -21,7 +21,7 @@ describe('Synonym Table', () => {
   });
 
   it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.10.0');
+    expect(SYNONYM_VERSION).toBe('0.11.0');
   });
 
   it('maps "create" to canonical "set"', () => {
@@ -15354,6 +15354,133 @@ when user calls POST /api/categories sending cat:
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).not.toContain('_existing');
+  });
+});
+
+// =============================================================================
+// PARALLEL AGENT EXECUTION (Phase 80)
+// =============================================================================
+
+describe('Parallel agent execution - parser', () => {
+  it('parses do these at the same time with agent calls', () => {
+    const src = `build for javascript backend
+agent 'Sentiment' receiving text:
+  send back text
+agent 'Topic' receiving text:
+  send back text
+when user calls POST /api/analyze sending data:
+  do these at the same time:
+    sentiment = call 'Sentiment' with data
+    topic = call 'Topic' with data
+  send back sentiment`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const endpoint = result.ast.body.find(n => n.type === 'endpoint');
+    const parallel = endpoint.body.find(n => n.type === 'parallel_agents');
+    expect(parallel).toBeDefined();
+    expect(parallel.assignments).toHaveLength(2);
+    expect(parallel.assignments[0].name).toBe('sentiment');
+    expect(parallel.assignments[1].name).toBe('topic');
+  });
+
+  it('errors on empty parallel block', () => {
+    const src = `build for javascript backend
+when user calls POST /api/test:
+  do these at the same time:
+  send back 'done'`;
+    const result = compileProgram(src);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Parallel agent execution - compiler', () => {
+  it('compiles to Promise.all with destructuring', () => {
+    const src = `build for javascript backend
+agent 'Alpha' receiving d:
+  send back d
+agent 'Beta' receiving d:
+  send back d
+when user calls POST /api/test sending data:
+  do these at the same time:
+    alpha = call 'Alpha' with data
+    beta = call 'Beta' with data
+  send back alpha`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Promise.all');
+    expect(result.javascript).toContain('const [alpha, beta]');
+    expect(result.javascript).toContain('agent_alpha(');
+    expect(result.javascript).toContain('agent_beta(');
+  });
+
+  it('compiles 3-agent parallel correctly', () => {
+    const src = `build for javascript backend
+agent 'Sentiment' receiving d:
+  send back d
+agent 'Topic' receiving d:
+  send back d
+agent 'Language' receiving d:
+  send back d
+when user calls POST /api/test sending data:
+  do these at the same time:
+    sentiment = call 'Sentiment' with data
+    topic = call 'Topic' with data
+    lang = call 'Language' with data
+  send back sentiment`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('const [sentiment, topic, lang]');
+    expect(result.javascript).toContain('Promise.all([');
+  });
+
+  it('compiles parallel inside endpoint with send back', () => {
+    const src = `build for javascript backend
+agent 'Fast' receiving d:
+  send back d
+agent 'Slow' receiving d:
+  send back d
+when user calls POST /api/race sending data:
+  do these at the same time:
+    fast = call 'Fast' with data
+    slow = call 'Slow' with data
+  send back fast`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Promise.all');
+    expect(result.javascript).toContain('return res.json(fast)');
+  });
+
+  it('compiles to Python asyncio.gather', () => {
+    const src = `build for python backend
+agent 'Alpha' receiving d:
+  send back d
+agent 'Beta' receiving d:
+  send back d
+when user calls POST /api/test sending data:
+  do these at the same time:
+    alpha = call 'Alpha' with data
+    beta = call 'Beta' with data
+  send back alpha`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain('asyncio.gather');
+    expect(result.python).toContain('alpha, beta = await asyncio.gather');
+  });
+
+  it('2-agent parallel (minimum case)', () => {
+    const src = `build for javascript backend
+agent 'One' receiving d:
+  send back d
+agent 'Two' receiving d:
+  send back d
+when user calls POST /api/test sending data:
+  do these at the same time:
+    one = call 'One' with data
+    two = call 'Two' with data
+  send back one`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('const [one, two]');
   });
 });
 

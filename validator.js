@@ -147,6 +147,15 @@ function validateForwardReferences(body, errors) {
           checkExpr(node.expression, localDefined, node.line);
           localDefined.add(node.name);
           break;
+        case NodeType.PARALLEL_AGENTS:
+          // Each assignment's expression is checked, then all names are defined
+          for (const assign of node.assignments) {
+            checkExpr(assign.expression, localDefined, assign.line);
+          }
+          for (const assign of node.assignments) {
+            localDefined.add(assign.name);
+          }
+          break;
         case NodeType.FUNCTION_DEF: {
           // Function body gets its own scope with params
           const fnScope = new Set(localDefined);
