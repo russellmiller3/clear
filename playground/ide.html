@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clear Playground</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root {
+  --bg: #0f1117; --bg2: #151821; --bg3: #1c1f2e;
+  --bd: rgba(255,255,255,.06); --bd2: rgba(255,255,255,.1);
+  --tx: #e2e8f0; --tx2: #a0aec0; --tx3: #5a6578; --tx4: #3a4258;
+  --accent: #6c8cff; --accent2: #3b5bdb; --accent-glow: rgba(108,140,255,.12);
+  --green: #34d399; --green-bg: rgba(52,211,153,.08);
+  --red: #fb7185; --red-bg: rgba(251,113,133,.08);
+  --amber: #fbbf24; --amber-bg: rgba(251,191,36,.08);
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.2);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--tx); font-family: var(--font); font-size: 13px; -webkit-font-smoothing: antialiased; }
+
+/* Layout */
+#app { display: grid; grid-template-rows: 46px 1fr; grid-template-columns: 1fr 1fr 360px; height: 100vh; }
+#toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: linear-gradient(180deg, var(--bg2), var(--bg)); border-bottom: 1px solid var(--bd); }
+#editor-pane { display: flex; flex-direction: column; border-right: 1px solid var(--bd); overflow: hidden; }
+#preview-pane { display: flex; flex-direction: column; border-right: 1px solid var(--bd); overflow: hidden; }
+#chat-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--bg2); }
+
+/* Toolbar */
+#toolbar select { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-family: var(--mono); cursor: pointer; transition: border-color .15s; }
+#toolbar select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+.toolbar-sep { width: 1px; height: 22px; background: var(--bd2); }
+.toolbar-btn { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 14px; font-size: 12px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all .15s; }
+.toolbar-btn:hover { background: var(--accent2); color: #fff; border-color: var(--accent2); transform: translateY(-1px); }
+.toolbar-btn:active { transform: translateY(0); }
+.toolbar-btn.primary { background: var(--accent2); color: #dde4ff; border-color: var(--accent2); }
+.toolbar-btn.primary:hover { background: var(--accent); border-color: var(--accent); box-shadow: 0 2px 8px rgba(108,140,255,.3); }
+#status { font-family: var(--mono); font-size: 11px; font-weight: 500; margin-left: auto; padding: 4px 10px; border-radius: 20px; transition: all .2s; }
+.status-ok { color: var(--green); background: var(--green-bg); }
+.status-err { color: var(--red); background: var(--red-bg); }
+.status-compiling { color: var(--amber); background: var(--amber-bg); }
+
+/* Editor */
+#editor-pane .cm-editor { flex: 1; overflow: auto; }
+#editor-pane .cm-editor .cm-scroller { font-family: var(--mono) !important; font-size: 13px !important; line-height: 1.7 !important; }
+#editor-pane .cm-editor .cm-content { padding: 16px 0; }
+#editor-pane .cm-editor .cm-gutters { background: var(--bg); border-right: 1px solid var(--bd); color: var(--tx4); min-width: 48px; }
+#editor-pane .cm-editor .cm-activeLineGutter { background: var(--bg3); color: var(--tx3); }
+#editor-pane .cm-editor .cm-activeLine { background: rgba(108,140,255,.03); }
+#editor-pane .cm-editor .cm-selectionBackground { background: rgba(108,140,255,.15) !important; }
+#editor-pane .cm-editor .cm-cursor { border-left-color: var(--accent); border-left-width: 2px; }
+#editor-pane .cm-editor { background: var(--bg); }
+#errors { padding: 10px 14px; background: var(--bg2); border-top: 1px solid var(--bd); max-height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 11px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
+#errors:empty { display: none; }
+.error-line { color: var(--red); padding: 3px 0; cursor: pointer; transition: opacity .1s; }
+.error-line:hover { opacity: .8; }
+.warning-line { color: var(--amber); padding: 3px 0; opacity: .8; }
+
+/* Preview */
+#preview-tabs { display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--bd); }
+.prev-tab { padding: 10px 16px; font-size: 12px; font-weight: 500; color: var(--tx3); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all .15s; position: relative; }
+.prev-tab:hover { color: var(--tx2); }
+.prev-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.prev-tab.active::after { content: ''; position: absolute; bottom: -1px; left: 20%; right: 20%; height: 2px; background: var(--accent); filter: blur(4px); }
+#preview-content { flex: 1; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
+#preview-content iframe { width: 100%; height: 100%; border: none; background: #fff; border-radius: 0; }
+#preview-content pre { padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--tx2); white-space: pre-wrap; }
+#terminal { flex: 1; overflow: auto; padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--tx2); background: var(--bg); scrollbar-width: thin; }
+.term-cmd { color: var(--accent); }
+.term-cmd::before { content: '$ '; color: var(--tx3); }
+.term-out { color: var(--tx2); white-space: pre-wrap; }
+.term-err { color: var(--red); white-space: pre-wrap; }
+
+/* Chat */
+#chat-header { padding: 12px 16px; border-bottom: 1px solid var(--bd); font-size: 13px; font-weight: 600; color: var(--tx2); display: flex; align-items: center; justify-content: space-between; background: linear-gradient(180deg, rgba(108,140,255,.03), transparent); }
+#chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
+.msg { padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.6; max-width: 92%; animation: msgIn .2s ease; }
+@keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.msg.user { background: var(--accent2); color: #dde4ff; align-self: flex-end; border-bottom-right-radius: 4px; }
+.msg.assistant { background: var(--bg3); color: var(--tx); align-self: flex-start; border: 1px solid var(--bd); border-bottom-left-radius: 4px; }
+.msg pre { background: var(--bg); padding: 10px 12px; border-radius: 6px; margin: 8px 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; overflow-x: auto; position: relative; border: 1px solid var(--bd); }
+.msg .apply-btn { position: absolute; top: 6px; right: 6px; background: var(--accent2); color: #dde4ff; border: none; border-radius: 4px; padding: 3px 10px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all .15s; }
+.msg .apply-btn:hover { background: var(--accent); transform: translateY(-1px); }
+.tool-step { font-size: 11px; color: var(--tx3); padding: 4px 10px; border-left: 2px solid var(--accent2); margin: 6px 0; animation: msgIn .2s ease; }
+#chat-input-area { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--bd); background: var(--bg2); }
+#chat-input { flex: 1; background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 10px; padding: 10px 14px; font-size: 13px; font-family: var(--font); resize: none; transition: border-color .15s; }
+#chat-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+#chat-send { background: var(--accent); color: #0f1117; border: none; border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all .15s; }
+#chat-send:hover { background: #8fa8ff; box-shadow: 0 2px 12px rgba(108,140,255,.3); transform: translateY(-1px); }
+#chat-send:active { transform: translateY(0); }
+#chat-send:disabled { opacity: .3; cursor: default; transform: none; box-shadow: none; }
+#api-key-setup { padding: 24px; text-align: center; color: var(--tx3); }
+#api-key-setup input { background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 10px; width: 100%; margin: 10px 0; font-family: var(--mono); font-size: 12px; transition: border-color .15s; }
+#api-key-setup input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+#api-key-setup button { background: var(--accent); color: #0f1117; border: none; border-radius: 8px; padding: 8px 20px; cursor: pointer; font-weight: 700; transition: all .15s; }
+#api-key-setup button:hover { background: #8fa8ff; transform: translateY(-1px); }
+
+/* Compile animation */
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+.status-compiling { animation: pulse .8s ease-in-out infinite; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--tx4); }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <span style="font-weight:700;color:var(--accent);font-size:15px;letter-spacing:-.3px;">Clear<span style="color:var(--tx3);font-weight:400;font-size:11px;margin-left:4px;">playground</span></span>
+    <span class="toolbar-sep"></span>
+    <select id="template-picker"><option value="">Load template...</option></select>
+    <span class="toolbar-sep"></span>
+    <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
+    <button class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter">Run</button>
+    <button class="toolbar-btn" onclick="doStop()">Stop</button>
+    <span id="status" class="status-ok">Ready</span>
+  </div>
+
+  <!-- Editor -->
+  <div id="editor-pane">
+    <div id="editor-mount"></div>
+    <div id="errors"></div>
+  </div>
+
+  <!-- Preview / Terminal -->
+  <div id="preview-pane">
+    <div id="preview-tabs">
+      <button class="prev-tab active" onclick="showTab('preview')">Preview</button>
+      <button class="prev-tab" onclick="showTab('code')">JS Output</button>
+      <button class="prev-tab" onclick="showTab('terminal')">Terminal</button>
+    </div>
+    <div id="preview-content"></div>
+  </div>
+
+  <!-- Chat -->
+  <div id="chat-pane">
+    <div id="chat-header">
+      Claude Agent
+      <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
+    </div>
+    <div id="chat-messages"></div>
+    <div id="chat-input-area">
+      <textarea id="chat-input" rows="2" placeholder="Ask Claude to build something..."></textarea>
+      <button id="chat-send" onclick="sendChat()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection } from './codemirror.bundle.js';
+import { EditorState } from './codemirror.bundle.js';
+import { syntaxHighlighting, StreamLanguage, HighlightStyle } from './codemirror.bundle.js';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from './codemirror.bundle.js';
+import { tags } from './codemirror.bundle.js';
+
+// ==========================================================================
+// CLEAR SYNTAX HIGHLIGHTING
+// ==========================================================================
+const clearKeywords = new Set([
+  'build','for','web','and','javascript','python','backend',
+  'database','is','local','memory','create','table','required','default','auto',
+  'when','user','calls','GET','POST','PUT','DELETE','sending','receiving','receives',
+  'send','back','with','success','message',
+  'requires','auth','role',
+  'page','at','section','style','heading','subheading','text','bold','italic','link','divider',
+  'button','display','as','input','saved','checkbox','dropdown','number','text',
+  'on','load','get','from','to',
+  'if','then','otherwise','true','false',
+  'set','define','function','return','show',
+  'for','each','in','repeat','times','while','less','than','greater','equal',
+  'increase','decrease','by',
+  'agent','ask','claude','ai','returning','JSON',
+  'can','use','must','not','remember','conversation','context','knows','about',
+  'workflow','state','has','step','track','progress','save',
+  'pipeline','call','run','do','these','the','same','time',
+  'policy','block','schema','changes','deletes','without','filter','protect','tables',
+  'prompt','injection','mass','emails',
+  'try','error','an','empty','list',
+  'test','expect','mock','responding',
+  'validate','log','every','request','allow','cross-origin','requests',
+  'nothing','null','missing','checked',
+  'look','up','all','where','remove','update','using','this','id',
+  'navigate',
+  'store','restore',
+]);
+
+const clearLang = StreamLanguage.define({
+  startState: () => ({ inComment: false }),
+  token(stream, state) {
+    if (stream.match(/^#.*/)) return 'comment';
+    if (stream.match(/^'[^']*'/)) return 'string';
+    if (stream.match(/^"[^"]*"/)) return 'string';
+    if (stream.match(/^\d+(\.\d+)?/)) return 'number';
+    if (stream.match(/^\/api\/[a-zA-Z0-9_/:.-]*/)) return 'string';
+    if (stream.match(/^\/[a-z][a-zA-Z0-9_/-]*/)) return 'string';
+    if (stream.match(/^[=+\-*/<>!]+/)) return 'operator';
+    if (stream.match(/^[a-zA-Z_][a-zA-Z0-9_]*/)) {
+      const w = stream.current();
+      if (clearKeywords.has(w)) return 'keyword';
+      if (w === w.toUpperCase() && w.length > 1) return 'typeName';
+      return 'variableName';
+    }
+    stream.next();
+    return null;
+  },
+});
+
+const clearHighlight = HighlightStyle.define([
+  { tag: tags.keyword, color: '#7aa2f7', fontWeight: '500' },
+  { tag: tags.string, color: '#9ece6a' },
+  { tag: tags.number, color: '#ff9e64' },
+  { tag: tags.comment, color: '#565f89', fontStyle: 'italic' },
+  { tag: tags.operator, color: '#89ddff' },
+  { tag: tags.variableName, color: '#c0caf5' },
+  { tag: tags.typeName, color: '#bb9af7' },
+]);
+
+// ==========================================================================
+// EDITOR
+// ==========================================================================
+let compileTimer = null;
+let lastCompiled = null;
+
+const editor = new EditorView({
+  doc: `# Welcome to Clear Playground
+# Pick a template from the dropdown, or start typing.
+
+show 'Hello, Clear!'
+`,
+  extensions: [
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    highlightActiveLine(),
+    drawSelection(),
+    history(),
+    StreamLanguage.define(clearLang.streamParser).extension ? clearLang : StreamLanguage.define(clearLang.streamParser),
+    syntaxHighlighting(clearHighlight),
+    keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    EditorView.updateListener.of(update => {
+      if (update.docChanged) {
+        clearTimeout(compileTimer);
+        compileTimer = setTimeout(() => autoCompile(), 500);
+      }
+    }),
+    EditorView.theme({
+      '&': { height: '100%' },
+      '.cm-scroller': { overflow: 'auto' },
+    }),
+  ],
+  parent: document.getElementById('editor-mount'),
+});
+
+window._editor = editor; // For chat apply
+
+// ==========================================================================
+// COMPILE
+// ==========================================================================
+async function autoCompile() {
+  const source = editor.state.doc.toString();
+  setStatus('compiling', 'Compiling...');
+  try {
+    const r = await fetch('/api/compile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    });
+    lastCompiled = await r.json();
+    showErrors(lastCompiled.errors, lastCompiled.warnings);
+    if (lastCompiled.errors.length === 0) {
+      setStatus('ok', `OK${lastCompiled.warnings?.length ? ` (${lastCompiled.warnings.length} warnings)` : ''}`);
+      if (activeTab === 'preview') showPreview();
+      if (activeTab === 'code') showCode();
+    } else {
+      setStatus('err', `${lastCompiled.errors.length} error${lastCompiled.errors.length > 1 ? 's' : ''}`);
+    }
+  } catch (err) {
+    setStatus('err', 'Compile failed');
+  }
+}
+window.doCompile = autoCompile;
+
+// ==========================================================================
+// PREVIEW
+// ==========================================================================
+let activeTab = 'preview';
+
+function showPreview() {
+  const el = document.getElementById('preview-content');
+  if (!lastCompiled) { el.innerHTML = '<pre style="color:var(--tx3);padding:20px;">Compile first...</pre>'; return; }
+
+  if (lastCompiled.html) {
+    let html = lastCompiled.html;
+    if (lastCompiled.browserServer) {
+      html = html.replace('</head>', '<script>' + lastCompiled.browserServer + '<\/script></head>');
+    }
+    el.innerHTML = '<iframe sandbox="allow-scripts allow-same-origin"></iframe>';
+    el.querySelector('iframe').srcdoc = html;
+  } else if (lastCompiled.javascript || lastCompiled.serverJS) {
+    el.innerHTML = '<pre>' + escHtml(lastCompiled.serverJS || lastCompiled.javascript || '') + '</pre>';
+  } else if (lastCompiled.python) {
+    el.innerHTML = '<pre>' + escHtml(lastCompiled.python) + '</pre>';
+  } else {
+    el.innerHTML = '<pre style="color:var(--tx3);">No output</pre>';
+  }
+}
+
+function showCode() {
+  const el = document.getElementById('preview-content');
+  if (!lastCompiled) return;
+  const code = lastCompiled.serverJS || lastCompiled.javascript || lastCompiled.python || '';
+  el.innerHTML = '<pre>' + escHtml(code) + '</pre>';
+}
+
+function showTerminal() {
+  const el = document.getElementById('preview-content');
+  el.innerHTML = '<div id="terminal">' + terminalLog + '</div>';
+}
+
+let terminalLog = '<span class="term-out" style="color:var(--tx3)">Terminal ready. Click Run to start an app.</span>\n';
+
+function appendTerminal(html) {
+  terminalLog += html;
+  if (activeTab === 'terminal') {
+    const el = document.getElementById('terminal');
+    if (el) { el.innerHTML = terminalLog; el.scrollTop = el.scrollHeight; }
+  }
+}
+
+window.showTab = function(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.prev-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.prev-tab[onclick*="${tab}"]`).classList.add('active');
+  if (tab === 'preview') showPreview();
+  else if (tab === 'code') showCode();
+  else if (tab === 'terminal') showTerminal();
+};
+
+// ==========================================================================
+// RUN
+// ==========================================================================
+window.doRun = async function() {
+  if (!lastCompiled?.serverJS) { appendTerminal('<span class="term-err">No compiled server code. Compile first.</span>\n'); showTab('terminal'); return; }
+  setStatus('compiling', 'Starting...');
+  appendTerminal('<span class="term-cmd">$ node server.js</span>\n');
+  showTab('terminal');
+  try {
+    const r = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serverJS: lastCompiled.serverJS, html: lastCompiled.html, css: lastCompiled.css }),
+    });
+    const data = await r.json();
+    if (data.error) {
+      appendTerminal('<span class="term-err">' + escHtml(data.error) + '</span>\n');
+      setStatus('err', 'Run failed');
+    } else {
+      appendTerminal('<span class="term-out">Server running on port ' + data.port + '</span>\n');
+      if (data.logs) data.logs.forEach(l => appendTerminal('<span class="term-out">' + escHtml(l) + '</span>'));
+      setStatus('ok', 'Running :' + data.port);
+    }
+  } catch (err) {
+    appendTerminal('<span class="term-err">' + escHtml(err.message) + '</span>\n');
+    setStatus('err', 'Run failed');
+  }
+};
+
+window.doStop = async function() {
+  await fetch('/api/stop', { method: 'POST' });
+  appendTerminal('<span class="term-out">Server stopped.</span>\n');
+  setStatus('ok', 'Stopped');
+};
+
+// ==========================================================================
+// ERRORS
+// ==========================================================================
+function showErrors(errors, warnings) {
+  const el = document.getElementById('errors');
+  if (!errors.length && (!warnings || !warnings.length)) { el.innerHTML = ''; return; }
+  let html = '';
+  errors.forEach(e => {
+    html += `<div class="error-line" onclick="jumpToLine(${e.line || 1})">Line ${e.line || '?'}: ${escHtml(e.message)}</div>`;
+  });
+  (warnings || []).forEach(w => {
+    const msg = typeof w === 'string' ? w : w.message || '';
+    html += `<div class="warning-line">${escHtml(msg)}</div>`;
+  });
+  el.innerHTML = html;
+}
+
+window.jumpToLine = function(line) {
+  const pos = editor.state.doc.line(Math.min(line, editor.state.doc.lines)).from;
+  editor.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+  editor.focus();
+};
+
+// ==========================================================================
+// CHAT
+// ==========================================================================
+let chatMessages = [];
+let apiKey = localStorage.getItem('clear_api_key') || '';
+
+if (!apiKey) showKeySetup();
+
+window.showKeySetup = function() {
+  const el = document.getElementById('chat-messages');
+  el.innerHTML = `<div id="api-key-setup">
+    <div style="font-size:16px;margin-bottom:8px;">Set up Claude</div>
+    <div style="margin-bottom:12px;">Enter your Anthropic API key to chat with Claude.</div>
+    <input type="password" id="key-input" placeholder="sk-ant-..." value="${apiKey}">
+    <button onclick="saveKey()">Save</button>
+    <div style="margin-top:12px;font-size:11px;">Key is stored locally in your browser. Never sent to our servers.</div>
+  </div>`;
+};
+
+window.saveKey = function() {
+  apiKey = document.getElementById('key-input').value.trim();
+  localStorage.setItem('clear_api_key', apiKey);
+  document.getElementById('chat-messages').innerHTML = '';
+  addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+};
+
+function addChatMsg(role, content) {
+  chatMessages.push({ role, content });
+  renderChat();
+}
+
+function renderChat() {
+  const el = document.getElementById('chat-messages');
+  el.innerHTML = chatMessages.filter(m => m.role !== 'system').map(m => {
+    const cls = m.role === 'user' ? 'user' : 'assistant';
+    let html = escHtml(m.content);
+    // Render code blocks
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+      return `<pre>${code}<button class="apply-btn" onclick="applyCode(this)">Apply</button></pre>`;
+    });
+    // Render tool steps
+    html = html.replace(/\[Tool: ([^\]]+)\]/g, '<div class="tool-step">$1</div>');
+    return `<div class="msg ${cls}">${html}</div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+window.applyCode = function(btn) {
+  const code = btn.parentElement.textContent.replace('Apply', '').trim();
+  editor.dispatch({
+    changes: { from: 0, to: editor.state.doc.length, insert: code },
+  });
+  autoCompile();
+};
+
+window.sendChat = async function() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  if (!apiKey) { showKeySetup(); return; }
+
+  addChatMsg('user', msg);
+  document.getElementById('chat-send').disabled = true;
+
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: chatMessages.map(m => ({ role: m.role, content: m.content })),
+        apiKey,
+        editorContent: editor.state.doc.toString(),
+        errors: lastCompiled?.errors || [],
+      }),
+    });
+    const data = await r.json();
+    if (data.error) {
+      addChatMsg('assistant', 'Error: ' + (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)));
+    } else {
+      // Apply code changes from tools
+      if (data.toolResults) {
+        for (const tr of data.toolResults) {
+          if (tr.tool === 'edit_code' && tr.code) {
+            editor.dispatch({
+              changes: { from: 0, to: editor.state.doc.length, insert: tr.code },
+            });
+            autoCompile();
+          }
+        }
+      }
+      if (data.text) addChatMsg('assistant', data.text);
+      // Update source if Claude changed it
+      if (data.source && data.source !== editor.state.doc.toString()) {
+        editor.dispatch({
+          changes: { from: 0, to: editor.state.doc.length, insert: data.source },
+        });
+        autoCompile();
+      }
+    }
+  } catch (err) {
+    addChatMsg('assistant', 'Connection error: ' + err.message);
+  }
+  document.getElementById('chat-send').disabled = false;
+};
+
+// Enter to send (Shift+Enter for newline)
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+// ==========================================================================
+// TEMPLATES
+// ==========================================================================
+async function loadTemplates() {
+  try {
+    const r = await fetch('/api/templates');
+    const templates = await r.json();
+    const sel = document.getElementById('template-picker');
+    templates.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.name;
+      opt.textContent = t.name + (t.description ? ' — ' + t.description : '');
+      sel.appendChild(opt);
+    });
+  } catch {}
+}
+
+document.getElementById('template-picker').addEventListener('change', async function() {
+  if (!this.value) return;
+  try {
+    const r = await fetch('/api/template/' + this.value);
+    const source = await r.text();
+    editor.dispatch({
+      changes: { from: 0, to: editor.state.doc.length, insert: source },
+    });
+    autoCompile();
+  } catch {}
+});
+
+// ==========================================================================
+// KEYBOARD SHORTCUTS
+// ==========================================================================
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); autoCompile(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); doRun(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); document.getElementById('chat-input').focus(); }
+});
+
+// ==========================================================================
+// HELPERS
+// ==========================================================================
+function setStatus(type, text) {
+  const el = document.getElementById('status');
+  el.className = 'status-' + (type === 'ok' ? 'ok' : type === 'err' ? 'err' : 'compiling');
+  el.textContent = text;
+}
+
+function escHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// Boot
+loadTemplates();
+if (apiKey) addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+</script>
+</body>
+</html>
