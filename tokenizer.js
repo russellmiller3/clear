@@ -81,6 +81,9 @@ export const TokenType = Object.freeze({
   POSSESSIVE: 'possessive',  // 's (person's name)
   COMMENT: 'comment',       // # rest of line
   NEWLINE: 'newline',       // End of line
+  COLON: 'colon',           // : (block opener or route param)
+  LBRACE: 'lbrace',         // {
+  RBRACE: 'rbrace',         // }
 });
 
 // Single-character token map
@@ -245,6 +248,25 @@ export function tokenizeLine(line, lineNumber = 1) {
       continue;
     }
 
+    // Colon: block opener or route param — parser decides meaning
+    if (line[pos] === ':') {
+      tokens.push({ type: TokenType.COLON, value: ':', line: lineNumber, column: pos + 1 });
+      pos++;
+      continue;
+    }
+
+    // Braces: interpolation — parser decides meaning
+    if (line[pos] === '{') {
+      tokens.push({ type: TokenType.LBRACE, value: '{', line: lineNumber, column: pos + 1 });
+      pos++;
+      continue;
+    }
+    if (line[pos] === '}') {
+      tokens.push({ type: TokenType.RBRACE, value: '}', line: lineNumber, column: pos + 1 });
+      pos++;
+      continue;
+    }
+
     // Single-character tokens
     if (SINGLE_CHAR_TOKENS[line[pos]]) {
       tokens.push({
@@ -376,11 +398,13 @@ export function tokenize(source) {
       else break;
     }
 
-    // Strip trailing colon — purely visual block opener (like Python)
-    // "try:" → "try", "repeat 5 times:" → "repeat 5 times"
-    const cleaned = trimmed.endsWith(':') ? trimmed.slice(0, -1).trimEnd() : trimmed;
-
-    const tokens = tokenizeLine(cleaned, i + 1);
+    // Tokenize the full line — colons are preserved as COLON tokens.
+    // Strip trailing COLON (block opener) at tokenizer level so all parsers
+    // see a clean token array. Mid-line colons (route params) are preserved.
+    const tokens = tokenizeLine(trimmed, i + 1);
+    if (tokens.length > 0 && tokens[tokens.length - 1].type === TokenType.COLON) {
+      tokens.pop();
+    }
     result.push({ tokens, indent, raw: trimmed });
   }
   return result;

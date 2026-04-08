@@ -721,6 +721,20 @@ function parseConfigBlock(lines, startIdx, parentIndent) {
 }
 
 // =============================================================================
+// SYNONYM RESOLUTION — context-aware canonical lookup
+// =============================================================================
+// Phase 2 foundation: resolveCanonical() provides a single point for synonym
+// resolution. Currently delegates to the tokenizer's REVERSE_LOOKUP (same
+// behavior as before). Future: zone-based resolution where 'delete' means
+// different things in CRUD vs UI contexts.
+
+function resolveCanonical(token, _zone) {
+  // Currently returns the tokenizer-resolved canonical (identity behavior).
+  // Zone parameter reserved for future context-sensitive resolution.
+  return token.canonical || null;
+}
+
+// =============================================================================
 // DISPATCH TABLES — Map-based keyword dispatch for parseBlock
 // =============================================================================
 // Handlers take { lines, i, indent, tokens, line, errors, body } and return
