@@ -1875,6 +1875,50 @@ CANONICAL_DISPATCH.set('do_parallel', (ctx) => {
   return j;
 });
 
+// Raw-value handlers for panel actions (toggle/open/close)
+RAW_DISPATCH.set('toggle', (ctx) => {
+  // "toggle the X panel" — but NOT "toggle" as checkbox (handled by CANONICAL_DISPATCH checkbox handler)
+  if (ctx.tokens.length >= 2 && (ctx.tokens[1].value === 'the' || ctx.tokens[1].value === 'this')) {
+    const action = ctx.tokens[0].value;
+    let pPos = 2;
+    const nameTokens = ctx.tokens.slice(pPos).filter(t =>
+      t.value !== 'panel' && t.value !== 'modal' && t.value !== 'dialog'
+    );
+    const target = nameTokens.map(t => t.value).join(' ') || 'this';
+    ctx.body.push({ type: NodeType.PANEL_ACTION, action, target, line: ctx.line });
+    return ctx.i + 1;
+  }
+  return undefined; // fall through to checkbox handler
+});
+RAW_DISPATCH.set('open', (ctx) => {
+  if (ctx.tokens.length >= 2) {
+    const action = 'open';
+    let pPos = 1;
+    if (pPos < ctx.tokens.length && (ctx.tokens[pPos].value === 'the' || ctx.tokens[pPos].value === 'this')) pPos++;
+    const nameTokens = ctx.tokens.slice(pPos).filter(t =>
+      t.value !== 'panel' && t.value !== 'modal' && t.value !== 'dialog'
+    );
+    const target = nameTokens.map(t => t.value).join(' ') || 'this';
+    ctx.body.push({ type: NodeType.PANEL_ACTION, action, target, line: ctx.line });
+    return ctx.i + 1;
+  }
+  return undefined;
+});
+RAW_DISPATCH.set('close', (ctx) => {
+  if (ctx.tokens.length >= 2) {
+    const action = 'close';
+    let pPos = 1;
+    if (pPos < ctx.tokens.length && (ctx.tokens[pPos].value === 'the' || ctx.tokens[pPos].value === 'this')) pPos++;
+    const nameTokens = ctx.tokens.slice(pPos).filter(t =>
+      t.value !== 'panel' && t.value !== 'modal' && t.value !== 'dialog'
+    );
+    const target = nameTokens.map(t => t.value).join(' ') || 'this';
+    ctx.body.push({ type: NodeType.PANEL_ACTION, action, target, line: ctx.line });
+    return ctx.i + 1;
+  }
+  return undefined;
+});
+
 function parseBlock(lines, startIdx, parentIndent, errors) {
   const body = [];
   let targetValue = null;
@@ -1926,175 +1970,82 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
       // --- END DISPATCH TABLE LOOKUP ---
 
-      // --- ALL KEYWORD BRANCHES HANDLED BY DISPATCH TABLES ABOVE ---
-      // target, build, database, call_api, respond, sendgrid, SMTP,
-      // log_requests, allow_cors, write_file, connect_to_database, raw_run,
-      // needs_login, configure_email: all in CANONICAL_DISPATCH or RAW_DISPATCH
+      // --- PATTERN MATCHERS (checked after dispatch, before assignment) ---
 
-      // Text block: NAME is text block: + indented raw text lines
-      // e.g. message is text block:\n  Hello {name}\n  Welcome
+      // Text block: NAME is text block: + indented raw text
       if (tokens.length >= 3 &&
           (firstToken.type === TokenType.IDENTIFIER || firstToken.type === TokenType.KEYWORD) &&
           (tokens[1].canonical === 'is' || tokens[1].type === TokenType.ASSIGN) &&
           tokens[2].canonical === 'text_block') {
         const varName = firstToken.value;
-        // Collect indented raw text lines (use .raw to preserve braces for interpolation)
         const textLines = [];
         let j = i + 1;
         while (j < lines.length && lines[j].indent > indent) {
           const rawLine = lines[j].raw;
-          if (rawLine !== undefined && rawLine !== '') {
-            textLines.push(rawLine);
-          } else if (lines[j].tokens.length > 0) {
-            textLines.push(lines[j].tokens.map(t => t.value).join(' '));
-          }
+          if (rawLine !== undefined && rawLine !== '') textLines.push(rawLine);
+          else if (lines[j].tokens.length > 0) textLines.push(lines[j].tokens.map(t => t.value).join(' '));
           j++;
         }
         if (textLines.length === 0) {
           errors.push({ line, message: `text block needs indented lines of text. Example:\n${varName} is text block:\n  Hello {name}\n  Welcome` });
-          i++;
-          continue;
+          i++; continue;
         }
-        body.push({
-          type: NodeType.ASSIGN,
-          name: varName,
-          expression: { type: NodeType.TEXT_BLOCK, lines: textLines, line },
-          line
-        });
-        i = j;
-        continue;
+        body.push({ type: NodeType.ASSIGN, name: varName, expression: { type: NodeType.TEXT_BLOCK, lines: textLines, line }, line });
+        i = j; continue;
       }
 
       // Do all: NAME = do all: + indented expressions
-      // e.g. results = do all:\n  fetch page 'url1'\n  fetch page 'url2'
       if (tokens.length >= 3 &&
           (firstToken.type === TokenType.IDENTIFIER || firstToken.type === TokenType.KEYWORD) &&
-          tokens[1].type === TokenType.ASSIGN &&
-          tokens[2].canonical === 'do_all') {
+          tokens[1].type === TokenType.ASSIGN && tokens[2].canonical === 'do_all') {
         const varName = firstToken.value;
-        // Parse each indented line as an expression
         const tasks = [];
         let j = i + 1;
         while (j < lines.length && lines[j].indent > indent) {
           const taskTokens = lines[j].tokens;
           if (taskTokens.length > 0) {
             const taskExpr = parseExpression(taskTokens, 0, taskTokens[0].line);
-            if (!taskExpr.error) {
-              tasks.push(taskExpr.node);
-            }
+            if (!taskExpr.error) tasks.push(taskExpr.node);
           }
           j++;
         }
         if (tasks.length === 0) {
           errors.push({ line, message: `do all needs indented tasks. Example:\nresults = do all:\n  fetch page 'url1'\n  fetch page 'url2'` });
-          i++;
-          continue;
+          i++; continue;
         }
-        body.push({
-          type: NodeType.ASSIGN,
-          name: varName,
-          expression: { type: NodeType.DO_ALL, tasks, line },
-          line
-        });
-        i = j;
-        continue;
+        body.push({ type: NodeType.ASSIGN, name: varName, expression: { type: NodeType.DO_ALL, tasks, line }, line });
+        i = j; continue;
       }
 
-      // All keyword branches (show, chart, agent, function, define, retry, with,
-      // first, script, store, restore, style, page, section, ask_for, create_pdf,
-      // save_csv, append_to_file, return, break, continue, repeat, for_each,
-      // while, try, use, theme, as_format, button, deploy_to, requires_auth,
-      // requires_role, define_role, guard): handled by DISPATCH TABLES above
-
-      // Label-first input syntax:
-      //   CANONICAL: 'Label' is a text input that saves to var
-      //   ALIAS:     'Label' as text input saves to var
-      // Check for "'Label' is a <input_type>" pattern
+      // Label-first input: 'Label' is a text input / 'Label' as text input
       if (firstToken.type === TokenType.STRING && tokens.length >= 3 &&
           tokens[1].canonical === 'is' &&
           (tokens[2].canonical === 'a' || tokens[2].canonical === 'the')) {
-        // Skip "is a/the" and check if next token is an input type
         const typePos = 3;
         if (typePos < tokens.length && isInputType(tokens[typePos])) {
           const parsed = parseLabelIsInput(tokens, line);
           if (parsed) {
-            if (parsed.error) {
-              errors.push({ line, message: parsed.error });
-            } else {
-              body.push(parsed.node);
-            }
-            i++;
-            continue;
+            if (parsed.error) errors.push({ line, message: parsed.error });
+            else body.push(parsed.node);
+            i++; continue;
           }
         }
       }
-      // ALIAS: 'Label' as text input saves to var
       if (firstToken.type === TokenType.STRING && tokens.length > 1 && tokens[1].canonical === 'as_format') {
         const parsed = parseLabelFirstInput(tokens, line);
         if (parsed) {
-          if (parsed.error) {
-            errors.push({ line, message: parsed.error });
-          } else {
-            body.push(parsed.node);
-          }
-          i++;
-          continue;
+          if (parsed.error) errors.push({ line, message: parsed.error });
+          else body.push(parsed.node);
+          i++; continue;
         }
-        // If parseLabelFirstInput returns null, it wasn't an input — fall through
       }
 
-      // text_input, number_input, dropdown, checkbox, text_area,
-      // heading, subheading, content_text, bold_text, italic_text, small_text,
-      // link, divider, code_block, button, tab: handled by DISPATCH TABLES
-
-      // Panel actions: toggle/open/close [the] X panel/modal
-      // "toggle the Help panel", "open the Confirm modal", "close modal"
-      if ((firstToken.value === 'toggle' || firstToken.value === 'open' || firstToken.value === 'close') &&
-          tokens.length >= 2) {
-        const action = firstToken.value;
-        // Skip optional "the" or "this"
-        let pPos = 1;
-        if (pPos < tokens.length && (tokens[pPos].value === 'the' || tokens[pPos].value === 'this')) pPos++;
-        // Extract target name, filtering out "panel", "modal", "dialog"
-        const nameTokens = tokens.slice(pPos).filter(t =>
-          t.value !== 'panel' && t.value !== 'modal' && t.value !== 'dialog'
-        );
-        const target = nameTokens.map(t => t.value).join(' ') || 'this';
-        body.push({ type: NodeType.PANEL_ACTION, action, target, line });
-        i++;
-        continue;
-      }
-
-      // deploy_to, requires_auth: handled by CANONICAL_DISPATCH
-
-      // requires_role: handled by CANONICAL_DISPATCH
-
-      // define_role: handled by CANONICAL_DISPATCH
-
-      // guard: handled by CANONICAL_DISPATCH
-
-      // ---- BACKEND FEATURES ----
-      // stream, subscribe_to, update_database, migration_kw, wait_kw,
-      // accept_file, data_from, checkout, usage_limit, webhook, oauth,
-      // validate, responds_with, rate_limit: handled by CANONICAL_DISPATCH
-
-      // background_job, background, when (notifies/changes), when_user_calls,
-      // on_method, respond, respond_with, set (data_shape/map_set), save_to,
-      // remove_from, test, match_kw, on_page_load, go_to, get_key, add,
-      // post_to, get_from, put_to, delete_from: handled by DISPATCH TABLES
-      // (dead if/else branches removed — all handled by dispatch tables)
-
-      // Math-style function definition: total_value(item) = item's price * item's quantity
-      // Detected BEFORE assignment because it looks like assignment but has (params) on the left
+      // Math-style function: total(item) = item's price * item's quantity
       if (isMathStyleFunction(tokens)) {
         const parsed = parseMathStyleFunction(tokens, line);
-        if (parsed.error) {
-          errors.push({ line, message: parsed.error });
-        } else {
-          body.push(parsed.node);
-        }
-        i++;
-        continue;
+        if (parsed.error) errors.push({ line, message: parsed.error });
+        else body.push(parsed.node);
+        i++; continue;
       }
 
       // ---- CORE LANGUAGE (assignments, control flow, functions, tests) ----
