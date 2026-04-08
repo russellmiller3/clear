@@ -14,7 +14,7 @@ Compiles plain English to JavaScript, Python, and HTML.
 8. **`ROADMAP.md`** -- what's built (phases 1-46b, 75-84 complete), what's planned.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1407 tests)
+- Run all tests: `node clear.test.js` (1413 tests)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
