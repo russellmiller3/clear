@@ -23,7 +23,8 @@ The roadmap lists these as Phases 75-84. We reorder for incremental buildability
 | 1 | 80 | Parallel Agent Execution | 0.5 | Easiest — extends existing `do all:` pattern, no new node type needed |
 | 2 | 77 | Agent Chains / Pipelines | 0.5 | New node type but simple sequential await, no runtime changes |
 | 3 | 82 | Agent Observability | 0.5 | Logging wrapper — useful for debugging everything that follows |
-| 4 | 75 | Tool Use / Function Calling | 1.0 | **Foundational** — phases 83 and 84 depend on this |
+| 4 | 75 | Tool Use / Function Calling | 1.0 | **Foundational** — phases 83, 84, and skills depend on this |
+| 4.5 | 75b | Skills (reusable tool bundles) | 0.5 | Groups tools + instructions for reuse across agents |
 | 5 | 83 | Guardrails / Safety | 0.5 | Compile-time check on tool use — must come after phase 75 |
 | 6 | 76 | Multi-Turn Conversation | 1.0 | DB-backed history, modifies `_askAI` calling convention |
 | 7 | 79 | Agent Memory | 0.5 | Same pattern as conversation — load facts, inject into context |
@@ -31,7 +32,7 @@ The roadmap lists these as Phases 75-84. We reorder for incremental buildability
 | 9 | 84 | Agent Testing | 0.5 | Mock infrastructure — tests all the above, so comes late |
 | 10 | 78 | RAG / Knowledge Base | 1.5 | Heaviest — needs embedding model + similarity search |
 
-**Total: ~7 days**
+**Total: ~7.5 days**
 
 ---
 
@@ -259,17 +260,64 @@ async function agent_support_bot(message) {
 
 **What it does:** Agent declares which functions it can call. The compiler maps Clear functions to Anthropic `tool_use` API definitions. Agent LLM decides at runtime which tools to invoke.
 
+### Two ways to define tools:
+
+**A) Reference existing functions (complex logic):**
 ```clear
 agent 'Customer Support' receiving message:
-  can use: look_up_orders, check_status, send_email
+  can use: check_refund_eligibility, look_up_orders, send_email
 
   response = ask claude 'Help this customer resolve their issue' with message
   send back response
+
+define function check_refund_eligibility(order_id):
+  order = look up Order where id is order_id
+  if order's status is 'delivered':
+    days = days between order's delivered_at and current time
+    return days is less than 30
+  return false
 
 define function look_up_orders(customer_email):
   orders = look up all Orders where email is customer_email
   return orders
 ```
+
+**B) Inline CRUD tools (simple database lookups — no separate function needed):**
+```clear
+agent 'Support Bot' receiving message:
+  can use:
+    look up orders by email
+    look up product by id
+    send email via sendgrid
+
+  response = ask claude 'Help the customer' with message
+  send back response
+```
+
+Inline tools are auto-inferred from table schemas. `look up orders by email` compiles to a tool with `{ name: "look_up_orders_by_email", input_schema: { email: "string" } }` and a function that does `db.findAll('Orders', { email })`. No boilerplate.
+
+**Rule:** Single-line `can use: fn1, fn2` = function references. Block-form `can use:` with indented lines = inline tool definitions. Parser detects by checking if next line is indented.
+
+### Prompt patterns — text blocks + interpolation
+
+Long system prompts use existing text block syntax. Variables use `{var}` interpolation:
+```clear
+agent 'Assistant' receiving message:
+  can use: look_up_orders, check_status
+  today = format date current time as 'YYYY-MM-DD'
+
+  system_prompt is text block:
+    You are a customer support agent for Acme Corp.
+    Today's date is {today}.
+    Be friendly but professional.
+    Always look up the customer's order before answering.
+    Never reveal internal pricing or margins.
+
+  response = ask claude system_prompt with message
+  send back response
+```
+
+No new syntax needed — text blocks (Phase 28) and interpolation (Syntax v2) already exist.
 
 **Compiles to:** Tool definitions array + agentic loop that executes tool calls and feeds results back.
 
@@ -292,10 +340,14 @@ async function agent_customer_support(message) {
 4. The `_askAI` utility needs a new variant `_askAIWithTools` for the tool loop
 
 ### Parser changes (`parser.js`)
-- In `parseAgent()`: detect `can use:` directive line inside agent body
-- Parse comma-separated function names: `can use: fn1, fn2, fn3`
-- Store as `node.tools = ['fn1', 'fn2', 'fn3']` on the AGENT node
-- These are just names — the compiler resolves them to actual function definitions
+- In `parseAgent()` directive scanning: detect `can use:` directive
+- **Single-line form:** `can use: fn1, fn2, fn3` — next token after colon is on same line
+  - Store as `node.tools = [{ type: 'ref', name: 'fn1' }, { type: 'ref', name: 'fn2' }]`
+- **Block form:** `can use:` with indented lines — next lines are indented deeper
+  - Each indented line is a natural-language tool description: `look up orders by email`
+  - Store as `node.tools = [{ type: 'inline', description: 'look up orders by email', line }]`
+  - The compiler resolves inline tools to CRUD operations by matching against table schemas
+- **Detection:** Check if tokens after `can use` end at colon (block form) or continue with identifiers (single-line form)
 
 ### Compiler changes (`compiler.js`)
 - **New utility function `_askAIWithTools`:** Agentic loop:
@@ -386,56 +438,180 @@ async function _askAIWithTools(prompt, context, tools, toolFns, model) {
 
 ---
 
+## Phase 4.5: Skills — Reusable Tool Bundles (Phase 75b) — 0.5 day
+
+**What it does:** Skills group tools + instructions into named, reusable bundles. Define once, attach to any agent.
+
+```clear
+skill 'Order Management':
+  can: look_up_orders, update_order, cancel_order
+  instructions:
+    Always verify customer identity before making changes.
+    Never cancel orders that have already shipped.
+    Include order number in all responses.
+
+skill 'Email Support':
+  can: send_email, check_inbox
+  instructions:
+    Use professional tone.
+    Include order number in subject line.
+
+agent 'Customer Support' receiving message:
+  uses skills: Order Management, Email Support
+  must not:
+    delete any records
+    access admin tables
+
+  response = ask claude 'Help this customer' with message
+  send back response
+
+# Same skills, different agent with different policies:
+agent 'Returns Bot' receiving request:
+  uses skills: Order Management
+  must not:
+    modify prices
+    refund more than original amount
+
+  response = ask claude 'Process this return' with request
+  send back response
+```
+
+**Compiles to:** At compile time, merge all skill tools into the agent's `_tools` array. Concatenate all skill instructions into the system prompt prefix. The agent function looks exactly like a tool-use agent — skills are purely a compile-time grouping mechanism.
+
+```js
+// Skills dissolve at compile time. The agent gets the merged result:
+async function agent_customer_support(message) {
+  const _tools = [/* merged from Order Management + Email Support */];
+  const _toolFns = { look_up_orders, update_order, cancel_order, send_email, check_inbox };
+  const _skillInstructions = "Always verify customer identity before making changes.\nNever cancel orders that have already shipped.\nInclude order number in all responses.\nUse professional tone.\nInclude order number in subject line.";
+  const response = await _askAIWithTools(_skillInstructions + "\n\nHelp this customer", message, _tools, _toolFns);
+  return response;
+}
+```
+
+### New node type
+- `SKILL`: `{ type: 'skill', name, tools: [names], instructions: [strings], line }`
+- Add `NodeType.SKILL = 'skill'` in parser.js enum (~line 311)
+
+### Parser changes (`parser.js`)
+- New `parseSkill()` function — detect `skill 'Name':` as first token in `parseBlock()`
+- Add detection in `parseBlock()` near agent detection (line ~1207): `if (firstToken.value === 'skill')`
+- Parse indented body for two directives:
+  - `can:` — comma-separated function names (same format as agent's `can use:` single-line form)
+  - `instructions:` — indented text lines, each stored as a string
+- In `parseAgent()` directive scanning: detect `uses skills:` — comma-separated skill names
+  - Store as `node.skills = ['Order Management', 'Email Support']` on the AGENT node
+
+### Compiler changes (`compiler.js`)
+- In `compileAgent()`: if `node.skills` exists:
+  - Look up SKILL nodes by name in the AST
+  - Merge all skill tool lists into the agent's `_tools` array
+  - Concatenate all skill instructions into a prompt prefix
+  - Prepend instructions to the first `_askAI`/`_askAIWithTools` prompt argument
+- Add `case NodeType.SKILL:` in `_compileNodeInner` — return empty string (skills compile to nothing on their own, they're consumed by agents)
+
+### Validator changes
+- Register skill names (like agent names at line 116)
+- When agent has `uses skills:`, verify each skill name matches a SKILL node in the AST
+- Error: `agent 'X' uses skill 'Y' but no skill 'Y' is defined`
+- Error: skill tool references undefined function
+
+### Synonym collision check
+- `skill` — not a registered synonym. Safe.
+- `uses` — not a registered synonym. Safe. (Different from `use` which is the module import keyword)
+- `instructions` — not a registered synonym. Safe.
+
+### Tests (8 minimum)
+1. Parser: `skill 'Name':` creates SKILL node with tools and instructions
+2. Parser: `uses skills:` on agent stores skill references
+3. Compiler: agent with skills merges tool lists correctly
+4. Compiler: skill instructions prepended to prompt
+5. Compiler: multiple skills merge without duplicates
+6. Validator: error on undefined skill reference
+7. Validator: error when skill references undefined function
+8. E2E: full agent with 2 skills compiles to valid JS
+
+### Files to read for this phase:
+| File | Lines | Why |
+|------|-------|-----|
+| Phase 4 implementation | N/A | Skills depend on tool use being implemented first |
+| `parser.js` ~1207 | Agent detection in parseBlock | Add skill detection nearby |
+| `compiler.js` ~1566 (compileAgent) | Where to merge skills into agent |
+
+---
+
 ## Phase 5: Guardrails / Safety (Phase 83) — 0.5 day
 
-**What it does:** Compile-time constraints on what an agent can access. Compiler verifies tool set doesn't touch restricted tables/operations. Violations are compile errors.
+**What it does:** Compile-time constraints on what an agent can access. Compiler verifies tool set doesn't touch restricted tables/operations. Violations are compile errors, not runtime checks.
+
+### Block-form `must not:` — one policy per line
 
 ```clear
 agent 'Public Bot' receiving question:
   can use: search_products, check_availability
-  must not: modify prices, delete records, access users
+  must not:
+    delete any records
+    modify Products prices
+    access Users table
+    call more than 5 tools per request
+    spend more than 10000 tokens
 
   response = ask claude 'Help the customer find products' with question
   send back response
 ```
 
+**Policy categories:**
+
+| Policy | Compile-time or Runtime | What it checks |
+|--------|------------------------|----------------|
+| `delete any records` | Compile-time | No CRUD delete in tool functions |
+| `modify X Y` | Compile-time | No CRUD update on field Y of table X |
+| `access X table` | Compile-time | No CRUD read/write on table X |
+| `call more than N tools per request` | Runtime | Max turns limit in `_askAIWithTools` loop |
+| `spend more than N tokens` | Runtime | Token budget check after each API call |
+
 **Compile error if violated:**
 ```
 Error: agent 'Public Bot' uses 'search_products' which deletes from Products,
-  but the agent has 'must not: delete records'. Remove the restriction or
+  but the agent has 'must not: delete any records'. Remove the restriction or
   change the tool.
 ```
 
-**This is a compile-time guarantee, not a runtime check.** The code won't compile if violations exist.
+**Compile-time policies are guarantees.** The code literally won't compile. Runtime policies compile to guard code inside the agent function.
 
 ### Parser changes (`parser.js`)
-- In `parseAgent()`: detect `must not:` directive
-- Parse comma-separated restrictions: `must not: delete records, modify prices, access users`
-- Store as `node.restrictions = ['delete records', 'modify prices', 'access users']`
-- Restriction categories: `delete records`, `modify X` (table), `access X` (table)
+- In `parseAgent()` directive scanning: detect `must not:` block
+- **Block form only** (one policy per line, not comma-separated) — each indented line is a policy string
+- Store as `node.restrictions = [{ text: 'delete any records', type: 'compile' }, { text: 'call more than 5 tools per request', type: 'runtime', limit: 5 }]`
+- Parse policy type from keywords: `delete`/`modify`/`access` = compile-time, `call more than`/`spend more than` = runtime
 
 ### Validator changes (`validator.js`) — THIS IS THE CORE
-- For each agent with both `tools` and `restrictions`:
+- For each agent with both `tools` and compile-time `restrictions`:
   - Scan each tool function's body for CRUD operations
   - Map CRUD ops to restriction categories:
-    - `remove`/`delete` → "delete records"
+    - `remove`/`delete` → "delete any records"
     - `save`/`update` on table X → "modify X"
-    - Any CRUD on table X → "access X"
+    - Any CRUD on table X → "access X table"
   - If any tool violates a restriction → compile error with specific message
 - This is static analysis — follow function bodies, check CRUD node types
 
-### Compiler changes
-- None. This is purely a validator feature. If validation passes, compilation proceeds normally.
+### Compiler changes (`compiler.js`)
+- **Compile-time policies:** None — purely a validator feature. If validation passes, compilation proceeds normally.
+- **Runtime policies:** In `compileAgent()`, if agent has runtime restrictions:
+  - `call more than N tools` → pass `maxTurns: N` to `_askAIWithTools` (instead of default 10)
+  - `spend more than N tokens` → emit token budget tracking: accumulate `usage.output_tokens` from each API response, throw if total exceeds N
 
-### Tests (8 minimum)
-1. Parser: `must not:` parsed into restrictions array
-2. Validator: error when tool deletes and restriction says `delete records`
-3. Validator: error when tool accesses restricted table
-4. Validator: passes when tools don't violate restrictions
-5. Validator: error message includes agent name, tool name, and restriction
-6. E2E: agent with guardrails compiles when clean
-7. E2E: agent with guardrails errors when violated
-8. Parser: `must not:` without `can use:` → warning (no tools to restrict)
+### Tests (10 minimum)
+1. Parser: `must not:` block parsed into restrictions array with types
+2. Parser: compile-time policies tagged as `type: 'compile'`
+3. Parser: runtime policies tagged as `type: 'runtime'` with limit value
+4. Validator: error when tool deletes and restriction says `delete any records`
+5. Validator: error when tool accesses restricted table
+6. Validator: passes when tools don't violate restrictions
+7. Validator: error message includes agent name, tool name, and restriction
+8. Compiler: runtime `call more than N` sets maxTurns in _askAIWithTools call
+9. E2E: agent with mixed compile+runtime guardrails compiles when clean
+10. Parser: `must not:` without `can use:` → warning (no tools to restrict)
 
 ### Files to read for this phase:
 | File | Lines | Why |
@@ -767,7 +943,7 @@ This is much simpler, works without an embedding API, and can be upgraded to vec
 ```
 // After parsing receivingVar, before parseBlock:
 // Scan upcoming indented lines for directives
-const directives = { tools: null, restrictions: null, rememberConversation: false,
+const directives = { tools: null, restrictions: null, skills: null, rememberConversation: false,
                      rememberPreferences: false, trackDecisions: false, knowsAbout: null };
 let bodyStartIdx = startIdx + 1;
 while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > blockIndent) {
@@ -787,6 +963,10 @@ while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > blockIndent) 
     bodyStartIdx++;
   } else if (dTokens[0]?.value === 'knows') {
     directives.knowsAbout = [...];
+    bodyStartIdx++;
+  } else if (dTokens[0]?.value === 'uses' && dTokens[1]?.value === 'skills') {
+    // parse comma-separated skill names after colon
+    directives.skills = [...];
     bodyStartIdx++;
   } else break; // first non-directive line = start of body
 }
@@ -815,6 +995,12 @@ This is the single most important architectural decision in this plan. Get it wr
 | `ask user to confirm` in non-agent context | Parser error |
 | `mock claude responding` outside test block | Parser error |
 | Tool function has no parameters | Schema with empty properties object |
+| Skill references a function that doesn't exist | Validator error: `skill 'X' uses tool 'Y' but no function 'Y' is defined` |
+| Two skills provide the same tool function | Deduplicate — merge without duplicates |
+| Agent has both `can use:` and `uses skills:` | Merge: skill tools + direct tools combined |
+| Skill has empty `can:` list | Validator warning: skill with no tools is just instructions |
+| Inline CRUD tool references non-existent table | Validator error: `no table 'X' exists` |
+| Block-form `must not:` with unknown policy verb | Parser error: `unknown policy — use 'delete', 'modify', 'access', 'call more than', or 'spend more than'` |
 | Agent calls another agent that has conversation memory | Inner agent gets same userId |
 | Parallel agents where one fails | Promise.all rejects — error includes which agent failed |
 | Pipeline step returns null | Next step receives null — user's responsibility to guard |
@@ -829,14 +1015,17 @@ Add these new node types to intent.md after implementation:
 | PARALLEL_AGENTS | `do these at the same time:` + call assignments | `Promise.all([...])` |
 | PIPELINE | `pipeline 'Name' with var:` + steps | Sequential async function |
 | RUN_PIPELINE | `call pipeline 'Name' with data` | `await pipeline_name(data)` |
+| SKILL | `skill 'Name':` + `can:` + `instructions:` | Compile-time tool bundle (dissolves into agent) |
 | HUMAN_CONFIRM | `ask user to confirm 'message'` | Approvals table + 202 response |
 | MOCK_AI | `mock claude responding:` + fields | Test `_askAI` override |
 ```
 
 Agent directives (stored as flags on AGENT node, not separate nodes):
 ```
-| can use: fn1, fn2 | node.tools = ['fn1', 'fn2'] | Tool use / function calling |
-| must not: X, Y | node.restrictions = ['X', 'Y'] | Compile-time safety guardrails |
+| can use: fn1, fn2 | node.tools = [{type:'ref', name}] | Tool use — function references |
+| can use: (block) | node.tools = [{type:'inline', desc}] | Tool use — inline CRUD tools |
+| uses skills: Skill1, Skill2 | node.skills = ['Skill1', 'Skill2'] | Reusable tool+instruction bundles |
+| must not: (block) | node.restrictions = [{text, type}] | Compile-time + runtime policies |
 | remember conversation context | node.rememberConversation = true | Multi-turn history |
 | remember user's preferences | node.rememberPreferences = true | Long-term memory |
 | track agent decisions | node.trackDecisions = true | Observability logging |
@@ -847,9 +1036,9 @@ Agent directives (stored as flags on AGENT node, not separate nodes):
 
 ## Success Criteria
 
-- [ ] All 10 phases implemented and tested
+- [ ] All 11 phases implemented and tested (including 4.5 Skills)
 - [ ] Existing 1337 tests still pass (no regressions)
-- [ ] 80+ new tests across all phases
+- [ ] 90+ new tests across all phases
 - [ ] The "complete customer support agent" example from ROADMAP.md (~45 lines) compiles
 - [ ] intent.md updated with all new node types and directives
 - [ ] Parser and compiler TOCs updated
