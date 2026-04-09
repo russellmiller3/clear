@@ -342,18 +342,18 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
         <span style="width:8px;height:8px;border-radius:50%;background:var(--green);"></span>
         Claude Agent
       </span>
-      <span style="display:flex;align-items:center;gap:6px;">
-        <label id="web-toggle-label" title="Enable web search + fetch — Claude can search the web and read any URL" style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
-          <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
-          Web
-        </label>
-        <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
-      </span>
+      <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
     </div>
     <div id="chat-messages"></div>
     <div id="chat-input-area">
       <textarea id="chat-input" rows="2" placeholder="Ask Claude to build something... (Enter to send)"></textarea>
       <button id="chat-send" onclick="sendChat()">Send</button>
+    </div>
+    <div style="padding:6px 16px 8px;border-top:1px solid var(--bd);background:var(--bg2);display:flex;align-items:center;gap:6px;">
+      <label id="web-toggle-label" title="Enable web search + fetch — Claude can search the web and read any URL" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
+        <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
+        🌐 Web search + fetch
+      </label>
     </div>
   </div>
 
