@@ -89,13 +89,13 @@ page 'Goals' at '/goals':
   heading 'Fitness Goals'
 
   section 'Set Goal' with style card:
-    'Goal Name' is a text input saved as a goal_name
-    'Target' is a number input saved as a goal_target
-    'Unit' is a dropdown with ['Minutes', 'Calories', 'Workouts', 'Miles'] saved as a goal_unit
+    'Goal Name' is a text input saved as a name
+    'Target' is a number input saved as a target
+    'Unit' is a dropdown with ['Minutes', 'Calories', 'Workouts', 'Miles'] saved as a unit
     button 'Add Goal':
-      send goal_name, goal_target and goal_unit as a new goal to '/api/goals'
+      send name, target and unit as a new goal to '/api/goals'
       get goals from '/api/goals'
-      goal_name is ''
+      name is ''
 
   section 'My Goals':
     display goals as table showing name, target, current, unit

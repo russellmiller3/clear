@@ -1,8 +1,4 @@
-# DATAFLOW:
-# ┌──────────┐  POST /api/todos  ┌──────────┐  save  ┌──────────┐
-# │ Frontend │ ──────────────> │ Backend  │ ─────> │    DB    │
-# │  (form)  │ <────────────── │ (server) │ <───── │ (memory) │
-# └──────────┘  GET /api/todos  └──────────┘  query └──────────┘
+# Todo App -- simple full-stack todo list with auth-protected delete
 
 build for web and javascript backend
 

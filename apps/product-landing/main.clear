@@ -1,7 +1,6 @@
 build for web
 
-# Product Landing Page -- Clear as hosted AI app platform for business users
-# Built-in business apps you customize, not code you write from scratch
+# Product Landing Page -- multi-page marketing site with hero, features, and pricing
 
 # Uses built-in page presets: page_hero, page_section, page_section_dark, page_card
 # Override any preset by redefining it here. These are the defaults.

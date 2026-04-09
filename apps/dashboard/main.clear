@@ -89,7 +89,7 @@ page 'ML Dashboard' at '/':
     section 'Right' with style app_main:
       section 'Top' with style app_header:
         heading 'Models'
-        'Model Name' is a text input saved as a model_name
+        'Model Name' is a text input saved as a name
 
       section 'Body' with style app_content:
         section 'Metrics' as two column layout:
@@ -103,9 +103,9 @@ page 'ML Dashboard' at '/':
             text '3 complete, 1 training'
 
         button 'Add Model':
-          send model_name as a new model to '/api/models'
+          send name as a new model to '/api/models'
           get models from '/api/models'
-          model_name is ''
+          name is ''
 
         chart 'Model Accuracy' as bar showing models
 

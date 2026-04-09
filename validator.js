@@ -727,7 +727,7 @@ function validateSecurity(body, errors, warnings) {
         const name = node.name.toLowerCase();
         allSchemaFields.set(name, fields);
         allSchemaFields.set(name + (name.endsWith('s') ? '' : 's'), fields);
-        if (fields.has('user_id') || fields.has('owner_id') || fields.has('owner')) {
+        if (fields.has('user_id') || fields.has('owner_id')) {
           schemasWithOwner.add(name);
           schemasWithOwner.add(name + (name.endsWith('s') ? '' : 's'));
         }
@@ -1134,6 +1134,8 @@ function validateFieldMismatch(body, warnings) {
           const schema = schemas.get(tableName) || schemas.get(tableName + 's');
           if (schema) {
             for (const sent of n.fields) {
+              // 'nothing' means POST with no body — not a real field name
+              if (sent === 'nothing' || sent === 'null' || sent === 'none') continue;
               if (!schema.fields.has(sent)) {
                 let suggestion = '';
                 for (const sf of schema.fields) {

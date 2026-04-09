@@ -3881,7 +3881,8 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
 
     // Check if this is an RLS policy line (anyone/owner/role/same org ... can ...)
     const firstCanonical = fieldTokens[0].canonical || fieldTokens[0].value.toLowerCase();
-    if (firstCanonical === 'anyone' || firstCanonical === 'owner' || firstCanonical === 'same_org' ||
+    const hasCanKeyword = fieldTokens.some(t => (t.canonical || (typeof t.value === 'string' ? t.value.toLowerCase() : '')) === 'can');
+    if ((firstCanonical === 'anyone' || firstCanonical === 'owner' || firstCanonical === 'same_org') && hasCanKeyword ||
         (firstCanonical === 'role' && fieldTokens.length > 1 && fieldTokens[1].type === TokenType.STRING)) {
       const policy = parseRLSPolicy(fieldTokens, fieldLine);
       if (policy) policies.push(policy);

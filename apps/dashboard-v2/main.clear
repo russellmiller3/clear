@@ -55,15 +55,15 @@ page 'Results Dashboard':
 
       section 'Header' sticky at top, with shadow, padded:
         heading 'Results Dashboard'
-        'Model Name' is a text input saved as a model_name
+        'Model Name' is a text input saved as a name
 
       section 'Tabs' padded:
         button 'Overview':
           get models from '/api/models'
         button 'Add Model':
-          send model_name as a new model to '/api/models'
+          send name as a new model to '/api/models'
           get models from '/api/models'
-          model_name is ''
+          name is ''
 
       section 'Content' scrollable, padded:
 

@@ -1,5 +1,7 @@
 build for web and javascript backend
 
+# Live Chat -- real-time messaging with rooms, SSE, and message history
+
 # Database
 database is local memory
 create a Messages table:
@@ -78,13 +80,13 @@ page 'Rooms' at '/rooms':
   text 'Create and browse chat rooms'
 
   section 'New Room' with style card:
-    'Room Name' is a text input saved as a room_name
-    'Description' is a text input saved as a room_desc
+    'Room Name' is a text input saved as a name
+    'Description' is a text input saved as a description
     button 'Create Room':
-      send room_name and room_desc as a new room to '/api/rooms'
+      send name and description as a new room to '/api/rooms'
       get rooms from '/api/rooms'
-      room_name is ''
-      room_desc is ''
+      name is ''
+      description is ''
 
   section 'All Rooms':
     display rooms as table showing name, description

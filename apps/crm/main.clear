@@ -179,14 +179,14 @@ page 'CRM' at '/':
         # --- Add Deal Form ---
         section 'Add Deal' with style app_card:
           subheading 'New Deal'
-          'Deal Title' is a text input saved as a deal_title
-          'Contact ID' is a text input saved as a deal_contact_id
-          'Value' is a number input saved as a deal_value
+          'Deal Title' is a text input saved as a title
+          'Contact ID' is a text input saved as a contact_id
+          'Value' is a number input saved as a value
           'Stage' is a dropdown with ['prospect', 'proposal', 'negotiation', 'closed-won', 'closed-lost']
           button 'Add Deal':
-            send deal_title and deal_contact_id and deal_value and stage to '/api/deals'
+            send title and contact_id and value and stage to '/api/deals'
             get deals from '/api/deals'
-            deal_title is ''
+            title is ''
 
         # --- Deals Table ---
         section 'Deals' with style app_card:

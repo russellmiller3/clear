@@ -132,6 +132,8 @@ when user calls POST /api/invoices sending invoice_data:
 when user calls PUT /api/invoices/:id sending update_data:
   requires auth
   validate update_data:
+    client_name is text
+    due_date is text
     status is text
     description is text
     amount is number
@@ -205,12 +207,12 @@ page 'Invoices' at '/':
         # --- Clients ---
         section 'Manage Clients' with style app_card:
           subheading 'Clients'
-          'Client' is a text input saved as a new_client_name
-          'Email' is a text input saved as a new_client_email
-          'Company' is a text input saved as a new_client_company
+          'Client' is a text input saved as a name
+          'Email' is a text input saved as an email
+          'Company' is a text input saved as a company
           button 'Add Client':
-            send new_client_name and new_client_email and new_client_company to '/api/clients'
+            send name and email and company to '/api/clients'
             get clients from '/api/clients'
-            new_client_name is ''
-            new_client_email is ''
+            name is ''
+            email is ''
           display clients as table showing name, email, company with delete

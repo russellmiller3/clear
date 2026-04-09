@@ -1,6 +1,4 @@
-# ┌──────────────────────────────────────────────────────────┐
-# │  IT Helpdesk — Multi-Agent Support System               │
-# └──────────────────────────────────────────────────────────┘
+# IT Helpdesk Agent -- multi-agent AI pipeline with triage, skills, and escalation
 #
 # AGENT FLOW:
 #

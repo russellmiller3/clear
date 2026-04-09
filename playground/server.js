@@ -57,10 +57,21 @@ app.post('/api/compile', (req, res) => {
 // =============================================================================
 // TEMPLATES
 // =============================================================================
+const FEATURED_TEMPLATES = [
+  'team-dashboard',    // Project management dashboard (app_layout, sidebar)
+  'ecommerce-api',     // Pure REST backend API (no frontend)
+  'crm-pro',           // CRM with contacts + deals (relational data)
+  'live-chat',         // Real-time messaging (websockets)
+  'todo-fullstack',    // Simple full-stack with auth
+  'product-landing',   // Multi-page marketing site (pure frontend)
+  'helpdesk-agent',    // Multi-agent AI pipeline (agents, skills, pipelines)
+];
+
 app.get('/api/templates', (req, res) => {
   try {
     const dirs = readdirSync(APPS_DIR, { withFileTypes: true })
       .filter(d => d.isDirectory())
+      .filter(d => FEATURED_TEMPLATES.includes(d.name))
       .filter(d => existsSync(join(APPS_DIR, d.name, 'main.clear')));
     const templates = dirs.map(d => {
       const source = readFileSync(join(APPS_DIR, d.name, 'main.clear'), 'utf8');
@@ -69,7 +80,7 @@ app.get('/api/templates', (req, res) => {
         name: d.name,
         description: firstComment ? firstComment[1].replace(/^-+\s*/, '').trim() : '',
       };
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    }).sort((a, b) => FEATURED_TEMPLATES.indexOf(a.name) - FEATURED_TEMPLATES.indexOf(b.name));
     res.json(templates);
   } catch (err) {
     res.json([]);

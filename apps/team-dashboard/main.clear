@@ -1,7 +1,9 @@
 build for web and javascript backend
 theme 'midnight'
 
-# Team Dashboard -- uses DaisyUI app presets for sidebar + header + content layout
+# Team Dashboard -- project and task management with sidebar layout
+
+# Database
 
 database is local memory
 
@@ -60,13 +62,13 @@ page 'Team Dashboard' at '/':
       display projects as table showing name, status
       divider
       subheading 'New Project'
-      'Name' is a text input saved as a project_name
-      'Owner' is a text input saved as a project_owner
+      'Name' is a text input saved as a name
+      'Owner' is a text input saved as an owner
       button 'Add Project':
-        send project_name and project_owner as a new project to '/api/projects'
+        send name and owner as a new project to '/api/projects'
         get projects from '/api/projects'
-        project_name is ''
-        project_owner is ''
+        name is ''
+        owner is ''
 
     section 'Right' with style app_main:
 
@@ -88,12 +90,12 @@ page 'Team Dashboard' at '/':
 
         section 'Add Task' with style app_card:
           subheading 'New Task'
-          'Title' is a text input saved as a task_title
-          'Project' is a text input saved as a task_project
-          'Assignee' is a text input saved as a task_assignee
+          'Title' is a text input saved as a title
+          'Project' is a text input saved as a project
+          'Assignee' is a text input saved as an assignee
           button 'Add Task':
-            send task_title and task_project and task_assignee as a new task to '/api/tasks'
+            send title and project and assignee as a new task to '/api/tasks'
             get tasks from '/api/tasks'
-            task_title is ''
-            task_project is ''
-            task_assignee is ''
+            title is ''
+            project is ''
+            assignee is ''

@@ -1,7 +1,6 @@
 build for javascript backend
 
-# Ecommerce API -- Stress Test App #4 (v2, with business logic)
-# Tests: product catalog, orders, inventory guards, auth, webhooks
+# Ecommerce API -- product catalog, orders, inventory, auth, and Stripe checkout
 
 # --- Data ---
 

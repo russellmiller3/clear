@@ -1,4 +1,4 @@
-# ┌──────────┬──────────────────────────────────┐
+# CRM Pro -- contacts, deals, pipeline, activity log, and revenue tracking
 # │ Sidebar  │  Header [Search]     [New Contact]│
 # │          ├──────────────────────────────────┤
 # │ Dashboard│  ┌────────┐┌────────┐┌──────────┐│
@@ -226,6 +226,7 @@ when user calls POST /api/deals sending deal_data:
 when user calls PUT /api/deals/:id sending update_data:
   requires auth
   validate update_data:
+    contact_id is text
     title is text
     value is number
     stage is text
@@ -310,19 +311,19 @@ page 'CRM Pro' at '/':
         # --- Add Contact Form ---
         section 'New Contact' with style app_card:
           subheading 'Add Contact'
-          'Name' is a text input saved as a contact_name
-          'Email' is a text input saved as a contact_email
-          'Company' is a text input saved as a contact_company
-          'Phone' is a text input saved as a contact_phone
+          'Name' is a text input saved as a name
+          'Email' is a text input saved as an email
+          'Company' is a text input saved as a company
+          'Phone' is a text input saved as a phone
           'Status' is a dropdown with ['lead', 'qualified', 'customer', 'churned']
           'Source' is a dropdown with ['direct', 'website', 'referral', 'cold-call', 'event']
           button 'Add Contact':
-            send contact_name and contact_email and contact_company and contact_phone and status and source to '/api/contacts'
+            send name and email and company and phone and status and source to '/api/contacts'
             get contacts from '/api/contacts'
-            contact_name is ''
-            contact_email is ''
-            contact_company is ''
-            contact_phone is ''
+            name is ''
+            email is ''
+            company is ''
+            phone is ''
 
         # --- Contacts Table ---
         section 'Contacts' with style app_card:
@@ -332,17 +333,17 @@ page 'CRM Pro' at '/':
         # --- Add Deal Form ---
         section 'New Deal' with style app_card:
           subheading 'Add Deal'
-          'Deal Title' is a text input saved as a deal_title
-          'Contact ID' is a text input saved as a deal_contact_id
-          'Value ($)' is a number input saved as a deal_value
+          'Deal Title' is a text input saved as a title
+          'Contact ID' is a text input saved as a contact_id
+          'Value ($)' is a number input saved as a value
           'Stage' is a dropdown with ['prospect', 'proposal', 'negotiation', 'closed-won', 'closed-lost']
-          'Probability (%)' is a number input saved as a deal_probability
+          'Probability (%)' is a number input saved as a probability
           'Expected Close' is a text input saved as an expected_close
           button 'Add Deal':
-            send deal_title and deal_contact_id and deal_value and stage and deal_probability and expected_close to '/api/deals'
+            send title and contact_id and value and stage and probability and expected_close to '/api/deals'
             get deals from '/api/deals'
-            deal_title is ''
-            deal_contact_id is ''
+            title is ''
+            contact_id is ''
 
         # --- Deals Table ---
         section 'Deals' with style app_card:
