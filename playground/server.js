@@ -345,6 +345,18 @@ const TOOLS = [
       required: ['method', 'path'],
     },
   },
+  {
+    name: 'write_file',
+    description: 'Write text content to a file in the project root. Use this to save Clear source code to a .clear file so you can run CLI commands (check, lint, info, test) on it. Filename must end in .clear and contain only safe characters.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Filename relative to project root, e.g. "temp-app.clear". Must end in .clear.' },
+        content: { type: 'string', description: 'The text content to write.' },
+      },
+      required: ['filename', 'content'],
+    },
+  },
 ];
 
 app.post('/api/chat', async (req, res) => {
@@ -416,12 +428,12 @@ app.post('/api/chat', async (req, res) => {
 
       case 'run_app': {
         if (!lastCompileResult?.serverJS) return JSON.stringify({ error: 'No compiled server code. Compile first.' });
-        // Sync run — write files and start
+        // Kill previous child
         if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
         const rtDir = join(BUILD_DIR, 'clear-runtime');
         mkdirSync(rtDir, { recursive: true });
         writeFileSync(join(BUILD_DIR, 'server.js'), lastCompileResult.serverJS);
-        writeFileSync(join(BUILD_DIR, 'package.json'), '{}');
+        writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: { ws: '*' } }));
         if (lastCompileResult.html) writeFileSync(join(BUILD_DIR, 'index.html'), lastCompileResult.html);
         writeFileSync(join(BUILD_DIR, 'style.css'), lastCompileResult.css || '');
         const runtimeDir = join(ROOT_DIR, 'runtime');
@@ -430,15 +442,41 @@ app.post('/api/chat', async (req, res) => {
         }
         runningPort++;
         if (runningPort > 4100) runningPort = 4001;
-        const env = { ...process.env, PORT: String(runningPort) };
-        runningChild = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
-        runningChild.on('exit', () => { runningChild = null; });
-        return JSON.stringify({ started: true, port: runningPort });
+        const agentPort = runningPort;
+        const env = { ...process.env, PORT: String(agentPort) };
+        const agentChild = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
+        runningChild = agentChild;
+        agentChild.on('exit', () => { if (runningChild === agentChild) runningChild = null; });
+
+        // Sync-poll TCP until port is open (max 5s) so agent can immediately use http_request.
+        // Write to a .cjs file (forces CJS regardless of parent package.json type:module).
+        const pollPath = join(BUILD_DIR, '_port-poll.cjs');
+        writeFileSync(pollPath, [
+          "var net=require('net'),n=0;",
+          "(function t(){",
+          `  var s=net.createConnection(${agentPort},'127.0.0.1');`,
+          "  s.on('connect',function(){s.destroy();process.exit(0);});",
+          "  s.on('error',function(){if(++n<25)setTimeout(t,200);else process.exit(1);});",
+          "})();",
+        ].join('\n'));
+        try { execSync(`node "${pollPath}"`, { timeout: 6000 }); } catch {}
+        try { unlinkSync(pollPath); } catch {}
+
+        return JSON.stringify({ started: true, port: agentPort });
       }
 
       case 'stop_app':
         if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
         return JSON.stringify({ stopped: true });
+
+      case 'write_file': {
+        // Restrict to .clear files in project root only — no path traversal
+        const safeName = input.filename.replace(/[^a-zA-Z0-9._-]/g, '-');
+        if (!safeName.endsWith('.clear')) return JSON.stringify({ error: 'Only .clear files allowed' });
+        const dest = join(ROOT_DIR, safeName);
+        writeFileSync(dest, input.content, 'utf8');
+        return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
+      }
 
       case 'http_request': {
         // Sync HTTP is tricky — return a promise indicator
@@ -473,7 +511,7 @@ app.post('/api/chat', async (req, res) => {
   let toolResults = []; // Applied code changes to send back to frontend
 
   try {
-    for (let iter = 0; iter < 10; iter++) {
+    for (let iter = 0; iter < 15; iter++) {
       const payload = {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
