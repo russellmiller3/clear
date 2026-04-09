@@ -96,11 +96,24 @@ describe('Tokenizer', () => {
     expect(tokens[0].canonical).toBe('show');
   });
 
-  it('tokenizes comments', () => {
+  it('tokenizes # comments', () => {
     const tokens = tokenizeLine('x = 5 # this is a comment', 1);
     const commentToken = tokens.find(t => t.type === TokenType.COMMENT);
     expect(commentToken).toBeDefined();
     expect(commentToken.value).toBe('this is a comment');
+  });
+
+  it('tokenizes // line comments', () => {
+    const tokens = tokenizeLine('x = 5 // this is a comment', 1);
+    const commentToken = tokens.find(t => t.type === TokenType.COMMENT);
+    expect(commentToken).toBeDefined();
+    expect(commentToken.value).toBe('this is a comment');
+  });
+
+  it('tokenizes // comment-only line', () => {
+    const tokens = tokenizeLine('// standalone comment', 1);
+    expect(tokens[0].type).toBe(TokenType.COMMENT);
+    expect(tokens[0].value).toBe('standalone comment');
   });
 
   it('tokenizes list brackets', () => {
@@ -140,14 +153,51 @@ describe('Parser - Basic Structure', () => {
     expect(ast.errors).toHaveLength(0);
   });
 
-  it('parses a single-line comment', () => {
+  it('parses a # single-line comment', () => {
     const ast = parse('# this is a comment');
     expect(ast.body).toHaveLength(1);
     expect(ast.body[0].type).toBe(NodeType.COMMENT);
     expect(ast.body[0].text).toBe('this is a comment');
   });
 
-  it('parses a multi-line comment block', () => {
+  it('parses a // single-line comment', () => {
+    const ast = parse('// this is a comment');
+    expect(ast.body).toHaveLength(1);
+    expect(ast.body[0].type).toBe(NodeType.COMMENT);
+    expect(ast.body[0].text).toBe('this is a comment');
+  });
+
+  it('parses // comment inline with code', () => {
+    const ast = parse('x = 5 // set x to five');
+    const assigns = ast.body.filter(n => n.type === 'assign');
+    expect(assigns).toHaveLength(1);
+    expect(assigns[0].expression.value).toBe(5);
+  });
+
+  it('parses a /* single-line */ comment', () => {
+    const ast = parse('/* this is a comment */');
+    expect(ast.body).toHaveLength(1);
+    expect(ast.body[0].type).toBe(NodeType.COMMENT);
+    expect(ast.body[0].text).toBe('this is a comment');
+  });
+
+  it('parses a /* multi-line */ comment block', () => {
+    const ast = parse('/*\nline one\nline two\n*/');
+    expect(ast.body).toHaveLength(1);
+    expect(ast.body[0].type).toBe(NodeType.COMMENT);
+    expect(ast.body[0].text).toContain('line one');
+    expect(ast.body[0].text).toContain('line two');
+  });
+
+  it('/* */ comment does not interfere with surrounding code', () => {
+    const ast = parse('x = 1\n/*\nnotes here\n*/\ny = 2');
+    const assigns = ast.body.filter(n => n.type === 'assign');
+    const comments = ast.body.filter(n => n.type === 'comment');
+    expect(assigns).toHaveLength(2);
+    expect(comments).toHaveLength(1);
+  });
+
+  it('parses a ### multi-line comment block', () => {
     const ast = parse('###\nline one\nline two\n###');
     expect(ast.body).toHaveLength(1);
     expect(ast.body[0].type).toBe(NodeType.COMMENT);
@@ -155,7 +205,7 @@ describe('Parser - Basic Structure', () => {
     expect(ast.body[0].text).toContain('line two');
   });
 
-  it('multi-line comment does not interfere with surrounding code', () => {
+  it('multi-line ### comment does not interfere with surrounding code', () => {
     const ast = parse('x = 1\n###\nnotes here\n###\ny = 2');
     const assigns = ast.body.filter(n => n.type === 'assign');
     const comments = ast.body.filter(n => n.type === 'comment');

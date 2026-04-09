@@ -116,11 +116,12 @@ export function tokenizeLine(line, lineNumber = 1) {
       continue;
     }
 
-    // Comment: # to end of line
-    if (line[pos] === '#') {
+    // Comment: # or // to end of line
+    if (line[pos] === '#' || (line[pos] === '/' && line[pos + 1] === '/')) {
+      const skip = line[pos] === '#' ? 1 : 2;
       tokens.push({
         type: TokenType.COMMENT,
-        value: line.slice(pos + 1).trim(),
+        value: line.slice(pos + skip).trim(),
         line: lineNumber,
         column: pos + 1,
       });
@@ -369,6 +370,7 @@ export function tokenize(source) {
   const lines = source.split('\n');
   const result = [];
   let inBlockComment = false;
+  let blockCommentType = null; // '###' or '/*/'
   let blockCommentLines = [];
   let blockCommentStartLine = 0;
 
@@ -378,31 +380,62 @@ export function tokenize(source) {
 
     // Multi-line comment: ### ... ###
     if (trimmed === '###') {
-      if (inBlockComment) {
-        // Closing ###: emit accumulated comment lines as a single COMMENT token
+      if (inBlockComment && blockCommentType === '###') {
+        // Closing ###
         const commentText = blockCommentLines.join('\n');
         result.push({
-          tokens: [{
-            type: TokenType.COMMENT,
-            value: commentText,
-            line: blockCommentStartLine,
-            column: 1,
-          }],
+          tokens: [{ type: TokenType.COMMENT, value: commentText, line: blockCommentStartLine, column: 1 }],
           indent: 0,
         });
         inBlockComment = false;
+        blockCommentType = null;
         blockCommentLines = [];
-      } else {
+      } else if (!inBlockComment) {
         // Opening ###
         inBlockComment = true;
+        blockCommentType = '###';
         blockCommentStartLine = i + 1;
         blockCommentLines = [];
       }
       continue;
     }
 
+    // Multi-line comment: /* ... */ (also handles single-line /* ... */)
+    if (!inBlockComment && trimmed.startsWith('/*')) {
+      // Single-line: /* comment */ on one line
+      if (trimmed.endsWith('*/') && trimmed.length > 4) {
+        result.push({
+          tokens: [{ type: TokenType.COMMENT, value: trimmed.slice(2, -2).trim(), line: i + 1, column: 1 }],
+          indent: 0,
+        });
+        continue;
+      }
+      // Opening /* — enter block comment mode
+      inBlockComment = true;
+      blockCommentType = '/*/';
+      blockCommentStartLine = i + 1;
+      blockCommentLines = [];
+      const afterOpen = trimmed.slice(2).trim();
+      if (afterOpen) blockCommentLines.push(afterOpen);
+      continue;
+    }
+
     if (inBlockComment) {
-      blockCommentLines.push(raw.trimEnd());
+      if (blockCommentType === '/*/' && trimmed.endsWith('*/')) {
+        // Closing */
+        const beforeClose = trimmed.slice(0, -2).trim();
+        if (beforeClose) blockCommentLines.push(beforeClose);
+        const commentText = blockCommentLines.join('\n');
+        result.push({
+          tokens: [{ type: TokenType.COMMENT, value: commentText, line: blockCommentStartLine, column: 1 }],
+          indent: 0,
+        });
+        inBlockComment = false;
+        blockCommentType = null;
+        blockCommentLines = [];
+      } else {
+        blockCommentLines.push(raw.trimEnd());
+      }
       continue;
     }
 
