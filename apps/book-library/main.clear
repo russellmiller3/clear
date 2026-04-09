@@ -1,0 +1,110 @@
+# LAYOUT:
+# ┌──────────────────────────────────────────────────┐
+# │  📚 My Book Library                              │
+# ├───────────────────┬──────────────────────────────┤
+# │  Add a Book       │  Your Books (card grid)      │
+# │  ─────────────    │  ┌────────┐ ┌────────┐       │
+# │  Title            │  │Book 1  │ │Book 2  │       │
+# │  Author           │  │author  │ │author  │       │
+# │  Genre            │  │★★★★☆  │ │★★★☆☆  │       │
+# │  Rating           │  └────────┘ └────────┘       │
+# │  Notes            │                              │
+# │  [x] Read         │  ┌────────┐ ┌────────┐       │
+# │  [Add Book]       │  │Book 3  │ │Book 4  │       │
+# └───────────────────┴──────────────────────────────┘
+#
+# DATAFLOW:
+# ┌──────────┐  POST /api/books    ┌──────────┐  save  ┌────────┐
+# │ Frontend │ ──────────────────> │ Backend  │ ──────> │   DB   │
+# │  (form)  │ <────────────────── │ (server) │ <────── │(memory)│
+# └──────────┘  GET /api/books     └──────────┘  query  └────────┘
+#     │                                  │
+#     │  on page load --> GET --> cards  │  PUT  /api/books/:id [auth]
+#     │  Add button   --> POST --> load  │  DELETE /api/books/:id [auth]
+
+build for web and javascript backend
+theme 'ivory'
+
+# Database
+
+database is local memory
+
+create a Books table:
+  title, required
+  author, required
+  genre
+  rating, default 0
+  notes
+  read, default false
+  added_at, auto
+
+# Backend
+
+allow cross-origin requests
+log every request
+
+when user calls GET /api/books:
+  all_books = get all Books
+  send back all_books
+
+when user calls GET /api/books/:id:
+  book = look up records in Books table where id is incoming's id
+  send back book
+
+when user calls POST /api/books sending book_data:
+  validate book_data:
+    title is text, required, min 1, max 200
+    author is text, required, min 1, max 200
+    genre is text, max 100
+    rating is number, min 0, max 5
+    notes is text, max 2000
+  new_book = save book_data as new Book
+  send back new_book with success message
+
+when user calls PUT /api/books/:id sending book_data:
+  requires auth
+  validate book_data:
+    title is text, min 1, max 200
+    author is text, min 1, max 200
+    genre is text, max 100
+    rating is number, min 0, max 5
+    notes is text, max 2000
+  save book_data to Books
+  send back 'updated' with success message
+
+when user calls DELETE /api/books/:id:
+  requires auth
+  delete the Book with this id
+  send back 'deleted' with success message
+
+# Frontend
+
+page 'My Book Library' at '/':
+  on page load get books from '/api/books'
+
+  section 'Header' with style app_header:
+    heading '📚 My Book Library'
+
+  section 'Body' with style app_layout:
+
+    section 'Form Panel' with style app_sidebar:
+      heading 'Add a Book'
+      'Title' is a text input saved as a title
+      'Author' is a text input saved as an author
+      'Genre' is a text input saved as a genre
+      'Rating (0–5)' is a number input saved as a rating
+      'Notes' is a text area saved as notes
+      'Already read?' is a checkbox saved as read
+      button 'Add Book':
+        send title and author and genre and rating and notes and read as a new book to '/api/books'
+        get books from '/api/books'
+        title is ''
+        author is ''
+        genre is ''
+        rating = 0
+        notes is ''
+        read is false
+
+    section 'Books Panel' with style app_content:
+      heading 'Your Books'
+      display books as table showing title, author, genre, rating, read, added_at

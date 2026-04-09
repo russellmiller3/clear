@@ -229,6 +229,41 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
   await stopApp();
 }
 
+// book-library: new fullstack CRUD app
+{
+  console.log('\n  📚 book-library');
+  const r = compiled['book-library'];
+  const code = r?.serverJS || r?.javascript;
+  if (!r) {
+    console.log('    ⚠️  book-library template not found — skipping');
+  } else {
+    assert(!!code, 'book-library has runnable code');
+    const port = await startApp(code);
+    assert(!!port, `book-library started on port ${port}`);
+
+    const { data: books } = await appGet('/api/books');
+    assert(books.status === 200 || Array.isArray(books.data), 'GET /api/books responds');
+
+    const { data: created } = await appPost('/api/books', { title: 'The Pragmatic Programmer', author: 'Hunt & Thomas', genre: 'Tech', rating: 5 });
+    assert(created.status === 200 || created.status === 201, 'POST /api/books creates book');
+
+    const { data: books2 } = await appGet('/api/books');
+    assert(Array.isArray(books2.data) && books2.data.length >= 1, 'book list grows after POST');
+
+    const id = books2.data?.[0]?.id;
+    if (id !== undefined) {
+      const { data: one } = await appGet(`/api/books/${id}`);
+      assert(one.status === 200, `GET /api/books/${id} works`);
+
+      // PUT/DELETE require auth
+      const { data: del } = await appDel(`/api/books/${id}`);
+      assert(del.status === 401, 'DELETE /api/books/:id returns 401 without auth (auth-protected)');
+    }
+
+    await stopApp();
+  }
+}
+
 // =============================================================================
 // 3. RUN + TEST ENDPOINTS: Fullstack apps
 // =============================================================================
