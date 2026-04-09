@@ -221,6 +221,17 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .typing-indicator span:nth-child(2) { animation-delay: .2s; }
 .typing-indicator span:nth-child(3) { animation-delay: .4s; }
 
+/* Docs overlay */
+.doc-h1 { font-size:20px; font-weight:700; color:var(--tx); margin:24px 0 8px; padding-bottom:6px; border-bottom:2px solid var(--bd2); }
+.doc-h2 { font-size:15px; font-weight:600; color:var(--accent); margin:20px 0 6px; }
+.doc-h3 { font-size:13px; font-weight:600; color:var(--tx2); margin:14px 0 4px; }
+.doc-p  { margin:3px 0; color:var(--tx2); }
+.doc-gap { height:6px; }
+li { margin:2px 0 2px 20px; color:var(--tx2); }
+.doc-code { background:var(--bg2); border:1px solid var(--bd); border-radius:6px; padding:12px 14px; font-family:var(--mono); font-size:12px; line-height:1.6; overflow-x:auto; margin:8px 0; color:var(--tx); }
+.doc-inline { background:var(--bg3); border:1px solid var(--bd); border-radius:3px; padding:1px 5px; font-family:var(--mono); font-size:11px; color:var(--accent); }
+#docs-search:focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-glow); }
+
 /* Empty state */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--tx3); gap: 8px; padding: 24px; text-align: center; }
 .empty-state .icon { font-size: 32px; opacity: .5; margin-bottom: 4px; }
@@ -281,6 +292,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doSave()" title="Save to Desktop">Save</button>
     <button id="download-btn" class="toolbar-btn" onclick="doDownload()" title="Download compiled HTML" style="display:none">Download</button>
+    <button class="toolbar-btn" onclick="openDocs('syntax')" title="Syntax reference">Syntax</button>
+    <button class="toolbar-btn" onclick="openDocs('user-guide')" title="User guide">Guide</button>
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
     <span id="status" class="status-ok">Ready</span>
     <button id="chat-toggle-btn" onclick="toggleChat()" title="Toggle Claude panel">Hide Chat ◀</button>
@@ -353,6 +366,20 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <span>Clear v1.0</span>
     <span class="sb-sep"></span>
     <span id="sb-shortcuts">Ctrl+S compile &middot; Ctrl+Enter run &middot; Ctrl+K chat</span>
+  </div>
+</div>
+
+<!-- Docs overlay -->
+<div id="docs-overlay" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);backdrop-filter:blur(2px)" onclick="if(event.target===this)closeDocs()">
+  <div id="docs-panel" style="position:absolute;top:0;right:0;bottom:0;width:min(720px,90vw);background:var(--bg);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.2);border-left:1px solid var(--bd)">
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--bg2);border-bottom:1px solid var(--bd);flex-shrink:0">
+      <button class="toolbar-btn" id="docs-tab-syntax" onclick="openDocs('syntax')" style="font-size:12px">Syntax Reference</button>
+      <button class="toolbar-btn" id="docs-tab-guide" onclick="openDocs('user-guide')" style="font-size:12px">User Guide</button>
+      <span style="flex:1"></span>
+      <input id="docs-search" type="search" placeholder="Search..." style="background:var(--bg3);border:1px solid var(--bd2);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--tx);width:180px;outline:none" oninput="filterDocs(this.value)">
+      <button onclick="closeDocs()" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:18px;padding:0 4px;line-height:1" title="Close">✕</button>
+    </div>
+    <div id="docs-content" style="flex:1;overflow-y:auto;padding:24px 32px;font-family:var(--font);font-size:13px;line-height:1.7;color:var(--tx)"></div>
   </div>
 </div>
 
@@ -482,7 +509,8 @@ show 'Hello, Clear!'
   parent: document.getElementById('editor-mount'),
 });
 
-window._editor = editor; // For chat apply
+window._editor = editor;      // For chat apply
+window._editorView = editor;  // For tests
 
 // ==========================================================================
 // EDITOR TOC
@@ -887,12 +915,15 @@ window.sendApiRequest = async function(idx, method, pathTemplate) {
 // RUN
 // ==========================================================================
 window.doRun = async function() {
+  // Determine what backend code we have — full-stack puts it in serverJS,
+  // backend-only (no HTML) puts it in javascript
+  const backendCode = lastCompiled?.serverJS || (!lastCompiled?.html && lastCompiled?.javascript) || null;
   // Web-only app: just show the rendered output, no server needed
-  if (lastCompiled?.html && !lastCompiled?.serverJS) {
+  if (lastCompiled?.html && !backendCode) {
     showTab('output');
     return;
   }
-  if (!lastCompiled?.serverJS) {
+  if (!lastCompiled || !backendCode) {
     appendTerminal('<span class="term-err">Compile first.</span>\n');
     showTab('terminal');
     return;
@@ -903,7 +934,7 @@ window.doRun = async function() {
     const r = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ serverJS: lastCompiled.serverJS, html: lastCompiled.html, css: lastCompiled.css }),
+      body: JSON.stringify({ serverJS: backendCode, html: lastCompiled.html, css: lastCompiled.css }),
     });
     const data = await r.json();
     if (data.error) {
@@ -1074,9 +1105,17 @@ function renderMsgHtml(m) {
   if (m.toolSteps && m.toolSteps.length) {
     html += m.toolSteps.map(t => `<div class="tool-step">${escHtml(t)}</div>`).join('');
   }
-  html += m.role === 'assistant' ? markdownToHtml(m.content || '') : escHtml(m.content || '').replace(/\n/g, '<br>');
-  // Cursor blink while streaming
-  if (m.streaming) html += '<span class="stream-cursor">▌</span>';
+  if (m.role === 'assistant') {
+    if (m.streaming && !m.content && !m.toolSteps?.length) {
+      // No text yet — show animated dots instead of empty bubble
+      html += '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+    } else {
+      html += markdownToHtml(m.content || '');
+      if (m.streaming) html += '<span class="stream-cursor">▌</span>';
+    }
+  } else {
+    html += escHtml(m.content || '').replace(/\n/g, '<br>');
+  }
   return `<div class="msg ${cls}" data-idx="${m._idx}">${html}</div>`;
 }
 
@@ -1209,6 +1248,17 @@ window.sendChat = async function() {
       }),
     });
 
+    if (!r.ok) {
+      const errText = await r.text();
+      let msg;
+      try { msg = JSON.parse(errText).error; } catch { msg = errText; }
+      const am = chatMessages[aIdx];
+      am.content = 'Server error: ' + (msg || r.status);
+      am.streaming = false;
+      updateLastMsg();
+      document.getElementById('chat-send').disabled = false;
+      return;
+    }
     const reader = r.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -1514,6 +1564,81 @@ function setStatus(type, text) {
 // ==========================================================================
 // CHAT PANEL COLLAPSE
 // ==========================================================================
+// ==========================================================================
+// DOCS VIEWER
+// ==========================================================================
+let docsCache = {};
+let docsRaw = '';
+
+function mdToDocHtml(md) {
+  const lines = md.split('\n');
+  const out = [];
+  let inCode = false, codeLang = '', codeBuf = [];
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (!inCode) { inCode = true; codeLang = line.slice(3).trim(); codeBuf = []; continue; }
+      out.push(`<pre class="doc-code"><code>${escHtml(codeBuf.join('\n'))}</code></pre>`);
+      inCode = false; codeBuf = []; continue;
+    }
+    if (inCode) { codeBuf.push(line); continue; }
+    if (line.startsWith('# '))  { out.push(`<h1 class="doc-h1">${escHtml(line.slice(2))}</h1>`); continue; }
+    if (line.startsWith('## ')) { out.push(`<h2 class="doc-h2">${escHtml(line.slice(3))}</h2>`); continue; }
+    if (line.startsWith('### ')){ out.push(`<h3 class="doc-h3">${escHtml(line.slice(4))}</h3>`); continue; }
+    if (line.startsWith('- ') || line.startsWith('* ')) { out.push(`<li>${escHtml(line.slice(2))}</li>`); continue; }
+    if (line.trim() === '') { out.push('<div class="doc-gap"></div>'); continue; }
+    // Inline: **bold**, `code`
+    let l = escHtml(line)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code class="doc-inline">$1</code>');
+    out.push(`<p class="doc-p">${l}</p>`);
+  }
+  return out.join('');
+}
+
+function filterDocs(query) {
+  if (!docsRaw) return;
+  const el = document.getElementById('docs-content');
+  if (!query.trim()) { el.innerHTML = mdToDocHtml(docsRaw); return; }
+  const q = query.toLowerCase();
+  const sections = docsRaw.split(/^(?=#{1,2} )/m);
+  const matched = sections.filter(s => s.toLowerCase().includes(q));
+  el.innerHTML = matched.length ? mdToDocHtml(matched.join('\n')) : '<p style="color:var(--tx3);padding:16px 0">No results.</p>';
+}
+
+window.openDocs = async function(which) {
+  const overlay = document.getElementById('docs-overlay');
+  const content = document.getElementById('docs-content');
+  const search = document.getElementById('docs-search');
+  overlay.style.display = '';
+  document.getElementById('docs-tab-syntax').style.fontWeight = which === 'syntax' ? '700' : '';
+  document.getElementById('docs-tab-guide').style.fontWeight = which === 'user-guide' ? '700' : '';
+  if (search) search.value = '';
+  content.innerHTML = '<p style="color:var(--tx3);padding:16px 0">Loading…</p>';
+  if (docsCache[which]) {
+    docsRaw = docsCache[which];
+    content.innerHTML = mdToDocHtml(docsRaw);
+    return;
+  }
+  try {
+    const r = await fetch(`/api/docs/${which}`);
+    if (!r.ok) throw new Error('Not found');
+    docsRaw = await r.text();
+    docsCache[which] = docsRaw;
+    content.innerHTML = mdToDocHtml(docsRaw);
+  } catch (e) {
+    content.innerHTML = `<p style="color:var(--red)">Could not load docs: ${e.message}</p>`;
+  }
+};
+
+window.closeDocs = function() {
+  document.getElementById('docs-overlay').style.display = 'none';
+};
+
+// Close docs on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDocs();
+});
+
 window.toggleChat = function() {
   const pane = document.getElementById('chat-pane');
   const btn = document.getElementById('chat-toggle-btn');

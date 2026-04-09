@@ -21,6 +21,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 7: Major Feature Sprint](#session-7-major-feature-sprint-2026-04-07) | Explicit > auto-inferred, synonym collisions in display, event delegation, file input read-only, phone test prevents jargon, OWASP security validators |
 | [Session 9: Error Translator + Silent Bug Guards](#session-9-error-translator--silent-bug-guards-2026-04-07) | _clearTry wrapping, _clearMap source map, blind agent testing, PUT data loss is systemic, Number("") returns 0, isSeedEndpoint ordering, runtime guards > compile-time guards |
 | [Session 10: Agent Tier 7](#session-10-agent-tier-7--phase-80-parallel-agents-2026-04-08) | `do`→`then`, `log`→`show`, `run`→`raw_run`, `check`→`if`, `classify with`→`predict_with`, directive scanning before parseBlock, block-form sub-line consumption, singular/plural table matching, regex code wrapping |
+| [Session 13: IDE Bug Fixes + Docs Viewer](#session-13-ide-bug-fixes--docs-viewer-2026-04-09) | Model ID blank response, backend-only compile uses `javascript` not `serverJS`, empty streaming bubble needs dots not blank, r.ok check before SSE, docs viewer markdown parsing |
 
 ---
 
@@ -325,3 +326,32 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 ### Playwright Gotchas (Playground IDE)
 - **`#preview-content` is the shared div for ALL tab panels.** When clicking "Compiled Code", "Output", "Terminal" tabs, they all render into `#preview-content`. There is no `#compiled-content`, `#compiled-panel`, or separate per-tab div. Test using `#preview-content` text content.
 - **ws package must be pre-installed in build dir.** Compiled chat apps use `require('ws')`. The build dir gets a minimal `package.json` written before running `npm install ws`. Without this, chat app compilation succeeds but running crashes with `MODULE_NOT_FOUND`.
+
+## Session 13: IDE Bug Fixes + Docs Viewer (2026-04-09)
+
+### Model ID Gives Silent Blank Response
+- **`claude-sonnet-4-20250514` is a stale model ID** — the API returns an error, the server forwards it as a non-OK HTTP response, but the client had no `r.ok` check before reading SSE. Result: blank assistant bubble, no error shown, no console log.
+- **Always check `r.ok` before reading the SSE stream.** If the API returns JSON error (not SSE), the SSE parser sees no `data:` lines, emits no events, and the streaming message stays empty. Add `if (!r.ok) { const err = await r.text(); show error; return; }` right after the fetch.
+- **Current model IDs (as of 2026-04-09):** `claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5-20251001`. Check CLAUDE.md for the canonical list before hardcoding in server code.
+
+### Backend-Only Compile Puts Code in `javascript`, Not `serverJS`
+- **The compiler uses two different output keys depending on target:**
+  - `build for web and javascript backend` → `result.html` + `result.serverJS`
+  - `build for javascript backend` (no web) → `result.javascript` (not `result.serverJS`)
+- **The run button only checked `lastCompiled?.serverJS`**, so backend-only apps always showed "Compile first" even when already compiled. Fix: `const backendCode = lastCompiled?.serverJS || (!lastCompiled?.html && lastCompiled?.javascript)`.
+- **The same issue exists in the agent's `run_app` tool** in server.js — it checks `lastCompileResult?.serverJS`. Fix is the same pattern.
+
+### Empty Streaming Bubble Looks Like a Bug
+- **When Claude starts responding with only tool calls (no text), the assistant message div is created with `content: ''` and `toolSteps: []`.** The bubble renders as an empty gray box — users think the chat broke.
+- **Fix: show animated dots when `m.streaming && !m.content && !m.toolSteps?.length`.** Once text starts arriving or tool steps appear, switch to real content. The `.typing-indicator` CSS was already defined but never used — just wire it in.
+
+### Agent Compiler Access: Don't, Log Instead
+- **Agents should never edit compiler source.** If a playground agent patches the compiler to make one app work, it silently breaks the language for every other app. The 1:1 mapping and determinism rules only hold if the compiler is maintained by humans, not patched by agents.
+- **The right pattern: `compiler-requests.md` as a feature backlog.** Agent logs unmet needs with a structured format (app, syntax desired, workaround, error, impact). Human reviews and decides whether to add to the language. This creates a backlog driven by real usage rather than speculation.
+- **Format for requests** (see system-prompt.md): App / What I needed / Proposed syntax / Workaround / Error hit / Impact (low/medium/high).
+
+### Docs Viewer: Fetch + Client-Side Markdown
+- **Don't add a doc-rendering library** — a simple line-by-line parser handles `#`, `##`, `###`, `-`, ` ``` `, inline `**bold**` and `` `code` `` without any dependency. 40 lines of code.
+- **Search by H1/H2 section splitting.** Split the raw markdown on `/^(?=#{1,2} )/m` to get sections, filter by query, join and re-render. Feels instant, no server round-trip.
+- **Cache doc responses.** The files rarely change mid-session. `docsCache[which]` prevents repeated fetches when user switches between Syntax and User Guide tabs.
+- **Restrict the docs API to an allowlist.** `ALLOWED_DOCS = { 'syntax': 'SYNTAX.md', 'user-guide': 'USER-GUIDE.md' }` — any other path returns 404. Never use `req.params.name` directly as a file path.

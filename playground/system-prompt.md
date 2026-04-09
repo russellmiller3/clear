@@ -207,6 +207,33 @@ section 'Dashboard' with style app_layout:
     heading 'Dashboard'
 ```
 
+## When the Compiler Can't Do What You Need
+
+Clear is a young language. If you hit a genuine language gap (not a syntax mistake), don't guess or hack — log a formal request.
+
+**Step 1: Try to work around it first.**
+Rewrite the Clear code to express the same intent differently. Check the syntax reference above. Most apparent gaps are just unfamiliar syntax.
+
+**Step 2: If it's a real gap, log it.**
+Use `write_file` to append to `compiler-requests.md` in the project root. Use this exact format:
+
+```
+## Request: [short name, e.g. "Conditional field visibility"]
+**App:** [template or description of what you were building]
+**What I needed:** [one sentence — what the Clear code should be able to say]
+**Proposed syntax:**
+\`\`\`clear
+[the Clear line(s) you wish existed]
+\`\`\`
+**Workaround used:** [what you did instead, or "none — feature is blocked"]
+**Error hit:** [exact compiler error message, or "no error but feature missing"]
+**Impact:** [low / medium / high — how much does this block the app?]
+```
+
+Then tell the user: *"I've logged a compiler request for X. Here's what I built instead."*
+
+**Never** try to edit compiler source files, runtime JS, or compiled output. You write Clear; humans maintain the compiler.
+
 ## Common Mistakes to Avoid
 
 - DON'T use double quotes (use single quotes)

@@ -1,76 +1,40 @@
-# Handoff — 2026-04-08 (Session 12)
+# Handoff — 2026-04-09 (Session 13)
 
 ## Current State
 - **Branch:** main
 - **Compiler tests:** 1482 (all passing)
-- **Playground tests:** ~241 across 4 test files
+- **Playground tests:** ~271 across 4 test files (agent.test.js grew from 50 → ~70 assertions with Phase 8+9)
 - **Node types:** 99
 - **Template apps:** 43+
 
 ## What Was Done This Session
 
-### 1. Full E2E Test Infrastructure for Playground
-Added three new test files alongside the existing `server.test.js`:
+### Bugs Fixed
+1. **Blank Claude response** — Model ID was stale (`claude-sonnet-4-20250514` → `claude-sonnet-4-6`). Also added `r.ok` check before reading SSE stream so server errors surface instead of silently producing blank bubbles.
+2. **"Compile first" on ecommerce-api** — `build for javascript backend` (no HTML) puts code in `result.javascript`, not `result.serverJS`. The run button only checked `serverJS`. Fixed by computing `backendCode = serverJS || (!html && javascript)`.
+3. **Gray box typing indicator** — When Claude starts with tool calls (no text yet), the empty assistant bubble showed as a blank gray box. Fixed: render animated dots when `streaming && !content && !toolSteps.length`.
 
-**`playground/e2e.test.js`** — Template + endpoint tests
-- All 43 templates compile with 0 errors
-- Full CRUD tests: todo-api, blog-api, book-library, chat-backend, url-shortener
-- Auth-protected endpoints (PUT/DELETE) return 401 as expected
-- Runs without API key; Claude chat test auto-enabled when `ANTHROPIC_API_KEY` is set
+### Features Added
+4. **Docs viewer** — "Syntax" and "Guide" toolbar buttons open a full-height right drawer with rendered markdown. Client-side markdown parser, section-based search, keyboard close (Escape), tab switching. Server routes `GET /api/docs/syntax` and `GET /api/docs/user-guide` serve the files with a strict allowlist.
+5. **Compile stats in status bar** — After every successful compile, shows `N → M lines · Xms` (non-blank Clear lines → non-blank compiled lines, wall-clock time).
+6. **Compiler-requests.md protocol** — System prompt now instructs the agent: when hitting a genuine language gap, try to work around it first, then log a structured request to `compiler-requests.md` (App / What I needed / Proposed syntax / Workaround / Error hit / Impact). Never edit the compiler.
+7. **Agent test coverage Phase 8+9** — Added to `agent.test.js`:
+   - Phase 8: docs API endpoints, overlay open/close, search, Guide tab, compile stats, toolbar buttons
+   - Phase 9: `highlight_code` tool, `read_terminal` tool
 
-**`playground/ide.test.js`** — Playwright IDE UI tests (46 tests)
-- Page load, CodeMirror editor, toolbar buttons, template dropdown
-- Compile button, tab switching, panel display, keyboard shortcuts (Ctrl+S, Ctrl+K)
-- Theme toggle, status bar, error display
+## Key Files Changed
+- `playground/ide.html` — typing indicator fix, docs overlay HTML+CSS+JS, compile stats, `_editorView` exposed, `r.ok` check, backendCode run fix
+- `playground/server.js` — model ID `claude-sonnet-4-6`, `/api/docs/:name` endpoint
+- `playground/system-prompt.md` — compiler-requests.md format + instructions
+- `playground/agent.test.js` — Phase 8 (docs + UI) and Phase 9 (highlight + terminal) tests
+- `learnings.md` — Session 13 section added
+- `ROADMAP.md` — Phase 3c marked done
 
-**`playground/agent.test.js`** — Claude agent full tool loop tests (50 tests)
-- Phase 1: Agent builds a contacts API from scratch → compiles with 0 errors
-- Phase 2: Agent runs app, tests CRUD via http_request; test verifies independently
-- Phase 3: Agent patches to add a new endpoint (count)
-- Phase 4: Agent uses write_file + run_command for CLI tools (check, lint)
-- Phase 5: Test starts patched app, verifies new endpoint works
-- Phase 6: Agent runs all 4 CLI commands (check, lint, info, build) directly
-- Phase 7: Playwright verifies every button, every panel, all keyboard shortcuts
-
-### 2. Bug Fixes in playground/server.js
-- **Race condition:** Old child's `on('exit')` handler was nulling `runningChild` after a new child had already started — causing sequential test failures. Fixed with identity check: `if (runningChild === child) runningChild = null`.
-- **Port readiness polling:** Rewrote to use a `.cjs` temp file in build dir (bypasses ESM `require` restriction). Previously failed with `require is not defined`.
-- **Iteration limit:** Bumped agent loop from 10 → 15 iterations for complex multi-phase tasks.
-- **ws package:** Chat apps require `ws` npm package. Server now writes a `package.json` before running the compiled app.
-
-### 3. write_file Agent Tool
-New agent tool: `write_file(filename, content)` — writes a `.clear` file to disk with no shell escaping. Mandatory prerequisite for the `run_command` CLI tools (`clear check`, `clear lint`, etc.). Documents the two-step pattern in system-prompt.md.
-
-### 4. book-library Template App
-`apps/book-library/main.clear` — fullstack CRUD app with:
-- Books table (title, author, genre, rating, notes, read, added_at)
-- GET/POST /api/books (POST no auth required), GET/PUT/DELETE /api/books/:id (PUT+DELETE auth-protected)
-- Sidebar form + table display layout, ivory theme
-
-### 5. CLI Windows ESM Fix
-`cli/clear.js` — used `pathToFileURL()` for dynamic import on Windows so the CLI works cross-platform.
-
-## Key Decisions
-
-**Test independence:** Phases 2 and 5 in agent.test.js start their own app copy (different port) rather than relying on the agent's app still running. Makes tests deterministic.
-
-**Phase 3 uses count endpoint not search:** Clear compiler has no query-param syntax (`incoming's q` doesn't work). Tested a `GET /api/contacts/count` patch instead, which the compiler supports. Known gap documented in learnings.md.
-
-**write_file security:** Only `.clear` files allowed. Content written directly to ROOT_DIR (project root), not an arbitrary path.
-
-## Known Issues / Gaps
-
-- **Query param filtering not supported:** `GET /api/contacts?q=alice` is not expressible in Clear. No `incoming's q` / `params's q` syntax. Tracked in learnings.md.
-- **agent.test.js requires ANTHROPIC_API_KEY:** If the key is absent, the test file still runs but the agent phases are skipped/fast-fail. Set key in `.env` for full run.
-- **#preview-content is shared:** All tab panels (Compiled Code, Output, Terminal) render into one `#preview-content` div. Playwright tests use this div — no per-tab containers.
-- **ws must be pre-installed:** Build dir gets `package.json` + `npm install ws` before chat apps run.
+## Known Issues / Open Threads
+- **Screenshot pipeline untested end-to-end** — The html2canvas → base64 → server → Claude vision path is built but hasn't been exercised in a real conversation. Test by asking playground Claude to build a UI and call `screenshot_output`.
+- **Templates not audited for current syntax** — Templates may use older syntax patterns. Should do a pass with `node cli/clear.js check apps/*/main.clear --json` to find any that produce warnings/errors.
+- **Backend-only `run_app` tool in server.js** also has the `serverJS` vs `javascript` bug — the agent's in-server compile result uses the same check. Only the client-side run button was fixed this session.
+- **`compiler-requests.md` doesn't exist yet** — It gets created the first time the agent hits a language gap and uses `write_file`. That's fine — it's created on demand.
 
 ## Resume Prompt
-
-Pick up from main. The playground has full E2E coverage. Next priorities:
-
-1. **One-click deploy** — "Deploy" button in IDE compiles + containers + returns live URL. This turns Clear from a toy into a platform.
-2. **Query param support** — Add `incoming's query's q` or `url param 'q'` syntax so agents can write search endpoints.
-3. **Type system (inferred)** — Catch `'hello' * 1.08` at compile time. 100% inferred, zero annotations.
-4. **CodeMirror Clear mode** — Proper syntax highlighting in the hosted editor.
-5. **JS module import** — `use 'stripe'` or `use './helpers.js'` for npm packages and native Node APIs.
+"We've been building the Clear playground IDE. Last session we fixed blank Claude responses (wrong model ID), the 'Compile first' bug for backend-only apps, the empty typing indicator, added a Syntax/Guide docs viewer, compile stats in the status bar, a compiler-requests.md agent protocol, and agent test phases 8+9. The run_app tool in server.js still has the same serverJS/javascript bug the client-side run button had — fix that first. Then test the screenshot pipeline end-to-end by asking playground Claude to build a UI. After that, audit templates for syntax currency."

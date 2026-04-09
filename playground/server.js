@@ -83,6 +83,19 @@ app.get('/api/template/:name', (req, res) => {
 });
 
 // =============================================================================
+// DOCS — serve markdown reference files
+// =============================================================================
+const ALLOWED_DOCS = { 'syntax': 'SYNTAX.md', 'user-guide': 'USER-GUIDE.md' };
+
+app.get('/api/docs/:name', (req, res) => {
+  const filename = ALLOWED_DOCS[req.params.name];
+  if (!filename) return res.status(404).json({ error: 'Doc not found' });
+  const filePath = join(ROOT_DIR, filename);
+  if (!existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  res.type('text/plain; charset=utf-8').send(readFileSync(filePath, 'utf8'));
+});
+
+// =============================================================================
 // EXEC — run shell commands (whitelisted)
 // =============================================================================
 const ALLOWED_PREFIXES = ['node ', 'curl ', 'ls ', 'cat '];
@@ -606,7 +619,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     for (let iter = 0; iter < 15; iter++) {
       const payload = {
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: systemPrompt,
         tools: TOOLS,
