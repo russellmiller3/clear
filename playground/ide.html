@@ -343,7 +343,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
         Claude Agent
       </span>
       <span style="display:flex;align-items:center;gap:6px;">
-        <label id="web-toggle-label" title="Enable web search and fetch — Claude can look up URLs and search the web" style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
+        <label id="web-toggle-label" title="Enable web search + fetch — Claude can search the web and read any URL" style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
           <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
           Web
         </label>
@@ -1033,12 +1033,6 @@ window.saveKey = function() {
 // Check if server has a key configured; if not, fall back to localStorage flow
 fetch('/api/config').then(r => r.json()).then(cfg => {
   serverHasKey = cfg.hasServerKey;
-  // Show Brave key status on the web toggle
-  const webLabel = document.getElementById('web-toggle-label');
-  if (webLabel && !cfg.hasBraveKey) {
-    webLabel.title = 'Web search needs BRAVE_SEARCH_API_KEY in .env — web_fetch (URL fetching) works without it';
-    webLabel.style.opacity = '0.6';
-  }
   if (serverHasKey || apiKey) {
     addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
   } else {
