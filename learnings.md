@@ -22,6 +22,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 9: Error Translator + Silent Bug Guards](#session-9-error-translator--silent-bug-guards-2026-04-07) | _clearTry wrapping, _clearMap source map, blind agent testing, PUT data loss is systemic, Number("") returns 0, isSeedEndpoint ordering, runtime guards > compile-time guards |
 | [Session 10: Agent Tier 7](#session-10-agent-tier-7--phase-80-parallel-agents-2026-04-08) | `do`→`then`, `log`→`show`, `run`→`raw_run`, `check`→`if`, `classify with`→`predict_with`, directive scanning before parseBlock, block-form sub-line consumption, singular/plural table matching, regex code wrapping |
 | [Session 13: IDE Bug Fixes + Docs Viewer](#session-13-ide-bug-fixes--docs-viewer-2026-04-09) | Model ID blank response, backend-only compile uses `javascript` not `serverJS`, empty streaming bubble needs dots not blank, r.ok check before SSE, docs viewer markdown parsing |
+| [Session 14: Parser + Validator Fixes + Web Tools](#session-14-parser--validator-fixes--web-tools-2026-04-09) | `owner` field silently dropped by RLS check, validator over-broad on `owner` field, Anthropic native server tools replace custom fetch/search |
 
 ---
 
@@ -355,3 +356,24 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Search by H1/H2 section splitting.** Split the raw markdown on `/^(?=#{1,2} )/m` to get sections, filter by query, join and re-render. Feels instant, no server round-trip.
 - **Cache doc responses.** The files rarely change mid-session. `docsCache[which]` prevents repeated fetches when user switches between Syntax and User Guide tabs.
 - **Restrict the docs API to an allowlist.** `ALLOWED_DOCS = { 'syntax': 'SYNTAX.md', 'user-guide': 'USER-GUIDE.md' }` — any other path returns 404. Never use `req.params.name` directly as a file path.
+
+## Session 14: Parser + Validator Fixes + Web Tools (2026-04-09)
+
+### `owner` Field Silently Dropped by RLS Check
+- **The parser's data_shape field loop had an RLS check that fired on ANY line starting with canonical `owner`.** The check `if (firstCanonical === 'owner' || ...)` was meant to detect RLS policy lines like `owner can read, update`. But it also fired on `owner, required` (a field definition) — silently consuming the line as an attempted RLS parse and `continue`-ing.
+- **Symptoms:** `owner` field never appeared in compiled SQL, no error, no warning. Silent data loss. Only caught via manual AST inspection.
+- **Fix:** Add `hasCanKeyword` lookahead — only treat as RLS if the line also contains `can` as a token. `owner can read` → RLS. `owner, required` → field.
+- **Key gotcha:** Some tokens have non-string `.value` (numbers, booleans). The lookahead must guard: `typeof t.value === 'string' ? t.value.toLowerCase() : ''`. Without this, `t.value.toLowerCase is not a function` crashes the whole data_shape parse and drops ALL fields below the crash point.
+- **Test coverage:** Always add a test for "field named X survives in data_shape" for any word that appears in RLS role checks (`anyone`, `owner`, `same_org`, `role`).
+
+### Validator Over-Broad on `owner` Field
+- **Validator line 730 added bare `owner` to the `schemasWithOwner` set** alongside `user_id` and `owner_id`. This caused any table with a text field named `owner` (like "project owner name") to trigger "GET returns all records without auth filter" — a false positive.
+- **Fix:** Remove bare `owner` from the check. Only `user_id` and `owner_id` (explicit FK naming pattern) imply row-level user ownership. A field named `owner` might just be a person's name string.
+- **Rule:** Validator lint should only fire on naming conventions that unambiguously imply auth ownership. `owner` alone is too ambiguous. `_id` suffix signals foreign key relationship.
+
+### Anthropic Native Server Tools Replace Custom Implementations
+- **`web_fetch_20250910` and `web_search_20250305` are Anthropic server tools** — declared in the `tools` array but executed entirely by Anthropic's API, not by the client. No server-side fetch implementation needed, no external API keys.
+- **Declare format:** `{ type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 10 }` — notice `type` instead of `input_schema`. These are not client tools.
+- **SSE stream handling:** Server tools emit `server_tool_use` content blocks (not `tool_use`). Don't push them into `toolUseBlocks` (which triggers client-side execution). Handle them separately: show UI feedback only, let the API continue the stream with the result inline.
+- **Result blocks:** `web_fetch_tool_result` and `web_search_tool_result` appear as content blocks in the same message turn. No round-trip tool_result message needed.
+- **Custom implementation was 80 lines of dead weight** — HTML stripping, Brave API auth, error handling for HTTP status codes, all replaced by two lines of tool declaration.
