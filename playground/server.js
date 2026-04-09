@@ -524,12 +524,14 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'run_app': {
-        if (!lastCompileResult?.serverJS) return JSON.stringify({ error: 'No compiled server code. Compile first.' });
+        // backend-only apps put code in .javascript, full-stack in .serverJS
+        const agentBackendCode = lastCompileResult?.serverJS || (!lastCompileResult?.html && lastCompileResult?.javascript) || null;
+        if (!agentBackendCode) return JSON.stringify({ error: 'No compiled server code. Compile first.' });
         // Kill previous child
         if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
         const rtDir = join(BUILD_DIR, 'clear-runtime');
         mkdirSync(rtDir, { recursive: true });
-        writeFileSync(join(BUILD_DIR, 'server.js'), lastCompileResult.serverJS);
+        writeFileSync(join(BUILD_DIR, 'server.js'), agentBackendCode);
         writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: { ws: '*' } }));
         if (lastCompileResult.html) writeFileSync(join(BUILD_DIR, 'index.html'), lastCompileResult.html);
         writeFileSync(join(BUILD_DIR, 'style.css'), lastCompileResult.css || '');
