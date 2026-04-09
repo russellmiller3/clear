@@ -150,6 +150,9 @@ At the end of every task, come up with the next relevant tasks and suggest them.
 ## Strong Opinion Rule
 Always have an opinionated take on the right way to do things, backed by facts or best practices. Don't hedge with "it depends" or "you could go either way." State the best approach, explain why, and do it. If the user disagrees, they'll say so.
 
+## Obvious Over Cryptic Rule
+UI controls must say what they do in plain words. Never use a bare arrow, icon, or symbol as the only label for an action — pair it with a word (e.g. "Hide Chat" not "◀", "Delete" not "✕" alone). The label should change to reflect current state ("Hide Chat" → "Show Chat"). A user should never have to guess what a button does.
+
 ## Branching
 Always create a new branch for features and fixes. Never commit directly to main.
 Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.

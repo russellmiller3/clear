@@ -7,6 +7,16 @@ import { spawn, execSync } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
+
+// Load .env from project root
+const envPath = join(ROOT_DIR, '.env');
+if (existsSync(envPath)) {
+  readFileSync(envPath, 'utf8').split('\n').forEach(rawLine => {
+    const line = rawLine.replace(/\r$/, '');
+    const eq = line.indexOf('=');
+    if (eq > 0 && !line.startsWith('#')) process.env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+  });
+}
 const APPS_DIR = join(ROOT_DIR, 'apps');
 const BUILD_DIR = join(__dirname, '.playground-build');
 
@@ -113,6 +123,26 @@ app.post('/api/exec', (req, res) => {
 let runningChild = null;
 let runningPort = 4000;
 
+// Terminal ring buffer — last 500 lines from running app stdout/stderr
+const terminalBuffer = [];
+function termLog(line) {
+  terminalBuffer.push(line);
+  if (terminalBuffer.length > 500) terminalBuffer.shift();
+}
+
+// Frontend error log — captured via injected script in compiled app
+const frontendErrors = [];
+app.post('/api/frontend-log', (req, res) => {
+  const { type, message, source, lineno } = req.body || {};
+  frontendErrors.push({ type: type || 'error', message, source, lineno, ts: Date.now() });
+  if (frontendErrors.length > 100) frontendErrors.shift();
+  res.json({ ok: true });
+});
+
+app.get('/api/terminal-log', (req, res) => {
+  res.json({ lines: terminalBuffer.slice(-100), frontendErrors: frontendErrors.slice(-20) });
+});
+
 app.post('/api/run', (req, res) => {
   const { serverJS, html, css } = req.body;
   if (!serverJS) return res.status(400).json({ error: 'No server code to run' });
@@ -152,6 +182,7 @@ app.post('/api/run', (req, res) => {
   child.stdout.on('data', (data) => {
     const msg = data.toString();
     logs.push(msg);
+    termLog('[stdout] ' + msg.trimEnd());
     if (msg.includes('running on port') && !responded) {
       responded = true;
       res.json({ port: runningPort, logs });
@@ -159,8 +190,9 @@ app.post('/api/run', (req, res) => {
   });
 
   child.stderr.on('data', (data) => {
-    // Accumulate stderr but don't fail immediately — warnings are common at startup
-    logs.push('[stderr] ' + data.toString());
+    const msg = data.toString();
+    logs.push('[stderr] ' + msg);
+    termLog('[stderr] ' + msg.trimEnd());
   });
 
   child.on('exit', (code) => {
@@ -242,6 +274,24 @@ app.post('/api/save', (req, res) => {
 });
 
 // =============================================================================
+// APP STATUS — expose running port so IDE can query live app
+// =============================================================================
+app.get('/api/app-status', (req, res) => {
+  res.json({ running: !!runningChild, port: runningChild ? runningPort : null });
+});
+
+// SCREENSHOT — client posts base64 PNG here after capturing output panel
+// =============================================================================
+let pendingScreenshotResolve = null;
+app.post('/api/screenshot-data', express.json({ limit: '15mb' }), (req, res) => {
+  const { image } = req.body || {};
+  if (pendingScreenshotResolve && image) {
+    pendingScreenshotResolve(image);
+    pendingScreenshotResolve = null;
+  }
+  res.json({ ok: true });
+});
+
 // FETCH — proxy requests to running app
 // =============================================================================
 app.post('/api/fetch', async (req, res) => {
@@ -357,16 +407,50 @@ const TOOLS = [
       required: ['filename', 'content'],
     },
   },
+  {
+    name: 'read_terminal',
+    description: 'Read the terminal output from the running app (stdout + stderr) and any frontend console errors captured from the browser. Use this after making changes to check for crashes, server errors, or frontend JS errors.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'screenshot_output',
+    description: 'Fetch the rendered HTML from the running app to verify UI changes. Returns the full HTML document so you can check structure, content, and class names. Use this after UI changes to confirm they took effect.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'highlight_code',
+    description: 'Highlight a range of lines in the Clear editor to draw the user\'s attention. Use this to point out specific lines — e.g. the bug you just fixed, the section you are about to edit, or lines that need review. The lines will flash visually in the editor.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        start_line: { type: 'number', description: 'First line number to highlight (1-indexed).' },
+        end_line: { type: 'number', description: 'Last line number to highlight (inclusive). Omit to highlight a single line.' },
+        message: { type: 'string', description: 'Short message to show the user, e.g. "Here is the bug" or "I added this section".' },
+      },
+      required: ['start_line'],
+    },
+  },
 ];
+
+app.get('/api/config', (req, res) => {
+  res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
+});
 
 app.post('/api/chat', async (req, res) => {
   const { messages, apiKey, editorContent, errors: editorErrors } = req.body;
-  if (!apiKey) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
+  const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
+  if (!resolvedKey) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
+
+  // SSE streaming
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  function send(obj) { res.write(`data: ${JSON.stringify(obj)}\n\n`); }
 
   const headers = {
     'Content-Type': 'application/json',
-    'x-api-key': apiKey,
+    'x-api-key': resolvedKey,
     'anthropic-version': '2023-06-01',
   };
   const endpoint = 'https://api.anthropic.com/v1/messages';
@@ -478,6 +562,15 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
       }
 
+      case 'read_terminal':
+        return JSON.stringify({
+          terminal: terminalBuffer.slice(-80).join('\n'),
+          frontendErrors: frontendErrors.slice(-20),
+        });
+
+      case 'screenshot_output':
+        return '__ASYNC_SCREENSHOT__'; // handled in loop
+
       case 'http_request': {
         // Sync HTTP is tricky — return a promise indicator
         // Actually, we'll handle this async in the loop
@@ -506,9 +599,9 @@ app.post('/api/chat', async (req, res) => {
     }
   }
 
-  // Multi-turn tool-use loop
-  let currentMessages = messages.slice(-20); // Keep last 20 messages for context
-  let toolResults = []; // Applied code changes to send back to frontend
+  // Multi-turn tool-use loop with streaming
+  let currentMessages = messages.slice(-20);
+  let toolResults = [];
 
   try {
     for (let iter = 0; iter < 15; iter++) {
@@ -517,53 +610,145 @@ app.post('/api/chat', async (req, res) => {
         max_tokens: 4096,
         system: systemPrompt,
         tools: TOOLS,
+        stream: true,
         messages: currentMessages,
       };
 
       const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
       if (!r.ok) {
-        const err = await r.text();
-        return res.status(r.status).json({ error: err });
+        const errText = await r.text();
+        send({ type: 'error', message: errText });
+        res.end();
+        return;
       }
-      const data = await r.json();
 
-      // Process response blocks
-      let finalText = '';
-      let hasToolUse = false;
-      const toolResultBlocks = [];
+      // Parse SSE stream from Anthropic
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let accText = '';
+      let toolUseBlocks = []; // { id, name, inputJson }
+      let stopReason = '';
 
-      for (const block of data.content) {
-        if (block.type === 'text') finalText += block.text;
-        if (block.type === 'tool_use') {
-          hasToolUse = true;
-          let result;
-          if (block.name === 'http_request') {
-            result = await executeHttpRequest(block.input);
-          } else {
-            result = executeTool(block.name, block.input);
-          }
-          toolResultBlocks.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
 
-          // Track code changes for frontend
-          if (block.name === 'edit_code' && block.input.action === 'write') {
-            toolResults.push({ tool: 'edit_code', code: block.input.code });
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let ev;
+          try { ev = JSON.parse(raw); } catch { continue; }
+
+          if (ev.type === 'content_block_start') {
+            if (ev.content_block.type === 'tool_use') {
+              toolUseBlocks.push({ id: ev.content_block.id, name: ev.content_block.name, inputJson: '' });
+              send({ type: 'tool_start', name: ev.content_block.name });
+            }
+          } else if (ev.type === 'content_block_delta') {
+            if (ev.delta.type === 'text_delta') {
+              accText += ev.delta.text;
+              send({ type: 'text', delta: ev.delta.text });
+            } else if (ev.delta.type === 'input_json_delta') {
+              const tb = toolUseBlocks[toolUseBlocks.length - 1];
+              if (tb) tb.inputJson += ev.delta.partial_json;
+            }
+          } else if (ev.type === 'message_delta') {
+            stopReason = ev.delta.stop_reason;
           }
         }
       }
 
-      if (!hasToolUse || data.stop_reason === 'end_turn') {
-        return res.json({ text: finalText, toolResults, source: currentSource });
+      // Build assistant content block for next iteration
+      const assistantContent = [];
+      if (accText) assistantContent.push({ type: 'text', text: accText });
+
+      if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
+        send({ type: 'done', toolResults, source: currentSource });
+        res.end();
+        return;
       }
 
-      // Feed tool results back for next iteration
-      currentMessages.push({ role: 'assistant', content: data.content });
+      // Execute tools and collect results
+      const toolResultBlocks = [];
+      for (const tb of toolUseBlocks) {
+        let input;
+        try { input = JSON.parse(tb.inputJson || '{}'); } catch { input = {}; }
+        assistantContent.push({ type: 'tool_use', id: tb.id, name: tb.name, input });
+
+        // Auto-switch IDE tab based on what Claude is doing — before execution
+        if (tb.name === 'edit_code' && input.action === 'write') {
+          send({ type: 'switch_tab', tab: 'compiled' });
+        }
+        if (tb.name === 'run_command') {
+          send({ type: 'switch_tab', tab: 'terminal' });
+          send({ type: 'terminal_append', text: `[Claude] $ ${input.command}` });
+        }
+        if (tb.name === 'run_app') {
+          send({ type: 'switch_tab', tab: 'terminal' });
+        }
+        if (tb.name === 'http_request') {
+          send({ type: 'terminal_append', text: `[Claude] ${input.method} ${input.path}` });
+        }
+        if (tb.name === 'screenshot_output') {
+          send({ type: 'switch_tab', tab: 'output' });
+        }
+        if (tb.name === 'read_terminal') {
+          send({ type: 'switch_tab', tab: 'terminal' });
+        }
+
+        let result;
+        if (tb.name === 'http_request') {
+          result = await executeHttpRequest(input);
+        } else if (tb.name === 'screenshot_output') {
+          // Request screenshot from client via SSE, then wait for callback
+          send({ type: 'screenshot_request' });
+          const imageBase64 = await new Promise((resolve, reject) => {
+            pendingScreenshotResolve = resolve;
+            setTimeout(() => {
+              pendingScreenshotResolve = null;
+              reject(new Error('Screenshot timed out — no response from client'));
+            }, 12000);
+          }).catch(err => null);
+          // Store as array content so Anthropic receives the image
+          if (imageBase64) {
+            result = [
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+              { type: 'text', text: 'Screenshot of the output panel. Inspect visually to verify layout, colours, and content.' },
+            ];
+          } else {
+            result = JSON.stringify({ error: 'Screenshot capture failed or timed out.' });
+          }
+        } else {
+          result = executeTool(tb.name, input);
+        }
+
+        // Post-execution events
+        if (tb.name === 'edit_code' && input.action === 'write') {
+          toolResults.push({ tool: 'edit_code', code: input.code });
+          send({ type: 'code_update', code: input.code });
+        }
+        if (tb.name === 'highlight_code') {
+          send({ type: 'highlight', startLine: input.start_line, endLine: input.end_line || input.start_line, message: input.message || '' });
+        }
+        send({ type: 'tool_done', name: tb.name });
+
+        toolResultBlocks.push({ type: 'tool_result', tool_use_id: tb.id, content: result });
+      }
+
+      currentMessages.push({ role: 'assistant', content: assistantContent });
       currentMessages.push({ role: 'user', content: toolResultBlocks });
     }
 
-    // Max iterations reached
-    res.json({ text: 'I reached the maximum number of steps. Here is what I have so far.', toolResults, source: currentSource });
+    send({ type: 'done', toolResults, source: currentSource });
+    res.end();
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    send({ type: 'error', message: err.message });
+    res.end();
   }
 });
 
