@@ -507,9 +507,11 @@ show 'Hello, Clear!'
       if (linesEl) linesEl.textContent = 'Lines: ' + update.state.doc.lines;
       if (cursorEl) cursorEl.textContent = 'Ln ' + line.number + ', Col ' + col;
     }),
+    EditorView.lineWrapping,
     EditorView.theme({
       '&': { height: '100%' },
       '.cm-scroller': { overflow: 'auto' },
+      '.cm-content': { maxWidth: '70ch' },
     }),
   ],
   parent: document.getElementById('editor-mount'),
