@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clear Playground</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%234ab8d8'/%3E%3Cstop offset='100%25' stop-color='%231a6a85'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M16 2L4 10v12l12 8 12-8V10L16 2z' fill='url(%23g)' opacity='0.9'/%3E%3Cpath d='M16 2L4 10l12 8 12-8L16 2z' fill='white' opacity='0.25'/%3E%3Cpath d='M4 10l12 8v12L4 22V10z' fill='%23000' opacity='0.1'/%3E%3C/svg%3E"/>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@700&display=swap');
 
@@ -14,8 +16,8 @@
   --radius: 8px;
 }
 
-/* Dark theme */
-[data-theme="dark"] {
+/* Dark theme — html prefix increases specificity over :root */
+html[data-theme="dark"] {
   --bg: #0f1117; --bg2: #151821; --bg3: #1c1f2e;
   --bd: rgba(255,255,255,.06); --bd2: rgba(255,255,255,.1);
   --tx: #e2e8f0; --tx2: #a0aec0; --tx3: #5a6578; --tx4: #3a4258;
@@ -47,15 +49,21 @@
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--tx); font-family: var(--font); font-size: 13px; -webkit-font-smoothing: antialiased; }
 
 /* Layout */
-#app { display: grid; grid-template-rows: 46px 1fr 24px; grid-template-columns: 1fr 1fr 360px; height: 100vh; }
-#toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: linear-gradient(180deg, var(--bg2), var(--bg)); border-bottom: 1px solid var(--bd); }
-#editor-pane { display: flex; flex-direction: column; border-right: 1px solid var(--bd); overflow: hidden; }
-#preview-pane { display: flex; flex-direction: column; border-right: 1px solid var(--bd); overflow: hidden; }
-#chat-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--bg2); }
-#status-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: var(--accent2); color: rgba(255,255,255,.8); font-size: 11px; font-family: var(--font); border-top: 1px solid var(--bd); }
+#app { display: flex; flex-direction: column; height: 100vh; }
+#toolbar { flex-shrink: 0; height: 46px; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: linear-gradient(180deg, var(--bg2), var(--bg)); border-bottom: 1px solid var(--bd); }
+#main-area { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+#editor-pane { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; }
+#ep-resizer { width: 5px; flex-shrink: 0; background: var(--bd2); cursor: col-resize; transition: background .15s; position: relative; z-index: 10; }
+#ep-resizer:hover, #ep-resizer.dragging { background: var(--accent); }
+#preview-pane { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; border-left: 1px solid var(--bd); border-right: 1px solid var(--bd); }
+#chat-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--bg2); flex: 0 0 360px; min-width: 0; transition: flex-basis .2s ease; }
+#chat-pane.collapsed { flex-basis: 0 !important; }
+#status-bar { flex-shrink: 0; height: 24px; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: var(--accent2); color: rgba(255,255,255,.8); font-size: 11px; font-family: var(--font); border-top: 1px solid var(--bd); }
 #status-bar span { white-space: nowrap; }
 .sb-sep { width: 1px; height: 12px; background: rgba(255,255,255,.2); }
-@media (max-width: 1100px) { #app { grid-template-columns: 1fr 1fr 0px; } #chat-pane { display: none; } }
+#chat-toggle-btn { background: none; border: 1px solid var(--bd2); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--tx3); font-size: 11px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 4px; transition: all .15s; flex-shrink: 0; margin-left: auto; }
+#chat-toggle-btn:hover { background: var(--bg3); color: var(--tx); border-color: var(--accent); }
+@media (max-width: 1100px) { #chat-pane { width: 0 !important; } }
 
 /* Toolbar */
 #toolbar select { background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-family: var(--font); cursor: pointer; transition: border-color .15s; }
@@ -72,7 +80,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .status-compiling { color: var(--amber); background: var(--amber-bg); }
 
 /* Editor */
-#editor-pane .cm-editor { flex: 1; overflow: auto; }
+#editor-mount { flex: 1; overflow: hidden; min-height: 0; display: flex; flex-direction: column; }
+#editor-pane .cm-editor { flex: 1; overflow: auto; min-height: 0; }
 #editor-pane .cm-editor .cm-scroller { font-family: var(--mono) !important; font-size: 13px !important; line-height: 1.7 !important; }
 #editor-pane .cm-editor .cm-content { padding: 16px 0; }
 #editor-pane .cm-editor .cm-gutters { background: var(--bg); border-right: 1px solid var(--bd); color: var(--tx4); min-width: 48px; }
@@ -82,9 +91,14 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #editor-pane .cm-editor .cm-cursor { border-left-color: var(--accent); border-left-width: 2px; }
 #editor-pane .cm-editor { background: var(--bg); }
 #editor-pane .cm-editor .cm-line { caret-color: var(--accent); }
-#editor-header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--bd); font-size: 11px; font-weight: 600; font-family: var(--font); color: var(--tx3); text-transform: uppercase; letter-spacing: .05em; }
+#editor-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--bd); font-size: 11px; font-weight: 600; font-family: var(--font); color: var(--tx3); text-transform: uppercase; letter-spacing: .05em; }
 #editor-header .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
 #editor-header .dot.err { background: var(--red); }
+#editor-toc { display: flex; align-items: center; gap: 2px; padding: 3px 10px; background: var(--bg); border-bottom: 1px solid var(--bd); flex-wrap: wrap; min-height: 0; }
+#editor-toc:empty { display: none; }
+.toc-btn { background: none; border: 1px solid transparent; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-family: var(--mono); color: var(--tx3); cursor: pointer; transition: all .12s; white-space: nowrap; }
+.toc-btn:hover { background: var(--bg3); border-color: var(--bd2); color: var(--accent); }
+.toc-btn.toc-sub { font-size: 10px; opacity: .75; padding-left: 6px; }
 #errors { padding: 10px 14px; background: var(--bg2); border-top: 1px solid var(--bd); max-height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 11px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
 #errors:empty { display: none; }
 .error-line { color: var(--red); padding: 3px 0; cursor: pointer; transition: opacity .1s; display: flex; align-items: baseline; gap: 6px; }
@@ -108,6 +122,54 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .term-out { color: var(--tx2); white-space: pre-wrap; }
 .term-err { color: var(--red); white-space: pre-wrap; }
 
+/* Data tab */
+#data-panel { height: 100%; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 16px; }
+.data-table-block { border: 1px solid var(--bd); border-radius: 8px; overflow: hidden; }
+.data-table-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid var(--bd); }
+.data-table-name { font-family: var(--mono); font-weight: 600; font-size: 12px; color: var(--accent); }
+.data-table-count { font-size: 11px; color: var(--tx3); }
+.data-refresh-btn { font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--bd2); background: none; color: var(--tx2); cursor: pointer; }
+.data-refresh-btn:hover { background: var(--bg3); color: var(--accent); }
+.data-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-grid th { padding: 6px 10px; background: var(--bg2); color: var(--tx3); font-weight: 500; text-align: left; border-bottom: 1px solid var(--bd); font-family: var(--mono); font-size: 11px; }
+.data-grid td { padding: 6px 10px; border-bottom: 1px solid var(--bd); color: var(--tx2); font-family: var(--mono); font-size: 11px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.data-grid tr:last-child td { border-bottom: none; }
+.data-grid tr:hover td { background: var(--accent-glow); }
+.data-del-btn { background: none; border: none; color: var(--tx4); cursor: pointer; font-size: 13px; padding: 0 4px; border-radius: 3px; }
+.data-del-btn:hover { color: var(--red); background: var(--red-bg); }
+.data-empty { padding: 20px; text-align: center; color: var(--tx3); font-size: 12px; }
+.data-no-app { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 8px; color: var(--tx3); }
+.data-no-app .icon { font-size: 28px; opacity: .4; }
+
+/* Meta chips */
+#meta-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px 12px; border-bottom: 1px solid var(--bd); min-height: 0; }
+#meta-chips:empty { display: none; }
+.chip { font-size: 10px; font-family: var(--mono); padding: 2px 7px; border-radius: 10px; border: 1px solid var(--bd2); color: var(--tx3); background: var(--bg2); white-space: nowrap; }
+.chip.chip-table { color: var(--accent); border-color: var(--accent2); background: var(--accent-glow); }
+.chip.chip-agent { color: var(--green); border-color: var(--green); background: var(--green-bg); }
+.chip.chip-auth  { color: var(--amber); border-color: var(--amber); background: var(--amber-bg); }
+.chip.chip-route { color: var(--tx2); }
+
+/* API tab */
+#api-panel { height: 100%; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.ep-card { border: 1px solid var(--bd); border-radius: 8px; overflow: hidden; }
+.ep-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg2); cursor: pointer; user-select: none; }
+.ep-header:hover { background: var(--bg3); }
+.ep-method { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; min-width: 44px; text-align: center; }
+.ep-get    { background: rgba(52,211,153,.15); color: var(--green); }
+.ep-post   { background: rgba(108,140,255,.15); color: var(--accent); }
+.ep-put    { background: rgba(251,191,36,.15);  color: var(--amber); }
+.ep-delete { background: rgba(251,113,133,.15); color: var(--red); }
+.ep-path   { font-family: var(--mono); font-size: 12px; color: var(--tx); flex: 1; }
+.ep-body { padding: 10px 12px; border-top: 1px solid var(--bd); display: flex; flex-direction: column; gap: 8px; }
+.ep-body textarea { width: 100%; font-family: var(--mono); font-size: 11px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--bd2); border-radius: 4px; color: var(--tx); resize: vertical; min-height: 60px; }
+.ep-body input[type=text] { font-family: var(--mono); font-size: 11px; padding: 5px 8px; background: var(--bg); border: 1px solid var(--bd2); border-radius: 4px; color: var(--tx); width: 140px; }
+.ep-send-btn { align-self: flex-start; font-size: 11px; padding: 4px 14px; border-radius: 5px; border: none; background: var(--accent); color: #fff; cursor: pointer; font-weight: 600; }
+.ep-send-btn:hover { background: var(--accent2); }
+.ep-response { font-family: var(--mono); font-size: 11px; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--bd); background: var(--bg); white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow: auto; }
+.ep-status-ok  { color: var(--green); font-weight: 600; }
+.ep-status-err { color: var(--red);   font-weight: 600; }
+
 /* Chat */
 #chat-header { padding: 12px 16px; border-bottom: 1px solid var(--bd); font-size: 13px; font-weight: 600; color: var(--tx2); font-family: var(--font); display: flex; align-items: center; justify-content: space-between; background: linear-gradient(180deg, rgba(108,140,255,.03), transparent); }
 #chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
@@ -119,6 +181,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .msg .apply-btn { position: absolute; top: 6px; right: 6px; background: var(--accent2); color: #dde4ff; border: none; border-radius: 4px; padding: 3px 10px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all .15s; }
 .msg .apply-btn:hover { background: var(--accent); transform: translateY(-1px); }
 .tool-step { font-size: 11px; color: var(--tx3); padding: 4px 10px; border-left: 2px solid var(--accent2); margin: 6px 0; animation: msgIn .2s ease; }
+@keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+.stream-cursor { animation: cursorBlink .7s step-end infinite; color: var(--accent); }
+@keyframes claudeHighlight { 0%,100%{background:transparent} 20%,80%{background:rgba(108,140,255,.3)} }
+.cm-claude-line { animation: claudeHighlight 1.8s ease; }
 #chat-input-area { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--bd); background: var(--bg2); }
 #chat-input { flex: 1; background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 10px; padding: 10px 14px; font-size: 13px; font-family: var(--font); resize: none; transition: border-color .15s; }
 #chat-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -167,6 +233,20 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 8px 20px; font-size: 13px; font-weight: 500; z-index: 1000; animation: toastIn .2s ease, toastOut .3s ease 2s forwards; box-shadow: var(--shadow); }
 
+/* Compile animation — scan lines */
+@keyframes scanPulse { 0% { background: rgba(108,140,255,.18); } 100% { background: transparent; } }
+.cm-scan-line { animation: scanPulse .35s ease forwards; }
+
+/* Jump-to highlight — flash a line in the editor */
+@keyframes lineFlash { 0%,100% { background: transparent; } 20%,60% { background: rgba(251,191,36,.25); } }
+.cm-jump-line { animation: lineFlash .9s ease; }
+
+/* Compiled code — line numbers */
+#preview-content pre { counter-reset: compiled-line; padding: 0; }
+#preview-content pre .cl { counter-increment: compiled-line; display: flex; min-height: 1.6em; }
+#preview-content pre .cl::before { content: counter(compiled-line); min-width: 44px; padding: 0 12px 0 16px; color: var(--tx4); font-size: 11px; text-align: right; user-select: none; flex-shrink: 0; border-right: 1px solid var(--bd); margin-right: 12px; line-height: 1.6em; }
+#preview-content pre .cl-code { flex: 1; white-space: pre; }
+
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -185,27 +265,43 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 <div id="app">
   <!-- Toolbar -->
   <div id="toolbar" style="position:relative;">
-    <span style="font-family:'Orbitron',sans-serif;font-weight:700;color:var(--accent);font-size:14px;letter-spacing:.5px;">Clear<span style="font-family:var(--font);color:var(--tx3);font-weight:400;font-size:11px;margin-left:6px;letter-spacing:0;">playground</span></span>
+    <span style="display:flex;align-items:center;gap:7px;">
+      <svg width="22" height="22" viewBox="0 0 32 32" style="flex-shrink:0"><defs><linearGradient id="clr-lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4ab8d8"/><stop offset="100%" stop-color="#1a6a85"/></linearGradient></defs><path d="M16 2L4 10v12l12 8 12-8V10L16 2z" fill="url(#clr-lg)" opacity="0.9"/><path d="M16 2L4 10l12 8 12-8L16 2z" fill="white" opacity="0.25"/><path d="M4 10l12 8v12L4 22V10z" fill="#000" opacity="0.1"/></svg>
+      <span style="font-family:'Orbitron',sans-serif;font-weight:700;color:var(--accent);font-size:14px;letter-spacing:.5px;">Clear</span><span style="font-family:var(--font);color:var(--tx3);font-weight:400;font-size:11px;letter-spacing:0;">playground</span>
+    </span>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="newFile()">New</button>
+    <button class="toolbar-btn" onclick="document.getElementById('load-file-input').click()" title="Load a .clear file from disk">Load</button>
+    <input type="file" id="load-file-input" accept=".clear,.txt" style="display:none">
     <select id="template-picker"><option value="">Templates...</option></select>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
-    <button class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter">Run</button>
-    <button class="toolbar-btn" onclick="doStop()">Stop</button>
+    <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
+    <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doSave()" title="Save to Desktop">Save</button>
+    <button id="download-btn" class="toolbar-btn" onclick="doDownload()" title="Download compiled HTML" style="display:none">Download</button>
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
     <span id="status" class="status-ok">Ready</span>
+    <button id="chat-toggle-btn" onclick="toggleChat()" title="Toggle Claude panel">Hide Chat ◀</button>
     <div id="compile-bar"></div>
   </div>
 
+  <div id="main-area">
+
   <!-- Editor -->
   <div id="editor-pane">
-    <div id="editor-header"><span class="dot" id="compile-dot"></span> <span id="editor-label">main.clear</span></div>
+    <div id="editor-header">
+      <span><span class="dot" id="compile-dot"></span> <span id="editor-label">main.clear</span></span>
+      <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Claude chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
+    </div>
+    <div id="editor-toc"></div>
     <div id="editor-mount"></div>
     <div id="errors"></div>
   </div>
+
+  <!-- Drag resizer -->
+  <div id="ep-resizer"></div>
 
   <!-- Preview / Terminal -->
   <div id="preview-pane">
@@ -213,7 +309,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
       <button class="prev-tab active" onclick="showTab('compiled')">Compiled Code</button>
       <button class="prev-tab" onclick="showTab('output')">Output</button>
       <button class="prev-tab" onclick="showTab('terminal')">Terminal</button>
+      <button class="prev-tab" onclick="showTab('data')" id="data-tab-btn" style="display:none">Data</button>
+      <button class="prev-tab" onclick="showTab('api')" id="api-tab-btn" style="display:none">API</button>
     </div>
+    <div id="meta-chips"></div>
     <div id="preview-content">
       <div class="empty-state">
         <div class="icon">&#9654;</div>
@@ -239,6 +338,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     </div>
   </div>
 
+  </div><!-- /#main-area -->
+
   <!-- Status Bar -->
   <div id="status-bar">
     <span id="sb-lines">Lines: 4</span>
@@ -246,6 +347,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <span id="sb-cursor">Ln 1, Col 1</span>
     <span class="sb-sep"></span>
     <span id="sb-target">No target</span>
+    <span class="sb-sep"></span>
+    <span id="sb-compile-stats" style="display:none"></span>
     <span style="flex:1"></span>
     <span>Clear v1.0</span>
     <span class="sb-sep"></span>
@@ -331,6 +434,7 @@ let clearHighlight = makeHighlightStyle();
 // EDITOR
 // ==========================================================================
 let compileTimer = null;
+let suppressAutoCompile = false;
 let lastCompiled = null;
 
 const editor = new EditorView({
@@ -349,9 +453,17 @@ show 'Hello, Clear!'
     syntaxHighlighting(clearHighlight),
     keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
     EditorView.updateListener.of(update => {
-      if (update.docChanged) {
+      if (update.docChanged && !suppressAutoCompile) {
         clearTimeout(compileTimer);
         compileTimer = setTimeout(() => autoCompile(), 500);
+      }
+      if (update.docChanged) updateEditorTOC(update.state.doc.toString());
+      // Show/hide Quote button based on selection
+      if (update.selectionSet || update.docChanged) {
+        const sel = update.state.selection.main;
+        const hasSelection = sel.from !== sel.to;
+        const qBtn = document.getElementById('quote-btn');
+        if (qBtn) qBtn.style.display = hasSelection ? '' : 'none';
       }
       // Update status bar cursor position
       const pos = update.state.selection.main.head;
@@ -373,17 +485,65 @@ show 'Hello, Clear!'
 window._editor = editor; // For chat apply
 
 // ==========================================================================
+// EDITOR TOC
+// ==========================================================================
+function updateEditorTOC(source) {
+  const tocEl = document.getElementById('editor-toc');
+  if (!tocEl) return;
+  const lines = source.split('\n');
+  const sections = [];
+  lines.forEach((line, idx) => {
+    const m = line.match(/^(#{1,2})\s+(.+)/);
+    if (!m) return;
+    // Strip decorative dashes: "--- Section ---" → "Section"
+    let label = m[2].trim().replace(/^-+\s*/, '').replace(/\s*-+$/, '').trim();
+    if (!label) return; // skip blank after stripping
+    // Truncate long labels
+    if (label.length > 28) label = label.slice(0, 26) + '…';
+    sections.push({ level: m[1].length, label, lineNum: idx + 1 });
+  });
+  if (!sections.length) { tocEl.innerHTML = ''; return; }
+  tocEl.innerHTML =
+    `<span style="font-size:10px;color:var(--tx4);font-family:var(--font);text-transform:uppercase;letter-spacing:.06em;padding-right:4px;flex-shrink:0">Jump to</span>` +
+    sections.map(s =>
+      `<button class="toc-btn${s.level === 2 ? ' toc-sub' : ''}" onclick="jumpToLine(${s.lineNum})" title="Jump to line ${s.lineNum}: ${escHtml(s.label)}">⌗ ${escHtml(s.label)}</button>`
+    ).join('');
+}
+
+// Populate TOC on initial load
+updateEditorTOC(editor.state.doc.toString());
+
+// ==========================================================================
 // COMPILE
 // ==========================================================================
+async function runScanAnimation(source) {
+  const lines = source.split('\n');
+  const msPerLine = Math.max(40, Math.min(80, 2400 / Math.max(lines.length, 1)));
+  const totalMs = lines.length * msPerLine;
+  showTab('compiled');
+  const el = document.getElementById('preview-content');
+  el.innerHTML = '<pre>' + lines.map((l, i) =>
+    `<span class="cl" id="scan-${i}"><span class="cl-code">${escHtml(l)}</span></span>`
+  ).join('\n') + '</pre>';
+  for (let i = 0; i < lines.length; i++) {
+    const span = document.getElementById('scan-' + i);
+    if (span) span.classList.add('cm-scan-line');
+    await new Promise(r => setTimeout(r, msPerLine));
+  }
+}
+
 async function autoCompile() {
   const source = editor.state.doc.toString();
   setStatus('compiling', 'Compiling...');
+  runScanAnimation(source); // fire-and-forget; real result replaces it when done
+  const t0 = performance.now();
   try {
     const r = await fetch('/api/compile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source }),
     });
+    const elapsed = Math.round(performance.now() - t0);
     lastCompiled = await r.json();
     showErrors(lastCompiled.errors, lastCompiled.warnings);
     // Update compile dot
@@ -391,10 +551,25 @@ async function autoCompile() {
     if (lastCompiled.errors.length === 0) {
       if (dot) dot.className = 'dot';
       setStatus('ok', `OK${lastCompiled.warnings?.length ? ` (${lastCompiled.warnings.length} warnings)` : ''}`);
+      // Show compile stats
+      const clearLines = source.split('\n').filter(l => l.trim()).length;
+      const outCode = [lastCompiled.html, lastCompiled.serverJS, lastCompiled.javascript, lastCompiled.python].filter(Boolean).join('\n');
+      const codeLines = outCode.split('\n').filter(l => l.trim()).length;
+      const statsEl = document.getElementById('sb-compile-stats');
+      if (statsEl) { statsEl.textContent = `${clearLines} → ${codeLines} lines · ${elapsed}ms`; statsEl.style.display = ''; }
       // Update target info in status bar
       const target = lastCompiled.html ? (lastCompiled.serverJS ? 'web + backend' : 'web') : (lastCompiled.python ? 'python' : lastCompiled.javascript ? 'backend' : 'script');
       const tEl = document.getElementById('sb-target');
       if (tEl) tEl.textContent = target;
+      // Show Run/Stop now that we have a compiled result
+      document.getElementById('run-btn').style.display = '';
+      document.getElementById('stop-btn').style.display = '';
+      // Show/hide contextual tabs and meta chips
+      const srcInfo = parseSourceInfo();
+      document.getElementById('data-tab-btn').style.display = srcInfo.tables.length > 0 ? '' : 'none';
+      document.getElementById('api-tab-btn').style.display = srcInfo.endpoints.length > 0 ? '' : 'none';
+      document.getElementById('download-btn').style.display = lastCompiled.html ? '' : 'none';
+      showMetaChips();
       if (activeTab === 'output') showOutput();
       if (activeTab === 'compiled') showCompiled();
     } else {
@@ -420,6 +595,21 @@ function showOutput() {
     if (lastCompiled.browserServer) {
       html = html.replace('</head>', '<script>' + lastCompiled.browserServer + '<\/script></head>');
     }
+    // Inject console error/warn capture so Claude can read frontend errors
+    const errorCapture = `<script>
+(function(){
+  var _post = function(type, args) {
+    try { fetch('http://localhost:3456/api/frontend-log', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: type, message: Array.from(args).join(' ') }) }); } catch(e){}
+  };
+  var _err = console.error.bind(console);
+  var _warn = console.warn.bind(console);
+  console.error = function(){ _err.apply(console, arguments); _post('error', arguments); };
+  console.warn  = function(){ _warn.apply(console, arguments);  _post('warn',  arguments); };
+  window.onerror = function(msg, src, line){ _post('onerror', [msg + ' (' + src + ':' + line + ')']); };
+  window.onunhandledrejection = function(e){ _post('unhandledrejection', [e.reason]); };
+})();
+<\/script>`;
+    html = html.replace('</head>', errorCapture + '</head>');
     el.innerHTML = '<iframe sandbox="allow-scripts allow-same-origin"></iframe>';
     el.querySelector('iframe').srcdoc = html;
   } else if (lastCompiled.serverJS || lastCompiled.javascript) {
@@ -442,7 +632,11 @@ function showCompiled() {
   if (lastCompiled.serverJS) parts.push('// Server JS\n' + lastCompiled.serverJS);
   if (lastCompiled.javascript) parts.push('// JavaScript\n' + lastCompiled.javascript);
   if (lastCompiled.python) parts.push('# Python\n' + lastCompiled.python);
-  el.innerHTML = '<pre>' + escHtml(parts.join('\n\n')) + '</pre>';
+  const text = parts.join('\n\n');
+  const lineHtml = text.split('\n').map(line =>
+    `<span class="cl"><span class="cl-code">${escHtml(line)}</span></span>`
+  ).join('\n');
+  el.innerHTML = '<pre>' + lineHtml + '</pre>';
 }
 
 function showTerminal() {
@@ -467,6 +661,226 @@ window.showTab = function(tab) {
   if (tab === 'output') showOutput();
   else if (tab === 'compiled') showCompiled();
   else if (tab === 'terminal') showTerminal();
+  else if (tab === 'data') showData();
+  else if (tab === 'api') showApiTab();
+};
+
+// ==========================================================================
+// SOURCE PARSER — extract tables, endpoints, agents from Clear source
+// ==========================================================================
+function parseSourceInfo(source) {
+  const lines = (source || editor.state.doc.toString()).split('\n');
+  const tables = [], endpoints = [], agents = [];
+  let hasAuth = false;
+  for (const line of lines) {
+    const tbl = line.match(/^create\s+(?:a\s+)?(\w+)\s+table/i);
+    if (tbl) tables.push(tbl[1]);
+    const ep = line.match(/^when\s+user\s+calls\s+(GET|POST|PUT|DELETE)\s+(\S+)/i);
+    if (ep) {
+      const hasBody = /sending\s+\w+/.test(line);
+      const hasId = ep[2].includes(':id');
+      endpoints.push({ method: ep[1].toUpperCase(), path: ep[2], hasBody, hasId });
+    }
+    const ag = line.match(/^agent\s+'([^']+)'/i);
+    if (ag) agents.push(ag[1]);
+    if (/requires\s+auth/i.test(line)) hasAuth = true;
+  }
+  return { tables, endpoints, agents, hasAuth };
+}
+
+// ==========================================================================
+// META CHIPS — show after compile
+// ==========================================================================
+function showMetaChips() {
+  const el = document.getElementById('meta-chips');
+  if (!el || !lastCompiled) { if (el) el.innerHTML = ''; return; }
+  const { tables, endpoints, agents, hasAuth } = parseSourceInfo();
+  const chips = [];
+  if (tables.length) chips.push(`<span class="chip chip-table">🗄 ${tables.length} table${tables.length > 1 ? 's' : ''}</span>`);
+  if (endpoints.length) chips.push(`<span class="chip chip-route">⚡ ${endpoints.length} endpoint${endpoints.length > 1 ? 's' : ''}</span>`);
+  if (agents.length) chips.push(`<span class="chip chip-agent">🤖 ${agents.length} agent${agents.length > 1 ? 's' : ''}</span>`);
+  if (hasAuth) chips.push(`<span class="chip chip-auth">🔐 auth</span>`);
+  if (lastCompiled.html) chips.push(`<span class="chip">HTML</span>`);
+  if (lastCompiled.serverJS) chips.push(`<span class="chip">Express</span>`);
+  if (lastCompiled.python) chips.push(`<span class="chip">FastAPI</span>`);
+  el.innerHTML = chips.join('');
+}
+
+// ==========================================================================
+// DATA TAB — live view of in-memory tables
+// ==========================================================================
+function getTableNames() {
+  return parseSourceInfo().tables;
+}
+
+async function fetchTableData(tableName) {
+  const r = await fetch('/api/fetch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method: 'GET', path: '/api/' + tableName.toLowerCase() }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return Array.isArray(d.data) ? d.data : [];
+}
+
+window.deleteDataRow = async function(tableName, id) {
+  await fetch('/api/fetch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method: 'DELETE', path: '/api/' + tableName.toLowerCase() + '/' + id }),
+  });
+  showData();
+};
+
+window.refreshTable = function(tableName) {
+  showData();
+};
+
+async function showData() {
+  const el = document.getElementById('preview-content');
+
+  // Check if app is running
+  let status;
+  try { status = await (await fetch('/api/app-status')).json(); } catch { status = { running: false }; }
+
+  if (!status.running) {
+    el.innerHTML = '<div class="data-no-app"><div class="icon">⚡</div><div>Run your app first to see live data</div></div>';
+    return;
+  }
+
+  const tables = getTableNames();
+  if (tables.length === 0) {
+    el.innerHTML = '<div class="data-no-app"><div class="icon">🗄️</div><div>No tables defined in this app</div></div>';
+    return;
+  }
+
+  el.innerHTML = '<div id="data-panel"><div style="color:var(--tx3);font-size:12px">Loading...</div></div>';
+  const panel = document.getElementById('data-panel');
+  panel.innerHTML = '';
+
+  for (const tableName of tables) {
+    const block = document.createElement('div');
+    block.className = 'data-table-block';
+
+    let rows = [];
+    let err = null;
+    try { rows = await fetchTableData(tableName); }
+    catch (e) { err = e.message; }
+
+    const cols = rows.length > 0 ? Object.keys(rows[0]).filter(k => k !== '__v') : [];
+    const hasId = cols.includes('id') || cols.includes('_id');
+
+    block.innerHTML = `
+      <div class="data-table-header">
+        <span class="data-table-name">${escHtml(tableName)}</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span class="data-table-count">${rows.length} row${rows.length !== 1 ? 's' : ''}</span>
+          <button class="data-refresh-btn" onclick="refreshTable('${escHtml(tableName)}')">↻ Refresh</button>
+        </span>
+      </div>
+      ${err ? `<div class="data-empty" style="color:var(--red)">${escHtml(err)}</div>` :
+        rows.length === 0 ? '<div class="data-empty">No records yet</div>' :
+        `<table class="data-grid">
+          <thead><tr>${cols.map(c => `<th>${escHtml(c)}</th>`).join('')}<th></th></tr></thead>
+          <tbody>${rows.map(row => {
+            const rowId = row.id || row._id || '';
+            return `<tr>${cols.map(c => `<td title="${escHtml(String(row[c] ?? ''))}">${escHtml(String(row[c] ?? ''))}</td>`).join('')}
+              <td>${rowId ? `<button class="data-del-btn" onclick="deleteDataRow('${escHtml(tableName)}','${escHtml(String(rowId))}')" title="Delete">✕</button>` : ''}</td></tr>`;
+          }).join('')}</tbody>
+        </table>`
+      }`;
+    panel.appendChild(block);
+  }
+}
+
+// ==========================================================================
+// API TAB — route tester
+// ==========================================================================
+function showApiTab() {
+  const el = document.getElementById('preview-content');
+  const { endpoints } = parseSourceInfo();
+
+  if (!endpoints.length) {
+    el.innerHTML = '<div class="data-no-app"><div class="icon">⚡</div><div>No endpoints defined in this app</div></div>';
+    return;
+  }
+
+  el.innerHTML = '<div id="api-panel"></div>';
+  const panel = document.getElementById('api-panel');
+
+  endpoints.forEach((ep, idx) => {
+    const needsBody = ep.method === 'POST' || ep.method === 'PUT';
+    const needsId = ep.hasId;
+    const defaultBody = needsBody ? JSON.stringify(
+      ep.method === 'POST' ? { name: 'Example', value: 'test' } : { name: 'Updated' }, null, 2
+    ) : '';
+
+    const card = document.createElement('div');
+    card.className = 'ep-card';
+    card.innerHTML = `
+      <div class="ep-header" onclick="toggleEpBody(${idx})">
+        <span class="ep-method ep-${ep.method.toLowerCase()}">${ep.method}</span>
+        <span class="ep-path">${escHtml(ep.path)}</span>
+        <span style="font-size:11px;color:var(--tx3)">${needsBody ? '+ body' : ''}${needsId ? ' :id' : ''}</span>
+      </div>
+      <div class="ep-body" id="ep-body-${idx}" style="display:none">
+        ${needsId ? `<div><label style="font-size:11px;color:var(--tx3);margin-bottom:3px;display:block">ID</label><input type="text" id="ep-id-${idx}" placeholder="record id"></div>` : ''}
+        ${needsBody ? `<div><label style="font-size:11px;color:var(--tx3);margin-bottom:3px;display:block">Body (JSON)</label><textarea id="ep-body-json-${idx}" rows="4">${escHtml(defaultBody)}</textarea></div>` : ''}
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="ep-send-btn" onclick="sendApiRequest(${idx}, '${ep.method}', '${escHtml(ep.path)}')">Send</button>
+          <span id="ep-status-${idx}" style="font-size:11px"></span>
+        </div>
+        <div id="ep-response-${idx}" style="display:none" class="ep-response"></div>
+      </div>`;
+    panel.appendChild(card);
+  });
+}
+
+window.toggleEpBody = function(idx) {
+  const body = document.getElementById(`ep-body-${idx}`);
+  if (body) body.style.display = body.style.display === 'none' ? '' : 'none';
+};
+
+window.sendApiRequest = async function(idx, method, pathTemplate) {
+  const statusEl = document.getElementById(`ep-status-${idx}`);
+  const respEl = document.getElementById(`ep-response-${idx}`);
+  statusEl.textContent = 'Sending...';
+  statusEl.className = '';
+  respEl.style.display = 'none';
+
+  // Build path (replace :id if needed)
+  let path = pathTemplate;
+  const idEl = document.getElementById(`ep-id-${idx}`);
+  if (idEl) path = path.replace(':id', encodeURIComponent(idEl.value || '1'));
+
+  // Build body
+  let body = undefined;
+  const bodyEl = document.getElementById(`ep-body-json-${idx}`);
+  if (bodyEl && bodyEl.value.trim()) {
+    try { body = JSON.parse(bodyEl.value); }
+    catch { statusEl.textContent = 'Invalid JSON body'; statusEl.className = 'ep-status-err'; return; }
+  }
+
+  try {
+    const r = await fetch('/api/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method, path, body }),
+    });
+    const d = await r.json();
+    if (d.error) {
+      statusEl.textContent = d.error;
+      statusEl.className = 'ep-status-err';
+    } else {
+      statusEl.innerHTML = `<span class="${d.status < 300 ? 'ep-status-ok' : 'ep-status-err'}">${d.status}</span>`;
+      respEl.textContent = typeof d.data === 'string' ? d.data : JSON.stringify(d.data, null, 2);
+      respEl.style.display = '';
+    }
+  } catch (err) {
+    statusEl.textContent = 'No app running — click Run first';
+    statusEl.className = 'ep-status-err';
+  }
 };
 
 // ==========================================================================
@@ -500,8 +914,9 @@ window.doRun = async function() {
       appendTerminal('<span class="term-out">Server running on port ' + data.port + '</span>\n');
       if (data.logs) data.logs.forEach(l => appendTerminal('<span class="term-out">' + escHtml(l) + '</span>'));
       setStatus('ok', 'Running :' + data.port);
-      // Show rendered output if there's HTML, otherwise show terminal logs
-      if (lastCompiled.html) showTab('output');
+      // If app has tables, show Data tab; if HTML, show output; else terminal
+      if (getTableNames().length > 0) showTab('data');
+      else if (lastCompiled.html) showTab('output');
       else showTab('terminal');
     }
   } catch (err) {
@@ -529,15 +944,27 @@ function showErrors(errors, warnings) {
   });
   (warnings || []).forEach(w => {
     const msg = typeof w === 'string' ? w : w.message || '';
-    html += `<div class="warning-line">${escHtml(msg)}</div>`;
+    const line = typeof w === 'object' ? (w.line || 0) : 0;
+    html += `<div class="warning-line" style="cursor:pointer" onclick="jumpToLine(${line || 1})">${escHtml(msg)}</div>`;
   });
   el.innerHTML = html;
 }
 
 window.jumpToLine = function(line) {
-  const pos = editor.state.doc.line(Math.min(line, editor.state.doc.lines)).from;
-  editor.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+  const lineObj = editor.state.doc.line(Math.min(line, editor.state.doc.lines));
+  editor.dispatch({ selection: { anchor: lineObj.from }, scrollIntoView: true });
   editor.focus();
+  // Flash highlight the line using a decoration
+  const lineEl = editor.domAtPos(lineObj.from)?.node;
+  // Walk up to find the cm-line div
+  let el = lineEl instanceof Element ? lineEl : lineEl?.parentElement;
+  while (el && !el.classList.contains('cm-line')) el = el.parentElement;
+  if (el) {
+    el.classList.remove('cm-jump-line');
+    void el.offsetWidth; // reflow to restart animation
+    el.classList.add('cm-jump-line');
+    setTimeout(() => el.classList.remove('cm-jump-line'), 950);
+  }
 };
 
 // ==========================================================================
@@ -545,19 +972,19 @@ window.jumpToLine = function(line) {
 // ==========================================================================
 let chatMessages = [];
 let apiKey = localStorage.getItem('clear_api_key') || '';
+let serverHasKey = false;
 
 window.showKeySetup = function() {
+  if (serverHasKey) return; // server key in use, no setup needed
   const el = document.getElementById('chat-messages');
   el.innerHTML = `<div id="api-key-setup">
     <div style="font-size:16px;margin-bottom:8px;">Set up Claude</div>
     <div style="margin-bottom:12px;">Enter your Anthropic API key to chat with Claude.</div>
     <input type="password" id="key-input" placeholder="sk-ant-..." value="${apiKey}">
     <button onclick="saveKey()">Save</button>
-    <div style="margin-top:12px;font-size:11px;">Key is stored locally in your browser. Never sent to our servers.</div>
+    <div style="margin-top:12px;font-size:11px;">Key is stored locally in your browser.</div>
   </div>`;
 };
-
-if (!apiKey) showKeySetup();
 
 window.saveKey = function() {
   apiKey = document.getElementById('key-input').value.trim();
@@ -566,25 +993,114 @@ window.saveKey = function() {
   addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
 };
 
-function addChatMsg(role, content) {
-  chatMessages.push({ role, content });
+// Check if server has a key configured; if not, fall back to localStorage flow
+fetch('/api/config').then(r => r.json()).then(cfg => {
+  serverHasKey = cfg.hasServerKey;
+  if (serverHasKey || apiKey) {
+    addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+  } else {
+    showKeySetup();
+  }
+}).catch(() => {
+  if (apiKey) addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+  else showKeySetup();
+});
+
+// ==========================================================================
+// MARKDOWN RENDERER
+// ==========================================================================
+function markdownToHtml(text) {
+  // Escape helper for non-code content
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // Split out fenced code blocks first
+  const parts = [];
+  const codeRe = /```(\w*)\n?([\s\S]*?)```/g;
+  let last = 0, m;
+  while ((m = codeRe.exec(text)) !== null) {
+    if (m.index > last) parts.push({ type: 'text', s: text.slice(last, m.index) });
+    parts.push({ type: 'code', lang: m[1], s: m[2] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ type: 'text', s: text.slice(last) });
+
+  function renderInline(s) {
+    return esc(s)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
+  }
+
+  function renderText(s) {
+    const lines = s.split('\n');
+    let out = '';
+    let inList = false;
+    for (const line of lines) {
+      if (/^#{1,3} (.+)/.test(line)) {
+        if (inList) { out += '</ul>'; inList = false; }
+        const lvl = line.match(/^(#+)/)[1].length;
+        out += `<h${lvl + 2} style="margin:.5em 0 .2em;font-size:${14 - lvl}px;font-weight:600">${renderInline(line.replace(/^#+\s+/, ''))}</h${lvl + 2}>`;
+      } else if (/^[-*] (.+)/.test(line)) {
+        if (!inList) { out += '<ul style="margin:.3em 0 .3em 1.2em;padding:0">'; inList = true; }
+        out += `<li>${renderInline(line.replace(/^[-*] /, ''))}</li>`;
+      } else if (line.trim() === '') {
+        if (inList) { out += '</ul>'; inList = false; }
+        out += '<br>';
+      } else {
+        if (inList) { out += '</ul>'; inList = false; }
+        out += `<span>${renderInline(line)}</span><br>`;
+      }
+    }
+    if (inList) out += '</ul>';
+    return out;
+  }
+
+  return parts.map(p => {
+    if (p.type === 'code') {
+      return `<pre>${esc(p.s)}<button class="apply-btn" onclick="applyCode(this)">Apply</button></pre>`;
+    }
+    return renderText(p.s);
+  }).join('');
+}
+
+function addChatMsg(role, content, toolSteps) {
+  chatMessages.push({ role, content, toolSteps: toolSteps || [] });
   renderChat();
+}
+
+function renderMsgHtml(m) {
+  const cls = m.role === 'user' ? 'user' : 'assistant';
+  let html = '';
+  if (m.toolSteps && m.toolSteps.length) {
+    html += m.toolSteps.map(t => `<div class="tool-step">${escHtml(t)}</div>`).join('');
+  }
+  html += m.role === 'assistant' ? markdownToHtml(m.content || '') : escHtml(m.content || '').replace(/\n/g, '<br>');
+  // Cursor blink while streaming
+  if (m.streaming) html += '<span class="stream-cursor">▌</span>';
+  return `<div class="msg ${cls}" data-idx="${m._idx}">${html}</div>`;
 }
 
 function renderChat() {
   const el = document.getElementById('chat-messages');
-  el.innerHTML = chatMessages.filter(m => m.role !== 'system').map(m => {
-    const cls = m.role === 'user' ? 'user' : 'assistant';
-    let html = escHtml(m.content);
-    // Render code blocks
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-      return `<pre>${code}<button class="apply-btn" onclick="applyCode(this)">Apply</button></pre>`;
-    });
-    // Render tool steps
-    html = html.replace(/\[Tool: ([^\]]+)\]/g, '<div class="tool-step">$1</div>');
-    return `<div class="msg ${cls}">${html}</div>`;
+  const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 40;
+  el.innerHTML = chatMessages.filter(m => m.role !== 'system').map((m, i) => {
+    m._idx = i;
+    return renderMsgHtml(m);
   }).join('');
-  el.scrollTop = el.scrollHeight;
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+function updateLastMsg() {
+  const el = document.getElementById('chat-messages');
+  const m = chatMessages[chatMessages.length - 1];
+  if (!m) return;
+  const div = el.querySelector(`[data-idx="${m._idx}"]`);
+  if (div) {
+    div.outerHTML = renderMsgHtml(m);
+    el.scrollTop = el.scrollHeight;
+  } else {
+    renderChat();
+  }
 }
 
 window.applyCode = function(btn) {
@@ -595,70 +1111,255 @@ window.applyCode = function(btn) {
   autoCompile();
 };
 
+// ==========================================================================
+// IMAGE PASTE SUPPORT
+// ==========================================================================
+let pendingImages = []; // Array of { dataUrl, mediaType }
+
+document.getElementById('chat-input').addEventListener('paste', e => {
+  const items = Array.from(e.clipboardData?.items || []);
+  const imgItems = items.filter(i => i.type.startsWith('image/'));
+  if (!imgItems.length) return;
+  e.preventDefault();
+  imgItems.forEach(item => {
+    const file = item.getAsFile();
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target.result;
+      const mediaType = file.type;
+      pendingImages.push({ dataUrl, mediaType });
+      renderImagePreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+});
+
+function renderImagePreviews() {
+  let bar = document.getElementById('img-preview-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'img-preview-bar';
+    bar.style.cssText = 'display:flex;gap:6px;padding:4px 8px;flex-wrap:wrap;border-top:1px solid var(--bd)';
+    document.getElementById('chat-input-area').prepend(bar);
+  }
+  bar.innerHTML = pendingImages.map((img, i) =>
+    `<div style="position:relative;display:inline-block">
+      <img src="${img.dataUrl}" style="height:48px;border-radius:4px;border:1px solid var(--bd2)">
+      <button onclick="removeImage(${i})" style="position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:10px;cursor:pointer;line-height:1">✕</button>
+    </div>`
+  ).join('');
+}
+
+window.removeImage = function(i) {
+  pendingImages.splice(i, 1);
+  renderImagePreviews();
+};
+
+// ==========================================================================
+// SEND CHAT (streaming)
+// ==========================================================================
 window.sendChat = async function() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
-  if (!msg) return;
+  if (!msg && !pendingImages.length) return;
   input.value = '';
 
-  if (!apiKey) { showKeySetup(); return; }
+  if (!apiKey && !serverHasKey) { showKeySetup(); return; }
 
-  addChatMsg('user', msg);
+  // Build user message content (text + images)
+  let userContent;
+  if (pendingImages.length) {
+    userContent = [
+      ...pendingImages.map(img => ({
+        type: 'image',
+        source: { type: 'base64', media_type: img.mediaType, data: img.dataUrl.split(',')[1] },
+      })),
+      { type: 'text', text: msg || 'What do you see?' },
+    ];
+    pendingImages = [];
+    const bar = document.getElementById('img-preview-bar');
+    if (bar) bar.remove();
+  } else {
+    userContent = msg;
+  }
+
+  chatMessages.push({ role: 'user', content: userContent, _idx: chatMessages.length });
+  renderChat();
   document.getElementById('chat-send').disabled = true;
-  // Show typing indicator
-  const typingEl = document.createElement('div');
-  typingEl.className = 'typing-indicator';
-  typingEl.innerHTML = '<span></span><span></span><span></span>';
-  typingEl.id = 'typing';
-  document.getElementById('chat-messages').appendChild(typingEl);
-  document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+
+  // Create streaming assistant message
+  const aIdx = chatMessages.length;
+  chatMessages.push({ role: 'assistant', content: '', toolSteps: [], streaming: true, _idx: aIdx });
+  renderChat();
 
   try {
+    const apiMessages = chatMessages.slice(0, -1).filter(m => m.role !== 'system').map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
+
     const r = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        messages: chatMessages.map(m => ({ role: m.role, content: m.content })),
+        messages: apiMessages,
         apiKey,
         editorContent: editor.state.doc.toString(),
         errors: lastCompiled?.errors || [],
       }),
     });
-    const data = await r.json();
-    if (data.error) {
-      addChatMsg('assistant', 'Error: ' + (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)));
-    } else {
-      // Apply code changes from tools
-      if (data.toolResults) {
-        for (const tr of data.toolResults) {
-          if (tr.tool === 'edit_code' && tr.code) {
-            editor.dispatch({
-              changes: { from: 0, to: editor.state.doc.length, insert: tr.code },
-            });
-            autoCompile();
-          }
+
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+
+        const am = chatMessages[aIdx];
+        if (ev.type === 'text') {
+          am.content += ev.delta;
+          updateLastMsg();
+        } else if (ev.type === 'tool_start') {
+          if (!am.toolSteps.includes(ev.name)) am.toolSteps.push(ev.name);
+          updateLastMsg();
+        } else if (ev.type === 'code_update') {
+          suppressAutoCompile = true;
+          editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: ev.code } });
+          suppressAutoCompile = false;
+          autoCompile();
+        } else if (ev.type === 'highlight') {
+          highlightEditorLines(ev.startLine, ev.endLine, ev.message);
+        } else if (ev.type === 'switch_tab') {
+          showTab(ev.tab);
+        } else if (ev.type === 'terminal_append') {
+          appendTerminal(`<span class="term-cmd">${escHtml(ev.text)}</span>\n`);
+          if (activeTab !== 'terminal') showToast(ev.text.slice(0, 60));
+        } else if (ev.type === 'screenshot_request') {
+          captureOutputScreenshot();
+        } else if (ev.type === 'done') {
+          am.streaming = false;
+          updateLastMsg();
+        } else if (ev.type === 'error') {
+          am.content += (am.content ? '\n\n' : '') + 'Error: ' + ev.message;
+          am.streaming = false;
+          updateLastMsg();
         }
-      }
-      if (data.text) addChatMsg('assistant', data.text);
-      // Update source if Claude changed it
-      if (data.source && data.source !== editor.state.doc.toString()) {
-        editor.dispatch({
-          changes: { from: 0, to: editor.state.doc.length, insert: data.source },
-        });
-        autoCompile();
       }
     }
   } catch (err) {
-    addChatMsg('assistant', 'Connection error: ' + err.message);
+    const am = chatMessages[aIdx];
+    am.content = 'Connection error: ' + err.message;
+    am.streaming = false;
+    updateLastMsg();
   }
-  const typingInd = document.getElementById('typing');
-  if (typingInd) typingInd.remove();
+
+  chatMessages[aIdx].streaming = false;
+  updateLastMsg();
   document.getElementById('chat-send').disabled = false;
 };
 
 // Enter to send (Shift+Enter for newline)
 document.getElementById('chat-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+// ==========================================================================
+// QUOTE SELECTION IN CHAT (Ctrl+Shift+C)
+// ==========================================================================
+window.quoteSelectionInChat = function() {
+  const sel = editor.state.sliceDoc(
+    editor.state.selection.main.from,
+    editor.state.selection.main.to,
+  );
+  if (!sel.trim()) return;
+  const input = document.getElementById('chat-input');
+  input.value = (input.value ? input.value + '\n' : '') + '```\n' + sel + '\n```\n';
+  input.focus();
+  showToast('Selection quoted in chat');
+};
+
+// ==========================================================================
+// SCREENSHOT CAPTURE — triggered by Claude's screenshot_output tool
+// ==========================================================================
+async function captureOutputScreenshot() {
+  try {
+    const target = document.getElementById('preview-content');
+    if (!target) { await fetch('/api/screenshot-data', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({image: null}) }); return; }
+
+    // Use html2canvas if available
+    if (typeof html2canvas !== 'undefined') {
+      const canvas = await html2canvas(target, {
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#fff',
+        scale: 1,
+        logging: false,
+      });
+      const base64 = canvas.toDataURL('image/png').split(',')[1];
+      await fetch('/api/screenshot-data', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ image: base64 }),
+      });
+    } else {
+      await fetch('/api/screenshot-data', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({image: null}) });
+    }
+  } catch (err) {
+    await fetch('/api/screenshot-data', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({image: null}) }).catch(() => {});
+  }
+}
+
+// ==========================================================================
+// CLAUDE HIGHLIGHT — lets Claude point at lines in the editor
+// ==========================================================================
+window.highlightEditorLines = function(startLine, endLine, msg) {
+  // Jump to the start line
+  jumpToLine(startLine);
+  // Flash all lines in range
+  for (let ln = startLine; ln <= (endLine || startLine); ln++) {
+    if (ln > editor.state.doc.lines) break;
+    const lineObj = editor.state.doc.line(ln);
+    const node = editor.domAtPos(lineObj.from)?.node;
+    let el = node instanceof Element ? node : node?.parentElement;
+    while (el && !el.classList.contains('cm-line')) el = el?.parentElement;
+    if (el) {
+      el.classList.remove('cm-claude-line');
+      void el.offsetWidth;
+      el.classList.add('cm-claude-line');
+      setTimeout(() => el?.classList.remove('cm-claude-line'), 2000);
+    }
+  }
+  if (msg) showToast('Claude: ' + msg);
+};
+
+// ==========================================================================
+// LOAD FILE FROM DISK
+// ==========================================================================
+document.getElementById('load-file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    suppressAutoCompile = true;
+    editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: ev.target.result } });
+    suppressAutoCompile = false;
+    document.getElementById('editor-label').textContent = file.name;
+    document.getElementById('template-picker').value = '';
+    lastCompiled = null;
+    showToast('Loaded ' + file.name);
+  };
+  reader.readAsText(file);
+  e.target.value = ''; // reset so same file can be re-loaded
 });
 
 // ==========================================================================
@@ -706,13 +1407,18 @@ document.getElementById('template-picker').addEventListener('change', async func
   try {
     const r = await fetch('/api/template/' + this.value);
     const source = await r.text();
+    suppressAutoCompile = true;
     editor.dispatch({
       changes: { from: 0, to: editor.state.doc.length, insert: source },
     });
+    suppressAutoCompile = false;
+    clearTimeout(compileTimer);
     // Update editor header with template name
     const label = document.getElementById('editor-label');
     if (label) label.textContent = this.value + '/main.clear';
-    autoCompile();
+    // Reset preview to empty state — user must explicitly compile
+    lastCompiled = null;
+    showTab('compiled');
   } catch {}
 });
 
@@ -723,6 +1429,7 @@ document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); autoCompile(); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); doRun(); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); document.getElementById('chat-input').focus(); }
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'C') { e.preventDefault(); quoteSelectionInChat(); }
 });
 
 // ==========================================================================
@@ -737,6 +1444,19 @@ function showToast(msg) {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
 }
+
+// ==========================================================================
+// DOWNLOAD — save compiled HTML to disk
+// ==========================================================================
+window.doDownload = function() {
+  if (!lastCompiled?.html) return;
+  const blob = new Blob([lastCompiled.html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (document.getElementById('template-picker').value || 'app') + '.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
 
 // ==========================================================================
 // SAVE
@@ -791,9 +1511,59 @@ function setStatus(type, text) {
   showCompileBar(type === 'compiling');
 }
 
+// ==========================================================================
+// CHAT PANEL COLLAPSE
+// ==========================================================================
+window.toggleChat = function() {
+  const pane = document.getElementById('chat-pane');
+  const btn = document.getElementById('chat-toggle-btn');
+  const collapsed = pane.classList.toggle('collapsed');
+  btn.textContent = collapsed ? 'Show Chat ▶' : 'Hide Chat ◀';
+  btn.title = collapsed ? 'Show Claude panel' : 'Hide Claude panel';
+};
+
+// ==========================================================================
+// EDITOR / PREVIEW DRAG RESIZER
+// ==========================================================================
+(function() {
+  const resizer = document.getElementById('ep-resizer');
+  const editorPane = document.getElementById('editor-pane');
+  const previewPane = document.getElementById('preview-pane');
+  let dragging = false, startX = 0, startEditorW = 0, startPreviewW = 0;
+
+  resizer.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startEditorW = editorPane.getBoundingClientRect().width;
+    startPreviewW = previewPane.getBoundingClientRect().width;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const newEditorW = Math.max(200, startEditorW + dx);
+    const newPreviewW = Math.max(200, startPreviewW - dx);
+    // Use flex-grow ratios so window resize stays proportional
+    const total = newEditorW + newPreviewW;
+    editorPane.style.flex = `${newEditorW / total} 1 0`;
+    previewPane.style.flex = `${newPreviewW / total} 1 0`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
+
 // Boot
 loadTemplates();
-if (apiKey) addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+// Ready message is shown after /api/config resolves (see fetch above)
 </script>
 </body>
 </html>
