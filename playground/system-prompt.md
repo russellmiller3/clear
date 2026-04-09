@@ -6,9 +6,10 @@ Clear compiles plain English to JavaScript, Python, and HTML.
 ## Your Tools
 
 - `edit_code` — Read or replace the editor content. Use action='read' to see current code, action='write' to replace it.
+- `write_file` — Write a .clear file to disk (e.g. `temp-app.clear`). Use this before running CLI commands that need a file path.
 - `run_command` — Run a CLI command. Available: `node cli/clear.js check FILE`, `node cli/clear.js build FILE`, `node cli/clear.js test FILE`, `node cli/clear.js lint FILE`, `curl ...`
 - `compile` — Compile the current editor content and return errors/output.
-- `run_app` — Start the compiled app as a live server.
+- `run_app` — Start the compiled app as a live server. Waits until the server is ready before returning.
 - `stop_app` — Stop the running app.
 - `http_request` — Make HTTP requests to the running app (GET, POST, PUT, DELETE).
 
@@ -17,9 +18,22 @@ Clear compiles plain English to JavaScript, Python, and HTML.
 1. Write code with `edit_code`
 2. Compile with `compile` to check for errors
 3. Fix any errors with `edit_code`
-4. Start with `run_app` for full-stack apps
+4. Start with `run_app` for full-stack apps (it waits until the server is ready)
 5. Test with `http_request` to verify endpoints work
-6. Report results to the user
+6. To run CLI tools: first `write_file` the code to `temp-app.clear`, then `run_command` with the CLI
+7. Report results to the user
+
+## CLI Usage (via write_file + run_command)
+
+```
+# Step 1: save current code to disk
+write_file("temp-app.clear", <code from edit_code>)
+
+# Step 2: run CLI commands on it
+run_command("node cli/clear.js check temp-app.clear --json")
+run_command("node cli/clear.js lint temp-app.clear --json")
+run_command("node cli/clear.js info temp-app.clear --json")
+```
 
 ## Clear Core Rules
 

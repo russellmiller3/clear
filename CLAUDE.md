@@ -16,8 +16,12 @@ Compiles plain English to JavaScript, Python, and HTML.
 
 ## Testing
 - Run all tests: `node clear.test.js` (1482 compiler tests)
-- Run playground tests: `node playground/server.test.js` (85 playground tests)
-- Total: 1567 tests
+- Run playground tests (each is a separate file):
+  - `node playground/server.test.js` (~85 server API tests)
+  - `node playground/e2e.test.js` (~60 template compile + endpoint tests)
+  - `node playground/ide.test.js` (~46 Playwright IDE UI tests)
+  - `node playground/agent.test.js` (~50 Claude agent tool tests, needs ANTHROPIC_API_KEY)
+- Total: 1482 compiler + ~241 playground tests
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -133,6 +137,9 @@ Never edit the compiler or playground HTML directly to "make it look better." Al
 
 The mock is the discriminator. The compiler is the generator. Iterate until output matches target.
 This applies to: playground page redesigns, compiled app output quality, landing pages, dashboards, any visual work.
+
+## Console First Rule
+When debugging any browser/UI issue, **always check console errors first** before reading code or guessing. Use `preview_console_logs` or ask the user for the console output. A SyntaxError in the console tells you exactly what's broken in seconds. Guessing wastes everyone's time.
 
 ## Ross Perot Rule
 Proactively do what makes sense. Don't wait to be told. If something obviously needs doing — fix it, build it, clean it up. Act on judgment, not just instructions.

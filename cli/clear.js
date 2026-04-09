@@ -39,11 +39,11 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, watch as fsWatch, copyFileSync } from 'fs';
 import { resolve, dirname, basename, extname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { execSync, spawn } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const COMPILER_PATH = resolve(__dirname, '..', 'index.js');
+const COMPILER_PATH = pathToFileURL(resolve(__dirname, '..', 'index.js')).href;
 
 // Dynamic import of compiler (ESM)
 let _compiler = null;

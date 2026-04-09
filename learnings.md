@@ -301,3 +301,27 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **CodeMirror bundle is 443kb.** Bundling CodeMirror 6 via esbuild into a single ESM file avoids CDN dependency. Install packages temporarily, run esbuild, uninstall — keeps package.json clean.
 - **Claude agent tools are better than syntax-lookup tools.** Instead of giving Claude tools to fetch SYNTAX.md sections (slow, multi-turn), give it action tools (edit_code, run_command, compile, run_app, http_request) with syntax knowledge in the system prompt. This makes Claude a real agent, not a chatbot.
 - **Save endpoint writes to Desktop.** `process.env.HOME + '/Desktop'` works on Mac/Linux. Fall back to `process.cwd()` if Desktop doesn't exist. Save both `main.clear` source and full `build/` directory with runtime files.
+
+## Session 12: Playground E2E Test Infrastructure (2026-04-08)
+
+### Race Condition in Child Process Management
+- **Old child's exit handler clears runningChild after new child starts.** Pattern: `runningChild.on('exit', () => { runningChild = null; })` — if a second run starts before the first exits, the deferred `on('exit')` fires and nulls the new child. Symptom: sequential app tests fail non-deterministically, individual tests pass. Fix: capture child in local variable and use identity check: `const child = spawn(...); runningChild = child; child.on('exit', () => { if (runningChild === child) runningChild = null; })`. Apply in BOTH the `/api/run` endpoint and the agent's `run_app` tool.
+
+### ESM vs CJS in Child Process Node Scripts
+- **`node -e "require('net')..."` fails in ESM repo.** `package.json` with `"type": "module"` makes `.js` files ESM — `require` is not defined. Even `node -e "..."` inherits this. Fix: write the poll script as a `.cjs` file to a directory with no `type: module` in `package.json`, then run it. Temp pattern: `writeFileSync(pollPath, cjsScript); execSync('node "_port-poll.cjs"', { cwd: buildDir }); unlinkSync(pollPath)`.
+- **Shell quoting kills embedded multiline strings in `node -e`.** `node -e "writeFileSync('file', 'line1\nline2')"` — the shell strips inner quotes and `\n` may be literal. Don't use `node -e` for file writing. Write a CJS file instead or use the `write_file` agent tool.
+
+### Agent write_file Tool Pattern
+- **Heredoc and `node -e` both fail for agent file writing.** Agents trying to create files via `run_command` couldn't reliably escape content. Root cause: everything goes through execSync with shell, so quoting is shell-dependent. Fix: add a `write_file` tool that takes `filename` + `content` as JSON fields — no shell escaping at all. Restrict to `.clear` files only for security.
+- **Agents won't use CLI tools if they can't create input files.** The `run_command` tool for `clear check`, `clear lint`, etc. is useless if the agent can't write a `.clear` file to disk first. The `write_file` → `run_command` flow is the mandatory two-step for CLI tools in agent context.
+
+### Test Independence Principle
+- **Don't rely on agent's running app for verification.** Phase tests that need HTTP verification should start their own app copy (with a different port) rather than depending on the agent's `run_app` still being live. Reason: agent may have stopped the app, test timing is unpredictable. Pattern: `const testServer = spawn('node', [...], { env: { PORT: '3901' } })` — start, test, kill, independent of agent state.
+- **Run CLI verification tests on clean code, not patched code.** If a patch introduces a compile error, CLI tests using the patched code will fail for the wrong reason. Use `editorAfterBuild` (the original clean code before any agent modification) for CLI tool tests.
+
+### Clear Compiler Gap: Query Params
+- **`incoming's q` / `params's q` are not valid Clear syntax.** The compiler has no way to access URL query parameters like `GET /api/contacts?q=alice`. Agents trying to implement search endpoints will write invalid syntax. Work around by using a simpler endpoint (e.g., a count endpoint instead of a search endpoint) in agent tests.
+
+### Playwright Gotchas (Playground IDE)
+- **`#preview-content` is the shared div for ALL tab panels.** When clicking "Compiled Code", "Output", "Terminal" tabs, they all render into `#preview-content`. There is no `#compiled-content`, `#compiled-panel`, or separate per-tab div. Test using `#preview-content` text content.
+- **ws package must be pre-installed in build dir.** Compiled chat apps use `require('ws')`. The build dir gets a minimal `package.json` written before running `npm install ws`. Without this, chat app compilation succeeds but running crashes with `MODULE_NOT_FOUND`.
