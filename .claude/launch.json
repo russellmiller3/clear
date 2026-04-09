@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "playground",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["http-server", "./playground", "-p", "8181", "-c-1", "--cors"],
-      "port": 8181
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["playground/server.js"],
+      "port": 3456,
+      "autoPort": false
     }
   ]
 }

@@ -2245,6 +2245,7 @@ Browser: CodeMirror 6 + Clear language mode
 | ~~1~~ | ~~**First-class errors**~~ | **DONE** — Session 11: call target validation, member access types, orphan endpoints promoted | — |
 | ~~2~~ | ~~**CodeMirror Clear mode**~~ | **DONE** — Session 11: playground/ide.html with syntax highlighting, keyword colors | — |
 | ~~3~~ | ~~**Hosted compile API + playground**~~ | **DONE** — Session 11: playground/server.js with compile, run, exec, chat, templates | — |
+| ~~3b~~ | ~~**Playground E2E test infrastructure**~~ | **DONE** — Session 12: e2e.test.js (60 template+endpoint tests), ide.test.js (46 Playwright UI tests), agent.test.js (50 full agent loop tests). Race condition fixed, write_file tool, book-library template. | — |
 | 4 | **One-click deploy** | Deploy button in editor → compile → container → live URL | 2 days |
 | 5 | **Type system (inferred)** | `price = 'hello'` then `price * 1.08` = compile error. 100% inferred, no annotations. | 3 days |
 | 6 | **JS module import** | `use 'lodash'` or `use './helpers.js'` — import arbitrary JS/npm modules into Clear apps. Needed for: integrating JS libraries, calling native Node APIs, using npm packages. | 2 days |
