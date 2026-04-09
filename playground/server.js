@@ -456,12 +456,42 @@ const TOOLS = [
   },
 ];
 
+const WEB_TOOLS = [
+  {
+    name: 'web_fetch',
+    description: 'Fetch a URL and return its text content. Use to look up documentation, read API reference pages, inspect live websites, or copy content from any public URL. Returns extracted text with HTML stripped.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The full URL to fetch, e.g. https://stripe.com/docs/api' },
+        selector: { type: 'string', description: 'Optional: CSS-selector-like hint to extract a specific section, e.g. "main", "article". Ignored if not present.' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'web_search',
+    description: 'Search the web and return top results with titles, URLs, and snippets. Use to find documentation, examples, libraries, or any information you need to build the app.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query, e.g. "Stripe webhook signature verification nodejs"' },
+        count: { type: 'number', description: 'Number of results to return (default 5, max 10)' },
+      },
+      required: ['query'],
+    },
+  },
+];
+
 app.get('/api/config', (req, res) => {
-  res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
+  res.json({
+    hasServerKey: !!process.env.ANTHROPIC_API_KEY,
+    hasBraveKey: !!process.env.BRAVE_SEARCH_API_KEY,
+  });
 });
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, editorContent, errors: editorErrors } = req.body;
+  const { messages, apiKey, editorContent, errors: editorErrors, webTools: enableWebTools } = req.body;
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
   if (!resolvedKey) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
@@ -608,6 +638,56 @@ app.post('/api/chat', async (req, res) => {
     }
   }
 
+  // Async web fetch tool
+  async function executeWebFetch(input) {
+    try {
+      const r = await fetch(input.url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ClearPlayground/1.0)' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}: ${r.statusText}`, url: input.url });
+      const html = await r.text();
+      // Strip HTML tags to get readable text
+      const text = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+        .replace(/\s{3,}/g, '\n\n')
+        .trim();
+      const truncated = text.length > 20000 ? text.slice(0, 20000) + '\n\n[...truncated, ' + text.length + ' chars total]' : text;
+      return JSON.stringify({ url: input.url, length: text.length, content: truncated });
+    } catch (err) {
+      return JSON.stringify({ error: err.message, url: input.url });
+    }
+  }
+
+  // Async web search tool
+  async function executeWebSearch(input) {
+    const braveKey = process.env.BRAVE_SEARCH_API_KEY;
+    if (!braveKey) {
+      return JSON.stringify({ error: 'No BRAVE_SEARCH_API_KEY configured. Add BRAVE_SEARCH_API_KEY=your_key to your .env file. Get a free key at https://brave.com/search/api/' });
+    }
+    try {
+      const count = Math.min(input.count || 5, 10);
+      const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(input.query)}&count=${count}`;
+      const r = await fetch(url, {
+        headers: { 'Accept': 'application/json', 'X-Subscription-Token': braveKey },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!r.ok) return JSON.stringify({ error: `Search API error: HTTP ${r.status}` });
+      const data = await r.json();
+      const results = (data.web?.results || []).map(item => ({
+        title: item.title,
+        url: item.url,
+        snippet: item.description,
+      }));
+      return JSON.stringify({ query: input.query, results });
+    } catch (err) {
+      return JSON.stringify({ error: err.message });
+    }
+  }
+
   // Async HTTP request tool
   async function executeHttpRequest(input) {
     if (!runningChild) return JSON.stringify({ error: 'No app running. Use run_app first.' });
@@ -635,7 +715,7 @@ app.post('/api/chat', async (req, res) => {
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: systemPrompt,
-        tools: TOOLS,
+        tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
         stream: true,
         messages: currentMessages,
       };
@@ -730,6 +810,12 @@ app.post('/api/chat', async (req, res) => {
         let result;
         if (tb.name === 'http_request') {
           result = await executeHttpRequest(input);
+        } else if (tb.name === 'web_fetch') {
+          send({ type: 'terminal_append', text: `[Web] Fetching ${input.url}` });
+          result = await executeWebFetch(input);
+        } else if (tb.name === 'web_search') {
+          send({ type: 'terminal_append', text: `[Web] Searching: ${input.query}` });
+          result = await executeWebSearch(input);
         } else if (tb.name === 'screenshot_output') {
           // Request screenshot from client via SSE, then wait for callback
           send({ type: 'screenshot_request' });

@@ -342,7 +342,13 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
         <span style="width:8px;height:8px;border-radius:50%;background:var(--green);"></span>
         Claude Agent
       </span>
-      <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
+      <span style="display:flex;align-items:center;gap:6px;">
+        <label id="web-toggle-label" title="Enable web search and fetch — Claude can look up URLs and search the web" style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
+          <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
+          Web
+        </label>
+        <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
+      </span>
     </div>
     <div id="chat-messages"></div>
     <div id="chat-input-area">
@@ -1027,6 +1033,12 @@ window.saveKey = function() {
 // Check if server has a key configured; if not, fall back to localStorage flow
 fetch('/api/config').then(r => r.json()).then(cfg => {
   serverHasKey = cfg.hasServerKey;
+  // Show Brave key status on the web toggle
+  const webLabel = document.getElementById('web-toggle-label');
+  if (webLabel && !cfg.hasBraveKey) {
+    webLabel.title = 'Web search needs BRAVE_SEARCH_API_KEY in .env — web_fetch (URL fetching) works without it';
+    webLabel.style.opacity = '0.6';
+  }
   if (serverHasKey || apiKey) {
     addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
   } else {
@@ -1036,6 +1048,12 @@ fetch('/api/config').then(r => r.json()).then(cfg => {
   if (apiKey) addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
   else showKeySetup();
 });
+
+window.updateWebToggle = function() {
+  const on = document.getElementById('web-tools-toggle')?.checked;
+  const label = document.getElementById('web-toggle-label');
+  if (label) label.style.color = on ? 'var(--accent)' : 'var(--tx2)';
+};
 
 // ==========================================================================
 // MARKDOWN RENDERER
@@ -1250,6 +1268,7 @@ window.sendChat = async function() {
         apiKey,
         editorContent: editor.state.doc.toString(),
         errors: lastCompiled?.errors || [],
+        webTools: document.getElementById('web-tools-toggle')?.checked || false,
       }),
     });
 
