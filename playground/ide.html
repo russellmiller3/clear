@@ -1238,7 +1238,19 @@ function renderMsgInner(m) {
       if (m.streaming) html += '<span class="stream-cursor">▌</span>';
     }
   } else {
-    html += escHtml(m.content || '').replace(/\n/g, '<br>');
+    // Content can be a string or an array (when images are pasted)
+    if (Array.isArray(m.content)) {
+      for (const part of m.content) {
+        if (part.type === 'image') {
+          const src = part.source?.data ? `data:${part.source.media_type};base64,${part.source.data}` : '';
+          html += `<img src="${src}" style="max-width:200px;border-radius:8px;margin:4px 0;">`;
+        } else if (part.type === 'text') {
+          html += escHtml(part.text || '').replace(/\n/g, '<br>');
+        }
+      }
+    } else {
+      html += escHtml(m.content || '').replace(/\n/g, '<br>');
+    }
   }
   return html;
 }
