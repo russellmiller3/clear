@@ -553,6 +553,184 @@ style feature_card:
 
 ---
 
+## Style Presets Reference
+
+Presets are built-in section styles that emit production-quality DaisyUI/Tailwind markup.
+They handle layout, spacing, responsive breakpoints, hover states, and theme adaptation
+automatically. Always reach for a preset before composing tokens manually.
+
+Syntax: `section 'Name' with style preset_name:`
+
+### Marketing Presets
+
+| Preset | Description | Typical children |
+|--------|-------------|-----------------|
+| `page_navbar` | Sticky top nav bar. First heading = brand, links = nav items, last button = CTA. | `heading`, `link`, `button` |
+| `page_hero` | Centered hero section with radial glow background. Large py, text-center. | `small text` (badge), `heading`, `subheading`, `link` (CTA buttons) |
+| `hero_left` | Left-aligned hero with space for a product screenshot on the right. | `small text`, `heading`, `subheading`, `link` |
+| `logo_bar` | Trusted-by logo strip. Centered flex row with grayscale logos. | `section` children with style `logo_item` containing `text` |
+| `feature_split` | Asymmetric bento grid: one large card (2/3) + stacked small cards (1/3). | `heading`, `text`, `section` children with `feature_card_large` + `feature_card_*` |
+| `feature_grid` | Even grid of feature cards (auto 2-3 columns). | `heading`, `text`, `section` children with `feature_card` |
+| `stats_row` | Horizontal row of stat numbers (4-column grid on desktop). | `section` children with style `stat_item`, each containing `heading` (number) + `text` (label) |
+| `testimonial_grid` | Grid of customer quotes with star ratings and quote marks. | `heading`, `section` children with `testimonial_card` |
+| `pricing_grid` | 3-column pricing comparison. Center card can be `pricing_card_featured`. | `heading`, `text`, `section` children with `pricing_card` or `pricing_card_featured` |
+| `page_cta` | Full-width primary-color CTA banner. Centered text + link. | `heading`, `text`, `link` |
+| `faq_section` | Accordion FAQ. Child sections become collapse/expand items. Section title = question, body text = answer. | `heading`, `section` children (title = question, body `text` = answer) |
+| `page_footer` | Multi-column footer. First heading = brand, child sections = link columns, last text = copyright. | `heading` (brand), `section` children (column title + `link` items), `small text` (copyright) |
+
+**Dark variants:** Most marketing presets have a `_dark` variant (e.g., `feature_grid_dark`, `pricing_grid_dark`) that uses `bg-neutral` with light text.
+
+**Card sub-presets** used inside marketing grids:
+
+| Preset | Description |
+|--------|-------------|
+| `feature_card` | Standard feature card with hover border effect |
+| `feature_card_dark` | Feature card for dark sections (white/10 border) |
+| `feature_card_large` | Bold primary-bg hero card for bento layouts |
+| `feature_card_teal` / `_purple` / `_indigo` / `_emerald` / `_rose` / `_amber` | Colored accent cards for bento grids |
+| `pricing_card` | Standard pricing tier card |
+| `pricing_card_featured` | Highlighted pricing card with ring + scale effect |
+| `testimonial_card` | Quote card with auto-injected star rating + quote mark |
+| `stat_item` | Centered stat number + label |
+| `logo_item` | Grayscale logo with hover opacity |
+
+#### Marketing preset examples
+
+```clear
+# Navbar
+section 'Nav' with style page_navbar:
+  heading 'Acme'
+  link 'Features' to '#features'
+  link 'Pricing' to '#pricing'
+  button 'Get Started':
+    go to '/signup'
+
+# Centered hero
+section 'Hero' with style page_hero:
+  small text 'Now in beta'
+  heading 'Build faster with Acme'
+  subheading 'The platform that does the thing you need.'
+  link 'Start free' to '/signup'
+  link 'See demo' to '/demo'
+
+# Stats row
+section 'Stats' with style stats_row:
+  section 'S1' with style stat_item:
+    heading '10k+'
+    text 'Happy users'
+  section 'S2' with style stat_item:
+    heading '99.9%'
+    text 'Uptime'
+
+# Feature bento grid
+section 'Features' with style feature_split:
+  heading 'Why teams choose Acme'
+  text 'Three reasons you will love it.'
+  section 'Main' with style feature_card_large:
+    heading 'Lightning Fast'
+    text 'Sub-100ms responses across the board.'
+  section 'Small 1' with style feature_card_teal:
+    heading 'Secure'
+    text 'SOC 2 compliant out of the box.'
+  section 'Small 2' with style feature_card_purple:
+    heading 'Scalable'
+    text 'From 10 users to 10 million.'
+
+# FAQ accordion
+section 'FAQ' with style faq_section:
+  heading 'Frequently asked questions'
+  section 'Q1':
+    text 'Yes, there is a generous free tier with no credit card required.'
+  section 'Q2':
+    text 'We support Slack, email, GitHub, and 200+ integrations via Zapier.'
+
+# Footer
+section 'Footer' with style page_footer:
+  heading 'Acme'
+  section 'Product':
+    link 'Features' to '/features'
+    link 'Pricing' to '/pricing'
+  section 'Company':
+    link 'About' to '/about'
+    link 'Blog' to '/blog'
+  small text '2026 Acme Inc. All rights reserved.'
+```
+
+### App UI Presets
+
+| Preset | Description | Typical children |
+|--------|-------------|-----------------|
+| `app_layout` | Outermost wrapper. `flex h-screen overflow-hidden`. | Two children: `app_sidebar` + a main column |
+| `app_sidebar` | Fixed-width sidebar with nav menu. First heading = brand, text/link = nav items, sub-sections = nav groups. | `heading` (brand), `section` (nav groups with `text`/`link` items) |
+| `app_main` | Right-side flex column that fills remaining space. | `app_header` + `app_content` |
+| `app_header` | Sticky top bar with split layout (title left, actions right). | `heading`, `button` |
+| `app_content` | Scrollable content area with padding and gap. | `section` children (cards, tables, grids) |
+| `app_card` | Dashboard card with border, shadow, and rounded corners. | Any content: `heading`, `text`, tables, charts |
+| `metric_card` | Compact stat card for KPI rows. | `display X as number called 'Label'` or `heading` + `text` |
+| `app_table` | Table container with rounded corners and border. Overflow hidden. | `display X as table showing ...` |
+| `app_modal` | Centered modal dialog card with ring shadow. | `heading`, inputs, `button` |
+| `empty_state` | Dashed-border placeholder for empty content areas. | `heading`, `text`, `button` |
+| `app_list` | Divided list with hover rows. First heading = list title, remaining children = row items. | `heading` (title), `text`/`link` items (one per row) |
+| `form` | Centered form card with max-width constraint. | inputs, `button` |
+
+#### App UI preset examples
+
+```clear
+# Full app shell
+section 'App' with style app_layout:
+
+  section 'Sidebar' with style app_sidebar:
+    heading 'MyApp'
+    section 'Main':
+      text 'Dashboard'
+      text 'Projects'
+      text 'Settings'
+
+  section 'Main' with style app_main:
+
+    section 'Header' with style app_header:
+      heading 'Dashboard'
+      button 'New Project':
+        open the New Project modal
+
+    section 'Content' with style app_content:
+
+      section 'Metrics' as 4 columns:
+        section 'M1' with style metric_card:
+          display revenue as dollars called 'Revenue'
+        section 'M2' with style metric_card:
+          display users as number called 'Active Users'
+        section 'M3' with style metric_card:
+          display orders as number called 'Orders'
+        section 'M4' with style metric_card:
+          display growth as percent called 'Growth'
+
+      section 'Table' with style app_table:
+        display projects as table showing name, status, owner
+
+      section 'Empty' with style empty_state:
+        heading 'No tasks yet'
+        text 'Create your first task to get started.'
+        button 'Create Task':
+          open the New Task modal
+
+      section 'Activity' with style app_list:
+        heading 'Recent Activity'
+        text 'Russell deployed v2.1.0'
+        text 'Jess updated the pricing page'
+        text 'Adam closed issue #42'
+
+  section 'New Project' as modal:
+    section 'Form' with style form:
+      subheading 'New Project'
+      'Name' is a text input saved as a project_name
+      button 'Create':
+        send project_name as a new project to '/api/projects'
+        close modal
+```
+
+---
+
 ### Token Rules
 
 - **Tokens compile to Tailwind/DaisyUI utilities** — no custom CSS is generated
