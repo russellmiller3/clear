@@ -3371,16 +3371,22 @@ function parseSection(lines, startIdx, blockIndent, errors) {
   let styleName;
   const inlineModifiers = [];
   if (pos < tokens.length) {
-    // Check for "with style <name>" (explicit style reference)
+    // Check for "with style <name>" (explicit style reference) — consume it, then keep parsing modifiers
     if ((tokens[pos].value === 'with' || tokens[pos].canonical === 'with') &&
         pos + 1 < tokens.length && (tokens[pos + 1].value === 'style' || tokens[pos + 1].canonical === 'style')) {
       pos += 2;
-      if (pos < tokens.length) styleName = tokens[pos].value;
-    } else {
-      // Parse inline modifiers: everything after the title, separated by commas
-      // Skip leading 'as' or 'with'
-      if (tokens[pos].value === 'as' || tokens[pos].canonical === 'as_format' ||
-          tokens[pos].value === 'with' || tokens[pos].canonical === 'with') pos++;
+      if (pos < tokens.length) {
+        styleName = tokens[pos].value;
+        pos++; // advance past the style name so modifier parsing picks up the rest
+      }
+    }
+
+    // Parse inline modifiers from remaining tokens (works whether or not 'with style' was present)
+    // Skip a leading 'as' or 'with' token
+    if (pos < tokens.length && (tokens[pos].value === 'as' || tokens[pos].canonical === 'as_format' ||
+        tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) pos++;
+
+    if (pos < tokens.length) {
       // Collect the rest as a modifier string
       const modText = tokens.slice(pos).map(t => t.value).join(' ').toLowerCase();
 
@@ -3411,10 +3417,17 @@ function parseSection(lines, startIdx, blockIndent, errors) {
           remaining = remaining.replace(mod, '').trim();
         }
       }
-      // Check for "Npx wide" pattern
+      // Check for "Npx wide" pattern — map common sizes to Tailwind w-* classes, else custom CSS
       const wideMatch = modText.match(/(\d+)\s*px\s*wide/);
       if (wideMatch) {
-        inlineModifiers.push({ custom: true, props: { width: wideMatch[1] + 'px', 'flex-shrink': '0' } });
+        const px = parseInt(wideMatch[1], 10);
+        const TAILWIND_WIDTHS = { 120:'w-30', 128:'w-32', 144:'w-36', 160:'w-40', 176:'w-44',
+          192:'w-48', 208:'w-52', 224:'w-56', 240:'w-60', 256:'w-64', 288:'w-72', 320:'w-80', 384:'w-96' };
+        if (TAILWIND_WIDTHS[px]) {
+          inlineModifiers.push({ tailwind: `${TAILWIND_WIDTHS[px]} shrink-0` });
+        } else {
+          inlineModifiers.push({ custom: true, props: { width: px + 'px', 'flex-shrink': '0' } });
+        }
       }
     }
   }
@@ -3460,7 +3473,7 @@ function parseStyleDef(lines, startIdx, blockIndent, errors) {
     const pLine = first.line;
 
     // "name = value" or "name is value" — standard property
-    if (propTokens.length >= 2 && (propTokens[1].type === TokenType.ASSIGN || propTokens[1].canonical === 'is')) {
+    if (propTokens.length >= 2 && (propTokens[1].type === TokenType.ASSIGN || propTokens[1].canonical === 'is' || propTokens[1].value === 'are')) {
       const propName = first.value;
       if (propName === 'for_screen' && propTokens.length >= 3 && propTokens[2].type === TokenType.STRING) {
         mediaQuery = propTokens[2].value;

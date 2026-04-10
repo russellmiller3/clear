@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<!-- GAN Mock: Light App Layout (Vercel dashboard-inspired)
+     Target: Clean light sidebar + header + card-based main content.
+     Ref: vercel.com/dashboard -->
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock — Light App Layout</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @layer base { body { font-family: 'Plus Jakarta Sans', sans-serif; } }
+  </style>
+</head>
+<body class="bg-base-100 text-base-content h-screen overflow-hidden">
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-52 shrink-0 flex flex-col bg-base-100 border-r border-base-300/40 overflow-hidden">
+    <!-- Brand -->
+    <div class="px-4 h-14 flex items-center border-b border-base-300/40 shrink-0">
+      <span class="text-sm font-bold tracking-tight">Launchpad</span>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex-1 overflow-y-auto py-3 px-2">
+      <ul class="space-y-0.5">
+        <li>
+          <a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-base-content bg-base-200 cursor-pointer">
+            <svg class="w-4 h-4 shrink-0 text-base-content/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Overview
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-200/60 cursor-pointer transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            Deployments
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-200/60 cursor-pointer transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            Analytics
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-200/60 cursor-pointer transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+            Settings
+          </a>
+        </li>
+      </ul>
+
+      <div class="mt-5 mb-2 px-3">
+        <span class="text-xs font-semibold uppercase tracking-widest text-base-content/30">Projects</span>
+      </div>
+
+      <ul class="space-y-0.5">
+        <li>
+          <a class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-200/60 cursor-pointer transition-colors">
+            <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
+            my-app
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-200/60 cursor-pointer transition-colors">
+            <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
+            api-server
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-200/60 cursor-pointer transition-colors">
+            <span class="w-2 h-2 rounded-full bg-warning shrink-0"></span>
+            marketing-site
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- User footer -->
+    <div class="border-t border-base-300/40 px-3 py-3 flex items-center gap-2.5 shrink-0">
+      <div class="w-7 h-7 rounded-full bg-primary text-primary-content text-xs flex items-center justify-center font-bold shrink-0">R</div>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs font-medium text-base-content truncate">Russell</p>
+        <p class="text-xs text-base-content/40 truncate">Free plan</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100 border-b border-base-300/40 shrink-0">
+      <h1 class="text-sm font-semibold text-base-content">Overview</h1>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-ghost btn-sm gap-1.5 text-base-content/60">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        </button>
+        <button class="btn btn-primary btn-sm">New project</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 overflow-y-auto bg-base-200/30 p-6 flex flex-col gap-5">
+
+      <!-- Metric cards -->
+      <div class="grid grid-cols-4 gap-4">
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-2">Deployments</p>
+          <p class="text-3xl font-bold text-base-content font-mono tracking-tight">247</p>
+          <p class="text-xs text-success mt-1.5 font-medium">↑ 12% this week</p>
+        </div>
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-2">Uptime</p>
+          <p class="text-3xl font-bold text-base-content font-mono tracking-tight">99.9%</p>
+          <p class="text-xs text-base-content/40 mt-1.5">Last 30 days</p>
+        </div>
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-2">Requests</p>
+          <p class="text-3xl font-bold text-base-content font-mono tracking-tight">1.4M</p>
+          <p class="text-xs text-success mt-1.5 font-medium">↑ 8% this month</p>
+        </div>
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-2">Avg latency</p>
+          <p class="text-3xl font-bold text-base-content font-mono tracking-tight">48ms</p>
+          <p class="text-xs text-warning mt-1.5 font-medium">↓ p95: 210ms</p>
+        </div>
+      </div>
+
+      <!-- Recent deployments table -->
+      <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-base-300/40 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-base-content">Recent Deployments</h3>
+          <a class="text-xs text-primary hover:underline cursor-pointer">View all</a>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="table table-sm w-full">
+            <thead class="bg-base-200/60">
+              <tr>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Project</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Branch</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Status</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Duration</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Deployed</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors">
+                <td class="text-sm font-medium text-base-content">my-app</td>
+                <td class="text-sm text-base-content/60 font-mono">main</td>
+                <td><span class="badge badge-success badge-sm gap-1"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>Ready</span></td>
+                <td class="text-sm text-base-content/60">41s</td>
+                <td class="text-sm text-base-content/40">2m ago</td>
+              </tr>
+              <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors even:bg-base-200/20">
+                <td class="text-sm font-medium text-base-content">api-server</td>
+                <td class="text-sm text-base-content/60 font-mono">feat/auth</td>
+                <td><span class="badge badge-warning badge-sm gap-1"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>Building</span></td>
+                <td class="text-sm text-base-content/60">—</td>
+                <td class="text-sm text-base-content/40">5m ago</td>
+              </tr>
+              <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors">
+                <td class="text-sm font-medium text-base-content">marketing-site</td>
+                <td class="text-sm text-base-content/60 font-mono">main</td>
+                <td><span class="badge badge-success badge-sm gap-1"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>Ready</span></td>
+                <td class="text-sm text-base-content/60">28s</td>
+                <td class="text-sm text-base-content/40">1h ago</td>
+              </tr>
+              <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors even:bg-base-200/20">
+                <td class="text-sm font-medium text-base-content">my-app</td>
+                <td class="text-sm text-base-content/60 font-mono">fix/caching</td>
+                <td><span class="badge badge-error badge-sm gap-1"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>Error</span></td>
+                <td class="text-sm text-base-content/60">12s</td>
+                <td class="text-sm text-base-content/40">3h ago</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+</body>
+</html>

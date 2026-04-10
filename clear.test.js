@@ -1347,7 +1347,7 @@ page 'App' at '/':
       text 'Menu'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('w-60 shrink-0');
+    expect(result.html).toContain('w-52 shrink-0');
   });
 
   it('app_main preset produces flex column', () => {
@@ -1392,7 +1392,7 @@ page 'App' at '/':
     text 'Card content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('rounded-box p-5');
+    expect(result.html).toContain('rounded-xl border border-base-300/40 shadow-sm p-5');
   });
 
   it('app presets skip max-width wrapper', () => {
@@ -1414,7 +1414,7 @@ page 'App' at '/':
     heading 'Welcome'`;
     const result = compileProgram(source);
     expect(result.html).toContain('flex flex-col items-center');
-    expect(result.html).toContain('font-display text-6xl');
+    expect(result.html).toContain('font-display text-5xl');
   });
 
   it('full dashboard layout compiles end-to-end', () => {
@@ -1435,10 +1435,10 @@ page 'Dashboard' at '/':
     expect(result.errors).toHaveLength(0);
     expect(result.html).toContain('data-theme="midnight"');
     expect(result.html).toContain('flex h-screen');
-    expect(result.html).toContain('w-60');
+    expect(result.html).toContain('w-52');
     expect(result.html).toContain('sticky top-0');
     expect(result.html).toContain('overflow-y-auto');
-    expect(result.html).toContain('rounded-box p-5');
+    expect(result.html).toContain('rounded-xl border border-base-300/40 shadow-sm p-5');
   });
 });
 
@@ -6779,7 +6779,7 @@ page 'App':
     expect(result.css).toContain('z-index: 10');
   });
 
-  it('scrollable compiles to overflow-y: auto', () => {
+  it('scrollable token compiles to overflow-y-auto Tailwind class', () => {
     const result = compileProgram(`
 build for web
 style body:
@@ -6790,7 +6790,8 @@ page 'App':
     text 'Hello'
     `);
     expect(result.errors).toHaveLength(0);
-    expect(result.css).toContain('overflow-y: auto');
+    // scrollable is a semantic token → inline Tailwind class, not custom CSS
+    expect(result.html).toContain('overflow-y-auto');
   });
 
   it('two column layout compiles to CSS grid', () => {
@@ -6843,7 +6844,8 @@ page 'Cast':
     `);
     expect(result.errors).toHaveLength(0);
     expect(result.css).toContain('position: sticky');
-    expect(result.css).toContain('overflow-y: auto');
+    // scrollable is now a semantic token → inline Tailwind class
+    expect(result.html).toContain('overflow-y-auto');
     expect(result.css).toContain('flex: 1');
   });
 });

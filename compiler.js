@@ -4874,7 +4874,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`      const _keys = ${colsCode};`);
       const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
       const tdClass = 'text-sm text-base-content';
-      const trClass = 'border-base-300 hover:bg-base-200 transition-colors';
+      const trClass = 'border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5';
       const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
       const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
       if (hasActions) {
@@ -5247,6 +5247,8 @@ function buildHTML(body) {
                   cssProps.push(`${m.prop}: ${m.val}`);
                   if (m.extra) Object.entries(m.extra).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
                 }
+              } else if (mod && mod.tailwind) {
+                twClasses.push(mod.tailwind); // direct Tailwind classes (e.g. from Npx wide mapping)
               } else if (mod && mod.custom && mod.props) {
                 Object.entries(mod.props).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
               }
@@ -5354,31 +5356,46 @@ function buildHTML(body) {
             if (needsWrapper) parts.push(`      <div class="max-w-5xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
-              // Sidebar: split children into brand (heading), nav items, and other
+              // Sidebar: split children into brand (heading), nav items, and other.
+              // Sub-sections whose children are all text/link nodes are treated as nav groups —
+              // their text children are flattened into navNodes (with optional group label).
               const brandNodes = [];
-              const navNodes = [];
+              const navNodes = [];  // { label?: string, items: Node[] }[] or flat Node[]
               const otherNodes = [];
+
+              const isNavContent = c =>
+                c.type === NodeType.CONTENT &&
+                ['text', 'bold', 'link'].includes(c.contentType || c.ui?.contentType);
+
               for (const child of node.body) {
                 if (child.type === NodeType.CONTENT && (child.contentType === 'heading' || child.ui?.contentType === 'heading')) {
                   brandNodes.push(child);
                 } else if (child.type === NodeType.CONTENT && (child.contentType === 'divider' || child.ui?.contentType === 'divider')) {
-                  // Skip dividers in sidebar — the brand border-b replaces them
-                } else if (child.type === NodeType.CONTENT &&
-                  ['text', 'bold', 'link'].includes(child.contentType || child.ui?.contentType)) {
-                  navNodes.push(child);
+                  // Skip dividers — brand border-b replaces them
+                } else if (isNavContent(child)) {
+                  navNodes.push({ group: null, items: [child] });
                 } else if (child.type === NodeType.FOR_EACH) {
-                  navNodes.push(child);
+                  navNodes.push({ group: null, items: [child] });
+                } else if (child.type === NodeType.SECTION && child.body && child.body.every(isNavContent)) {
+                  // Nested section whose children are all nav-compatible → nav group
+                  navNodes.push({ group: child.title, items: child.body });
                 } else {
                   otherNodes.push(child);
                 }
               }
+
               // Emit brand heading(s)
               walk(brandNodes);
               // Emit nav items wrapped in menu
               if (navNodes.length > 0) {
                 parts.push(`    <nav class="flex-1 overflow-y-auto py-3 px-3">`);
                 parts.push(`      <ul class="menu menu-sm gap-0.5 p-0">`);
-                walk(navNodes);
+                for (const entry of navNodes) {
+                  if (entry.group) {
+                    parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-3 px-3">${entry.group}</li>`);
+                  }
+                  walk(entry.items);
+                }
                 parts.push(`      </ul>`);
                 parts.push(`    </nav>`);
               }
@@ -5391,24 +5408,45 @@ function buildHTML(body) {
             if (needsWrapper) parts.push(`      </div>`);
             parts.push(`    </div>`);
           } else if (hasUserStyle || hasInline) {
-            // User-defined style (custom CSS): full-width outer, contained inner
-            const allClasses = [node.ui.cssClass, inlineClass, tailwindClasses].filter(Boolean).join(' ');
+            // User-defined style: resolve semantic tokens to Tailwind, rest to CSS class
+            const styleDef = node.styleName
+              ? body.find(n => n.type === NodeType.STYLE_DEF && n.name === node.styleName)
+              : null;
+            const { tailwindClasses: tokenClasses, rawProperties } =
+              styleDef ? resolveStyleTokens(styleDef.properties) : { tailwindClasses: '', rawProperties: [] };
+            // Only add CSS class if there are raw (non-token) properties to generate CSS for
+            const cssClass = (hasUserStyle && rawProperties.length > 0) ? node.ui.cssClass : '';
+            const allClasses = [tokenClasses, cssClass, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             parts.push(`    <div class="${allClasses}">`);
-            if (hasUserStyle && !hasInline) {
+            // Wrapper for raw-CSS-only styles (treats like old behavior); skip for pure-token styles
+            if (hasUserStyle && !hasInline && rawProperties.length > 0) {
               parts.push(`      <div class="max-w-5xl mx-auto px-4">`);
             }
+            // Push to sectionStack so child sections know their parent context
+            if (node.styleName) sectionStack.push(node.styleName);
             walk(node.body);
-            if (hasUserStyle && !hasInline) {
+            if (node.styleName) sectionStack.pop();
+            if (hasUserStyle && !hasInline && rawProperties.length > 0) {
               parts.push(`      </div>`);
             }
             parts.push(`    </div>`);
           } else {
-            // No style: default card section using DaisyUI utilities
-            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass, tailwindClasses].filter(Boolean).join(' ');
-            parts.push(`    <div class="${allClasses}">
+            // No style: if inside a styled parent (layout/app), render as bare div to avoid double-boxing.
+            // If at top level, use default card treatment.
+            const inStyledParent = sectionStack.length > 0;
+            if (inStyledParent) {
+              const allClasses = ['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ');
+              parts.push(`    <div class="${allClasses}">`);
+              walk(node.body);
+              parts.push(`    </div>`);
+            } else {
+              // Default card section using DaisyUI utilities
+              const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass, tailwindClasses].filter(Boolean).join(' ');
+              parts.push(`    <div class="${allClasses}">
       <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">${node.ui.title}</h2>`);
-            walk(node.body);
-            parts.push(`    </div>`);
+              walk(node.body);
+              parts.push(`    </div>`);
+            }
           }
           break;
         }
@@ -5464,21 +5502,21 @@ ${options}
           // Store the deduplicated ID back on the node for the reactive compiler
           node.ui._resolvedId = displayId;
           if (ui.tag === 'table') {
-            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="${displayId}">
-      <div class="px-6 py-4 border-b border-base-300">
+            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}">
+      <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="${displayId}_table">
-          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </div>`);
           } else {
-            parts.push(`    <div class="bg-base-200 rounded-box p-6 flex flex-col gap-1" id="${displayId}">
-      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/50">${ui.label}</p>
-      <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>
+            parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5 flex flex-col gap-1" id="${displayId}">
+      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40">${ui.label}</p>
+      <p class="font-mono text-3xl font-bold text-base-content tracking-tight mt-1" id="${displayId}_value"></p>
     </div>`);
           }
           break;
@@ -5486,7 +5524,7 @@ ${options}
 
         case NodeType.CHART: {
           const chartId = node.ui.id;
-          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden p-4" id="${chartId}">
+          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden p-4" id="${chartId}">
       <h3 class="text-sm font-semibold text-base-content mb-2">${node.title}</h3>
       <div id="${chartId}_canvas" style="width:100%;height:320px;"></div>
     </div>`);
@@ -5498,7 +5536,27 @@ ${options}
           const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
           const btnInHeader = btnPreset === 'app_header';
           const btnInForm = ['card_bordered', 'card', 'form'].includes(btnPreset);
-          const btnCls = btnInHeader ? 'btn btn-primary btn-sm' : btnInForm ? 'btn btn-primary w-full' : 'btn btn-primary';
+          const btnLabel = (node.ui.label || '').toLowerCase();
+          const btnIsDestructive = /^(delete|remove|archive|deactivate)/.test(btnLabel);
+          const btnIsDismiss = /^(cancel|close|dismiss|reset|clear|discard)/.test(btnLabel);
+          let btnCls;
+          if (btnInHeader) {
+            // Header buttons are small; destructive/dismiss get ghost, CTAs stay primary
+            if (btnIsDestructive) {
+              btnCls = 'btn btn-ghost btn-sm text-error';
+            } else if (btnIsDismiss) {
+              btnCls = 'btn btn-ghost btn-sm';
+            } else {
+              btnCls = 'btn btn-primary btn-sm'; // New/Create/Add buttons in header keep primary treatment
+            }
+          } else if (btnIsDestructive) {
+            btnCls = 'btn btn-ghost text-error';
+          } else if (btnIsDismiss) {
+            btnCls = btnInForm ? 'btn btn-ghost w-full' : 'btn btn-ghost';
+          } else {
+            // Default: primary CTA
+            btnCls = btnInForm ? 'btn btn-primary w-full' : 'btn btn-primary';
+          }
           parts.push(`    <button class="${btnCls}" id="${node.ui.id}">${node.ui.label}</button>`);
           break;
         }
@@ -5529,7 +5587,7 @@ ${options}
             case 'heading':
               if (inHero) {
                 // Hero/CTA: massive display headline (Stripe-style)
-                parts.push(`    <h1 class="font-display text-6xl font-extrabold tracking-tight leading-[1.1] text-base-content max-w-3xl">${formatted}</h1>`);
+                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-[1.1] text-base-content max-w-3xl">${formatted}</h1>`);
               } else if (inHeader) {
                 parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
@@ -6555,6 +6613,113 @@ function friendlyPropToCSS(name, value) {
   return `${entry.css}: ${cssVal}`;
 }
 
+// =============================================================================
+// SEMANTIC STYLE TOKENS
+// =============================================================================
+// Token key format: "propertyName:value"  (e.g. "background:surface", "has_shadow:true")
+// Token properties compile INLINE on the element — no custom .style-X CSS generated.
+// Raw CSS properties (not in this map) fall through to the existing CSS path.
+const STYLE_TOKENS = {
+  // Background — adapts to all three themes via DaisyUI base tokens
+  'background:surface':     'bg-base-100',
+  'background:canvas':      'bg-base-200',
+  'background:sunken':      'bg-base-300',
+  'background:dark':        'bg-neutral',
+  'background:primary':     'bg-primary',
+  'background:transparent': 'bg-transparent',
+
+  // Text color
+  'text:default':  'text-base-content',
+  'text:muted':    'text-base-content/60',
+  'text:subtle':   'text-base-content/40',
+  'text:light':    'text-neutral-content',
+  'text:primary':  'text-primary',
+  'text:small':    'text-sm',
+  'text:large':    'text-lg',
+
+  // Padding (uniform p-*)
+  'padding:none':        'p-0',
+  'padding:tight':       'p-3',
+  'padding:normal':      'p-4',
+  'padding:comfortable': 'p-6',
+  'padding:spacious':    'p-8',
+  'padding:loose':       'p-12',
+
+  // Gap (flex/grid children spacing)
+  'gap:none':        'gap-0',
+  'gap:tight':       'gap-2',
+  'gap:normal':      'gap-4',
+  'gap:comfortable': 'gap-5',
+  'gap:large':       'gap-8',
+
+  // Border radius
+  'corners:sharp':        'rounded-none',
+  'corners:subtle':       'rounded-md',
+  'corners:rounded':      'rounded-xl',
+  'corners:very rounded': 'rounded-2xl',
+  'corners:pill':         'rounded-full',
+
+  // Shadow
+  'has_shadow:true':       'shadow-sm',
+  'has_large_shadow:true': 'shadow-md',
+  'no_shadow:true':        '',            // explicit removal — empty = no class added
+
+  // Border (all sides)
+  'has_border:true':        'border border-base-300/40',
+  'has_strong_border:true': 'border border-base-300',
+  'no_border:true':         'border-0',
+
+  // Border (single sides) — e.g. sidebar right border, section bottom divider
+  'has_right_border:true':  'border-r border-base-300/40',
+  'has_left_border:true':   'border-l border-base-300/40',
+  'has_top_border:true':    'border-t border-base-300/40',
+  'has_bottom_border:true': 'border-b border-base-300/40',
+
+  // Overflow / flex behavior
+  'scrollable:true':        'overflow-y-auto',
+  'no_shrink:true':         'shrink-0',
+  'clips_content:true':     'overflow-hidden',
+
+  // Layout (flex/grid)
+  'layout:column':    'flex flex-col',
+  'layout:row':       'flex flex-row items-center',
+  'layout:centered':  'flex flex-col items-center text-center',
+  'layout:split':     'flex items-center justify-between',
+  'layout:2 columns': 'grid grid-cols-2 gap-5',
+  'layout:3 columns': 'grid grid-cols-3 gap-5',
+  'layout:4 columns': 'grid grid-cols-4 gap-4',
+
+  // Width
+  'width:full':      'w-full',
+  'width:narrow':    'max-w-sm mx-auto',
+  'width:contained': 'max-w-5xl mx-auto',
+  'width:wide':      'max-w-6xl mx-auto',
+};
+
+// Resolve semantic style tokens to Tailwind classes.
+// Returns { tailwindClasses: string, rawProperties: array }
+// rawProperties are props not in STYLE_TOKENS — fall back to CSS.
+// Special: `tailwind is 'ring-2 ring-offset-2'` passes classes through directly.
+function resolveStyleTokens(properties) {
+  const classes = [];
+  const rawProperties = [];
+  for (const prop of properties) {
+    // Tailwind passthrough: `tailwind is '...'` → inject classes directly
+    if (prop.name === 'tailwind' && typeof prop.value === 'string') {
+      classes.push(prop.value);
+      continue;
+    }
+    const key = `${prop.name}:${prop.value}`;
+    if (Object.prototype.hasOwnProperty.call(STYLE_TOKENS, key)) {
+      const cls = STYLE_TOKENS[key];
+      if (cls) classes.push(cls); // empty string = intentional removal, skip
+    } else {
+      rawProperties.push(prop);
+    }
+  }
+  return { tailwindClasses: classes.join(' '), rawProperties };
+}
+
 // Built-in style presets: name -> Tailwind/DaisyUI classes.
 // The section renderer uses these classes directly on the div.
 // No custom CSS is generated for built-in presets.
@@ -6564,27 +6729,31 @@ const BUILTIN_PRESET_CLASSES = {
   page_hero:         'bg-base-100 py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
   page_section:      'bg-base-100 py-24 px-6',
   page_section_dark: 'bg-neutral text-neutral-content py-24 px-6',
-  page_card:         'bg-base-100 rounded-2xl p-8 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3 border border-base-300/50',
+  // page_card: bg-base-200 so cards pop off the bg-base-100 section. hover border glow (Linear-style) not scale.
+  page_card:         'bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm',
   page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
   page_stats:        'bg-base-200 py-16 px-6',
 
   // --- App/dashboard presets (design-system-v2) ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden',
+  app_sidebar:       'w-52 shrink-0 flex flex-col bg-base-200 border-r border-base-300/40 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0',
-  app_card:          'bg-base-200 rounded-box p-5',
+  // app_content: bg-base-200/30 gives a subtle canvas tint vs pure white (Vercel/Linear style)
+  app_content:       'flex-1 overflow-y-auto bg-base-200/30 p-6 flex flex-col gap-5',
+  // app_header: h-14 (56px) matches modern SaaS headers; soften border
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0',
+  // app_card: bg-base-200 creates elevation above bg-base-200/30 canvas (dark) and off-white on light
+  app_card:          'bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 text-center',
   section_light:     'bg-base-100 py-20 px-6',
   section_dark:      'bg-base-200 py-20 px-6',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
-  card_bordered:     'bg-base-100 border border-base-300 rounded-box p-6 flex flex-col gap-4',
+  card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
   metric_card:       'bg-base-200 rounded-box p-6 flex flex-col gap-1',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
-  form:              'bg-base-100 rounded-box border border-base-300 p-8 max-w-lg flex flex-col gap-5',
+  form:              'bg-base-100 rounded-box border border-base-300/40 shadow-sm p-8 max-w-lg flex flex-col gap-5',
 };
 
 // Legacy BUILTIN_STYLES array -- only used as fallback when user doesn't override.
@@ -6629,6 +6798,11 @@ function stylesToCSS(styles, vars = {}) {
     const focusProps = [];
     let hasTransition = false;
     for (const p of style.properties) {
+      // Skip semantic token properties — they compile to inline Tailwind, not CSS
+      if (p.name === 'tailwind') continue; // passthrough: handled by resolveStyleTokens
+      const tokenKey = `${p.name}:${p.value}`;
+      if (Object.prototype.hasOwnProperty.call(STYLE_TOKENS, tokenKey)) continue;
+
       let val = p.value;
       if (typeof val === 'string' && vars[val] !== undefined) val = vars[val];
       if (p.name.startsWith('hover_')) {
@@ -6650,6 +6824,9 @@ function stylesToCSS(styles, vars = {}) {
     if ((hoverProps.length > 0 || focusProps.length > 0) && !hasTransition) {
       baseProps.push('  transition: all 0.2s ease;');
     }
+    // Skip entirely if all properties were tokens (no raw CSS to emit)
+    if (baseProps.length === 0 && hoverProps.length === 0 && focusProps.length === 0) continue;
+
     const lineComment = style.line ? `/* clear:${style.line} */\n` : '';
     let rule = `${lineComment}.${className} {\n${baseProps.join('\n')}\n}`;
     if (hoverProps.length > 0) {

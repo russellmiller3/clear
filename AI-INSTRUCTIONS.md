@@ -225,50 +225,69 @@ Visual hint for the human reader: `=` lines are formulas to check,
 
 ## Design System
 
-Clear compiles to **DaisyUI v5 + Tailwind CSS v4**. The compiler emits
-DaisyUI semantic classes and Tailwind utilities -- never custom CSS for
-standard components.
+Clear is a **DaisyUI v5 + Tailwind CSS v4 design system**. The compiler emits
+DaisyUI semantic classes and Tailwind utilities. No custom CSS ever.
 
-**Use built-in presets for sections.** Don't define custom styles for
-things the presets already handle:
+### Step 1: Use a preset (covers 90% of cases)
+
 ```
-# GOOD: use the preset
-section 'Hero' with style page_hero:
-  heading 'Welcome'
+# Landing
+section 'Hero'     with style page_hero:         # centered, py-32
+section 'Features' with style page_section:      # bg-base-100, py-24
+section 'Dark'     with style page_section_dark: # bg-neutral, white text
+section 'Card'     with style page_card:         # bg-base-200, border, shadow
+section 'CTA'      with style page_cta:          # bg-primary, centered
 
-# BAD: redefining what the preset already does
-style my_hero:
-  background is '#0f0f23'
-  color is 'white'
-  padding = 80
-  text centered
-section 'Hero' with style my_hero:
-  heading 'Welcome'
-```
-
-**Available presets:** `page_hero`, `page_section`, `page_section_dark`,
-`page_card`, `app_layout`, `app_sidebar`, `app_main`, `app_content`,
-`app_header`, `app_card`, `hero`, `section_light`, `section_dark`,
-`card`, `code_box`.
-
-**Dashboard layout pattern** (use these presets together):
-```
-theme 'midnight'
-page 'Dashboard' at '/':
-  section 'Layout' with style app_layout:
-    section 'Nav' with style app_sidebar:
-      heading 'Menu'
-    section 'Right' with style app_main:
-      section 'Top' with style app_header:
-        heading 'Dashboard'
-      section 'Body' with style app_content:
-        section 'Card' with style app_card:
-          text 'Content here'
+# App / dashboard (always use in this nesting order)
+section 'Root'  with style app_layout:   # flex h-screen
+  section 'Nav'  with style app_sidebar: # w-52, bg-base-200
+  section 'Main' with style app_main:    # flex-1 flex-col
+    section 'Top'  with style app_header:  # sticky h-14 border-b
+    section 'Body' with style app_content: # scrollable bg-base-200/30 p-6
+      section 'Card' with style app_card:  # bg-base-200 rounded-xl border shadow
 ```
 
-**Three themes:** Set with `theme 'name'` directive at the top of the file.
+### Step 2: Compose with tokens (fills the gaps)
+
+When no preset fits, build a style from **semantic tokens** — they compile
+to DaisyUI/Tailwind classes and adapt to all three themes automatically.
+Never use hex colors or pixel values inside style blocks.
+
+```
+style my_feature_card:
+  background is 'canvas'       # bg-base-200
+  corners are 'very rounded'   # rounded-2xl
+  padding is 'spacious'        # p-8
+  has border                   # border border-base-300/40
+  has shadow                   # shadow-sm
+  layout is 'column'           # flex flex-col
+  gap is 'normal'              # gap-4
+```
+
+**Tailwind escape hatch** — for anything not in the token vocab:
+```
+style my_badge:
+  background is 'primary'
+  tailwind is 'ring-2 ring-offset-2 ring-primary/30'
+```
+
+#### Quick token reference (full table in SYNTAX.md)
+
+| Property | Values |
+|----------|--------|
+| `background is '...'` | `'surface'` `'canvas'` `'sunken'` `'dark'` `'primary'` `'transparent'` |
+| `text is '...'` | `'default'` `'muted'` `'subtle'` `'light'` `'primary'` `'small'` `'large'` |
+| `padding is '...'` | `'none'` `'tight'` `'normal'` `'comfortable'` `'spacious'` `'loose'` |
+| `gap is '...'` | `'none'` `'tight'` `'normal'` `'comfortable'` `'large'` |
+| `corners are '...'` | `'sharp'` `'subtle'` `'rounded'` `'very rounded'` `'pill'` |
+| `layout is '...'` | `'column'` `'row'` `'centered'` `'split'` `'2 columns'` `'3 columns'` `'4 columns'` |
+| `width is '...'` | `'full'` `'narrow'` `'contained'` `'wide'` |
+| `has / no` | `shadow` `large shadow` `border` `strong border` |
+
+### Three themes
 `ivory` (default, light), `midnight` (dark), `nova` (warm).
-Full token spec in `design-system.md`. AI build rules in `ai-build-instructions.md`.
+Set with `theme 'midnight'` at top of file.
+Full token spec: `design-system.md`. Hard UI rules: `ai-build-instructions.md`.
 
 ## Imports
 

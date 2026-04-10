@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<!-- GAN Mock: Light Landing Page (Vercel/Notion-inspired)
+     Target: Clean white SaaS landing. Bold hero → bento features → CTA.
+     Ref: vercel.com, notion.com/product -->
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock — Light Landing</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @layer base { body { font-family: 'Plus Jakarta Sans', sans-serif; } }
+    .font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
+</head>
+<body class="bg-base-100 text-base-content">
+
+  <!-- Nav -->
+  <nav class="sticky top-0 z-50 border-b border-base-300/40 bg-base-100/90 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+      <span class="text-sm font-bold tracking-tight">Launchpad</span>
+      <div class="flex items-center gap-6">
+        <a class="text-sm text-base-content/60 hover:text-base-content transition-colors">Product</a>
+        <a class="text-sm text-base-content/60 hover:text-base-content transition-colors">Solutions</a>
+        <a class="text-sm text-base-content/60 hover:text-base-content transition-colors">Pricing</a>
+        <a class="text-sm text-base-content/60 hover:text-base-content transition-colors">Docs</a>
+      </div>
+      <div class="flex items-center gap-2">
+        <a class="btn btn-ghost btn-sm">Log in</a>
+        <a class="btn btn-primary btn-sm">Get started free</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="py-28 px-6 text-center flex flex-col items-center gap-6">
+    <div class="badge badge-outline text-xs font-medium px-3 py-1.5 tracking-wide">Announcing v2.0 →</div>
+    <h1 class="font-display text-5xl font-bold tracking-tight leading-[1.1] text-base-content max-w-3xl">
+      Deploy anything.<br>
+      <span class="text-primary">Instantly.</span>
+    </h1>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-lg">
+      The cloud platform built for developers. Push code, get a URL, ship to production. No servers to manage.
+    </p>
+    <div class="flex items-center gap-3 mt-2">
+      <a class="btn btn-primary btn-lg px-8">Start deploying</a>
+      <a class="btn btn-outline btn-lg px-8">See how it works</a>
+    </div>
+    <div class="mt-6 w-full max-w-4xl rounded-2xl border border-base-300/40 shadow-lg overflow-hidden bg-base-200 aspect-video flex items-center justify-center">
+      <span class="text-base-content/20 text-sm font-mono">[ product screenshot ]</span>
+    </div>
+  </section>
+
+  <!-- Stats strip -->
+  <div class="border-y border-base-300/30 bg-base-200/50 py-8 px-6">
+    <div class="max-w-4xl mx-auto grid grid-cols-4 gap-8 text-center">
+      <div><p class="text-2xl font-bold text-base-content">40ms</p><p class="text-xs text-base-content/50 mt-1 uppercase tracking-wide">Avg deploy time</p></div>
+      <div><p class="text-2xl font-bold text-base-content">99.99%</p><p class="text-xs text-base-content/50 mt-1 uppercase tracking-wide">Uptime SLA</p></div>
+      <div><p class="text-2xl font-bold text-base-content">500K+</p><p class="text-xs text-base-content/50 mt-1 uppercase tracking-wide">Developers</p></div>
+      <div><p class="text-2xl font-bold text-base-content">180+</p><p class="text-xs text-base-content/50 mt-1 uppercase tracking-wide">Edge regions</p></div>
+    </div>
+  </div>
+
+  <!-- Features — bento grid -->
+  <section class="py-24 px-6 bg-base-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center mb-14">
+        <h2 class="font-display text-4xl font-bold tracking-tight mb-3">Everything in one place</h2>
+        <p class="text-base-content/60 text-lg max-w-lg mx-auto">From zero to production in seconds. Designed to remove friction at every step.</p>
+      </div>
+
+      <!-- Bento grid -->
+      <div class="grid grid-cols-3 grid-rows-2 gap-4">
+        <!-- Wide card -->
+        <div class="col-span-2 bg-base-200 rounded-2xl p-8 border border-base-300/40 shadow-sm flex flex-col gap-3">
+          <span class="text-xs font-semibold uppercase tracking-widest text-primary">Deployments</span>
+          <h3 class="text-2xl font-bold tracking-tight">Push to deploy</h3>
+          <p class="text-sm text-base-content/60 leading-relaxed max-w-sm">Connect your repo and every git push triggers an automatic preview deployment. No CI config needed.</p>
+          <div class="mt-auto">
+            <span class="text-xs text-base-content/40 font-mono bg-base-300/40 px-3 py-1.5 rounded-lg">$ git push origin main → deployed ✓</span>
+          </div>
+        </div>
+        <!-- Tall narrow card -->
+        <div class="row-span-2 bg-primary/5 border border-primary/20 rounded-2xl p-8 flex flex-col gap-3">
+          <span class="text-xs font-semibold uppercase tracking-widest text-primary">Edge Network</span>
+          <h3 class="text-2xl font-bold tracking-tight">Global by default</h3>
+          <p class="text-sm text-base-content/60 leading-relaxed">Your app runs at the edge, 50ms from every user on the planet.</p>
+          <div class="flex-1 flex items-center justify-center">
+            <div class="w-32 h-32 rounded-full border-2 border-primary/20 flex items-center justify-center relative">
+              <div class="w-20 h-20 rounded-full border-2 border-primary/30 flex items-center justify-center">
+                <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                  <div class="w-4 h-4 rounded-full bg-primary"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Two small cards -->
+        <div class="bg-base-200 rounded-2xl p-6 border border-base-300/40 shadow-sm flex flex-col gap-2">
+          <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50">Analytics</span>
+          <h3 class="text-lg font-bold">Know what's fast</h3>
+          <p class="text-sm text-base-content/60 leading-relaxed">Real-time performance metrics, Core Web Vitals, and error tracking.</p>
+        </div>
+        <div class="bg-base-200 rounded-2xl p-6 border border-base-300/40 shadow-sm flex flex-col gap-2">
+          <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50">Integrations</span>
+          <h3 class="text-lg font-bold">Works with everything</h3>
+          <p class="text-sm text-base-content/60 leading-relaxed">GitHub, GitLab, Bitbucket, Slack, Datadog and 100+ more.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="bg-base-200 py-20 px-6 text-center">
+    <div class="max-w-2xl mx-auto flex flex-col items-center gap-5">
+      <h2 class="font-display text-4xl font-bold tracking-tight">Start shipping faster today</h2>
+      <p class="text-base-content/60 text-lg">Free forever for personal projects. Scale as you grow.</p>
+      <a class="btn btn-primary btn-lg px-10 mt-2">Deploy your first project</a>
+      <p class="text-xs text-base-content/40">No credit card · Deploys in under 60 seconds</p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-base-300/40 py-10 px-6">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <span class="text-sm font-bold text-base-content/50">Launchpad © 2026</span>
+      <div class="flex gap-6">
+        <a class="text-sm text-base-content/40 hover:text-base-content/70 transition-colors">Terms</a>
+        <a class="text-sm text-base-content/40 hover:text-base-content/70 transition-colors">Privacy</a>
+        <a class="text-sm text-base-content/40 hover:text-base-content/70 transition-colors">Blog</a>
+        <a class="text-sm text-base-content/40 hover:text-base-content/70 transition-colors">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -54,15 +54,15 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
 <body class="min-h-screen bg-base-100">
   <main id="app" class="">
     <div class="flex h-screen overflow-hidden">
-    <div class="w-64 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden">
+    <div class="w-52 shrink-0 flex flex-col bg-base-200 border-r border-base-300/40 overflow-hidden">
     <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">Projects</span></div>
-    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Projects">
-      <div class="px-6 py-4 border-b border-base-300">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Projects">
+      <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">Projects</h3>
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="output_Projects_table">
-          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -70,44 +70,44 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">New Project</h2>
     <fieldset class="fieldset mb-4">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Name</legend>
-      <input id="input_project_name" class="input input-bordered w-full" type="text" placeholder="Name">
+      <input id="input_name" class="input input-bordered w-full" type="text" placeholder="Name">
     </fieldset>
     <fieldset class="fieldset mb-4">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Owner</legend>
-      <input id="input_project_owner" class="input input-bordered w-full" type="text" placeholder="Owner">
+      <input id="input_owner" class="input input-bordered w-full" type="text" placeholder="Owner">
     </fieldset>
     <button class="btn btn-primary" id="btn_Add_Project">Add Project</button>
     </div>
     <div class="flex-1 flex flex-col overflow-hidden min-w-0">
-    <div class="sticky top-0 z-20 flex items-center justify-between h-14 px-8 bg-base-100 border-b border-base-300 shrink-0">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100 border-b border-base-300/40 shrink-0">
     <h1 class="text-base font-semibold text-base-content">Team Dashboard</h1>
     <p class="text-sm text-base-content/70 leading-relaxed mb-3">Track projects and tasks</p>
     </div>
-    <div class="flex-1 overflow-y-auto bg-base-100 p-8 flex flex-col gap-6">
+    <div class="flex-1 overflow-y-auto bg-base-200/30 p-6 flex flex-col gap-5">
     <div class="clear-section grid grid-cols-2 gap-6">
-    <div class="bg-base-200 rounded-box p-6">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
     <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Projects</h1>
-    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Projects_2">
-      <div class="px-6 py-4 border-b border-base-300">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Projects_2">
+      <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">Projects</h3>
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="output_Projects_2_table">
-          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </div>
     </div>
-    <div class="bg-base-200 rounded-box p-6">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
     <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Tasks</h1>
-    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="output_Tasks">
-      <div class="px-6 py-4 border-b border-base-300">
+    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Tasks">
+      <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">Tasks</h3>
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="output_Tasks_table">
-          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -115,19 +115,19 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
     </div>
     <div class="divider my-4"></div>
-    <div class="bg-base-200 rounded-box p-6">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
     <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">New Task</h2>
     <fieldset class="fieldset mb-4">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Title</legend>
-      <input id="input_task_title" class="input input-bordered w-full" type="text" placeholder="Title">
+      <input id="input_title" class="input input-bordered w-full" type="text" placeholder="Title">
     </fieldset>
     <fieldset class="fieldset mb-4">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Project</legend>
-      <input id="input_task_project" class="input input-bordered w-full" type="text" placeholder="Project">
+      <input id="input_project" class="input input-bordered w-full" type="text" placeholder="Project">
     </fieldset>
     <fieldset class="fieldset mb-4">
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Assignee</legend>
-      <input id="input_task_assignee" class="input input-bordered w-full" type="text" placeholder="Assignee">
+      <input id="input_assignee" class="input input-bordered w-full" type="text" placeholder="Assignee">
     </fieldset>
     <button class="btn btn-primary" id="btn_Add_Task">Add Task</button>
     </div>
@@ -136,6 +136,24 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
   </main>
 
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Projects: name*, status, owner*, priority, created_at_date (line 10)
+   Tasks: title*, project*, assignee, status, created_at_date (line 17)
+
+ ENDPOINTS:
+   GET /api/projects (line 29)
+   POST /api/projects (line 33)
+   GET /api/tasks (line 40)
+   POST /api/tasks (line 44)
+
+ PAGES:
+   'Team Dashboard' at / (line 53)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
   <script>
 // --- Runtime ---
 function _toast(msg, type) {
@@ -169,19 +187,21 @@ function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 document.title = "Team Dashboard";
 
 // --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
 let _state = {
-  project_name: "",
-  project_owner: "",
-  task_title: "",
-  task_project: "",
-  task_assignee: "",
+  name: "",
+  owner: "",
+  title: "",
+  project: "",
+  assignee: "",
   projects: null,
   tasks: null
 };
 
 // --- Recompute derived values and update displays ---
 function _recompute() {
-  // clear:6
+  // clear:8
   // Database: local memory (JSON file backup)
   {
     const _tableEl = document.getElementById('output_Projects_table');
@@ -189,7 +209,7 @@ function _recompute() {
     if (_tableEl && Array.isArray(_data) && _data.length > 0) {
       const _keys = ["name","status"];
       _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
     } else if (_tableEl) {
       _tableEl.querySelector('thead tr').innerHTML = '';
       _tableEl.querySelector('tbody').innerHTML = '';
@@ -201,7 +221,7 @@ function _recompute() {
     if (_tableEl && Array.isArray(_data) && _data.length > 0) {
       const _keys = ["name","owner","status"];
       _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
     } else if (_tableEl) {
       _tableEl.querySelector('thead tr').innerHTML = '';
       _tableEl.querySelector('tbody').innerHTML = '';
@@ -213,75 +233,75 @@ function _recompute() {
     if (_tableEl && Array.isArray(_data) && _data.length > 0) {
       const _keys = ["title","project","assignee","status"];
       _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300 hover:bg-base-200 transition-colors">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
+      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
     } else if (_tableEl) {
       _tableEl.querySelector('thead tr').innerHTML = '';
       _tableEl.querySelector('tbody').innerHTML = '';
     }
   }
-  document.getElementById('input_project_name').value = _state.project_name;
-  document.getElementById('input_project_owner').value = _state.project_owner;
-  document.getElementById('input_task_title').value = _state.task_title;
-  document.getElementById('input_task_project').value = _state.task_project;
-  document.getElementById('input_task_assignee').value = _state.task_assignee;
+  document.getElementById('input_name').value = _state.name;
+  document.getElementById('input_owner').value = _state.owner;
+  document.getElementById('input_title').value = _state.title;
+  document.getElementById('input_project').value = _state.project;
+  document.getElementById('input_assignee').value = _state.assignee;
 }
 
 // --- Input listeners ---
-document.getElementById('input_project_name').addEventListener('input', function(e) {
-  _state.project_name = e.target.value;
+document.getElementById('input_name').addEventListener('input', function(e) {
+  _state.name = e.target.value;
   _recompute();
 });
-document.getElementById('input_project_owner').addEventListener('input', function(e) {
-  _state.project_owner = e.target.value;
+document.getElementById('input_owner').addEventListener('input', function(e) {
+  _state.owner = e.target.value;
   _recompute();
 });
-document.getElementById('input_task_title').addEventListener('input', function(e) {
-  _state.task_title = e.target.value;
+document.getElementById('input_title').addEventListener('input', function(e) {
+  _state.title = e.target.value;
   _recompute();
 });
-document.getElementById('input_task_project').addEventListener('input', function(e) {
-  _state.task_project = e.target.value;
+document.getElementById('input_project').addEventListener('input', function(e) {
+  _state.project = e.target.value;
   _recompute();
 });
-document.getElementById('input_task_assignee').addEventListener('input', function(e) {
-  _state.task_assignee = e.target.value;
+document.getElementById('input_assignee').addEventListener('input', function(e) {
+  _state.assignee = e.target.value;
   _recompute();
 });
 
 // --- Button handlers ---
 document.getElementById('btn_Add_Project').addEventListener('click', async function() {
-    if (_state.project_name === '' || _state.project_name == null) { _toast('project name is required', 'error'); return; }
-    if (_state.project_owner === '' || _state.project_owner == null) { _toast('project owner is required', 'error'); return; }
+    if (_state.name === '' || _state.name == null) { _toast('name is required', 'error'); return; }
+    if (_state.owner === '' || _state.owner == null) { _toast('owner is required', 'error'); return; }
   const _btn = document.getElementById('btn_Add_Project');
   const _btnHTML = _btn.innerHTML;
   _btn.disabled = true;
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
-    { const _r = await fetch("/api/projects", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_name: _state.project_name, project_owner: _state.project_owner }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
-    _state.project_name = "";
-    _state.project_owner = "";
+    { const _r = await fetch("/api/projects", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: _state.name, owner: _state.owner }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/projects] [clear:68]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.projects = await fetch("/api/projects").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/projects] [clear:69]', e.message); return _state.projects; });
+    _state.name = "";
+    _state.owner = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
   _recompute();
 });
 document.getElementById('btn_Add_Task').addEventListener('click', async function() {
-    if (_state.task_title === '' || _state.task_title == null) { _toast('task title is required', 'error'); return; }
-    if (_state.task_project === '' || _state.task_project == null) { _toast('task project is required', 'error'); return; }
-    if (_state.task_assignee === '' || _state.task_assignee == null) { _toast('task assignee is required', 'error'); return; }
+    if (_state.title === '' || _state.title == null) { _toast('title is required', 'error'); return; }
+    if (_state.project === '' || _state.project == null) { _toast('project is required', 'error'); return; }
+    if (_state.assignee === '' || _state.assignee == null) { _toast('assignee is required', 'error'); return; }
   const _btn = document.getElementById('btn_Add_Task');
   const _btnHTML = _btn.innerHTML;
   _btn.disabled = true;
   _btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
   try {
-    { const _r = await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_title: _state.task_title, task_project: _state.task_project, task_assignee: _state.task_assignee }) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
-    _state.task_title = "";
-    _state.task_project = "";
-    _state.task_assignee = "";
+    { const _r = await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: _state.title, project: _state.project, assignee: _state.assignee }) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST /api/tasks] [clear:97]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    _state.tasks = await fetch("/api/tasks").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tasks] [clear:98]', e.message); return _state.tasks; });
+    _state.title = "";
+    _state.project = "";
+    _state.assignee = "";
   } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
   _btn.disabled = false;
   _btn.innerHTML = _btnHTML;
@@ -290,8 +310,8 @@ document.getElementById('btn_Add_Task').addEventListener('click', async function
 
 // --- On Page Load ---
 (async () => {
-  _state.projects = await fetch("/api/projects").then(r => r.json()).catch(e => { console.error(e); return _state.projects; });
-  _state.tasks = await fetch("/api/tasks").then(r => r.json()).catch(e => { console.error(e); return _state.tasks; });
+  _state.projects = await fetch("/api/projects").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/projects] [clear:54]', e.message); return _state.projects; });
+  _state.tasks = await fetch("/api/tasks").then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET /api/tasks] [clear:55]', e.message); return _state.tasks; });
   _recompute();
 })();
 

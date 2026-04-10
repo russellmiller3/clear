@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<!-- GAN Mock: Dark App Layout (Linear-inspired)
+     Target: Tight dark sidebar + header + main content. Issue tracker feel.
+     Ref: linear.app -->
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock — Dark App Layout</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @layer base { body { font-family: 'Plus Jakarta Sans', sans-serif; } }
+  </style>
+</head>
+<body class="bg-base-100 text-base-content h-screen overflow-hidden">
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-52 shrink-0 flex flex-col bg-base-200 border-r border-base-300/40 overflow-hidden">
+    <!-- Brand -->
+    <div class="px-4 h-12 flex items-center border-b border-base-300/30 shrink-0">
+      <span class="text-sm font-bold tracking-tight text-base-content">Acme</span>
+      <span class="ml-auto text-xs text-base-content/30">▾</span>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex-1 overflow-y-auto py-3 px-2">
+      <!-- primary nav -->
+      <ul class="space-y-0.5">
+        <li>
+          <a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm font-medium text-base-content bg-base-300/50 cursor-pointer">
+            <svg class="w-4 h-4 shrink-0 text-base-content/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            <span>Home</span>
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-300/30 cursor-pointer transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+            <span>My issues</span>
+            <span class="ml-auto text-xs bg-base-300 text-base-content/60 rounded px-1.5 py-0.5">4</span>
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-300/30 cursor-pointer transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
+            <span>Inbox</span>
+            <span class="ml-auto text-xs bg-primary text-primary-content rounded-full px-1.5 py-0.5">2</span>
+          </a>
+        </li>
+      </ul>
+
+      <div class="mt-4 mb-2 px-2.5">
+        <span class="text-xs font-semibold uppercase tracking-widest text-base-content/30">Teams</span>
+      </div>
+
+      <ul class="space-y-0.5">
+        <li>
+          <a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-300/30 cursor-pointer transition-colors">
+            <span class="w-4 h-4 rounded bg-primary text-primary-content text-xs flex items-center justify-center font-bold shrink-0">E</span>
+            <span>Engineering</span>
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-300/30 cursor-pointer transition-colors">
+            <span class="w-4 h-4 rounded bg-secondary text-secondary-content text-xs flex items-center justify-center font-bold shrink-0">D</span>
+            <span>Design</span>
+          </a>
+        </li>
+        <li>
+          <a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:text-base-content hover:bg-base-300/30 cursor-pointer transition-colors">
+            <span class="w-4 h-4 rounded bg-accent text-accent-content text-xs flex items-center justify-center font-bold shrink-0">G</span>
+            <span>Growth</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- User footer -->
+    <div class="border-t border-base-300/30 px-3 py-2.5 flex items-center gap-2.5 shrink-0">
+      <div class="w-6 h-6 rounded-full bg-primary/30 text-primary text-xs flex items-center justify-center font-bold shrink-0">R</div>
+      <span class="text-xs text-base-content/60 truncate">russell@acme.co</span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-20 flex items-center justify-between h-12 px-5 bg-base-100 border-b border-base-300/30 shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-sm font-semibold text-base-content">Engineering</span>
+        <span class="text-base-content/30">/</span>
+        <span class="text-sm text-base-content/60">All Issues</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-ghost btn-xs gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Filter
+        </button>
+        <button class="btn btn-outline btn-xs">New issue</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 overflow-y-auto bg-base-100">
+      <!-- Issue list -->
+      <div class="divide-y divide-base-300/20">
+        <!-- Status group -->
+        <div class="px-5 py-2 flex items-center gap-2 bg-base-100 sticky top-0">
+          <span class="w-2 h-2 rounded-full bg-warning shrink-0"></span>
+          <span class="text-xs font-semibold uppercase tracking-widest text-base-content/40">In Progress</span>
+          <span class="text-xs text-base-content/30 ml-1">3</span>
+        </div>
+        <!-- Issue rows -->
+        <div class="px-5 py-2.5 flex items-center gap-3 hover:bg-base-200/50 transition-colors cursor-pointer">
+          <span class="w-4 h-4 rounded-full border-2 border-warning shrink-0"></span>
+          <span class="text-xs text-base-content/30 font-mono shrink-0">ENG-142</span>
+          <span class="text-sm text-base-content flex-1 truncate">Fix token refresh race condition in auth middleware</span>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="badge badge-warning badge-sm">High</span>
+            <div class="w-5 h-5 rounded-full bg-primary/30 text-primary text-xs flex items-center justify-center font-bold">R</div>
+          </div>
+        </div>
+        <div class="px-5 py-2.5 flex items-center gap-3 hover:bg-base-200/50 transition-colors cursor-pointer">
+          <span class="w-4 h-4 rounded-full border-2 border-warning shrink-0"></span>
+          <span class="text-xs text-base-content/30 font-mono shrink-0">ENG-138</span>
+          <span class="text-sm text-base-content flex-1 truncate">Refactor dashboard data fetching to use SWR</span>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="badge badge-ghost badge-sm">Medium</span>
+            <div class="w-5 h-5 rounded-full bg-secondary/30 text-secondary text-xs flex items-center justify-center font-bold">J</div>
+          </div>
+        </div>
+        <div class="px-5 py-2.5 flex items-center gap-3 hover:bg-base-200/50 transition-colors cursor-pointer">
+          <span class="w-4 h-4 rounded-full border-2 border-warning shrink-0"></span>
+          <span class="text-xs text-base-content/30 font-mono shrink-0">ENG-135</span>
+          <span class="text-sm text-base-content flex-1 truncate">Add pagination to /api/events endpoint</span>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="badge badge-ghost badge-sm">Low</span>
+            <div class="w-5 h-5 rounded-full bg-accent/30 text-accent text-xs flex items-center justify-center font-bold">A</div>
+          </div>
+        </div>
+
+        <!-- Done group -->
+        <div class="px-5 py-2 flex items-center gap-2 bg-base-100 sticky top-0 mt-2">
+          <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
+          <span class="text-xs font-semibold uppercase tracking-widest text-base-content/40">Done</span>
+          <span class="text-xs text-base-content/30 ml-1">12</span>
+        </div>
+        <div class="px-5 py-2.5 flex items-center gap-3 hover:bg-base-200/50 transition-colors cursor-pointer opacity-60">
+          <span class="w-4 h-4 rounded-full bg-success/30 border-2 border-success shrink-0"></span>
+          <span class="text-xs text-base-content/30 font-mono shrink-0">ENG-130</span>
+          <span class="text-sm text-base-content/60 flex-1 truncate line-through">Migrate database to PostgreSQL 16</span>
+          <div class="flex items-center gap-2 shrink-0">
+            <div class="w-5 h-5 rounded-full bg-primary/30 text-primary text-xs flex items-center justify-center font-bold">R</div>
+          </div>
+        </div>
+        <div class="px-5 py-2.5 flex items-center gap-3 hover:bg-base-200/50 transition-colors cursor-pointer opacity-60">
+          <span class="w-4 h-4 rounded-full bg-success/30 border-2 border-success shrink-0"></span>
+          <span class="text-xs text-base-content/30 font-mono shrink-0">ENG-127</span>
+          <span class="text-sm text-base-content/60 flex-1 truncate line-through">Set up CI/CD pipeline with GitHub Actions</span>
+          <div class="flex items-center gap-2 shrink-0">
+            <div class="w-5 h-5 rounded-full bg-secondary/30 text-secondary text-xs flex items-center justify-center font-bold">J</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+</body>
+</html>
