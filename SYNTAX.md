@@ -205,6 +205,8 @@ page 'My App' at '/':
   link 'Learn more' to '/about'
   divider
   code block 'price = 100'
+  image 'https://example.com/photo.jpg'
+  image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
 ```
 
 ## Inputs
@@ -295,6 +297,19 @@ Chart types: `line`, `bar`, `pie`, `area`. Data comes from a state variable (arr
 For line/bar/area, the compiler auto-detects x-axis (first string field) and y-axis (number fields).
 **groupBy works for all chart types** — add `by <field>` to group and count occurrences per unique value.
 ECharts CDN is only included when charts are used.
+
+### Chart Modifiers
+
+```clear
+# Subtitle — appears below the chart title
+bar chart 'Weekly Trends' subtitle 'Opened vs closed issues' showing weekly_stats
+
+# Stacked bars — multiple series stacked on top of each other
+bar chart 'Weekly Trends' subtitle 'Opened vs closed' showing weekly_stats stacked
+
+# Combined
+bar chart 'Weekly Trends' subtitle 'Last 4 weeks' showing data by category stacked
+```
 
 ## Reactive Input Handlers
 
@@ -592,6 +607,14 @@ Syntax: `section 'Name' with style preset_name:`
 | `page_cta` | Full-width primary-color CTA banner. Centered text + link. | `heading`, `text`, `link` |
 | `faq_section` | Accordion FAQ. Child sections become collapse/expand items. Section title = question, body text = answer. | `heading`, `section` children (title = question, body `text` = answer) |
 | `page_footer` | Multi-column footer. First heading = brand, child sections = link columns, last text = copyright. | `heading` (brand), `section` children (column title + `link` items), `small text` (copyright) |
+
+**Blog presets:**
+
+| Preset | Description | Typical children |
+|--------|-------------|-----------------|
+| `blog_grid` | Blog listing page with card grid (3 columns on desktop). | `heading`, `text`, `section` children with `blog_card` |
+| `blog_card` | Individual blog post card with image, badge, title, excerpt, author. | `image`, `badge`, `heading`, `text`, `section` (author meta) |
+| `blog_article` | Single blog post layout (Medium-style). Centered max-w-3xl column. | `badge`, `heading`, `text`, `subheading`, `image`, `divider` |
 
 **Dark variants:** Most marketing presets have a `_dark` variant (e.g., `feature_grid_dark`, `pricing_grid_dark`) that uses `bg-neutral` with light text.
 

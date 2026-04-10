@@ -214,7 +214,7 @@ page 'Project Tracker' at '/':
             heading '3'
             text '-2 vs last week'
 
-        bar chart 'Weekly Issue Trends' showing weekly_stats
+        bar chart 'Weekly Issue Trends' subtitle 'Opened vs closed issues' showing weekly_stats stacked
 
         section 'Charts Row' as 2 columns:
           bar chart 'Issues by Project' showing all_issues by project

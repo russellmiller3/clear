@@ -172,7 +172,7 @@ node test.js
 
 **Core:** variables, math, strings, functions, loops, conditionals, pattern matching, objects, lists, maps, error handling, modules, comments
 
-**Frontend:** pages, inputs (text/number/checkbox/dropdown/textarea), buttons, sections with inline layout, components, conditional UI, on-page-load, reactive tables with column whitelist, tabs, collapsible, slide-out panels, modals, toast notifications, ECharts (bar/line/pie/area)
+**Frontend:** pages, inputs (text/number/checkbox/dropdown/textarea), buttons, sections with inline layout, components, conditional UI, on-page-load, reactive tables with column whitelist, tabs, collapsible, slide-out panels, modals, toast notifications, ECharts (bar/line/pie/area with subtitle/stacked), images
 
 **Backend:** REST endpoints, validation, auth guards, role-based access, rate limiting, CORS, logging, webhooks (HMAC), OAuth, Stripe checkout, background jobs, SSE streaming, WebSocket
 
@@ -270,6 +270,12 @@ create a Members table:
   email, required
 ```
 
+### Images
+```clear
+image 'https://example.com/hero.jpg'
+image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
+```
+
 ### Charts (ECharts — auto-included)
 ```clear
 # Bar chart — auto-detects x (string) and y (number) from data shape
@@ -280,6 +286,9 @@ pie chart 'Status' showing tasks by status
 
 # Bar chart with groupBy — same grouping, rendered as bars
 bar chart 'Issues by Project' showing issues by project
+
+# Subtitle + stacked
+bar chart 'Weekly Trends' subtitle 'Opened vs closed' showing weekly_stats stacked
 
 # Line and area charts
 line chart 'Monthly Trend' showing monthly_data

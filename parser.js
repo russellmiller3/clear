@@ -1254,7 +1254,7 @@ const CANONICAL_DISPATCH = new Map([
       return ctx.i + 1;
     }
     // Content keyword after show: show heading 'Welcome'
-    const contentCanonicals = ['heading', 'subheading', 'content_text', 'bold_text', 'italic_text', 'small_text', 'label_text', 'badge_text', 'link', 'divider', 'code_block'];
+    const contentCanonicals = ['heading', 'subheading', 'content_text', 'bold_text', 'italic_text', 'small_text', 'label_text', 'badge_text', 'link', 'divider', 'code_block', 'image'];
     if (contentCanonicals.includes(ctx.tokens[1].canonical)) {
       const contentTokens = ctx.tokens.slice(1);
       const parsed = parseContent(contentTokens, ctx.line, ctx.tokens[1].canonical);
@@ -1651,6 +1651,12 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['divider', (ctx) => {
     const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['image', (ctx) => {
+    const parsed = parseImage(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
@@ -3888,6 +3894,41 @@ function parseContent(tokens, line, canonical) {
 }
 
 // =============================================================================
+// IMAGE (content element)
+// =============================================================================
+// image 'url'
+// image 'url' rounded, 40px wide, 40px tall
+function parseImage(tokens, line) {
+  if (tokens.length < 2 || tokens[1].type !== TokenType.STRING) {
+    return { error: "Image needs a URL in quotes. Example: image 'https://example.com/photo.jpg'" };
+  }
+  const url = tokens[1].value;
+  // Parse optional inline modifiers: rounded, Npx wide, Npx tall
+  let rounded = false;
+  let width = null;
+  let height = null;
+  for (let i = 2; i < tokens.length; i++) {
+    const t = tokens[i];
+    const v = String(t.value);
+    if (t.canonical === 'round' || v === 'rounded') rounded = true;
+    else if (t.type === TokenType.COMMA) continue;
+    else if (t.type === TokenType.NUMBER) {
+      // Check for "40 px wide" or "40px wide" patterns
+      let sizeVal = v;
+      if (i + 1 < tokens.length && tokens[i + 1].value === 'px') { sizeVal = v; i++; }
+      if (i + 1 < tokens.length && tokens[i + 1].value === 'wide') { width = sizeVal + 'px'; i++; }
+      else if (i + 1 < tokens.length && tokens[i + 1].value === 'tall') { height = sizeVal + 'px'; i++; }
+    }
+  }
+  const ui = { contentType: 'image', text: url };
+  const node = { type: NodeType.CONTENT, contentType: 'image', text: url, line, ui };
+  if (rounded) node.rounded = true;
+  if (width) node.width = width;
+  if (height) node.height = height;
+  return { node };
+}
+
+// =============================================================================
 // DATA SHAPE (Phase 9)
 // =============================================================================
 // create data shape User:
@@ -4712,6 +4753,14 @@ function parseChartRemainder(tokens, pos, title, chartType, line) {
   if (!['line', 'bar', 'pie', 'area'].includes(chartType)) {
     return { error: `Unknown chart type '${chartType}'. Use: line, bar, pie, or area.` };
   }
+
+  // Optional subtitle: bar chart 'Title' subtitle 'Last 30 days' showing data
+  let subtitle = null;
+  if (pos < tokens.length && tokens[pos].value === 'subtitle' && pos + 1 < tokens.length && tokens[pos + 1].type === TokenType.STRING) {
+    subtitle = tokens[pos + 1].value;
+    pos += 2;
+  }
+
   if (pos >= tokens.length || tokens[pos].value !== 'showing') {
     return { error: `Chart needs "showing" followed by your data variable. Example: ${chartType} chart '${title}' showing sales` };
   }
@@ -4731,9 +4780,19 @@ function parseChartRemainder(tokens, pos, title, chartType, line) {
     }
   }
 
+  // Optional stacked: bar chart 'Title' showing data stacked
+  let stacked = false;
+  if (pos < tokens.length && tokens[pos].value === 'stacked') {
+    stacked = true;
+    pos++;
+  }
+
   const slug = sanitizeForId(title.replace(/\s+/g, '_'));
   const ui = { tag: 'chart', id: `chart_${slug}`, label: title };
-  return { node: { type: NodeType.CHART, title, chartType, dataVar, groupBy, line, ui } };
+  const node = { type: NodeType.CHART, title, chartType, dataVar, groupBy, line, ui };
+  if (subtitle) node.subtitle = subtitle;
+  if (stacked) node.stacked = true;
+  return { node };
 }
 
 // =============================================================================

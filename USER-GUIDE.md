@@ -648,6 +648,8 @@ italic text 'A side note'
 small text 'Terms apply'
 link 'Learn more' to '/about'
 divider
+image 'https://example.com/hero.jpg'
+image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
 ```
 
 ### Input Types
@@ -831,6 +833,16 @@ You can also write the title first:
 ```
 
 Both forms compile to the same thing. Use whichever reads better to you.
+
+### Chart Modifiers
+
+Add a subtitle below the chart title, or stack bars on top of each other:
+
+```clear
+bar chart 'Weekly Trends' subtitle 'Opened vs closed issues' showing weekly_stats
+
+bar chart 'Weekly Trends' subtitle 'Last 4 weeks' showing weekly_stats stacked
+```
 
 ---
 

@@ -1,0 +1,61 @@
+# Blog Article — single post layout (Medium style)
+build for web
+
+theme 'ivory'
+
+page 'Blog Post':
+
+  section 'Nav' with style page_navbar:
+    text 'Acme Blog'
+    text 'Articles'
+    text 'Tutorials'
+    text 'Podcast'
+
+  section 'Article' with style blog_article:
+
+    badge 'Engineering' as info
+
+    heading 'Building a Design System from Scratch'
+
+    section 'Meta' side by side, gap 3:
+      image 'https://randomuser.me/api/portraits/women/44.jpg' rounded, 40px wide, 40px tall
+      section 'Info':
+        small text 'Lindsay Walton'
+        small text 'March 16, 2026 · 8 min read'
+
+    image 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=1200&h=500&fit=crop'
+
+    text 'Design systems have become the backbone of modern product development. They provide a shared language between designers and developers, ensure consistency across products, and dramatically speed up the development process.'
+
+    subheading 'Why Design Systems Matter'
+
+    text 'Every successful product team eventually reaches a point where ad-hoc component creation becomes unsustainable. Designers create slightly different button styles, developers interpret mockups differently, and the codebase fills with one-off solutions.'
+
+    text 'A design system solves this by establishing a single source of truth for every visual element, interaction pattern, and content guideline your product uses.'
+
+    subheading 'Getting Started'
+
+    text 'Start small. Pick the five most common components in your product and document them thoroughly. For most teams, this means buttons, form inputs, cards, typography, and color tokens.'
+
+    text 'Each component should have clear usage guidelines, accessibility requirements, and code examples. The documentation is just as important as the code itself.'
+
+    subheading 'Tokens and Variables'
+
+    text 'Design tokens are the atomic building blocks — colors, spacing, typography scales, shadows, and border radii. Define these first, then build components on top of them. When you need to rebrand or support dark mode, you change the tokens and everything updates.'
+
+    text 'Keep your token naming semantic: use names like primary, surface, and muted rather than blue-500 or gray-200. Semantic names survive redesigns; literal names do not.'
+
+    subheading 'Measuring Success'
+
+    text 'Track adoption metrics: what percentage of new features use system components versus custom code? How fast can a new developer ship their first feature? How many accessibility bugs ship per quarter? These numbers tell you whether the system is working.'
+
+    divider
+
+    section 'Author Card' side by side, gap 4, padded:
+      image 'https://randomuser.me/api/portraits/women/44.jpg' rounded, 64px wide, 64px tall
+      section 'Bio':
+        bold text 'Lindsay Walton'
+        text 'Staff engineer at Acme. Building tools that help teams move faster. Previously at Stripe and Figma.'
+
+  section 'Footer' with style page_footer:
+    text '© 2026 Acme Blog. All rights reserved.'

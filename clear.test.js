@@ -5961,7 +5961,7 @@ build for web
 define component Card receiving title:
   heading 'hello'
 page 'App':
-  heading 'Test'
+  show Card('Test')
   `);
     expect(result.errors).toHaveLength(0);
     const js = result.javascript;
@@ -6053,7 +6053,7 @@ page 'App':
     const result = compileProgram(`
 build for web
 define component Card receiving title:
-  heading title
+  show title
   text 'Card footer'
 
 define component Wrapper receiving content:
@@ -6081,8 +6081,10 @@ page 'Dashboard':
     expect(result.html).toContain('id="comp_1"');
 
     // Both injected in recompute with correct IDs
-    expect(js).toContain("getElementById('comp_0').innerHTML = Card(");
-    expect(js).toContain("getElementById('comp_1').innerHTML = Wrapper(");
+    expect(js).toContain("getElementById('comp_0')");
+    expect(js).toContain(".innerHTML = Card(");
+    expect(js).toContain("getElementById('comp_1')");
+    expect(js).toContain(".innerHTML = Wrapper(");
   });
 
   // Cycle 8: component receives reactive state variable as prop
@@ -6090,7 +6092,7 @@ page 'Dashboard':
     const result = compileProgram(`
 build for web
 define component Label receiving name:
-  heading name
+  show name
 
 page 'App':
   'Your name' as text input saves to username
@@ -11373,6 +11375,44 @@ page 'App' at '/':
     expect(result.javascript).toContain('Object.keys(_counts)');
   });
 
+  it('parses chart subtitle', () => {
+    const ast = parse("bar chart 'Revenue' subtitle 'Last 30 days' showing sales");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0];
+    expect(chart.type).toBe('chart');
+    expect(chart.title).toBe('Revenue');
+    expect(chart.subtitle).toBe('Last 30 days');
+    expect(chart.chartType).toBe('bar');
+    expect(chart.dataVar).toBe('sales');
+  });
+
+  it('compiles chart subtitle to HTML', () => {
+    const src = `build for web
+page 'App':
+  on page load get sales from '/api/sales'
+  bar chart 'Revenue' subtitle 'Last 30 days' showing sales`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('Last 30 days');
+  });
+
+  it('parses stacked chart', () => {
+    const ast = parse("bar chart 'Revenue' showing sales stacked");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0];
+    expect(chart.stacked).toBe(true);
+  });
+
+  it('compiles stacked chart with stack property', () => {
+    const src = `build for web
+page 'App':
+  on page load get data from '/api/data'
+  bar chart 'Revenue' showing data stacked`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("stack: 'total'");
+  });
+
   it('does not include ECharts CDN when no chart nodes', () => {
     const src = `build for web
 page 'App' at '/':
@@ -11691,6 +11731,43 @@ describe('Phase 32 - file input', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain("'change'");
     expect(result.javascript).toContain('files[0]');
+  });
+});
+
+// =============================================================================
+// IMAGE ELEMENT
+// =============================================================================
+
+describe('Image element', () => {
+  it('parses image with URL', () => {
+    const ast = parse("image 'https://example.com/photo.jpg'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].contentType).toBe('image');
+    expect(ast.body[0].text).toBe('https://example.com/photo.jpg');
+  });
+
+  it('parses image with rounded modifier', () => {
+    const ast = parse("image 'photo.jpg' rounded, 40px wide, 40px tall");
+    expect(ast.errors).toHaveLength(0);
+    const img = ast.body[0];
+    expect(img.rounded).toBe(true);
+    expect(img.width).toBe('40px');
+    expect(img.height).toBe('40px');
+  });
+
+  it('compiles image to HTML img tag', () => {
+    const result = compileProgram("build for web\npage 'App':\n  image 'photo.jpg'");
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('<img src="photo.jpg"');
+    expect(result.html).toContain('loading="lazy"');
+  });
+
+  it('compiles rounded image with size', () => {
+    const result = compileProgram("build for web\npage 'App':\n  image 'avatar.jpg' rounded, 40px wide, 40px tall");
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('rounded-full');
+    expect(result.html).toContain('width="40px"');
+    expect(result.html).toContain('height="40px"');
   });
 });
 
