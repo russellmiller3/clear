@@ -5567,8 +5567,8 @@ function buildHTML(body) {
                 parts.push(`      </div>`);
               } else if (sn === 'faq_section') {
                 // FAQ: child sections become DaisyUI collapse accordion items
-                parts.push(`      <div class="join join-vertical w-full max-w-2xl mx-auto">`);
-                for (const card of cardNodes) {
+                parts.push(`      <div class="max-w-3xl mx-auto flex flex-col gap-3">`);
+                cardNodes.forEach((card, faqIdx) => {
                   const qTitle = card.ui?.title || card.title || 'Question';
                   // Gather body text for the answer
                   const answerParts = [];
@@ -5580,12 +5580,13 @@ function buildHTML(body) {
                     }
                   }
                   const answer = answerParts.join(' ') || 'Answer';
-                  parts.push(`        <div class="collapse collapse-arrow join-item border border-base-300/40">`);
-                  parts.push(`          <input type="radio" name="faq" />`);
-                  parts.push(`          <div class="collapse-title font-semibold">${qTitle}</div>`);
-                  parts.push(`          <div class="collapse-content"><p>${answer}</p></div>`);
+                  const checkedAttr = faqIdx === 0 ? ' checked' : '';
+                  parts.push(`        <div class="collapse collapse-arrow bg-base-200/50 border border-base-300/40">`);
+                  parts.push(`          <input type="radio" name="faq"${checkedAttr} />`);
+                  parts.push(`          <div class="collapse-title font-semibold text-base">${qTitle}</div>`);
+                  parts.push(`          <div class="collapse-content text-sm text-base-content/70"><p>${answer}</p></div>`);
                   parts.push(`        </div>`);
-                }
+                });
                 parts.push(`      </div>`);
               } else if (sn === 'page_footer') {
                 // Footer: first heading = brand, child sections = link columns, last text = copyright
@@ -5637,7 +5638,7 @@ function buildHTML(body) {
                 parts.push(`        </div>`);
                 // Copyright row
                 if (copyrightNodes.length > 0) {
-                  parts.push(`        <div class="border-t border-base-300/40 pt-6">`);
+                  parts.push(`        <div class="border-t border-base-300/40 mt-8 pt-6 text-center">`);
                   for (const cn of copyrightNodes) {
                     const fmt = formatInlineText(cn.ui.text);
                     parts.push(`          <p class="text-sm text-base-content/40">${fmt}</p>`);
@@ -5880,12 +5881,16 @@ ${options}
         case NodeType.BUTTON: {
           const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
           const btnInHeader = btnPreset === 'app_header';
+          const btnInCta = btnPreset === 'page_cta';
           const btnInForm = ['card_bordered', 'card', 'form'].includes(btnPreset);
           const btnLabel = (node.ui.label || '').toLowerCase();
           const btnIsDestructive = /^(delete|remove|archive|deactivate)/.test(btnLabel);
           const btnIsDismiss = /^(cancel|close|dismiss|reset|clear|discard)/.test(btnLabel);
           let btnCls;
-          if (btnInHeader) {
+          if (btnInCta) {
+            // CTA buttons: inverted colors for contrast on primary bg
+            btnCls = 'btn btn-lg bg-base-100 text-primary hover:bg-base-200';
+          } else if (btnInHeader) {
             // Header buttons are small; destructive/dismiss get ghost, CTAs stay primary
             if (btnIsDestructive) {
               btnCls = 'btn btn-ghost btn-sm text-error';
@@ -5983,9 +5988,9 @@ ${options}
               } else if (inStatItem) {
                 parts.push(`    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
               } else if (inFeaturedPricing) {
-                parts.push(`    <h3 class="text-lg font-semibold text-primary-content">${formatted}</h3>`);
+                parts.push(`    <h3 class="text-xl font-bold text-primary-content">${formatted}</h3>`);
               } else if (inPricingCard) {
-                parts.push(`    <h3 class="text-lg font-semibold text-base-content">${formatted}</h3>`);
+                parts.push(`    <h3 class="text-xl font-bold text-base-content">${formatted}</h3>`);
               } else if (inTestimonialCard) {
                 parts.push(`    <h3 class="text-sm font-semibold text-base-content leading-snug">${formatted}</h3>`);
               } else if (inLandingCard) {
@@ -6002,7 +6007,7 @@ ${options}
               break;
             case 'subheading':
               if (inCta) {
-                parts.push(`    <p class="text-lg text-primary-content/80 max-w-xl text-center mx-auto leading-relaxed">${formatted}</p>`);
+                parts.push(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
               } else if (inHero) {
                 const heroSubAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
                 const heroSubMaxW = inHeroLeft ? 'max-w-xl' : 'max-w-2xl';
@@ -6042,7 +6047,7 @@ ${options}
               } else if (inMetricCard) {
                 parts.push(`    <p class="text-xs text-base-content/40 font-mono">${formatted}</p>`);
               } else if (inCta) {
-                parts.push(`    <p class="text-lg text-primary-content/80 max-w-xl text-center mx-auto leading-relaxed">${formatted}</p>`);
+                parts.push(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
               } else if (inHero) {
                 parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl ${inHeroLeft ? 'text-left' : 'text-center mx-auto'}">${formatted}</p>`);
               } else if (inStatItem) {
@@ -6091,8 +6096,8 @@ ${options}
               break;
             case 'link':
               if (inCta) {
-                // CTA link — neutral button for contrast against primary bg
-                parts.push(`    <a class="btn btn-neutral btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
+                // CTA link — inverted colors for contrast against primary bg
+                parts.push(`    <a class="btn btn-lg bg-base-100 text-primary hover:bg-base-200" href="${ui.href || '#'}">${formatted}</a>`);
               } else if (inHero) {
                 // Lone hero link (not in a group) — primary by default
                 parts.push(`    <a class="btn btn-primary btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
@@ -7251,8 +7256,8 @@ const BUILTIN_PRESET_CLASSES = {
   feature_card_emerald:   'bg-emerald-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
   feature_card_rose:      'bg-rose-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
   feature_card_amber:     'bg-amber-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm',
-  pricing_card_featured:  'bg-primary text-primary-content rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1 ring-2 ring-primary ring-offset-2 ring-offset-base-200 scale-105',
+  pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200',
+  pricing_card_featured:  'bg-primary text-primary-content rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1 ring-2 ring-primary/20 ring-offset-2 ring-offset-base-200 scale-[1.02]',
   testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/40 shadow-sm relative',
   stat_item:              'flex flex-col items-center text-center gap-2',
   logo_item:              'flex items-center justify-center opacity-40 hover:opacity-70 transition-opacity grayscale',
