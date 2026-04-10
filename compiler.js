@@ -1661,9 +1661,16 @@ function compileEndpoint(node, ctx, pad) {
   let epCode = `${pad}// clear:${node.line} — ${node.method.toUpperCase()} ${node.path}\n`;
   epCode += `${pad}app.${node.method.toLowerCase()}('${node.path}', async (req, res) => {\n`;
   epCode += `${pad}  try {\n`;
-  // Guard seed endpoints from running in production
+  // Guard seed endpoints from running in production + auto-dedup
   if (isSeedEndpoint) {
     epCode += `${pad}    if (process.env.NODE_ENV === 'production') return res.status(403).json({ error: 'Seed endpoint is disabled in production' });\n`;
+    // Auto-dedup: find the first table being inserted into, skip if it already has data
+    const firstInsert = node.body.find(n => n.type === NodeType.CRUD && (n.operation === 'insert' || n.isInsert));
+    if (firstInsert && firstInsert.target) {
+      const dedupTable = pluralizeName(firstInsert.target);
+      epCode += `${pad}    const _existing = await db.findAll('${dedupTable}');\n`;
+      epCode += `${pad}    if (_existing.length > 0) return res.json({ message: 'already seeded' });\n`;
+    }
   }
   if (needsBinding) {
     if (node.receivingVar) {
@@ -6107,7 +6114,7 @@ ${options}
                     : '<svg class="inline w-3.5 h-3.5" fill="none" viewBox="0 0 14 14"><path d="M7 12.833V1.167M7 12.833L2.333 8.167M7 12.833l4.667-4.666" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
                   const trendPart = trendMatch[1].trim();
                   const restPart = formatted.slice(trendMatch[1].length);
-                  parts.push(`    <p class="text-sm font-medium text-base-content/50"><span class="${trendColor} font-semibold inline-flex items-center gap-0.5">${arrowSvg} ${trendPart}</span> ${restPart}</p>`);
+                  parts.push(`    <p class="text-sm font-medium text-base-content/50 flex items-center gap-1"><span class="${trendColor} font-semibold inline-flex items-center gap-0.5">${arrowSvg}${trendPart}</span>${restPart}</p>`);
                 } else {
                   parts.push(`    <p class="text-sm font-medium text-base-content/50">${formatted}</p>`);
                 }
