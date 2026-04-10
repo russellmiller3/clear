@@ -23,10 +23,34 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2 -- All Complete)
+## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2, Pareto 20, IDE Chat v2 -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
 1490 tests, all passing (7 pre-existing failures in component composition).
+
+### Pareto 20 Preset Upgrade (Apr 2026)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Design system foundation | Done | Per-theme font stacks (Inter, DM Sans, Plus Jakarta Sans), CSS custom props --font-body/display/mono |
+| 14 preset upgrades | Done | Navbar, hero, hero_left, logo_bar, feature_grid, feature_split, stats_row, testimonial_grid, pricing_grid, page_cta, app_sidebar, app_header, metric_card, form |
+| 6 new presets | Done | faq_section (CSS-only accordion), page_footer (link grid + copyright), app_table, app_modal, empty_state, app_list |
+| Custom section renderers | Done | FAQ uses DaisyUI collapse, footer uses link grid, app_list uses stacked list with badges |
+| Context arrays verified | Done | All 6 new presets added to isCardPreset, inPageSection, GRID_SECTION_PRESETS where appropriate |
+| Oatmeal-tier spacing | Done | Hero py-24 lg:py-32, sections py-16 lg:py-24, cards p-6/p-8, max-w-7xl/6xl/5xl hierarchy |
+
+### IDE Chat v2 (Apr 2026)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Markdown tables | Done | `| col | col |` renders as styled HTML tables in chat |
+| Code blocks + language labels | Done | Fenced blocks show language tag, Copy button, Apply for Clear code |
+| SVG diagram rendering | Done | ```svg blocks render inline as visual diagrams |
+| HTML preview toggle | Done | ```html blocks get Preview/Source toggle |
+| Chat resizer | Done | Drag chat panel width 280-800px |
+| Stop button | Done | Cancel in-flight streaming responses via AbortController |
+| New chat button | Done | Clears chat history and aborts stream |
+| Personality/custom instructions | Done | Saved to localStorage, sent with every message |
+| Undo button | Done | Editor undo via historyKeymap extraction, Claude tool support |
+| Image + text paste fix | Done | Array content rendering for mixed image/text messages |
 
 ### Landing Pages v2
 | Feature | Status | Description |
