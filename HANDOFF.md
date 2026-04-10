@@ -1,55 +1,76 @@
-# Handoff — 2026-04-09
+# Clear Language — Session Handoff
 
-## Current State
-- **Branch:** main
-- **Last commit:** `976c1bc` Switch web tools to Anthropic native server tools
-- **Working tree:** Clean (untracked scratch files only)
+_Last updated: 2026-04-09 | Branch shipped: feature/sqlite-persistence_
+
+---
 
 ## What Was Done This Session
-- Fixed `owner` parser bug — field named `owner` silently dropped from data_shape by RLS check. Fix: only treat as RLS if `can` keyword also present.
-- Curated 7 featured playground templates (server allowlist), all compile 0 errors.
-- Added web search + fetch via Anthropic native server tools (`web_search_20250305`, `web_fetch_20250910`) — no Brave key needed. Toggle in chat header (being moved below chat box).
-- Validator narrowed: bare `owner` no longer triggers "needs auth" warning.
-- 1489 compiler tests passing.
 
-## What's In Progress
-**GAN UI quality pass — not started.** Compiled app output looks amateurish. Design gap analysis complete; fixes identified but not implemented.
+### Phase 47b: SQLite Persistence
+Replaced the in-memory + JSON-backup database with a real SQLite file (`clear-data.db`).
 
-## Key Decisions Made
-- **GAN method is mandatory** (per CLAUDE.md): fetch reference → static HTML mock → update compiler until output matches → screenshot to compare.
-- **No arbitrary CSS in Clear language.** Fix is better presets, not more syntax.
-- **Anthropic native server tools** replace any custom fetch/search. No external API keys.
-- **Chat history**: No for now. Add when there are real users.
+**Why it matters:** Apps were losing data on restart if killed mid-write (non-atomic JSON). Now every write is immediately durable. WAL mode handles concurrent requests cleanly.
 
-## The 5 CSS Gaps to Fix (in priority order)
+**Files changed:**
+- `runtime/db.js` — full rewrite using `better-sqlite3`. Same public API.
+- `runtime/package.json` — new: declares `{"type":"commonjs"}` so Node doesn't treat CJS files as ESM
+- `clear-runtime/db.js` + `clear-runtime/package.json` — synced copies
+- `package.json` — added `better-sqlite3 ^12.8.0`
+- `compiler.js` — updated test-runner comment
+- `cli/clear.js` — `clear package` now includes `better-sqlite3` in generated `package.json` + updated `.dockerignore`
+- `.gitignore` — added `clear-data.db` + WAL sidecar files
 
-| # | Element | Current | Target |
-|---|---------|---------|--------|
-| 1 | **Tables** | No zebra, no header bg, harsh borders | `bg-base-200` thead, `bg-base-300/5` odd rows, `border-base-300/20` |
-| 2 | **Cards** | `border-base-300` harsh, no shadow | `border-base-300/40 shadow-sm` |
-| 3 | **Buttons** | Every button `btn-primary` (all yelling) | Primary CTA only; secondary → `btn-outline`; dismiss → `btn-ghost` |
-| 4 | **Hero type** | `font-extrabold` weight 900 | `font-bold` 700, `text-5xl` not `text-6xl` |
-| 5 | **Sidebar** | `w-60` 240px — legacy SAP feel | `w-52` 208px, tighter item padding |
+### ship-plan Skill
+Created a new skill that chains `write-plan` → `red-team-plan` → `execute-plan` in one shot:
+- Committed to `main` at: `skills/ship-plan/SKILL.md`
+- Also written to AppData for live Claude use
 
-## GAN Workflow (repeat for each gap)
-1. `WebFetch` a reference (linear.app, vercel.com, stripe.com/docs/dashboard)
-2. Build static HTML mock in `apps/gan-mocks/[element].html`
-3. Screenshot the mock
-4. Edit `compiler.js` to produce matching output
-5. Compile `team-dashboard`, screenshot, compare
-6. `node clear.test.js` — must stay 1489 ✅
-7. `npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-compiler.min.js`
-8. Commit each fix
+### Security Fix
+`.env` was accidentally committed to git (API key exposed). Fixed immediately:
+- Removed `.env` from the commit via amend
+- Added `.env` to `.gitignore`
+- **API key in `.env` should be rotated** (was committed briefly, only locally)
 
-## Key File Locations
-| File | What's there |
-|------|-------------|
-| `compiler.js` | `BUILTIN_PRESET_CLASSES` ~line 6560; table HTML ~5472; button class ~5501; hero ~5532 |
-| `design-system.md` | Color tokens, shadow tokens, spacing |
-| `apps/team-dashboard/main.clear` | Reference template to compile+screenshot during GAN |
-| `apps/gan-mocks/` | Write static HTML mocks here |
-| `playground/server.js` | WEB_TOOLS lines 459-470; SSE parser for server_tool_use lines 680-690 |
-| `playground/system-prompt.md` | Needs section added about when to use web_search / web_fetch |
+---
+
+## Key Decisions
+
+- **better-sqlite3 over node:sqlite** — user requested it explicitly. Also more stable than Node 22's experimental built-in.
+- **Same API surface** — compiled server.js didn't need to change at all. `require('./clear-runtime/db')` still works.
+- **WAL mode by default** — correct for Express servers. DELETE journal mode would serialize all requests.
+- **Schema evolution via ALTER TABLE** — instead of dropping/recreating, which would lose data.
+- **`runtime/package.json` with `{"type":"commonjs"}`** — the cleanest fix for the ESM/CJS conflict. Scoped per directory.
+
+---
+
+## Known Issues / Watch Out For
+
+- **`feature/component-composition-phase52`** branch had SQLite commit accidentally applied to it during this session. Was cleaned up with `git reset --hard`. That branch now sits at main tip — it has no unique commits. If continuing component composition work, re-apply that work from `plans/plan-component-composition-phase52-04-09-2026.md`.
+- **API key rotation** — `ANTHROPIC_API_KEY` was briefly committed to git (local only, not pushed). Rotate at console.anthropic.com.
+- **Playground server.test.js** — accumulates data in `clear-data.db` across test runs. Unique-constraint failures possible. Delete `clear-data.db` before a clean test run.
+
+---
+
+## What's Next (Priority Order)
+
+1. **Playground smoke test** — verify `clear-data.db` creates and persists across restarts in the live playground
+2. **Phase 52: Component composition** — branch exists, plan at `plans/plan-component-composition-phase52-04-09-2026.md`
+3. **Phase 48: Deployment polish** — `clear package` Dockerfile + fly.io / Railway one-command deploy
+4. **General purpose language v1** — plan at `plans/plan-general-purpose-v1-04-09-2026.md`
+
+---
 
 ## Resume Prompt
-> Read HANDOFF.md and continue the GAN UI quality pass. Goal: make Clear's compiled app output look as professional as Linear, Vercel, and Stripe. Design gap analysis is done — 5 fixes in the handoff. Use GAN method: WebFetch reference → static HTML mock → update compiler.js → screenshot both to verify. Start with tables (biggest impact), then cards, buttons, hero, sidebar. `node clear.test.js` must stay 1489 after every change. Rebuild bundle after compiler changes. Commit each fix. Playground runs at localhost:3456.
+
+```
+Branch: main (feature/sqlite-persistence merged)
+Last session: Phase 47b SQLite persistence shipped.
+
+runtime/db.js now uses better-sqlite3 — same API, durable storage.
+clear-data.db replaces clear-data.json.
+1489 tests passing.
+
+ACTION NEEDED: Rotate the API key in .env (committed briefly to git, local only).
+
+Continue with: Phase 52 component composition OR Phase 48 deployment polish.
+```

@@ -23,6 +23,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 10: Agent Tier 7](#session-10-agent-tier-7--phase-80-parallel-agents-2026-04-08) | `do`→`then`, `log`→`show`, `run`→`raw_run`, `check`→`if`, `classify with`→`predict_with`, directive scanning before parseBlock, block-form sub-line consumption, singular/plural table matching, regex code wrapping |
 | [Session 13: IDE Bug Fixes + Docs Viewer](#session-13-ide-bug-fixes--docs-viewer-2026-04-09) | Model ID blank response, backend-only compile uses `javascript` not `serverJS`, empty streaming bubble needs dots not blank, r.ok check before SSE, docs viewer markdown parsing |
 | [Session 14: Parser + Validator Fixes + Web Tools](#session-14-parser--validator-fixes--web-tools-2026-04-09) | `owner` field silently dropped by RLS check, validator over-broad on `owner` field, Anthropic native server tools replace custom fetch/search |
+| [Session 15: SQLite Persistence (Phase 47b)](#session-15-sqlite-persistence-phase-47b-2026-04-09) | ESM project + CJS runtime = `{"type":"commonjs"}` in runtime dir, WAL mode default, boolean coercion on read, sqlite_sequence try/catch |
 
 ---
 
@@ -377,3 +378,37 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **SSE stream handling:** Server tools emit `server_tool_use` content blocks (not `tool_use`). Don't push them into `toolUseBlocks` (which triggers client-side execution). Handle them separately: show UI feedback only, let the API continue the stream with the result inline.
 - **Result blocks:** `web_fetch_tool_result` and `web_search_tool_result` appear as content blocks in the same message turn. No round-trip tool_result message needed.
 - **Custom implementation was 80 lines of dead weight** — HTML stripping, Brave API auth, error handling for HTTP status codes, all replaced by two lines of tool declaration.
+
+---
+
+## Session 15: SQLite Persistence (Phase 47b) (2026-04-09)
+
+### ESM Project + CJS Runtime = Explicit Package Declaration Required
+- **The Clear project has `"type": "module"` in root `package.json`**, making all `.js` files ESM by default. The `runtime/db.js`, `auth.js`, and `rateLimit.js` files use `require()` (CJS). This worked fine in builds (build directories have no `"type": "module"`) but failed when loading from the project root.
+- **Fix:** Add `{"type":"commonjs"}` to `runtime/package.json` and `clear-runtime/package.json`. Node scopes `"type"` per-directory, so files in those dirs are now treated as CJS regardless of the root setting.
+- **Rule:** Any directory of CJS files inside an ESM project needs its own `package.json` with `{"type":"commonjs"}`. This applies to all three runtime files (`db.js`, `auth.js`, `rateLimit.js`).
+
+### better-sqlite3 Module Resolution in Nested Build Directories
+- **better-sqlite3 is installed in Clear root `node_modules/`**. The playground builds to `.playground-build/clear-runtime/db.js`. When `db.js` does `require('better-sqlite3')`, Node walks up: `.playground-build/clear-runtime/`, `.playground-build/`, `playground/`, `[root]/` — finds it at root. ✓
+- **No need to copy the native module** — standard Node resolution handles it across all build subdirectories.
+- **Standalone deployment (`clear package`):** Build directories get their own `package.json` with `better-sqlite3` listed, so `npm install` in the Dockerfile picks it up correctly.
+- **Prebuilds on Node 24 Windows:** better-sqlite3 ships prebuilt binaries via `@mapbox/node-pre-gyp`. `npm install` is fast (~5 seconds). No MSVC needed unless prebuild download fails.
+
+### WAL Mode is the Right Default for SQLite Servers
+- **`PRAGMA journal_mode = WAL`** allows concurrent reads while writes are in progress. This matters for Express servers that handle overlapping requests. Default journal mode (DELETE) locks the whole file on every write.
+- **`PRAGMA synchronous = NORMAL`** is safe with WAL and much faster than `FULL`. SQLite's WAL ensures crash safety even at NORMAL. Only use `FULL` if you need guaranteed durability on every write.
+
+### Boolean Coercion: SQLite Stores Integers, JS Expects Booleans
+- **SQLite has no boolean type** — `INTEGER` 0/1 is the convention. When you insert `true`, SQLite stores `1`. When you read it back, you get `1` (a number), not `true`.
+- **Fix:** Keep an in-memory schema registry (`_schemas`). In `findAll`/`findOne`, call `coerceRecord()` which converts any field with `type: 'boolean'` from 0/1 to false/true.
+- **Coerce on write too:** `coerceForStorage()` converts `true` → `1`, `false` → `0` before inserting into SQL params.
+- **Rule:** Every layer that reads from SQLite must coerce booleans. Don't assume JS truthiness (`1` is truthy but `1 !== true`).
+
+### sqlite_sequence Table: Try/Catch in reset()
+- **`sqlite_sequence`** is SQLite's internal table for tracking AUTOINCREMENT counters. It only exists after the first AUTOINCREMENT insert. Calling `DELETE FROM sqlite_sequence WHERE name = ?` before any row has been inserted throws.
+- **Fix:** Wrap in try/catch and ignore the error. The table's absence means there's nothing to reset anyway.
+- **Rule:** Any operation on `sqlite_sequence` needs a try/catch guard.
+
+### Git Branch Hygiene in Multi-Session Work
+- **The branch you create in one bash call doesn't necessarily persist as the "active" branch** in subsequent calls if there's unstaged state on another branch. Always verify with `git branch --show-current` before committing.
+- **Feature branches should be clean before starting SQLite/other work** — having uncommitted work on a different branch causes branch switches to fail, and stash/pop cycles introduce conflicts.
