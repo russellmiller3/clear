@@ -5356,31 +5356,46 @@ function buildHTML(body) {
             if (needsWrapper) parts.push(`      <div class="max-w-5xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
-              // Sidebar: split children into brand (heading), nav items, and other
+              // Sidebar: split children into brand (heading), nav items, and other.
+              // Sub-sections whose children are all text/link nodes are treated as nav groups —
+              // their text children are flattened into navNodes (with optional group label).
               const brandNodes = [];
-              const navNodes = [];
+              const navNodes = [];  // { label?: string, items: Node[] }[] or flat Node[]
               const otherNodes = [];
+
+              const isNavContent = c =>
+                c.type === NodeType.CONTENT &&
+                ['text', 'bold', 'link'].includes(c.contentType || c.ui?.contentType);
+
               for (const child of node.body) {
                 if (child.type === NodeType.CONTENT && (child.contentType === 'heading' || child.ui?.contentType === 'heading')) {
                   brandNodes.push(child);
                 } else if (child.type === NodeType.CONTENT && (child.contentType === 'divider' || child.ui?.contentType === 'divider')) {
-                  // Skip dividers in sidebar — the brand border-b replaces them
-                } else if (child.type === NodeType.CONTENT &&
-                  ['text', 'bold', 'link'].includes(child.contentType || child.ui?.contentType)) {
-                  navNodes.push(child);
+                  // Skip dividers — brand border-b replaces them
+                } else if (isNavContent(child)) {
+                  navNodes.push({ group: null, items: [child] });
                 } else if (child.type === NodeType.FOR_EACH) {
-                  navNodes.push(child);
+                  navNodes.push({ group: null, items: [child] });
+                } else if (child.type === NodeType.SECTION && child.body && child.body.every(isNavContent)) {
+                  // Nested section whose children are all nav-compatible → nav group
+                  navNodes.push({ group: child.title, items: child.body });
                 } else {
                   otherNodes.push(child);
                 }
               }
+
               // Emit brand heading(s)
               walk(brandNodes);
               // Emit nav items wrapped in menu
               if (navNodes.length > 0) {
                 parts.push(`    <nav class="flex-1 overflow-y-auto py-3 px-3">`);
                 parts.push(`      <ul class="menu menu-sm gap-0.5 p-0">`);
-                walk(navNodes);
+                for (const entry of navNodes) {
+                  if (entry.group) {
+                    parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-3 px-3">${entry.group}</li>`);
+                  }
+                  walk(entry.items);
+                }
                 parts.push(`      </ul>`);
                 parts.push(`    </nav>`);
               }
@@ -5526,8 +5541,14 @@ ${options}
           const btnIsDismiss = /^(cancel|close|dismiss|reset|clear|discard)/.test(btnLabel);
           let btnCls;
           if (btnInHeader) {
-            // Header buttons are utility actions, not primary CTAs
-            btnCls = btnIsDestructive ? 'btn btn-ghost btn-sm text-error' : 'btn btn-outline btn-sm';
+            // Header buttons are small; destructive/dismiss get ghost, CTAs stay primary
+            if (btnIsDestructive) {
+              btnCls = 'btn btn-ghost btn-sm text-error';
+            } else if (btnIsDismiss) {
+              btnCls = 'btn btn-ghost btn-sm';
+            } else {
+              btnCls = 'btn btn-primary btn-sm'; // New/Create/Add buttons in header keep primary treatment
+            }
           } else if (btnIsDestructive) {
             btnCls = 'btn btn-ghost text-error';
           } else if (btnIsDismiss) {
@@ -6720,7 +6741,7 @@ const BUILTIN_PRESET_CLASSES = {
   // app_content: bg-base-200/30 gives a subtle canvas tint vs pure white (Vercel/Linear style)
   app_content:       'flex-1 overflow-y-auto bg-base-200/30 p-6 flex flex-col gap-5',
   // app_header: h-14 (56px) matches modern SaaS headers; soften border
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100 border-b border-base-300/40 shrink-0',
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0',
   // app_card: bg-base-200 creates elevation above bg-base-200/30 canvas (dark) and off-white on light
   app_card:          'bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5',
 
