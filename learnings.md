@@ -24,6 +24,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 13: IDE Bug Fixes + Docs Viewer](#session-13-ide-bug-fixes--docs-viewer-2026-04-09) | Model ID blank response, backend-only compile uses `javascript` not `serverJS`, empty streaming bubble needs dots not blank, r.ok check before SSE, docs viewer markdown parsing |
 | [Session 14: Parser + Validator Fixes + Web Tools](#session-14-parser--validator-fixes--web-tools-2026-04-09) | `owner` field silently dropped by RLS check, validator over-broad on `owner` field, Anthropic native server tools replace custom fetch/search |
 | [Session 15: SQLite Persistence (Phase 47b)](#session-15-sqlite-persistence-phase-47b-2026-04-09) | ESM project + CJS runtime = `{"type":"commonjs"}` in runtime dir, WAL mode default, boolean coercion on read, sqlite_sequence try/catch |
+| [Session 16: Landing Pages v2](#session-16-landing-pages-v2-2026-04-10) | `inLandingCard` array must include ALL card variants, `bg-primary/8` opacity fails with DaisyUI CSS vars, `oklch(from var(...))` inline style workaround, dark page screenshots timeout |
 
 ---
 
@@ -412,3 +413,26 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 ### Git Branch Hygiene in Multi-Session Work
 - **The branch you create in one bash call doesn't necessarily persist as the "active" branch** in subsequent calls if there's unstaged state on another branch. Always verify with `git branch --show-current` before committing.
 - **Feature branches should be clean before starting SQLite/other work** — having uncommitted work on a different branch causes branch switches to fail, and stash/pop cycles introduce conflicts.
+
+---
+
+## Session 16: Landing Pages v2 (2026-04-10)
+
+### Context Array Registration is the #1 Bug Class
+- **When adding new presets to `BUILTIN_PRESET_CLASSES`, you MUST update 8 arrays** in compiler.js: `isCardPreset`, `isHeroPreset`, `GRID_SECTION_PRESETS`, `inPageSection`, `inLandingCard`, `COLORED_CARD_PRESETS`, `inDarkSection`, `heroInlineStyle`.
+- **The bug:** Colored card variants (`feature_card_teal`, `feature_card_purple`, etc.) were missing from `inLandingCard`. Result: headings inside colored cards rendered as `<h1>` (page heading style) instead of `<h3>` (card heading style) with white text.
+- **Rule:** After adding ANY new preset, grep for each array name and verify. This is a blocking check.
+
+### DaisyUI CSS Variable Opacity Modifiers Don't Work
+- **`bg-primary/8` renders as transparent** when `primary` is a DaisyUI CSS variable (`--color-primary`). Tailwind v4's opacity modifier can't decompose the variable at compile time.
+- **Fix:** Use inline style with `oklch(from var(--color-primary) l c h / 0.08)` instead. The `oklch(from ...)` relative color syntax works at runtime.
+- **Applies to:** Any Tailwind utility that tries `{utility}-{daisyui-color}/{opacity}`.
+
+### Dark Page Screenshots Time Out
+- **`preview_screenshot` consistently times out (~30s) on dark-themed pages** (midnight, slate). Light pages (ivory) work fine. Root cause unknown — possibly Tailwind CDN processing time on dark themes.
+- **Workaround:** Use `preview_eval` for DOM inspection (computed styles, element presence) and `preview_snapshot` for accessibility tree structure. Both work reliably on dark pages.
+
+### Bento Layout Pattern
+- **`feature_split` creates a bento grid:** first card gets `lg:col-span-2` (2/3 width), remaining cards stack vertically in 1/3 width. The first card should use `feature_card_large` (primary bg).
+- **Dark bento:** Use `feature_split_dark` for the outer section. The `feature_card_large` uses `bg-primary text-primary-content` which adapts to the theme automatically.
+- **`bg-white/5` on `feature_card_dark` is intentional** — creates a frosted glass panel on dark backgrounds (Linear style).

@@ -147,6 +147,15 @@ export const NodeType = Object.freeze({
   // Error handling (Phase 3)
   TRY_HANDLE: 'try_handle',
 
+  // GP Phase 1: Map iteration
+  MAP_KEYS: 'map_keys',
+  MAP_VALUES: 'map_values',
+  MAP_EXISTS: 'map_exists',
+
+  // GP Phase 3: First-class functions
+  MAP_APPLY: 'map_apply',
+  FILTER_APPLY: 'filter_apply',
+
   // Modules (Phase 3)
   USE: 'use',
 
@@ -375,8 +384,10 @@ function repeatNode(count, body, line) {
   return { type: NodeType.REPEAT, count, body, line };
 }
 
-function forEachNode(variable, iterable, body, line) {
-  return { type: NodeType.FOR_EACH, variable, iterable, body, line };
+function forEachNode(variable, iterable, body, line, variable2) {
+  const node = { type: NodeType.FOR_EACH, variable, iterable, body, line };
+  if (variable2) node.variable2 = variable2;
+  return node;
 }
 
 function whileNode(condition, body, line) {
@@ -3167,6 +3178,19 @@ function parseForEachLoop(lines, startIdx, blockIndent, errors) {
   const variable = tokens[pos].value;
   pos++;
 
+  // Check for two-variable form: "for each key, value in scores:"
+  let variable2 = null;
+  if (pos < tokens.length && tokens[pos].type === TokenType.COMMA) {
+    pos++; // skip comma
+    if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
+      variable2 = tokens[pos].value;
+      pos++;
+    } else {
+      errors.push({ line, message: 'After the comma, add a second variable name. Example: for each key, value in scores:' });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+  }
+
   // Expect "in"
   if (pos >= tokens.length || tokens[pos].canonical !== 'in') {
     errors.push({ line, message: `The loop doesn't know what to iterate over — add "in" and a list after "${variable}". Example: for each ${variable} in ${variable}s list:` });
@@ -3196,7 +3220,7 @@ function parseForEachLoop(lines, startIdx, blockIndent, errors) {
     errors.push({ line, message: 'The for-each loop is empty — it needs code inside to run on each item. Indent some code below it. Example:\n  for each item in my_list:\n    show item' });
   }
 
-  return { node: forEachNode(variable, iterExpr.node, body, line), endIdx };
+  return { node: forEachNode(variable, iterExpr.node, body, line, variable2), endIdx };
 }
 
 function parseWhileLoop(lines, startIdx, blockIndent, errors) {
@@ -6441,6 +6465,20 @@ function parseExprPrec(tokens, pos, line, end, minPrec) {
     const tok = tokens[pos];
     if (tok.type === TokenType.COMMENT) break;
 
+    // "X exists in Y" / "X is in Y" — map existence check (infix, after left side parsed)
+    // Tokenizer combines "exists in" / "is in" into a single token with canonical 'key_exists'
+    if (tok.canonical === 'key_exists') {
+      pos++; // skip compound "exists in" token
+      const right = parseExprPrec(tokens, pos, line, end, 0);
+      if (right.error) return right;
+      left = {
+        node: { type: NodeType.MAP_EXISTS, key: left.node, map: right.node, line },
+        nextPos: right.nextPos,
+      };
+      pos = left.nextPos;
+      continue;
+    }
+
     const opKey = getOperatorKey(tok);
     if (!opKey || PRECEDENCE[opKey] === undefined) break;
 
@@ -6461,6 +6499,47 @@ function parseExprPrec(tokens, pos, line, end, minPrec) {
   }
 
   return left;
+}
+
+// Parse a string with {expr} interpolation into a parts array.
+// Returns null if no interpolation found (fast path).
+// Silent fallback on parse errors — parsePrimary has no errors array.
+function parseStringParts(rawStr, lineNum) {
+  if (!rawStr.includes('{')) return null;
+  const parts = [];
+  let i = 0;
+  while (i < rawStr.length) {
+    const open = rawStr.indexOf('{', i);
+    if (open === -1) {
+      if (i < rawStr.length) parts.push({ text: rawStr.slice(i) });
+      break;
+    }
+    if (open > i) parts.push({ text: rawStr.slice(i, open) });
+    const close = rawStr.indexOf('}', open + 1);
+    if (close === -1) {
+      parts.push({ text: rawStr.slice(open) }); // no closing } — treat rest as literal
+      break;
+    }
+    const inner = rawStr.slice(open + 1, close);
+    if (inner.trim() === '') {
+      parts.push({ text: '{}' });
+      i = close + 1;
+      continue;
+    }
+    try {
+      const innerTokens = tokenizeLine(inner, lineNum);
+      const result = parseExpression(innerTokens, 0, lineNum);
+      if (result && result.node && !result.error) {
+        parts.push({ expr: result.node });
+      } else {
+        parts.push({ text: '{' + inner + '}' }); // silent fallback
+      }
+    } catch (e) {
+      parts.push({ text: '{' + inner + '}' }); // silent fallback on tokenizer error
+    }
+    i = close + 1;
+  }
+  return parts.length > 0 ? parts : null;
 }
 
 function parsePrimary(tokens, pos, line, end) {
@@ -6493,6 +6572,21 @@ function parsePrimary(tokens, pos, line, end) {
 
   if (tok.canonical === 'nothing') {
     return { node: literalNothing(line), nextPos: pos + 1 };
+  }
+
+  // "keys of X" → MAP_KEYS node
+  // Note: "of" canonical is "in" (synonyms.js) — check .canonical === 'in', not 'of'
+  if (tok.value === 'keys' && pos + 1 < maxPos && tokens[pos + 1].canonical === 'in') {
+    const src = parseExprPrec(tokens, pos + 2, line, maxPos, 0);
+    if (src.error) return src;
+    return { node: { type: NodeType.MAP_KEYS, source: src.node, line }, nextPos: src.nextPos };
+  }
+
+  // "values of X" → MAP_VALUES node
+  if (tok.value === 'values' && pos + 1 < maxPos && tokens[pos + 1].canonical === 'in') {
+    const src = parseExprPrec(tokens, pos + 2, line, maxPos, 0);
+    if (src.error) return src;
+    return { node: { type: NodeType.MAP_VALUES, source: src.node, line }, nextPos: src.nextPos };
   }
 
   if (tok.canonical === 'not') {

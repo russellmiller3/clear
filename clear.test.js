@@ -5953,6 +5953,156 @@ page 'App':
     expect(result.javascript).toContain("_html += name");
     expect(result.javascript).toContain("_html += '<p>Welcome!</p>'");
   });
+
+  // Cycle 1: component function is top-level
+  it('component function is defined at top level, not inside _recompute', () => {
+    const result = compileProgram(`
+build for web
+define component Card receiving title:
+  heading 'hello'
+page 'App':
+  heading 'Test'
+  `);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript;
+    const funcIdx = js.indexOf('function Card');
+    const recomputeIdx = js.indexOf('function _recompute');
+    expect(funcIdx).toBeGreaterThan(-1);
+    expect(recomputeIdx).toBeGreaterThan(-1);
+    expect(funcIdx).toBeLessThan(recomputeIdx);
+  });
+
+  // Cycle 2: show Card(arg) emits comp_N in HTML
+  it('show Card(arg) emits comp_N container div in HTML scaffold', () => {
+    const result = compileProgram(`
+build for web
+define component Card receiving title:
+  heading 'hello'
+page 'App':
+  show Card('My Title')
+  `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('class="clear-component"');
+    expect(result.html).toContain('id="comp_0"');
+    expect(result.html).not.toContain('id="component_Card_0"');
+  });
+
+  // Cycle 3: show Card(arg) injects HTML in reactive JS
+  it('show Card(arg) injects HTML into comp_0 container in reactive JS', () => {
+    const result = compileProgram(`
+build for web
+define component Card receiving title:
+  heading 'hello'
+page 'App':
+  show Card('My Title')
+  `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("getElementById('comp_0')");
+    expect(result.javascript).toContain('.innerHTML = Card(');
+    expect(result.javascript).not.toContain("getElementById('component_Card_0')");
+  });
+
+  // Cycle 4: lowercase function call does NOT create component container
+  it('show with lowercase function call does NOT create component container', () => {
+    const result = compileProgram(`
+build for web
+define function double(x):
+  return x * 2
+
+page 'App':
+  show double(5)
+  `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).not.toContain('class="clear-component"');
+    expect(result.html).not.toContain('id="comp_0"');
+  });
+
+  // Cycle 5: block-form show Card: emits comp_N in HTML
+  it('block-form show Card: emits comp_N container div in HTML', () => {
+    const result = compileProgram(`
+build for web
+define component Panel receiving content:
+  show content
+page 'App':
+  show Panel:
+    heading 'Slot content'
+  `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('class="clear-component"');
+    expect(result.html).toContain('id="comp_0"');
+  });
+
+  // Cycle 6: block-form show Card: injects children HTML in reactive JS
+  it('block-form show Card: injects children HTML into placeholder', () => {
+    const result = compileProgram(`
+build for web
+define component Panel receiving content:
+  show content
+page 'App':
+  show Panel:
+    text 'Hello world'
+  `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("getElementById('comp_0')");
+    expect(result.javascript).toContain('.innerHTML = Panel(');
+    expect(result.javascript).toContain('<p>Hello world</p>');
+  });
+
+  // Cycle 7: E2E — inline and block forms coexist with correct ID order
+  it('E2E: inline and block component forms coexist with correct ID order', () => {
+    const result = compileProgram(`
+build for web
+define component Card receiving title:
+  heading title
+  text 'Card footer'
+
+define component Wrapper receiving content:
+  show content
+
+page 'Dashboard':
+  show Card('Revenue')
+  show Wrapper:
+    text 'Slot text'
+  `);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript;
+
+    // Both component functions are top-level
+    expect(js).toContain('function Card(title)');
+    expect(js).toContain('function Wrapper(content)');
+
+    // Both before _recompute
+    const recomputeIdx = js.indexOf('function _recompute');
+    expect(js.indexOf('function Card')).toBeLessThan(recomputeIdx);
+    expect(js.indexOf('function Wrapper')).toBeLessThan(recomputeIdx);
+
+    // comp_0 = Card (inline), comp_1 = Wrapper (block) — order matches source order
+    expect(result.html).toContain('id="comp_0"');
+    expect(result.html).toContain('id="comp_1"');
+
+    // Both injected in recompute with correct IDs
+    expect(js).toContain("getElementById('comp_0').innerHTML = Card(");
+    expect(js).toContain("getElementById('comp_1').innerHTML = Wrapper(");
+  });
+
+  // Cycle 8: component receives reactive state variable as prop
+  it('component receives reactive state variable as prop', () => {
+    const result = compileProgram(`
+build for web
+define component Label receiving name:
+  heading name
+
+page 'App':
+  'Your name' as text input saves to username
+  show Label(username)
+  `);
+    expect(result.errors).toHaveLength(0);
+    // username is in _state (from the input)
+    expect(result.javascript).toContain('username:');
+    // Label is called with _state.username (stateVars resolution)
+    expect(result.javascript).toContain('Label(_state.username)');
+    expect(result.html).toContain('id="comp_0"');
+  });
 });
 
 // =============================================================================

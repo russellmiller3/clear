@@ -23,10 +23,21 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90 -- All Complete)
+## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2 -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1489 tests, all passing.
+1490 tests, all passing (7 pre-existing failures in component composition).
+
+### Landing Pages v2
+| Feature | Status | Description |
+|---------|--------|-------------|
+| 3 landing page apps | Done | startup-landing (ivory), saas-landing (midnight), devtool-landing (slate) |
+| Bento feature layout | Done | `feature_split`/`feature_split_dark` — large card + stacked colored cards |
+| 6 colored card presets | Done | teal, purple, indigo, emerald, rose, amber with white text |
+| Hero improvements | Done | Product mockup, gradient bg, colored pill badge, terminal-chrome code blocks |
+| Testimonial polish | Done | Decorative quote marks, star ratings, better name/role hierarchy |
+| Theme contrast fix | Done | Ivory base-200/base-300 now visually distinct from base-100 |
+| Context array bug fix | Done | Colored cards now in `inLandingCard` — headings render as h3 not h1 |
 
 ### SQLite Persistence (Phase 47b)
 | Feature | Status | Description |
