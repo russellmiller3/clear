@@ -200,6 +200,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #chat-send:hover { background: var(--accent2); box-shadow: 0 2px 12px rgba(108,140,255,.3); transform: translateY(-1px); }
 #chat-send:active { transform: translateY(0); }
 #chat-send:disabled { opacity: .3; cursor: default; transform: none; box-shadow: none; }
+#chat-stop { background: var(--red, #f43f5e); color: #fff; border: none; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 700; font-family: var(--font); cursor: pointer; transition: all .15s; }
+#chat-stop:hover { opacity: .85; transform: translateY(-1px); }
 #api-key-setup { padding: 24px; text-align: center; color: var(--tx3); font-family: var(--font); }
 #api-key-setup input { background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 10px; width: 100%; margin: 10px 0; font-family: var(--font); font-size: 12px; transition: border-color .15s; }
 #api-key-setup input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -359,6 +361,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <div id="chat-input-area">
       <textarea id="chat-input" rows="2" placeholder="Ask Claude to build something... (Enter to send)"></textarea>
       <button id="chat-send" onclick="sendChat()">Send</button>
+      <button id="chat-stop" onclick="stopChat()" style="display:none">Stop</button>
     </div>
     <div style="padding:6px 16px 8px;border-top:1px solid var(--bd);background:var(--bg2);display:flex;align-items:center;gap:6px;">
       <label id="web-toggle-label" title="Enable web search + fetch — Claude can search the web and read any URL" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
@@ -1263,6 +1266,11 @@ window.removeImage = function(i) {
 // ==========================================================================
 // SEND CHAT (streaming)
 // ==========================================================================
+let currentAbort = null;
+window.stopChat = function() {
+  if (currentAbort) currentAbort.abort();
+};
+
 window.sendChat = async function() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
@@ -1291,11 +1299,16 @@ window.sendChat = async function() {
   chatMessages.push({ role: 'user', content: userContent, _idx: chatMessages.length });
   renderChat();
   document.getElementById('chat-send').disabled = true;
+  document.getElementById('chat-send').style.display = 'none';
+  document.getElementById('chat-stop').style.display = '';
 
   // Create streaming assistant message
   const aIdx = chatMessages.length;
   chatMessages.push({ role: 'assistant', content: '', toolSteps: [], streaming: true, _idx: aIdx });
   renderChat();
+
+  // AbortController for stop button
+  currentAbort = new AbortController();
 
   try {
     const apiMessages = chatMessages.slice(0, -1).filter(m => m.role !== 'system').map(m => ({
@@ -1306,6 +1319,7 @@ window.sendChat = async function() {
     const r = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: currentAbort.signal,
       body: JSON.stringify({
         messages: apiMessages,
         apiKey,
@@ -1375,17 +1389,24 @@ window.sendChat = async function() {
     }
   } catch (err) {
     const am = chatMessages[aIdx];
-    const isNetErr = err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ERR_CONNECTION');
-    am.content = isNetErr
-      ? 'Connection error: The playground server at localhost:3456 is not responding. Make sure it\'s running: `node playground/server.js`'
-      : 'Connection error: ' + err.message;
+    if (err.name === 'AbortError') {
+      am.content += am.content ? '\n\n*Stopped.*' : '*Stopped.*';
+    } else {
+      const isNetErr = err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ERR_CONNECTION');
+      am.content = isNetErr
+        ? 'Connection error: The playground server at localhost:3456 is not responding. Make sure it\'s running: `node playground/server.js`'
+        : 'Connection error: ' + err.message;
+    }
     am.streaming = false;
     updateLastMsg();
   }
 
+  currentAbort = null;
   chatMessages[aIdx].streaming = false;
   updateLastMsg();
   document.getElementById('chat-send').disabled = false;
+  document.getElementById('chat-send').style.display = '';
+  document.getElementById('chat-stop').style.display = 'none';
 };
 
 // Enter to send (Shift+Enter for newline)
