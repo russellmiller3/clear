@@ -5,7 +5,13 @@ apps/*/build/package.json
 apps/*/build/package-lock.json
 apps/*/build/node_modules/
 apps/*/build/clear-data.json
+apps/*/build/clear-data.db
+apps/*/build/clear-data.db-wal
+apps/*/build/clear-data.db-shm
 clear-data.json
+clear-data.db
+clear-data.db-wal
+clear-data.db-shm
 .clear-test-runner.*
 playground/.playground-build/
 test-save/

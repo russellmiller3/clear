@@ -1,3 +1,150 @@
+# Plan: SQLite Persistence (Phase 47)
+_Date: 2026-04-09 | Branch: feature/sqlite-persistence_
+
+---
+
+## 🎯 THE PROBLEM
+
+Clear apps use an in-memory store (`runtime/db.js`) backed by a debounced JSON file write.
+Data can be lost if the process is killed within the 100ms debounce window, and JSON file
+writes are non-atomic (crash mid-write corrupts the file). Apps feel unreliable.
+
+Root cause: persistence layer designed for zero-dep simplicity, not durability.
+
+---
+
+## 🔧 THE FIX
+
+Replace `runtime/db.js` with a `better-sqlite3` implementation that exposes the **exact
+same public API**. Compiled server code doesn't change — it still calls
+`require('./clear-runtime/db')` and uses the same method names.
+
+```
+Before:                           After:
+  in-memory JS objects              SQLite file (clear-data.db)
+  + debounced JSON backup           atomic writes, WAL mode
+  clear-data.json                   clear-data.db
+  non-atomic writes                 durable by default
+  data loss on kill -9              survives kill -9
+```
+
+**Why better-sqlite3:** synchronous API matches the current db.js contract exactly.
+No async refactor needed anywhere. Fast. Battle-tested.
+
+**Module resolution:** `better-sqlite3` installed in Clear root `node_modules/`.
+When playground runs from `.playground-build/`, Node walks up and finds it at
+`[clear-root]/node_modules/better-sqlite3`. Same for `.clear-serve/`.
+For `clear package` (Dockerfile), we add it to the generated `package.json`.
+
+**Boolean coercion:** SQLite stores booleans as 0/1. New db.js coerces back to
+`true`/`false` on read using the stored schema.
+
+**Schema evolution:** If user adds a new field and restarts, `ALTER TABLE ADD COLUMN`
+runs for columns in schema that are missing from the table.
+
+---
+
+## 📁 FILES INVOLVED
+
+### Modified
+| File | What changes |
+|------|-------------|
+| `runtime/db.js` | Full rewrite — better-sqlite3 backend, same API |
+| `package.json` | Add `better-sqlite3` dependency |
+| `cli/clear.js` | `packageCommand`: add better-sqlite3 to generated package.json + update .dockerignore |
+| `compiler.js` | Update test-runner comment (clear-data.json → clear-data.db) |
+| `.gitignore` | Add `clear-data.db` entries |
+
+### Not changing
+| File | Why |
+|------|-----|
+| `compiler.js` (db require lines) | `require('./clear-runtime/db')` stays identical |
+| `playground/server.js` | Already copies `db.js` from `runtime/` |
+| All test files | Tests check compiled output strings, not runtime behavior |
+
+---
+
+## 🚨 EDGE CASES
+
+| Scenario | How we handle it |
+|----------|-----------------|
+| Old `clear-data.json` exists | Ignored — new impl opens/creates `.db` file |
+| Schema adds new column after data exists | `ALTER TABLE ADD COLUMN` in `createTable` |
+| Schema removes a column | Old column stays in DB, ignored in JS reads |
+| `reset()` called | `DELETE FROM` each known table + reset sqlite_sequence |
+| `save()` / `load()` called | No-ops — SQLite is always durable |
+| Boolean fields read back | Coerce `0` → `false`, `1` → `true` via schema |
+| `better-sqlite3` not found | Throws at server startup with clear message |
+| Number("") = 0 bug | Already guarded in `enforceTypes` — preserved |
+
+---
+
+## 🔄 INTEGRATION NOTES
+
+- `clear serve` works: module resolution finds better-sqlite3 at Clear root
+- `clear package` works: generated package.json gets better-sqlite3
+- Playground works: `.playground-build/` resolves up to root node_modules
+- No compiler changes — `db.*` call sites in compiled output are unchanged
+- `db.run(sql)` becomes real (was no-op). No breaking change.
+
+---
+
+## 📋 IMPLEMENTATION STEPS
+
+### Always read first
+| File | Why |
+|------|-----|
+| `runtime/db.js` | Full source before overwriting |
+| `compiler.js` line ~781 | Exact text for the comment to change |
+| `cli/clear.js` line ~871 | Exact text for packageCommand deps |
+| `cli/clear.js` line ~886 | Exact text for .dockerignore template |
+
+---
+
+### Cycle 1 🔴🟢🔄 — Install + rewrite runtime/db.js
+
+**RED** — write smoke test, run it, confirm it fails (module doesn't exist yet):
+```js
+// test-db-sqlite.cjs  — delete after this cycle
+const db = require('./runtime/db.js');
+db.createTable('items', {
+  name: { type: 'text', required: true },
+  done: { type: 'boolean', default: false }
+});
+db.insert('items', { name: 'hello' });
+db.insert('items', { name: 'world', done: true });
+const all = db.findAll('items');
+console.assert(all.length === 2, 'findAll');
+console.assert(all[0].done === false, 'boolean false coercion: ' + all[0].done);
+console.assert(all[1].done === true, 'boolean true coercion: ' + all[1].done);
+const one = db.findOne('items', { name: 'hello' });
+console.assert(one.name === 'hello', 'findOne');
+db.update('items', { id: 1 }, { done: true });
+const updated = db.findOne('items', { id: 1 });
+console.assert(updated.done === true, 'update');
+db.remove('items', { id: 1 });
+console.assert(db.findAll('items').length === 1, 'remove');
+db.reset();
+console.assert(db.findAll('items').length === 0, 'reset');
+console.log('ALL SMOKE TESTS PASS');
+```
+Run: `node test-db-sqlite.cjs` → should fail with require error.
+
+**GREEN:**
+
+Step 1 — install better-sqlite3:
+```bash
+npm install better-sqlite3
+```
+better-sqlite3 ships prebuilt binaries for Node 20/22/24 on Windows x64 via
+`@mapbox/node-pre-gyp` — no MSVC needed. If the prebuild download fails (network
+issue), the fallback build requires `windows-build-tools`. On Node 24, prebuilds
+are available as of v12.x. If install fails, check error: prebuild failure = network,
+native build failure = missing MSVC.
+
+Step 2 — overwrite `runtime/db.js` with this implementation:
+
+```js
 // =============================================================================
 // CLEAR RUNTIME — DATABASE MODULE (better-sqlite3 backend)
 // =============================================================================
@@ -30,7 +177,7 @@ const path = require('path');
 const DATA_FILE = path.join(process.cwd(), 'clear-data.db');
 const _db = new Database(DATA_FILE);
 
-// WAL mode: better concurrent read performance, safe across crashes
+// WAL mode: better concurrent read performance, safe with crashes
 _db.pragma('journal_mode = WAL');
 _db.pragma('synchronous = NORMAL');
 
@@ -74,7 +221,6 @@ function coerceForStorage(value) {
 // VALIDATION (application-level constraints — run before SQL)
 // =============================================================================
 
-// Sanitize string values to prevent stored XSS.
 function sanitizeRecord(record) {
   if (!record || typeof record !== 'object') return record;
   const result = {};
@@ -264,7 +410,6 @@ function update(table, filterOrRecord, data) {
 
   let filter, updateData;
   if (data === undefined) {
-    // Convention 1: db.update('table', record) — update by record.id
     const record = filterOrRecord;
     if (record.id !== undefined) {
       filter = { id: record.id };
@@ -273,7 +418,6 @@ function update(table, filterOrRecord, data) {
       return 0;
     }
   } else {
-    // Convention 2: db.update('table', filter, data)
     filter = filterOrRecord;
     updateData = data;
   }
@@ -332,8 +476,7 @@ function load() { /* no-op: db file is opened on require */ }
 function reset() {
   for (const tableName of Object.keys(_schemas)) {
     _db.prepare('DELETE FROM ' + tableName).run();
-    // Reset autoincrement counter (sqlite_sequence may not exist before first insert)
-    try { _db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(tableName); } catch (e) { /* ignore */ }
+    try { _db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(tableName); } catch (e) { /* table may not have autoincrement yet */ }
   }
 }
 
@@ -354,3 +497,101 @@ module.exports = {
   load,
   reset,
 };
+```
+
+Step 3 — run smoke test: `node test-db-sqlite.cjs` → `ALL SMOKE TESTS PASS`
+
+**REFACTOR:** delete `test-db-sqlite.cjs`, delete `clear-data.db` (created by smoke test).
+
+---
+
+### Cycle 2 🔴🟢🔄 — Ancillary updates + full test suite
+
+**RED** — `node clear.test.js` → confirm baseline (should be ~1489 passing).
+
+**GREEN** — 5 small edits:
+
+**Edit 1: `package.json`** — add dependency:
+```json
+"dependencies": {
+  "express": "^5.2.1",
+  "better-sqlite3": "^12.8.0"
+}
+```
+
+**Edit 2: `compiler.js` line ~781** — change the comment text:
+```js
+// BEFORE:
+lines.push('// Note: for clean re-runs, delete clear-data.json before starting the server');
+// AFTER:
+lines.push('// Note: for clean re-runs, delete clear-data.db before starting the server');
+```
+
+**Edit 3: `cli/clear.js` line ~871** — add better-sqlite3 to generated package.json:
+```js
+// BEFORE:
+dependencies: { express: '^4.18.0' },
+// AFTER:
+dependencies: { express: '^4.18.0', 'better-sqlite3': '^12.8.0' },
+```
+
+**Edit 4: `cli/clear.js` line ~886** — update .dockerignore template:
+```js
+// BEFORE:
+writeFileSync(resolve(outDir, '.dockerignore'), 'node_modules\nclear-data.json\n');
+// AFTER:
+writeFileSync(resolve(outDir, '.dockerignore'), 'node_modules\nclear-data.db\n');
+```
+
+**Edit 5: `.gitignore`** — add .db entries after existing `clear-data.json` lines:
+```
+clear-data.db
+apps/*/build/clear-data.db
+```
+Also add the WAL/SHM sidecar files SQLite creates in WAL mode:
+```
+clear-data.db-wal
+clear-data.db-shm
+```
+
+Run `node clear.test.js` → all passing.
+
+**REFACTOR:** sync `clear-runtime/db.js` — this file is git-tracked (it's the copy
+that ships with packaged apps, distinct from `runtime/db.js` source). Must be updated:
+```bash
+cp runtime/db.js clear-runtime/db.js
+```
+Then `git add clear-runtime/db.js` — this file is tracked, not generated.
+
+---
+
+## 🧪 TESTING STRATEGY
+
+Test commands:
+```bash
+node clear.test.js                  # 1489 compiler tests
+node playground/server.test.js      # ~85 integration tests (need server running)
+```
+
+**Success criteria:**
+- [ ] `node clear.test.js` — 1489 passing, 0 failing
+- [ ] `clear-data.db` created on first server run, persists after restart
+- [ ] Data present before restart is present after restart
+- [ ] `clear-data.json` no longer created
+- [ ] Boolean fields round-trip correctly (true/false not 1/0)
+
+---
+
+## Final step
+Run `update-learnings` skill to capture lessons from this phase.
+
+---
+
+## 📎 RESUME PROMPT
+
+Branch: `feature/sqlite-persistence`
+Plan: `plans/plan-sqlite-persistence-04-09-2026.md`
+
+Continue Phase 47: replace runtime/db.js in-memory store with better-sqlite3.
+Same public API, durable SQLite storage, no compiler changes needed.
+Cycle 1 = install + rewrite db.js. Cycle 2 = ancillary updates + test suite.
