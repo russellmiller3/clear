@@ -1,0 +1,110 @@
+build for web
+theme 'slate'
+
+# Developer Tool Landing Page -- GitHub/Linear style
+# API monitoring and testing platform
+
+page 'Hatch API' at '/':
+
+  section 'Nav' with style page_navbar:
+    heading 'Hatch'
+    link 'Docs' to '/docs'
+    link 'Changelog' to '/changelog'
+    link 'Pricing' to '#pricing'
+    link 'GitHub' to 'https://github.com'
+    button 'Sign In':
+      show 'signin'
+
+  section 'Hero' with style page_hero:
+    small text 'Open source core'
+    heading 'Test your API. Ship with confidence.'
+    subheading 'Hatch catches breaking changes before they hit production. Write tests in plain HTTP. Run them in CI. Sleep at night.'
+    link 'Get started free' to '/signup'
+    link 'View on GitHub' to 'https://github.com'
+
+  section 'Code Example' with style section_dark:
+    heading 'Tests that look like your API'
+    text 'No special syntax to learn. If you know HTTP, you know Hatch.'
+    code block '# hatch.test\n\nPOST /api/users\n  body: { "email": "test@example.com", "name": "Alice" }\n  expect: 201\n  expect: body.id is string\n  save: user_id = body.id\n\nGET /api/users/{{user_id}}\n  expect: 200\n  expect: body.email is "test@example.com"\n\nDELETE /api/users/{{user_id}}\n  requires: auth\n  expect: 204\n\n# Run: hatch test --env staging'
+    text 'Tests chain together. Variables carry across requests. Auth headers inject automatically.'
+
+  section 'Features' with style feature_split_dark:
+    heading 'Built for the way developers actually work'
+    text 'No GUIs to maintain. No YAML sprawl. Just tests that live next to your code.'
+    section 'F1' with style feature_card_large:
+      heading 'CI/CD Native'
+      subheading 'One command. Exit code 1 on failure.'
+      text 'Runs in GitHub Actions, CircleCI, Jenkins, or any CI with a single command. Add `hatch test` to your pipeline and forget about it. Red build = broken API. Green build = ship it.'
+    section 'F2' with style feature_card_emerald:
+      heading 'Contract Testing'
+      text 'Share your test file with consumers. Catch breaking changes before you merge, not after you deploy.'
+    section 'F3' with style feature_card_dark:
+      heading 'Environment Variables'
+      text 'One test file, multiple environments. Swap base URLs and secrets with .env files.'
+
+  section 'More Features' with style feature_grid_dark:
+    section 'F4' with style feature_card_dark:
+      heading 'Diff Reports'
+      text 'See exactly what changed between test runs. Response shape diffs, timing regressions, new error codes.'
+    section 'F5' with style feature_card_dark:
+      heading 'Auth Built In'
+      text 'Bearer tokens, API keys, OAuth flows, cookie sessions. Inject once, use everywhere.'
+    section 'F6' with style feature_card_dark:
+      heading 'Team Alerts'
+      text 'Slack or email when a test suite fails in production monitoring mode. Know before your users do.'
+
+  section 'Stats' with style stats_row:
+    section 'S1' with style stat_item:
+      heading '120k'
+      text 'API tests run daily'
+    section 'S2' with style stat_item:
+      heading '8,400'
+      text 'Developer teams'
+    section 'S3' with style stat_item:
+      heading '3ms'
+      text 'Test execution overhead'
+    section 'S4' with style stat_item:
+      heading '94%'
+      text 'Bugs caught pre-deploy'
+
+  section 'Compare' with style section_dark:
+    heading 'Why not Postman or Insomnia?'
+    text 'Postman is a GUI. Your tests live in a cloud dashboard no one reviews in PRs. When an endpoint changes, you find out when a colleague says "hey, the users endpoint is broken."'
+    text 'Hatch tests are files. They live in your repo. They run in CI. They fail the build. A reviewer sees them in the diff.'
+    bold text 'Shift your API tests left. Treat them like code. Because they are code.'
+
+  section 'Pricing' with style pricing_grid:
+    heading 'Start free. Pay when you scale.'
+    text 'Open source core is always free. Cloud features for teams that need them.'
+    section 'OSS' with style pricing_card:
+      heading 'Open Source'
+      subheading 'Free forever'
+      text 'Unlimited API tests'
+      text 'CI/CD integration'
+      text 'Local and self-hosted'
+      text 'Community Discord'
+      link 'Download free' to 'https://github.com'
+    section 'Cloud' with style pricing_card_featured:
+      heading 'Cloud'
+      subheading '$29 / month'
+      text 'Everything in OSS'
+      text 'Hosted test history (90 days)'
+      text 'Team dashboard'
+      text 'Diff reports and alerts'
+      text 'GitHub PR status checks'
+      text 'Email support'
+      link 'Start 14-day trial' to '/signup'
+    section 'Teams' with style pricing_card:
+      heading 'Teams'
+      subheading '$99 / month'
+      text 'Everything in Cloud'
+      text '1-year test history'
+      text 'SSO (SAML/OIDC)'
+      text 'Priority Slack support'
+      text 'SLA guarantee'
+      link 'Contact sales' to '/contact'
+
+  section 'CTA' with style page_cta:
+    heading 'Your API is only as good as your tests.'
+    text 'Add Hatch to your repo in under 5 minutes.'
+    link 'Get started free' to '/signup'

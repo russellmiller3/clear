@@ -1,0 +1,120 @@
+build for web
+theme 'midnight'
+
+# SaaS Landing Page -- Linear/Vercel style
+# Analytics platform: track user behavior, ship faster
+
+page 'Pulse Analytics' at '/':
+
+  section 'Nav' with style page_navbar:
+    heading 'Pulse'
+    link 'Features' to '#features'
+    link 'Pricing' to '#pricing'
+    link 'Docs' to '/docs'
+    link 'Blog' to '/blog'
+    button 'Start Free':
+      show 'signup clicked'
+
+  section 'Hero' with style page_hero:
+    small text 'Now in public beta'
+    heading 'Analytics that get out of your way.'
+    subheading 'See what your users do, understand why they do it, and ship the right features faster. No data science degree required.'
+    link 'Start for free' to '/signup'
+    link 'See a demo' to '/demo'
+
+  section 'Stats' with style stats_row:
+    section 'S1' with style stat_item:
+      heading '4.2B'
+      text 'Events tracked'
+    section 'S2' with style stat_item:
+      heading '28k'
+      text 'Teams using Pulse'
+    section 'S3' with style stat_item:
+      heading '99.98%'
+      text 'Uptime SLA'
+    section 'S4' with style stat_item:
+      heading '<200ms'
+      text 'Query latency'
+
+  section 'Features' with style feature_split:
+    heading 'Everything you need to understand your users'
+    text 'From first click to conversion, Pulse tracks every moment that matters.'
+    section 'F1' with style feature_card_large:
+      heading 'Funnel Analysis'
+      subheading 'See the drop-off. Fix the leak.'
+      text 'See exactly where users drop off in any multi-step flow. Pulse shows you the exact step, the exact percentage, and which user segments are leaving. Fix the leaks before they cost you revenue.'
+    section 'F2' with style feature_card_teal:
+      heading 'Session Replay'
+      text 'Watch real user sessions to understand confusion, rage clicks, and the paths you never expected.'
+    section 'F3' with style feature_card_purple:
+      heading 'A/B Testing'
+      text 'Ship variants to a percentage of traffic. Get statistical significance. Stop guessing.'
+
+  section 'More Features' with style feature_grid_dark:
+    section 'F4' with style feature_card_dark:
+      heading 'Cohort Analysis'
+      text 'Group users by behavior, acquisition source, or any property. Track retention over time.'
+    section 'F5' with style feature_card_dark:
+      heading 'Real-Time Dashboard'
+      text 'See active users, live events, and conversion rates update as they happen.'
+    section 'F6' with style feature_card_dark:
+      heading 'Slack Alerts'
+      text 'Get notified when a key metric spikes or drops. React before your users tweet about it.'
+
+  section 'Problem' with style section_dark:
+    heading 'You are flying blind without the right data'
+    text 'Your dashboard shows pageviews. Your users are abandoning the checkout at step 3. You have no idea.'
+    text 'Most analytics tools drown you in numbers but never answer the question that matters: why did that happen?'
+    text 'Pulse connects the dots. It shows you the full user journey from first visit to churned customer, with session context at every step.'
+
+  section 'Social Proof' with style testimonial_grid:
+    heading 'Loved by product teams at fast-moving companies'
+    section 'T1' with style testimonial_card:
+      text 'We cut our checkout abandonment by 34% in 6 weeks. Pulse showed us exactly which form field was killing conversions. We would never have found it otherwise.'
+      subheading 'Sarah Chen'
+      small text 'Head of Product, Cartify'
+    section 'T2' with style testimonial_card:
+      text 'Finally an analytics tool where I can get from question to answer in under 5 minutes. Our old tool required a data analyst and a 3-day wait for any custom query.'
+      subheading 'Marcus Webb'
+      small text 'Growth Lead, Teamflow'
+    section 'T3' with style testimonial_card:
+      text 'The session replay feature alone was worth it. We watched 20 sessions and rewrote our onboarding. Activation went from 31% to 58% in one sprint.'
+      subheading 'Priya Kapoor'
+      small text 'CEO, Docsend Pro'
+
+  section 'Pricing' with style pricing_grid:
+    heading 'Simple, predictable pricing'
+    text 'All plans include unlimited team members. No per-seat charges.'
+    section 'Starter' with style pricing_card:
+      heading 'Starter'
+      subheading 'Free'
+      text 'Up to 10k events/month'
+      text '30-day data retention'
+      text 'Core funnels and dashboards'
+      text 'Community support'
+      link 'Get started free' to '/signup'
+    section 'Growth' with style pricing_card_featured:
+      heading 'Growth'
+      subheading '$49 / month'
+      text '5M events/month'
+      text '12-month data retention'
+      text 'Session replay (1k/month)'
+      text 'A/B testing'
+      text 'Slack and email alerts'
+      text 'Priority email support'
+      link 'Start free trial' to '/signup'
+    section 'Enterprise' with style pricing_card:
+      heading 'Enterprise'
+      subheading 'Custom'
+      text 'Unlimited events'
+      text 'Unlimited data retention'
+      text 'SSO and SCIM'
+      text 'Custom data pipelines'
+      text 'Dedicated SLA'
+      text 'White-glove onboarding'
+      link 'Talk to sales' to '/contact'
+
+  section 'CTA' with style page_cta:
+    heading 'Stop guessing. Start knowing.'
+    text 'Free forever on the starter plan. No credit card required.'
+    link 'Create free account' to '/signup'

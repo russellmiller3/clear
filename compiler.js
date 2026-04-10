@@ -4806,7 +4806,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     // SHOW with function call in reactive mode: render component to DOM
     if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL) {
       const callExpr = node.expression;
-      const containerId = `component_${sanitizeName(callExpr.name)}_${componentCounter++}`;
+      const containerId = `comp_${componentCounter++}`;
       const args = callExpr.args.map(a => exprToCode(a, reactiveCtx)).join(', ');
       lines.push(`  // Render component: ${callExpr.name}`);
       lines.push(`  { const _el = document.getElementById('${containerId}');`);
@@ -5407,14 +5407,37 @@ function buildHTML(body) {
               resolvedPreset = 'bg-neutral-focus/50 rounded-2xl p-8 flex flex-col gap-3 border border-neutral-content/10';
             }
             const cls = [resolvedPreset, inlineClass, tailwindClasses].filter(Boolean).join(' ');
+            // hero_left and page_hero get radial gradients (CSS custom properties work at runtime unlike Tailwind from-primary)
+            const heroInlineStyle = node.styleName === 'hero_left'
+              ? ` style="background:radial-gradient(ellipse 80% 60% at 70% 50%, oklch(from var(--color-primary, oklch(0.55 0.2 260)) l c h / 0.08) 0%, transparent 70%), var(--color-base-100, white)"`
+              : node.styleName === 'page_hero'
+              ? ` style="background:radial-gradient(ellipse 70% 50% at 50% 0%, oklch(from var(--color-primary, oklch(0.55 0.2 260)) l c h / 0.1) 0%, transparent 65%), var(--color-base-100, white)"`
+              : '';
             // Only full-width landing page sections get the max-w-5xl inner wrapper.
             // App presets (flex layout) and card-type presets (already constrained) skip it.
             const isAppPreset = node.styleName && node.styleName.startsWith('app_');
-            const isCardPreset = ['metric_card', 'card', 'card_bordered', 'form', 'code_box'].includes(node.styleName);
-            const isHeroPreset = ['page_hero', 'hero', 'page_cta'].includes(node.styleName);
+            const isCardPreset = [
+              'metric_card', 'card', 'card_bordered', 'form', 'code_box',
+              'feature_card', 'feature_card_dark', 'feature_card_large',
+              'feature_card_teal', 'feature_card_purple', 'feature_card_indigo',
+              'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
+              'pricing_card', 'pricing_card_featured',
+              'testimonial_card', 'stat_item', 'logo_item',
+            ].includes(node.styleName);
+            const isHeroPreset = ['page_hero', 'hero', 'hero_left', 'page_cta'].includes(node.styleName);
             const isNavbarPreset = node.styleName === 'page_navbar';
-            const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset;
-            parts.push(`    <div class="${cls}">`);
+            const GRID_SECTION_PRESETS = [
+              'logo_bar', 'logo_bar_dark',
+              'feature_split', 'feature_split_dark',
+              'feature_spotlight', 'feature_spotlight_dark',
+              'feature_grid', 'feature_grid_dark',
+              'stats_row',
+              'pricing_grid', 'pricing_grid_dark',
+              'testimonial_grid', 'testimonial_grid_dark',
+            ];
+            const isGridSection = GRID_SECTION_PRESETS.includes(node.styleName);
+            const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset && !isGridSection;
+            parts.push(`    <div class="${cls}"${heroInlineStyle}>`);
             if (needsWrapper) parts.push(`      <div class="max-w-4xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
@@ -5463,8 +5486,79 @@ function buildHTML(body) {
               }
               // Emit remaining children
               if (otherNodes.length > 0) walk(otherNodes);
+            } else if (isGridSection) {
+              // Grid sections: split direct CONTENT children (heading/label) from SECTION children (cards).
+              // CONTENT children → centered header block. SECTION children → layout-specific container.
+              const sn = node.styleName;
+              const headerNodes = node.body.filter(c => c.type === NodeType.CONTENT);
+              const cardNodes = node.body.filter(c => c.type === NodeType.SECTION);
+              const isDark = sn.endsWith('_dark');
+              const headingColor = isDark ? 'text-neutral-content' : 'text-base-content';
+              if (headerNodes.length > 0) {
+                parts.push(`      <div class="max-w-5xl mx-auto text-center mb-10">`);
+                walk(headerNodes);
+                parts.push(`      </div>`);
+              }
+              if (sn === 'logo_bar' || sn === 'logo_bar_dark') {
+                parts.push(`      <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-8 md:gap-14">`);
+                walk(cardNodes);
+                parts.push(`      </div>`);
+              } else if (sn === 'feature_split' || sn === 'feature_split_dark') {
+                parts.push(`      <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">`);
+                if (cardNodes.length > 0) {
+                  const [large, ...smalls] = cardNodes;
+                  parts.push(`        <div class="lg:col-span-2">`);
+                  walk([large]);
+                  parts.push(`        </div>`);
+                  if (smalls.length > 0) {
+                    parts.push(`        <div class="flex flex-col gap-6">`);
+                    walk(smalls);
+                    parts.push(`        </div>`);
+                  }
+                }
+                parts.push(`      </div>`);
+              } else if (sn === 'feature_spotlight' || sn === 'feature_spotlight_dark') {
+                parts.push(`      <div class="max-w-6xl mx-auto flex flex-col gap-16 mt-6">`);
+                cardNodes.forEach((card, i) => {
+                  const isEven = i % 2 === 0;
+                  parts.push(`        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">`);
+                  if (isEven) {
+                    walk([card]);
+                    parts.push(`          <div class="bg-base-200 rounded-2xl border border-base-300/40 aspect-video flex items-center justify-center"><span class="text-base-content/20 text-sm font-mono">product ui</span></div>`);
+                  } else {
+                    parts.push(`          <div class="bg-base-200 rounded-2xl border border-base-300/40 aspect-video flex items-center justify-center order-first"><span class="text-base-content/20 text-sm font-mono">product ui</span></div>`);
+                    walk([card]);
+                  }
+                  parts.push(`        </div>`);
+                });
+                parts.push(`      </div>`);
+              } else if (sn === 'stats_row') {
+                parts.push(`      <div class="max-w-5xl mx-auto flex flex-wrap items-start justify-center gap-12 md:gap-20">`);
+                walk(cardNodes);
+                parts.push(`      </div>`);
+              } else if (sn === 'pricing_grid' || sn === 'pricing_grid_dark') {
+                parts.push(`      <div class="max-w-5xl mx-auto flex flex-col md:flex-row gap-6 items-stretch mt-6">`);
+                walk(cardNodes);
+                parts.push(`      </div>`);
+              } else {
+                // feature_grid, testimonial_grid, etc.
+                parts.push(`      <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">`);
+                walk(cardNodes);
+                parts.push(`      </div>`);
+              }
             } else if (isHeroPreset) {
-              // Hero: group consecutive link nodes into a flex row for side-by-side CTA buttons
+              // Hero: group consecutive link nodes into a flex row for side-by-side CTA buttons.
+              // hero_left gets a two-column layout: text left + product mock right.
+              // Centered heroes (page_hero, page_cta) get justify-center.
+              const isLeftHero = node.styleName === 'hero_left';
+              const justifyClass = isLeftHero ? 'justify-start' : 'justify-center';
+
+              if (isLeftHero) {
+                // Two-column: text content on left, product screenshot mock on right
+                parts.push(`    <div class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">`);
+                parts.push(`      <div class="flex flex-col gap-6">`);
+              }
+
               const children = node.body;
               let ci = 0;
               while (ci < children.length) {
@@ -5478,15 +5572,68 @@ function buildHTML(body) {
                   while (ci < children.length && children[ci].type === NodeType.CONTENT && children[ci].ui && children[ci].ui.contentType === 'link') {
                     linkGroup.push(children[ci++]);
                   }
-                  parts.push(`    <div class="flex gap-4 flex-wrap justify-center mt-2">`);
-                  walk(linkGroup);
+                  parts.push(`    <div class="flex gap-4 flex-wrap ${justifyClass} mt-2">`);
+                  linkGroup.forEach((linkNode, idx) => {
+                    const fmt = formatInlineText(linkNode.ui.text);
+                    const href = linkNode.ui?.href || '#';
+                    const btnCls = idx === 0 ? 'btn btn-primary btn-lg' : 'btn btn-outline btn-lg';
+                    parts.push(`      <a class="${btnCls}" href="${href}">${fmt}</a>`);
+                  });
                   parts.push(`    </div>`);
                 } else {
                   walk([child]);
                   ci++;
                 }
               }
+
+              if (isLeftHero) {
+                parts.push(`      </div>`);
+                // Right column: simulated product UI (Clay/Notion style)
+                parts.push(`      <div class="hidden lg:flex items-start justify-center pt-4">`);
+                parts.push(`        <div class="w-full max-w-lg rounded-2xl border border-base-300/60 shadow-2xl overflow-hidden" style="background:oklch(0.97 0.005 240)">`);
+                // Fake app chrome: title bar
+                parts.push(`          <div class="flex items-center gap-2 px-4 py-3 border-b border-base-300/40" style="background:oklch(0.95 0.008 240)">`);
+                parts.push(`            <div class="w-3 h-3 rounded-full bg-red-300/70"></div>`);
+                parts.push(`            <div class="w-3 h-3 rounded-full bg-yellow-300/70"></div>`);
+                parts.push(`            <div class="w-3 h-3 rounded-full bg-green-300/70"></div>`);
+                parts.push(`            <div class="flex-1 mx-4 h-5 rounded-md bg-base-300/40 text-xs flex items-center justify-center text-base-content/30 font-mono">vibe.so/recording/abc123</div>`);
+                parts.push(`          </div>`);
+                // Video recording area
+                parts.push(`          <div class="p-4 flex flex-col gap-3">`);
+                parts.push(`            <div class="rounded-xl overflow-hidden aspect-video bg-base-content/8 flex items-center justify-center relative">`);
+                parts.push(`              <div class="absolute inset-0" style="background:linear-gradient(135deg, oklch(0.45 0.18 270 / 0.15), oklch(0.55 0.2 230 / 0.1))"></div>`);
+                parts.push(`              <div class="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center z-10">`);
+                parts.push(`                <div class="w-0 h-0 border-t-[8px] border-b-[8px] border-l-[14px] border-t-transparent border-b-transparent border-l-primary/60 ml-1"></div>`);
+                parts.push(`              </div>`);
+                parts.push(`              <div class="absolute bottom-3 left-3 right-3 flex items-center gap-2">`);
+                parts.push(`                <div class="h-1 flex-1 rounded-full bg-base-content/20"><div class="h-1 w-2/5 rounded-full bg-primary/70"></div></div>`);
+                parts.push(`                <span class="text-xs font-mono text-base-content/40">1:42</span>`);
+                parts.push(`              </div>`);
+                parts.push(`            </div>`);
+                // AI summary cards below
+                parts.push(`            <div class="grid grid-cols-2 gap-2">`);
+                parts.push(`              <div class="rounded-lg p-3 border border-base-300/50 bg-base-100/80">`);
+                parts.push(`                <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5">AI Summary</div>`);
+                parts.push(`                <div class="h-1.5 w-full rounded bg-base-300/60 mb-1"></div>`);
+                parts.push(`                <div class="h-1.5 w-4/5 rounded bg-base-300/40"></div>`);
+                parts.push(`              </div>`);
+                parts.push(`              <div class="rounded-lg p-3 border border-primary/20 bg-primary/5">`);
+                parts.push(`                <div class="text-xs font-semibold text-primary/70 uppercase tracking-wide mb-1.5">Action Items</div>`);
+                parts.push(`                <div class="flex items-center gap-1.5 mb-1"><div class="w-3 h-3 rounded border border-primary/40"></div><div class="h-1.5 flex-1 rounded bg-primary/20"></div></div>`);
+                parts.push(`                <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded border border-primary/40"></div><div class="h-1.5 w-3/4 rounded bg-primary/15"></div></div>`);
+                parts.push(`              </div>`);
+                parts.push(`            </div>`);
+                parts.push(`          </div>`);
+                parts.push(`        </div>`);
+                parts.push(`      </div>`);
+                parts.push(`    </div>`);
+              }
             } else {
+              // Inject star rating row and quote mark for testimonial cards
+              if (node.styleName === 'testimonial_card') {
+                parts.push(`      <div class="text-4xl leading-none text-base-content/20 font-serif mb-1">\u201C</div>`);
+                parts.push(`      <div class="flex gap-0.5 text-amber-400 text-sm mb-2">★★★★★</div>`);
+              }
               walk(node.body);
             }
             sectionStack.pop();
@@ -5677,25 +5824,61 @@ ${options}
           const inHeader = parentPreset === 'app_header';
           const inMetricCard = parentPreset === 'metric_card';
           const inCard = ['card', 'card_bordered', 'form'].includes(parentPreset);
-          const inHero = ['page_hero', 'hero', 'page_cta'].includes(parentPreset);
-          const inDarkSection = ['page_section_dark', 'section_dark'].includes(parentPreset);
-          const inPageSection = ['page_section', 'page_section_dark', 'section_light', 'section_dark'].includes(parentPreset);
+          const inHero = ['page_hero', 'hero', 'hero_left', 'page_cta'].includes(parentPreset);
+          const inHeroLeft = parentPreset === 'hero_left';
+          const inDarkSection = ['page_section_dark', 'section_dark', 'feature_grid_dark',
+            'feature_split_dark', 'feature_spotlight_dark', 'pricing_grid_dark',
+            'testimonial_grid_dark', 'logo_bar_dark'].includes(parentPreset);
+          const inPageSection = ['page_section', 'page_section_dark', 'section_light', 'section_dark',
+            'feature_grid', 'feature_grid_dark', 'feature_split', 'feature_split_dark',
+            'feature_spotlight', 'feature_spotlight_dark',
+            'pricing_grid', 'pricing_grid_dark', 'stats_row',
+            'testimonial_grid', 'testimonial_grid_dark', 'logo_bar', 'logo_bar_dark'].includes(parentPreset);
+          const inLandingCard = [
+            'feature_card', 'feature_card_dark', 'feature_card_large', 'testimonial_card',
+            'feature_card_teal', 'feature_card_purple', 'feature_card_indigo',
+            'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
+          ].includes(parentPreset);
+          const inLargeCard = parentPreset === 'feature_card_large';
+          const inPricingCard = parentPreset === 'pricing_card';
+          const inFeaturedPricing = parentPreset === 'pricing_card_featured';
+          const inStatItem = parentPreset === 'stat_item';
+          const inLogoItem = parentPreset === 'logo_item';
+          const inLogoBar = parentPreset === 'logo_bar' || parentPreset === 'logo_bar_dark';
+          const COLORED_CARD_PRESETS = [
+            'feature_card_dark', 'feature_card_teal', 'feature_card_purple',
+            'feature_card_indigo', 'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
+          ];
+          const inDarkCard = COLORED_CARD_PRESETS.includes(parentPreset);
           switch (ui.contentType) {
             case 'heading':
-              if (inHero) {
-                // Hero/CTA: massive display headline (Stripe-style)
-                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-[1.1] text-base-content max-w-3xl mx-auto">${formatted}</h1>`);
+              if (inLogoBar) {
+                // Logo bar label — small muted, not a big section heading
+                parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 text-center mb-6">${formatted}</p>`);
+              } else if (inHero) {
+                // Hero headline — left or centered; hero_left gets larger font to fill viewport
+                const heroAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
+                const heroSize = inHeroLeft ? 'text-5xl lg:text-6xl' : 'text-5xl md:text-6xl';
+                parts.push(`    <h1 class="font-display ${heroSize} font-bold tracking-tight leading-[1.05] text-base-content max-w-3xl ${heroAlign}">${formatted}</h1>`);
               } else if (inHeader) {
                 parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
                 parts.push(`    <p class="font-mono text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
               } else if (inSidebar) {
                 parts.push(`    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
+              } else if (inStatItem) {
+                parts.push(`    <p class="text-4xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
+              } else if (inFeaturedPricing) {
+                parts.push(`    <h3 class="text-xl font-bold text-primary-content">${formatted}</h3>`);
+              } else if (inPricingCard) {
+                parts.push(`    <h3 class="text-xl font-bold text-base-content">${formatted}</h3>`);
+              } else if (inLandingCard) {
+                const tc = inDarkCard ? 'text-white' : inLargeCard ? 'text-primary-content' : 'text-base-content';
+                parts.push(`    <h3 class="text-lg font-bold ${tc} leading-snug">${formatted}</h3>`);
               } else if (inCard) {
                 parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
               } else if (inPageSection) {
-                // Section heading in landing page (dark sections use neutral-content)
-                const textColor = parentPreset === 'page_section_dark' || parentPreset === 'section_dark' ? 'text-neutral-content' : 'text-base-content';
+                const textColor = inDarkSection ? 'text-neutral-content' : 'text-base-content';
                 parts.push(`    <h2 class="font-display text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
               } else {
                 parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
@@ -5703,8 +5886,15 @@ ${options}
               break;
             case 'subheading':
               if (inHero) {
-                // Hero subheading: lighter, wider
-                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-xl">${formatted}</p>`);
+                const heroSubAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
+                parts.push(`    <p class="text-xl text-base-content/60 leading-relaxed max-w-xl ${heroSubAlign}">${formatted}</p>`);
+              } else if (inPricingCard) {
+                parts.push(`    <p class="text-3xl font-bold text-primary">${formatted}</p>`);
+              } else if (inFeaturedPricing) {
+                parts.push(`    <p class="text-3xl font-bold text-primary-content">${formatted}</p>`);
+              } else if (inLandingCard) {
+                const tc = inDarkCard ? 'text-white/70' : inLargeCard ? 'text-primary-content/70' : 'text-base-content/60';
+                parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
               } else if (inDarkSection) {
                 parts.push(`    <h2 class="text-xl font-semibold text-neutral-content tracking-tight mt-6 mb-3">${formatted}</h2>`);
               } else {
@@ -5731,8 +5921,19 @@ ${options}
               } else if (inMetricCard) {
                 parts.push(`    <p class="text-xs text-base-content/40 font-mono">${formatted}</p>`);
               } else if (inHero) {
-                // Hero/CTA body text
                 parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed">${formatted}</p>`);
+              } else if (inStatItem) {
+                parts.push(`    <p class="text-sm text-base-content/50 mt-1">${formatted}</p>`);
+              } else if (inLogoItem) {
+                parts.push(`    <span class="text-sm font-semibold text-base-content/30 tracking-widest uppercase">${formatted}</span>`);
+              } else if (inFeaturedPricing) {
+                parts.push(`    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>${formatted}</p>`);
+              } else if (inPricingCard) {
+                // MUST be before inLandingCard — pricing_card is not in inLandingCard but guard anyway
+                parts.push(`    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>${formatted}</p>`);
+              } else if (inLandingCard) {
+                const tc = inDarkCard ? 'text-white/80' : inLargeCard ? 'text-primary-content/80' : 'text-base-content/60';
+                parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
               } else if (inDarkSection) {
                 parts.push(`    <p class="text-base text-neutral-content/70 leading-relaxed mb-3">${formatted}</p>`);
               } else if (inPageSection) {
@@ -5740,7 +5941,6 @@ ${options}
               } else if (inCard) {
                 parts.push(`    <p class="text-sm text-base-content/80 leading-relaxed">${formatted}</p>`);
               } else {
-                // Default: user-defined section (issue rows, stat cards, etc.) — full contrast, no bottom margin
                 parts.push(`    <p class="text-sm font-medium text-base-content/90 leading-snug">${formatted}</p>`);
               }
               break;
@@ -5754,26 +5954,36 @@ ${options}
               if (inHeader) {
                 parts.push(`    <span class="badge badge-ghost badge-sm font-mono">${formatted}</span>`);
               } else if (inHero) {
-                // Hero eyebrow badge
-                parts.push(`    <span class="badge badge-outline badge-sm font-mono tracking-wide uppercase">${formatted}</span>`);
+                parts.push(`    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase border border-primary/30 text-primary" style="background:oklch(from var(--color-primary) l c h / 0.08)">${formatted}</span>`);
+              } else if (inLandingCard) {
+                // testimonial_card: role + company attribution
+                parts.push(`    <span class="text-xs text-base-content/40 leading-snug">${formatted}</span>`);
+              } else if (inLogoItem) {
+                parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/20">${formatted}</span>`);
               } else {
                 parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">${formatted}</span>`);
               }
               break;
             case 'link':
               if (inHero) {
-                // Hero CTA: big primary button
+                // Lone hero link (not in a group) — primary by default
                 parts.push(`    <a class="btn btn-primary btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
+              } else if (inFeaturedPricing) {
+                parts.push(`    <a class="btn btn-sm bg-white text-primary font-semibold mt-auto" href="${ui.href || '#'}">${formatted}</a>`);
+              } else if (inPricingCard) {
+                parts.push(`    <a class="btn btn-outline btn-primary btn-sm mt-auto" href="${ui.href || '#'}">${formatted}</a>`);
+              } else if (inLandingCard) {
+                parts.push(`    <a class="link link-primary text-sm font-medium" href="${ui.href || '#'}">${formatted}</a>`);
               } else {
                 parts.push(`    <a class="link link-primary text-sm" href="${ui.href || '#'}">${formatted}</a>`);
               }
               break;
             case 'code': {
-              // In dark sections, use a dark code block; in light sections, use a light one
+              // In dark sections, use a terminal-style dark code block; in light sections, a light one
               if (inDarkSection) {
-                parts.push(`    <div class="rounded-xl border border-neutral-content/10 overflow-hidden mb-4" style="background:oklch(12% 0.015 240)"><pre class="font-mono text-sm text-neutral-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
+                parts.push(`    <div class="rounded-xl border border-neutral-content/10 overflow-hidden mb-4" style="background:oklch(12% 0.015 240)"><div class="flex items-center gap-1.5 px-4 py-3 border-b border-neutral-content/10"><span class="w-3 h-3 rounded-full bg-red-500/70"></span><span class="w-3 h-3 rounded-full bg-amber-400/70"></span><span class="w-3 h-3 rounded-full bg-emerald-500/70"></span></div><pre class="font-mono text-sm text-neutral-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
               } else {
-                parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/60 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
+                parts.push(`    <div class="rounded-xl border border-base-300/60 overflow-hidden mb-4" style="background:oklch(97% 0.005 240)"><div class="flex items-center gap-1.5 px-4 py-3 border-b border-base-300/60 bg-base-200"><span class="w-3 h-3 rounded-full bg-red-400/60"></span><span class="w-3 h-3 rounded-full bg-amber-400/60"></span><span class="w-3 h-3 rounded-full bg-emerald-400/60"></span></div><pre class="font-mono text-sm text-base-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
               }
               break;
             }
@@ -5787,7 +5997,7 @@ ${options}
         case NodeType.SHOW: {
           // Component call: show Card(name) -> container div for reactive rendering
           if (node.expression && node.expression.type === NodeType.CALL && node.expression.name) {
-            const containerId = `component_${sanitizeName(node.expression.name)}_${compRenderCounter++}`;
+            const containerId = `comp_${compRenderCounter++}`;
             parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
           }
           break;
@@ -6876,32 +7086,61 @@ function resolveStyleTokens(properties) {
 // No custom CSS is generated for built-in presets.
 // User-defined styles (via `style X:` blocks) still compile to custom CSS.
 const BUILTIN_PRESET_CLASSES = {
-  // --- Landing page presets (design-system-v2) ---
+  // --- Landing page presets ---
   page_navbar:       '__navbar__', // special rendering handled in section renderer
   page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
   page_section:      'bg-base-100 py-16 px-6',
-  page_section_dark: 'bg-neutral text-neutral-content py-16 px-6',
-  // page_card: bg-base-200 so cards pop off the bg-base-100 section. hover border glow (Linear-style) not scale.
+  page_section_dark: 'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   page_card:         'bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm',
   page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
   page_stats:        'bg-base-200 py-16 px-6',
 
-  // --- App/dashboard presets (design-system-v2) ---
+  // --- v2 landing sections ---
+  hero_left:              'bg-base-100 py-28 px-6 flex flex-col items-start gap-6 overflow-hidden',
+  logo_bar:               'bg-base-200/60 border-y border-base-300/40 py-6 px-6',
+  logo_bar_dark:          'bg-neutral text-neutral-content border-y border-neutral-content/10 py-6 px-6',
+  feature_split:          'bg-base-100 py-20 px-6',
+  feature_split_dark:     'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
+  feature_spotlight:      'bg-base-200/40 py-20 px-6',
+  feature_spotlight_dark: 'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
+  feature_grid:           'bg-base-100 py-16 px-6',
+  feature_grid_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
+  stats_row:              'bg-base-200 py-14 px-6',
+  pricing_grid:           'bg-base-200 py-20 px-6',
+  pricing_grid_dark:      'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
+  testimonial_grid:       'bg-base-200/50 py-16 px-6',
+  testimonial_grid_dark:  'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
+
+  // --- v2 card presets ---
+  feature_card:           'bg-base-100 rounded-2xl p-7 flex flex-col gap-3 border border-base-300/60 hover:border-primary/40 hover:shadow-md transition-all',
+  feature_card_dark:      'bg-white/5 rounded-2xl p-7 flex flex-col gap-3 border border-white/10 hover:border-primary/40 transition-colors',
+  // feature_card_large: bold primary bg — the "hero card" in the asymmetric split (Clay-style)
+  feature_card_large:     'bg-primary text-primary-content rounded-2xl p-10 flex flex-col gap-5 shadow-xl',
+  // Colored accent cards for bento grids (Clay/Notion style)
+  feature_card_teal:      'bg-teal-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
+  feature_card_purple:    'bg-violet-600 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
+  feature_card_indigo:    'bg-indigo-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
+  feature_card_emerald:   'bg-emerald-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
+  feature_card_rose:      'bg-rose-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
+  feature_card_amber:     'bg-amber-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
+  pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm',
+  pricing_card_featured:  'bg-primary rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1',
+  testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/40 shadow-sm',
+  stat_item:              'flex flex-col items-center text-center gap-1 min-w-[140px]',
+  logo_item:              'flex items-center justify-center',
+
+  // --- App/dashboard presets ---
   app_layout:        'flex h-screen overflow-hidden',
-  // sidebar: base-300 is slightly brighter than base-200 in midnight — creates visible separation from bg
   app_sidebar:       'w-52 shrink-0 flex flex-col bg-base-300/20 border-r border-base-300/50 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  // content: base-100 (darkest) so cards on top pop. Linear uses this layering.
   app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
-  // header: stronger border-b so it's visible in dark mode
   app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-200/80 backdrop-blur-sm border-b border-base-300/60 shrink-0',
-  // app_card: elevated above bg-base-100 content
   app_card:          'bg-base-200 rounded-xl border border-base-300/50 shadow-md p-5',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 flex flex-col items-center text-center gap-5',
   section_light:     'bg-base-100 py-16 px-6',
-  section_dark:      'bg-neutral text-neutral-content py-16 px-6',
+  section_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
   card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
   metric_card:       'bg-base-200 rounded-box p-6 flex flex-col gap-1',
@@ -7053,8 +7292,8 @@ const THEME_CSS = {
   ivory: `[data-theme="ivory"] {
   color-scheme: light;
   --color-base-100: oklch(100% 0 0);
-  --color-base-200: oklch(97.5% 0.004 240);
-  --color-base-300: oklch(94% 0.006 240);
+  --color-base-200: oklch(94% 0.008 240);
+  --color-base-300: oklch(88% 0.01 240);
   --color-base-content: oklch(14% 0.02 255);
   --color-primary: oklch(52% 0.22 258);
   --color-primary-content: oklch(100% 0 0);
