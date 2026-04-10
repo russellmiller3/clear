@@ -3417,10 +3417,17 @@ function parseSection(lines, startIdx, blockIndent, errors) {
           remaining = remaining.replace(mod, '').trim();
         }
       }
-      // Check for "Npx wide" pattern
+      // Check for "Npx wide" pattern — map common sizes to Tailwind w-* classes, else custom CSS
       const wideMatch = modText.match(/(\d+)\s*px\s*wide/);
       if (wideMatch) {
-        inlineModifiers.push({ custom: true, props: { width: wideMatch[1] + 'px', 'flex-shrink': '0' } });
+        const px = parseInt(wideMatch[1], 10);
+        const TAILWIND_WIDTHS = { 120:'w-30', 128:'w-32', 144:'w-36', 160:'w-40', 176:'w-44',
+          192:'w-48', 208:'w-52', 224:'w-56', 240:'w-60', 256:'w-64', 288:'w-72', 320:'w-80', 384:'w-96' };
+        if (TAILWIND_WIDTHS[px]) {
+          inlineModifiers.push({ tailwind: `${TAILWIND_WIDTHS[px]} shrink-0` });
+        } else {
+          inlineModifiers.push({ custom: true, props: { width: px + 'px', 'flex-shrink': '0' } });
+        }
       }
     }
   }

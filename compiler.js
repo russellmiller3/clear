@@ -5247,6 +5247,8 @@ function buildHTML(body) {
                   cssProps.push(`${m.prop}: ${m.val}`);
                   if (m.extra) Object.entries(m.extra).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
                 }
+              } else if (mod && mod.tailwind) {
+                twClasses.push(mod.tailwind); // direct Tailwind classes (e.g. from Npx wide mapping)
               } else if (mod && mod.custom && mod.props) {
                 Object.entries(mod.props).forEach(([k, v]) => cssProps.push(`${k}: ${v}`));
               }
@@ -5405,18 +5407,31 @@ function buildHTML(body) {
             if (hasUserStyle && !hasInline && rawProperties.length > 0) {
               parts.push(`      <div class="max-w-5xl mx-auto px-4">`);
             }
+            // Push to sectionStack so child sections know their parent context
+            if (node.styleName) sectionStack.push(node.styleName);
             walk(node.body);
+            if (node.styleName) sectionStack.pop();
             if (hasUserStyle && !hasInline && rawProperties.length > 0) {
               parts.push(`      </div>`);
             }
             parts.push(`    </div>`);
           } else {
-            // No style: default card section using DaisyUI utilities
-            const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass, tailwindClasses].filter(Boolean).join(' ');
-            parts.push(`    <div class="${allClasses}">
+            // No style: if inside a styled parent (layout/app), render as bare div to avoid double-boxing.
+            // If at top level, use default card treatment.
+            const inStyledParent = sectionStack.length > 0;
+            if (inStyledParent) {
+              const allClasses = ['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ');
+              parts.push(`    <div class="${allClasses}">`);
+              walk(node.body);
+              parts.push(`    </div>`);
+            } else {
+              // Default card section using DaisyUI utilities
+              const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass, tailwindClasses].filter(Boolean).join(' ');
+              parts.push(`    <div class="${allClasses}">
       <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">${node.ui.title}</h2>`);
-            walk(node.body);
-            parts.push(`    </div>`);
+              walk(node.body);
+              parts.push(`    </div>`);
+            }
           }
           break;
         }
