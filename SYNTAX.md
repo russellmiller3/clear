@@ -370,93 +370,202 @@ Clear compiles to DaisyUI v5 + Tailwind CSS v4. Three built-in themes:
 See `design-system.md` for full color tokens, typography, and component patterns.
 See `ai-build-instructions.md` for the 10 hard design rules.
 
+---
+
 ### Built-in Presets
 
-Clear ships with style presets that emit DaisyUI/Tailwind classes directly. No custom CSS needed:
+Always reach for a preset first. Presets emit correct DaisyUI/Tailwind classes and
+adapt to all three themes. No custom CSS needed.
 
 ```clear
-# Landing page presets
-section 'Hero' with style page_hero:             # dark bg, centered, big padding
-  heading 'Welcome'
-section 'Features' with style page_section:       # light bg, standard padding
-  heading 'Features'
-section 'CTA' with style section_dark:            # dark bg, white text
-  heading 'Get Started'
-section 'Pricing' with style card:                # card with border, rounded
-  heading 'Plans'
+# ── Landing page ──────────────────────────────────────────────────────────────
+section 'Hero'     with style page_hero:          # centered, py-32, radial glow
+section 'Features' with style page_section:       # bg-base-100, py-24
+section 'Dark'     with style page_section_dark:  # bg-neutral, white text
+section 'Card'     with style page_card:          # bg-base-200, border, shadow
+section 'CTA'      with style page_cta:           # bg-primary, centered
+section 'Stats'    with style page_stats:         # bg-base-200, py-16
 
-# App/dashboard presets
-section 'Nav' with style app_sidebar:             # DaisyUI menu, scrollable
-  heading 'Menu'
-section 'Main' with style app_content:            # flex-1, padded, scrollable
-  heading 'Dashboard'
-section 'Top' with style app_header:              # DaisyUI navbar, sticky
+# ── App / dashboard ────────────────────────────────────────────────────────────
+section 'Root'    with style app_layout:    # flex h-screen (outermost wrapper)
+section 'Nav'     with style app_sidebar:  # w-52, bg-base-200, border-r
+section 'Right'   with style app_main:     # flex-1 flex-col overflow-hidden
+section 'Top'     with style app_header:   # sticky, h-14, border-b
+section 'Body'    with style app_content:  # scrollable, bg-base-200/30, p-6
+section 'Widget'  with style app_card:     # bg-base-200, rounded-xl, border, shadow
+
+# ── Generic ────────────────────────────────────────────────────────────────────
+section 'Box'  with style card:            # bg-base-100, border, rounded, p-6
+section 'Form' with style form:            # bg-base-100, border, p-8, max-w-lg
+section 'Code' with style code_box:        # bg-base-200, font-mono, border
+```
+
+---
+
+### Style Token Vocabulary
+
+When presets don't fit, compose your own style using **semantic tokens**.
+Tokens compile to DaisyUI/Tailwind classes — no raw CSS ever emitted.
+
+```clear
+style my_card:
+  background is 'surface'   # → bg-base-100
+  corners are 'rounded'     # → rounded-xl
+  padding is 'comfortable'  # → p-6
+  has border                # → border border-base-300/40
+  has shadow                # → shadow-sm
+  layout is 'column'        # → flex flex-col
+  gap is 'normal'           # → gap-4
+
+section 'Card' with style my_card:
   heading 'Title'
-section 'Widget' with style app_card:             # card with border
-  heading 'Stats'
+  text 'Body text'
 ```
 
-Override any preset by defining a `style` block with the same name in your file.
-User-defined styles always take priority over built-in presets.
+#### Background tokens  (`background is '...'`)
+| Token | Compiles to | Use for |
+|-------|------------|---------|
+| `'surface'` | `bg-base-100` | Cards, panels, elevated content |
+| `'canvas'` | `bg-base-200` | Page backgrounds, sidebars |
+| `'sunken'` | `bg-base-300` | Input areas, code blocks |
+| `'dark'` | `bg-neutral` | Dark sections, footers |
+| `'primary'` | `bg-primary` | CTA banners, highlights |
+| `'transparent'` | `bg-transparent` | Overlays, ghost panels |
 
-### Custom Styles
+#### Text tokens  (`text is '...'`)
+| Token | Compiles to | Use for |
+|-------|------------|---------|
+| `'default'` | `text-base-content` | Primary body text |
+| `'muted'` | `text-base-content/60` | Secondary, supporting text |
+| `'subtle'` | `text-base-content/40` | Timestamps, metadata |
+| `'light'` | `text-neutral-content` | Text on dark backgrounds |
+| `'primary'` | `text-primary` | Links, accents |
+| `'small'` | `text-sm` | Captions, labels |
+| `'large'` | `text-lg` | Subheadings, emphasis |
+
+#### Padding tokens  (`padding is '...'`)
+| Token | Compiles to | px equivalent |
+|-------|------------|---------------|
+| `'none'` | `p-0` | 0 |
+| `'tight'` | `p-3` | 12px |
+| `'normal'` | `p-4` | 16px |
+| `'comfortable'` | `p-6` | 24px |
+| `'spacious'` | `p-8` | 32px |
+| `'loose'` | `p-12` | 48px |
+
+#### Gap tokens  (`gap is '...'`)
+| Token | Compiles to | px equivalent |
+|-------|------------|---------------|
+| `'none'` | `gap-0` | 0 |
+| `'tight'` | `gap-2` | 8px |
+| `'normal'` | `gap-4` | 16px |
+| `'comfortable'` | `gap-5` | 20px |
+| `'large'` | `gap-8` | 32px |
+
+#### Corner tokens  (`corners are '...'`)
+| Token | Compiles to | Use for |
+|-------|------------|---------|
+| `'sharp'` | `rounded-none` | Tables, full-bleed elements |
+| `'subtle'` | `rounded-md` | Badges, tags |
+| `'rounded'` | `rounded-xl` | Cards, panels (default) |
+| `'very rounded'` | `rounded-2xl` | Hero cards, landing |
+| `'pill'` | `rounded-full` | Avatars, status dots, tags |
+
+#### Shadow tokens
+| Syntax | Compiles to | Use for |
+|--------|------------|---------|
+| `has shadow` | `shadow-sm` | Cards, dropdowns (default) |
+| `has large shadow` | `shadow-md` | Modals, popovers |
+| `no shadow` | *(nothing)* | Flat design, tables |
+
+#### Border tokens
+| Syntax | Compiles to | Use for |
+|--------|------------|---------|
+| `has border` | `border border-base-300/40` | Cards, panels (default) |
+| `has strong border` | `border border-base-300` | Inputs, forms |
+| `no border` | `border-0` | Seamless layouts |
+
+#### Layout tokens  (`layout is '...'`)
+| Token | Compiles to | Use for |
+|-------|------------|---------|
+| `'column'` | `flex flex-col` | Vertical stacks (default for sections) |
+| `'row'` | `flex flex-row items-center` | Horizontal toolbars, nav |
+| `'centered'` | `flex flex-col items-center text-center` | Hero sections, empty states |
+| `'split'` | `flex items-center justify-between` | Headers, footers |
+| `'2 columns'` | `grid grid-cols-2 gap-5` | Two-col grids |
+| `'3 columns'` | `grid grid-cols-3 gap-5` | Feature cards, pricing |
+| `'4 columns'` | `grid grid-cols-4 gap-4` | Metric rows, stat cards |
+
+#### Width tokens  (`width is '...'`)
+| Token | Compiles to | Use for |
+|-------|------------|---------|
+| `'full'` | `w-full` | Full-width containers |
+| `'narrow'` | `max-w-sm mx-auto` | Forms, modals |
+| `'contained'` | `max-w-5xl mx-auto` | App content areas |
+| `'wide'` | `max-w-6xl mx-auto` | Landing page sections |
+
+---
+
+### Token Examples
 
 ```clear
-# Theme variables
-primary is '#2563eb'
-surface is '#f8fafc'
+# Dark landing hero with centered layout
+style hero_dark:
+  background is 'dark'
+  text is 'light'
+  layout is 'centered'
+  padding is 'loose'
+  gap is 'large'
 
-# Style block
-style card:
-  background is primary         # uses variable
-  padding = 24
-  rounded = 12
-  shadow is 'medium'
-  color is 'white'
-  text_size is '1.25rem'
-  bold is true
+# Compact sidebar card
+style sidebar_widget:
+  background is 'canvas'
+  corners are 'rounded'
+  padding is 'tight'
+  has border
+  layout is 'column'
+  gap is 'tight'
 
-# Apply to section
-section 'Info' with style card:
-  heading 'Details'
+# Metrics row
+style metrics_grid:
+  layout is '4 columns'
+  gap is 'normal'
+  width is 'full'
+
+# Stat card inside metrics row
+style stat_card:
+  background is 'surface'
+  corners are 'rounded'
+  padding is 'comfortable'
+  has border
+  has shadow
+
+# Feature card (landing page)
+style feature_card:
+  background is 'canvas'
+  corners are 'very rounded'
+  padding is 'spacious'
+  has border
+  has shadow
+  layout is 'column'
+  gap is 'normal'
 ```
 
-## Layout Patterns
+---
 
-```clear
-style header:
-  sticky at top                 # position: sticky + z-index
+### Token Rules
 
-style body:
-  scrollable                    # overflow-y: auto
-  fills remaining space         # flex: 1
-
-style grid:
-  two column layout             # CSS grid, 2 equal columns
-  three column layout           # 3 columns
-  two row layout                # 2 equal rows
-
-style other:
-  stacked                       # flex column
-  no_shrink                     # flex-shrink: 0
-  full_height                   # height: 100vh
-  full_width                    # width: 100%
-  centered                      # margin auto + max-width 800px
-  text centered                 # text-align: center
-  wraps                         # flex-wrap: wrap
-
-style fixed_sidebar:
-  fixed on left                 # position: fixed
-  width is '250px'
-```
-
-## Responsive
-
-```clear
-style mobile:
-  for_screen is 'small'         # @media (max-width: 640px)
-  padding = 8
-```
+- **Tokens compile to Tailwind/DaisyUI utilities** — no custom CSS is generated
+- **Tokens are additive** — each line appends classes to the section's class list
+- **Presets win over tokens** — if a built-in preset exists, use it; tokens are for gaps
+- **No hex colors or pixel values** — use tokens; they adapt to all three themes
+- **Escape hatch:** `tailwind is '...'` — inject any Tailwind classes directly:
+  ```clear
+  style my_badge:
+    background is 'primary'
+    tailwind is 'ring-2 ring-offset-2 ring-primary/30'
+  ```
+- **Raw CSS still works** — unknown properties fall through to `.style-X {}` CSS
 
 ## Inline Layout Modifiers
 
