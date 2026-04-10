@@ -1,7 +1,7 @@
-# Project Tracker — issue management app using semantic style tokens
+# Project Tracker — reference dashboard for app UI presets
 build for web and javascript backend
 
-theme 'midnight'
+theme 'ivory'
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
@@ -11,6 +11,11 @@ create a Projects table:
   name, required
   status, default 'active'
   color, default 'blue'
+
+create a WeeklyStats table:
+  week, required
+  opened (number), default 0
+  closed (number), default 0
 
 create an Issues table:
   title, required
@@ -39,7 +44,6 @@ when user calls GET /api/issues:
   all_issues = get all Issues
   send back all_issues
 
-
 when user calls POST /api/issues sending issue_data:
   validate issue_data:
     title is text, required, min 1, max 200
@@ -52,61 +56,122 @@ when user calls DELETE /api/issues/:id:
   delete the Issue with this id
   send back 'deleted'
 
-# ── Styles ────────────────────────────────────────────────────────────────────
-# Every style here uses ONLY semantic tokens — no raw CSS values.
+when user calls GET /api/weekly-stats:
+  all_weeks = get all WeeklyStats
+  send back all_weeks
 
-style stat_card:
-  background is 'canvas'
-  corners are 'rounded'
-  has border
-  has shadow
-  padding is 'comfortable'
-  layout is 'column'
-  gap is 'tight'
-  hover is 'elevated'
-
-style issue_row:
-  background is 'canvas'
-  corners are 'subtle'
-  has border
-  padding is 'tight'
-  layout is 'split'
-  hover is 'tinted'
-
-style new_issue_form:
-  background is 'surface'
-  corners are 'rounded'
-  has border
-  has shadow
-  padding is 'spacious'
-  layout is 'column'
-  gap is 'comfortable'
-  width is 'narrow'
-
-style section_header:
-  layout is 'split'
-  padding is 'tight'
-  has bottom border
+when user calls POST /api/seed:
+  create i1:
+    title is 'Fix auth token expiry on mobile'
+    project is 'Backend'
+    assignee is 'Sarah Chen'
+    priority is 'high'
+    status is 'in progress'
+  save i1 as new Issue
+  create i2:
+    title is 'Update onboarding flow copy'
+    project is 'Design'
+    assignee is 'Marcus Lee'
+    priority is 'medium'
+    status is 'in progress'
+  save i2 as new Issue
+  create i3:
+    title is 'Dashboard chart not loading in Safari'
+    project is 'Frontend'
+    assignee is 'Sarah Chen'
+    priority is 'high'
+    status is 'open'
+  save i3 as new Issue
+  create i4:
+    title is 'Add CSV export to reports page'
+    project is 'Frontend'
+    assignee is 'Jenna Park'
+    priority is 'low'
+    status is 'backlog'
+  save i4 as new Issue
+  create i5:
+    title is 'Rate limiting on public API endpoints'
+    project is 'Backend'
+    assignee is 'Alex Rivera'
+    priority is 'high'
+    status is 'open'
+  save i5 as new Issue
+  create i6:
+    title is 'Redesign settings page layout'
+    project is 'Design'
+    assignee is 'Marcus Lee'
+    priority is 'medium'
+    status is 'backlog'
+  save i6 as new Issue
+  create i7:
+    title is 'Set up CI pipeline for staging'
+    project is 'DevOps'
+    assignee is 'Alex Rivera'
+    priority is 'medium'
+    status is 'done'
+  save i7 as new Issue
+  create i8:
+    title is 'Migrate user sessions to Redis'
+    project is 'Backend'
+    assignee is 'Sarah Chen'
+    priority is 'high'
+    status is 'done'
+  save i8 as new Issue
+  create i9:
+    title is 'Add dark mode toggle to settings'
+    project is 'Frontend'
+    assignee is 'Jenna Park'
+    priority is 'low'
+    status is 'in progress'
+  save i9 as new Issue
+  create i10:
+    title is 'Write API documentation for v2'
+    project is 'Backend'
+    assignee is 'Alex Rivera'
+    priority is 'medium'
+    status is 'open'
+  save i10 as new Issue
+  create w1:
+    week is 'Week 1'
+    opened = 8
+    closed = 5
+  save w1 as new WeeklyStats
+  create w2:
+    week is 'Week 2'
+    opened = 12
+    closed = 9
+  save w2 as new WeeklyStats
+  create w3:
+    week is 'Week 3'
+    opened = 6
+    closed = 10
+  save w3 as new WeeklyStats
+  create w4:
+    week is 'Week 4'
+    opened = 15
+    closed = 11
+  save w4 as new WeeklyStats
+  send back 'seeded'
 
 # ── Frontend ──────────────────────────────────────────────────────────────────
 
 page 'Project Tracker' at '/':
 
-  open_count = 12
-  in_progress_count = 5
-  done_count = 23
   all_issues = []
+  weekly_stats = []
 
   on page load:
-    all_issues = GET '/api/issues'
+    send nothing to '/api/seed'
+    get all_issues from '/api/issues'
+    get weekly_stats from '/api/weekly-stats'
 
   section 'App' with style app_layout:
 
-    section 'Sidebar' with style app_sidebar, 208px wide:
+    section 'Sidebar' with style app_sidebar:
 
       heading 'Tracker'
 
-      section 'Workspace Nav':
+      section 'Workspace':
         text 'My Issues'
         text 'All Projects'
         text 'Inbox'
@@ -132,51 +197,61 @@ page 'Project Tracker' at '/':
       section 'Content' with style app_content:
 
         section 'Stats Row' as 4 columns:
-          section 'Open' with style stat_card:
-            display open_count as number called 'Open'
-          section 'In Progress' with style stat_card:
-            display in_progress_count as number called 'In Progress'
-          section 'Done' with style stat_card:
-            display done_count as number called 'Done this week'
-          section 'Team' with style stat_card:
-            display 8 as number called 'Team members'
+          section 'Open' with style metric_card:
+            small text 'Open Issues'
+            heading '12'
+            text '+3 this week'
+          section 'In Progress' with style metric_card:
+            small text 'In Progress'
+            heading '5'
+            text '+2 since yesterday'
+          section 'Done' with style metric_card:
+            small text 'Resolved'
+            heading '23'
+            text '+8 vs last week'
+          section 'Overdue' with style metric_card:
+            small text 'Overdue'
+            heading '3'
+            text '-2 vs last week'
 
-        section 'Issues Panel' with style app_card, fills remaining space:
+        bar chart 'Weekly Issue Trends' showing weekly_stats
 
-          section 'Issues Header' with style section_header:
-            subheading 'All Issues'
-            button 'Refresh':
-              all_issues = GET '/api/issues'
+        section 'Charts Row' as 2 columns:
+          bar chart 'Issues by Project' showing all_issues by project
+          pie chart 'Issues by Priority' showing all_issues by priority
 
-          section 'Issue 1' with style issue_row:
-            text 'Fix auth token expiry on mobile'
-            badge 'High' as error
-          section 'Issue 2' with style issue_row:
-            text 'Update onboarding flow copy'
-            badge 'Medium' as warning
-          section 'Issue 3' with style issue_row:
-            text 'Dashboard chart not loading in Safari'
-            badge 'High' as error
-          section 'Issue 4' with style issue_row:
-            text 'Add CSV export to reports page'
-            badge 'Low' as neutral
-          section 'Issue 5' with style issue_row:
-            text 'Rate limiting on public API endpoints'
-            badge 'High' as error
-          section 'Issue 6' with style issue_row:
-            text 'Redesign settings page layout'
-            badge 'Medium' as warning
+        section 'Issues Table' with style app_table:
+          display all_issues as table showing title, project, assignee, priority, status with delete
+
+        section 'Recent Activity' with style app_list:
+          heading 'Recent Activity'
+          section 'A1':
+            text 'Sarah Chen moved "Fix auth token expiry" to In Progress'
+            badge 'just now' as info
+          section 'A2':
+            text 'Marcus Lee commented on "Update onboarding flow"'
+            badge '2m ago' as neutral
+          section 'A3':
+            text 'Alex Rivera closed "Set up CI pipeline for staging"'
+            badge '15m ago' as success
+          section 'A4':
+            text 'Jenna Park created "Add dark mode toggle to settings"'
+            badge '1h ago' as neutral
+          section 'A5':
+            text 'Sarah Chen resolved "Migrate user sessions to Redis"'
+            badge '3h ago' as success
 
         section 'New Issue' as modal:
-          section 'Form' with style new_issue_form:
+          section 'Form' with style form:
             subheading 'New Issue'
             'Title' as text input saves to new_title
             'Project' as dropdown with ['Frontend', 'Backend', 'Design', 'DevOps'] saves to new_project
+            'Assignee' as text input saves to new_assignee
             'Priority' as dropdown with ['Low', 'Medium', 'High', 'Critical'] saves to new_priority
             button 'Create Issue':
-              new_issue_data = collect new_title, new_project, new_priority
-              POST new_issue_data to '/api/issues'
-              all_issues = GET '/api/issues'
+              new_issue_data = collect new_title, new_project, new_assignee, new_priority
+              send new_issue_data to '/api/issues'
+              get all_issues from '/api/issues'
               hide 'New Issue'
             button 'Cancel':
               hide 'New Issue'

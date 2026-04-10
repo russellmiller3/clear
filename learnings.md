@@ -25,6 +25,8 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 14: Parser + Validator Fixes + Web Tools](#session-14-parser--validator-fixes--web-tools-2026-04-09) | `owner` field silently dropped by RLS check, validator over-broad on `owner` field, Anthropic native server tools replace custom fetch/search |
 | [Session 15: SQLite Persistence (Phase 47b)](#session-15-sqlite-persistence-phase-47b-2026-04-09) | ESM project + CJS runtime = `{"type":"commonjs"}` in runtime dir, WAL mode default, boolean coercion on read, sqlite_sequence try/catch |
 | [Session 16: Landing Pages v2](#session-16-landing-pages-v2-2026-04-10) | `inLandingCard` array must include ALL card variants, `bg-primary/8` opacity fails with DaisyUI CSS vars, `oklch(from var(...))` inline style workaround, dark page screenshots timeout |
+| [Session 17: Pareto 20 + IDE Chat v2](#session-17-pareto-20--ide-chat-v2-2026-04-10) | Context array checklist is MANDATORY for new presets, historyKeymap extraction for undo, Array.isArray guard for image+text messages, SVG sanitization strips scripts |
+| [Session 18: ECharts Analytics Dashboard + Chart Syntax Upgrade](#session-18-echarts-analytics-dashboard--chart-syntax-upgrade-2026-04-10) | overflow-hidden collapses flex children, flex-col vs space-y-6 for scrollable content, ECharts init needs visible container, chart groupBy for all types, type-first chart syntax, removing `area` synonym from section, metric_card trend detection |
 
 ---
 
@@ -436,3 +438,71 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **`feature_split` creates a bento grid:** first card gets `lg:col-span-2` (2/3 width), remaining cards stack vertically in 1/3 width. The first card should use `feature_card_large` (primary bg).
 - **Dark bento:** Use `feature_split_dark` for the outer section. The `feature_card_large` uses `bg-primary text-primary-content` which adapts to the theme automatically.
 - **`bg-white/5` on `feature_card_dark` is intentional** — creates a frosted glass panel on dark backgrounds (Linear style).
+
+---
+
+## Session 17: Pareto 20 + IDE Chat v2 (2026-04-10)
+
+### Context Array Checklist Is Non-Negotiable
+- **Every new preset MUST be checked against ALL 8 context arrays:** `isCardPreset`, `isHeroPreset`, `GRID_SECTION_PRESETS`, `inPageSection`, `inLandingCard`, `COLORED_CARD_PRESETS`, `inDarkSection`, `heroInlineStyle`.
+- Missing from one array = silent rendering bugs (wrong max-width, wrong text color, missing grid layout).
+- The plan's checklist section saved hours of debugging. Always grep for each array name after adding a preset.
+
+### historyKeymap Extraction for Undo
+- **CodeMirror's `undo` function is NOT directly exported** from a typical bundle. Importing `{ undo }` returns `undefined`.
+- **Fix:** Extract it from `historyKeymap`: `const undoCmd = historyKeymap.find(k => k.key === 'Mod-z')?.run;` — this always works.
+- The import failure is silent — it doesn't throw, it just makes `undo` undefined, which crashes later when called.
+
+### Array.isArray Guard for Mixed Content Messages
+- When a user pastes an image and then types text, the chat message `content` becomes an array `[{type:'image',...},{type:'text',...}]` instead of a string.
+- **`escHtml(content)` crashes** because `(s || '').replace()` doesn't work on arrays.
+- **Fix:** Check `Array.isArray(m.content)` and iterate, rendering images as `<img>` and text normally.
+
+### SVG Sanitization
+- When rendering SVG from chat (```svg blocks), always strip `<script>` tags: `.replace(/<script[\s\S]*?<\/script>/gi, '')`.
+- SVG is powerful — it can contain arbitrary JS via `<script>`, `onload`, etc. Strip scripts at minimum; could add event handler stripping later.
+
+### CSS-Only Components via DaisyUI
+- **FAQ accordion:** DaisyUI `collapse` component uses `<input type="checkbox">` — pure CSS toggle, no JS.
+- **Modal:** DaisyUI `modal` with `<dialog>` element — native HTML, no JS needed for open/close.
+- These are the right patterns when the compiler doesn't emit JS.
+
+### Per-Theme Font Stacks
+- CSS custom properties `--font-body`, `--font-display`, `--font-mono` per theme allow different font personalities.
+- `CSS_RESET` uses `var(--font-body)` as the default body font, with a fallback chain.
+- Google Fonts `<link>` must load ALL fonts used across ALL themes (Inter, DM Sans, Plus Jakarta Sans, JetBrains Mono, Geist Mono).
+
+---
+
+## Session 18: ECharts Analytics Dashboard + Chart Syntax Upgrade (2026-04-10)
+
+### overflow-hidden Collapses Flex Children
+- **When a card container has `overflow-hidden` in a flex column layout, and the child has an explicit height (like ECharts canvas at 350px), the parent can collapse to just its padding+header height, clipping the child.** The flex algorithm respects `overflow: hidden` as permission to clip, and the child's explicit height doesn't force the parent to grow.
+- **Fix:** Remove `overflow-hidden` from containers that need to size to their children's explicit heights. Only use `overflow-hidden` on containers where clipping is actually desired (e.g., rounded corners on images).
+
+### flex-col gap-6 vs space-y-6 for Scrollable Content
+- **`app_content` used `flex flex-col gap-6` which caused flex items without explicit heights (like tables and lists) to shrink to 0px** when taller siblings (charts) filled the available space. Flex shrink is the default (`flex-shrink: 1`), so items without a basis or explicit height collapse first.
+- **Fix:** Switch to block layout with `space-y-6`. Block children don't participate in flex shrinking — they stack naturally and each takes whatever height their content needs. The container scrolls if total height exceeds viewport.
+
+### ECharts init Needs Visible Container
+- **ECharts `init()` requires the container to have non-zero dimensions at init time.** If the container is hidden or collapsed (e.g., by the overflow-hidden bug above), the chart renders but is invisible — no error thrown, just a 0x0 canvas.
+- **Always verify the container element's `offsetHeight > 0` before initializing.** If the container isn't visible yet (e.g., in a tab or collapsed panel), defer init to when it becomes visible.
+
+### Chart groupBy for All Chart Types
+- **Originally `by field` grouping only worked for pie charts.** Extended to bar/line/area by counting occurrences per group value and mapping to x-axis categories. This eliminates the need for separate "stats" tables and endpoints when you just want to visualize field distributions.
+- **Pattern:** `bar chart 'Tasks by Status' showing tasks by status` → counts tasks per status value, renders as bar chart with status values on x-axis and counts on y-axis.
+
+### Type-First Chart Syntax Is More Natural
+- **Changed canonical chart syntax from `chart 'Title' as bar showing data` to `bar chart 'Title' showing data`.** Reads like English: "bar chart called Revenue showing sales".
+- **Also supports title-first:** `'Revenue' bar chart showing data`. Old syntax (`chart ... as bar`) still works as legacy.
+- **Rule:** When adding new syntax variants, keep old forms working but make the new form canonical in docs and examples. Gradual migration > breaking change.
+
+### Removing Synonym `area` from Section
+- **`area` was a synonym for `section` that nobody used.** Removing it freed up `area chart 'Title' showing data` syntax.
+- **Always check synonym collisions before adding chart-type keywords.** A chart type name that's also a synonym for something else will be tokenized as the synonym, not as a chart type.
+- **Rule:** Before registering any new keyword, grep `synonyms.js` for collisions. If the word exists as a synonym, remove the synonym first (and verify nothing depends on it).
+
+### metric_card Trend Detection
+- **Text starting with `+` or `-` followed by a number in metric_card is auto-detected and rendered with colored (green/red) text plus arrow SVG icons.** Pattern: `/^([+\-−][\d.,]+%?\s*)/`.
+- **This gives TailAdmin-quality stat cards with zero extra syntax.** The user writes `'+12.5% from last month'` and gets a green up-arrow with colored text automatically.
+- **The `−` (U+2212 minus sign) is included in the regex** alongside `-` (U+002D hyphen-minus) because some users copy-paste from formatted text.

@@ -4926,6 +4926,9 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     lines.push(`    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
     lines.push(`      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);`);
 
+    // TailAdmin-quality color palette
+    lines.push(`      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];`);
+
     if (chartType === 'pie') {
       if (groupBy) {
         // Group by field and count
@@ -4937,18 +4940,31 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         lines.push(`      const _sKeys = Object.keys(_data[0]).filter(k => k !== 'id');`);
         lines.push(`      const _pieData = _data.map(r => ({ name: String(r[_sKeys[0]] || ''), value: Number(r[_sKeys[1] || _sKeys[0]] || 0) }));`);
       }
-      lines.push(`      _chart.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: '65%', data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } } }] }, true);`);
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, series: [{ type: 'pie', radius: ['40%', '70%'], itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 }, label: { color: '#6b7280' }, data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);`);
     } else {
-      // line, bar, area — auto-detect x (first string field) and y (first number field)
+      // line, bar, area
       const seriesType = chartType === 'area' ? 'line' : chartType;
-      const areaStyle = chartType === 'area' ? ', areaStyle: {}' : '';
-      lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
-      lines.push(`      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];`);
-      lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
-      lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);`);
-      lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
-      lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}, smooth: true }));`);
-      lines.push(`      _chart.setOption({ tooltip: { trigger: 'axis' }, legend: _yKeys.length > 1 ? { data: _yKeys } : undefined, xAxis: { type: 'category', data: _xData }, yAxis: { type: 'value' }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true } }, true);`);
+      const areaStyle = chartType === 'area' ? ', areaStyle: { opacity: 0.15 }' : '';
+      const barStyle = chartType === 'bar' ? ', itemStyle: { borderRadius: [4, 4, 0, 0] }, barMaxWidth: 32' : '';
+
+      if (groupBy) {
+        // Group by field and count — produces category bar/line/area chart
+        lines.push(`      const _counts = {};`);
+        lines.push(`      _data.forEach(r => { const k = r.${sanitizeName(groupBy)} || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });`);
+        lines.push(`      const _xData = Object.keys(_counts);`);
+        lines.push(`      const _yData = Object.values(_counts);`);
+        lines.push(`      const _series = [{ name: '${sanitizeName(groupBy)}', type: '${seriesType}', data: _yData${areaStyle}${barStyle}, smooth: true }];`);
+      } else {
+        // Auto-detect x (first string field) and y (first number field)
+        lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
+        lines.push(`      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];`);
+        lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
+        lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);`);
+        lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
+        lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}${barStyle}, smooth: true }));`);
+      }
+
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: ${groupBy ? 'undefined' : "_yKeys.length > 1 ? { data: _yKeys, textStyle: { color: '#6b7280' } } : undefined"}, xAxis: { type: 'category', data: _xData, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true } }, true);`);
     }
 
     lines.push(`    }`);
@@ -5370,22 +5386,34 @@ function buildHTML(body) {
               // Last link becomes primary CTA if no button nodes exist
               const ctaLink = nbCtas.length === 0 && nbLinks.length > 0 ? nbLinks.pop() : null;
               parts.push(`    <nav class="sticky top-0 z-50 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0">`);
-              parts.push(`      <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">`);
+              parts.push(`      <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">`);
               parts.push(`        <div class="flex items-center gap-8">`);
-              if (brandText) parts.push(`          <span class="text-lg font-bold text-base-content tracking-tight">${brandText}</span>`);
+              if (brandText) parts.push(`          <span class="font-display text-lg font-bold text-base-content tracking-tight">${brandText}</span>`);
               if (nbLinks.length > 0) {
                 parts.push(`          <div class="hidden md:flex items-center gap-6">`);
                 for (const lk of nbLinks) {
                   const fmt = formatInlineText(lk.ui.text);
                   const href = lk.ui?.href || '#';
-                  parts.push(`            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="${href}">${fmt}</a>`);
+                  parts.push(`            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="${href}">${fmt}</a>`);
                 }
                 parts.push(`          </div>`);
               }
               parts.push(`        </div>`);
               parts.push(`        <div class="flex items-center gap-3">`);
-              for (const btn of nbCtas) {
-                parts.push(`          <button class="btn btn-primary btn-sm" id="${btn.ui.id}">${btn.ui.label}</button>`);
+              // Mobile hamburger menu
+              if (nbLinks.length > 0) {
+                parts.push(`          <label for="nav-drawer" class="btn btn-ghost btn-sm btn-square md:hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></label>`);
+              }
+              // CTA buttons: ghost variant for secondary, primary for last
+              if (nbCtas.length >= 2) {
+                nbCtas.forEach((btn, idx) => {
+                  const btnCls = idx < nbCtas.length - 1 ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm';
+                  parts.push(`          <button class="${btnCls}" id="${btn.ui.id}">${btn.ui.label}</button>`);
+                });
+              } else {
+                for (const btn of nbCtas) {
+                  parts.push(`          <button class="btn btn-primary btn-sm" id="${btn.ui.id}">${btn.ui.label}</button>`);
+                }
               }
               if (ctaLink) {
                 const fmt = formatInlineText(ctaLink.ui.text);
@@ -5395,6 +5423,18 @@ function buildHTML(body) {
               parts.push(`        </div>`);
               parts.push(`      </div>`);
               parts.push(`    </nav>`);
+              // Mobile drawer for nav links
+              if (nbLinks.length > 0) {
+                parts.push(`    <input id="nav-drawer" type="checkbox" class="hidden peer">`);
+                parts.push(`    <div class="fixed inset-0 z-40 bg-base-100 flex flex-col p-6 pt-20 gap-4 peer-checked:flex hidden md:hidden">`);
+                parts.push(`      <label for="nav-drawer" class="absolute top-4 right-4 btn btn-ghost btn-sm btn-square"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></label>`);
+                for (const lk of nbLinks) {
+                  const fmt = formatInlineText(lk.ui.text);
+                  const href = lk.ui?.href || '#';
+                  parts.push(`      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="${href}">${fmt}</a>`);
+                }
+                parts.push(`    </div>`);
+              }
               break;
             }
 
@@ -5422,7 +5462,8 @@ function buildHTML(body) {
               'feature_card_teal', 'feature_card_purple', 'feature_card_indigo',
               'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
               'pricing_card', 'pricing_card_featured',
-              'testimonial_card', 'stat_item', 'logo_item',
+              'testimonial_card', 'stat_item', 'logo_item', 'app_table',
+              'app_modal', 'empty_state', 'app_list',
             ].includes(node.styleName);
             const isHeroPreset = ['page_hero', 'hero', 'hero_left', 'page_cta'].includes(node.styleName);
             const isNavbarPreset = node.styleName === 'page_navbar';
@@ -5434,6 +5475,7 @@ function buildHTML(body) {
               'stats_row',
               'pricing_grid', 'pricing_grid_dark',
               'testimonial_grid', 'testimonial_grid_dark',
+              'faq_section', 'page_footer',
             ];
             const isGridSection = GRID_SECTION_PRESETS.includes(node.styleName);
             const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset && !isGridSection;
@@ -5473,11 +5515,11 @@ function buildHTML(body) {
               walk(brandNodes);
               // Emit nav items wrapped in menu
               if (navNodes.length > 0) {
-                parts.push(`    <nav class="flex-1 overflow-y-auto py-3 px-3">`);
-                parts.push(`      <ul class="menu menu-sm gap-0.5 p-0">`);
+                parts.push(`    <nav class="flex-1 overflow-y-auto py-4 px-4">`);
+                parts.push(`      <ul class="menu menu-md gap-0.5 p-0">`);
                 for (const entry of navNodes) {
                   if (entry.group) {
-                    parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-3 px-3">${entry.group}</li>`);
+                    parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-5 mb-1 px-3">${entry.group}</li>`);
                   }
                   walk(entry.items);
                 }
@@ -5494,13 +5536,13 @@ function buildHTML(body) {
               const cardNodes = node.body.filter(c => c.type === NodeType.SECTION);
               const isDark = sn.endsWith('_dark');
               const headingColor = isDark ? 'text-neutral-content' : 'text-base-content';
-              if (headerNodes.length > 0) {
+              if (headerNodes.length > 0 && sn !== 'page_footer') {
                 parts.push(`      <div class="max-w-5xl mx-auto text-center mb-10">`);
                 walk(headerNodes);
                 parts.push(`      </div>`);
               }
               if (sn === 'logo_bar' || sn === 'logo_bar_dark') {
-                parts.push(`      <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-8 md:gap-14">`);
+                parts.push(`      <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-12 gap-y-6">`);
                 walk(cardNodes);
                 parts.push(`      </div>`);
               } else if (sn === 'feature_split' || sn === 'feature_split_dark') {
@@ -5533,12 +5575,93 @@ function buildHTML(body) {
                 });
                 parts.push(`      </div>`);
               } else if (sn === 'stats_row') {
-                parts.push(`      <div class="max-w-5xl mx-auto flex flex-wrap items-start justify-center gap-12 md:gap-20">`);
+                parts.push(`      <div class="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-10">`);
                 walk(cardNodes);
                 parts.push(`      </div>`);
               } else if (sn === 'pricing_grid' || sn === 'pricing_grid_dark') {
-                parts.push(`      <div class="max-w-5xl mx-auto flex flex-col md:flex-row gap-6 items-stretch mt-6">`);
+                parts.push(`      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-start mt-6">`);
                 walk(cardNodes);
+                parts.push(`      </div>`);
+              } else if (sn === 'faq_section') {
+                // FAQ: child sections become DaisyUI collapse accordion items
+                parts.push(`      <div class="max-w-3xl mx-auto flex flex-col gap-3">`);
+                cardNodes.forEach((card, faqIdx) => {
+                  const qTitle = card.ui?.title || card.title || 'Question';
+                  // Gather body text for the answer
+                  const answerParts = [];
+                  if (card.body) {
+                    for (const child of card.body) {
+                      if (child.type === NodeType.CONTENT && child.ui) {
+                        answerParts.push(formatInlineText(child.ui.text));
+                      }
+                    }
+                  }
+                  const answer = answerParts.join(' ') || 'Answer';
+                  const checkedAttr = faqIdx === 0 ? ' checked' : '';
+                  parts.push(`        <div class="collapse collapse-arrow bg-base-200/50 border border-base-300/40">`);
+                  parts.push(`          <input type="radio" name="faq"${checkedAttr} />`);
+                  parts.push(`          <div class="collapse-title font-semibold text-base">${qTitle}</div>`);
+                  parts.push(`          <div class="collapse-content text-sm text-base-content/70"><p>${answer}</p></div>`);
+                  parts.push(`        </div>`);
+                });
+                parts.push(`      </div>`);
+              } else if (sn === 'page_footer') {
+                // Footer: first heading = brand, child sections = link columns, last text = copyright
+                const brandNodes = [];
+                const linkGroups = [];
+                const copyrightNodes = [];
+                for (const child of node.body) {
+                  if (child.type === NodeType.CONTENT && (child.contentType === 'heading' || child.ui?.contentType === 'heading')) {
+                    brandNodes.push(child);
+                  } else if (child.type === NodeType.SECTION) {
+                    linkGroups.push(child);
+                  } else if (child.type === NodeType.CONTENT && (child.contentType === 'small' || child.ui?.contentType === 'small')) {
+                    copyrightNodes.push(child);
+                  } else if (child.type === NodeType.CONTENT) {
+                    copyrightNodes.push(child);
+                  }
+                }
+                parts.push(`      <div class="max-w-6xl mx-auto">`);
+                // Brand + link columns row
+                parts.push(`        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">`);
+                if (brandNodes.length > 0) {
+                  parts.push(`          <div class="col-span-2 md:col-span-1">`);
+                  for (const bn of brandNodes) {
+                    const fmt = formatInlineText(bn.ui.text);
+                    parts.push(`            <p class="text-lg font-bold text-base-content tracking-tight">${fmt}</p>`);
+                  }
+                  parts.push(`          </div>`);
+                }
+                for (const group of linkGroups) {
+                  const groupTitle = group.ui?.title || group.title || '';
+                  parts.push(`          <div class="flex flex-col gap-2">`);
+                  if (groupTitle) {
+                    parts.push(`            <p class="text-sm font-semibold text-base-content/50 uppercase tracking-wider mb-3">${groupTitle}</p>`);
+                  }
+                  if (group.body) {
+                    for (const item of group.body) {
+                      if (item.type === NodeType.CONTENT && item.ui) {
+                        const fmt = formatInlineText(item.ui.text);
+                        if (item.ui.contentType === 'link') {
+                          parts.push(`            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="${item.ui.href || '#'}">${fmt}</a>`);
+                        } else {
+                          parts.push(`            <span class="text-sm text-base-content/60 hover:text-base-content transition-colors cursor-pointer">${fmt}</span>`);
+                        }
+                      }
+                    }
+                  }
+                  parts.push(`          </div>`);
+                }
+                parts.push(`        </div>`);
+                // Copyright row
+                if (copyrightNodes.length > 0) {
+                  parts.push(`        <div class="border-t border-base-300/40 mt-8 pt-6 text-center">`);
+                  for (const cn of copyrightNodes) {
+                    const fmt = formatInlineText(cn.ui.text);
+                    parts.push(`          <p class="text-sm text-base-content/40">${fmt}</p>`);
+                  }
+                  parts.push(`        </div>`);
+                }
                 parts.push(`      </div>`);
               } else {
                 // feature_grid, testimonial_grid, etc.
@@ -5573,10 +5696,13 @@ function buildHTML(body) {
                     linkGroup.push(children[ci++]);
                   }
                   parts.push(`    <div class="flex gap-4 flex-wrap ${justifyClass} mt-2">`);
+                  const isCtaSection = node.styleName === 'page_cta';
                   linkGroup.forEach((linkNode, idx) => {
                     const fmt = formatInlineText(linkNode.ui.text);
                     const href = linkNode.ui?.href || '#';
-                    const btnCls = idx === 0 ? 'btn btn-primary btn-lg' : 'btn btn-outline btn-lg';
+                    const btnCls = isCtaSection
+                      ? (idx === 0 ? 'btn btn-neutral btn-lg' : 'btn btn-ghost btn-lg text-primary-content')
+                      : (idx === 0 ? 'btn btn-primary btn-lg' : 'btn btn-outline btn-lg');
                     parts.push(`      <a class="${btnCls}" href="${href}">${fmt}</a>`);
                   });
                   parts.push(`    </div>`);
@@ -5628,7 +5754,29 @@ function buildHTML(body) {
                 parts.push(`      </div>`);
                 parts.push(`    </div>`);
               }
+            } else if (node.styleName === 'app_list') {
+              // app_list: header content above, each child wrapped as a list item row
+              const listHeader = node.body.filter(c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading'));
+              const listItems = node.body.filter(c => !(c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading')));
+              for (const hdr of listHeader) {
+                const fmt = formatInlineText(hdr.ui.text);
+                parts.push(`      <div class="text-sm font-semibold text-base-content/60 px-5 pt-4 pb-2">${fmt}</div>`);
+              }
+              for (const item of listItems) {
+                parts.push(`      <div class="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-base-content/5 transition-colors">`);
+                // If child is an unstyled section, walk its body directly to avoid nested column div
+                if (item.type === NodeType.SECTION && !item.styleName && item.body) {
+                  walk(item.body);
+                } else {
+                  walk([item]);
+                }
+                parts.push(`      </div>`);
+              }
             } else {
+              // Inject icon for empty state
+              if (node.styleName === 'empty_state') {
+                parts.push(`      <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-base-content/20 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>`);
+              }
               // Inject star rating row and quote mark for testimonial cards
               if (node.styleName === 'testimonial_card') {
                 parts.push(`      <div class="text-4xl leading-none text-base-content/20 font-serif mb-1">\u201C</div>`);
@@ -5748,12 +5896,12 @@ ${options}
     </div>`);
           } else if (inUserSection) {
             // Inside a styled card (stat_card etc.) — render just the number inline, no extra wrapper
-            parts.push(`    <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
+            parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
             if (ui.label) parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">${ui.label}</p>`);
           } else {
-            parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5 flex flex-col gap-1" id="${displayId}">
-      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40">${ui.label}</p>
-      <p class="font-mono text-3xl font-bold text-base-content tracking-tight mt-1" id="${displayId}_value"></p>
+            parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 p-6 flex flex-col gap-2" id="${displayId}">
+      <p class="text-sm font-medium text-base-content/50">${ui.label}</p>
+      <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>
     </div>`);
           }
           break;
@@ -5761,9 +5909,9 @@ ${options}
 
         case NodeType.CHART: {
           const chartId = node.ui.id;
-          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden p-4" id="${chartId}">
-      <h3 class="text-sm font-semibold text-base-content mb-2">${node.title}</h3>
-      <div id="${chartId}_canvas" style="width:100%;height:320px;"></div>
+          parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-6 pt-5 pb-4" id="${chartId}">
+      <h3 class="text-base font-semibold text-base-content mb-4">${node.title}</h3>
+      <div id="${chartId}_canvas" style="width:100%;height:350px;"></div>
     </div>`);
           hasChart = true;
           break;
@@ -5772,12 +5920,17 @@ ${options}
         case NodeType.BUTTON: {
           const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
           const btnInHeader = btnPreset === 'app_header';
+          const btnInCta = btnPreset === 'page_cta';
           const btnInForm = ['card_bordered', 'card', 'form'].includes(btnPreset);
+          const btnInEmptyState = btnPreset === 'empty_state';
           const btnLabel = (node.ui.label || '').toLowerCase();
           const btnIsDestructive = /^(delete|remove|archive|deactivate)/.test(btnLabel);
           const btnIsDismiss = /^(cancel|close|dismiss|reset|clear|discard)/.test(btnLabel);
           let btnCls;
-          if (btnInHeader) {
+          if (btnInCta) {
+            // CTA buttons: inverted colors for contrast on primary bg
+            btnCls = 'btn btn-lg bg-base-100 text-primary hover:bg-base-200';
+          } else if (btnInHeader) {
             // Header buttons are small; destructive/dismiss get ghost, CTAs stay primary
             if (btnIsDestructive) {
               btnCls = 'btn btn-ghost btn-sm text-error';
@@ -5786,6 +5939,8 @@ ${options}
             } else {
               btnCls = 'btn btn-primary btn-sm'; // New/Create/Add buttons in header keep primary treatment
             }
+          } else if (btnInEmptyState) {
+            btnCls = 'btn btn-sm btn-ghost';
           } else if (btnIsDestructive) {
             btnCls = 'btn btn-ghost text-error';
           } else if (btnIsDismiss) {
@@ -5802,7 +5957,7 @@ ${options}
           const inSidebar = sectionStack.includes('app_sidebar');
           if (inSidebar) {
             // Sidebar already wraps in <nav><ul class="menu">, just emit the list container
-            parts.push(`    <ul class="menu menu-sm gap-0.5 p-0 clear-list" id="list_${sanitizeName(node.variable)}"></ul>`);
+            parts.push(`    <ul class="menu menu-md gap-0.5 p-0 clear-list" id="list_${sanitizeName(node.variable)}"></ul>`);
           } else {
             const listId = `list_${sanitizeName(node.variable)}`;
             const emptyId = `empty_${sanitizeName(node.variable)}`;
@@ -5823,9 +5978,14 @@ ${options}
           const inSidebar = sectionStack.includes('app_sidebar');
           const inHeader = parentPreset === 'app_header';
           const inMetricCard = parentPreset === 'metric_card';
-          const inCard = ['card', 'card_bordered', 'form'].includes(parentPreset);
+          const inCard = ['card', 'card_bordered'].includes(parentPreset);
+          const inForm = parentPreset === 'form';
+          const inModal = parentPreset === 'app_modal';
+          const inEmptyState = parentPreset === 'empty_state';
+          const inList = parentPreset === 'app_list';
           const inHero = ['page_hero', 'hero', 'hero_left', 'page_cta'].includes(parentPreset);
           const inHeroLeft = parentPreset === 'hero_left';
+          const inCta = parentPreset === 'page_cta';
           const inDarkSection = ['page_section_dark', 'section_dark', 'feature_grid_dark',
             'feature_split_dark', 'feature_spotlight_dark', 'pricing_grid_dark',
             'testimonial_grid_dark', 'logo_bar_dark'].includes(parentPreset);
@@ -5833,13 +5993,15 @@ ${options}
             'feature_grid', 'feature_grid_dark', 'feature_split', 'feature_split_dark',
             'feature_spotlight', 'feature_spotlight_dark',
             'pricing_grid', 'pricing_grid_dark', 'stats_row',
-            'testimonial_grid', 'testimonial_grid_dark', 'logo_bar', 'logo_bar_dark'].includes(parentPreset);
+            'testimonial_grid', 'testimonial_grid_dark', 'logo_bar', 'logo_bar_dark',
+            'faq_section', 'page_footer'].includes(parentPreset);
           const inLandingCard = [
             'feature_card', 'feature_card_dark', 'feature_card_large', 'testimonial_card',
             'feature_card_teal', 'feature_card_purple', 'feature_card_indigo',
             'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
           ].includes(parentPreset);
           const inLargeCard = parentPreset === 'feature_card_large';
+          const inTestimonialCard = parentPreset === 'testimonial_card';
           const inPricingCard = parentPreset === 'pricing_card';
           const inFeaturedPricing = parentPreset === 'pricing_card_featured';
           const inStatItem = parentPreset === 'stat_item';
@@ -5855,43 +6017,59 @@ ${options}
               if (inLogoBar) {
                 // Logo bar label — small muted, not a big section heading
                 parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 text-center mb-6">${formatted}</p>`);
+              } else if (inCta) {
+                // CTA headline — smaller than hero, white text on primary bg
+                parts.push(`    <h2 class="font-display text-3xl lg:text-4xl font-bold tracking-tight text-primary-content max-w-3xl text-center mx-auto">${formatted}</h2>`);
               } else if (inHero) {
                 // Hero headline — left or centered; hero_left gets larger font to fill viewport
                 const heroAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
                 const heroSize = inHeroLeft ? 'text-5xl lg:text-6xl' : 'text-5xl md:text-6xl';
                 parts.push(`    <h1 class="font-display ${heroSize} font-bold tracking-tight leading-[1.05] text-base-content max-w-3xl ${heroAlign}">${formatted}</h1>`);
               } else if (inHeader) {
-                parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
+                parts.push(`    <h1 class="font-display text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
-                parts.push(`    <p class="font-mono text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
+                parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
               } else if (inSidebar) {
-                parts.push(`    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
+                parts.push(`    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">${formatted.charAt(0)}</div><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
               } else if (inStatItem) {
-                parts.push(`    <p class="text-4xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
+                parts.push(`    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
               } else if (inFeaturedPricing) {
                 parts.push(`    <h3 class="text-xl font-bold text-primary-content">${formatted}</h3>`);
               } else if (inPricingCard) {
                 parts.push(`    <h3 class="text-xl font-bold text-base-content">${formatted}</h3>`);
+              } else if (inTestimonialCard) {
+                parts.push(`    <h3 class="text-sm font-semibold text-base-content leading-snug">${formatted}</h3>`);
               } else if (inLandingCard) {
                 const tc = inDarkCard ? 'text-white' : inLargeCard ? 'text-primary-content' : 'text-base-content';
                 parts.push(`    <h3 class="text-lg font-bold ${tc} leading-snug">${formatted}</h3>`);
+              } else if (inForm) {
+                parts.push(`    <h2 class="text-xl font-bold text-base-content mb-2">${formatted}</h2>`);
+              } else if (inModal) {
+                parts.push(`    <h2 class="text-lg font-bold text-base-content">${formatted}</h2>`);
+              } else if (inEmptyState) {
+                parts.push(`    <h3 class="text-lg font-semibold text-base-content/70">${formatted}</h3>`);
               } else if (inCard) {
                 parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
               } else if (inPageSection) {
                 const textColor = inDarkSection ? 'text-neutral-content' : 'text-base-content';
-                parts.push(`    <h2 class="font-display text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
+                parts.push(`    <h2 class="font-display text-3xl lg:text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
               } else {
                 parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
               }
               break;
             case 'subheading':
-              if (inHero) {
+              if (inCta) {
+                parts.push(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
+              } else if (inHero) {
                 const heroSubAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
-                parts.push(`    <p class="text-xl text-base-content/60 leading-relaxed max-w-xl ${heroSubAlign}">${formatted}</p>`);
+                const heroSubMaxW = inHeroLeft ? 'max-w-xl' : 'max-w-2xl';
+                parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed ${heroSubMaxW} ${heroSubAlign}">${formatted}</p>`);
               } else if (inPricingCard) {
-                parts.push(`    <p class="text-3xl font-bold text-primary">${formatted}</p>`);
+                parts.push(`    <p class="font-display text-4xl font-bold tracking-tight text-primary">${formatted}</p>`);
               } else if (inFeaturedPricing) {
-                parts.push(`    <p class="text-3xl font-bold text-primary-content">${formatted}</p>`);
+                parts.push(`    <p class="font-display text-4xl font-bold tracking-tight text-primary-content">${formatted}</p>`);
+              } else if (inTestimonialCard) {
+                parts.push(`    <p class="text-sm text-base-content/60 leading-relaxed">${formatted}</p>`);
               } else if (inLandingCard) {
                 const tc = inDarkCard ? 'text-white/70' : inLargeCard ? 'text-primary-content/70' : 'text-base-content/60';
                 parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
@@ -5917,13 +6095,28 @@ ${options}
             }
             case 'text':
               if (inSidebar) {
-                parts.push(`    <li><a class="clear-nav-item flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
+                parts.push(`    <li><a class="clear-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
               } else if (inMetricCard) {
-                parts.push(`    <p class="text-xs text-base-content/40 font-mono">${formatted}</p>`);
+                // Detect trend text: starts with +/- followed by number (e.g. "+3 this week", "-2% vs last month")
+                const trendMatch = formatted.match(/^([+\-−][\d.,]+%?\s*)/);
+                if (trendMatch) {
+                  const isPositive = formatted.startsWith('+');
+                  const trendColor = isPositive ? 'text-success' : 'text-error';
+                  const arrowSvg = isPositive
+                    ? '<svg class="inline w-3.5 h-3.5" fill="none" viewBox="0 0 14 14"><path d="M7 1.167v11.666M7 1.167L11.667 5.833M7 1.167L2.333 5.833" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+                    : '<svg class="inline w-3.5 h-3.5" fill="none" viewBox="0 0 14 14"><path d="M7 12.833V1.167M7 12.833L2.333 8.167M7 12.833l4.667-4.666" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                  const trendPart = trendMatch[1].trim();
+                  const restPart = formatted.slice(trendMatch[1].length);
+                  parts.push(`    <p class="text-sm font-medium text-base-content/50"><span class="${trendColor} font-semibold inline-flex items-center gap-0.5">${arrowSvg} ${trendPart}</span> ${restPart}</p>`);
+                } else {
+                  parts.push(`    <p class="text-sm font-medium text-base-content/50">${formatted}</p>`);
+                }
+              } else if (inCta) {
+                parts.push(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
               } else if (inHero) {
-                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed">${formatted}</p>`);
+                parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl ${inHeroLeft ? 'text-left' : 'text-center mx-auto'}">${formatted}</p>`);
               } else if (inStatItem) {
-                parts.push(`    <p class="text-sm text-base-content/50 mt-1">${formatted}</p>`);
+                parts.push(`    <p class="text-sm font-medium text-base-content/50 uppercase tracking-wider">${formatted}</p>`);
               } else if (inLogoItem) {
                 parts.push(`    <span class="text-sm font-semibold text-base-content/30 tracking-widest uppercase">${formatted}</span>`);
               } else if (inFeaturedPricing) {
@@ -5935,9 +6128,13 @@ ${options}
                 const tc = inDarkCard ? 'text-white/80' : inLargeCard ? 'text-primary-content/80' : 'text-base-content/60';
                 parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
               } else if (inDarkSection) {
-                parts.push(`    <p class="text-base text-neutral-content/70 leading-relaxed mb-3">${formatted}</p>`);
+                parts.push(`    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               } else if (inPageSection) {
-                parts.push(`    <p class="text-base text-base-content/70 leading-relaxed mb-3">${formatted}</p>`);
+                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
+              } else if (inForm || inModal) {
+                parts.push(`    <p class="text-sm text-base-content/60 mb-4">${formatted}</p>`);
+              } else if (inEmptyState) {
+                parts.push(`    <p class="text-sm text-base-content/40 max-w-sm">${formatted}</p>`);
               } else if (inCard) {
                 parts.push(`    <p class="text-sm text-base-content/80 leading-relaxed">${formatted}</p>`);
               } else {
@@ -5951,12 +6148,16 @@ ${options}
               parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><em>${formatted}</em></p>`);
               break;
             case 'small':
-              if (inHeader) {
+              if (inMetricCard) {
+                parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50">${formatted}</span>`);
+              } else if (inHeader) {
                 parts.push(`    <span class="badge badge-ghost badge-sm font-mono">${formatted}</span>`);
               } else if (inHero) {
                 parts.push(`    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase border border-primary/30 text-primary" style="background:oklch(from var(--color-primary) l c h / 0.08)">${formatted}</span>`);
+              } else if (inTestimonialCard) {
+                // testimonial_card: role + company attribution — muted meta text
+                parts.push(`    <span class="text-sm text-base-content/60 leading-snug">${formatted}</span>`);
               } else if (inLandingCard) {
-                // testimonial_card: role + company attribution
                 parts.push(`    <span class="text-xs text-base-content/40 leading-snug">${formatted}</span>`);
               } else if (inLogoItem) {
                 parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/20">${formatted}</span>`);
@@ -5965,7 +6166,10 @@ ${options}
               }
               break;
             case 'link':
-              if (inHero) {
+              if (inCta) {
+                // CTA link — inverted colors for contrast against primary bg
+                parts.push(`    <a class="btn btn-lg bg-base-100 text-primary hover:bg-base-200" href="${ui.href || '#'}">${formatted}</a>`);
+              } else if (inHero) {
                 // Lone hero link (not in a group) — primary by default
                 parts.push(`    <a class="btn btn-primary btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
               } else if (inFeaturedPricing) {
@@ -7088,54 +7292,59 @@ function resolveStyleTokens(properties) {
 const BUILTIN_PRESET_CLASSES = {
   // --- Landing page presets ---
   page_navbar:       '__navbar__', // special rendering handled in section renderer
-  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
+  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6 relative overflow-hidden',
   page_section:      'bg-base-100 py-16 px-6',
   page_section_dark: 'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   page_card:         'bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm',
-  page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
+  page_cta:          'bg-primary text-primary-content py-20 lg:py-28 px-6 text-center flex flex-col items-center gap-6',
   page_stats:        'bg-base-200 py-16 px-6',
 
   // --- v2 landing sections ---
   hero_left:              'bg-base-100 py-28 px-6 flex flex-col items-start gap-6 overflow-hidden',
-  logo_bar:               'bg-base-200/60 border-y border-base-300/40 py-6 px-6',
+  logo_bar:               'bg-base-200/60 border-y border-base-300/40 py-8 lg:py-10 px-6',
   logo_bar_dark:          'bg-neutral text-neutral-content border-y border-neutral-content/10 py-6 px-6',
   feature_split:          'bg-base-100 py-20 px-6',
   feature_split_dark:     'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
   feature_spotlight:      'bg-base-200/40 py-20 px-6',
   feature_spotlight_dark: 'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
-  feature_grid:           'bg-base-100 py-16 px-6',
-  feature_grid_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
-  stats_row:              'bg-base-200 py-14 px-6',
+  feature_grid:           'bg-base-100 py-16 lg:py-24 px-6',
+  feature_grid_dark:      'bg-neutral text-neutral-content py-16 lg:py-24 px-6 border-y border-base-content/8',
+  stats_row:              'bg-base-200 py-14 lg:py-20 px-6',
   pricing_grid:           'bg-base-200 py-20 px-6',
   pricing_grid_dark:      'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
-  testimonial_grid:       'bg-base-200/50 py-16 px-6',
-  testimonial_grid_dark:  'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
+  testimonial_grid:       'bg-base-200/50 py-16 lg:py-24 px-6',
+  testimonial_grid_dark:  'bg-neutral text-neutral-content py-16 lg:py-24 px-6 border-y border-base-content/8',
 
   // --- v2 card presets ---
-  feature_card:           'bg-base-100 rounded-2xl p-7 flex flex-col gap-3 border border-base-300/60 hover:border-primary/40 hover:shadow-md transition-all',
+  feature_card:           'bg-base-100 rounded-2xl p-7 flex flex-col gap-3 border border-base-300 shadow-sm hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all group',
   feature_card_dark:      'bg-white/5 rounded-2xl p-7 flex flex-col gap-3 border border-white/10 hover:border-primary/40 transition-colors',
   // feature_card_large: bold primary bg — the "hero card" in the asymmetric split (Clay-style)
-  feature_card_large:     'bg-primary text-primary-content rounded-2xl p-10 flex flex-col gap-5 shadow-xl',
-  // Colored accent cards for bento grids (Clay/Notion style)
-  feature_card_teal:      'bg-teal-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_purple:    'bg-violet-600 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_indigo:    'bg-indigo-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_emerald:   'bg-emerald-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_rose:      'bg-rose-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_amber:     'bg-amber-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm',
-  pricing_card_featured:  'bg-primary rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1',
-  testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/40 shadow-sm',
-  stat_item:              'flex flex-col items-center text-center gap-1 min-w-[140px]',
-  logo_item:              'flex items-center justify-center',
+  feature_card_large:     'bg-primary text-primary-content rounded-2xl p-10 flex flex-col gap-5 shadow-xl min-h-[280px]',
+  // Colored accent cards for bento grids — muted tones that work on both light and dark
+  feature_card_teal:      'bg-teal-700/80 text-teal-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-teal-400/20',
+  feature_card_purple:    'bg-violet-800/80 text-violet-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-violet-400/20',
+  feature_card_indigo:    'bg-indigo-700/80 text-indigo-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-indigo-400/20',
+  feature_card_emerald:   'bg-emerald-700/80 text-emerald-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-emerald-400/20',
+  feature_card_rose:      'bg-rose-700/80 text-rose-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-rose-400/20',
+  feature_card_amber:     'bg-amber-700/80 text-amber-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-amber-400/20',
+  pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200',
+  pricing_card_featured:  'bg-primary text-primary-content rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1 ring-2 ring-primary/20 ring-offset-2 ring-offset-base-200 scale-[1.02]',
+  testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/50 shadow-md hover:shadow-lg transition-shadow relative',
+  stat_item:              'flex flex-col items-center text-center gap-2',
+  logo_item:              'flex items-center justify-center opacity-40 hover:opacity-70 transition-opacity grayscale',
+
+  // --- Marketing conversion presets ---
+  faq_section:            'bg-base-100 py-16 lg:py-24 px-6',
+  page_footer:            'bg-base-200 border-t border-base-300/40 py-12 lg:py-16 px-6',
 
   // --- App/dashboard presets ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-52 shrink-0 flex flex-col bg-base-300/20 border-r border-base-300/50 overflow-hidden',
+  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-100 border-r border-base-300/50 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-200/80 backdrop-blur-sm border-b border-base-300/60 shrink-0',
-  app_card:          'bg-base-200 rounded-xl border border-base-300/50 shadow-md p-5',
+  app_content:       'flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6',
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300/50 shrink-0',
+  app_card:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
+  app_table:         'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 flex flex-col items-center text-center gap-5',
@@ -7143,9 +7352,14 @@ const BUILTIN_PRESET_CLASSES = {
   section_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
   card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
-  metric_card:       'bg-base-200 rounded-box p-6 flex flex-col gap-1',
+  metric_card:       'bg-base-100 rounded-xl p-6 flex flex-col gap-1.5 border border-base-300/40 shadow-sm hover:shadow-md hover:border-base-300/60 transition-all duration-200 cursor-default',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
-  form:              'bg-base-100 rounded-box border border-base-300/40 shadow-sm p-8 max-w-lg flex flex-col gap-5',
+  form:              'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5',
+
+  // --- Interaction presets ---
+  app_modal:         'bg-base-100 rounded-xl border border-base-300/40 shadow-2xl p-8 max-w-md mx-auto flex flex-col gap-5 ring-1 ring-base-300/20',
+  empty_state:       'bg-base-100 rounded-xl border-2 border-dashed border-base-300/30 p-12 flex flex-col items-center justify-center text-center gap-3 min-h-[180px]',
+  app_list:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden divide-y divide-base-300/20',
 };
 
 // Legacy BUILTIN_STYLES array -- only used as fallback when user doesn't override.

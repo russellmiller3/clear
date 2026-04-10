@@ -762,6 +762,78 @@ secret is env('STRIPE_SECRET')
 
 ---
 
+## Chapter 13b: Charts (Visualizing Your Data)
+
+Clear includes built-in charts powered by ECharts. No setup needed — the CDN
+loads automatically when your app has a chart.
+
+### Bar Chart
+
+```clear
+bar chart 'Revenue by Region' showing sales
+```
+
+The chart auto-detects: first string field becomes x-axis labels, number fields
+become y-axis values. Multiple number fields create multiple series with a legend.
+
+### Line and Area Charts
+
+```clear
+line chart 'Monthly Trend' showing monthly_data
+area chart 'Growth Over Time' showing quarterly_data
+```
+
+### Pie Chart with Grouping
+
+Use `by field` to group your data and count occurrences:
+
+```clear
+pie chart 'Issues by Status' showing issues by status
+```
+
+This counts how many issues have each status value and renders a donut chart.
+
+### Bar Chart with Grouping
+
+`by field` works on all chart types, not just pie:
+
+```clear
+bar chart 'Issues by Project' showing issues by project
+```
+
+This groups all issues by their `project` field, counts each group, and renders
+a bar chart with project names on x-axis and counts on y-axis.
+
+### Putting It Together
+
+Here's a dashboard with stat cards and charts:
+
+```clear
+section 'Stats' as 4 columns:
+  section 'Open' with style metric_card:
+    small text 'Open Issues'
+    heading '12'
+    text '+3 this week'
+
+bar chart 'Weekly Trends' showing weekly_data
+pie chart 'By Priority' showing issues by priority
+```
+
+The `+3` in the stat card automatically renders in green with an up-arrow icon.
+Text starting with `-` renders in red with a down-arrow. Zero extra syntax needed.
+
+### Alternate Syntax
+
+You can also write the title first:
+
+```clear
+'Revenue' bar chart showing sales
+```
+
+Both forms compile to the same thing. Use whichever reads better to you.
+
+---
+
 ## Chapter 14: Error Handling (Because Things Go Wrong)
 
 The internet is unreliable. APIs go down. Databases hiccup. Users type nonsense
@@ -1350,9 +1422,564 @@ with timestamps. Great for debugging and audit trails.
 
 ---
 
+## Chapter 20: Designing Beautiful Pages
+
+Up to this point, we've been building functional apps. They work, they have
+data, they have buttons. But they look like... developer prototypes. Functional
+but not exactly something you'd put on Product Hunt.
+
+Clear has a secret weapon: **style presets**. These are built-in design recipes
+that emit production-quality HTML. Think Stripe's landing page. Think Linear's
+dashboard. You get that level of polish by adding `with style preset_name` to
+your sections.
+
+No CSS to write. No Tailwind classes to memorize. Just pick the right preset
+and fill in your content.
+
+### Part 1: Building a Marketing Landing Page
+
+Let's build a real landing page for a fictional SaaS product called "Beacon" --
+a customer analytics tool. We'll go section by section, the way a real landing
+page is structured: navbar, hero, social proof, features, pricing, FAQ, CTA,
+footer.
+
+#### Step 1: The Navbar
+
+Every landing page starts with a navbar. Brand on the left, links in the middle,
+CTA button on the right.
+
+```clear
+section 'Nav' with style page_navbar:
+  heading 'Beacon'
+  link 'Features' to '#features'
+  link 'Pricing' to '#pricing'
+  link 'Docs' to '/docs'
+  button 'Start Free':
+    go to '/signup'
+```
+
+The `page_navbar` preset handles all the layout: sticky positioning, responsive
+hamburger menu, transparent backdrop blur. You just provide the heading (brand),
+links (nav items), and a button (CTA). The last button automatically gets
+primary styling.
+
+#### Step 2: The Hero
+
+The hero is the first thing visitors see. It needs to grab attention in under
+3 seconds.
+
+```clear
+section 'Hero' with style page_hero:
+  small text 'Trusted by 2,000+ teams'
+  heading 'Know your customers before they leave.'
+  subheading 'Beacon tracks every click, scroll, and drop-off so you can fix problems before they cost you revenue.'
+  link 'Start free trial' to '/signup'
+  link 'Watch demo' to '/demo'
+```
+
+`page_hero` centers everything, adds generous padding, and puts a subtle radial
+glow behind the content. The `small text` at the top becomes a badge. Links
+at the bottom become side-by-side CTA buttons (primary + ghost).
+
+Want a left-aligned hero with a product screenshot on the right? Use `hero_left`
+instead.
+
+#### Step 3: Social Proof (Stats + Logos)
+
+Nobody wants to be the first customer. Show them they're not.
+
+```clear
+section 'Stats' with style stats_row:
+  section 'S1' with style stat_item:
+    heading '2.4B'
+    text 'Events tracked'
+  section 'S2' with style stat_item:
+    heading '2,000+'
+    text 'Teams'
+  section 'S3' with style stat_item:
+    heading '99.97%'
+    text 'Uptime'
+  section 'S4' with style stat_item:
+    heading '<150ms'
+    text 'Avg latency'
+```
+
+`stats_row` lays out child `stat_item` sections in a 4-column grid. Each item
+centers a big heading (the number) over a small label (the description).
+
+#### Step 4: Features
+
+The `feature_split` preset creates a bento-grid layout: one large hero card
+on the left (2/3 width) and smaller cards stacked on the right (1/3 width).
+
+```clear
+section 'Features' with style feature_split:
+  heading 'Everything you need to understand your users'
+  text 'From first click to conversion.'
+  section 'Main' with style feature_card_large:
+    heading 'Funnel Analysis'
+    subheading 'See the drop-off. Fix the leak.'
+    text 'Pinpoint exactly where users abandon your flows.'
+  section 'S1' with style feature_card_teal:
+    heading 'Session Replay'
+    text 'Watch real user sessions.'
+  section 'S2' with style feature_card_purple:
+    heading 'A/B Testing'
+    text 'Ship variants. Get significance.'
+```
+
+The colored card presets (`feature_card_teal`, `feature_card_purple`, etc.)
+add bold background colors for visual variety -- like the bento grids you see
+on Clay, Notion, and Linear marketing pages.
+
+For a simpler even grid, use `feature_grid` with `feature_card` children.
+
+#### Step 5: Testimonials
+
+Social proof from real humans. The `testimonial_grid` preset automatically
+adds star ratings and opening quote marks to each card.
+
+```clear
+section 'Testimonials' with style testimonial_grid:
+  heading 'What our customers say'
+  section 'T1' with style testimonial_card:
+    text 'We cut checkout abandonment by 34% in six weeks.'
+    subheading 'Sarah Chen'
+    small text 'Head of Product, Cartify'
+  section 'T2' with style testimonial_card:
+    text 'Finally analytics that answer questions in minutes, not days.'
+    subheading 'Marcus Webb'
+    small text 'Growth Lead, Teamflow'
+  section 'T3' with style testimonial_card:
+    text 'Session replay alone was worth it. Activation went from 31% to 58%.'
+    subheading 'Priya Kapoor'
+    small text 'CEO, Docsend Pro'
+```
+
+#### Step 6: Pricing
+
+The `pricing_grid` preset creates a 3-column comparison. The middle card can
+use `pricing_card_featured` for a highlighted "recommended" treatment with a
+ring and slight scale-up.
+
+```clear
+section 'Pricing' with style pricing_grid:
+  heading 'Simple pricing'
+  text 'All plans include unlimited team members.'
+  section 'Free' with style pricing_card:
+    heading 'Free'
+    subheading '$0 / month'
+    text '10k events/month'
+    text '30-day retention'
+    link 'Get started' to '/signup'
+  section 'Pro' with style pricing_card_featured:
+    heading 'Pro'
+    subheading '$49 / month'
+    text '5M events/month'
+    text '12-month retention'
+    text 'Session replay'
+    link 'Start trial' to '/signup'
+  section 'Enterprise' with style pricing_card:
+    heading 'Enterprise'
+    subheading 'Custom'
+    text 'Unlimited everything'
+    text 'SSO and SCIM'
+    text 'Dedicated SLA'
+    link 'Talk to sales' to '/contact'
+```
+
+#### Step 7: FAQ
+
+The `faq_section` preset turns child sections into an accordion. The section
+title becomes the question. The body text becomes the answer. First item
+starts open.
+
+```clear
+section 'FAQ' with style faq_section:
+  heading 'Frequently asked questions'
+  section 'Is there a free plan?':
+    text 'Yes -- the free tier includes 10k events per month with no credit card required.'
+  section 'Can I cancel anytime?':
+    text 'Absolutely. No contracts, no cancellation fees. Your data exports with one click.'
+  section 'Do you support GDPR?':
+    text 'Yes. We are SOC 2 Type II certified and fully GDPR compliant.'
+```
+
+#### Step 8: CTA + Footer
+
+Close with a bold call-to-action banner and a multi-column footer.
+
+```clear
+section 'CTA' with style page_cta:
+  heading 'Stop guessing. Start knowing.'
+  text 'Free forever on the starter plan. No credit card required.'
+  link 'Create free account' to '/signup'
+
+section 'Footer' with style page_footer:
+  heading 'Beacon'
+  section 'Product':
+    link 'Features' to '/features'
+    link 'Pricing' to '/pricing'
+    link 'Changelog' to '/changelog'
+  section 'Company':
+    link 'About' to '/about'
+    link 'Blog' to '/blog'
+    link 'Careers' to '/careers'
+  section 'Legal':
+    link 'Privacy' to '/privacy'
+    link 'Terms' to '/terms'
+  small text '2026 Beacon Analytics. All rights reserved.'
+```
+
+#### The Complete Landing Page
+
+Here's the whole thing assembled. 85 lines for a production-quality SaaS
+landing page:
+
+```clear
+build for web
+theme 'midnight'
+
+page 'Beacon Analytics' at '/':
+
+  section 'Nav' with style page_navbar:
+    heading 'Beacon'
+    link 'Features' to '#features'
+    link 'Pricing' to '#pricing'
+    link 'Docs' to '/docs'
+    button 'Start Free':
+      go to '/signup'
+
+  section 'Hero' with style page_hero:
+    small text 'Trusted by 2,000+ teams'
+    heading 'Know your customers before they leave.'
+    subheading 'Beacon tracks every click, scroll, and drop-off so you can fix problems before they cost you revenue.'
+    link 'Start free trial' to '/signup'
+    link 'Watch demo' to '/demo'
+
+  section 'Stats' with style stats_row:
+    section 'S1' with style stat_item:
+      heading '2.4B'
+      text 'Events tracked'
+    section 'S2' with style stat_item:
+      heading '2,000+'
+      text 'Teams'
+    section 'S3' with style stat_item:
+      heading '99.97%'
+      text 'Uptime'
+    section 'S4' with style stat_item:
+      heading '<150ms'
+      text 'Avg latency'
+
+  section 'Features' with style feature_split:
+    heading 'Everything you need to understand your users'
+    text 'From first click to conversion.'
+    section 'Main' with style feature_card_large:
+      heading 'Funnel Analysis'
+      subheading 'See the drop-off. Fix the leak.'
+      text 'Pinpoint exactly where users abandon your flows.'
+    section 'S1' with style feature_card_teal:
+      heading 'Session Replay'
+      text 'Watch real user sessions.'
+    section 'S2' with style feature_card_purple:
+      heading 'A/B Testing'
+      text 'Ship variants. Get significance.'
+
+  section 'Testimonials' with style testimonial_grid:
+    heading 'What our customers say'
+    section 'T1' with style testimonial_card:
+      text 'We cut checkout abandonment by 34% in six weeks.'
+      subheading 'Sarah Chen'
+      small text 'Head of Product, Cartify'
+    section 'T2' with style testimonial_card:
+      text 'Finally analytics that answer questions in minutes, not days.'
+      subheading 'Marcus Webb'
+      small text 'Growth Lead, Teamflow'
+    section 'T3' with style testimonial_card:
+      text 'Session replay alone was worth it. Activation went from 31% to 58%.'
+      subheading 'Priya Kapoor'
+      small text 'CEO, Docsend Pro'
+
+  section 'Pricing' with style pricing_grid:
+    heading 'Simple pricing'
+    text 'All plans include unlimited team members.'
+    section 'Free' with style pricing_card:
+      heading 'Free'
+      subheading '$0 / month'
+      text '10k events/month'
+      text '30-day retention'
+      link 'Get started' to '/signup'
+    section 'Pro' with style pricing_card_featured:
+      heading 'Pro'
+      subheading '$49 / month'
+      text '5M events/month'
+      text '12-month retention'
+      text 'Session replay'
+      link 'Start trial' to '/signup'
+    section 'Enterprise' with style pricing_card:
+      heading 'Enterprise'
+      subheading 'Custom'
+      text 'Unlimited everything'
+      text 'SSO and SCIM'
+      text 'Dedicated SLA'
+      link 'Talk to sales' to '/contact'
+
+  section 'FAQ' with style faq_section:
+    heading 'Frequently asked questions'
+    section 'Is there a free plan?':
+      text 'Yes -- the free tier includes 10k events per month with no credit card required.'
+    section 'Can I cancel anytime?':
+      text 'No contracts, no cancellation fees. Your data exports with one click.'
+    section 'Do you support GDPR?':
+      text 'We are SOC 2 Type II certified and fully GDPR compliant.'
+
+  section 'CTA' with style page_cta:
+    heading 'Stop guessing. Start knowing.'
+    text 'Free forever on the starter plan.'
+    link 'Create free account' to '/signup'
+
+  section 'Footer' with style page_footer:
+    heading 'Beacon'
+    section 'Product':
+      link 'Features' to '/features'
+      link 'Pricing' to '/pricing'
+    section 'Company':
+      link 'About' to '/about'
+      link 'Blog' to '/blog'
+    small text '2026 Beacon Analytics. All rights reserved.'
+```
+
+### Part 2: Building an App Dashboard
+
+Marketing pages sell the product. Dashboards ARE the product. Different
+structure, different presets, same idea: pick the right preset and fill in
+content.
+
+The app UI presets give you the classic SaaS layout: fixed sidebar on the left,
+sticky header across the top, scrollable content area with cards and tables.
+Think Linear, Notion, or any modern productivity tool.
+
+#### The Layout Skeleton
+
+Every dashboard starts with the same three-level nesting:
+
+```
+app_layout (flex row, full screen height)
+  app_sidebar (fixed width, left)
+  app_main (fills remaining space, flex column)
+    app_header (sticky top)
+    app_content (scrollable)
+```
+
+In Clear:
+
+```clear
+section 'App' with style app_layout:
+  section 'Sidebar' with style app_sidebar:
+    # sidebar content here
+  section 'Main' with style app_main:
+    section 'Header' with style app_header:
+      # header content here
+    section 'Content' with style app_content:
+      # dashboard content here
+```
+
+That's it. Four sections, four presets. You now have a full-screen app layout
+with a sidebar, header, and scrollable content area.
+
+#### The Sidebar
+
+The `app_sidebar` preset is smart about its children. It splits them
+automatically:
+
+- The first `heading` becomes the brand/logo area at the top
+- `text` and `link` items become nav menu items (using DaisyUI's menu component)
+- Nested `section` blocks become labeled nav groups (the section title becomes
+  a group header)
+
+```clear
+section 'Sidebar' with style app_sidebar:
+  heading 'ProjectHub'
+
+  section 'Main':
+    text 'Dashboard'
+    text 'Projects'
+    text 'Team'
+
+  section 'Settings':
+    text 'Account'
+    text 'Billing'
+    text 'Integrations'
+```
+
+That produces a sidebar with "ProjectHub" as the brand, then two labeled nav
+groups ("Main" and "Settings") with items under each.
+
+#### The Header
+
+`app_header` gives you a sticky bar with a split layout: content on the left,
+actions on the right.
+
+```clear
+section 'Header' with style app_header:
+  heading 'Dashboard'
+  button 'New Project':
+    open the New Project modal
+```
+
+#### Metric Cards
+
+For KPI rows at the top of dashboards, use `metric_card` inside a column grid:
+
+```clear
+section 'Stats' as 4 columns:
+  section 'Revenue' with style metric_card:
+    display revenue as dollars called 'Revenue'
+  section 'Users' with style metric_card:
+    display active_users as number called 'Active Users'
+  section 'Orders' with style metric_card:
+    display order_count as number called 'Orders'
+  section 'Growth' with style metric_card:
+    display growth_rate as percent called 'Growth'
+```
+
+The `as 4 columns` modifier on the parent creates a CSS grid. Each `metric_card`
+gets a compact card treatment with the number prominently displayed.
+
+#### Tables
+
+Wrap a `display X as table` in an `app_table` preset for the rounded, bordered
+look:
+
+```clear
+section 'Projects' with style app_table:
+  display projects as table showing name, status, owner, updated_at
+```
+
+#### Empty States
+
+When there's no data yet, show a friendly placeholder instead of a blank void:
+
+```clear
+section 'No Data' with style empty_state:
+  heading 'No projects yet'
+  text 'Create your first project to get started.'
+  button 'New Project':
+    open the New Project modal
+```
+
+The `empty_state` preset adds a dashed border, centered content, and generous
+padding. It says "this space is intentionally empty" instead of looking broken.
+
+#### The Complete Dashboard
+
+Here's a full project management dashboard. Backend + frontend in one file:
+
+```clear
+build for web and javascript backend
+theme 'midnight'
+
+database is local memory
+
+create a Projects table:
+  name, required
+  status, default 'active'
+  owner
+  created_at_date, auto
+
+accept requests from any website
+log every request
+
+when user calls GET /api/projects:
+  all_projects = get all Projects
+  send back all_projects
+
+when user calls POST /api/projects sending project_data:
+  validate project_data:
+    name is text, required, min 1, max 100
+  new_project = save project_data as new Project
+  send back new_project with success message
+
+when user calls DELETE /api/projects/:id:
+  requires auth
+  delete the Project with this id
+  send back 'deleted' with success message
+
+page 'ProjectHub' at '/':
+
+  revenue = 48200
+  active_users = 1284
+  open_issues = 37
+  uptime = 0.9997
+
+  on page load get projects from '/api/projects'
+
+  section 'App' with style app_layout:
+
+    section 'Sidebar' with style app_sidebar:
+      heading 'ProjectHub'
+      section 'Main':
+        text 'Dashboard'
+        text 'Projects'
+        text 'Team'
+      section 'Settings':
+        text 'Account'
+        text 'Billing'
+
+    section 'Main' with style app_main:
+
+      section 'Header' with style app_header:
+        heading 'Dashboard'
+        button 'New Project':
+          open the New Project modal
+
+      section 'Content' with style app_content:
+
+        section 'Metrics' as 4 columns:
+          section 'M1' with style metric_card:
+            display revenue as dollars called 'Revenue'
+          section 'M2' with style metric_card:
+            display active_users as number called 'Active Users'
+          section 'M3' with style metric_card:
+            display open_issues as number called 'Open Issues'
+          section 'M4' with style metric_card:
+            display uptime as percent called 'Uptime'
+
+        section 'Projects Table' with style app_card:
+          subheading 'All Projects'
+          display projects as table showing name, status, owner with delete
+
+        section 'Activity' with style app_list:
+          heading 'Recent Activity'
+          text 'Alice deployed v2.1.0 to production'
+          text 'Bob closed 3 issues in the Backend project'
+          text 'Carol updated the billing integration'
+
+  section 'New Project' as modal:
+    section 'Form' with style form:
+      subheading 'Create Project'
+      'Project Name' is a text input saved as a project_name
+      'Owner' is a text input saved as a owner
+      button 'Create':
+        send project_name and owner as a new project to '/api/projects'
+        get projects from '/api/projects'
+        close modal
+      button 'Cancel':
+        close modal
+```
+
+That's 80 lines of Clear for a full-stack dashboard app with a database,
+REST API, validation, auth on delete, and a polished frontend with sidebar
+navigation, metric cards, a data table, activity feed, and a modal form.
+
+In React + Express, you'd be looking at 400-500 lines across 8-10 files.
+In Clear, it's one file that you can read top to bottom in two minutes.
+
+---
+
 ## What's Next? (You Did It!)
 
-## Chapter 20: Policies (Safety Guardrails)
+## Chapter 21: Policies (Safety Guardrails)
 
 Your AI agent is smart. But smart doesn't mean safe. What happens when it
 tries to delete every record in your database? Or sends 10,000 emails? Or

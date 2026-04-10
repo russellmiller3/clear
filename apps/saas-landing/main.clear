@@ -114,7 +114,45 @@ page 'Pulse Analytics' at '/':
       text 'White-glove onboarding'
       link 'Talk to sales' to '/contact'
 
+  section 'FAQ' with style faq_section:
+    heading 'Frequently asked questions'
+    text 'Everything you need to know about Pulse Analytics.'
+    section 'Q1':
+      heading 'How much does Pulse cost?'
+      text 'Pulse is free for up to 10k events per month. Our Growth plan is $49/month with 5M events, session replay, and A/B testing. Enterprise plans are custom-priced with unlimited everything. All plans include unlimited team members.'
+    section 'Q2':
+      heading 'Is my data secure?'
+      text 'All data is encrypted at rest and in transit. We are SOC 2 Type II certified and GDPR compliant. Enterprise customers get SSO, SCIM provisioning, and dedicated infrastructure. We never sell your data to third parties.'
+    section 'Q3':
+      heading 'What integrations do you support?'
+      text 'Pulse integrates with Slack, Segment, Snowflake, BigQuery, Amplitude, and 40+ other tools. Our REST API and webhooks let you connect to anything. Most integrations take under 5 minutes to set up.'
+    section 'Q4':
+      heading 'How long does onboarding take?'
+      text 'Most teams are up and running in under 15 minutes. Add our snippet to your site, and events start flowing immediately. Enterprise customers get white-glove onboarding with a dedicated solutions engineer.'
+    section 'Q5':
+      heading 'Can I export my data?'
+      text 'Yes. You own your data. Export to CSV, JSON, or stream directly to your data warehouse via our Snowflake and BigQuery connectors. There are no lock-in contracts and no export fees.'
+
   section 'CTA' with style page_cta:
     heading 'Stop guessing. Start knowing.'
     text 'Free forever on the starter plan. No credit card required.'
     link 'Create free account' to '/signup'
+
+  section 'Footer' with style page_footer:
+    heading 'Pulse'
+    section 'Product':
+      link 'Features' to '#features'
+      link 'Pricing' to '#pricing'
+      link 'Integrations' to '/integrations'
+      link 'Changelog' to '/changelog'
+    section 'Resources':
+      link 'Documentation' to '/docs'
+      link 'Blog' to '/blog'
+      link 'API Reference' to '/api'
+      link 'Status' to '/status'
+    section 'Company':
+      link 'About' to '/about'
+      link 'Careers' to '/careers'
+      link 'Contact' to '/contact'
+      link 'Privacy' to '/privacy'
+    small text '2026 Pulse Analytics. All rights reserved.'

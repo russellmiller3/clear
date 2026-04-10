@@ -91,7 +91,8 @@
 //   TEST BLOCKS ....................... parseTestDef(), parseExpect()
 //   ASK FOR (legacy) .................. parseAskFor()
 //   DISPLAY ........................... parseDisplay() — includes "with delete/edit"
-//   CHART ............................. parseChart() — ECharts (line, bar, pie, area)
+//   CHART ............................. parseChart(), parseChartTypeFirst(), parseChartTitleFirst(),
+//                                      parseChartRemainder() — ECharts (line, bar, pie, area)
 //   BUTTON ............................ parseButton()
 //   ENDPOINT .......................... parseEndpoint()
 //   ADVANCED FEATURES ................. parseStream, parseBackground, parseSubscribe,
@@ -1737,8 +1738,37 @@ const RAW_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['chart', (ctx) => {
+    // Old syntax: chart 'Title' as bar showing data — still supported
     if (ctx.tokens.length < 4 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const parsed = parseChart(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['bar', (ctx) => {
+    if (ctx.tokens.length < 4 || ctx.tokens[1].value !== 'chart') return undefined;
+    const parsed = parseChartTypeFirst(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['line', (ctx) => {
+    if (ctx.tokens.length < 4 || ctx.tokens[1].value !== 'chart') return undefined;
+    const parsed = parseChartTypeFirst(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['pie', (ctx) => {
+    if (ctx.tokens.length < 4 || ctx.tokens[1].value !== 'chart') return undefined;
+    const parsed = parseChartTypeFirst(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['area', (ctx) => {
+    if (ctx.tokens.length < 4 || ctx.tokens[1].value !== 'chart') return undefined;
+    const parsed = parseChartTypeFirst(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
@@ -2067,6 +2097,16 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         }
         body.push({ type: NodeType.ASSIGN, name: varName, expression: { type: NodeType.DO_ALL, tasks, line }, line });
         i = j; continue;
+      }
+
+      // Title-first chart: 'Title' bar chart showing data
+      if (firstToken.type === TokenType.STRING && tokens.length >= 4 &&
+          ['bar', 'line', 'pie', 'area'].includes(tokens[1].value) &&
+          tokens[2].value === 'chart') {
+        const parsed = parseChartTitleFirst(tokens, line);
+        if (parsed.error) errors.push({ line, message: parsed.error });
+        else body.push(parsed.node);
+        i++; continue;
       }
 
       // Label-first input: 'Label' is a text input / 'Label' as text input
@@ -4589,10 +4629,10 @@ function parseDisplay(tokens, line) {
 // =============================================================================
 // CHART (Phase 30)
 // =============================================================================
-// CANONICAL: chart 'Title' as line showing data_var
-// Also: chart 'Title' as bar showing data_var
-//        chart 'Title' as pie showing data_var by field_name
-//        chart 'Title' as area showing data_var
+// CANONICAL: bar chart 'Title' showing data_var
+// Also: 'Title' bar chart showing data_var
+//        pie chart 'Title' showing data_var by field_name
+//        chart 'Title' as line showing data_var (legacy)
 
 function parseChart(tokens, line) {
   let pos = 1; // skip "chart"
@@ -4630,6 +4670,58 @@ function parseChart(tokens, line) {
   pos++;
 
   // Optional: "by" <field> (for pie charts — groups by this field)
+  let groupBy = null;
+  if (pos < tokens.length && tokens[pos].value === 'by') {
+    pos++;
+    if (pos < tokens.length) {
+      groupBy = tokens[pos].value;
+      pos++;
+    }
+  }
+
+  const slug = sanitizeForId(title.replace(/\s+/g, '_'));
+  const ui = { tag: 'chart', id: `chart_${slug}`, label: title };
+  return { node: { type: NodeType.CHART, title, chartType, dataVar, groupBy, line, ui } };
+}
+
+// --- New chart syntax helpers ---
+// Type-first: bar chart 'Title' showing data [by field]
+function parseChartTypeFirst(tokens, line) {
+  const chartType = tokens[0].value.toLowerCase();
+  // tokens[1] is 'chart' — skip
+  let pos = 2;
+  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+    return { error: `${chartType} chart needs a title in quotes. Example: ${chartType} chart 'Revenue' showing sales` };
+  }
+  const title = tokens[pos].value;
+  pos++;
+  return parseChartRemainder(tokens, pos, title, chartType, line);
+}
+
+// Title-first: 'Title' bar chart showing data [by field]
+function parseChartTitleFirst(tokens, line) {
+  const title = tokens[0].value;
+  const chartType = tokens[1].value.toLowerCase();
+  // tokens[2] is 'chart' — skip
+  let pos = 3;
+  return parseChartRemainder(tokens, pos, title, chartType, line);
+}
+
+// Shared: parse "showing data [by field]" from a given position
+function parseChartRemainder(tokens, pos, title, chartType, line) {
+  if (!['line', 'bar', 'pie', 'area'].includes(chartType)) {
+    return { error: `Unknown chart type '${chartType}'. Use: line, bar, pie, or area.` };
+  }
+  if (pos >= tokens.length || tokens[pos].value !== 'showing') {
+    return { error: `Chart needs "showing" followed by your data variable. Example: ${chartType} chart '${title}' showing sales` };
+  }
+  pos++;
+  if (pos >= tokens.length) {
+    return { error: `Chart needs a data variable after "showing". Example: ${chartType} chart '${title}' showing sales` };
+  }
+  const dataVar = tokens[pos].value;
+  pos++;
+
   let groupBy = null;
   if (pos < tokens.length && tokens[pos].value === 'by') {
     pos++;

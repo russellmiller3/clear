@@ -118,7 +118,44 @@ page 'Vibe — Async Video for Teams' at '/':
       text 'CRM integrations'
       link 'Talk to sales' to '/sales'
 
+  section 'FAQ' with style faq_section:
+    heading 'Frequently asked questions'
+    subheading 'Everything you need to know about Vibe.'
+    section 'Q1':
+      heading 'Is there a free plan?'
+      text 'Yes. The free plan includes unlimited recordings up to 5 minutes, 25 stored videos, and 720p quality. No credit card required.'
+    section 'Q2':
+      heading 'Can I record my screen and camera at the same time?'
+      text 'Absolutely. Vibe supports full split-screen and picture-in-picture modes so your team sees your face alongside your work.'
+    section 'Q3':
+      heading 'How does the AI transcript work?'
+      text 'Every video is automatically transcribed with speaker labels. AI generates chapters and a summary so viewers can skip to exactly what they need.'
+    section 'Q4':
+      heading 'Does Vibe integrate with Slack and Notion?'
+      text 'Yes. Share videos directly into Slack channels, embed in Notion pages, or paste a link anywhere. The preview unfurls automatically.'
+    section 'Q5':
+      heading 'Is my data secure?'
+      text 'All videos are encrypted in transit and at rest. Business plans include SSO, audit logs, and data residency options. SOC 2 Type II certified.'
+
   section 'CTA' with style page_cta:
     heading 'Record your first video in 30 seconds.'
     subheading 'Free forever. No meeting required.'
     link 'Start recording free' to '/signup'
+
+  section 'Footer' with style page_footer:
+    heading 'Vibe'
+    section 'Product':
+      link 'Features' to '#product'
+      link 'Pricing' to '#pricing'
+      link 'Enterprise' to '/enterprise'
+      link 'Changelog' to '/changelog'
+    section 'Resources':
+      link 'Help Center' to '/help'
+      link 'Blog' to '/blog'
+      link 'API Docs' to '/docs'
+      link 'Status' to '/status'
+    section 'Company':
+      link 'About' to '/about'
+      link 'Careers' to '/careers'
+      link 'Privacy' to '/privacy'
+      link 'Terms' to '/terms'

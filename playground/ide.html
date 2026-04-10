@@ -58,6 +58,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #preview-pane { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; border-left: 1px solid var(--bd); border-right: 1px solid var(--bd); }
 #chat-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--bg2); flex: 0 0 360px; min-width: 0; transition: flex-basis .2s ease; }
 #chat-pane.collapsed { flex-basis: 0 !important; }
+#chat-resizer { width: 5px; flex-shrink: 0; background: var(--bd2); cursor: col-resize; transition: background .15s; position: relative; z-index: 10; }
+#chat-resizer:hover, #chat-resizer.dragging { background: var(--accent); }
 #status-bar { flex-shrink: 0; height: 24px; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: var(--accent2); color: rgba(255,255,255,.8); font-size: 11px; font-family: var(--font); border-top: 1px solid var(--bd); }
 #status-bar span { white-space: nowrap; }
 .sb-sep { width: 1px; height: 12px; background: rgba(255,255,255,.2); }
@@ -177,9 +179,23 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .msg.user { background: var(--accent2); color: #dde4ff; align-self: flex-end; border-bottom-right-radius: 4px; }
 .msg.assistant { background: var(--bg3); color: var(--tx); align-self: flex-start; border: 1px solid var(--bd); border-bottom-left-radius: 4px; }
-.msg pre { background: var(--bg); padding: 10px 12px; border-radius: 6px; margin: 8px 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; overflow-x: auto; position: relative; border: 1px solid var(--bd); }
+.msg pre { background: var(--bg); padding: 10px 12px; border-radius: 6px; margin: 8px 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; overflow-x: auto; position: relative; border: 1px solid var(--bd); white-space: pre-wrap; word-wrap: break-word; }
+.msg table { border-collapse: collapse; margin: 8px 0; font-size: 12px; width: 100%; }
+.msg th, .msg td { border: 1px solid var(--bd2); padding: 5px 10px; text-align: left; }
+.msg th { background: var(--bg); font-weight: 600; }
+.msg td { background: var(--bg2); }
+.msg code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-family: var(--mono); font-size: 12px; border: 1px solid var(--bd); }
+.msg pre code { background: none; padding: 0; border: none; }
+.msg .code-block { position: relative; margin: 8px 0; }
+.msg .code-block .code-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px; background: var(--bg2); border: 1px solid var(--bd); border-bottom: none; border-radius: 6px 6px 0 0; font-size: 10px; font-family: var(--mono); color: var(--tx3); }
+.msg .code-block .code-header + pre { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.msg .code-btns { display: flex; gap: 4px; }
+.msg .code-btn { background: var(--bg3); color: var(--tx3); border: 1px solid var(--bd2); border-radius: 3px; padding: 1px 8px; font-size: 10px; font-weight: 500; cursor: pointer; transition: all .15s; }
+.msg .code-btn:hover { background: var(--accent2); color: #fff; border-color: var(--accent2); }
 .msg .apply-btn { position: absolute; top: 6px; right: 6px; background: var(--accent2); color: #dde4ff; border: none; border-radius: 4px; padding: 3px 10px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all .15s; }
 .msg .apply-btn:hover { background: var(--accent); transform: translateY(-1px); }
+.msg .svg-diagram { margin: 8px 0; padding: 12px; background: var(--bg); border: 1px solid var(--bd); border-radius: 6px; overflow-x: auto; text-align: center; }
+.msg .svg-diagram svg { max-width: 100%; height: auto; }
 .tool-step { font-size: 11px; color: var(--tx3); padding: 4px 10px; border-left: 2px solid var(--accent2); margin: 6px 0; animation: msgIn .2s ease; }
 @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
 .stream-cursor { animation: cursorBlink .7s step-end infinite; color: var(--accent); }
@@ -192,6 +208,16 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #chat-send:hover { background: var(--accent2); box-shadow: 0 2px 12px rgba(108,140,255,.3); transform: translateY(-1px); }
 #chat-send:active { transform: translateY(0); }
 #chat-send:disabled { opacity: .3; cursor: default; transform: none; box-shadow: none; }
+#chat-stop { background: var(--red, #f43f5e); color: #fff; border: none; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 700; font-family: var(--font); cursor: pointer; transition: all .15s; }
+#chat-stop:hover { opacity: .85; transform: translateY(-1px); }
+#personality-setup { padding: 20px; color: var(--tx3); font-family: var(--font); display: flex; flex-direction: column; gap: 10px; height: 100%; }
+#personality-setup textarea { background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 10px; width: 100%; flex: 1; min-height: 120px; font-family: var(--font); font-size: 12px; resize: none; transition: border-color .15s; line-height: 1.5; }
+#personality-setup textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+#personality-setup .btn-row { display: flex; gap: 8px; }
+#personality-setup button { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 20px; cursor: pointer; font-weight: 700; font-family: var(--font); transition: all .15s; }
+#personality-setup button:hover { background: var(--accent2); transform: translateY(-1px); }
+#personality-setup button.btn-ghost { background: transparent; color: var(--tx3); border: 1px solid var(--bd2); }
+#personality-setup button.btn-ghost:hover { background: var(--bg3); color: var(--tx); }
 #api-key-setup { padding: 24px; text-align: center; color: var(--tx3); font-family: var(--font); }
 #api-key-setup input { background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 10px; width: 100%; margin: 10px 0; font-family: var(--font); font-size: 12px; transition: border-color .15s; }
 #api-key-setup input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -306,7 +332,10 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
   <div id="editor-pane">
     <div id="editor-header">
       <span><span class="dot" id="compile-dot"></span> <span id="editor-label">main.clear</span></span>
-      <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Claude chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <button class="toolbar-btn" onclick="doUndo()" title="Undo last change (Ctrl+Z)" style="font-size:11px;padding:2px 8px;">↩ Undo</button>
+        <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Claude chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
+      </div>
     </div>
     <div id="editor-toc"></div>
     <div id="editor-mount"></div>
@@ -335,6 +364,9 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     </div>
   </div>
 
+  <!-- Chat resizer -->
+  <div id="chat-resizer"></div>
+
   <!-- Chat -->
   <div id="chat-pane">
     <div id="chat-header">
@@ -342,12 +374,17 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
         <span style="width:8px;height:8px;border-radius:50%;background:var(--green);"></span>
         Claude Agent
       </span>
-      <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
+      <div style="display:flex;gap:4px;">
+        <button class="toolbar-btn" onclick="newChat()" style="font-size:11px;padding:2px 8px;" title="Clear chat history">New</button>
+        <button class="toolbar-btn" onclick="showPersonality()" style="font-size:11px;padding:2px 8px;" title="Custom instructions for Claude">Personality</button>
+        <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
+      </div>
     </div>
     <div id="chat-messages"></div>
     <div id="chat-input-area">
       <textarea id="chat-input" rows="2" placeholder="Ask Claude to build something... (Enter to send)"></textarea>
       <button id="chat-send" onclick="sendChat()">Send</button>
+      <button id="chat-stop" onclick="stopChat()" style="display:none">Stop</button>
     </div>
     <div style="padding:6px 16px 8px;border-top:1px solid var(--bd);background:var(--bg2);display:flex;align-items:center;gap:6px;">
       <label id="web-toggle-label" title="Enable web search + fetch — Claude can search the web and read any URL" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
@@ -617,6 +654,9 @@ async function autoCompile() {
   }
 }
 window.doCompile = autoCompile;
+// Undo: find the undo command from historyKeymap and invoke it
+const undoCmd = historyKeymap.find(k => k.key === 'Mod-z')?.run;
+window.doUndo = function() { if (undoCmd) undoCmd(editor); editor.focus(); };
 
 // ==========================================================================
 // PREVIEW
@@ -1011,14 +1051,60 @@ window.jumpToLine = function(line) {
 // ==========================================================================
 let chatMessages = [];
 let apiKey = localStorage.getItem('clear_api_key') || '';
+let personality = localStorage.getItem('clear_personality') || '';
 let serverHasKey = false;
 
-window.showKeySetup = function() {
-  if (serverHasKey) return; // server key in use, no setup needed
+let showingKeySetup = false;
+
+window.newChat = function() {
+  if (currentAbort) currentAbort.abort();
+  chatMessages = [];
+  showingKeySetup = false;
+  document.getElementById('chat-messages').innerHTML = '';
+  addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+  document.getElementById('chat-send').disabled = false;
+  document.getElementById('chat-send').style.display = '';
+  document.getElementById('chat-stop').style.display = 'none';
+};
+
+window.showPersonality = function() {
+  showingKeySetup = true; // reuse flag to prevent renderChat from overwriting
   const el = document.getElementById('chat-messages');
+  const escaped = personality.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  el.innerHTML = `<div id="personality-setup">
+    <div style="font-size:14px;font-weight:600;color:var(--tx);">Custom Instructions</div>
+    <div style="font-size:12px;">Tell Claude how to behave — tone, focus areas, things to avoid. Saved locally.</div>
+    <textarea id="personality-input" placeholder="e.g. Always use ivory theme. Keep code minimal. Explain your reasoning.">${escaped}</textarea>
+    <div class="btn-row">
+      <button onclick="savePersonality()">Save</button>
+      <button class="btn-ghost" onclick="clearPersonality()">Clear</button>
+      <button class="btn-ghost" onclick="closePersonality()">Cancel</button>
+    </div>
+  </div>`;
+};
+
+window.savePersonality = function() {
+  personality = document.getElementById('personality-input').value.trim();
+  localStorage.setItem('clear_personality', personality);
+  closePersonality();
+  addChatMsg('assistant', personality ? 'Custom instructions saved.' : 'Custom instructions cleared.');
+};
+
+window.clearPersonality = function() {
+  document.getElementById('personality-input').value = '';
+};
+
+window.closePersonality = function() {
+  showingKeySetup = false;
+  renderChat();
+};
+window.showKeySetup = function() {
+  showingKeySetup = true;
+  const el = document.getElementById('chat-messages');
+  const hint = serverHasKey ? 'Server has a key configured. Enter a new one below to override it.' : 'Enter your Anthropic API key to chat with Claude.';
   el.innerHTML = `<div id="api-key-setup">
     <div style="font-size:16px;margin-bottom:8px;">Set up Claude</div>
-    <div style="margin-bottom:12px;">Enter your Anthropic API key to chat with Claude.</div>
+    <div style="margin-bottom:12px;">${hint}</div>
     <input type="password" id="key-input" placeholder="sk-ant-..." value="${apiKey}">
     <button onclick="saveKey()">Save</button>
     <div style="margin-top:12px;font-size:11px;">Key is stored locally in your browser.</div>
@@ -1028,6 +1114,7 @@ window.showKeySetup = function() {
 window.saveKey = function() {
   apiKey = document.getElementById('key-input').value.trim();
   localStorage.setItem('clear_api_key', apiKey);
+  showingKeySetup = false;
   document.getElementById('chat-messages').innerHTML = '';
   addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
 };
@@ -1079,30 +1166,79 @@ function markdownToHtml(text) {
   function renderText(s) {
     const lines = s.split('\n');
     let out = '';
-    let inList = false;
-    for (const line of lines) {
+    let inList = false;  // 'ul' or 'ol' or false
+    let inTable = false;
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      // Table detection: line starts with |
+      if (/^\|(.+)\|/.test(line.trim())) {
+        if (inList) { out += inList === 'ol' ? '</ol>' : '</ul>'; inList = false; }
+        if (!inTable) {
+          out += '<table>';
+          inTable = true;
+          // First row = header
+          const cells = line.trim().split('|').filter(c => c.trim() !== '');
+          out += '<thead><tr>' + cells.map(c => `<th>${renderInline(c.trim())}</th>`).join('') + '</tr></thead><tbody>';
+          // Skip separator row if next line is |---|---|
+          if (i + 1 < lines.length && /^\|[\s\-:|]+\|/.test(lines[i + 1].trim())) i++;
+          i++;
+          continue;
+        } else {
+          const cells = line.trim().split('|').filter(c => c.trim() !== '');
+          out += '<tr>' + cells.map(c => `<td>${renderInline(c.trim())}</td>`).join('') + '</tr>';
+          i++;
+          continue;
+        }
+      } else if (inTable) {
+        out += '</tbody></table>';
+        inTable = false;
+      }
+
       if (/^#{1,3} (.+)/.test(line)) {
-        if (inList) { out += '</ul>'; inList = false; }
+        if (inList) { out += inList === 'ol' ? '</ol>' : '</ul>'; inList = false; }
         const lvl = line.match(/^(#+)/)[1].length;
         out += `<h${lvl + 2} style="margin:.5em 0 .2em;font-size:${14 - lvl}px;font-weight:600">${renderInline(line.replace(/^#+\s+/, ''))}</h${lvl + 2}>`;
       } else if (/^[-*] (.+)/.test(line)) {
-        if (!inList) { out += '<ul style="margin:.3em 0 .3em 1.2em;padding:0">'; inList = true; }
+        if (inList !== 'ul') { if (inList) out += '</ol>'; out += '<ul style="margin:.3em 0 .3em 1.2em;padding:0">'; inList = 'ul'; }
         out += `<li>${renderInline(line.replace(/^[-*] /, ''))}</li>`;
+      } else if (/^\d+\.\s+(.+)/.test(line)) {
+        if (inList !== 'ol') { if (inList) out += '</ul>'; out += '<ol style="margin:.3em 0 .3em 1.2em;padding:0">'; inList = 'ol'; }
+        out += `<li>${renderInline(line.replace(/^\d+\.\s+/, ''))}</li>`;
       } else if (line.trim() === '') {
-        if (inList) { out += '</ul>'; inList = false; }
+        if (inList) { out += inList === 'ol' ? '</ol>' : '</ul>'; inList = false; }
         out += '<br>';
       } else {
-        if (inList) { out += '</ul>'; inList = false; }
+        if (inList) { out += inList === 'ol' ? '</ol>' : '</ul>'; inList = false; }
         out += `<span>${renderInline(line)}</span><br>`;
       }
+      i++;
     }
-    if (inList) out += '</ul>';
+    if (inList) out += inList === 'ol' ? '</ol>' : '</ul>';
+    if (inTable) out += '</tbody></table>';
     return out;
   }
 
   return parts.map(p => {
     if (p.type === 'code') {
-      return `<pre>${esc(p.s)}<button class="apply-btn" onclick="applyCode(this)">Apply</button></pre>`;
+      const lang = p.lang || '';
+      // SVG: render as actual inline SVG diagram
+      if (lang === 'svg' || (lang === '' && p.s.trim().startsWith('<svg'))) {
+        // Sanitize: only allow SVG elements (strip script tags)
+        const sanitized = p.s.replace(/<script[\s\S]*?<\/script>/gi, '');
+        return `<div class="svg-diagram">${sanitized}</div>`;
+      }
+      // HTML: render preview + source
+      if (lang === 'html' && p.s.includes('<')) {
+        const escaped = esc(p.s);
+        return `<div class="code-block"><div class="code-header"><span>${lang}</span><div class="code-btns"><button class="code-btn" onclick="copyCode(this)">Copy</button><button class="code-btn" onclick="toggleHtmlPreview(this)">Preview</button></div></div><pre>${escaped}</pre><div class="svg-diagram" style="display:none">${p.s}</div></div>`;
+      }
+      // Code: show language label, copy button, Replace+Insert for clear code
+      const escaped = esc(p.s);
+      const showEditor = lang === 'clear' || lang === '' ;
+      const editorBtns = showEditor ? `<button class="code-btn" onclick="applyCode(this)">Replace</button><button class="code-btn" onclick="insertCode(this)">Insert</button>` : '';
+      const label = lang || 'code';
+      return `<div class="code-block"><div class="code-header"><span>${esc(label)}</span><div class="code-btns"><button class="code-btn" onclick="copyCode(this)">Copy</button>${editorBtns}</div></div><pre>${escaped}</pre></div>`;
     }
     return renderText(p.s);
   }).join('');
@@ -1127,7 +1263,19 @@ function renderMsgInner(m) {
       if (m.streaming) html += '<span class="stream-cursor">▌</span>';
     }
   } else {
-    html += escHtml(m.content || '').replace(/\n/g, '<br>');
+    // Content can be a string or an array (when images are pasted)
+    if (Array.isArray(m.content)) {
+      for (const part of m.content) {
+        if (part.type === 'image') {
+          const src = part.source?.data ? `data:${part.source.media_type};base64,${part.source.data}` : '';
+          html += `<img src="${src}" style="max-width:200px;border-radius:8px;margin:4px 0;">`;
+        } else if (part.type === 'text') {
+          html += escHtml(part.text || '').replace(/\n/g, '<br>');
+        }
+      }
+    } else {
+      html += escHtml(m.content || '').replace(/\n/g, '<br>');
+    }
   }
   return html;
 }
@@ -1138,6 +1286,7 @@ function renderMsgHtml(m) {
 }
 
 function renderChat() {
+  if (showingKeySetup) return;
   const el = document.getElementById('chat-messages');
   const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 40;
   el.innerHTML = chatMessages.filter(m => m.role !== 'system').map((m, i) => {
@@ -1162,11 +1311,51 @@ function updateLastMsg() {
 }
 
 window.applyCode = function(btn) {
-  const code = btn.parentElement.textContent.replace('Apply', '').trim();
+  // Replace: nuke entire editor and replace with this code
+  const block = btn.closest('.code-block') || btn.parentElement;
+  const pre = block.querySelector('pre');
+  const code = pre ? pre.textContent.trim() : '';
   editor.dispatch({
     changes: { from: 0, to: editor.state.doc.length, insert: code },
   });
   autoCompile();
+};
+
+window.insertCode = function(btn) {
+  // Insert: add at cursor position (or end if no selection)
+  const block = btn.closest('.code-block') || btn.parentElement;
+  const pre = block.querySelector('pre');
+  const code = pre ? pre.textContent.trim() : '';
+  const pos = editor.state.selection.main.head;
+  // Add a newline before if cursor isn't at start of a line
+  const line = editor.state.doc.lineAt(pos);
+  const prefix = (pos > line.from) ? '\n' : '';
+  editor.dispatch({
+    changes: { from: pos, insert: prefix + code + '\n' },
+    selection: { anchor: pos + prefix.length + code.length + 1 },
+  });
+  editor.focus();
+  autoCompile();
+};
+
+window.copyCode = function(btn) {
+  const block = btn.closest('.code-block') || btn.closest('.svg-diagram')?.parentElement;
+  const pre = block?.querySelector('pre');
+  const text = pre ? pre.textContent : '';
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1200);
+  });
+};
+
+window.toggleHtmlPreview = function(btn) {
+  const block = btn.closest('.code-block');
+  const preview = block?.querySelector('.svg-diagram');
+  if (!preview) return;
+  const showing = preview.style.display !== 'none';
+  preview.style.display = showing ? 'none' : '';
+  btn.textContent = showing ? 'Preview' : 'Source';
 };
 
 // ==========================================================================
@@ -1216,6 +1405,11 @@ window.removeImage = function(i) {
 // ==========================================================================
 // SEND CHAT (streaming)
 // ==========================================================================
+let currentAbort = null;
+window.stopChat = function() {
+  if (currentAbort) currentAbort.abort();
+};
+
 window.sendChat = async function() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
@@ -1244,11 +1438,16 @@ window.sendChat = async function() {
   chatMessages.push({ role: 'user', content: userContent, _idx: chatMessages.length });
   renderChat();
   document.getElementById('chat-send').disabled = true;
+  document.getElementById('chat-send').style.display = 'none';
+  document.getElementById('chat-stop').style.display = '';
 
   // Create streaming assistant message
   const aIdx = chatMessages.length;
   chatMessages.push({ role: 'assistant', content: '', toolSteps: [], streaming: true, _idx: aIdx });
   renderChat();
+
+  // AbortController for stop button
+  currentAbort = new AbortController();
 
   try {
     const apiMessages = chatMessages.slice(0, -1).filter(m => m.role !== 'system').map(m => ({
@@ -1259,9 +1458,11 @@ window.sendChat = async function() {
     const r = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: currentAbort.signal,
       body: JSON.stringify({
         messages: apiMessages,
         apiKey,
+        personality,
         editorContent: editor.state.doc.toString(),
         errors: lastCompiled?.errors || [],
         webTools: document.getElementById('web-tools-toggle')?.checked || false,
@@ -1314,6 +1515,9 @@ window.sendChat = async function() {
         } else if (ev.type === 'terminal_append') {
           appendTerminal(`<span class="term-cmd">${escHtml(ev.text)}</span>\n`);
           if (activeTab !== 'terminal') showToast(ev.text.slice(0, 60));
+        } else if (ev.type === 'undo') {
+          if (undoCmd) undoCmd(editor);
+          autoCompile();
         } else if (ev.type === 'screenshot_request') {
           captureOutputScreenshot();
         } else if (ev.type === 'done') {
@@ -1328,14 +1532,24 @@ window.sendChat = async function() {
     }
   } catch (err) {
     const am = chatMessages[aIdx];
-    am.content = 'Connection error: ' + err.message;
+    if (err.name === 'AbortError') {
+      am.content += am.content ? '\n\n*Stopped.*' : '*Stopped.*';
+    } else {
+      const isNetErr = err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ERR_CONNECTION');
+      am.content = isNetErr
+        ? 'Connection error: The playground server at localhost:3456 is not responding. Make sure it\'s running: `node playground/server.js`'
+        : 'Connection error: ' + err.message;
+    }
     am.streaming = false;
     updateLastMsg();
   }
 
+  currentAbort = null;
   chatMessages[aIdx].streaming = false;
   updateLastMsg();
   document.getElementById('chat-send').disabled = false;
+  document.getElementById('chat-send').style.display = '';
+  document.getElementById('chat-stop').style.display = 'none';
 };
 
 // Enter to send (Shift+Enter for newline)
@@ -1695,6 +1909,40 @@ window.toggleChat = function() {
     const total = newEditorW + newPreviewW;
     editorPane.style.flex = `${newEditorW / total} 1 0`;
     previewPane.style.flex = `${newPreviewW / total} 1 0`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
+
+// ==========================================================================
+// CHAT PANEL DRAG RESIZER
+// ==========================================================================
+(function() {
+  const resizer = document.getElementById('chat-resizer');
+  const chatPane = document.getElementById('chat-pane');
+  let dragging = false, startX = 0, startW = 0;
+
+  resizer.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = chatPane.getBoundingClientRect().width;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    // Dragging left = wider chat (startX - clientX is positive)
+    const dx = startX - e.clientX;
+    const newW = Math.max(280, Math.min(800, startW + dx));
+    chatPane.style.flex = `0 0 ${newW}px`;
   });
 
   document.addEventListener('mouseup', () => {

@@ -158,7 +158,7 @@ const SYNONYM_TABLE = Object.freeze({
   //            display total as dollars called "Total" / button "Click Me"
   // ---------------------------------------------------------------------------
   page: Object.freeze(['page', 'screen', 'view']),
-  section: Object.freeze(['section', 'group', 'area']),
+  section: Object.freeze(['section', 'group']),
   style: Object.freeze(['style']),
   theme: Object.freeze(['theme']),
   ask_for: Object.freeze(['ask for']),
@@ -404,6 +404,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.12.0';
+const SYNONYM_VERSION = '0.13.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };
