@@ -3,6 +3,10 @@
 Clear is a programming language designed for AI to write and humans to read.
 Compiles plain English to JavaScript, Python, and HTML.
 
+## On Startup -- Load These Tools First
+Run ToolSearch for these before doing anything else:
+`mcp__computer-use__screenshot`, `mcp__computer-use__zoom`, `mcp__Claude_in_Chrome__computer`, `mcp__Claude_in_Chrome__tabs_context_mcp`, `mcp__Claude_in_Chrome__navigate`, `mcp__Claude_in_Chrome__get_page_text`
+
 ## On Startup -- Read These First
 1. **`intent.md`** -- the authoritative spec. All 96 node types, build targets, compiler passes, synonym collisions, validation rules. If it's not in intent.md, it doesn't exist.
 2. **`learnings.md`** -- scan the TOC before any work. Engineering gotchas: synonym traps, tokenizer quirks, CRUD parse shapes, parser ordering, runtime coercion. Every section is a bug someone already hit.
@@ -133,6 +137,27 @@ Tests: `node playground/server.test.js` (85 tests).
 Never edit the compiler or playground HTML directly to "make it look better." Always:
 1. **Design a static HTML mock first** — pure HTML/CSS with DaisyUI, no compiler. This is the visual target.
 2. **Use the mock as acceptance criteria** — screenshot it, compare side-by-side.
+
+## GAN Page Loop (use when Russell says "GAN pages")
+Iterate until 95% visual parity. One round = one fix. Don't break the loop for anything.
+
+**Every round:**
+1. Compile + restart app: POST source to `/api/stop` then `/api/run` at localhost:3456
+2. Navigate Chrome tab to the new port, take full-page screenshot
+3. Grade each section (header, sidebar, stat cards, content) — be harsh, use reference quality bar (Linear/Stripe/Vercel)
+4. Pick the single worst-looking section
+5. Fix it in the compiler (compiler.js or parser.js), run `node clear.test.js` to confirm no regressions
+6. Go back to step 1
+
+**Script to recompile + restart (node --input-type=module):**
+```js
+import { compileProgram } from './index.js';
+import fs from 'fs'; import http from 'http';
+const r = compileProgram(fs.readFileSync('apps/project-tracker/main.clear','utf8'));
+await new Promise(res => { const q=http.request({hostname:'localhost',port:3456,path:'/api/stop',method:'POST',headers:{'Content-Type':'application/json','Content-Length':2}},()=>res()); q.write('{}');q.end(); });
+const b = JSON.stringify({serverJS:r.serverJS,html:r.html,css:r.css||''});
+await new Promise(res => { const q=http.request({hostname:'localhost',port:3456,path:'/api/run',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(b)}},re=>{let d='';re.on('data',c=>d+=c);re.on('end',()=>{console.log('port:',JSON.parse(d).port);res();})}); q.write(b);q.end(); });
+```
 3. **Edit the compiler/playground until its output matches the mock.**
 
 The mock is the discriminator. The compiler is the generator. Iterate until output matches target.

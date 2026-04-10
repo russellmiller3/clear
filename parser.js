@@ -892,12 +892,12 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['theme', (ctx) => {
     if (ctx.tokens.length < 2) {
-      ctx.errors.push({ line: ctx.line, message: "theme needs a name — try: theme 'midnight', theme 'ivory', or theme 'nova'" });
+      ctx.errors.push({ line: ctx.line, message: "theme needs a name — try: theme 'midnight', theme 'ivory', theme 'nova', theme 'arctic', theme 'moss', theme 'ember', or theme 'slate'" });
       return ctx.i + 1;
     }
     const nameToken = ctx.tokens[1];
     const themeName = nameToken.value.replace(/^['"]|['"]$/g, '');
-    const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss'];
+    const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss', 'ember', 'slate'];
     if (!validThemes.includes(themeName)) {
       ctx.errors.push({ line: ctx.line, message: `'${themeName}' isn't a theme Clear knows — try: ${validThemes.join(', ')}` });
     } else {
@@ -1242,7 +1242,7 @@ const CANONICAL_DISPATCH = new Map([
       return ctx.i + 1;
     }
     // Content keyword after show: show heading 'Welcome'
-    const contentCanonicals = ['heading', 'subheading', 'content_text', 'bold_text', 'italic_text', 'small_text', 'link', 'divider', 'code_block'];
+    const contentCanonicals = ['heading', 'subheading', 'content_text', 'bold_text', 'italic_text', 'small_text', 'label_text', 'badge_text', 'link', 'divider', 'code_block'];
     if (contentCanonicals.includes(ctx.tokens[1].canonical)) {
       const contentTokens = ctx.tokens.slice(1);
       const parsed = parseContent(contentTokens, ctx.line, ctx.tokens[1].canonical);
@@ -1614,6 +1614,18 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['small_text', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['label_text', (ctx) => {
+    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['badge_text', (ctx) => {
     const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
@@ -3775,6 +3787,8 @@ function parseContent(tokens, line, canonical) {
     bold_text: 'bold',
     italic_text: 'italic',
     small_text: 'small',
+    label_text: 'label',
+    badge_text: 'badge',
     link: 'link',
     code_block: 'code',
   };
@@ -3791,8 +3805,21 @@ function parseContent(tokens, line, canonical) {
     }
   }
 
+  // For badges: badge 'Active' as success/error/warning/info/neutral
+  let badgeVariant = null;
+  if (contentType === 'badge') {
+    if (pos < tokens.length && (tokens[pos].canonical === 'as_connector' || tokens[pos].canonical === 'as_format')) {
+      pos++;
+      if (pos < tokens.length) {
+        badgeVariant = tokens[pos].value.toLowerCase();
+        pos++;
+      }
+    }
+  }
+
   const node = contentNode(contentType, text, line, href);
   if (textExpr) node.textExpr = textExpr;
+  if (badgeVariant) { node.badgeVariant = badgeVariant; node.ui.badgeVariant = badgeVariant; }
   return { node };
 }
 

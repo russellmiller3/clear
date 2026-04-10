@@ -7,6 +7,13 @@
       "runtimeArgs": ["playground/server.js"],
       "port": 3456,
       "autoPort": false
+    },
+    {
+      "name": "app-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "require('http').createServer().listen(4001)"],
+      "port": 4001,
+      "autoPort": false
     }
   ]
 }

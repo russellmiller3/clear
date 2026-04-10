@@ -8,6 +8,13 @@ theme 'ivory'
 # --- Hero ---
 
 page 'Clear Language' at '/':
+  section 'Nav' with style page_navbar:
+    heading 'Clear'
+    link 'Examples' to '/examples'
+    link 'Docs' to '/start'
+    button 'Get Started':
+      show 'nav cta clicked'
+
   section 'Hero' with style hero:
     heading 'Build client apps in minutes, not weeks.'
     subheading 'Tested templates. AI agents. One readable file.'

@@ -4762,6 +4762,8 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`    const _container = document.getElementById('${containerId}');`);
       lines.push(`    if (_container) {`);
       lines.push(`      const _listSource = ${node.iterable.name ? '_state.' + sanitizeName(node.iterable.name) : '[]'} || [];`);
+      lines.push(`      const _emptyEl = document.getElementById('empty_${itemVar}');`);
+      lines.push(`      if (_emptyEl) _emptyEl.style.display = _listSource.length === 0 ? 'flex' : 'none';`);
       lines.push(`      _container.innerHTML = _listSource.map(${itemVar} => {`);
       // Compile body to HTML string
       const bodyParts = [];
@@ -4780,8 +4782,13 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
           if (expr.type === NodeType.CALL) {
             bodyParts.push(compiled);
           } else if (expr.type === NodeType.MEMBER_ACCESS) {
-            // Property access (user's name) — render as text
-            bodyParts.push(`'<p>' + ${compiled} + '</p>'`);
+            // Property access (issue's title etc) — first property = primary text, rest = badges
+            const propName = expr.property || '';
+            if (bodyParts.length === 0) {
+              bodyParts.push(`'<span class="text-sm font-medium text-base-content">' + (${compiled} || '') + '</span>'`);
+            } else {
+              bodyParts.push(`'<span class="badge badge-ghost badge-sm font-mono">' + (${compiled} || '') + '</span>'`);
+            }
           } else {
             // Plain variable — could be object from API, so format it
             bodyParts.push(`'<p>' + (typeof ${compiled} === 'object' ? JSON.stringify(${compiled}) : ${compiled}) + '</p>'`);
@@ -5081,15 +5088,18 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   if (loadNodes.length > 0) {
     lines.push('');
     lines.push('// --- On Page Load ---');
+    lines.push('_recompute(); // initial render with default state');
     lines.push('(async () => {');
+    lines.push('  try {');
     for (const loadNode of loadNodes) {
-      const loadCtx = { lang: 'js', indent: 1, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web' };
+      const loadCtx = { lang: 'js', indent: 2, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web' };
       for (const child of loadNode.body) {
         const compiled = compileNode(child, loadCtx);
         if (compiled) lines.push(compiled);
       }
     }
     lines.push('  _recompute();');
+    lines.push('  } catch(e) { console.error("Page load error:", e); }');
     lines.push('})();');
   } else {
     // No on-page-load: do initial render immediately
@@ -5347,6 +5357,47 @@ function buildHTML(body) {
           const presetClasses = hasUserStyle && !hasUserOverride && BUILTIN_PRESET_CLASSES[node.styleName];
 
           if (presetClasses) {
+            // Special case: page_navbar renders its own semantic HTML structure
+            if (node.styleName === 'page_navbar') {
+              const nbBrand = [], nbLinks = [], nbCtas = [];
+              for (const child of node.body) {
+                if (child.type === NodeType.CONTENT && child.ui?.contentType === 'heading') nbBrand.push(child);
+                else if (child.type === NodeType.CONTENT && child.ui?.contentType === 'link') nbLinks.push(child);
+                else if (child.type === NodeType.BUTTON) nbCtas.push(child);
+                else nbLinks.push(child);
+              }
+              const brandText = nbBrand[0] ? formatInlineText(nbBrand[0].ui.text) : '';
+              // Last link becomes primary CTA if no button nodes exist
+              const ctaLink = nbCtas.length === 0 && nbLinks.length > 0 ? nbLinks.pop() : null;
+              parts.push(`    <nav class="sticky top-0 z-50 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0">`);
+              parts.push(`      <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">`);
+              parts.push(`        <div class="flex items-center gap-8">`);
+              if (brandText) parts.push(`          <span class="text-lg font-bold text-base-content tracking-tight">${brandText}</span>`);
+              if (nbLinks.length > 0) {
+                parts.push(`          <div class="hidden md:flex items-center gap-6">`);
+                for (const lk of nbLinks) {
+                  const fmt = formatInlineText(lk.ui.text);
+                  const href = lk.ui?.href || '#';
+                  parts.push(`            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="${href}">${fmt}</a>`);
+                }
+                parts.push(`          </div>`);
+              }
+              parts.push(`        </div>`);
+              parts.push(`        <div class="flex items-center gap-3">`);
+              for (const btn of nbCtas) {
+                parts.push(`          <button class="btn btn-primary btn-sm" id="${btn.ui.id}">${btn.ui.label}</button>`);
+              }
+              if (ctaLink) {
+                const fmt = formatInlineText(ctaLink.ui.text);
+                const href = ctaLink.ui?.href || '#';
+                parts.push(`          <a class="btn btn-primary btn-sm" href="${href}">${fmt}</a>`);
+              }
+              parts.push(`        </div>`);
+              parts.push(`      </div>`);
+              parts.push(`    </nav>`);
+              break;
+            }
+
             // Built-in preset: use Tailwind/DaisyUI classes directly, no custom CSS
             // Context-aware: cards inside dark sections get dark card styling
             let resolvedPreset = presetClasses;
@@ -5361,9 +5412,10 @@ function buildHTML(body) {
             const isAppPreset = node.styleName && node.styleName.startsWith('app_');
             const isCardPreset = ['metric_card', 'card', 'card_bordered', 'form', 'code_box'].includes(node.styleName);
             const isHeroPreset = ['page_hero', 'hero', 'page_cta'].includes(node.styleName);
-            const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset;
+            const isNavbarPreset = node.styleName === 'page_navbar';
+            const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset;
             parts.push(`    <div class="${cls}">`);
-            if (needsWrapper) parts.push(`      <div class="max-w-5xl mx-auto">`);
+            if (needsWrapper) parts.push(`      <div class="max-w-4xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
               // Sidebar: split children into brand (heading), nav items, and other.
@@ -5411,6 +5463,29 @@ function buildHTML(body) {
               }
               // Emit remaining children
               if (otherNodes.length > 0) walk(otherNodes);
+            } else if (isHeroPreset) {
+              // Hero: group consecutive link nodes into a flex row for side-by-side CTA buttons
+              const children = node.body;
+              let ci = 0;
+              while (ci < children.length) {
+                const child = children[ci];
+                const isLinkNode = child.type === NodeType.CONTENT && child.ui && child.ui.contentType === 'link';
+                const nextIsLink = ci + 1 < children.length &&
+                  children[ci + 1].type === NodeType.CONTENT &&
+                  children[ci + 1].ui && children[ci + 1].ui.contentType === 'link';
+                if (isLinkNode && nextIsLink) {
+                  const linkGroup = [];
+                  while (ci < children.length && children[ci].type === NodeType.CONTENT && children[ci].ui && children[ci].ui.contentType === 'link') {
+                    linkGroup.push(children[ci++]);
+                  }
+                  parts.push(`    <div class="flex gap-4 flex-wrap justify-center mt-2">`);
+                  walk(linkGroup);
+                  parts.push(`    </div>`);
+                } else {
+                  walk([child]);
+                  ci++;
+                }
+              }
             } else {
               walk(node.body);
             }
@@ -5511,6 +5586,7 @@ ${options}
           usedIds.add(displayId);
           // Store the deduplicated ID back on the node for the reactive compiler
           node.ui._resolvedId = displayId;
+          const inUserSection = sectionStack.length > 0;
           if (ui.tag === 'table') {
             parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}">
       <div class="px-6 py-4 border-b border-base-300/40">
@@ -5523,6 +5599,10 @@ ${options}
         </table>
       </div>
     </div>`);
+          } else if (inUserSection) {
+            // Inside a styled card (stat_card etc.) — render just the number inline, no extra wrapper
+            parts.push(`    <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
+            if (ui.label) parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">${ui.label}</p>`);
           } else {
             parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5 flex flex-col gap-1" id="${displayId}">
       <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40">${ui.label}</p>
@@ -5577,7 +5657,13 @@ ${options}
             // Sidebar already wraps in <nav><ul class="menu">, just emit the list container
             parts.push(`    <ul class="menu menu-sm gap-0.5 p-0 clear-list" id="list_${sanitizeName(node.variable)}"></ul>`);
           } else {
-            parts.push(`    <div class="clear-list" id="list_${sanitizeName(node.variable)}"></div>`);
+            const listId = `list_${sanitizeName(node.variable)}`;
+            const emptyId = `empty_${sanitizeName(node.variable)}`;
+            parts.push(`    <div class="clear-list" id="${listId}"></div>`);
+            parts.push(`    <div id="${emptyId}" class="flex flex-col items-center justify-center py-16 text-base-content/30">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      <p class="text-sm font-medium">No items yet</p>
+    </div>`);
           }
           break;
         }
@@ -5592,12 +5678,13 @@ ${options}
           const inMetricCard = parentPreset === 'metric_card';
           const inCard = ['card', 'card_bordered', 'form'].includes(parentPreset);
           const inHero = ['page_hero', 'hero', 'page_cta'].includes(parentPreset);
+          const inDarkSection = ['page_section_dark', 'section_dark'].includes(parentPreset);
           const inPageSection = ['page_section', 'page_section_dark', 'section_light', 'section_dark'].includes(parentPreset);
           switch (ui.contentType) {
             case 'heading':
               if (inHero) {
                 // Hero/CTA: massive display headline (Stripe-style)
-                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-[1.1] text-base-content max-w-3xl">${formatted}</h1>`);
+                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-[1.1] text-base-content max-w-3xl mx-auto">${formatted}</h1>`);
               } else if (inHeader) {
                 parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
@@ -5618,22 +5705,43 @@ ${options}
               if (inHero) {
                 // Hero subheading: lighter, wider
                 parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-xl">${formatted}</p>`);
+              } else if (inDarkSection) {
+                parts.push(`    <h2 class="text-xl font-semibold text-neutral-content tracking-tight mt-6 mb-3">${formatted}</h2>`);
               } else {
                 parts.push(`    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">${formatted}</h2>`);
               }
               break;
+            case 'label':
+              parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/40 block mb-1">${formatted}</span>`);
+              break;
+            case 'badge': {
+              const variant = ui.badgeVariant || 'neutral';
+              const badgeColorMap = {
+                success: 'badge-success', error: 'badge-error', warning: 'badge-warning',
+                info: 'badge-info', neutral: 'badge-neutral', primary: 'badge-primary',
+                secondary: 'badge-secondary', accent: 'badge-accent', ghost: 'badge-ghost',
+              };
+              const badgeCls = badgeColorMap[variant] || 'badge-neutral';
+              parts.push(`    <span class="badge ${badgeCls} badge-sm font-medium">${formatted}</span>`);
+              break;
+            }
             case 'text':
               if (inSidebar) {
-                parts.push(`    <li><a class="text-sm">${formatted}</a></li>`);
+                parts.push(`    <li><a class="clear-nav-item flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
               } else if (inMetricCard) {
                 parts.push(`    <p class="text-xs text-base-content/40 font-mono">${formatted}</p>`);
               } else if (inHero) {
                 // Hero/CTA body text
                 parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed">${formatted}</p>`);
-              } else if (inCard || inPageSection) {
-                parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed">${formatted}</p>`);
+              } else if (inDarkSection) {
+                parts.push(`    <p class="text-base text-neutral-content/70 leading-relaxed mb-3">${formatted}</p>`);
+              } else if (inPageSection) {
+                parts.push(`    <p class="text-base text-base-content/70 leading-relaxed mb-3">${formatted}</p>`);
+              } else if (inCard) {
+                parts.push(`    <p class="text-sm text-base-content/80 leading-relaxed">${formatted}</p>`);
               } else {
-                parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3">${formatted}</p>`);
+                // Default: user-defined section (issue rows, stat cards, etc.) — full contrast, no bottom margin
+                parts.push(`    <p class="text-sm font-medium text-base-content/90 leading-snug">${formatted}</p>`);
               }
               break;
             case 'bold':
@@ -5660,9 +5768,15 @@ ${options}
                 parts.push(`    <a class="link link-primary text-sm" href="${ui.href || '#'}">${formatted}</a>`);
               }
               break;
-            case 'code':
-              parts.push(`    <div class="bg-base-200 rounded-box border border-base-300 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-4 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
+            case 'code': {
+              // In dark sections, use a dark code block; in light sections, use a light one
+              if (inDarkSection) {
+                parts.push(`    <div class="rounded-xl border border-neutral-content/10 overflow-hidden mb-4" style="background:oklch(12% 0.015 240)"><pre class="font-mono text-sm text-neutral-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
+              } else {
+                parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/60 overflow-hidden mb-4"><pre class="font-mono text-sm text-base-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
+              }
               break;
+            }
             case 'divider':
               parts.push(`    <div class="divider my-4"></div>`);
               break;
@@ -5827,6 +5941,14 @@ ${htmlBody}
 ${(() => { const utils = _getUsedUtilities(compiledJS + routerJS); return utils.length > 0 ? '// --- Runtime ---\n' + utils.join('\n') + '\n' : ''; })()}${compiledJS}
 ${routerJS}
   <\/script>
+${htmlBody.includes('data-nav-item') ? `  <script>
+  document.querySelectorAll('[data-nav-item]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      document.querySelectorAll('[data-nav-item]').forEach(function(e) { e.classList.remove('active'); });
+      el.classList.add('active');
+    });
+  });
+  <\/script>` : ''}
 </body>
 </html>`;
   return { html, css };
@@ -6639,13 +6761,20 @@ const STYLE_TOKENS = {
   'background:transparent': 'bg-transparent',
 
   // Text color
-  'text:default':  'text-base-content',
-  'text:muted':    'text-base-content/60',
-  'text:subtle':   'text-base-content/40',
-  'text:light':    'text-neutral-content',
-  'text:primary':  'text-primary',
-  'text:small':    'text-sm',
-  'text:large':    'text-lg',
+  'text:default':   'text-base-content',
+  'text:muted':     'text-base-content/60',
+  'text:faint':     'text-base-content/30',
+  'text:subtle':    'text-base-content/40',
+  'text:light':     'text-neutral-content',
+  'text:primary':   'text-primary',
+  'text:secondary': 'text-secondary',
+  'text:accent':    'text-accent',
+  'text:success':   'text-success',
+  'text:error':     'text-error',
+  'text:warning':   'text-warning',
+  'text:info':      'text-info',
+  'text:small':     'text-sm',
+  'text:large':     'text-lg',
 
   // Padding (uniform p-*)
   'padding:none':        'p-0',
@@ -6675,7 +6804,7 @@ const STYLE_TOKENS = {
   'no_shadow:true':        '',            // explicit removal — empty = no class added
 
   // Border (all sides)
-  'has_border:true':        'border border-base-300/40',
+  'has_border:true':        'border border-base-300/60',
   'has_strong_border:true': 'border border-base-300',
   'no_border:true':         'border-0',
 
@@ -6711,6 +6840,11 @@ const STYLE_TOKENS = {
   'hover:tinted':      'hover:bg-primary/5 hover:border-primary/20 transition-colors cursor-pointer',
   'hover:glowing':     'hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer',
   'hover:faded':       'hover:opacity-70 transition-opacity cursor-pointer',
+
+  // Typography
+  'font:mono':      'font-mono',
+  'font:bold':      'font-semibold',
+  'font:display':   'font-display tracking-tight',
 };
 
 // Resolve semantic style tokens to Tailwind classes.
@@ -6743,9 +6877,10 @@ function resolveStyleTokens(properties) {
 // User-defined styles (via `style X:` blocks) still compile to custom CSS.
 const BUILTIN_PRESET_CLASSES = {
   // --- Landing page presets (design-system-v2) ---
-  page_hero:         'bg-base-100 py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
-  page_section:      'bg-base-100 py-24 px-6',
-  page_section_dark: 'bg-neutral text-neutral-content py-24 px-6',
+  page_navbar:       '__navbar__', // special rendering handled in section renderer
+  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
+  page_section:      'bg-base-100 py-16 px-6',
+  page_section_dark: 'bg-neutral text-neutral-content py-16 px-6',
   // page_card: bg-base-200 so cards pop off the bg-base-100 section. hover border glow (Linear-style) not scale.
   page_card:         'bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm',
   page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
@@ -6753,19 +6888,20 @@ const BUILTIN_PRESET_CLASSES = {
 
   // --- App/dashboard presets (design-system-v2) ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-52 shrink-0 flex flex-col bg-base-200 border-r border-base-300/40 overflow-hidden',
+  // sidebar: base-300 is slightly brighter than base-200 in midnight — creates visible separation from bg
+  app_sidebar:       'w-52 shrink-0 flex flex-col bg-base-300/20 border-r border-base-300/50 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  // app_content: bg-base-200/30 gives a subtle canvas tint vs pure white (Vercel/Linear style)
-  app_content:       'flex-1 overflow-y-auto bg-base-200/30 p-6 flex flex-col gap-5',
-  // app_header: h-14 (56px) matches modern SaaS headers; soften border
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0',
-  // app_card: bg-base-200 creates elevation above bg-base-200/30 canvas (dark) and off-white on light
-  app_card:          'bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5',
+  // content: base-100 (darkest) so cards on top pop. Linear uses this layering.
+  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
+  // header: stronger border-b so it's visible in dark mode
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-200/80 backdrop-blur-sm border-b border-base-300/60 shrink-0',
+  // app_card: elevated above bg-base-100 content
+  app_card:          'bg-base-200 rounded-xl border border-base-300/50 shadow-md p-5',
 
   // --- Generic section styles ---
-  hero:              'bg-base-100 py-24 px-6 text-center',
-  section_light:     'bg-base-100 py-20 px-6',
-  section_dark:      'bg-base-200 py-20 px-6',
+  hero:              'bg-base-100 py-24 px-6 flex flex-col items-center text-center gap-5',
+  section_light:     'bg-base-100 py-16 px-6',
+  section_dark:      'bg-neutral text-neutral-content py-16 px-6',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
   card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
   metric_card:       'bg-base-200 rounded-box p-6 flex flex-col gap-1',
@@ -6891,26 +7027,26 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
 const THEME_CSS = {
   midnight: `[data-theme="midnight"] {
   color-scheme: dark;
-  --color-base-100: oklch(13% 0.02 250);
-  --color-base-200: oklch(10% 0.02 255);
-  --color-base-300: oklch(18% 0.015 250);
-  --color-base-content: oklch(88% 0.025 240);
-  --color-primary: oklch(62% 0.18 250);
-  --color-primary-content: oklch(98% 0.005 250);
-  --color-secondary: oklch(58% 0.12 155);
-  --color-secondary-content: oklch(10% 0.02 155);
-  --color-accent: oklch(78% 0.14 85);
+  --color-base-100: oklch(18% 0.03 255);
+  --color-base-200: oklch(23% 0.03 255);
+  --color-base-300: oklch(29% 0.025 255);
+  --color-base-content: oklch(90% 0.02 240);
+  --color-primary: oklch(64% 0.18 252);
+  --color-primary-content: oklch(98% 0.005 252);
+  --color-secondary: oklch(60% 0.14 190);
+  --color-secondary-content: oklch(10% 0.02 190);
+  --color-accent: oklch(76% 0.15 85);
   --color-accent-content: oklch(12% 0.02 85);
-  --color-neutral: oklch(20% 0.015 250);
-  --color-neutral-content: oklch(80% 0.02 240);
-  --color-info: oklch(68% 0.12 245);
-  --color-info-content: oklch(10% 0.02 245);
-  --color-success: oklch(62% 0.14 155);
+  --color-neutral: oklch(26% 0.025 255);
+  --color-neutral-content: oklch(82% 0.02 240);
+  --color-info: oklch(66% 0.14 240);
+  --color-info-content: oklch(10% 0.02 240);
+  --color-success: oklch(62% 0.15 155);
   --color-success-content: oklch(10% 0.02 155);
-  --color-warning: oklch(78% 0.14 85);
-  --color-warning-content: oklch(15% 0.02 85);
-  --color-error: oklch(60% 0.2 25);
-  --color-error-content: oklch(10% 0.02 25);
+  --color-warning: oklch(76% 0.15 82);
+  --color-warning-content: oklch(15% 0.02 82);
+  --color-error: oklch(62% 0.22 22);
+  --color-error-content: oklch(10% 0.02 22);
   --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
   --border: 1px; --depth: 0; --noise: 0;
 }`,
@@ -7013,6 +7149,56 @@ const THEME_CSS = {
   --color-error-content: oklch(97% 0.005 25);
   --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
   --border: 1px; --depth: 0; --noise: 0;
+}`,
+  ember: `[data-theme="ember"] {
+  color-scheme: dark;
+  --color-base-100: oklch(16% 0.025 35);
+  --color-base-200: oklch(21% 0.03 35);
+  --color-base-300: oklch(27% 0.025 35);
+  --color-base-content: oklch(90% 0.02 60);
+  --color-primary: oklch(65% 0.22 32);
+  --color-primary-content: oklch(98% 0.005 32);
+  --color-secondary: oklch(60% 0.18 50);
+  --color-secondary-content: oklch(10% 0.02 50);
+  --color-accent: oklch(72% 0.16 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(24% 0.022 35);
+  --color-neutral-content: oklch(84% 0.02 55);
+  --color-info: oklch(62% 0.14 240);
+  --color-info-content: oklch(10% 0.02 240);
+  --color-success: oklch(58% 0.14 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(74% 0.16 78);
+  --color-warning-content: oklch(15% 0.02 78);
+  --color-error: oklch(64% 0.22 22);
+  --color-error-content: oklch(10% 0.02 22);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}`,
+  slate: `[data-theme="slate"] {
+  color-scheme: dark;
+  --color-base-100: oklch(20% 0.01 240);
+  --color-base-200: oklch(25% 0.01 240);
+  --color-base-300: oklch(32% 0.01 240);
+  --color-base-content: oklch(88% 0.012 240);
+  --color-primary: oklch(56% 0.16 240);
+  --color-primary-content: oklch(98% 0.005 240);
+  --color-secondary: oklch(54% 0.12 180);
+  --color-secondary-content: oklch(98% 0.005 180);
+  --color-accent: oklch(68% 0.14 155);
+  --color-accent-content: oklch(10% 0.02 155);
+  --color-neutral: oklch(28% 0.01 240);
+  --color-neutral-content: oklch(80% 0.01 240);
+  --color-info: oklch(60% 0.14 240);
+  --color-info-content: oklch(10% 0.02 240);
+  --color-success: oklch(56% 0.14 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(72% 0.14 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(60% 0.2 22);
+  --color-error-content: oklch(10% 0.02 22);
+  --radius-box: 0.5rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
 }`
 };
 
@@ -7025,6 +7211,7 @@ const CSS_COMPONENTS = [
 }` },
   { class: 'clear-conditional', css: '.clear-conditional { }' },
   { class: 'clear-component', css: '.clear-component { }' },
+  { class: 'clear-nav-item', css: `.clear-nav-item.active { background: oklch(var(--color-base-content) / 0.1); color: oklch(var(--color-base-content)); font-weight: 500; }` },
 ];
 
 // Tree-shake CSS: scan HTML for used classes, return base + used component CSS
