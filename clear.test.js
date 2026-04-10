@@ -6779,7 +6779,7 @@ page 'App':
     expect(result.css).toContain('z-index: 10');
   });
 
-  it('scrollable compiles to overflow-y: auto', () => {
+  it('scrollable token compiles to overflow-y-auto Tailwind class', () => {
     const result = compileProgram(`
 build for web
 style body:
@@ -6790,7 +6790,8 @@ page 'App':
     text 'Hello'
     `);
     expect(result.errors).toHaveLength(0);
-    expect(result.css).toContain('overflow-y: auto');
+    // scrollable is a semantic token → inline Tailwind class, not custom CSS
+    expect(result.html).toContain('overflow-y-auto');
   });
 
   it('two column layout compiles to CSS grid', () => {
@@ -6843,7 +6844,8 @@ page 'Cast':
     `);
     expect(result.errors).toHaveLength(0);
     expect(result.css).toContain('position: sticky');
-    expect(result.css).toContain('overflow-y: auto');
+    // scrollable is now a semantic token → inline Tailwind class
+    expect(result.html).toContain('overflow-y-auto');
     expect(result.css).toContain('flex: 1');
   });
 });

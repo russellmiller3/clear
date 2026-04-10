@@ -3371,16 +3371,22 @@ function parseSection(lines, startIdx, blockIndent, errors) {
   let styleName;
   const inlineModifiers = [];
   if (pos < tokens.length) {
-    // Check for "with style <name>" (explicit style reference)
+    // Check for "with style <name>" (explicit style reference) — consume it, then keep parsing modifiers
     if ((tokens[pos].value === 'with' || tokens[pos].canonical === 'with') &&
         pos + 1 < tokens.length && (tokens[pos + 1].value === 'style' || tokens[pos + 1].canonical === 'style')) {
       pos += 2;
-      if (pos < tokens.length) styleName = tokens[pos].value;
-    } else {
-      // Parse inline modifiers: everything after the title, separated by commas
-      // Skip leading 'as' or 'with'
-      if (tokens[pos].value === 'as' || tokens[pos].canonical === 'as_format' ||
-          tokens[pos].value === 'with' || tokens[pos].canonical === 'with') pos++;
+      if (pos < tokens.length) {
+        styleName = tokens[pos].value;
+        pos++; // advance past the style name so modifier parsing picks up the rest
+      }
+    }
+
+    // Parse inline modifiers from remaining tokens (works whether or not 'with style' was present)
+    // Skip a leading 'as' or 'with' token
+    if (pos < tokens.length && (tokens[pos].value === 'as' || tokens[pos].canonical === 'as_format' ||
+        tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) pos++;
+
+    if (pos < tokens.length) {
       // Collect the rest as a modifier string
       const modText = tokens.slice(pos).map(t => t.value).join(' ').toLowerCase();
 

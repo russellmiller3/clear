@@ -6628,10 +6628,21 @@ const STYLE_TOKENS = {
   'has_large_shadow:true': 'shadow-md',
   'no_shadow:true':        '',            // explicit removal — empty = no class added
 
-  // Border
+  // Border (all sides)
   'has_border:true':        'border border-base-300/40',
   'has_strong_border:true': 'border border-base-300',
   'no_border:true':         'border-0',
+
+  // Border (single sides) — e.g. sidebar right border, section bottom divider
+  'has_right_border:true':  'border-r border-base-300/40',
+  'has_left_border:true':   'border-l border-base-300/40',
+  'has_top_border:true':    'border-t border-base-300/40',
+  'has_bottom_border:true': 'border-b border-base-300/40',
+
+  // Overflow / flex behavior
+  'scrollable:true':        'overflow-y-auto',
+  'no_shrink:true':         'shrink-0',
+  'clips_content:true':     'overflow-hidden',
 
   // Layout (flex/grid)
   'layout:column':    'flex flex-col',
