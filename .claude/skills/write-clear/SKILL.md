@@ -172,7 +172,7 @@ node test.js
 
 **Core:** variables, math, strings, functions, loops, conditionals, pattern matching, objects, lists, maps, error handling, modules, comments
 
-**Frontend:** pages, inputs (text/number/checkbox/dropdown/textarea), buttons, sections with inline layout, components, conditional UI, on-page-load, reactive tables with column whitelist, tabs, collapsible, slide-out panels, modals, toast notifications
+**Frontend:** pages, inputs (text/number/checkbox/dropdown/textarea), buttons, sections with inline layout, components, conditional UI, on-page-load, reactive tables with column whitelist, tabs, collapsible, slide-out panels, modals, toast notifications, ECharts (bar/line/pie/area)
 
 **Backend:** REST endpoints, validation, auth guards, role-based access, rate limiting, CORS, logging, webhooks (HMAC), OAuth, Stripe checkout, background jobs, SSE streaming, WebSocket
 
@@ -269,6 +269,35 @@ create a Members table:
   user_name, required
   email, required
 ```
+
+### Charts (ECharts — auto-included)
+```clear
+# Bar chart — auto-detects x (string) and y (number) from data shape
+bar chart 'Revenue' showing sales
+
+# Pie chart — groups by field, counts occurrences
+pie chart 'Status' showing tasks by status
+
+# Bar chart with groupBy — same grouping, rendered as bars
+bar chart 'Issues by Project' showing issues by project
+
+# Line and area charts
+line chart 'Monthly Trend' showing monthly_data
+area chart 'Growth' showing quarterly_data
+
+# Title-first form (also valid)
+'Revenue' bar chart showing sales
+```
+
+### Stat cards with trend indicators
+```clear
+section 'Stats' as 4 columns:
+  section 'Open' with style metric_card:
+    small text 'Open Issues'
+    heading '12'
+    text '+3 this week'
+```
+Text starting with `+` renders green with up-arrow. Text starting with `-` renders red with down-arrow. Automatic — no extra syntax.
 
 ## What NOT to do
 
