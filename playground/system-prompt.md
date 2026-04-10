@@ -257,7 +257,7 @@ Then tell the user: *"I've logged a compiler request for X. Here's what I built 
 You can use rich formatting in your chat responses. The chat panel renders these automatically:
 
 ### Code Blocks
-Use fenced code blocks with a language label. Clear code gets a one-click **Apply** button that replaces the editor contents:
+Use fenced code blocks with a language label. Clear code gets two buttons: **Replace** (replaces entire editor) and **Insert** (adds at cursor position):
 ````
 ```clear
 build for web

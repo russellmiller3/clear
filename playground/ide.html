@@ -1233,12 +1233,12 @@ function markdownToHtml(text) {
         const escaped = esc(p.s);
         return `<div class="code-block"><div class="code-header"><span>${lang}</span><div class="code-btns"><button class="code-btn" onclick="copyCode(this)">Copy</button><button class="code-btn" onclick="toggleHtmlPreview(this)">Preview</button></div></div><pre>${escaped}</pre><div class="svg-diagram" style="display:none">${p.s}</div></div>`;
       }
-      // Code: show language label, copy button, Apply for clear code
+      // Code: show language label, copy button, Replace+Insert for clear code
       const escaped = esc(p.s);
-      const showApply = lang === 'clear' || lang === '' ;
-      const applyBtn = showApply ? `<button class="code-btn" onclick="applyCode(this)">Apply</button>` : '';
+      const showEditor = lang === 'clear' || lang === '' ;
+      const editorBtns = showEditor ? `<button class="code-btn" onclick="applyCode(this)">Replace</button><button class="code-btn" onclick="insertCode(this)">Insert</button>` : '';
       const label = lang || 'code';
-      return `<div class="code-block"><div class="code-header"><span>${esc(label)}</span><div class="code-btns"><button class="code-btn" onclick="copyCode(this)">Copy</button>${applyBtn}</div></div><pre>${escaped}</pre></div>`;
+      return `<div class="code-block"><div class="code-header"><span>${esc(label)}</span><div class="code-btns"><button class="code-btn" onclick="copyCode(this)">Copy</button>${editorBtns}</div></div><pre>${escaped}</pre></div>`;
     }
     return renderText(p.s);
   }).join('');
@@ -1311,13 +1311,30 @@ function updateLastMsg() {
 }
 
 window.applyCode = function(btn) {
-  // Walk up to .code-block, then find the <pre> inside it
+  // Replace: nuke entire editor and replace with this code
   const block = btn.closest('.code-block') || btn.parentElement;
   const pre = block.querySelector('pre');
-  const code = pre ? pre.textContent.trim() : btn.parentElement.textContent.replace('Apply', '').trim();
+  const code = pre ? pre.textContent.trim() : '';
   editor.dispatch({
     changes: { from: 0, to: editor.state.doc.length, insert: code },
   });
+  autoCompile();
+};
+
+window.insertCode = function(btn) {
+  // Insert: add at cursor position (or end if no selection)
+  const block = btn.closest('.code-block') || btn.parentElement;
+  const pre = block.querySelector('pre');
+  const code = pre ? pre.textContent.trim() : '';
+  const pos = editor.state.selection.main.head;
+  // Add a newline before if cursor isn't at start of a line
+  const line = editor.state.doc.lineAt(pos);
+  const prefix = (pos > line.from) ? '\n' : '';
+  editor.dispatch({
+    changes: { from: pos, insert: prefix + code + '\n' },
+    selection: { anchor: pos + prefix.length + code.length + 1 },
+  });
+  editor.focus();
   autoCompile();
 };
 
