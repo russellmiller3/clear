@@ -4874,7 +4874,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`      const _keys = ${colsCode};`);
       const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
       const tdClass = 'text-sm text-base-content';
-      const trClass = 'border-base-300 hover:bg-base-200 transition-colors';
+      const trClass = 'border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5';
       const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
       const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
       if (hasActions) {
@@ -5464,21 +5464,21 @@ ${options}
           // Store the deduplicated ID back on the node for the reactive compiler
           node.ui._resolvedId = displayId;
           if (ui.tag === 'table') {
-            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden" id="${displayId}">
-      <div class="px-6 py-4 border-b border-base-300">
+            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}">
+      <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
       </div>
       <div class="overflow-x-auto">
         <table class="table table-sm w-full" id="${displayId}_table">
-          <thead><tr class="border-base-300"><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
+          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </div>`);
           } else {
-            parts.push(`    <div class="bg-base-200 rounded-box p-6 flex flex-col gap-1" id="${displayId}">
-      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/50">${ui.label}</p>
-      <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>
+            parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5 flex flex-col gap-1" id="${displayId}">
+      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40">${ui.label}</p>
+      <p class="font-mono text-3xl font-bold text-base-content tracking-tight mt-1" id="${displayId}_value"></p>
     </div>`);
           }
           break;
@@ -5486,7 +5486,7 @@ ${options}
 
         case NodeType.CHART: {
           const chartId = node.ui.id;
-          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300 overflow-hidden p-4" id="${chartId}">
+          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden p-4" id="${chartId}">
       <h3 class="text-sm font-semibold text-base-content mb-2">${node.title}</h3>
       <div id="${chartId}_canvas" style="width:100%;height:320px;"></div>
     </div>`);
@@ -5498,7 +5498,21 @@ ${options}
           const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
           const btnInHeader = btnPreset === 'app_header';
           const btnInForm = ['card_bordered', 'card', 'form'].includes(btnPreset);
-          const btnCls = btnInHeader ? 'btn btn-primary btn-sm' : btnInForm ? 'btn btn-primary w-full' : 'btn btn-primary';
+          const btnLabel = (node.ui.label || '').toLowerCase();
+          const btnIsDestructive = /^(delete|remove|archive|deactivate)/.test(btnLabel);
+          const btnIsDismiss = /^(cancel|close|dismiss|reset|clear|discard)/.test(btnLabel);
+          let btnCls;
+          if (btnInHeader) {
+            // Header buttons are utility actions, not primary CTAs
+            btnCls = btnIsDestructive ? 'btn btn-ghost btn-sm text-error' : 'btn btn-outline btn-sm';
+          } else if (btnIsDestructive) {
+            btnCls = 'btn btn-ghost text-error';
+          } else if (btnIsDismiss) {
+            btnCls = btnInForm ? 'btn btn-ghost w-full' : 'btn btn-ghost';
+          } else {
+            // Default: primary CTA
+            btnCls = btnInForm ? 'btn btn-primary w-full' : 'btn btn-primary';
+          }
           parts.push(`    <button class="${btnCls}" id="${node.ui.id}">${node.ui.label}</button>`);
           break;
         }
@@ -5529,7 +5543,7 @@ ${options}
             case 'heading':
               if (inHero) {
                 // Hero/CTA: massive display headline (Stripe-style)
-                parts.push(`    <h1 class="font-display text-6xl font-extrabold tracking-tight leading-[1.1] text-base-content max-w-3xl">${formatted}</h1>`);
+                parts.push(`    <h1 class="font-display text-5xl font-bold tracking-tight leading-[1.1] text-base-content max-w-3xl">${formatted}</h1>`);
               } else if (inHeader) {
                 parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
@@ -6564,27 +6578,31 @@ const BUILTIN_PRESET_CLASSES = {
   page_hero:         'bg-base-100 py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
   page_section:      'bg-base-100 py-24 px-6',
   page_section_dark: 'bg-neutral text-neutral-content py-24 px-6',
-  page_card:         'bg-base-100 rounded-2xl p-8 hover:scale-[1.02] transition-transform duration-200 flex flex-col gap-3 border border-base-300/50',
+  // page_card: bg-base-200 so cards pop off the bg-base-100 section. hover border glow (Linear-style) not scale.
+  page_card:         'bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm',
   page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
   page_stats:        'bg-base-200 py-16 px-6',
 
   // --- App/dashboard presets (design-system-v2) ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-60 shrink-0 flex flex-col bg-base-200 border-r border-base-300 overflow-hidden',
+  app_sidebar:       'w-52 shrink-0 flex flex-col bg-base-200 border-r border-base-300/40 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300 shrink-0',
-  app_card:          'bg-base-200 rounded-box p-5',
+  // app_content: bg-base-200/30 gives a subtle canvas tint vs pure white (Vercel/Linear style)
+  app_content:       'flex-1 overflow-y-auto bg-base-200/30 p-6 flex flex-col gap-5',
+  // app_header: h-14 (56px) matches modern SaaS headers; soften border
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100 border-b border-base-300/40 shrink-0',
+  // app_card: bg-base-200 creates elevation above bg-base-200/30 canvas (dark) and off-white on light
+  app_card:          'bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 text-center',
   section_light:     'bg-base-100 py-20 px-6',
   section_dark:      'bg-base-200 py-20 px-6',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
-  card_bordered:     'bg-base-100 border border-base-300 rounded-box p-6 flex flex-col gap-4',
+  card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
   metric_card:       'bg-base-200 rounded-box p-6 flex flex-col gap-1',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
-  form:              'bg-base-100 rounded-box border border-base-300 p-8 max-w-lg flex flex-col gap-5',
+  form:              'bg-base-100 rounded-box border border-base-300/40 shadow-sm p-8 max-w-lg flex flex-col gap-5',
 };
 
 // Legacy BUILTIN_STYLES array -- only used as fallback when user doesn't override.

@@ -207,6 +207,24 @@ section 'Dashboard' with style app_layout:
     heading 'Dashboard'
 ```
 
+## Web Tools (when the toggle is on)
+
+You have two web tools. Use the right one:
+
+**`web_search`** — when you need to *find* something you don't have a URL for.
+- "What's the DaisyUI v5 class for a bordered table?"
+- "Does Tailwind v4 support oklch colors?"
+- "What port does Vite use by default?"
+- Use for: current docs, API references, error messages, "what is X", anything where you're discovering a URL
+
+**`web_fetch`** — when you *already have the URL* and need its content.
+- Fetching a specific docs page you found via search
+- Reading a GitHub issue or PR
+- Pulling a JSON API response
+- Use for: reading a known page, following a link, getting structured content at a specific address
+
+**Never guess between them.** If you're not sure of the URL → `web_search` first. If you have the URL → `web_fetch` directly. Don't `web_fetch` a search engine, don't `web_search` when you already have the link.
+
 ## When the Compiler Can't Do What You Need
 
 Clear is a young language. If you hit a genuine language gap (not a syntax mistake), don't guess or hack — log a formal request.

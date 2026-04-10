@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<!-- GAN Mock: Metrics Dashboard (Stripe-inspired)
+     Target: Clean light dashboard. KPI row → chart → transactions table.
+     Ref: stripe.com/docs/dashboard -->
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock — Metrics Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @layer base { body { font-family: 'Plus Jakarta Sans', sans-serif; } }
+  </style>
+</head>
+<body class="bg-base-100 text-base-content h-screen overflow-hidden">
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-52 shrink-0 flex flex-col bg-base-100 border-r border-base-300/40 overflow-hidden">
+    <div class="px-4 h-14 flex items-center border-b border-base-300/40 shrink-0">
+      <span class="text-sm font-bold tracking-tight">Stripe</span>
+    </div>
+    <nav class="flex-1 overflow-y-auto py-3 px-2">
+      <ul class="space-y-0.5">
+        <li><a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium bg-base-200 cursor-pointer">Home</a></li>
+        <li><a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">Balances</a></li>
+        <li><a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">Transactions</a></li>
+        <li><a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">Customers</a></li>
+        <li><a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">Products</a></li>
+        <li><a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">Payments</a></li>
+        <li><a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">Billing</a></li>
+        <li><a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">Reporting</a></li>
+      </ul>
+      <div class="mt-5 mb-2 px-3"><span class="text-xs font-semibold uppercase tracking-widest text-base-content/30">Settings</span></div>
+      <ul class="space-y-0.5">
+        <li><a class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">Account</a></li>
+        <li><a class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-200/60 cursor-pointer transition-colors">API keys</a></li>
+      </ul>
+    </nav>
+    <div class="border-t border-base-300/40 px-3 py-3 shrink-0">
+      <div class="w-full flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-bold shrink-0">R</div>
+        <span class="text-xs text-base-content/60 truncate">Test mode</span>
+        <span class="ml-auto badge badge-warning badge-xs">TEST</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100 border-b border-base-300/40 shrink-0">
+      <div class="flex items-center gap-3">
+        <h1 class="text-sm font-semibold">Home</h1>
+        <div class="flex items-center gap-1.5 text-xs text-base-content/40 bg-base-200 rounded-lg px-2.5 py-1.5">
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Last 30 days
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-ghost btn-sm">Export</button>
+        <button class="btn btn-outline btn-sm">Add widget</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 overflow-y-auto bg-base-200/30 p-6 flex flex-col gap-5">
+
+      <!-- KPI row -->
+      <div class="grid grid-cols-4 gap-4">
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-1">Gross volume</p>
+          <p class="text-2xl font-bold text-base-content font-mono tracking-tight mt-1">$84,620</p>
+          <p class="flex items-center gap-1 text-xs text-success mt-2 font-medium">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M5 15l7-7 7 7"/></svg>
+            +14.2% vs last period
+          </p>
+        </div>
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-1">Net revenue</p>
+          <p class="text-2xl font-bold text-base-content font-mono tracking-tight mt-1">$61,480</p>
+          <p class="flex items-center gap-1 text-xs text-success mt-2 font-medium">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M5 15l7-7 7 7"/></svg>
+            +9.8% vs last period
+          </p>
+        </div>
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-1">New customers</p>
+          <p class="text-2xl font-bold text-base-content font-mono tracking-tight mt-1">328</p>
+          <p class="flex items-center gap-1 text-xs text-error mt-2 font-medium">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M19 9l-7 7-7-7"/></svg>
+            -3.1% vs last period
+          </p>
+        </div>
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-1">Refund rate</p>
+          <p class="text-2xl font-bold text-base-content font-mono tracking-tight mt-1">0.8%</p>
+          <p class="flex items-center gap-1 text-xs text-success mt-2 font-medium">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M19 9l-7 7-7-7"/></svg>
+            -0.2pp (better)
+          </p>
+        </div>
+      </div>
+
+      <!-- Chart placeholder + mini chart -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="col-span-2 bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold">Gross volume</h3>
+            <div class="flex gap-1">
+              <button class="btn btn-ghost btn-xs text-primary">1D</button>
+              <button class="btn btn-ghost btn-xs">7D</button>
+              <button class="btn btn-ghost btn-xs bg-base-200 font-semibold">30D</button>
+              <button class="btn btn-ghost btn-xs">90D</button>
+            </div>
+          </div>
+          <!-- Fake sparkline -->
+          <div class="h-40 flex items-end gap-1 px-2">
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:40%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:55%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:45%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:70%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:60%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:80%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:65%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:90%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:75%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:85%"></div>
+            <div class="flex-1 bg-primary rounded-t" style="height:100%"></div>
+            <div class="flex-1 bg-primary/20 rounded-t hover:bg-primary/40 transition-colors" style="height:72%"></div>
+          </div>
+          <div class="flex justify-between mt-2 px-2">
+            <span class="text-xs text-base-content/30">Mar 10</span>
+            <span class="text-xs text-base-content/30">Apr 9</span>
+          </div>
+        </div>
+        <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5 flex flex-col gap-4">
+          <h3 class="text-sm font-semibold">Payment methods</h3>
+          <div class="flex flex-col gap-3">
+            <div>
+              <div class="flex justify-between text-xs mb-1"><span class="text-base-content/70">Card</span><span class="font-mono font-semibold">78%</span></div>
+              <div class="w-full bg-base-200 rounded-full h-1.5"><div class="bg-primary h-1.5 rounded-full" style="width:78%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between text-xs mb-1"><span class="text-base-content/70">Bank transfer</span><span class="font-mono font-semibold">14%</span></div>
+              <div class="w-full bg-base-200 rounded-full h-1.5"><div class="bg-secondary h-1.5 rounded-full" style="width:14%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between text-xs mb-1"><span class="text-base-content/70">Wallet</span><span class="font-mono font-semibold">8%</span></div>
+              <div class="w-full bg-base-200 rounded-full h-1.5"><div class="bg-accent h-1.5 rounded-full" style="width:8%"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions table -->
+      <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-base-300/40 flex items-center justify-between">
+          <h3 class="text-sm font-semibold">Recent transactions</h3>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost btn-xs">Filter</button>
+            <button class="btn btn-ghost btn-xs">Export</button>
+          </div>
+        </div>
+        <table class="table table-sm w-full">
+          <thead class="bg-base-200/60">
+            <tr>
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Amount</th>
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Customer</th>
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Description</th>
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Status</th>
+              <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors">
+              <td class="text-sm font-mono font-semibold text-base-content">$240.00</td>
+              <td class="text-sm text-base-content">Sarah Chen</td>
+              <td class="text-sm text-base-content/60">Pro plan · monthly</td>
+              <td><span class="badge badge-success badge-sm">Paid</span></td>
+              <td class="text-sm text-base-content/40">Apr 9, 2026</td>
+            </tr>
+            <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors even:bg-base-200/20">
+              <td class="text-sm font-mono font-semibold text-base-content">$99.00</td>
+              <td class="text-sm text-base-content">Marcus Webb</td>
+              <td class="text-sm text-base-content/60">Starter plan · monthly</td>
+              <td><span class="badge badge-success badge-sm">Paid</span></td>
+              <td class="text-sm text-base-content/40">Apr 9, 2026</td>
+            </tr>
+            <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors">
+              <td class="text-sm font-mono font-semibold text-error">-$48.00</td>
+              <td class="text-sm text-base-content">Ali Hassan</td>
+              <td class="text-sm text-base-content/60">Refund · seat reduction</td>
+              <td><span class="badge badge-warning badge-sm">Refunded</span></td>
+              <td class="text-sm text-base-content/40">Apr 8, 2026</td>
+            </tr>
+            <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors even:bg-base-200/20">
+              <td class="text-sm font-mono font-semibold text-base-content">$1,200.00</td>
+              <td class="text-sm text-base-content">Bloom Studio</td>
+              <td class="text-sm text-base-content/60">Enterprise plan · annual</td>
+              <td><span class="badge badge-success badge-sm">Paid</span></td>
+              <td class="text-sm text-base-content/40">Apr 7, 2026</td>
+            </tr>
+            <tr class="border-base-300/20 hover:bg-base-200/40 transition-colors">
+              <td class="text-sm font-mono font-semibold text-base-content/40">$99.00</td>
+              <td class="text-sm text-base-content">Jordan Reyes</td>
+              <td class="text-sm text-base-content/60">Starter plan · monthly</td>
+              <td><span class="badge badge-error badge-sm">Failed</span></td>
+              <td class="text-sm text-base-content/40">Apr 7, 2026</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+</body>
+</html>

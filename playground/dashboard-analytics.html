@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<!-- GAN Mock: Analytics Dashboard (dark, Vercel Analytics-inspired)
+     Target: Dark dashboard with team management + project tracking.
+     Ref: vercel.com analytics, linear insights -->
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock — Analytics Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @layer base { body { font-family: 'Plus Jakarta Sans', sans-serif; } }
+  </style>
+</head>
+<body class="bg-base-100 text-base-content h-screen overflow-hidden">
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-52 shrink-0 flex flex-col bg-base-200 border-r border-base-300/40 overflow-hidden">
+    <div class="px-4 h-12 flex items-center border-b border-base-300/30 shrink-0">
+      <span class="text-sm font-bold tracking-tight">Team Dashboard</span>
+    </div>
+    <nav class="flex-1 overflow-y-auto py-3 px-2">
+      <ul class="space-y-0.5">
+        <li><a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm font-medium bg-base-300/50 cursor-pointer">Overview</a></li>
+        <li><a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-300/30 cursor-pointer transition-colors">Projects</a></li>
+        <li><a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-300/30 cursor-pointer transition-colors">Tasks</a></li>
+        <li><a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-300/30 cursor-pointer transition-colors">Team</a></li>
+        <li><a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-300/30 cursor-pointer transition-colors">Reports</a></li>
+      </ul>
+      <div class="mt-4 mb-2 px-2.5"><span class="text-xs font-semibold uppercase tracking-widest text-base-content/30">Projects</span></div>
+      <ul class="space-y-0.5">
+        <li><a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-300/30 cursor-pointer transition-colors">
+          <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>Website Redesign</a></li>
+        <li><a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-300/30 cursor-pointer transition-colors">
+          <span class="w-2 h-2 rounded-full bg-warning shrink-0"></span>Mobile App v2</a></li>
+        <li><a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-300/30 cursor-pointer transition-colors">
+          <span class="w-2 h-2 rounded-full bg-primary shrink-0"></span>API Migration</a></li>
+      </ul>
+    </nav>
+    <div class="border-t border-base-300/30 px-3 py-2.5 shrink-0 flex items-center gap-2.5">
+      <div class="w-6 h-6 rounded-full bg-primary/30 text-primary text-xs flex items-center justify-center font-bold">R</div>
+      <span class="text-xs text-base-content/50 truncate">russell@acme.co</span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-20 flex items-center justify-between h-12 px-5 bg-base-100 border-b border-base-300/30 shrink-0">
+      <h1 class="text-sm font-semibold">Overview</h1>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-base-content/40 bg-base-200 rounded px-2 py-1">Apr 2026</span>
+        <button class="btn btn-outline btn-xs">+ New project</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 overflow-y-auto bg-base-100 p-5 flex flex-col gap-5">
+
+      <!-- Metric cards -->
+      <div class="grid grid-cols-4 gap-4">
+        <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-2">Projects</p>
+          <p class="text-3xl font-bold font-mono tracking-tight">12</p>
+          <p class="text-xs text-base-content/40 mt-1.5">3 active this week</p>
+        </div>
+        <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-2">Open tasks</p>
+          <p class="text-3xl font-bold font-mono tracking-tight">48</p>
+          <p class="flex items-center gap-1 text-xs text-success mt-1.5 font-medium">↓ 6 from last week</p>
+        </div>
+        <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-2">Completed</p>
+          <p class="text-3xl font-bold font-mono tracking-tight">124</p>
+          <p class="flex items-center gap-1 text-xs text-success mt-1.5 font-medium">↑ 18% vs last month</p>
+        </div>
+        <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mb-2">Team members</p>
+          <p class="text-3xl font-bold font-mono tracking-tight">9</p>
+          <p class="text-xs text-base-content/40 mt-1.5">Across 3 teams</p>
+        </div>
+      </div>
+
+      <!-- Two-col: projects table + task breakdown -->
+      <div class="grid grid-cols-2 gap-4">
+
+        <!-- Projects table -->
+        <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm overflow-hidden">
+          <div class="px-4 py-3 border-b border-base-300/40 flex items-center justify-between">
+            <h3 class="text-sm font-semibold">Projects</h3>
+            <button class="btn btn-ghost btn-xs text-primary">View all</button>
+          </div>
+          <table class="table table-sm w-full">
+            <thead class="bg-base-100/50">
+              <tr>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Name</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Owner</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Status</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Progress</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-base-300/20 hover:bg-base-300/20 transition-colors">
+                <td class="text-sm text-base-content font-medium">Website Redesign</td>
+                <td class="text-sm text-base-content/60">Russell</td>
+                <td><span class="badge badge-success badge-sm">Active</span></td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 bg-base-300 rounded-full h-1.5 min-w-12"><div class="bg-success h-1.5 rounded-full" style="width:72%"></div></div>
+                    <span class="text-xs text-base-content/40 font-mono">72%</span>
+                  </div>
+                </td>
+              </tr>
+              <tr class="border-base-300/20 hover:bg-base-300/20 transition-colors even:bg-base-300/5">
+                <td class="text-sm text-base-content font-medium">Mobile App v2</td>
+                <td class="text-sm text-base-content/60">Jess</td>
+                <td><span class="badge badge-warning badge-sm">At risk</span></td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 bg-base-300 rounded-full h-1.5 min-w-12"><div class="bg-warning h-1.5 rounded-full" style="width:38%"></div></div>
+                    <span class="text-xs text-base-content/40 font-mono">38%</span>
+                  </div>
+                </td>
+              </tr>
+              <tr class="border-base-300/20 hover:bg-base-300/20 transition-colors">
+                <td class="text-sm text-base-content font-medium">API Migration</td>
+                <td class="text-sm text-base-content/60">Alex</td>
+                <td><span class="badge badge-ghost badge-sm">Planned</span></td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 bg-base-300 rounded-full h-1.5 min-w-12"><div class="bg-primary h-1.5 rounded-full" style="width:10%"></div></div>
+                    <span class="text-xs text-base-content/40 font-mono">10%</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Tasks table -->
+        <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm overflow-hidden">
+          <div class="px-4 py-3 border-b border-base-300/40 flex items-center justify-between">
+            <h3 class="text-sm font-semibold">Recent Tasks</h3>
+            <button class="btn btn-ghost btn-xs text-primary">View all</button>
+          </div>
+          <table class="table table-sm w-full">
+            <thead class="bg-base-100/50">
+              <tr>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Title</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Project</th>
+                <th class="text-xs uppercase tracking-widest font-semibold text-base-content/40">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-base-300/20 hover:bg-base-300/20 transition-colors">
+                <td class="text-sm text-base-content">Redesign nav component</td>
+                <td class="text-sm text-base-content/60 font-mono text-xs">Website</td>
+                <td><span class="badge badge-warning badge-sm">In progress</span></td>
+              </tr>
+              <tr class="border-base-300/20 hover:bg-base-300/20 transition-colors even:bg-base-300/5">
+                <td class="text-sm text-base-content">Auth flow testing</td>
+                <td class="text-sm text-base-content/60 font-mono text-xs">Mobile</td>
+                <td><span class="badge badge-ghost badge-sm">Todo</span></td>
+              </tr>
+              <tr class="border-base-300/20 hover:bg-base-300/20 transition-colors">
+                <td class="text-sm text-base-content">Write migration guide</td>
+                <td class="text-sm text-base-content/60 font-mono text-xs">API</td>
+                <td><span class="badge badge-ghost badge-sm">Todo</span></td>
+              </tr>
+              <tr class="border-base-300/20 hover:bg-base-300/20 transition-colors even:bg-base-300/5">
+                <td class="text-sm text-base-content">Update Figma tokens</td>
+                <td class="text-sm text-base-content/60 font-mono text-xs">Website</td>
+                <td><span class="badge badge-success badge-sm">Done</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Add task form -->
+      <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5">
+        <h3 class="text-sm font-semibold mb-4">Add New Task</h3>
+        <div class="grid grid-cols-4 gap-3 items-end">
+          <div class="col-span-2">
+            <label class="text-xs text-base-content/50 font-medium mb-1.5 block">Title</label>
+            <input type="text" placeholder="Task title" class="input input-sm w-full bg-base-100 border-base-300/40">
+          </div>
+          <div>
+            <label class="text-xs text-base-content/50 font-medium mb-1.5 block">Project</label>
+            <input type="text" placeholder="Project name" class="input input-sm w-full bg-base-100 border-base-300/40">
+          </div>
+          <div>
+            <button class="btn btn-primary btn-sm w-full">Add task</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+</body>
+</html>
