@@ -5559,7 +5559,7 @@ function buildHTML(body) {
                 });
                 parts.push(`      </div>`);
               } else if (sn === 'stats_row') {
-                parts.push(`      <div class="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">`);
+                parts.push(`      <div class="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-10">`);
                 walk(cardNodes);
                 parts.push(`      </div>`);
               } else if (sn === 'pricing_grid' || sn === 'pricing_grid_dark') {
@@ -7276,7 +7276,7 @@ const BUILTIN_PRESET_CLASSES = {
   testimonial_grid_dark:  'bg-neutral text-neutral-content py-16 lg:py-24 px-6 border-y border-base-content/8',
 
   // --- v2 card presets ---
-  feature_card:           'bg-base-100 rounded-2xl p-7 flex flex-col gap-3 border border-base-300/60 hover:border-primary/40 hover:shadow-md transition-all group',
+  feature_card:           'bg-base-100 rounded-2xl p-7 flex flex-col gap-3 border border-base-300 shadow-sm hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all group',
   feature_card_dark:      'bg-white/5 rounded-2xl p-7 flex flex-col gap-3 border border-white/10 hover:border-primary/40 transition-colors',
   // feature_card_large: bold primary bg — the "hero card" in the asymmetric split (Clay-style)
   feature_card_large:     'bg-primary text-primary-content rounded-2xl p-10 flex flex-col gap-5 shadow-xl min-h-[280px]',
@@ -7289,7 +7289,7 @@ const BUILTIN_PRESET_CLASSES = {
   feature_card_amber:     'bg-amber-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
   pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200',
   pricing_card_featured:  'bg-primary text-primary-content rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1 ring-2 ring-primary/20 ring-offset-2 ring-offset-base-200 scale-[1.02]',
-  testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/40 shadow-sm relative',
+  testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/50 shadow-md hover:shadow-lg transition-shadow relative',
   stat_item:              'flex flex-col items-center text-center gap-2',
   logo_item:              'flex items-center justify-center opacity-40 hover:opacity-70 transition-opacity grayscale',
 
