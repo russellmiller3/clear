@@ -7310,12 +7310,12 @@ const BUILTIN_PRESET_CLASSES = {
 
   // --- App/dashboard presets ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-200 border-r border-base-300/50 overflow-hidden',
+  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-100 border-r border-base-300/50 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-6',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-200/80 backdrop-blur-md border-b border-base-300/50 shrink-0',
-  app_card:          'bg-base-200 rounded-xl border border-base-300/50 shadow-sm p-5',
-  app_table:         'bg-base-200 rounded-xl border border-base-300/50 shadow-sm overflow-hidden',
+  app_content:       'flex-1 overflow-y-auto bg-base-200/50 p-6 flex flex-col gap-6',
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300/50 shrink-0',
+  app_card:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
+  app_table:         'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 flex flex-col items-center text-center gap-5',
@@ -7323,14 +7323,14 @@ const BUILTIN_PRESET_CLASSES = {
   section_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
   card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
-  metric_card:       'bg-base-200 rounded-xl p-6 flex flex-col gap-1.5 border border-base-300/50 shadow-sm',
+  metric_card:       'bg-base-100 rounded-xl p-6 flex flex-col gap-1.5 border border-base-300/40 shadow-sm',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
   form:              'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5',
 
   // --- Interaction presets ---
   app_modal:         'bg-base-100 rounded-xl border border-base-300/40 shadow-2xl p-8 max-w-md mx-auto flex flex-col gap-5 ring-1 ring-base-300/20',
-  empty_state:       'bg-base-200/30 rounded-xl border-2 border-dashed border-base-300/40 p-12 flex flex-col items-center justify-center text-center gap-3 min-h-[180px]',
-  app_list:          'bg-base-200 rounded-xl border border-base-300/50 shadow-sm overflow-hidden divide-y divide-base-300/30',
+  empty_state:       'bg-base-100 rounded-xl border-2 border-dashed border-base-300/30 p-12 flex flex-col items-center justify-center text-center gap-3 min-h-[180px]',
+  app_list:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden divide-y divide-base-300/20',
 };
 
 // Legacy BUILTIN_STYLES array -- only used as fallback when user doesn't override.

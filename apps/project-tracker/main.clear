@@ -1,7 +1,7 @@
-# Project Tracker — issue management app using semantic style tokens
+# Project Tracker — reference dashboard for app UI presets
 build for web and javascript backend
 
-theme 'midnight'
+theme 'ivory'
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,6 @@ when user calls GET /api/issues:
   all_issues = get all Issues
   send back all_issues
 
-
 when user calls POST /api/issues sending issue_data:
   validate issue_data:
     title is text, required, min 1, max 200
@@ -52,29 +51,96 @@ when user calls DELETE /api/issues/:id:
   delete the Issue with this id
   send back 'deleted'
 
-# ── Styles ────────────────────────────────────────────────────────────────────
-# Every style here uses ONLY semantic tokens — no raw CSS values.
-
+when user calls POST /api/seed:
+  create i1:
+    title is 'Fix auth token expiry on mobile'
+    project is 'Backend'
+    assignee is 'Sarah Chen'
+    priority is 'high'
+    status is 'in progress'
+  save i1 as new Issue
+  create i2:
+    title is 'Update onboarding flow copy'
+    project is 'Design'
+    assignee is 'Marcus Lee'
+    priority is 'medium'
+    status is 'in progress'
+  save i2 as new Issue
+  create i3:
+    title is 'Dashboard chart not loading in Safari'
+    project is 'Frontend'
+    assignee is 'Sarah Chen'
+    priority is 'high'
+    status is 'open'
+  save i3 as new Issue
+  create i4:
+    title is 'Add CSV export to reports page'
+    project is 'Frontend'
+    assignee is 'Jenna Park'
+    priority is 'low'
+    status is 'backlog'
+  save i4 as new Issue
+  create i5:
+    title is 'Rate limiting on public API endpoints'
+    project is 'Backend'
+    assignee is 'Alex Rivera'
+    priority is 'high'
+    status is 'open'
+  save i5 as new Issue
+  create i6:
+    title is 'Redesign settings page layout'
+    project is 'Design'
+    assignee is 'Marcus Lee'
+    priority is 'medium'
+    status is 'backlog'
+  save i6 as new Issue
+  create i7:
+    title is 'Set up CI pipeline for staging'
+    project is 'DevOps'
+    assignee is 'Alex Rivera'
+    priority is 'medium'
+    status is 'done'
+  save i7 as new Issue
+  create i8:
+    title is 'Migrate user sessions to Redis'
+    project is 'Backend'
+    assignee is 'Sarah Chen'
+    priority is 'high'
+    status is 'done'
+  save i8 as new Issue
+  create i9:
+    title is 'Add dark mode toggle to settings'
+    project is 'Frontend'
+    assignee is 'Jenna Park'
+    priority is 'low'
+    status is 'in progress'
+  save i9 as new Issue
+  create i10:
+    title is 'Write API documentation for v2'
+    project is 'Backend'
+    assignee is 'Alex Rivera'
+    priority is 'medium'
+    status is 'open'
+  save i10 as new Issue
+  send back 'seeded'
 
 # ── Frontend ──────────────────────────────────────────────────────────────────
 
 page 'Project Tracker' at '/':
 
-  open_count = 12
-  in_progress_count = 5
-  done_count = 23
   all_issues = []
 
   on page load:
-    all_issues = GET '/api/issues'
+    send nothing to '/api/seed'
+    get all_issues from '/api/issues'
 
   section 'App' with style app_layout:
 
-    section 'Sidebar' with style app_sidebar, 208px wide:
+    section 'Sidebar' with style app_sidebar:
 
       heading 'Tracker'
 
-      section 'Workspace Nav':
+      section 'Workspace':
         text 'My Issues'
         text 'All Projects'
         text 'Inbox'
@@ -109,48 +175,46 @@ page 'Project Tracker' at '/':
             heading '5'
             text '2 assigned to you'
           section 'Done' with style metric_card:
-            small text 'Done this week'
+            small text 'Done'
             heading '23'
             text '+8 vs last week'
           section 'Team' with style metric_card:
-            small text 'Team members'
+            small text 'Team'
             heading '8'
             text '6 active today'
 
         section 'Issues Table' with style app_table:
-          display all_issues as table showing title, project, priority, status with delete
+          display all_issues as table showing title, project, assignee, priority, status with delete
 
         section 'Recent Activity' with style app_list:
           heading 'Recent Activity'
-          section 'Activity 1':
-            text 'Fix auth token expiry on mobile'
-            badge 'High' as error
-          section 'Activity 2':
-            text 'Update onboarding flow copy'
-            badge 'Medium' as warning
-          section 'Activity 3':
-            text 'Dashboard chart not loading in Safari'
-            badge 'High' as error
-          section 'Activity 4':
-            text 'Add CSV export to reports page'
-            badge 'Low' as neutral
-
-        section 'Empty Section' with style empty_state:
-          heading 'No archived issues'
-          text 'Issues you archive will appear here.'
-          button 'View all issues':
-            do nothing
+          section 'A1':
+            text 'Sarah Chen moved "Fix auth token expiry" to In Progress'
+            badge 'just now' as info
+          section 'A2':
+            text 'Marcus Lee commented on "Update onboarding flow"'
+            badge '2m ago' as neutral
+          section 'A3':
+            text 'Alex Rivera closed "Set up CI pipeline for staging"'
+            badge '15m ago' as success
+          section 'A4':
+            text 'Jenna Park created "Add dark mode toggle to settings"'
+            badge '1h ago' as neutral
+          section 'A5':
+            text 'Sarah Chen resolved "Migrate user sessions to Redis"'
+            badge '3h ago' as success
 
         section 'New Issue' as modal:
           section 'Form' with style form:
             subheading 'New Issue'
             'Title' as text input saves to new_title
             'Project' as dropdown with ['Frontend', 'Backend', 'Design', 'DevOps'] saves to new_project
+            'Assignee' as text input saves to new_assignee
             'Priority' as dropdown with ['Low', 'Medium', 'High', 'Critical'] saves to new_priority
             button 'Create Issue':
-              new_issue_data = collect new_title, new_project, new_priority
-              POST new_issue_data to '/api/issues'
-              all_issues = GET '/api/issues'
+              new_issue_data = collect new_title, new_project, new_assignee, new_priority
+              send new_issue_data to '/api/issues'
+              get all_issues from '/api/issues'
               hide 'New Issue'
             button 'Cancel':
               hide 'New Issue'
