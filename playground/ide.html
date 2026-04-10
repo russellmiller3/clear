@@ -307,7 +307,6 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
-    <button class="toolbar-btn" onclick="doUndo()" title="Undo last change (Ctrl+Z)">Undo</button>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doSave()" title="Save to Desktop">Save</button>
     <button id="download-btn" class="toolbar-btn" onclick="doDownload()" title="Download compiled HTML" style="display:none">Download</button>
@@ -325,7 +324,10 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
   <div id="editor-pane">
     <div id="editor-header">
       <span><span class="dot" id="compile-dot"></span> <span id="editor-label">main.clear</span></span>
-      <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Claude chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <button class="toolbar-btn" onclick="doUndo()" title="Undo last change (Ctrl+Z)" style="font-size:11px;padding:2px 8px;">↩ Undo</button>
+        <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Claude chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
+      </div>
     </div>
     <div id="editor-toc"></div>
     <div id="editor-mount"></div>

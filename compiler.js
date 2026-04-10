@@ -5446,7 +5446,7 @@ function buildHTML(body) {
               'feature_card_teal', 'feature_card_purple', 'feature_card_indigo',
               'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
               'pricing_card', 'pricing_card_featured',
-              'testimonial_card', 'stat_item', 'logo_item',
+              'testimonial_card', 'stat_item', 'logo_item', 'app_table',
             ].includes(node.styleName);
             const isHeroPreset = ['page_hero', 'hero', 'hero_left', 'page_cta'].includes(node.styleName);
             const isNavbarPreset = node.styleName === 'page_navbar';
@@ -5499,7 +5499,7 @@ function buildHTML(body) {
               // Emit nav items wrapped in menu
               if (navNodes.length > 0) {
                 parts.push(`    <nav class="flex-1 overflow-y-auto py-3 px-3">`);
-                parts.push(`      <ul class="menu menu-sm gap-0.5 p-0">`);
+                parts.push(`      <ul class="menu menu-md gap-0.5 p-0">`);
                 for (const entry of navNodes) {
                   if (entry.group) {
                     parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-3 px-3">${entry.group}</li>`);
@@ -5857,12 +5857,12 @@ ${options}
     </div>`);
           } else if (inUserSection) {
             // Inside a styled card (stat_card etc.) — render just the number inline, no extra wrapper
-            parts.push(`    <p class="font-mono text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
+            parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
             if (ui.label) parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">${ui.label}</p>`);
           } else {
-            parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5 flex flex-col gap-1" id="${displayId}">
-      <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40">${ui.label}</p>
-      <p class="font-mono text-3xl font-bold text-base-content tracking-tight mt-1" id="${displayId}_value"></p>
+            parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 p-6 flex flex-col gap-2" id="${displayId}">
+      <p class="text-sm font-medium text-base-content/50">${ui.label}</p>
+      <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>
     </div>`);
           }
           break;
@@ -5915,7 +5915,7 @@ ${options}
           const inSidebar = sectionStack.includes('app_sidebar');
           if (inSidebar) {
             // Sidebar already wraps in <nav><ul class="menu">, just emit the list container
-            parts.push(`    <ul class="menu menu-sm gap-0.5 p-0 clear-list" id="list_${sanitizeName(node.variable)}"></ul>`);
+            parts.push(`    <ul class="menu menu-md gap-0.5 p-0 clear-list" id="list_${sanitizeName(node.variable)}"></ul>`);
           } else {
             const listId = `list_${sanitizeName(node.variable)}`;
             const emptyId = `empty_${sanitizeName(node.variable)}`;
@@ -5980,11 +5980,11 @@ ${options}
                 const heroSize = inHeroLeft ? 'text-5xl lg:text-6xl' : 'text-5xl md:text-6xl';
                 parts.push(`    <h1 class="font-display ${heroSize} font-bold tracking-tight leading-[1.05] text-base-content max-w-3xl ${heroAlign}">${formatted}</h1>`);
               } else if (inHeader) {
-                parts.push(`    <h1 class="text-base font-semibold text-base-content">${formatted}</h1>`);
+                parts.push(`    <h1 class="font-display text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
-                parts.push(`    <p class="font-mono text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
+                parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
               } else if (inSidebar) {
-                parts.push(`    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
+                parts.push(`    <div class="px-5 py-5 border-b border-base-300 shrink-0 flex items-center gap-2"><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
               } else if (inStatItem) {
                 parts.push(`    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
               } else if (inFeaturedPricing) {
@@ -6043,9 +6043,9 @@ ${options}
             }
             case 'text':
               if (inSidebar) {
-                parts.push(`    <li><a class="clear-nav-item flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
+                parts.push(`    <li><a class="clear-nav-item flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
               } else if (inMetricCard) {
-                parts.push(`    <p class="text-xs text-base-content/40 font-mono">${formatted}</p>`);
+                parts.push(`    <p class="text-sm font-medium text-base-content/50">${formatted}</p>`);
               } else if (inCta) {
                 parts.push(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
               } else if (inHero) {
@@ -7268,11 +7268,12 @@ const BUILTIN_PRESET_CLASSES = {
 
   // --- App/dashboard presets ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-52 shrink-0 flex flex-col bg-base-300/20 border-r border-base-300/50 overflow-hidden',
+  app_sidebar:       'w-56 shrink-0 flex flex-col bg-base-200/60 border-r border-base-300/40 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
   app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-200/80 backdrop-blur-sm border-b border-base-300/60 shrink-0',
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-200/80 backdrop-blur-md border-b border-base-300/60 shrink-0',
   app_card:          'bg-base-200 rounded-xl border border-base-300/50 shadow-md p-5',
+  app_table:         'bg-base-200 rounded-xl border border-base-300/40 overflow-hidden',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 flex flex-col items-center text-center gap-5',
@@ -7280,7 +7281,7 @@ const BUILTIN_PRESET_CLASSES = {
   section_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
   card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
-  metric_card:       'bg-base-200 rounded-box p-6 flex flex-col gap-1',
+  metric_card:       'bg-base-200 rounded-xl p-6 flex flex-col gap-2 border border-base-300/40',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
   form:              'bg-base-100 rounded-box border border-base-300/40 shadow-sm p-8 max-w-lg flex flex-col gap-5',
 };
