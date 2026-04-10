@@ -5447,6 +5447,7 @@ function buildHTML(body) {
               'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
               'pricing_card', 'pricing_card_featured',
               'testimonial_card', 'stat_item', 'logo_item', 'app_table',
+              'app_modal', 'empty_state', 'app_list',
             ].includes(node.styleName);
             const isHeroPreset = ['page_hero', 'hero', 'hero_left', 'page_cta'].includes(node.styleName);
             const isNavbarPreset = node.styleName === 'page_navbar';
@@ -5737,6 +5738,19 @@ function buildHTML(body) {
                 parts.push(`      </div>`);
                 parts.push(`    </div>`);
               }
+            } else if (node.styleName === 'app_list') {
+              // app_list: header content above, each child wrapped as a list item row
+              const listHeader = node.body.filter(c => c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading'));
+              const listItems = node.body.filter(c => !(c.type === NodeType.CONTENT && (c.contentType === 'heading' || c.ui?.contentType === 'heading')));
+              for (const hdr of listHeader) {
+                const fmt = formatInlineText(hdr.ui.text);
+                parts.push(`      <div class="text-sm font-semibold text-base-content/60 px-5 pt-4 pb-2">${fmt}</div>`);
+              }
+              for (const item of listItems) {
+                parts.push(`      <div class="flex items-center gap-4 px-5 py-3 hover:bg-base-300/20 transition-colors">`);
+                walk([item]);
+                parts.push(`      </div>`);
+              }
             } else {
               // Inject star rating row and quote mark for testimonial cards
               if (node.styleName === 'testimonial_card') {
@@ -5883,6 +5897,7 @@ ${options}
           const btnInHeader = btnPreset === 'app_header';
           const btnInCta = btnPreset === 'page_cta';
           const btnInForm = ['card_bordered', 'card', 'form'].includes(btnPreset);
+          const btnInEmptyState = btnPreset === 'empty_state';
           const btnLabel = (node.ui.label || '').toLowerCase();
           const btnIsDestructive = /^(delete|remove|archive|deactivate)/.test(btnLabel);
           const btnIsDismiss = /^(cancel|close|dismiss|reset|clear|discard)/.test(btnLabel);
@@ -5899,6 +5914,8 @@ ${options}
             } else {
               btnCls = 'btn btn-primary btn-sm'; // New/Create/Add buttons in header keep primary treatment
             }
+          } else if (btnInEmptyState) {
+            btnCls = 'btn btn-sm btn-ghost';
           } else if (btnIsDestructive) {
             btnCls = 'btn btn-ghost text-error';
           } else if (btnIsDismiss) {
@@ -5936,7 +5953,11 @@ ${options}
           const inSidebar = sectionStack.includes('app_sidebar');
           const inHeader = parentPreset === 'app_header';
           const inMetricCard = parentPreset === 'metric_card';
-          const inCard = ['card', 'card_bordered', 'form'].includes(parentPreset);
+          const inCard = ['card', 'card_bordered'].includes(parentPreset);
+          const inForm = parentPreset === 'form';
+          const inModal = parentPreset === 'app_modal';
+          const inEmptyState = parentPreset === 'empty_state';
+          const inList = parentPreset === 'app_list';
           const inHero = ['page_hero', 'hero', 'hero_left', 'page_cta'].includes(parentPreset);
           const inHeroLeft = parentPreset === 'hero_left';
           const inCta = parentPreset === 'page_cta';
@@ -5996,6 +6017,12 @@ ${options}
               } else if (inLandingCard) {
                 const tc = inDarkCard ? 'text-white' : inLargeCard ? 'text-primary-content' : 'text-base-content';
                 parts.push(`    <h3 class="text-lg font-bold ${tc} leading-snug">${formatted}</h3>`);
+              } else if (inForm) {
+                parts.push(`    <h2 class="text-xl font-bold text-base-content mb-2">${formatted}</h2>`);
+              } else if (inModal) {
+                parts.push(`    <h2 class="text-lg font-bold text-base-content">${formatted}</h2>`);
+              } else if (inEmptyState) {
+                parts.push(`    <h3 class="text-lg font-semibold text-base-content/70">${formatted}</h3>`);
               } else if (inCard) {
                 parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
               } else if (inPageSection) {
@@ -6066,6 +6093,10 @@ ${options}
                 parts.push(`    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               } else if (inPageSection) {
                 parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
+              } else if (inForm || inModal) {
+                parts.push(`    <p class="text-sm text-base-content/60 mb-4">${formatted}</p>`);
+              } else if (inEmptyState) {
+                parts.push(`    <p class="text-sm text-base-content/40 max-w-sm">${formatted}</p>`);
               } else if (inCard) {
                 parts.push(`    <p class="text-sm text-base-content/80 leading-relaxed">${formatted}</p>`);
               } else {
@@ -7283,7 +7314,12 @@ const BUILTIN_PRESET_CLASSES = {
   card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
   metric_card:       'bg-base-200 rounded-xl p-6 flex flex-col gap-2 border border-base-300/40',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
-  form:              'bg-base-100 rounded-box border border-base-300/40 shadow-sm p-8 max-w-lg flex flex-col gap-5',
+  form:              'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5',
+
+  // --- Interaction presets ---
+  app_modal:         'bg-base-100 rounded-xl border border-base-300/40 shadow-2xl p-8 max-w-md mx-auto flex flex-col gap-5 ring-1 ring-base-300/20',
+  empty_state:       'bg-base-200/50 rounded-xl border border-dashed border-base-300/60 p-12 flex flex-col items-center justify-center text-center gap-4 min-h-[200px]',
+  app_list:          'bg-base-200 rounded-xl border border-base-300/40 overflow-hidden divide-y divide-base-300/40',
 };
 
 // Legacy BUILTIN_STYLES array -- only used as fallback when user doesn't override.
