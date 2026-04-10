@@ -5458,6 +5458,7 @@ function buildHTML(body) {
               'stats_row',
               'pricing_grid', 'pricing_grid_dark',
               'testimonial_grid', 'testimonial_grid_dark',
+              'faq_section', 'page_footer',
             ];
             const isGridSection = GRID_SECTION_PRESETS.includes(node.styleName);
             const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset && !isGridSection;
@@ -5518,7 +5519,7 @@ function buildHTML(body) {
               const cardNodes = node.body.filter(c => c.type === NodeType.SECTION);
               const isDark = sn.endsWith('_dark');
               const headingColor = isDark ? 'text-neutral-content' : 'text-base-content';
-              if (headerNodes.length > 0) {
+              if (headerNodes.length > 0 && sn !== 'page_footer') {
                 parts.push(`      <div class="max-w-5xl mx-auto text-center mb-10">`);
                 walk(headerNodes);
                 parts.push(`      </div>`);
@@ -5561,8 +5562,88 @@ function buildHTML(body) {
                 walk(cardNodes);
                 parts.push(`      </div>`);
               } else if (sn === 'pricing_grid' || sn === 'pricing_grid_dark') {
-                parts.push(`      <div class="max-w-5xl mx-auto flex flex-col md:flex-row gap-6 items-stretch mt-6">`);
+                parts.push(`      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-start mt-6">`);
                 walk(cardNodes);
+                parts.push(`      </div>`);
+              } else if (sn === 'faq_section') {
+                // FAQ: child sections become DaisyUI collapse accordion items
+                parts.push(`      <div class="join join-vertical w-full max-w-2xl mx-auto">`);
+                for (const card of cardNodes) {
+                  const qTitle = card.ui?.title || card.title || 'Question';
+                  // Gather body text for the answer
+                  const answerParts = [];
+                  if (card.body) {
+                    for (const child of card.body) {
+                      if (child.type === NodeType.CONTENT && child.ui) {
+                        answerParts.push(formatInlineText(child.ui.text));
+                      }
+                    }
+                  }
+                  const answer = answerParts.join(' ') || 'Answer';
+                  parts.push(`        <div class="collapse collapse-arrow join-item border border-base-300/40">`);
+                  parts.push(`          <input type="radio" name="faq" />`);
+                  parts.push(`          <div class="collapse-title font-semibold">${qTitle}</div>`);
+                  parts.push(`          <div class="collapse-content"><p>${answer}</p></div>`);
+                  parts.push(`        </div>`);
+                }
+                parts.push(`      </div>`);
+              } else if (sn === 'page_footer') {
+                // Footer: first heading = brand, child sections = link columns, last text = copyright
+                const brandNodes = [];
+                const linkGroups = [];
+                const copyrightNodes = [];
+                for (const child of node.body) {
+                  if (child.type === NodeType.CONTENT && (child.contentType === 'heading' || child.ui?.contentType === 'heading')) {
+                    brandNodes.push(child);
+                  } else if (child.type === NodeType.SECTION) {
+                    linkGroups.push(child);
+                  } else if (child.type === NodeType.CONTENT && (child.contentType === 'small' || child.ui?.contentType === 'small')) {
+                    copyrightNodes.push(child);
+                  } else if (child.type === NodeType.CONTENT) {
+                    copyrightNodes.push(child);
+                  }
+                }
+                parts.push(`      <div class="max-w-6xl mx-auto">`);
+                // Brand + link columns row
+                parts.push(`        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">`);
+                if (brandNodes.length > 0) {
+                  parts.push(`          <div class="col-span-2 md:col-span-1">`);
+                  for (const bn of brandNodes) {
+                    const fmt = formatInlineText(bn.ui.text);
+                    parts.push(`            <p class="text-lg font-bold text-base-content tracking-tight">${fmt}</p>`);
+                  }
+                  parts.push(`          </div>`);
+                }
+                for (const group of linkGroups) {
+                  const groupTitle = group.ui?.title || group.title || '';
+                  parts.push(`          <div class="flex flex-col gap-2">`);
+                  if (groupTitle) {
+                    parts.push(`            <p class="text-sm font-semibold text-base-content/50 uppercase tracking-wider mb-3">${groupTitle}</p>`);
+                  }
+                  if (group.body) {
+                    for (const item of group.body) {
+                      if (item.type === NodeType.CONTENT && item.ui) {
+                        const fmt = formatInlineText(item.ui.text);
+                        if (item.ui.contentType === 'link') {
+                          parts.push(`            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="${item.ui.href || '#'}">${fmt}</a>`);
+                        } else {
+                          parts.push(`            <span class="text-sm text-base-content/60 hover:text-base-content transition-colors cursor-pointer">${fmt}</span>`);
+                        }
+                      }
+                    }
+                  }
+                  parts.push(`          </div>`);
+                }
+                parts.push(`        </div>`);
+                // Copyright row
+                if (copyrightNodes.length > 0) {
+                  parts.push(`        <div class="border-t border-base-300/40 pt-6">`);
+                  for (const cn of copyrightNodes) {
+                    const fmt = formatInlineText(cn.ui.text);
+                    parts.push(`          <p class="text-sm text-base-content/40">${fmt}</p>`);
+                  }
+                  parts.push(`        </div>`);
+                }
                 parts.push(`      </div>`);
               } else {
                 // feature_grid, testimonial_grid, etc.
@@ -5597,10 +5678,13 @@ function buildHTML(body) {
                     linkGroup.push(children[ci++]);
                   }
                   parts.push(`    <div class="flex gap-4 flex-wrap ${justifyClass} mt-2">`);
+                  const isCtaSection = node.styleName === 'page_cta';
                   linkGroup.forEach((linkNode, idx) => {
                     const fmt = formatInlineText(linkNode.ui.text);
                     const href = linkNode.ui?.href || '#';
-                    const btnCls = idx === 0 ? 'btn btn-primary btn-lg' : 'btn btn-outline btn-lg';
+                    const btnCls = isCtaSection
+                      ? (idx === 0 ? 'btn btn-neutral btn-lg' : 'btn btn-ghost btn-lg text-primary-content')
+                      : (idx === 0 ? 'btn btn-primary btn-lg' : 'btn btn-outline btn-lg');
                     parts.push(`      <a class="${btnCls}" href="${href}">${fmt}</a>`);
                   });
                   parts.push(`    </div>`);
@@ -5850,6 +5934,7 @@ ${options}
           const inCard = ['card', 'card_bordered', 'form'].includes(parentPreset);
           const inHero = ['page_hero', 'hero', 'hero_left', 'page_cta'].includes(parentPreset);
           const inHeroLeft = parentPreset === 'hero_left';
+          const inCta = parentPreset === 'page_cta';
           const inDarkSection = ['page_section_dark', 'section_dark', 'feature_grid_dark',
             'feature_split_dark', 'feature_spotlight_dark', 'pricing_grid_dark',
             'testimonial_grid_dark', 'logo_bar_dark'].includes(parentPreset);
@@ -5857,7 +5942,8 @@ ${options}
             'feature_grid', 'feature_grid_dark', 'feature_split', 'feature_split_dark',
             'feature_spotlight', 'feature_spotlight_dark',
             'pricing_grid', 'pricing_grid_dark', 'stats_row',
-            'testimonial_grid', 'testimonial_grid_dark', 'logo_bar', 'logo_bar_dark'].includes(parentPreset);
+            'testimonial_grid', 'testimonial_grid_dark', 'logo_bar', 'logo_bar_dark',
+            'faq_section', 'page_footer'].includes(parentPreset);
           const inLandingCard = [
             'feature_card', 'feature_card_dark', 'feature_card_large', 'testimonial_card',
             'feature_card_teal', 'feature_card_purple', 'feature_card_indigo',
@@ -5880,6 +5966,9 @@ ${options}
               if (inLogoBar) {
                 // Logo bar label — small muted, not a big section heading
                 parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 text-center mb-6">${formatted}</p>`);
+              } else if (inCta) {
+                // CTA headline — smaller than hero, white text on primary bg
+                parts.push(`    <h2 class="font-display text-3xl lg:text-4xl font-bold tracking-tight text-primary-content max-w-3xl text-center mx-auto">${formatted}</h2>`);
               } else if (inHero) {
                 // Hero headline — left or centered; hero_left gets larger font to fill viewport
                 const heroAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
@@ -5894,9 +5983,9 @@ ${options}
               } else if (inStatItem) {
                 parts.push(`    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
               } else if (inFeaturedPricing) {
-                parts.push(`    <h3 class="text-xl font-bold text-primary-content">${formatted}</h3>`);
+                parts.push(`    <h3 class="text-lg font-semibold text-primary-content">${formatted}</h3>`);
               } else if (inPricingCard) {
-                parts.push(`    <h3 class="text-xl font-bold text-base-content">${formatted}</h3>`);
+                parts.push(`    <h3 class="text-lg font-semibold text-base-content">${formatted}</h3>`);
               } else if (inTestimonialCard) {
                 parts.push(`    <h3 class="text-sm font-semibold text-base-content leading-snug">${formatted}</h3>`);
               } else if (inLandingCard) {
@@ -5912,14 +6001,16 @@ ${options}
               }
               break;
             case 'subheading':
-              if (inHero) {
+              if (inCta) {
+                parts.push(`    <p class="text-lg text-primary-content/80 max-w-xl text-center mx-auto leading-relaxed">${formatted}</p>`);
+              } else if (inHero) {
                 const heroSubAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
                 const heroSubMaxW = inHeroLeft ? 'max-w-xl' : 'max-w-2xl';
                 parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed ${heroSubMaxW} ${heroSubAlign}">${formatted}</p>`);
               } else if (inPricingCard) {
-                parts.push(`    <p class="text-3xl font-bold text-primary">${formatted}</p>`);
+                parts.push(`    <p class="font-display text-4xl font-bold tracking-tight text-primary">${formatted}</p>`);
               } else if (inFeaturedPricing) {
-                parts.push(`    <p class="text-3xl font-bold text-primary-content">${formatted}</p>`);
+                parts.push(`    <p class="font-display text-4xl font-bold tracking-tight text-primary-content">${formatted}</p>`);
               } else if (inTestimonialCard) {
                 parts.push(`    <p class="text-sm text-base-content/60 leading-relaxed">${formatted}</p>`);
               } else if (inLandingCard) {
@@ -5950,6 +6041,8 @@ ${options}
                 parts.push(`    <li><a class="clear-nav-item flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
               } else if (inMetricCard) {
                 parts.push(`    <p class="text-xs text-base-content/40 font-mono">${formatted}</p>`);
+              } else if (inCta) {
+                parts.push(`    <p class="text-lg text-primary-content/80 max-w-xl text-center mx-auto leading-relaxed">${formatted}</p>`);
               } else if (inHero) {
                 parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl ${inHeroLeft ? 'text-left' : 'text-center mx-auto'}">${formatted}</p>`);
               } else if (inStatItem) {
@@ -5997,7 +6090,10 @@ ${options}
               }
               break;
             case 'link':
-              if (inHero) {
+              if (inCta) {
+                // CTA link — neutral button for contrast against primary bg
+                parts.push(`    <a class="btn btn-neutral btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
+              } else if (inHero) {
                 // Lone hero link (not in a group) — primary by default
                 parts.push(`    <a class="btn btn-primary btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
               } else if (inFeaturedPricing) {
@@ -7124,7 +7220,7 @@ const BUILTIN_PRESET_CLASSES = {
   page_section:      'bg-base-100 py-16 px-6',
   page_section_dark: 'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   page_card:         'bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm',
-  page_cta:          'bg-primary text-primary-content py-20 px-6 text-center flex flex-col items-center gap-6',
+  page_cta:          'bg-primary text-primary-content py-20 lg:py-28 px-6 text-center flex flex-col items-center gap-6',
   page_stats:        'bg-base-200 py-16 px-6',
 
   // --- v2 landing sections ---
@@ -7156,10 +7252,14 @@ const BUILTIN_PRESET_CLASSES = {
   feature_card_rose:      'bg-rose-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
   feature_card_amber:     'bg-amber-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
   pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm',
-  pricing_card_featured:  'bg-primary rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1',
+  pricing_card_featured:  'bg-primary text-primary-content rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1 ring-2 ring-primary ring-offset-2 ring-offset-base-200 scale-105',
   testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/40 shadow-sm relative',
   stat_item:              'flex flex-col items-center text-center gap-2',
   logo_item:              'flex items-center justify-center opacity-40 hover:opacity-70 transition-opacity grayscale',
+
+  // --- Marketing conversion presets ---
+  faq_section:            'bg-base-100 py-16 lg:py-24 px-6',
+  page_footer:            'bg-base-200 border-t border-base-300/40 py-12 lg:py-16 px-6',
 
   // --- App/dashboard presets ---
   app_layout:        'flex h-screen overflow-hidden',
