@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Launchpad</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97.5% 0.004 240);
+  --color-base-300: oklch(94% 0.006 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100 border-b border-base-300/40 shrink-0">
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Launchpad</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Product</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Solutions</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Pricing</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Docs</p>
+    <button class="btn btn-outline btn-sm" id="btn_Log_in">Log in</button>
+    <button class="btn btn-outline btn-sm" id="btn_Get_started_free">Get started free</button>
+    </div>
+    <div class="bg-base-100 py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden">
+    <p class="text-lg text-base-content/60 leading-relaxed">Announcing v2.0</p>
+    <h1 class="font-display text-5xl font-bold tracking-tight leading-[1.1] text-base-content max-w-3xl">Deploy anything. Instantly.</h1>
+    <p class="text-lg text-base-content/60 leading-relaxed">The cloud platform built for developers. Push code, get a URL, ship to production.</p>
+    <button class="btn btn-primary" id="btn_Start_deploying">Start deploying</button>
+    <button class="btn btn-primary" id="btn_See_how_it_works">See how it works</button>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Stats</h2>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Stat Deploy</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">40ms</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Avg deploy time</p>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Stat Uptime</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">99.99%</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Uptime SLA</p>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Stat Devs</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">500K+</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Developers</p>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Stat Regions</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">180+</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Edge regions</p>
+    </div>
+    </div>
+    <div class="bg-base-100 py-24 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Everything in one place</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">From zero to production in seconds. Designed to remove friction at every step.</p>
+    <div class="grid grid-cols-3 gap-6">
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Deployments</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Push to deploy</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Connect your repo and every git push triggers an automatic preview deployment.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Edge Network</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Global by default</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Your app runs at the edge, 50ms from every user on the planet.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Analytics</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Know what is fast</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Real-time performance metrics, Core Web Vitals, and error tracking.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Integrations</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Works with everything</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">GitHub, GitLab, Bitbucket, Slack, Datadog and 100+ more.</p>
+      </div>
+    </div>
+    </div>
+      </div>
+    </div>
+    <div class="bg-neutral text-neutral-content py-24 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Start shipping faster today</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Free forever for personal projects. Scale as you grow.</p>
+    <button class="btn btn-primary" id="btn_Deploy_your_first_project">Deploy your first project</button>
+    <p class="text-sm text-base-content/70 leading-relaxed">No credit card · Deploys in under 60 seconds</p>
+      </div>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Footer</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Launchpad © 2026</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Terms</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Privacy</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Blog</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">GitHub</p>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ PAGES:
+   'Launchpad' at / (line 5) -->
+  <script>
+document.title = "Launchpad";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+}
+
+// --- Input listeners ---
+
+// --- Button handlers ---
+document.getElementById('btn_Log_in').addEventListener('click', function() {
+  console.log("log in");
+  _recompute();
+});
+document.getElementById('btn_Get_started_free').addEventListener('click', function() {
+  console.log("sign up");
+  _recompute();
+});
+document.getElementById('btn_Start_deploying').addEventListener('click', function() {
+  console.log("deploy");
+  _recompute();
+});
+document.getElementById('btn_See_how_it_works').addEventListener('click', function() {
+  console.log("demo");
+  _recompute();
+});
+document.getElementById('btn_Deploy_your_first_project').addEventListener('click', function() {
+  console.log("deploy");
+  _recompute();
+});
+
+_recompute();
+
+  </script>
+</body>
+</html>

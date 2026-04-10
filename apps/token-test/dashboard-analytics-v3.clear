@@ -1,0 +1,88 @@
+build for web
+
+theme 'midnight'
+
+page 'Team Dashboard':
+
+  section 'Root' with style app_layout:
+
+    section 'Sidebar' with style app_sidebar:
+      section 'Brand':
+        text 'Team Dashboard'
+      section 'Nav':
+        text 'Overview'
+        text 'Projects'
+        text 'Tasks'
+        text 'Team'
+        text 'Reports'
+      section 'Projects Label':
+        text 'Projects'
+      section 'Projects List':
+        text 'Website Redesign'
+        text 'Mobile App v2'
+        text 'API Migration'
+      section 'User':
+        text 'russell@acme.co'
+
+    section 'Main' with style app_main:
+
+      section 'Header' with style app_header:
+        heading 'Overview'
+        text 'Apr 2026'
+        button 'New project':
+          show 'new project'
+
+      section 'Content' with style app_content:
+
+        section 'Metrics Row' as four column layout:
+          section 'Metric Projects' with style app_card:
+            text 'Projects'
+            heading '12'
+            text '3 active this week'
+          section 'Metric Tasks' with style app_card:
+            text 'Open tasks'
+            heading '48'
+            text '6 fewer from last week'
+          section 'Metric Completed' with style app_card:
+            text 'Completed'
+            heading '124'
+            text '18% vs last month'
+          section 'Metric Team' with style app_card:
+            text 'Team members'
+            heading '9'
+            text 'Across 3 teams'
+
+        section 'Two Col' as two column layout:
+
+          section 'Projects Table' with style app_card:
+            subheading 'Projects'
+            section 'Project Row 1':
+              text 'Website Redesign'
+              text 'Russell'
+              text 'Active'
+              text '72%'
+            section 'Project Row 2':
+              text 'Mobile App v2'
+              text 'Jess'
+              text 'At risk'
+              text '45%'
+            section 'Project Row 3':
+              text 'API Migration'
+              text 'Sam'
+              text 'Active'
+              text '91%'
+
+          section 'Task Breakdown' with style app_card:
+            subheading 'Task breakdown'
+            section 'Task Done':
+              text 'Done'
+              text '124'
+            section 'Task Progress':
+              text 'In progress'
+              text '23'
+            section 'Task Blocked':
+              text 'Blocked'
+              text '5'
+            section 'Task Backlog':
+              text 'Backlog'
+              text '78'

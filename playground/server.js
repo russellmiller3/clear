@@ -58,6 +58,7 @@ app.post('/api/compile', (req, res) => {
 // TEMPLATES
 // =============================================================================
 const FEATURED_TEMPLATES = [
+  'project-tracker',   // Issue tracker — semantic tokens only, no raw CSS
   'team-dashboard',    // Project management dashboard (app_layout, sidebar)
   'ecommerce-api',     // Pure REST backend API (no frontend)
   'crm-pro',           // CRM with contacts + deals (relational data)

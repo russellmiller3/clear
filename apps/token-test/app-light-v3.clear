@@ -1,0 +1,72 @@
+build for web
+
+theme 'ivory'
+
+page 'Launchpad Dashboard':
+
+  section 'Root' with style app_layout:
+
+    section 'Sidebar' with style app_sidebar:
+      section 'Brand':
+        text 'Launchpad'
+      section 'Nav':
+        text 'Overview'
+        text 'Deployments'
+        text 'Analytics'
+        text 'Settings'
+      section 'Projects Label':
+        text 'Projects'
+      section 'Projects List':
+        text 'my-app'
+        text 'api-server'
+        text 'marketing-site'
+      section 'User':
+        text 'Russell'
+        text 'Free plan'
+
+    section 'Main' with style app_main:
+
+      section 'Header' with style app_header:
+        heading 'Overview'
+        button 'New project' primary:
+          show 'new project'
+
+      section 'Content' with style app_content:
+
+        section 'Metrics Row' as four column layout:
+          section 'Metric 1' with style app_card:
+            text 'Deployments'
+            heading '247'
+            text '12% this week'
+          section 'Metric 2' with style app_card:
+            text 'Uptime'
+            heading '99.9%'
+            text 'Last 30 days'
+          section 'Metric 3' with style app_card:
+            text 'Bandwidth'
+            heading '1.2TB'
+            text 'This month'
+          section 'Metric 4' with style app_card:
+            text 'Errors'
+            heading '0.01%'
+            text 'Error rate'
+
+        section 'Projects Panel' with style app_card:
+          subheading 'Recent deployments'
+          section 'Deploy Row 1':
+            text 'my-app'
+            text 'Production'
+            text '2 min ago'
+          section 'Deploy Row 2':
+            text 'api-server'
+            text 'Production'
+            text '1 hr ago'
+          section 'Deploy Row 3':
+            text 'marketing-site'
+            text 'Preview'
+            text '3 hrs ago'
+
+        section 'Activity Panel' with style app_card:
+          subheading 'Activity'
+          text 'No incidents in the last 30 days'
+          text 'All systems operational'

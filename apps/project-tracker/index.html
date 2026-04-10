@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(13% 0.02 250);
+  --color-base-200: oklch(10% 0.02 255);
+  --color-base-300: oklch(18% 0.015 250);
+  --color-base-content: oklch(88% 0.025 240);
+  --color-primary: oklch(62% 0.18 250);
+  --color-primary-content: oklch(98% 0.005 250);
+  --color-secondary: oklch(58% 0.12 155);
+  --color-secondary-content: oklch(10% 0.02 155);
+  --color-accent: oklch(78% 0.14 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(20% 0.015 250);
+  --color-neutral-content: oklch(80% 0.02 240);
+  --color-info: oklch(68% 0.12 245);
+  --color-info-content: oklch(10% 0.02 245);
+  --color-success: oklch(62% 0.14 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(78% 0.14 85);
+  --color-warning-content: oklch(15% 0.02 85);
+  --color-error: oklch(60% 0.2 25);
+  --color-error-content: oklch(10% 0.02 25);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+
+
+/* --- User Styles --- */
+
+
+/* --- Inline Layout --- */
+.section-main { flex: 1; display: flex; flex-direction: column; }
+#panel-new_issue::backdrop { background: rgba(0,0,0,0.4); }</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="flex h-screen overflow-hidden">
+    <div class="w-52 shrink-0 flex flex-col bg-base-200 border-r border-base-300/40 overflow-hidden w-52 shrink-0">
+    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">Tracker</span></div>
+    <nav class="flex-1 overflow-y-auto py-3 px-3">
+      <ul class="menu menu-sm gap-0.5 p-0">
+        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-3 px-3">Workspace Nav</li>
+    <li><a class="text-sm">My Issues</a></li>
+    <li><a class="text-sm">All Projects</a></li>
+    <li><a class="text-sm">Inbox</a></li>
+        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-3 px-3">Projects</li>
+    <li><a class="text-sm">Frontend</a></li>
+    <li><a class="text-sm">Backend</a></li>
+    <li><a class="text-sm">Design</a></li>
+    <li><a class="text-sm">DevOps</a></li>
+        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-3 px-3">Views</li>
+    <li><a class="text-sm">Active sprints</a></li>
+    <li><a class="text-sm">Roadmap</a></li>
+    <li><a class="text-sm">Archive</a></li>
+      </ul>
+    </nav>
+    </div>
+    <div class="section-main">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0">
+    <h1 class="text-base font-semibold text-base-content">Issues</h1>
+    <button class="btn btn-primary btn-sm" id="btn_New_Issue">New Issue</button>
+    </div>
+    <div class="flex-1 overflow-y-auto bg-base-200/30 p-6 flex flex-col gap-5">
+    <div class="grid grid-cols-4 gap-4">
+    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-6 flex flex-col gap-2 hover:shadow-md hover:-translate-y-px transition-all cursor-pointer">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Open</h2>
+    </div>
+    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-6 flex flex-col gap-2 hover:shadow-md hover:-translate-y-px transition-all cursor-pointer">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">In Progress</h2>
+    </div>
+    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-6 flex flex-col gap-2 hover:shadow-md hover:-translate-y-px transition-all cursor-pointer">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Done this week</h2>
+    </div>
+    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-6 flex flex-col gap-2 hover:shadow-md hover:-translate-y-px transition-all cursor-pointer">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Team members</h2>
+    </div>
+    </div>
+    <div class="bg-base-200 rounded-xl border border-base-300/40 shadow-sm p-5">
+    <div class="flex items-center justify-between p-3 border-b border-base-300/40">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">All Issues</h2>
+    <button class="btn btn-primary" id="btn_Refresh">Refresh</button>
+    </div>
+    <div class="clear-list" id="list_issue"></div>
+    </div>
+    <dialog class="modal" id="panel-new_issue">
+    <div class="modal-box">
+    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 flex flex-col gap-5 max-w-sm mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">New Issue</h2>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Title</legend>
+      <input id="input_new_title" class="input input-bordered w-full" type="text" placeholder="Title">
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Project</legend>
+      <select id="input_new_project" class="select select-bordered w-full">
+        <option value="Frontend">Frontend</option>
+        <option value="Backend">Backend</option>
+        <option value="Design">Design</option>
+        <option value="DevOps">DevOps</option>
+      </select>
+    </fieldset>
+    <fieldset class="fieldset mb-4">
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">Priority</legend>
+      <select id="input_new_priority" class="select select-bordered w-full">
+        <option value="Low">Low</option>
+        <option value="Medium">Medium</option>
+        <option value="High">High</option>
+        <option value="Critical">Critical</option>
+      </select>
+    </fieldset>
+    <button class="btn btn-primary" id="btn_Create_Issue">Create Issue</button>
+    <button class="btn btn-ghost" id="btn_Cancel">Cancel</button>
+    </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+    </div>
+    </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ TABLES:
+   Projects: name*, status, color (line 10)
+   Issues: title*, project*, assignee, priority, status, created_at_date (line 15)
+
+ ENDPOINTS:
+   GET /api/projects (line 28)
+   POST /api/projects (line 32)
+   GET /api/issues (line 38)
+   POST /api/issues (line 42)
+   DELETE /api/issues/:id [auth] (line 49)
+
+ PAGES:
+   'Project Tracker' at / (line 92)
+
+ DATAFLOW: Frontend ──> API ──> Database -->
+  <script>
+document.title = "Project Tracker";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+  new_title: "",
+  new_project: "",
+  new_priority: "",
+  open_count: 0,
+  in_progress_count: 0,
+  done_count: 0,
+  all_issues: []
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  console.log(_state.open_count);
+  console.log(_state.in_progress_count);
+  console.log(_state.done_count);
+  console.log(8);
+  // Render list: issue in all_issues
+  {
+    const _container = document.getElementById('list_issue');
+    if (_container) {
+      const _listSource = _state.all_issues || [];
+      _container.innerHTML = _listSource.map(issue => {
+        const _isMenu = _container.tagName === 'UL' && _container.classList.contains('menu');
+        return _isMenu ? '<li><a>' + '<div>' + issue + '</div>' + '</a></li>' : '<div class="clear-list-item">' + '<div>' + issue + '</div>' + '</div>';
+      }).join('');
+    }
+  }
+  document.getElementById('input_new_title').value = _state.new_title;
+  document.getElementById('input_new_project').value = _state.new_project;
+  document.getElementById('input_new_priority').value = _state.new_priority;
+}
+
+// --- Input listeners ---
+document.getElementById('input_new_title').addEventListener('input', function(e) {
+  _state.new_title = e.target.value;
+  _recompute();
+});
+document.getElementById('input_new_project').addEventListener('input', function(e) {
+  _state.new_project = e.target.value;
+  _recompute();
+});
+document.getElementById('input_new_priority').addEventListener('input', function(e) {
+  _state.new_priority = e.target.value;
+  _recompute();
+});
+
+// --- Button handlers ---
+document.getElementById('btn_New_Issue').addEventListener('click', function() {
+  console.log("New Issue");
+  _recompute();
+});
+document.getElementById('btn_Refresh').addEventListener('click', function() {
+  _state.all_issues = GET;
+  _recompute();
+});
+document.getElementById('btn_Create_Issue').addEventListener('click', function() {
+  let new_issue_data = collect;
+  console.log(POST);
+  _state.all_issues = GET;
+  console.log(hide);
+  _recompute();
+});
+document.getElementById('btn_Cancel').addEventListener('click', function() {
+  console.log(hide);
+  _recompute();
+});
+
+_recompute();
+
+  </script>
+</body>
+</html>

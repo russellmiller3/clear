@@ -1,0 +1,74 @@
+build for web
+
+theme 'ivory'
+
+page 'Launchpad':
+
+  section 'Nav' with style app_header:
+    text 'Launchpad'
+    text 'Product'
+    text 'Solutions'
+    text 'Pricing'
+    text 'Docs'
+    button 'Log in':
+      show 'log in'
+    button 'Get started free' primary:
+      show 'sign up'
+
+  section 'Hero' with style page_hero:
+    text 'Announcing v2.0'
+    heading 'Deploy anything. Instantly.'
+    text 'The cloud platform built for developers. Push code, get a URL, ship to production.'
+    button 'Start deploying' primary:
+      show 'deploy'
+    button 'See how it works':
+      show 'demo'
+
+  section 'Stats':
+    section 'Stat Deploy':
+      heading '40ms'
+      text 'Avg deploy time'
+    section 'Stat Uptime':
+      heading '99.99%'
+      text 'Uptime SLA'
+    section 'Stat Devs':
+      heading '500K+'
+      text 'Developers'
+    section 'Stat Regions':
+      heading '180+'
+      text 'Edge regions'
+
+  section 'Features' with style page_section:
+    heading 'Everything in one place'
+    text 'From zero to production in seconds. Designed to remove friction at every step.'
+    section 'Feature Grid' as three column layout:
+      section 'Feature Deploy' with style page_card:
+        subheading 'Deployments'
+        heading 'Push to deploy'
+        text 'Connect your repo and every git push triggers an automatic preview deployment.'
+      section 'Feature Edge' with style page_card:
+        subheading 'Edge Network'
+        heading 'Global by default'
+        text 'Your app runs at the edge, 50ms from every user on the planet.'
+      section 'Feature Analytics' with style page_card:
+        subheading 'Analytics'
+        heading 'Know what is fast'
+        text 'Real-time performance metrics, Core Web Vitals, and error tracking.'
+      section 'Feature Integrations' with style page_card:
+        subheading 'Integrations'
+        heading 'Works with everything'
+        text 'GitHub, GitLab, Bitbucket, Slack, Datadog and 100+ more.'
+
+  section 'CTA' with style page_section_dark:
+    heading 'Start shipping faster today'
+    text 'Free forever for personal projects. Scale as you grow.'
+    button 'Deploy your first project' primary:
+      show 'deploy'
+    text 'No credit card · Deploys in under 60 seconds'
+
+  section 'Footer':
+    text 'Launchpad © 2026'
+    text 'Terms'
+    text 'Privacy'
+    text 'Blog'
+    text 'GitHub'

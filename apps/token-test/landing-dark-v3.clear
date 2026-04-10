@@ -1,0 +1,64 @@
+build for web
+
+theme 'midnight'
+
+page 'Acme':
+
+  section 'Nav' with style app_header:
+    text 'Acme'
+    button 'Log in':
+      show 'log in'
+    button 'Get started' primary:
+      show 'sign up'
+
+  section 'Hero' with style page_hero:
+    text 'Now in public beta'
+    heading 'Build products your team will love'
+    text 'The fastest issue tracker for high-performance teams. Designed for speed, built to scale.'
+    button 'Start for free' primary:
+      show 'sign up'
+    button 'See a demo':
+      show 'demo'
+    text 'No credit card required · Free up to 5 seats'
+
+  section 'Social Proof':
+    text 'Acme Corp'
+    text 'Buildco'
+    text 'Launchpad'
+    text 'Stackify'
+    text 'Grovetech'
+
+  section 'Features' with style page_section:
+    heading 'Everything your team needs'
+    text 'Powerful tools that stay out of the way. Every feature designed for speed.'
+    section 'Feature Grid' as three column layout:
+      section 'Feature Speed' with style page_card:
+        subheading 'Lightning fast'
+        text 'Sub-100ms interactions. Keyboard-first design.'
+      section 'Feature Teams' with style page_card:
+        subheading 'Built for teams'
+        text 'Real-time collaboration, shared views, team workspaces.'
+      section 'Feature Workflows' with style page_card:
+        subheading 'Powerful workflows'
+        text 'Automate repetitive work with custom triggers.'
+      section 'Feature Analytics' with style page_card:
+        subheading 'Analytics and insights'
+        text 'See what your team shipped and where time is going.'
+      section 'Feature Security' with style page_card:
+        subheading 'Enterprise security'
+        text 'SOC 2 Type II, SSO, audit logs, data retention.'
+      section 'Feature API' with style page_card:
+        subheading 'API and integrations'
+        text 'REST and GraphQL APIs. Deep integrations with GitHub and Slack.'
+
+  section 'CTA' with style page_section_dark:
+    heading 'Ready to move faster?'
+    text 'Join 10,000+ teams already shipping better software.'
+    button 'Get started free' primary:
+      show 'sign up'
+
+  section 'Footer':
+    text 'Acme © 2026'
+    text 'Terms'
+    text 'Privacy'
+    text 'Status'
