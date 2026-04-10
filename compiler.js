@@ -6652,10 +6652,16 @@ const STYLE_TOKENS = {
 // Resolve semantic style tokens to Tailwind classes.
 // Returns { tailwindClasses: string, rawProperties: array }
 // rawProperties are props not in STYLE_TOKENS — fall back to CSS.
+// Special: `tailwind is 'ring-2 ring-offset-2'` passes classes through directly.
 function resolveStyleTokens(properties) {
   const classes = [];
   const rawProperties = [];
   for (const prop of properties) {
+    // Tailwind passthrough: `tailwind is '...'` → inject classes directly
+    if (prop.name === 'tailwind' && typeof prop.value === 'string') {
+      classes.push(prop.value);
+      continue;
+    }
     const key = `${prop.name}:${prop.value}`;
     if (Object.prototype.hasOwnProperty.call(STYLE_TOKENS, key)) {
       const cls = STYLE_TOKENS[key];
@@ -6746,6 +6752,7 @@ function stylesToCSS(styles, vars = {}) {
     let hasTransition = false;
     for (const p of style.properties) {
       // Skip semantic token properties — they compile to inline Tailwind, not CSS
+      if (p.name === 'tailwind') continue; // passthrough: handled by resolveStyleTokens
       const tokenKey = `${p.name}:${p.value}`;
       if (Object.prototype.hasOwnProperty.call(STYLE_TOKENS, tokenKey)) continue;
 
