@@ -1,97 +1,80 @@
 // =============================================================================
-// CLEAR RUNTIME — DATABASE MODULE
+// CLEAR RUNTIME — DATABASE MODULE (better-sqlite3 backend)
 // =============================================================================
 //
 // PURPOSE: Provides the `db` API that compiled Clear backend code calls.
-// Backed by an in-memory store with JSON file persistence.
-// Zero external dependencies — ships as one file.
+// Backed by SQLite via better-sqlite3. Durable, atomic, zero data loss.
 //
 // API:
-//   db.createTable(name, schema)     — register a table with its schema
-//   db.findAll(table, filter?)       — look up records, optionally filtered
-//   db.findOne(table, filter)        — look up a single record
-//   db.insert(table, record)         — save a new record, returns it with id
-//   db.update(table, filter, data)   — update matching records
-//   db.remove(table, filter?)        — delete matching records
-//   db.run(sql)                      — no-op placeholder for raw SQL (migrations)
-//   db.execute(sql)                  — alias for db.run
+//   db.createTable(name, schema)          — CREATE TABLE IF NOT EXISTS
+//   db.findAll(table, filter?)            — SELECT * with optional WHERE
+//   db.findOne(table, filter)             — SELECT * WHERE ... LIMIT 1
+//   db.insert(table, record)              — INSERT, returns record with id
+//   db.update(table, filterOrRecord, data?) — UPDATE matching records
+//   db.remove(table, filter?)             — DELETE matching records
+//   db.run(sql)                           — execute raw SQL
+//   db.execute(sql)                       — alias for db.run
+//   db.save()                             — no-op (SQLite is always durable)
+//   db.load()                             — no-op (db opens on require)
+//   db.reset()                            — DELETE FROM all known tables
 //
-// Filter objects: { field: value } — all conditions are AND-ed.
-//   { published: true }             — where published is true
-//   { id: 3 }                       — where id is 3
-//   { role: 'admin', active: true } — where role is admin AND active is true
-//
-// Persistence: call db.save() to write to disk, db.load() to restore.
-// File location: ./clear-data.json (next to the compiled server.js)
+// File location: ./clear-data.db (next to the compiled server.js)
 //
 // =============================================================================
 
-const fs = require('fs');
+'use strict';
+
+const Database = require('better-sqlite3');
 const path = require('path');
 
-const DATA_FILE = path.join(process.cwd(), 'clear-data.json');
+const DATA_FILE = path.join(process.cwd(), 'clear-data.db');
+const _db = new Database(DATA_FILE);
 
-// In-memory store: { tableName: { schema: {...}, records: [...], nextId: N } }
-const _tables = {};
+// WAL mode: better concurrent read performance, safe across crashes
+_db.pragma('journal_mode = WAL');
+_db.pragma('synchronous = NORMAL');
+
+// In-memory schema registry for validation + boolean coercion on read
+const _schemas = {};
 
 // =============================================================================
-// TABLE MANAGEMENT
+// TYPE HELPERS
 // =============================================================================
 
-function createTable(name, schema) {
-  const tableName = name.toLowerCase();
-  if (_tables[tableName]) {
-    // Table already exists (loaded from disk) — always update schema to match
-    // current source code. This prevents stale persisted schemas from shadowing
-    // schema changes made in the .clear file.
-    _tables[tableName].schema = schema || {};
-    return;
+function toSQLiteType(config) {
+  if (!config || !config.type) return 'TEXT';
+  switch (config.type) {
+    case 'number': return 'REAL';
+    case 'boolean': return 'INTEGER';
+    case 'fk': return 'INTEGER';
+    case 'timestamp': return 'TEXT';
+    default: return 'TEXT';
   }
-  _tables[tableName] = {
-    schema: schema || {},
-    records: [],
-    nextId: 1,
-  };
 }
 
-// =============================================================================
-// QUERY HELPERS
-// =============================================================================
-
-function matchesFilter(record, filter) {
-  if (!filter || typeof filter !== 'object') return true;
-  for (const key of Object.keys(filter)) {
-    const recordVal = record[key];
-    const filterVal = filter[key];
-    // Coerce numeric strings for id comparisons (req.params are always strings)
-    if (typeof recordVal === 'number' && typeof filterVal === 'string') {
-      if (recordVal !== Number(filterVal)) return false;
-    } else if (typeof recordVal === 'string' && typeof filterVal === 'number') {
-      if (Number(recordVal) !== filterVal) return false;
-    } else {
-      if (recordVal !== filterVal) return false;
-    }
-  }
-  return true;
-}
-
-function applyDefaults(record, schema) {
-  if (!schema || typeof schema !== 'object') return record;
-  const result = { ...record };
+// Coerce SQLite 0/1 back to JS booleans using schema
+function coerceRecord(record, schema) {
+  if (!record || !schema) return record;
+  const result = Object.assign({}, record);
   for (const [field, config] of Object.entries(schema)) {
-    if (result[field] === undefined && config.default !== undefined) {
-      result[field] = config.default;
-    }
-    if (result[field] === undefined && config.auto && config.type === 'timestamp') {
-      result[field] = new Date().toISOString();
+    if (config.type === 'boolean' && result[field] !== undefined && result[field] !== null) {
+      result[field] = result[field] === 1 || result[field] === true;
     }
   }
   return result;
 }
 
+// Coerce JS booleans to SQLite integers for storage
+function coerceForStorage(value) {
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  return value;
+}
+
+// =============================================================================
+// VALIDATION (application-level constraints — run before SQL)
+// =============================================================================
+
 // Sanitize string values to prevent stored XSS.
-// Strips <script> tags, event handlers (onerror=, onclick=, etc.), and javascript: URLs.
-// Defense-in-depth: the frontend also escapes via _esc(), but stored XSS should never happen.
 function sanitizeRecord(record) {
   if (!record || typeof record !== 'object') return record;
   const result = {};
@@ -109,65 +92,18 @@ function sanitizeRecord(record) {
   return result;
 }
 
-function validateRequired(record, schema) {
-  if (!schema || typeof schema !== 'object') return null;
-  for (const [field, config] of Object.entries(schema)) {
-    if (config.required && (record[field] === undefined || record[field] === null || record[field] === '')) {
-      return `${field} is required`;
-    }
-  }
-  return null;
-}
-
-function validateUnique(table, record, schema, excludeId) {
-  if (!schema || typeof schema !== 'object') return null;
-  const store = _tables[table];
-  if (!store) return null;
-  for (const [field, config] of Object.entries(schema)) {
-    if (config.unique && record[field] !== undefined) {
-      const existing = store.records.find(r =>
-        r[field] === record[field] && (excludeId === undefined || r.id !== excludeId)
-      );
-      if (existing) {
-        return `${field} must be unique -- '${record[field]}' already exists`;
-      }
-    }
-  }
-  return null;
-}
-
-// =============================================================================
-// CRUD OPERATIONS
-// =============================================================================
-
-function findAll(table, filter) {
-  const tableName = table.toLowerCase();
-  ensureTable(tableName);
-  const records = _tables[tableName].records;
-  if (!filter) return [...records];
-  return records.filter(r => matchesFilter(r, filter));
-}
-
-function findOne(table, filter) {
-  const results = findAll(table, filter);
-  return results[0] || null;
-}
-
-// Enforce schema types: coerce numeric strings to numbers, reject non-numeric
 function enforceTypes(record, schema) {
-  if (!schema || typeof schema !== 'object') return;
+  if (!schema) return;
   for (const [field, config] of Object.entries(schema)) {
     if (record[field] === undefined || record[field] === null) continue;
     if (config.type === 'number') {
-      // Empty string → null (not 0). Number("") === 0 is a silent data corruption bug.
+      // Empty string -> null, not 0. Number("") === 0 is a silent data corruption bug.
       if (record[field] === '' || (typeof record[field] === 'string' && record[field].trim() === '')) {
         record[field] = null;
         continue;
       }
       const num = Number(record[field]);
-      if (isNaN(num)) {
-        throw new Error(field + ' must be a number, got ' + JSON.stringify(record[field]));
-      }
+      if (isNaN(num)) throw new Error(field + ' must be a number, got ' + JSON.stringify(record[field]));
       record[field] = num;
     }
     if (config.type === 'boolean' && typeof record[field] === 'string') {
@@ -177,9 +113,46 @@ function enforceTypes(record, schema) {
   }
 }
 
-// Validate FK references: ensure referenced records exist in parent tables
+function applyDefaults(record, schema) {
+  if (!schema) return record;
+  const result = Object.assign({}, record);
+  for (const [field, config] of Object.entries(schema)) {
+    if (result[field] === undefined && config.default !== undefined) result[field] = config.default;
+    if (result[field] === undefined && config.auto && config.type === 'timestamp') {
+      result[field] = new Date().toISOString();
+    }
+  }
+  return result;
+}
+
+function validateRequired(record, schema) {
+  if (!schema) return null;
+  for (const [field, config] of Object.entries(schema)) {
+    if (config.required && (record[field] === undefined || record[field] === null || record[field] === '')) {
+      return field + ' is required';
+    }
+  }
+  return null;
+}
+
+function validateUnique(tableName, record, schema, excludeId) {
+  if (!schema) return null;
+  for (const [field, config] of Object.entries(schema)) {
+    if (!config.unique || record[field] === undefined) continue;
+    const val = coerceForStorage(record[field]);
+    let row;
+    if (excludeId !== undefined) {
+      row = _db.prepare('SELECT 1 FROM ' + tableName + ' WHERE ' + field + ' = ? AND id != ? LIMIT 1').get(val, excludeId);
+    } else {
+      row = _db.prepare('SELECT 1 FROM ' + tableName + ' WHERE ' + field + ' = ? LIMIT 1').get(val);
+    }
+    if (row) return field + " must be unique -- '" + record[field] + "' already exists";
+  }
+  return null;
+}
+
 function validateForeignKeys(record, schema) {
-  if (!schema || typeof schema !== 'object') return;
+  if (!schema) return;
   for (const [field, config] of Object.entries(schema)) {
     if (config.type !== 'fk') continue;
     const value = record[field];
@@ -190,119 +163,159 @@ function validateForeignKeys(record, schema) {
       if (!refTable.endsWith('s')) refTable += 's';
     } else if (field.endsWith('_id')) {
       refTable = field.replace(/_id$/, '') + 's';
-    } else {
-      continue;
-    }
-    refTable = refTable.toLowerCase();
-    if (!_tables[refTable]) continue;
-    const ref = findOne(refTable, { id: value });
-    if (!ref) {
-      throw new Error(field + ' references non-existent record (id ' + value + ' not found in ' + refTable + ')');
+    } else continue;
+    const tableExists = _db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(refTable);
+    if (!tableExists) continue;
+    const ref = _db.prepare('SELECT 1 FROM ' + refTable + ' WHERE id = ? LIMIT 1').get(value);
+    if (!ref) throw new Error(field + ' references non-existent record (id ' + value + ' not found in ' + refTable + ')');
+  }
+}
+
+// =============================================================================
+// TABLE MANAGEMENT
+// =============================================================================
+
+function createTable(name, schema) {
+  const tableName = name.toLowerCase();
+  _schemas[tableName] = schema || {};
+
+  const cols = ['id INTEGER PRIMARY KEY AUTOINCREMENT'];
+  for (const [field, config] of Object.entries(schema || {})) {
+    cols.push(field + ' ' + toSQLiteType(config));
+  }
+  _db.prepare('CREATE TABLE IF NOT EXISTS ' + tableName + ' (' + cols.join(', ') + ')').run();
+
+  // Schema evolution: add columns present in schema but missing from the table
+  const existing = new Set(_db.prepare('PRAGMA table_info(' + tableName + ')').all().map(function(c) { return c.name; }));
+  for (const [field, config] of Object.entries(schema || {})) {
+    if (!existing.has(field)) {
+      _db.prepare('ALTER TABLE ' + tableName + ' ADD COLUMN ' + field + ' ' + toSQLiteType(config)).run();
     }
   }
 }
 
+// =============================================================================
+// FILTER -> SQL WHERE
+// =============================================================================
+
+function buildWhere(filter) {
+  if (!filter || Object.keys(filter).length === 0) return { clause: '', params: [] };
+  const conditions = [];
+  const params = [];
+  for (const [key, value] of Object.entries(filter)) {
+    conditions.push(key + ' = ?');
+    params.push(coerceForStorage(value));
+  }
+  return { clause: 'WHERE ' + conditions.join(' AND '), params: params };
+}
+
+// =============================================================================
+// CRUD OPERATIONS
+// =============================================================================
+
+function findAll(table, filter) {
+  const tableName = table.toLowerCase();
+  const schema = _schemas[tableName] || {};
+  const w = buildWhere(filter);
+  const rows = _db.prepare('SELECT * FROM ' + tableName + ' ' + w.clause).all(w.params);
+  return rows.map(function(r) { return coerceRecord(r, schema); });
+}
+
+function findOne(table, filter) {
+  const tableName = table.toLowerCase();
+  const schema = _schemas[tableName] || {};
+  const w = buildWhere(filter);
+  const row = _db.prepare('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1').get(w.params);
+  return row ? coerceRecord(row, schema) : null;
+}
+
 function insert(table, record) {
   const tableName = table.toLowerCase();
-  ensureTable(tableName);
-  const store = _tables[tableName];
+  const schema = _schemas[tableName] || {};
 
-  // Sanitize string values (defense-in-depth against stored XSS)
   record = sanitizeRecord(record);
+  enforceTypes(record, schema);
+  validateForeignKeys(record, schema);
 
-  // Enforce schema types (coerce numeric strings, reject bad types)
-  enforceTypes(record, store.schema);
+  const reqErr = validateRequired(record, schema);
+  if (reqErr) throw new Error(reqErr);
 
-  // Validate FK references (check parent records exist)
-  validateForeignKeys(record, store.schema);
+  const uniqErr = validateUnique(tableName, record, schema);
+  if (uniqErr) throw new Error(uniqErr);
 
-  // Validate required fields
-  const reqError = validateRequired(record, store.schema);
-  if (reqError) throw new Error(reqError);
+  const withDefaults = applyDefaults(record, schema);
+  const fields = Object.keys(withDefaults).filter(function(k) { return k !== 'id'; });
 
-  // Validate unique constraints
-  const uniqError = validateUnique(tableName, record, store.schema);
-  if (uniqError) throw new Error(uniqError);
+  let result;
+  if (fields.length === 0) {
+    result = _db.prepare('INSERT INTO ' + tableName + ' DEFAULT VALUES').run();
+  } else {
+    const placeholders = fields.map(function() { return '?'; }).join(', ');
+    const values = fields.map(function(f) { return coerceForStorage(withDefaults[f]); });
+    result = _db.prepare('INSERT INTO ' + tableName + ' (' + fields.join(', ') + ') VALUES (' + placeholders + ')').run(values);
+  }
 
-  const newRecord = applyDefaults({ ...record, id: store.nextId }, store.schema);
-  store.nextId++;
-  store.records.push(newRecord);
-  return newRecord;
+  return coerceRecord(_db.prepare('SELECT * FROM ' + tableName + ' WHERE id = ?').get(result.lastInsertRowid), schema);
 }
 
 function update(table, filterOrRecord, data) {
   const tableName = table.toLowerCase();
-  ensureTable(tableName);
-  const records = _tables[tableName].records;
+  const schema = _schemas[tableName] || {};
 
-  // Two calling conventions:
-  // 1. db.update('table', record)        — update by record.id
-  // 2. db.update('table', filter, data)  — update matching records with data
   let filter, updateData;
   if (data === undefined) {
-    // Convention 1: record with id
+    // Convention 1: db.update('table', record) — update by record.id
     const record = filterOrRecord;
     if (record.id !== undefined) {
       filter = { id: record.id };
       updateData = record;
     } else {
-      // No id, no filter — can't update
       return 0;
     }
   } else {
+    // Convention 2: db.update('table', filter, data)
     filter = filterOrRecord;
     updateData = data;
   }
 
-  // Sanitize string values (defense-in-depth against stored XSS)
   updateData = sanitizeRecord(updateData);
+  enforceTypes(updateData, schema);
 
-  // Enforce schema types on update data too
-  const store = _tables[tableName];
-  if (store) enforceTypes(updateData, store.schema);
+  const w = buildWhere(filter);
+  if (!w.clause) return 0;
 
-  let count = 0;
-  for (const record of records) {
-    if (matchesFilter(record, filter)) {
-      const preserveId = record.id;
-      Object.assign(record, updateData);
-      // Preserve the original numeric id (params may pass string ids)
-      record.id = preserveId;
-      count++;
+  // Guard: throw 404 when updating by id but record doesn't exist
+  if (filter.id !== undefined) {
+    const exists = _db.prepare('SELECT 1 FROM ' + tableName + ' ' + w.clause + ' LIMIT 1').get(w.params);
+    if (!exists) {
+      const err = new Error('No record found with id ' + filter.id);
+      err.status = 404;
+      throw err;
     }
   }
-  // Guard: throw 404 when updating by id but record doesn't exist
-  if (count === 0 && filter && filter.id !== undefined) {
-    const err = new Error('No record found with id ' + filter.id);
-    err.status = 404;
-    throw err;
-  }
-  return count;
+
+  const setCols = Object.keys(updateData).filter(function(k) { return k !== 'id'; });
+  if (setCols.length === 0) return 0;
+  const setVals = setCols.map(function(k) { return coerceForStorage(updateData[k]); });
+
+  const sql = 'UPDATE ' + tableName + ' SET ' + setCols.map(function(k) { return k + ' = ?'; }).join(', ') + ' ' + w.clause;
+  const result = _db.prepare(sql).run(setVals.concat(w.params));
+  return result.changes;
 }
 
 function remove(table, filter) {
   const tableName = table.toLowerCase();
-  ensureTable(tableName);
-  const store = _tables[tableName];
-  const before = store.records.length;
-  if (!filter) {
-    store.records = [];
-  } else {
-    store.records = store.records.filter(r => !matchesFilter(r, filter));
-  }
-  return before - store.records.length;
+  const w = buildWhere(filter);
+  const result = _db.prepare('DELETE FROM ' + tableName + ' ' + w.clause).run(w.params);
+  return result.changes;
 }
 
 // =============================================================================
-// RAW SQL PLACEHOLDERS (for migrations, CREATE TABLE statements)
+// RAW SQL
 // =============================================================================
 
 function run(sql) {
-  // No-op for in-memory store. Migrations are handled by createTable.
-  // Log for visibility during development.
-  if (process.env.CLEAR_DEBUG) {
-    console.log('[clear-db] SQL (no-op):', sql);
-  }
+  _db.exec(sql);
 }
 
 function execute(sql) {
@@ -310,39 +323,17 @@ function execute(sql) {
 }
 
 // =============================================================================
-// PERSISTENCE
+// LIFECYCLE
 // =============================================================================
 
-function save() {
-  const data = JSON.stringify(_tables, null, 2);
-  fs.writeFileSync(DATA_FILE, data, 'utf-8');
-}
-
-function load() {
-  if (!fs.existsSync(DATA_FILE)) return;
-  try {
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-    for (const [name, store] of Object.entries(data)) {
-      _tables[name] = store;
-    }
-  } catch (err) {
-    console.error('[clear-db] Failed to load data file:', err.message);
-  }
-}
-
-// =============================================================================
-// INTERNALS
-// =============================================================================
-
-function ensureTable(name) {
-  if (!_tables[name]) {
-    _tables[name] = { schema: {}, records: [], nextId: 1 };
-  }
-}
+function save() { /* no-op: SQLite writes are synchronous and durable */ }
+function load() { /* no-op: db file is opened on require */ }
 
 function reset() {
-  for (const key of Object.keys(_tables)) {
-    delete _tables[key];
+  for (const tableName of Object.keys(_schemas)) {
+    _db.prepare('DELETE FROM ' + tableName).run();
+    // Reset autoincrement counter (sqlite_sequence may not exist before first insert)
+    try { _db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(tableName); } catch (e) { /* ignore */ }
   }
 }
 
@@ -350,51 +341,16 @@ function reset() {
 // PUBLIC API
 // =============================================================================
 
-// Auto-persistence: save to disk after every mutation (debounced)
-let _saveTimer = null;
-function _autoSave() {
-  if (_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(() => {
-    try { save(); } catch (e) { /* ignore save errors */ }
-  }, 100); // debounce: save at most every 100ms
-}
-
-// Wrap mutations with auto-save
-const _originalInsert = insert;
-const _originalUpdate = update;
-const _originalRemove = remove;
-
-function insertWithSave(table, record) {
-  const result = _originalInsert(table, record);
-  _autoSave();
-  return result;
-}
-function updateWithSave(table, filterOrRecord, data) {
-  const result = _originalUpdate(table, filterOrRecord, data);
-  _autoSave();
-  return result;
-}
-function removeWithSave(table, filter) {
-  const result = _originalRemove(table, filter);
-  _autoSave();
-  return result;
-}
-
-// Auto-load on first require
-load();
-
-const db = {
+module.exports = {
   createTable,
   findAll,
   findOne,
-  insert: insertWithSave,
-  update: updateWithSave,
-  remove: removeWithSave,
+  insert,
+  update,
+  remove,
   run,
   execute,
   save,
   load,
   reset,
 };
-
-module.exports = db;

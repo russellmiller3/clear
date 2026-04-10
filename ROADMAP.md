@@ -23,10 +23,21 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28, 30-46b, 47, 75-90 -- All Complete)
+## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90 -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1446 tests, all passing.
+1489 tests, all passing.
+
+### SQLite Persistence (Phase 47b)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| better-sqlite3 backend | Done | Replaces in-memory + JSON backup; atomic writes, WAL mode |
+| Same public API | Done | `createTable`, `findAll`, `findOne`, `insert`, `update`, `remove` unchanged |
+| Boolean coercion | Done | SQLite 0/1 → JS true/false on read via schema registry |
+| Schema evolution | Done | `ALTER TABLE ADD COLUMN` on startup for new fields |
+| `db.run(sql)` real | Done | Was a no-op; now executes actual SQL via `_db.exec()` |
+| CJS declaration | Done | `runtime/package.json` `{"type":"commonjs"}` — ESM project compat |
+| Deployment support | Done | `clear package` generates `better-sqlite3` in Dockerfile package.json |
 
 ### Compiler Internal Refactor (Phase 47)
 | Feature | Status | Description |

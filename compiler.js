@@ -778,7 +778,7 @@ function generateE2ETests(body) {
   lines.push('function _uniqueEmail() { return "test" + (++_emailCounter) + "@example.com"; }');
   lines.push('function _uniqueText(base) { return base + "_" + (++_uniqueCounter); }');
   lines.push('');
-  lines.push('// Note: for clean re-runs, delete clear-data.json before starting the server');
+  lines.push('// Note: for clean re-runs, delete clear-data.db before starting the server');
   lines.push('// unique constraints may cause 500s if stale data exists from a previous run');
 
   // If any endpoint requires auth, generate a test token

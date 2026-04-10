@@ -868,7 +868,7 @@ async function packageCommand(args) {
     description: 'Built with Clear language',
     main: 'server.js',
     scripts: { start: 'node server.js', test: 'node test.js' },
-    dependencies: { express: '^4.18.0' },
+    dependencies: { express: '^4.18.0', 'better-sqlite3': '^12.8.0' },
   };
   writeFileSync(resolve(outDir, 'package.json'), JSON.stringify(pkg, null, 2));
   files.push('package.json');
@@ -883,7 +883,7 @@ EXPOSE 3000
 CMD ["node", "server.js"]`);
   files.push('Dockerfile');
 
-  writeFileSync(resolve(outDir, '.dockerignore'), 'node_modules\nclear-data.json\n');
+  writeFileSync(resolve(outDir, '.dockerignore'), 'node_modules\nclear-data.db\nclear-data.db-wal\nclear-data.db-shm\n');
   files.push('.dockerignore');
 
   output({ ok: true, files, outDir, message: `Packaged ${files.length} files to ${outDir}/` }, flags);
