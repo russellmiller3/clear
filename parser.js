@@ -3334,24 +3334,36 @@ function parsePage(lines, startIdx, blockIndent, errors) {
 // CANONICAL: section "Title": + indented body
 
 // Known inline layout modifiers for sections
+// NOTE: The compiler has a parallel INLINE_LAYOUT_MODIFIERS map that translates these to
+// Tailwind classes at render time. Keep both in sync when adding new modifiers.
 const INLINE_MODIFIERS = {
-  // Layout
-  'two column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr', gap: '1.5rem' } },
+  // Layout — long-form
+  'two column layout':   { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr', gap: '1.5rem' } },
   'three column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr', gap: '1.5rem' } },
-  'four column layout': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr 1fr', gap: '1.5rem' } },
-  'full height': { prop: 'height', val: '100vh' },
-  'scrollable': { prop: 'overflow-y', val: 'auto' },
+  'four column layout':  { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr 1fr', gap: '1.5rem' } },
+  // Grid shorthands: "as 2 columns", "as 3 columns", etc. (compiler renders as Tailwind)
+  '2 columns': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr', gap: '1.25rem' } },
+  '3 columns': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': '1fr 1fr 1fr', gap: '1.25rem' } },
+  '4 columns': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': 'repeat(4,1fr)', gap: '1rem' } },
+  '5 columns': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': 'repeat(5,1fr)', gap: '1rem' } },
+  '6 columns': { prop: 'display', val: 'grid', extra: { 'grid-template-columns': 'repeat(6,1fr)', gap: '0.75rem' } },
+  // Direction shorthands: "as row", "as column" (compiler renders as Tailwind)
+  'row':    { prop: 'display', val: 'flex', extra: { 'flex-direction': 'row', 'align-items': 'center', gap: '1rem' } },
+  'column': { prop: 'display', val: 'flex', extra: { 'flex-direction': 'column', gap: '1rem' } },
+  // Structural
+  'full height':           { prop: 'height', val: '100vh' },
+  'scrollable':            { prop: 'overflow-y', val: 'auto' },
   'fills remaining space': { prop: 'flex', val: '1' },
-  'sticky at top': { prop: 'position', val: 'sticky', extra: { top: '0', 'z-index': '10' } },
-  'dark background': { prop: 'background', val: '#0f172a', extra: { color: '#f8fafc' } },
-  'with shadow': { prop: 'box-shadow', val: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' },
-  'stacked': { prop: 'display', val: 'flex', extra: { 'flex-direction': 'column' } },
-  'side by side': { prop: 'display', val: 'flex', extra: { 'flex-direction': 'row' } },
-  'centered': { prop: 'max-width', val: '800px', extra: { 'margin-left': 'auto', 'margin-right': 'auto' } },
-  'text centered': { prop: 'text-align', val: 'center' },
-  'padded': { prop: 'padding', val: '1.5rem' },
-  'light background': { prop: 'background', val: '#f8fafc' },
-  'rounded': { prop: 'border-radius', val: '12px' },
+  'sticky at top':         { prop: 'position', val: 'sticky', extra: { top: '0', 'z-index': '10' } },
+  'dark background':       { prop: 'background', val: '#0f172a', extra: { color: '#f8fafc' } },
+  'with shadow':           { prop: 'box-shadow', val: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' },
+  'stacked':               { prop: 'display', val: 'flex', extra: { 'flex-direction': 'column' } },
+  'side by side':          { prop: 'display', val: 'flex', extra: { 'flex-direction': 'row' } },
+  'centered':              { prop: 'max-width', val: '800px', extra: { 'margin-left': 'auto', 'margin-right': 'auto' } },
+  'text centered':         { prop: 'text-align', val: 'center' },
+  'padded':                { prop: 'padding', val: '1.5rem' },
+  'light background':      { prop: 'background', val: '#f8fafc' },
+  'rounded':               { prop: 'border-radius', val: '12px' },
 };
 
 function parseSection(lines, startIdx, blockIndent, errors) {

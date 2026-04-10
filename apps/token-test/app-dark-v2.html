@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Issue Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(13% 0.02 250);
+  --color-base-200: oklch(10% 0.02 255);
+  --color-base-300: oklch(18% 0.015 250);
+  --color-base-content: oklch(88% 0.025 240);
+  --color-primary: oklch(62% 0.18 250);
+  --color-primary-content: oklch(98% 0.005 250);
+  --color-secondary: oklch(58% 0.12 155);
+  --color-secondary-content: oklch(10% 0.02 155);
+  --color-accent: oklch(78% 0.14 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(20% 0.015 250);
+  --color-neutral-content: oklch(80% 0.02 240);
+  --color-info: oklch(68% 0.12 245);
+  --color-info-content: oklch(10% 0.02 245);
+  --color-success: oklch(62% 0.14 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(78% 0.14 85);
+  --color-warning-content: oklch(15% 0.02 85);
+  --color-error: oklch(60% 0.2 25);
+  --color-error-content: oklch(10% 0.02 25);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- User Styles --- */
+/* clear:21 */
+.style-main_style {
+  flex: 1; min-height: 0; min-width: 0;
+}
+
+/* clear:45 */
+.style-nav_section {
+  flex: 1; min-height: 0; min-width: 0;
+}
+
+/* --- Inline Layout --- */
+.section-root { display: flex; flex-direction: row; height: 100vh; }
+.section-sidebar { width: 208px; flex-shrink: 0; }
+.section-main_area { flex: 1; display: flex; flex-direction: column; }
+.section-header { position: sticky; top: 0; z-index: 10; }</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="h-screen">
+    <div class="section-root">
+    <div class="bg-base-200 flex flex-col border-r border-base-300/40 shrink-0 overflow-hidden section-sidebar">
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Brand</h2>
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Acme</h1>
+    </div>
+    <div class="bg-base-200 flex flex-col p-3 gap-2 overflow-y-auto clear-section style-nav_section">
+      <div class="max-w-5xl mx-auto px-4">
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Home</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">My Issues</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Inbox</p>
+      </div>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Teams</h2>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Teams</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Engineering</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Design</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Growth</p>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">User</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">russell@acme.co</p>
+    </div>
+    </div>
+    <div class="section-main_area">
+    <div class="bg-base-100 border-b border-base-300/40 flex items-center justify-between p-3 shrink-0 section-header">
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Engineering</p>
+    <button class="btn btn-primary" id="btn_New_issue">New issue</button>
+    </div>
+    <div class="bg-base-100 flex flex-col overflow-y-auto clear-section style-main_style">
+      <div class="max-w-5xl mx-auto px-4">
+    <div class="bg-base-200 border border-base-300/40 shadow-sm rounded-xl p-6 flex flex-col gap-2">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">In Progress</h2>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Issue Row 1</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">ENG-142</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Fix token refresh race condition in auth middleware</p>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Issue Row 2</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">ENG-138</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Refactor dashboard data fetching to use SWR</p>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Issue Row 3</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">ENG-135</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Add pagination to /api/events endpoint</p>
+    </div>
+    </div>
+    <div class="bg-base-200 border border-base-300/40 shadow-sm rounded-xl p-6 flex flex-col gap-2">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Done</h2>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Done Row 1</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">ENG-130</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Migrate database to PostgreSQL 16</p>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Done Row 2</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">ENG-127</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Set up CI/CD pipeline with GitHub Actions</p>
+    </div>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Stats Row</h2>
+    <div class="bg-base-200 border border-base-300/40 shadow-sm rounded-xl p-6 flex flex-col gap-2">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">47</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Total Issues</p>
+    </div>
+    <div class="bg-base-200 border border-base-300/40 shadow-sm rounded-xl p-6 flex flex-col gap-2">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">3</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">In Progress</p>
+    </div>
+    <div class="bg-base-200 border border-base-300/40 shadow-sm rounded-xl p-6 flex flex-col gap-2">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">12</h1>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Completed</p>
+    </div>
+    </div>
+      </div>
+    </div>
+    </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ PAGES:
+   'Issue Tracker' at / (line 55) -->
+  <script>
+document.title = "Issue Tracker";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+}
+
+// --- Input listeners ---
+
+// --- Button handlers ---
+document.getElementById('btn_New_issue').addEventListener('click', function() {
+  console.log("New issue dialog");
+  _recompute();
+});
+
+_recompute();
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+build for web
+
+theme 'ivory'
+
+page 'Stripe Dashboard':
+
+  section 'Root' with style app_layout:
+
+    section 'Sidebar' with style app_sidebar:
+      section 'Brand':
+        text 'Stripe'
+      section 'Nav':
+        text 'Home'
+        text 'Balances'
+        text 'Transactions'
+        text 'Customers'
+        text 'Products'
+        text 'Payments'
+        text 'Billing'
+        text 'Reporting'
+      section 'Settings Label':
+        text 'Settings'
+      section 'Settings List':
+        text 'Account'
+        text 'API keys'
+      section 'User':
+        text 'Test mode'
+
+    section 'Main' with style app_main:
+
+      section 'Header' with style app_header:
+        heading 'Home'
+        text 'Last 30 days'
+        button 'Export':
+          show 'export'
+        button 'Add widget':
+          show 'add widget'
+
+      section 'Content' with style app_content:
+
+        section 'KPI Row' as four column layout:
+          section 'KPI 1' with style app_card:
+            text 'Gross volume'
+            heading '$84,620'
+            text '+14.2% vs last period'
+          section 'KPI 2' with style app_card:
+            text 'Net revenue'
+            heading '$61,480'
+            text '+9.8% vs last period'
+          section 'KPI 3' with style app_card:
+            text 'New customers'
+            heading '328'
+            text '-3.1% vs last period'
+          section 'KPI 4' with style app_card:
+            text 'Refund rate'
+            heading '0.8%'
+            text '-0.2pp (better)'
+
+        section 'Chart Row' as three column layout:
+          section 'Main Chart' with style app_card:
+            subheading 'Gross volume'
+            text 'Chart placeholder'
+          section 'Mini Chart' with style app_card:
+            subheading 'Net revenue'
+            text 'Chart placeholder'
+
+        section 'Transactions Panel' with style app_card:
+          subheading 'Recent transactions'
+          section 'Tx Row 1':
+            text 'Acme Corp'
+            text 'card_1Pm3kX2eZ'
+            text '$2,450.00'
+            text 'Succeeded'
+          section 'Tx Row 2':
+            text 'BuildCo Inc'
+            text 'card_1Pm2aB2eZ'
+            text '$890.00'
+            text 'Succeeded'
+          section 'Tx Row 3':
+            text 'Launchpad Ltd'
+            text 'card_1PlzRQ2eZ'
+            text '$3,200.00'
+            text 'Refunded'
+          section 'Tx Row 4':
+            text 'Stackify'
+            text 'card_1Ply8k2eZ'
+            text '$560.00'
+            text 'Succeeded'

@@ -1,0 +1,25 @@
+build for javascript backend
+database is local memory
+
+
+create a Contacts table:
+  name, required
+  email, required
+  phone
+  company
+
+
+when user calls GET /api/contacts:
+  contacts = get all Contacts
+  send back contacts
+
+
+when user calls POST /api/contacts sending data:
+  saved = save data to Contacts
+  send back saved
+
+
+when user calls DELETE /api/contacts/:id:
+  requires auth
+  remove from Contacts with this id
+  send back 'deleted'

@@ -1,0 +1,168 @@
+# Project Tracker — issue management app using semantic style tokens
+build for web and javascript backend
+
+theme 'midnight'
+
+# ── Database ──────────────────────────────────────────────────────────────────
+
+database is local memory
+
+create a Projects table:
+  name, required
+  status, default 'active'
+  color, default 'blue'
+
+create an Issues table:
+  title, required
+  project, required
+  assignee
+  priority, default 'medium'
+  status, default 'backlog'
+  created_at_date, auto
+
+# ── Backend ───────────────────────────────────────────────────────────────────
+
+allow cross-origin requests
+log every request
+
+when user calls GET /api/projects:
+  all_projects = get all Projects
+  send back all_projects
+
+when user calls POST /api/projects sending project_data:
+  validate project_data:
+    name is text, required, min 1, max 80
+  new_project = save project_data as new Project
+  send back new_project
+
+when user calls GET /api/issues:
+  all_issues = get all Issues
+  send back all_issues
+
+when user calls POST /api/issues sending issue_data:
+  validate issue_data:
+    title is text, required, min 1, max 200
+    project is text, required
+  new_issue = save issue_data as new Issue
+  send back new_issue
+
+when user calls DELETE /api/issues/:id:
+  requires auth
+  delete the Issue with this id
+  send back 'deleted'
+
+# ── Styles ────────────────────────────────────────────────────────────────────
+# Every style here uses ONLY semantic tokens — no raw CSS values.
+
+style stat_card:
+  background is 'canvas'
+  corners are 'rounded'
+  has border
+  has shadow
+  padding is 'comfortable'
+  layout is 'column'
+  gap is 'tight'
+  hover is 'elevated'
+
+style issue_row:
+  background is 'canvas'
+  corners are 'subtle'
+  has border
+  padding is 'tight'
+  layout is 'split'
+  hover is 'tinted'
+
+style new_issue_form:
+  background is 'surface'
+  corners are 'rounded'
+  has border
+  has shadow
+  padding is 'spacious'
+  layout is 'column'
+  gap is 'comfortable'
+  width is 'narrow'
+
+style section_header:
+  layout is 'split'
+  padding is 'tight'
+  has bottom border
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+
+page 'Project Tracker' at '/':
+
+  open_count = 0
+  in_progress_count = 0
+  done_count = 0
+  all_issues = []
+
+  section 'App' with style app_layout:
+
+    section 'Sidebar' with style app_sidebar, 208px wide:
+
+      heading 'Tracker'
+
+      section 'Workspace Nav':
+        text 'My Issues'
+        text 'All Projects'
+        text 'Inbox'
+
+      section 'Projects':
+        text 'Frontend'
+        text 'Backend'
+        text 'Design'
+        text 'DevOps'
+
+      section 'Views':
+        text 'Active sprints'
+        text 'Roadmap'
+        text 'Archive'
+
+    section 'Main' fills remaining space, stacked:
+
+      section 'Header' with style app_header:
+        heading 'Issues'
+        button 'New Issue':
+          show 'New Issue'
+
+      section 'Content' with style app_content:
+
+        section 'Stats Row' as 4 columns:
+          section 'Open' with style stat_card:
+            subheading 'Open'
+            display open_count
+          section 'In Progress' with style stat_card:
+            subheading 'In Progress'
+            display in_progress_count
+          section 'Done' with style stat_card:
+            subheading 'Done this week'
+            display done_count
+          section 'Team' with style stat_card:
+            subheading 'Team members'
+            display 8
+
+        section 'Issues Panel' with style app_card:
+
+          section 'Issues Header' with style section_header:
+            subheading 'All Issues'
+            button 'Refresh':
+              all_issues = GET '/api/issues'
+
+          for each issue in all_issues:
+            section 'Issue Row' with style issue_row:
+              display issue's title
+              display issue's priority
+
+        section 'New Issue' as modal:
+          section 'Form' with style new_issue_form:
+            subheading 'New Issue'
+            'Title' as text input saves to new_title
+            'Project' as dropdown with ['Frontend', 'Backend', 'Design', 'DevOps'] saves to new_project
+            'Priority' as dropdown with ['Low', 'Medium', 'High', 'Critical'] saves to new_priority
+            button 'Create Issue':
+              new_issue_data = collect new_title, new_project, new_priority
+              POST new_issue_data to '/api/issues'
+              all_issues = GET '/api/issues'
+              hide 'New Issue'
+            button 'Cancel':
+              hide 'New Issue'

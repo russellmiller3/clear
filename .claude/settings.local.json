@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx esbuild:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -sL \"https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css\" -o playground/daisyui.min.css)",
+      "Bash(curl -sL -o playground/daisyui.min.css \"https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css\")",
+      "Bash(curl -sL \"https://cdn.jsdelivr.net/npm/daisyui@5/\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css\")",
+      "Bash(curl -sL -o playground/daisyui.min.css \"https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css\")",
+      "Bash(node clear.test.js)",
+      "Bash(ls .claude/skills/*/SKILL.md)",
+      "Bash(git checkout:*)",
+      "Bash(node -e \":*)",
+      "Bash(node -e ':*)",
+      "Bash(ls playground/compiled-*.html)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8181/)",
+      "Skill(ship)",
+      "Skill(ship:*)",
+      "Bash(node playground/server.test.js)",
+      "Bash(npx playwright:*)",
+      "Bash(node playground/ide.test.js)",
+      "Bash(npm install:*)",
+      "Bash(node playground/e2e.test.js)",
+      "Bash(node --input-type=module --eval \":*)",
+      "Bash(find playground:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

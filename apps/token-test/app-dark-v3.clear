@@ -1,0 +1,65 @@
+build for web
+
+theme 'midnight'
+
+page 'Issue Tracker':
+
+  section 'Root' with style app_layout:
+
+    section 'Sidebar' with style app_sidebar:
+      section 'Brand':
+        text 'Acme'
+      section 'Nav':
+        text 'Home'
+        text 'My Issues'
+        text 'Inbox'
+      section 'Teams Label':
+        text 'Teams'
+      section 'Teams List':
+        text 'Engineering'
+        text 'Design'
+        text 'Growth'
+      section 'User':
+        text 'russell@acme.co'
+
+    section 'Main' with style app_main:
+
+      section 'Header' with style app_header:
+        text 'Engineering'
+        text 'All Issues'
+        button 'New issue':
+          show 'new issue'
+
+      section 'Content' with style app_content:
+
+        section 'In Progress' with style app_card:
+          subheading 'In Progress'
+          section 'Issue 1':
+            text 'ENG-142'
+            text 'Fix token refresh race condition in auth middleware'
+          section 'Issue 2':
+            text 'ENG-138'
+            text 'Refactor dashboard data fetching to use SWR'
+          section 'Issue 3':
+            text 'ENG-135'
+            text 'Add pagination to /api/events endpoint'
+
+        section 'Done' with style app_card:
+          subheading 'Done'
+          section 'Done 1':
+            text 'ENG-130'
+            text 'Migrate database to PostgreSQL 16'
+          section 'Done 2':
+            text 'ENG-127'
+            text 'Set up CI/CD pipeline with GitHub Actions'
+
+        section 'Stats Row' as three column layout:
+          section 'Stat 1' with style app_card:
+            heading '47'
+            text 'Total Issues'
+          section 'Stat 2' with style app_card:
+            heading '3'
+            text 'In Progress'
+          section 'Stat 3' with style app_card:
+            heading '12'
+            text 'Completed'

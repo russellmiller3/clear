@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acme</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(13% 0.02 250);
+  --color-base-200: oklch(10% 0.02 255);
+  --color-base-300: oklch(18% 0.015 250);
+  --color-base-content: oklch(88% 0.025 240);
+  --color-primary: oklch(62% 0.18 250);
+  --color-primary-content: oklch(98% 0.005 250);
+  --color-secondary: oklch(58% 0.12 155);
+  --color-secondary-content: oklch(10% 0.02 155);
+  --color-accent: oklch(78% 0.14 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(20% 0.015 250);
+  --color-neutral-content: oklch(80% 0.02 240);
+  --color-info: oklch(68% 0.12 245);
+  --color-info-content: oklch(10% 0.02 245);
+  --color-success: oklch(62% 0.14 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(78% 0.14 85);
+  --color-warning-content: oklch(15% 0.02 85);
+  --color-error: oklch(60% 0.2 25);
+  --color-error-content: oklch(10% 0.02 25);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <div class="sticky top-0 z-20 flex items-center justify-between h-14 px-6 bg-base-100 border-b border-base-300/40 shrink-0">
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Acme</p>
+    <button class="btn btn-outline btn-sm" id="btn_Log_in">Log in</button>
+    <button class="btn btn-outline btn-sm" id="btn_Get_started">Get started</button>
+    </div>
+    <div class="bg-base-100 py-32 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden">
+    <p class="text-lg text-base-content/60 leading-relaxed">Now in public beta</p>
+    <h1 class="font-display text-5xl font-bold tracking-tight leading-[1.1] text-base-content max-w-3xl">Build products your team will love</h1>
+    <p class="text-lg text-base-content/60 leading-relaxed">The fastest issue tracker for high-performance teams. Designed for speed, built to scale.</p>
+    <button class="btn btn-primary" id="btn_Start_for_free">Start for free</button>
+    <button class="btn btn-primary" id="btn_See_a_demo">See a demo</button>
+    <p class="text-lg text-base-content/60 leading-relaxed">No credit card required · Free up to 5 seats</p>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Social Proof</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Acme Corp</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Buildco</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Launchpad</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Stackify</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Grovetech</p>
+    </div>
+    <div class="bg-base-100 py-24 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-base-content tracking-tight mb-4">Everything your team needs</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Powerful tools that stay out of the way. Every feature designed for speed.</p>
+    <div class="grid grid-cols-3 gap-6">
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Lightning fast</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Sub-100ms interactions. Keyboard-first design.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Built for teams</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Real-time collaboration, shared views, team workspaces.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Powerful workflows</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Automate repetitive work with custom triggers.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Analytics and insights</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">See what your team shipped and where time is going.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Enterprise security</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">SOC 2 Type II, SSO, audit logs, data retention.</p>
+      </div>
+    </div>
+    <div class="bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">API and integrations</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">REST and GraphQL APIs. Deep integrations with GitHub and Slack.</p>
+      </div>
+    </div>
+    </div>
+      </div>
+    </div>
+    <div class="bg-neutral text-neutral-content py-24 px-6">
+      <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-4xl font-bold text-neutral-content tracking-tight mb-4">Ready to move faster?</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed">Join 10,000+ teams already shipping better software.</p>
+    <button class="btn btn-primary" id="btn_Get_started_free">Get started free</button>
+      </div>
+    </div>
+    <div class="clear-section bg-base-200 rounded-box p-6 mb-6">
+      <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">Footer</h2>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Acme © 2026</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Terms</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Privacy</p>
+    <p class="text-sm text-base-content/70 leading-relaxed mb-3">Status</p>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ PAGES:
+   'Acme' at / (line 5) -->
+  <script>
+document.title = "Acme";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+}
+
+// --- Input listeners ---
+
+// --- Button handlers ---
+document.getElementById('btn_Log_in').addEventListener('click', function() {
+  console.log("log in");
+  _recompute();
+});
+document.getElementById('btn_Get_started').addEventListener('click', function() {
+  console.log("sign up");
+  _recompute();
+});
+document.getElementById('btn_Start_for_free').addEventListener('click', function() {
+  console.log("sign up");
+  _recompute();
+});
+document.getElementById('btn_See_a_demo').addEventListener('click', function() {
+  console.log("demo");
+  _recompute();
+});
+document.getElementById('btn_Get_started_free').addEventListener('click', function() {
+  console.log("sign up");
+  _recompute();
+});
+
+_recompute();
+
+  </script>
+</body>
+</html>

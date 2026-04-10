@@ -5179,22 +5179,32 @@ function compileToPython(body, errors, sourceMap = false) {
  */
 // Inline layout modifier map (shared between parser and compiler)
 const INLINE_LAYOUT_MODIFIERS = {
-  'two column layout': { tailwind: 'grid grid-cols-2 gap-6' },
-  'three column layout': { tailwind: 'grid grid-cols-3 gap-6' },
-  'four column layout': { tailwind: 'grid grid-cols-4 gap-6' },
-  'full height': { prop: 'height', val: '100vh' },
-  'scrollable': { prop: 'overflow-y', val: 'auto' },
+  // Grid shorthands — Tailwind-first
+  'two column layout':   { tailwind: 'grid grid-cols-2 gap-5' },
+  'three column layout': { tailwind: 'grid grid-cols-3 gap-5' },
+  'four column layout':  { tailwind: 'grid grid-cols-4 gap-4' },
+  // Short forms: "as 2 columns", "as row", "as column"
+  '2 columns': { tailwind: 'grid grid-cols-2 gap-5' },
+  '3 columns': { tailwind: 'grid grid-cols-3 gap-5' },
+  '4 columns': { tailwind: 'grid grid-cols-4 gap-4' },
+  '5 columns': { tailwind: 'grid grid-cols-5 gap-4' },
+  '6 columns': { tailwind: 'grid grid-cols-6 gap-3' },
+  'row':    { tailwind: 'flex flex-row items-center gap-4' },
+  'column': { tailwind: 'flex flex-col gap-4' },
+  // Structural
+  'full height':         { prop: 'height', val: '100vh' },
+  'scrollable':          { prop: 'overflow-y', val: 'auto' },
   'fills remaining space': { prop: 'flex', val: '1' },
-  'sticky at top': { prop: 'position', val: 'sticky', extra: { top: '0', 'z-index': '10' } },
-  'dark background': { prop: 'background', val: '#0f172a', extra: { color: '#f8fafc' } },
-  'with shadow': { prop: 'box-shadow', val: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' },
-  'stacked': { prop: 'display', val: 'flex', extra: { 'flex-direction': 'column' } },
-  'side by side': { prop: 'display', val: 'flex', extra: { 'flex-direction': 'row' } },
-  'centered': { prop: 'max-width', val: '800px', extra: { 'margin-left': 'auto', 'margin-right': 'auto' } },
-  'text centered': { prop: 'text-align', val: 'center' },
-  'padded': { prop: 'padding', val: '1.5rem' },
-  'light background': { prop: 'background', val: '#f8fafc' },
-  'rounded': { prop: 'border-radius', val: '12px' },
+  'sticky at top':       { prop: 'position', val: 'sticky', extra: { top: '0', 'z-index': '10' } },
+  'dark background':     { prop: 'background', val: '#0f172a', extra: { color: '#f8fafc' } },
+  'with shadow':         { prop: 'box-shadow', val: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' },
+  'stacked':             { prop: 'display', val: 'flex', extra: { 'flex-direction': 'column' } },
+  'side by side':        { prop: 'display', val: 'flex', extra: { 'flex-direction': 'row' } },
+  'centered':            { prop: 'max-width', val: '800px', extra: { 'margin-left': 'auto', 'margin-right': 'auto' } },
+  'text centered':       { prop: 'text-align', val: 'center' },
+  'padded':              { prop: 'padding', val: '1.5rem' },
+  'light background':    { prop: 'background', val: '#f8fafc' },
+  'rounded':             { prop: 'border-radius', val: '12px' },
 };
 
 function buildHTML(body) {
@@ -6694,6 +6704,13 @@ const STYLE_TOKENS = {
   'width:narrow':    'max-w-sm mx-auto',
   'width:contained': 'max-w-5xl mx-auto',
   'width:wide':      'max-w-6xl mx-auto',
+
+  // Hover interaction (cursor-pointer implied; use with layout tokens)
+  'hover:elevated':    'hover:shadow-md hover:-translate-y-px transition-all cursor-pointer',
+  'hover:highlighted': 'hover:bg-base-200 transition-colors cursor-pointer',
+  'hover:tinted':      'hover:bg-primary/5 hover:border-primary/20 transition-colors cursor-pointer',
+  'hover:glowing':     'hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer',
+  'hover:faded':       'hover:opacity-70 transition-opacity cursor-pointer',
 };
 
 // Resolve semantic style tokens to Tailwind classes.

@@ -1,0 +1,113 @@
+build for web
+
+theme 'midnight'
+
+# ── Styles using semantic tokens ─────────────────────────────────────────────
+
+style sidebar_style:
+  background is 'canvas'
+  layout is 'column'
+  has right border
+  no shrink
+  clips content
+
+style header_style:
+  background is 'surface'
+  has bottom border
+  layout is 'split'
+  padding is 'tight'
+  no shrink
+
+style main_style:
+  background is 'surface'
+  layout is 'column'
+  scrollable
+  fills remaining space
+
+style issue_card:
+  background is 'canvas'
+  has border
+  has shadow
+  corners are 'rounded'
+  padding is 'comfortable'
+  layout is 'column'
+  gap is 'tight'
+
+style stat_card:
+  background is 'canvas'
+  has border
+  has shadow
+  corners are 'rounded'
+  padding is 'comfortable'
+  layout is 'column'
+  gap is 'tight'
+
+style nav_section:
+  background is 'canvas'
+  layout is 'column'
+  padding is 'tight'
+  gap is 'tight'
+  scrollable
+  fills remaining space
+
+# ── Page ─────────────────────────────────────────────────────────────────────
+
+page 'Issue Tracker':
+
+  section 'Root' full height, side by side:
+
+    section 'Sidebar' with style sidebar_style, 208px wide:
+      section 'Brand':
+        heading 'Acme'
+      section 'Nav' with style nav_section:
+        text 'Home'
+        text 'My Issues'
+        text 'Inbox'
+      section 'Teams':
+        subheading 'Teams'
+        text 'Engineering'
+        text 'Design'
+        text 'Growth'
+      section 'User':
+        text 'russell@acme.co'
+
+    section 'Main Area' fills remaining space, stacked:
+
+      section 'Header' with style header_style, sticky at top:
+        text 'Engineering'
+        button 'New issue':
+          show 'New issue dialog'
+
+      section 'Content' with style main_style:
+
+        section 'In Progress Group' with style issue_card:
+          subheading 'In Progress'
+          section 'Issue Row 1':
+            text 'ENG-142'
+            text 'Fix token refresh race condition in auth middleware'
+          section 'Issue Row 2':
+            text 'ENG-138'
+            text 'Refactor dashboard data fetching to use SWR'
+          section 'Issue Row 3':
+            text 'ENG-135'
+            text 'Add pagination to /api/events endpoint'
+
+        section 'Done Group' with style issue_card:
+          subheading 'Done'
+          section 'Done Row 1':
+            text 'ENG-130'
+            text 'Migrate database to PostgreSQL 16'
+          section 'Done Row 2':
+            text 'ENG-127'
+            text 'Set up CI/CD pipeline with GitHub Actions'
+
+        section 'Stats Row' as 3 column layout:
+          section 'Stat Total' with style stat_card:
+            heading '47'
+            text 'Total Issues'
+          section 'Stat Progress' with style stat_card:
+            heading '3'
+            text 'In Progress'
+          section 'Stat Done' with style stat_card:
+            heading '12'
+            text 'Completed'
