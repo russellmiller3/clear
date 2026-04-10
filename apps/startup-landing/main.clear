@@ -1,0 +1,124 @@
+build for web
+theme 'ivory'
+
+# Startup Landing Page -- Clay style
+# Async video messaging for teams
+
+page 'Vibe — Async Video for Teams' at '/':
+
+  section 'Nav' with style page_navbar:
+    heading 'Vibe'
+    link 'Product' to '#product'
+    link 'Pricing' to '#pricing'
+    link 'Enterprise' to '/enterprise'
+    link 'Log In' to '/login'
+    link 'Record for free' to '/signup'
+
+  section 'Hero' with style hero_left:
+    small text 'Used by 50,000+ teams — no meeting required'
+    heading 'Stop scheduling. Start recording.'
+    subheading 'Your team ships faster when standup is a 90-second video. Async, on everyone\'s schedule.'
+    link 'Record your first video' to '/signup'
+    link 'Watch a 2-min demo' to '/demo'
+
+  section 'Logos' with style logo_bar:
+    heading 'Trusted by teams at'
+    section 'L1' with style logo_item:
+      text 'Notion'
+    section 'L2' with style logo_item:
+      text 'Stripe'
+    section 'L3' with style logo_item:
+      text 'Figma'
+    section 'L4' with style logo_item:
+      text 'Vercel'
+    section 'L5' with style logo_item:
+      text 'Atlassian'
+
+  section 'Features' with style feature_split:
+    heading 'Every tool you need to replace a meeting'
+    subheading 'Record, share, and collaborate — all without coordinating schedules.'
+    section 'F1' with style feature_card_large:
+      heading 'One-click recording'
+      subheading 'Record screen, camera, or both. No setup.'
+      text 'Hit record from the browser extension or desktop app. Vibe transcribes, generates a summary, and pulls out action items automatically — all before you share the link.'
+    section 'F2' with style feature_card_teal:
+      heading 'Instant shareable link'
+      text 'Your video is live in seconds. Share in Slack, email, or Notion. No upload wait.'
+    section 'F3' with style feature_card_purple:
+      heading 'AI transcripts and chapters'
+      text 'Every video gets a full transcript. AI auto-generates chapters. Viewers jump to the part they need.'
+
+  section 'More Features' with style feature_grid:
+    section 'F4' with style feature_card:
+      heading 'Screen and camera'
+      text 'Show your face while you show your work. Full split-screen or picture-in-picture.'
+    section 'F5' with style feature_card_indigo:
+      heading 'Async comments'
+      text 'Viewers leave timestamped comments. Threaded replies. No more reply-all email chains.'
+    section 'F6' with style feature_card:
+      heading 'Team channels'
+      text 'Organize videos into channels. Share weekly updates with your whole team in one place.'
+
+  section 'Stats' with style stats_row:
+    section 'S1' with style stat_item:
+      heading '50k+'
+      text 'Teams using Vibe'
+    section 'S2' with style stat_item:
+      heading '2.4M'
+      text 'Videos recorded'
+    section 'S3' with style stat_item:
+      heading '18 min'
+      text 'Avg meeting saved'
+    section 'S4' with style stat_item:
+      heading '4.9 / 5'
+      text 'G2 rating'
+
+  section 'Social Proof' with style testimonial_grid:
+    heading 'Teams that got their time back'
+    section 'T1' with style testimonial_card:
+      text 'We eliminated our daily standup. Every engineer records a 90-second Vibe instead. We got back 30 minutes a day per person. No one wants to go back.'
+      subheading 'David Okonkwo'
+      small text 'Engineering Manager, Spline'
+    section 'T2' with style testimonial_card:
+      text 'Our sales cycle shortened by 2 weeks. Instead of scheduling a demo call, we send a personalized Vibe in the first message. Reply rate tripled.'
+      subheading 'Lauren Park'
+      small text 'VP Sales, Folio'
+    section 'T3' with style testimonial_card:
+      text 'I am a solo founder. Vibe is how I communicate with contractors, investors, and customers without burning my calendar. I send 8-10 videos a day.'
+      subheading 'Alex Torres'
+      small text 'Founder, Myriad Labs'
+
+  section 'Pricing' with style pricing_grid:
+    heading 'Free to start. Powerful as you grow.'
+    subheading 'No credit card required for the free plan.'
+    section 'Free' with style pricing_card:
+      heading 'Free'
+      subheading '$0 / month'
+      text 'Unlimited recordings'
+      text '5-minute max duration'
+      text '25 videos stored'
+      text 'Standard quality (720p)'
+      link 'Start recording free' to '/signup'
+    section 'Pro' with style pricing_card_featured:
+      heading 'Pro'
+      subheading '$12 / month'
+      text 'Unlimited duration'
+      text 'Unlimited storage'
+      text '4K quality'
+      text 'No watermark'
+      text 'AI transcripts and chapters'
+      link 'Start free trial' to '/signup-pro'
+    section 'Business' with style pricing_card:
+      heading 'Business'
+      subheading '$20 / seat / month'
+      text 'Everything in Pro'
+      text 'Team workspace'
+      text 'Video analytics'
+      text 'Video requests'
+      text 'CRM integrations'
+      link 'Talk to sales' to '/sales'
+
+  section 'CTA' with style page_cta:
+    heading 'Record your first video in 30 seconds.'
+    subheading 'Free forever. No meeting required.'
+    link 'Start recording free' to '/signup'
