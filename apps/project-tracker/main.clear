@@ -55,38 +55,6 @@ when user calls DELETE /api/issues/:id:
 # ── Styles ────────────────────────────────────────────────────────────────────
 # Every style here uses ONLY semantic tokens — no raw CSS values.
 
-style stat_card:
-  background is 'canvas'
-  corners are 'rounded'
-  has border
-  has shadow
-  padding is 'comfortable'
-  layout is 'column'
-  gap is 'tight'
-  hover is 'elevated'
-
-style issue_row:
-  background is 'canvas'
-  corners are 'subtle'
-  has border
-  padding is 'tight'
-  layout is 'split'
-  hover is 'tinted'
-
-style new_issue_form:
-  background is 'surface'
-  corners are 'rounded'
-  has border
-  has shadow
-  padding is 'spacious'
-  layout is 'column'
-  gap is 'comfortable'
-  width is 'narrow'
-
-style section_header:
-  layout is 'split'
-  padding is 'tight'
-  has bottom border
 
 # ── Frontend ──────────────────────────────────────────────────────────────────
 
@@ -132,43 +100,49 @@ page 'Project Tracker' at '/':
       section 'Content' with style app_content:
 
         section 'Stats Row' as 4 columns:
-          section 'Open' with style stat_card:
-            display open_count as number called 'Open'
-          section 'In Progress' with style stat_card:
-            display in_progress_count as number called 'In Progress'
-          section 'Done' with style stat_card:
-            display done_count as number called 'Done this week'
-          section 'Team' with style stat_card:
-            display 8 as number called 'Team members'
+          section 'Open' with style metric_card:
+            small text 'Open'
+            heading '12'
+            text '+3 this week'
+          section 'In Progress' with style metric_card:
+            small text 'In Progress'
+            heading '5'
+            text '2 assigned to you'
+          section 'Done' with style metric_card:
+            small text 'Done this week'
+            heading '23'
+            text '+8 vs last week'
+          section 'Team' with style metric_card:
+            small text 'Team members'
+            heading '8'
+            text '6 active today'
 
-        section 'Issues Panel' with style app_card, fills remaining space:
+        section 'Issues Table' with style app_table:
+          display all_issues as table showing title, project, priority, status with delete
 
-          section 'Issues Header' with style section_header:
-            subheading 'All Issues'
-            button 'Refresh':
-              all_issues = GET '/api/issues'
-
-          section 'Issue 1' with style issue_row:
+        section 'Recent Activity' with style app_list:
+          heading 'Recent Activity'
+          section 'Activity 1':
             text 'Fix auth token expiry on mobile'
             badge 'High' as error
-          section 'Issue 2' with style issue_row:
+          section 'Activity 2':
             text 'Update onboarding flow copy'
             badge 'Medium' as warning
-          section 'Issue 3' with style issue_row:
+          section 'Activity 3':
             text 'Dashboard chart not loading in Safari'
             badge 'High' as error
-          section 'Issue 4' with style issue_row:
+          section 'Activity 4':
             text 'Add CSV export to reports page'
             badge 'Low' as neutral
-          section 'Issue 5' with style issue_row:
-            text 'Rate limiting on public API endpoints'
-            badge 'High' as error
-          section 'Issue 6' with style issue_row:
-            text 'Redesign settings page layout'
-            badge 'Medium' as warning
+
+        section 'Empty Section' with style empty_state:
+          heading 'No archived issues'
+          text 'Issues you archive will appear here.'
+          button 'View all issues':
+            do nothing
 
         section 'New Issue' as modal:
-          section 'Form' with style new_issue_form:
+          section 'Form' with style form:
             subheading 'New Issue'
             'Title' as text input saves to new_title
             'Project' as dropdown with ['Frontend', 'Backend', 'Design', 'DevOps'] saves to new_project

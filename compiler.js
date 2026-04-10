@@ -5499,11 +5499,11 @@ function buildHTML(body) {
               walk(brandNodes);
               // Emit nav items wrapped in menu
               if (navNodes.length > 0) {
-                parts.push(`    <nav class="flex-1 overflow-y-auto py-3 px-3">`);
+                parts.push(`    <nav class="flex-1 overflow-y-auto py-4 px-4">`);
                 parts.push(`      <ul class="menu menu-md gap-0.5 p-0">`);
                 for (const entry of navNodes) {
                   if (entry.group) {
-                    parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-3 px-3">${entry.group}</li>`);
+                    parts.push(`        <li class="menu-title text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-5 mb-1 px-3">${entry.group}</li>`);
                   }
                   walk(entry.items);
                 }
@@ -5747,11 +5747,20 @@ function buildHTML(body) {
                 parts.push(`      <div class="text-sm font-semibold text-base-content/60 px-5 pt-4 pb-2">${fmt}</div>`);
               }
               for (const item of listItems) {
-                parts.push(`      <div class="flex items-center gap-4 px-5 py-3 hover:bg-base-300/20 transition-colors">`);
-                walk([item]);
+                parts.push(`      <div class="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-base-content/5 transition-colors">`);
+                // If child is an unstyled section, walk its body directly to avoid nested column div
+                if (item.type === NodeType.SECTION && !item.styleName && item.body) {
+                  walk(item.body);
+                } else {
+                  walk([item]);
+                }
                 parts.push(`      </div>`);
               }
             } else {
+              // Inject icon for empty state
+              if (node.styleName === 'empty_state') {
+                parts.push(`      <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-base-content/20 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>`);
+              }
               // Inject star rating row and quote mark for testimonial cards
               if (node.styleName === 'testimonial_card') {
                 parts.push(`      <div class="text-4xl leading-none text-base-content/20 font-serif mb-1">\u201C</div>`);
@@ -6005,7 +6014,7 @@ ${options}
               } else if (inMetricCard) {
                 parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
               } else if (inSidebar) {
-                parts.push(`    <div class="px-5 py-5 border-b border-base-300 shrink-0 flex items-center gap-2"><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
+                parts.push(`    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">${formatted.charAt(0)}</div><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
               } else if (inStatItem) {
                 parts.push(`    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
               } else if (inFeaturedPricing) {
@@ -6070,7 +6079,7 @@ ${options}
             }
             case 'text':
               if (inSidebar) {
-                parts.push(`    <li><a class="clear-nav-item flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
+                parts.push(`    <li><a class="clear-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
               } else if (inMetricCard) {
                 parts.push(`    <p class="text-sm font-medium text-base-content/50">${formatted}</p>`);
               } else if (inCta) {
@@ -6110,7 +6119,9 @@ ${options}
               parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><em>${formatted}</em></p>`);
               break;
             case 'small':
-              if (inHeader) {
+              if (inMetricCard) {
+                parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50">${formatted}</span>`);
+              } else if (inHeader) {
                 parts.push(`    <span class="badge badge-ghost badge-sm font-mono">${formatted}</span>`);
               } else if (inHero) {
                 parts.push(`    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase border border-primary/30 text-primary" style="background:oklch(from var(--color-primary) l c h / 0.08)">${formatted}</span>`);
@@ -7299,12 +7310,12 @@ const BUILTIN_PRESET_CLASSES = {
 
   // --- App/dashboard presets ---
   app_layout:        'flex h-screen overflow-hidden',
-  app_sidebar:       'w-56 shrink-0 flex flex-col bg-base-200/60 border-r border-base-300/40 overflow-hidden',
+  app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-200 border-r border-base-300/50 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-5',
-  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-200/80 backdrop-blur-md border-b border-base-300/60 shrink-0',
-  app_card:          'bg-base-200 rounded-xl border border-base-300/50 shadow-md p-5',
-  app_table:         'bg-base-200 rounded-xl border border-base-300/40 overflow-hidden',
+  app_content:       'flex-1 overflow-y-auto bg-base-100 p-6 flex flex-col gap-6',
+  app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-200/80 backdrop-blur-md border-b border-base-300/50 shrink-0',
+  app_card:          'bg-base-200 rounded-xl border border-base-300/50 shadow-sm p-5',
+  app_table:         'bg-base-200 rounded-xl border border-base-300/50 shadow-sm overflow-hidden',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 flex flex-col items-center text-center gap-5',
@@ -7312,14 +7323,14 @@ const BUILTIN_PRESET_CLASSES = {
   section_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
   card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
-  metric_card:       'bg-base-200 rounded-xl p-6 flex flex-col gap-2 border border-base-300/40',
+  metric_card:       'bg-base-200 rounded-xl p-6 flex flex-col gap-1.5 border border-base-300/50 shadow-sm',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
   form:              'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5',
 
   // --- Interaction presets ---
   app_modal:         'bg-base-100 rounded-xl border border-base-300/40 shadow-2xl p-8 max-w-md mx-auto flex flex-col gap-5 ring-1 ring-base-300/20',
-  empty_state:       'bg-base-200/50 rounded-xl border border-dashed border-base-300/60 p-12 flex flex-col items-center justify-center text-center gap-4 min-h-[200px]',
-  app_list:          'bg-base-200 rounded-xl border border-base-300/40 overflow-hidden divide-y divide-base-300/40',
+  empty_state:       'bg-base-200/30 rounded-xl border-2 border-dashed border-base-300/40 p-12 flex flex-col items-center justify-center text-center gap-3 min-h-[180px]',
+  app_list:          'bg-base-200 rounded-xl border border-base-300/50 shadow-sm overflow-hidden divide-y divide-base-300/30',
 };
 
 // Legacy BUILTIN_STYLES array -- only used as fallback when user doesn't override.
