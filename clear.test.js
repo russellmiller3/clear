@@ -21,7 +21,7 @@ describe('Synonym Table', () => {
   });
 
   it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.12.0');
+    expect(SYNONYM_VERSION).toBe('0.13.0');
   });
 
   it('maps "create" to canonical "set"', () => {
@@ -11267,6 +11267,52 @@ describe('Chart syntax - parsing', () => {
     expect(ast.errors.length).toBeGreaterThan(0);
     expect(ast.errors[0].message).toContain('Unknown chart type');
   });
+
+  it('parses type-first chart syntax: bar chart Title showing data', () => {
+    const ast = parse("page 'App':\n  bar chart 'Revenue' showing sales");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.type).toBe(NodeType.CHART);
+    expect(chart.title).toBe('Revenue');
+    expect(chart.chartType).toBe('bar');
+    expect(chart.dataVar).toBe('sales');
+  });
+
+  it('parses type-first pie chart with by field', () => {
+    const ast = parse("page 'App':\n  pie chart 'Status' showing tasks by status");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.chartType).toBe('pie');
+    expect(chart.groupBy).toBe('status');
+  });
+
+  it('parses type-first line and area charts', () => {
+    const ast = parse("page 'App':\n  line chart 'Trend' showing data");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].body[0].chartType).toBe('line');
+
+    const ast2 = parse("page 'App':\n  area chart 'Trend' showing data");
+    expect(ast2.errors).toHaveLength(0);
+    expect(ast2.body[0].body[0].chartType).toBe('area');
+  });
+
+  it('parses title-first chart syntax: Title bar chart showing data', () => {
+    const ast = parse("page 'App':\n  'Revenue' bar chart showing sales");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.type).toBe(NodeType.CHART);
+    expect(chart.title).toBe('Revenue');
+    expect(chart.chartType).toBe('bar');
+    expect(chart.dataVar).toBe('sales');
+  });
+
+  it('parses title-first pie chart with by field', () => {
+    const ast = parse("page 'App':\n  'Status' pie chart showing tasks by status");
+    expect(ast.errors).toHaveLength(0);
+    const chart = ast.body[0].body[0];
+    expect(chart.chartType).toBe('pie');
+    expect(chart.groupBy).toBe('status');
+  });
 });
 
 describe('Chart syntax - compilation', () => {
@@ -11306,6 +11352,25 @@ page 'App' at '/':
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain("type: 'pie'");
     expect(result.javascript).toContain('_counts');
+  });
+
+  it('compiles bar chart with groupBy', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Tasks table:
+  title, required
+  project, required
+when user calls GET /api/tasks:
+  all_tasks = get all Tasks
+  send back all_tasks
+page 'App' at '/':
+  on page load get tasks from '/api/tasks'
+  bar chart 'By Project' showing tasks by project`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("type: 'bar'");
+    expect(result.javascript).toContain('_counts');
+    expect(result.javascript).toContain('Object.keys(_counts)');
   });
 
   it('does not include ECharts CDN when no chart nodes', () => {

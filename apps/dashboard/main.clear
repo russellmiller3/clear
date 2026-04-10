@@ -107,6 +107,6 @@ page 'ML Dashboard' at '/':
           get models from '/api/models'
           name is ''
 
-        chart 'Model Accuracy' as bar showing models
+        bar chart 'Model Accuracy' showing models
 
         display models as table showing name, accuracy, status with delete and edit

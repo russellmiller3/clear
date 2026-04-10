@@ -4926,6 +4926,9 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     lines.push(`    if (_chartEl && Array.isArray(_data) && _data.length > 0 && typeof echarts !== 'undefined') {`);
     lines.push(`      const _chart = echarts.getInstanceByDom(_chartEl) || echarts.init(_chartEl);`);
 
+    // TailAdmin-quality color palette
+    lines.push(`      const _colors = ['#465fff','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16'];`);
+
     if (chartType === 'pie') {
       if (groupBy) {
         // Group by field and count
@@ -4937,18 +4940,31 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         lines.push(`      const _sKeys = Object.keys(_data[0]).filter(k => k !== 'id');`);
         lines.push(`      const _pieData = _data.map(r => ({ name: String(r[_sKeys[0]] || ''), value: Number(r[_sKeys[1] || _sKeys[0]] || 0) }));`);
       }
-      lines.push(`      _chart.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: '65%', data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } } }] }, true);`);
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'item', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, series: [{ type: 'pie', radius: ['40%', '70%'], itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 }, label: { color: '#6b7280' }, data: _pieData, emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } } }] }, true);`);
     } else {
-      // line, bar, area — auto-detect x (first string field) and y (first number field)
+      // line, bar, area
       const seriesType = chartType === 'area' ? 'line' : chartType;
-      const areaStyle = chartType === 'area' ? ', areaStyle: {}' : '';
-      lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
-      lines.push(`      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];`);
-      lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
-      lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);`);
-      lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
-      lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}, smooth: true }));`);
-      lines.push(`      _chart.setOption({ tooltip: { trigger: 'axis' }, legend: _yKeys.length > 1 ? { data: _yKeys } : undefined, xAxis: { type: 'category', data: _xData }, yAxis: { type: 'value' }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true } }, true);`);
+      const areaStyle = chartType === 'area' ? ', areaStyle: { opacity: 0.15 }' : '';
+      const barStyle = chartType === 'bar' ? ', itemStyle: { borderRadius: [4, 4, 0, 0] }, barMaxWidth: 32' : '';
+
+      if (groupBy) {
+        // Group by field and count — produces category bar/line/area chart
+        lines.push(`      const _counts = {};`);
+        lines.push(`      _data.forEach(r => { const k = r.${sanitizeName(groupBy)} || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });`);
+        lines.push(`      const _xData = Object.keys(_counts);`);
+        lines.push(`      const _yData = Object.values(_counts);`);
+        lines.push(`      const _series = [{ name: '${sanitizeName(groupBy)}', type: '${seriesType}', data: _yData${areaStyle}${barStyle}, smooth: true }];`);
+      } else {
+        // Auto-detect x (first string field) and y (first number field)
+        lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
+        lines.push(`      const _xKey = _keys.find(k => typeof _data[0][k] === 'string') || _keys[0];`);
+        lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
+        lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);`);
+        lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
+        lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}${barStyle}, smooth: true }));`);
+      }
+
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: ${groupBy ? 'undefined' : "_yKeys.length > 1 ? { data: _yKeys, textStyle: { color: '#6b7280' } } : undefined"}, xAxis: { type: 'category', data: _xData, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true } }, true);`);
     }
 
     lines.push(`    }`);
@@ -5893,9 +5909,9 @@ ${options}
 
         case NodeType.CHART: {
           const chartId = node.ui.id;
-          parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden p-4" id="${chartId}">
-      <h3 class="text-sm font-semibold text-base-content mb-2">${node.title}</h3>
-      <div id="${chartId}_canvas" style="width:100%;height:320px;"></div>
+          parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-6 pt-5 pb-4" id="${chartId}">
+      <h3 class="text-base font-semibold text-base-content mb-4">${node.title}</h3>
+      <div id="${chartId}_canvas" style="width:100%;height:350px;"></div>
     </div>`);
           hasChart = true;
           break;
@@ -6081,7 +6097,20 @@ ${options}
               if (inSidebar) {
                 parts.push(`    <li><a class="clear-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
               } else if (inMetricCard) {
-                parts.push(`    <p class="text-sm font-medium text-base-content/50">${formatted}</p>`);
+                // Detect trend text: starts with +/- followed by number (e.g. "+3 this week", "-2% vs last month")
+                const trendMatch = formatted.match(/^([+\-−][\d.,]+%?\s*)/);
+                if (trendMatch) {
+                  const isPositive = formatted.startsWith('+');
+                  const trendColor = isPositive ? 'text-success' : 'text-error';
+                  const arrowSvg = isPositive
+                    ? '<svg class="inline w-3.5 h-3.5" fill="none" viewBox="0 0 14 14"><path d="M7 1.167v11.666M7 1.167L11.667 5.833M7 1.167L2.333 5.833" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+                    : '<svg class="inline w-3.5 h-3.5" fill="none" viewBox="0 0 14 14"><path d="M7 12.833V1.167M7 12.833L2.333 8.167M7 12.833l4.667-4.666" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                  const trendPart = trendMatch[1].trim();
+                  const restPart = formatted.slice(trendMatch[1].length);
+                  parts.push(`    <p class="text-sm font-medium text-base-content/50"><span class="${trendColor} font-semibold inline-flex items-center gap-0.5">${arrowSvg} ${trendPart}</span> ${restPart}</p>`);
+                } else {
+                  parts.push(`    <p class="text-sm font-medium text-base-content/50">${formatted}</p>`);
+                }
               } else if (inCta) {
                 parts.push(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
               } else if (inHero) {
@@ -7312,7 +7341,7 @@ const BUILTIN_PRESET_CLASSES = {
   app_layout:        'flex h-screen overflow-hidden',
   app_sidebar:       'w-64 shrink-0 flex flex-col bg-base-100 border-r border-base-300/50 overflow-hidden',
   app_main:          'flex-1 flex flex-col overflow-hidden min-w-0',
-  app_content:       'flex-1 overflow-y-auto bg-base-200/50 p-6 flex flex-col gap-6',
+  app_content:       'flex-1 overflow-y-auto bg-base-200/50 p-6 space-y-6',
   app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300/50 shrink-0',
   app_card:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
   app_table:         'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden',
@@ -7323,7 +7352,7 @@ const BUILTIN_PRESET_CLASSES = {
   section_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   card:              'bg-base-100 rounded-box p-6 flex flex-col gap-3',
   card_bordered:     'bg-base-100 border border-base-300/40 shadow-sm rounded-box p-6 flex flex-col gap-4',
-  metric_card:       'bg-base-100 rounded-xl p-6 flex flex-col gap-1.5 border border-base-300/40 shadow-sm',
+  metric_card:       'bg-base-100 rounded-xl p-6 flex flex-col gap-1.5 border border-base-300/40 shadow-sm hover:shadow-md hover:border-base-300/60 transition-all duration-200 cursor-default',
   code_box:          'bg-base-200 rounded-box border border-base-300 p-4 font-mono text-sm',
   form:              'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-8 max-w-lg mx-auto flex flex-col gap-5',
 

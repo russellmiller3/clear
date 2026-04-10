@@ -1534,15 +1534,28 @@ other. Zero security warnings is the bar for shipping.
 numbers, add a chart above it for visual context:
 
 ```
-chart 'Revenue Trend' as line showing sales
-chart 'Deals by Month' as bar showing sales
-chart 'Status Breakdown' as pie showing tasks by status
-chart 'Growth' as area showing monthly_data
+bar chart 'Revenue Trend' showing sales
+line chart 'Deals by Month' showing sales
+pie chart 'Status Breakdown' showing tasks by status
+area chart 'Growth' showing monthly_data
+bar chart 'Issues by Project' showing issues by project
 ```
 
 **Chart types:** `line` (trends over time), `bar` (comparisons), `pie` (proportions),
 `area` (cumulative trends). The compiler auto-detects x-axis (first string field)
-and y-axis (number fields). For pie charts, use `by field` to group and count.
+and y-axis (number fields).
+
+**groupBy (`by field`) works for all chart types**, not just pie. Use it whenever you
+want to group and count by a field:
+- `pie chart 'Status' showing tasks by status` -- pie slices per status
+- `bar chart 'By Project' showing issues by project` -- one bar per project
+
+**Three valid syntax forms** (all compile identically):
+1. **Type-first (canonical):** `bar chart 'Title' showing data`
+2. **Title-first:** `chart 'Title' as bar showing data`
+3. **Legacy:** `chart 'Title' as bar showing data` (same as #2, kept for compat)
+
+Always prefer the type-first canonical form in new code.
 
 **Always pair charts with seed data** so the chart has something to show on first load:
 
@@ -1558,7 +1571,7 @@ page 'Dashboard' at '/':
   on page load:
     send nothing to '/api/seed'
     get sales from '/api/sales'
-  chart 'Revenue' as bar showing sales
+  bar chart 'Revenue' showing sales
 ```
 
 ## Table Action Buttons

@@ -264,22 +264,37 @@ display contacts as table showing name, email with delete and edit
 ## Charts (ECharts)
 
 ```clear
-# Line chart — auto-detects x (string field) and y (number fields)
-chart 'Revenue' as line showing sales
+# Bar chart (canonical form — type first)
+bar chart 'Revenue' showing sales
 
-# Bar chart
-chart 'Sales by Region' as bar showing sales
+# Line chart
+line chart 'Trend' showing monthly_data
 
 # Area chart (line with fill)
-chart 'Trend' as area showing monthly_data
+area chart 'Growth' showing quarterly_data
 
 # Pie chart — groups by field and counts
-chart 'Status Breakdown' as pie showing tasks by status
+pie chart 'Status Breakdown' showing tasks by status
+
+# Bar chart with groupBy — groups by field and counts
+bar chart 'Issues by Project' showing issues by project
+
+# Title-first form (also valid)
+'Revenue' bar chart showing sales
+
+# Legacy form (still works)
+chart 'Revenue' as bar showing sales
 ```
+
+**Three valid forms** (all equivalent):
+1. **Type-first (canonical):** `bar chart 'Title' showing data`
+2. **Title-first:** `'Title' bar chart showing data`
+3. **Legacy:** `chart 'Title' as bar showing data`
 
 Chart types: `line`, `bar`, `pie`, `area`. Data comes from a state variable (array of objects).
 For line/bar/area, the compiler auto-detects x-axis (first string field) and y-axis (number fields).
-For pie, use `by <field>` to group and count. ECharts CDN is only included when charts are used.
+**groupBy works for all chart types** — add `by <field>` to group and count occurrences per unique value.
+ECharts CDN is only included when charts are used.
 
 ## Reactive Input Handlers
 

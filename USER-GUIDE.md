@@ -762,6 +762,78 @@ secret is env('STRIPE_SECRET')
 
 ---
 
+## Chapter 13b: Charts (Visualizing Your Data)
+
+Clear includes built-in charts powered by ECharts. No setup needed — the CDN
+loads automatically when your app has a chart.
+
+### Bar Chart
+
+```clear
+bar chart 'Revenue by Region' showing sales
+```
+
+The chart auto-detects: first string field becomes x-axis labels, number fields
+become y-axis values. Multiple number fields create multiple series with a legend.
+
+### Line and Area Charts
+
+```clear
+line chart 'Monthly Trend' showing monthly_data
+area chart 'Growth Over Time' showing quarterly_data
+```
+
+### Pie Chart with Grouping
+
+Use `by field` to group your data and count occurrences:
+
+```clear
+pie chart 'Issues by Status' showing issues by status
+```
+
+This counts how many issues have each status value and renders a donut chart.
+
+### Bar Chart with Grouping
+
+`by field` works on all chart types, not just pie:
+
+```clear
+bar chart 'Issues by Project' showing issues by project
+```
+
+This groups all issues by their `project` field, counts each group, and renders
+a bar chart with project names on x-axis and counts on y-axis.
+
+### Putting It Together
+
+Here's a dashboard with stat cards and charts:
+
+```clear
+section 'Stats' as 4 columns:
+  section 'Open' with style metric_card:
+    small text 'Open Issues'
+    heading '12'
+    text '+3 this week'
+
+bar chart 'Weekly Trends' showing weekly_data
+pie chart 'By Priority' showing issues by priority
+```
+
+The `+3` in the stat card automatically renders in green with an up-arrow icon.
+Text starting with `-` renders in red with a down-arrow. Zero extra syntax needed.
+
+### Alternate Syntax
+
+You can also write the title first:
+
+```clear
+'Revenue' bar chart showing sales
+```
+
+Both forms compile to the same thing. Use whichever reads better to you.
+
+---
+
 ## Chapter 14: Error Handling (Because Things Go Wrong)
 
 The internet is unreliable. APIs go down. Databases hiccup. Users type nonsense

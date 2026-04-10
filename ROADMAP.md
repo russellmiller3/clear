@@ -23,10 +23,24 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2, Pareto 20, IDE Chat v2 -- All Complete)
+## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2, Pareto 20, IDE Chat v2, ECharts Analytics -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1490 tests, all passing (7 pre-existing failures in component composition).
+1496 tests, all passing (7 pre-existing failures in component composition).
+
+### ECharts Analytics Dashboard (Apr 2026)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Chart syntax upgrade | Done | `bar chart 'Title' showing data` — type-first canonical form for all chart types |
+| Chart groupBy for all types | Done | groupBy support for bar/line/area charts, not just pie |
+| ECharts config upgrade | Done | TailAdmin-quality colors, rounded bars, donut pies, polished tooltips |
+| metric_card trend indicators | Done | Auto-detect +/- text, colored green/red with arrow SVGs |
+| metric_card hover effect | Done | shadow-md + border transition on hover |
+| Chart card styling | Done | Better padding, title sizing for chart containers |
+| app_content fix | Done | space-y-6 prevents flex child collapsing |
+| Removed 'area' synonym | Done | Freed 'area' from section synonym for area chart syntax |
+| Synonym version bump | Done | Bumped to 0.13.0 |
+| project-tracker reference app | Done | 3 ECharts (bar trends, bar by-project, pie by-priority), 4 stat cards with trend indicators |
 
 ### Pareto 20 Preset Upgrade (Apr 2026)
 | Feature | Status | Description |

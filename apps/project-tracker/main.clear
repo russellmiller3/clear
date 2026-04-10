@@ -12,6 +12,11 @@ create a Projects table:
   status, default 'active'
   color, default 'blue'
 
+create a WeeklyStats table:
+  week, required
+  opened (number), default 0
+  closed (number), default 0
+
 create an Issues table:
   title, required
   project, required
@@ -50,6 +55,10 @@ when user calls DELETE /api/issues/:id:
   requires auth
   delete the Issue with this id
   send back 'deleted'
+
+when user calls GET /api/weekly-stats:
+  all_weeks = get all WeeklyStats
+  send back all_weeks
 
 when user calls POST /api/seed:
   create i1:
@@ -122,6 +131,26 @@ when user calls POST /api/seed:
     priority is 'medium'
     status is 'open'
   save i10 as new Issue
+  create w1:
+    week is 'Week 1'
+    opened = 8
+    closed = 5
+  save w1 as new WeeklyStats
+  create w2:
+    week is 'Week 2'
+    opened = 12
+    closed = 9
+  save w2 as new WeeklyStats
+  create w3:
+    week is 'Week 3'
+    opened = 6
+    closed = 10
+  save w3 as new WeeklyStats
+  create w4:
+    week is 'Week 4'
+    opened = 15
+    closed = 11
+  save w4 as new WeeklyStats
   send back 'seeded'
 
 # ── Frontend ──────────────────────────────────────────────────────────────────
@@ -129,10 +158,12 @@ when user calls POST /api/seed:
 page 'Project Tracker' at '/':
 
   all_issues = []
+  weekly_stats = []
 
   on page load:
     send nothing to '/api/seed'
     get all_issues from '/api/issues'
+    get weekly_stats from '/api/weekly-stats'
 
   section 'App' with style app_layout:
 
@@ -167,21 +198,27 @@ page 'Project Tracker' at '/':
 
         section 'Stats Row' as 4 columns:
           section 'Open' with style metric_card:
-            small text 'Open'
+            small text 'Open Issues'
             heading '12'
             text '+3 this week'
           section 'In Progress' with style metric_card:
             small text 'In Progress'
             heading '5'
-            text '2 assigned to you'
+            text '+2 since yesterday'
           section 'Done' with style metric_card:
-            small text 'Done'
+            small text 'Resolved'
             heading '23'
             text '+8 vs last week'
-          section 'Team' with style metric_card:
-            small text 'Team'
-            heading '8'
-            text '6 active today'
+          section 'Overdue' with style metric_card:
+            small text 'Overdue'
+            heading '3'
+            text '-2 vs last week'
+
+        bar chart 'Weekly Issue Trends' showing weekly_stats
+
+        section 'Charts Row' as 2 columns:
+          bar chart 'Issues by Project' showing all_issues by project
+          pie chart 'Issues by Priority' showing all_issues by priority
 
         section 'Issues Table' with style app_table:
           display all_issues as table showing title, project, assignee, priority, status with delete
