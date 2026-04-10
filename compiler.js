@@ -5557,7 +5557,7 @@ function buildHTML(body) {
                 });
                 parts.push(`      </div>`);
               } else if (sn === 'stats_row') {
-                parts.push(`      <div class="max-w-5xl mx-auto flex flex-wrap items-start justify-center gap-12 md:gap-20">`);
+                parts.push(`      <div class="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">`);
                 walk(cardNodes);
                 parts.push(`      </div>`);
               } else if (sn === 'pricing_grid' || sn === 'pricing_grid_dark') {
@@ -5864,6 +5864,7 @@ ${options}
             'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
           ].includes(parentPreset);
           const inLargeCard = parentPreset === 'feature_card_large';
+          const inTestimonialCard = parentPreset === 'testimonial_card';
           const inPricingCard = parentPreset === 'pricing_card';
           const inFeaturedPricing = parentPreset === 'pricing_card_featured';
           const inStatItem = parentPreset === 'stat_item';
@@ -5891,11 +5892,13 @@ ${options}
               } else if (inSidebar) {
                 parts.push(`    <div class="px-5 py-4 border-b border-base-300 shrink-0"><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
               } else if (inStatItem) {
-                parts.push(`    <p class="text-4xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
+                parts.push(`    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
               } else if (inFeaturedPricing) {
                 parts.push(`    <h3 class="text-xl font-bold text-primary-content">${formatted}</h3>`);
               } else if (inPricingCard) {
                 parts.push(`    <h3 class="text-xl font-bold text-base-content">${formatted}</h3>`);
+              } else if (inTestimonialCard) {
+                parts.push(`    <h3 class="text-sm font-semibold text-base-content leading-snug">${formatted}</h3>`);
               } else if (inLandingCard) {
                 const tc = inDarkCard ? 'text-white' : inLargeCard ? 'text-primary-content' : 'text-base-content';
                 parts.push(`    <h3 class="text-lg font-bold ${tc} leading-snug">${formatted}</h3>`);
@@ -5903,7 +5906,7 @@ ${options}
                 parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
               } else if (inPageSection) {
                 const textColor = inDarkSection ? 'text-neutral-content' : 'text-base-content';
-                parts.push(`    <h2 class="font-display text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
+                parts.push(`    <h2 class="font-display text-3xl lg:text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
               } else {
                 parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
               }
@@ -5917,6 +5920,8 @@ ${options}
                 parts.push(`    <p class="text-3xl font-bold text-primary">${formatted}</p>`);
               } else if (inFeaturedPricing) {
                 parts.push(`    <p class="text-3xl font-bold text-primary-content">${formatted}</p>`);
+              } else if (inTestimonialCard) {
+                parts.push(`    <p class="text-sm text-base-content/60 leading-relaxed">${formatted}</p>`);
               } else if (inLandingCard) {
                 const tc = inDarkCard ? 'text-white/70' : inLargeCard ? 'text-primary-content/70' : 'text-base-content/60';
                 parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
@@ -5948,7 +5953,7 @@ ${options}
               } else if (inHero) {
                 parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl ${inHeroLeft ? 'text-left' : 'text-center mx-auto'}">${formatted}</p>`);
               } else if (inStatItem) {
-                parts.push(`    <p class="text-sm text-base-content/50 mt-1">${formatted}</p>`);
+                parts.push(`    <p class="text-sm font-medium text-base-content/50 uppercase tracking-wider">${formatted}</p>`);
               } else if (inLogoItem) {
                 parts.push(`    <span class="text-sm font-semibold text-base-content/30 tracking-widest uppercase">${formatted}</span>`);
               } else if (inFeaturedPricing) {
@@ -5960,9 +5965,9 @@ ${options}
                 const tc = inDarkCard ? 'text-white/80' : inLargeCard ? 'text-primary-content/80' : 'text-base-content/60';
                 parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
               } else if (inDarkSection) {
-                parts.push(`    <p class="text-base text-neutral-content/70 leading-relaxed mb-3">${formatted}</p>`);
+                parts.push(`    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               } else if (inPageSection) {
-                parts.push(`    <p class="text-base text-base-content/70 leading-relaxed mb-3">${formatted}</p>`);
+                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               } else if (inCard) {
                 parts.push(`    <p class="text-sm text-base-content/80 leading-relaxed">${formatted}</p>`);
               } else {
@@ -5980,8 +5985,10 @@ ${options}
                 parts.push(`    <span class="badge badge-ghost badge-sm font-mono">${formatted}</span>`);
               } else if (inHero) {
                 parts.push(`    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase border border-primary/30 text-primary" style="background:oklch(from var(--color-primary) l c h / 0.08)">${formatted}</span>`);
+              } else if (inTestimonialCard) {
+                // testimonial_card: role + company attribution — muted meta text
+                parts.push(`    <span class="text-sm text-base-content/60 leading-snug">${formatted}</span>`);
               } else if (inLandingCard) {
-                // testimonial_card: role + company attribution
                 parts.push(`    <span class="text-xs text-base-content/40 leading-snug">${formatted}</span>`);
               } else if (inLogoItem) {
                 parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/20">${formatted}</span>`);
@@ -7128,19 +7135,19 @@ const BUILTIN_PRESET_CLASSES = {
   feature_split_dark:     'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
   feature_spotlight:      'bg-base-200/40 py-20 px-6',
   feature_spotlight_dark: 'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
-  feature_grid:           'bg-base-100 py-16 px-6',
-  feature_grid_dark:      'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
-  stats_row:              'bg-base-200 py-14 px-6',
+  feature_grid:           'bg-base-100 py-16 lg:py-24 px-6',
+  feature_grid_dark:      'bg-neutral text-neutral-content py-16 lg:py-24 px-6 border-y border-base-content/8',
+  stats_row:              'bg-base-200 py-14 lg:py-20 px-6',
   pricing_grid:           'bg-base-200 py-20 px-6',
   pricing_grid_dark:      'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
-  testimonial_grid:       'bg-base-200/50 py-16 px-6',
-  testimonial_grid_dark:  'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
+  testimonial_grid:       'bg-base-200/50 py-16 lg:py-24 px-6',
+  testimonial_grid_dark:  'bg-neutral text-neutral-content py-16 lg:py-24 px-6 border-y border-base-content/8',
 
   // --- v2 card presets ---
-  feature_card:           'bg-base-100 rounded-2xl p-7 flex flex-col gap-3 border border-base-300/60 hover:border-primary/40 hover:shadow-md transition-all',
+  feature_card:           'bg-base-100 rounded-2xl p-7 flex flex-col gap-3 border border-base-300/60 hover:border-primary/40 hover:shadow-md transition-all group',
   feature_card_dark:      'bg-white/5 rounded-2xl p-7 flex flex-col gap-3 border border-white/10 hover:border-primary/40 transition-colors',
   // feature_card_large: bold primary bg — the "hero card" in the asymmetric split (Clay-style)
-  feature_card_large:     'bg-primary text-primary-content rounded-2xl p-10 flex flex-col gap-5 shadow-xl',
+  feature_card_large:     'bg-primary text-primary-content rounded-2xl p-10 flex flex-col gap-5 shadow-xl min-h-[280px]',
   // Colored accent cards for bento grids (Clay/Notion style)
   feature_card_teal:      'bg-teal-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
   feature_card_purple:    'bg-violet-600 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
@@ -7150,8 +7157,8 @@ const BUILTIN_PRESET_CLASSES = {
   feature_card_amber:     'bg-amber-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
   pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm',
   pricing_card_featured:  'bg-primary rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1',
-  testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/40 shadow-sm',
-  stat_item:              'flex flex-col items-center text-center gap-1 min-w-[140px]',
+  testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/40 shadow-sm relative',
+  stat_item:              'flex flex-col items-center text-center gap-2',
   logo_item:              'flex items-center justify-center opacity-40 hover:opacity-70 transition-opacity grayscale',
 
   // --- App/dashboard presets ---
