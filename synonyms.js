@@ -181,6 +181,7 @@ const SYNONYM_TABLE = Object.freeze({
   badge_text: Object.freeze(['badge', 'status badge', 'chip']),
   link: Object.freeze(['link', 'hyperlink']),
   divider: Object.freeze(['divider', 'separator', 'horizontal rule']),
+  image: Object.freeze(['image']),
   code_block: Object.freeze(['code block', 'code example']),
   // NOTE: "display" is shared between show (synonym) and Phase 4 display.
   // The parser checks context: "display X as Y called Z" → Phase 4 DISPLAY node.

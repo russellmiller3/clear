@@ -27,6 +27,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 16: Landing Pages v2](#session-16-landing-pages-v2-2026-04-10) | `inLandingCard` array must include ALL card variants, `bg-primary/8` opacity fails with DaisyUI CSS vars, `oklch(from var(...))` inline style workaround, dark page screenshots timeout |
 | [Session 17: Pareto 20 + IDE Chat v2](#session-17-pareto-20--ide-chat-v2-2026-04-10) | Context array checklist is MANDATORY for new presets, historyKeymap extraction for undo, Array.isArray guard for image+text messages, SVG sanitization strips scripts |
 | [Session 18: ECharts Analytics Dashboard + Chart Syntax Upgrade](#session-18-echarts-analytics-dashboard--chart-syntax-upgrade-2026-04-10) | overflow-hidden collapses flex children, flex-col vs space-y-6 for scrollable content, ECharts init needs visible container, chart groupBy for all types, type-first chart syntax, removing `area` synonym from section, metric_card trend detection |
+| [Session 19: Tests, Charts, Blog, Images](#session-19-tests-charts-blog-images-2026-04-10) | Component test fixes (4 distinct bugs), `photo`/`picture` synonym collisions, image element `ui` object shape, seed auto-dedup at compiler level, `db.findAll()` not `db.getAll()`, chart subtitle/stacked modifiers |
 
 ---
 
@@ -506,3 +507,35 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Text starting with `+` or `-` followed by a number in metric_card is auto-detected and rendered with colored (green/red) text plus arrow SVG icons.** Pattern: `/^([+\-−][\d.,]+%?\s*)/`.
 - **This gives TailAdmin-quality stat cards with zero extra syntax.** The user writes `'+12.5% from last month'` and gets a green up-arrow with colored text automatically.
 - **The `−` (U+2212 minus sign) is included in the regex** alongside `-` (U+002D hyphen-minus) because some users copy-paste from formatted text.
+
+---
+
+## Session 19: Tests, Charts, Blog, Images (2026-04-10)
+
+### Component Composition Test Fixes (4 Bugs → 7 Failures)
+- **`isReactiveApp()` didn't detect component usage.** COMPONENT_USE and uppercase SHOW+CALL (`show Card('x')`) need to trigger reactive path, or `_recompute` never emits. Fix: added both checks.
+- **Lowercase function calls got component containers.** `show double(5)` incorrectly rendered `<div class="clear-component">`. Fix: `/^[A-Z]/` guard on SHOW+CALL.
+- **Component functions emitted inside `_recompute`.** COMPONENT_DEF and FUNCTION_DEF need to be hoisted before the `_recompute()` function body. Fix: separate hoisting pass.
+- **COMPONENT_USE children lost.** Block-form component code used `node.body` but children are on `node.children`. Fix: use `node.children` + build HTML string from children.
+- **`heading title` in component tests.** Parser rejects bare identifiers after `heading`. Changed tests to `show title` / `show name`.
+
+### Image Element — New Content Type
+- **`image` is the only synonym.** Adding `photo` or `picture` broke file input tests (`'Photo' is a file input saved as a photo`). Synonym collisions are insidious — always grep test suite.
+- **Token `40px` tokenizes as NUMBER(40) + IDENTIFIER(px).** Not a single token. Parser must consume two tokens and concatenate.
+- **`String.match()` crashes on number token values.** Token `.value` is a JS number for NUMBER tokens. Always `String(t.value)` before string methods.
+- **Image `ui` object must use `{ contentType: 'image', text: url }`** — not `{ tag: 'image', src: url }`. The buildHTML switch dispatches on `node.ui.contentType`.
+
+### Seed Auto-Dedup at Compiler Level
+- **`guard existing is empty` doesn't work.** `empty` is synonym for `nothing` (null), but `db.findAll()` returns `[]` (truthy empty array). Can't express array-empty check in Clear syntax yet.
+- **`db.getAll()` doesn't exist.** Runtime method is `db.findAll()`. Always check runtime API.
+- **SQLite file persists across server restarts.** `clear-data.db` accumulates seed data on every page load. Fix: compiler auto-injects findAll check at top of seed endpoints.
+
+### Chart Subtitle & Stacked Modifiers
+- **Subtitle parsed after title, before `showing`.** `bar chart 'Title' subtitle 'Description' showing data`.
+- **Stacked parsed after groupBy.** `showing data by field stacked` → `stack: 'total'` on all ECharts series.
+- **Both are optional keyword modifiers** — no synonym registration needed, just positional parsing in `parseChartRemainder`.
+
+### Blog Presets
+- **Three new presets:** `blog_grid` (card listing), `blog_card` (post card), `blog_article` (Medium-style single post).
+- **Blog article uses `max-w-3xl mx-auto`** for comfortable reading width.
+- **Blog cards use `hover:-translate-y-0.5 transition-all`** for subtle lift effect.

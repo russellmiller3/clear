@@ -23,10 +23,23 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2, Pareto 20, IDE Chat v2, ECharts Analytics -- All Complete)
+## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2, Pareto 20, IDE Chat v2, ECharts Analytics, Tests/Charts/Blog -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1496 tests, all passing (7 pre-existing failures in component composition).
+1511 tests, all passing.
+
+### Tests, Charts, Blog & Images (Apr 2026)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Component composition test fixes | Done | Fixed 7 pre-existing test failures — 4 distinct bugs (reactive detection, hoisting, children, lowercase guard) |
+| Chart subtitle modifier | Done | `bar chart 'Title' subtitle 'Description' showing data` |
+| Chart stacked modifier | Done | `showing data stacked` → ECharts `stack: 'total'` on all series |
+| Image content element | Done | `image 'url'` with optional `rounded`, `Npx wide`, `Npx tall` modifiers |
+| Blog grid preset | Done | `blog_grid` + `blog_card` — 3-column responsive blog listing |
+| Blog article preset | Done | `blog_article` — Medium-style single post layout (max-w-3xl centered) |
+| Seed auto-dedup | Done | Compiler auto-injects findAll check at top of seed endpoints |
+| Trend alignment fix | Done | Metric card trend text uses flex alignment for SVG + text baseline |
+| Blog demo apps | Done | `apps/blog-landing` (card grid) + `apps/blog-article` (single post) |
 
 ### ECharts Analytics Dashboard (Apr 2026)
 | Feature | Status | Description |

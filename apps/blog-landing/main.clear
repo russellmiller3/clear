@@ -1,0 +1,59 @@
+# Blog Landing — grid of blog post cards (Tailwind UI blog-sections style)
+build for web
+
+theme 'ivory'
+
+page 'Blog':
+
+  section 'Nav' with style page_navbar:
+    text 'Acme Blog'
+    text 'Articles'
+    text 'Tutorials'
+    text 'Podcast'
+    text 'Newsletter'
+
+  section 'Hero' with style page_section:
+    section 'Header' centered, max 2xl:
+      heading 'From the blog'
+      text 'Learn how to grow your business with our expert advice.'
+
+    section 'Posts' as 3 columns, max 6xl, centered:
+
+      section 'Post 1' with style blog_card:
+        image 'https://images.unsplash.com/photo-1496128858413-b36217c2ce36?w=600&h=340&fit=crop'
+        section 'Body' padded:
+          badge 'Article' as info
+          subheading 'Boost your conversion rate'
+          text 'Learn the best practices for improving your site conversion rates with proven strategies.'
+          section 'Author' side by side, gap 3:
+            image 'https://randomuser.me/api/portraits/women/44.jpg' rounded, 40px wide, 40px tall
+            section 'Info':
+              small text 'Lindsay Walton'
+              small text 'Mar 16, 2026'
+
+      section 'Post 2' with style blog_card:
+        image 'https://images.unsplash.com/photo-1547586696-ea22b4d4235d?w=600&h=340&fit=crop'
+        section 'Body' padded:
+          badge 'Tutorial' as success
+          subheading 'How to use search engine optimization'
+          text 'A deep dive into modern SEO techniques that actually work in 2026.'
+          section 'Author' side by side, gap 3:
+            image 'https://randomuser.me/api/portraits/men/32.jpg' rounded, 40px wide, 40px tall
+            section 'Info':
+              small text 'Tom Cook'
+              small text 'Feb 12, 2026'
+
+      section 'Post 3' with style blog_card:
+        image 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?w=600&h=340&fit=crop'
+        section 'Body' padded:
+          badge 'Case Study' as neutral
+          subheading 'Improve your customer experience'
+          text 'Real results from companies that invested in customer experience design.'
+          section 'Author' side by side, gap 3:
+            image 'https://randomuser.me/api/portraits/women/68.jpg' rounded, 40px wide, 40px tall
+            section 'Info':
+              small text 'Dries Vincent'
+              small text 'Jan 29, 2026'
+
+  section 'Footer' with style page_footer:
+    text '© 2026 Acme Blog. All rights reserved.'

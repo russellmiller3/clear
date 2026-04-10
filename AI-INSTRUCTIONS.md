@@ -524,6 +524,8 @@ show text 'Hello world'
 show bold text 'Important'
 show divider
 show code block 'price = 100'
+image 'https://example.com/photo.jpg'
+image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
 ```
 
 Dynamic values (no quotes):
@@ -829,6 +831,14 @@ writing a custom style block.
 | `empty_state` | bg-base-200/50, dashed border, p-12, centered, min-h-200 | "No items yet" placeholder |
 | `app_list` | bg-base-200, rounded-xl, border, divide-y | Stacked list items |
 | `form` | bg-base-100, rounded-xl, border, shadow-sm, p-8, max-w-lg, centered | Standalone form card |
+
+#### Blog Presets (3)
+
+| Preset | What it does | Use for |
+|--------|-------------|---------|
+| `blog_grid` | bg-base-100, py-16/24, 3-column grid | Blog listing page |
+| `blog_card` | Rounded, border, shadow, hover lift effect | Individual post card |
+| `blog_article` | bg-base-100, py-16, max-w-3xl, mx-auto | Single article (Medium-style) |
 
 ### Layout Diagrams
 
@@ -1556,6 +1566,11 @@ want to group and count by a field:
 3. **Legacy:** `chart 'Title' as bar showing data` (same as #2, kept for compat)
 
 Always prefer the type-first canonical form in new code.
+
+**Chart modifiers:**
+- **Subtitle:** `bar chart 'Title' subtitle 'Description' showing data` — adds small text below chart title
+- **Stacked:** `bar chart 'Title' showing data stacked` — stacks bar series on top of each other
+- Both are optional and can be combined: `bar chart 'Trends' subtitle 'Last 4 weeks' showing data stacked`
 
 **Always pair charts with seed data** so the chart has something to show on first load:
 

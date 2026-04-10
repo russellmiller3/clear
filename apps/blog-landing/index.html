@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(94% 0.008 240);
+  --color-base-300: oklch(88% 0.01 240);
+  --color-base-content: oklch(14% 0.02 255);
+  --color-primary: oklch(52% 0.22 258);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(55% 0.15 200);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(60% 0.18 25);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(25% 0.01 255);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-info: oklch(55% 0.18 245);
+  --color-info-content: oklch(98% 0.005 245);
+  --color-success: oklch(50% 0.17 150);
+  --color-success-content: oklch(98% 0.005 150);
+  --color-warning: oklch(65% 0.15 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(55% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+  --radius-box: 0.625rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}
+
+.clear-section { padding: 1.5rem; }
+.clear-section-card {
+  margin-bottom: 2rem;
+  background: oklch(var(--b2)); border: 1px solid oklch(var(--b3) / 0.5);
+  border-radius: 0.75rem; padding: 1.5rem;
+}
+
+
+
+/* --- Inline Layout --- */
+.section-header { max-width: 800px; margin-left: auto; margin-right: auto; }
+.section-posts { max-width: 800px; margin-left: auto; margin-right: auto; }
+.section-body { padding: 1.5rem; }
+.section-author { display: flex; flex-direction: row; }
+.section-body { padding: 1.5rem; }
+.section-author { display: flex; flex-direction: row; }
+.section-body { padding: 1.5rem; }
+.section-author { display: flex; flex-direction: row; }</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="h-screen">
+    <nav class="sticky top-0 z-50 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0">
+      <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-8">
+          <div class="hidden md:flex items-center gap-6">
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="#">Acme Blog</a>
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="#">Articles</a>
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="#">Tutorials</a>
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="#">Podcast</a>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <label for="nav-drawer" class="btn btn-ghost btn-sm btn-square md:hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></label>
+          <a class="btn btn-primary btn-sm" href="#">Newsletter</a>
+        </div>
+      </div>
+    </nav>
+    <input id="nav-drawer" type="checkbox" class="hidden peer">
+    <div class="fixed inset-0 z-40 bg-base-100 flex flex-col p-6 pt-20 gap-4 peer-checked:flex hidden md:hidden">
+      <label for="nav-drawer" class="absolute top-4 right-4 btn btn-ghost btn-sm btn-square"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></label>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="#">Acme Blog</a>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="#">Articles</a>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="#">Tutorials</a>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="#">Podcast</a>
+    </div>
+    <div class="bg-base-100 py-16 px-6">
+      <div class="max-w-4xl mx-auto">
+    <div class="section-header">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-base-content tracking-tight mb-4">From the blog</h2>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">Learn how to grow your business with our expert advice.</p>
+    </div>
+    <div class="section-posts grid grid-cols-3 gap-5">
+    <div class="bg-base-100 rounded-2xl overflow-hidden border border-base-300/40 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col group">
+      <div class="max-w-4xl mx-auto">
+    <img src="https://images.unsplash.com/photo-1496128858413-b36217c2ce36?w=600&h=340&fit=crop" alt="" class=" w-full rounded-lg" loading="lazy" />
+    <div class="section-body">
+    <span class="badge badge-info badge-sm font-medium">Article</span>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Boost your conversion rate</h2>
+    <p class="text-sm font-medium text-base-content/90 leading-snug">Learn the best practices for improving your site conversion rates with proven strategies.</p>
+    <div class="section-author">
+    <img src="https://randomuser.me/api/portraits/women/44.jpg" alt="" width="40px" height="40px" class=" rounded-full object-cover" loading="lazy" />
+    <div class="clear-section">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">Lindsay Walton</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">Mar 16, 2026</span>
+    </div>
+    </div>
+    </div>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-2xl overflow-hidden border border-base-300/40 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col group">
+      <div class="max-w-4xl mx-auto">
+    <img src="https://images.unsplash.com/photo-1547586696-ea22b4d4235d?w=600&h=340&fit=crop" alt="" class=" w-full rounded-lg" loading="lazy" />
+    <div class="section-body">
+    <span class="badge badge-success badge-sm font-medium">Tutorial</span>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">How to use search engine optimization</h2>
+    <p class="text-sm font-medium text-base-content/90 leading-snug">A deep dive into modern SEO techniques that actually work in 2026.</p>
+    <div class="section-author">
+    <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="" width="40px" height="40px" class=" rounded-full object-cover" loading="lazy" />
+    <div class="clear-section">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">Tom Cook</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">Feb 12, 2026</span>
+    </div>
+    </div>
+    </div>
+      </div>
+    </div>
+    <div class="bg-base-100 rounded-2xl overflow-hidden border border-base-300/40 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col group">
+      <div class="max-w-4xl mx-auto">
+    <img src="https://images.unsplash.com/photo-1492724441997-5dc865305da7?w=600&h=340&fit=crop" alt="" class=" w-full rounded-lg" loading="lazy" />
+    <div class="section-body">
+    <span class="badge badge-neutral badge-sm font-medium">Case Study</span>
+    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">Improve your customer experience</h2>
+    <p class="text-sm font-medium text-base-content/90 leading-snug">Real results from companies that invested in customer experience design.</p>
+    <div class="section-author">
+    <img src="https://randomuser.me/api/portraits/women/68.jpg" alt="" width="40px" height="40px" class=" rounded-full object-cover" loading="lazy" />
+    <div class="clear-section">
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">Dries Vincent</span>
+    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">Jan 29, 2026</span>
+    </div>
+    </div>
+    </div>
+      </div>
+    </div>
+    </div>
+      </div>
+    </div>
+    <div class="bg-base-200 border-t border-base-300/40 py-12 lg:py-16 px-6">
+      <div class="max-w-6xl mx-auto">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+        </div>
+        <div class="border-t border-base-300/40 mt-8 pt-6 text-center">
+          <p class="text-sm text-base-content/40">© 2026 Acme Blog. All rights reserved.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ PAGES:
+   'Blog' at / (line 6) -->
+  <script>
+// Generated by Clear v1.0
+// ┌─────────────────────────────────────────────┐
+// │         CLEAR APP — Architecture            │
+// └─────────────────────────────────────────────┘
+//
+// PAGES:
+//   'Blog' at / (line 6)
+//
+
+
+// Blog Landing — grid of blog post cards (Tailwind UI blog-sections style)
+// Page: Blog
+document.title = "Blog";
+
+
+  </script>
+
+</body>
+</html>

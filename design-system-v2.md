@@ -1081,6 +1081,43 @@ page 'Dashboard' at '/':
 <span class="badge badge-outline badge-sm text-success border-success">Verified</span>
 ```
 
+### 4h. Images
+
+```html
+<!-- Full-width responsive image -->
+<img src="https://example.com/hero.jpg" alt="" class="w-full rounded-lg" loading="lazy" />
+
+<!-- Avatar (circular, fixed size) -->
+<img src="https://example.com/avatar.jpg" alt="" width="64" height="64" class="rounded-full object-cover" loading="lazy" />
+```
+
+### 4i. Blog Layouts
+
+```html
+<!-- Blog grid (3-column card listing) -->
+<section class="bg-base-100 py-16 lg:py-24 px-6">
+  <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+    <!-- blog_card -->
+    <div class="bg-base-100 rounded-2xl overflow-hidden border border-base-300/40 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col group">
+      <img src="..." alt="" class="w-full rounded-lg" loading="lazy" />
+      <div class="p-6 flex flex-col flex-1">
+        <span class="badge badge-info badge-sm">Category</span>
+        <h3 class="text-lg font-semibold mt-3">Post Title</h3>
+        <p class="text-sm text-base-content/60 mt-2">Excerpt...</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Blog article (Medium-style single post) -->
+<section class="bg-base-100 py-16 px-6 max-w-3xl mx-auto">
+  <span class="badge badge-info badge-sm">Category</span>
+  <h1 class="text-3xl font-bold mt-4">Article Title</h1>
+  <p class="text-base text-base-content/80 leading-relaxed mt-6">Paragraph text...</p>
+  <h2 class="text-xl font-semibold mt-8">Subheading</h2>
+</section>
+```
+
 ---
 
 ## 5. ECharts Integration

@@ -1554,6 +1554,11 @@ function compileContentToHTML(node, ctx) {
   };
   const tag = tagMap[node.contentType] || 'p';
 
+  if (node.contentType === 'image') {
+    const src = (node.text || '').replace(/'/g, "\\'");
+    return `${pad}_html += '<img src="${src}" alt="" class="w-full rounded-lg" loading="lazy" />';`;
+  }
+
   if (node.contentType === 'divider') {
     return `${pad}_html += '<hr class="divider clear-divider">';`;
   }
@@ -4577,7 +4582,9 @@ function compileToJS(body, errors, sourceMap = false) {
 function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
-      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE) return true;
+      if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE) return true;
+      // Inline component call: show Card(name) — needs reactive path for DOM injection
+      if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL && /^[A-Z]/.test(node.expression.name)) return true;
       if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
       // A table display requires _recompute() to render rows into the DOM.
       if (node.type === NodeType.DISPLAY && node.format === 'table') return true;
@@ -4746,6 +4753,18 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   if (stateEntries) lines.push(stateEntries);
   lines.push(`};`);
 
+  // 3b. Hoist component and function definitions before _recompute
+  const hoistTypes = new Set([NodeType.COMPONENT_DEF, NodeType.FUNCTION_DEF]);
+  const hoistNodes = filteredCompute.filter(n => hoistTypes.has(n.type));
+  if (hoistNodes.length > 0) {
+    lines.push('');
+    const hoistCtx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'web', sourceMap };
+    for (const node of hoistNodes) {
+      const result = compileNode(node, hoistCtx);
+      if (result !== null) lines.push(result);
+    }
+  }
+
   // 4. Recompute function
   lines.push('');
   lines.push('// --- Recompute derived values and update displays ---');
@@ -4811,13 +4830,35 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       continue;
     }
     // SHOW with function call in reactive mode: render component to DOM
-    if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL) {
+    // Only uppercase names are components — lowercase are regular function calls
+    if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL && /^[A-Z]/.test(node.expression.name)) {
       const callExpr = node.expression;
       const containerId = `comp_${componentCounter++}`;
       const args = callExpr.args.map(a => exprToCode(a, reactiveCtx)).join(', ');
       lines.push(`  // Render component: ${callExpr.name}`);
       lines.push(`  { const _el = document.getElementById('${containerId}');`);
       lines.push(`    if (_el) _el.innerHTML = ${sanitizeName(callExpr.name)}(${args}); }`);
+      continue;
+    }
+    // Block-form component use: show Panel: ... -> render to DOM
+    if (node.type === NodeType.COMPONENT_USE) {
+      const containerId = `comp_${componentCounter++}`;
+      const compName = sanitizeName(node.name);
+      // Compile children to HTML string (same logic as compileNode COMPONENT_USE)
+      const childParts = [];
+      for (const child of (node.children || [])) {
+        if (child.type === NodeType.CONTENT) {
+          const tag = { heading: 'h1', subheading: 'h2', text: 'p', bold: 'strong', italic: 'em', small: 'small', divider: 'hr' }[child.contentType] || 'p';
+          if (child.contentType === 'divider') childParts.push("'<hr>'");
+          else childParts.push(`'<${tag}>${(child.text || '').replace(/'/g, "\\'")}</${tag}>'`);
+        } else if (child.type === NodeType.SHOW) {
+          childParts.push(`'<p>' + ${exprToCode(child.expression, reactiveCtx)} + '</p>'`);
+        }
+      }
+      const childrenExpr = childParts.length > 0 ? childParts.join(' + ') : "''";
+      lines.push(`  // Render component: ${node.name}`);
+      lines.push(`  { const _el = document.getElementById('${containerId}');`);
+      lines.push(`    if (_el) _el.innerHTML = ${compName}(${childrenExpr}); }`);
       continue;
     }
     const result = compileNode(node, reactiveCtx);
@@ -4926,6 +4967,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     const dataExpr = `_state.${sanitizeName(chart.dataVar)}`;
     const chartType = chart.chartType;
     const groupBy = chart.groupBy;
+    const stacked = chart.stacked;
 
     lines.push(`  {`);
     lines.push(`    const _chartEl = document.getElementById('${chartId}_canvas');`);
@@ -4953,6 +4995,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       const seriesType = chartType === 'area' ? 'line' : chartType;
       const areaStyle = chartType === 'area' ? ', areaStyle: { opacity: 0.15 }' : '';
       const barStyle = chartType === 'bar' ? ', itemStyle: { borderRadius: [4, 4, 0, 0] }, barMaxWidth: 32' : '';
+      const stackProp = stacked ? ", stack: 'total'" : '';
 
       if (groupBy) {
         // Group by field and count — produces category bar/line/area chart
@@ -4960,7 +5003,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         lines.push(`      _data.forEach(r => { const k = r.${sanitizeName(groupBy)} || 'Other'; _counts[k] = (_counts[k] || 0) + 1; });`);
         lines.push(`      const _xData = Object.keys(_counts);`);
         lines.push(`      const _yData = Object.values(_counts);`);
-        lines.push(`      const _series = [{ name: '${sanitizeName(groupBy)}', type: '${seriesType}', data: _yData${areaStyle}${barStyle}, smooth: true }];`);
+        lines.push(`      const _series = [{ name: '${sanitizeName(groupBy)}', type: '${seriesType}', data: _yData${areaStyle}${barStyle}${stackProp}, smooth: true }];`);
       } else {
         // Auto-detect x (first string field) and y (first number field)
         lines.push(`      const _keys = Object.keys(_data[0]).filter(k => k !== 'id');`);
@@ -4968,10 +5011,13 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
         lines.push(`      const _yKeys = _keys.filter(k => typeof _data[0][k] === 'number');`);
         lines.push(`      if (_yKeys.length === 0) _yKeys.push(_keys.find(k => k !== _xKey) || _keys[0]);`);
         lines.push(`      const _xData = _data.map(r => r[_xKey]);`);
-        lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}${barStyle}, smooth: true }));`);
+        lines.push(`      const _series = _yKeys.map(k => ({ name: k, type: '${seriesType}', data: _data.map(r => Number(r[k]) || 0)${areaStyle}${barStyle}${stackProp}, smooth: true }));`);
       }
 
-      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: ${groupBy ? 'undefined' : "_yKeys.length > 1 ? { data: _yKeys, textStyle: { color: '#6b7280' } } : undefined"}, xAxis: { type: 'category', data: _xData, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true } }, true);`);
+      const legendExpr = groupBy
+        ? 'undefined'
+        : "_yKeys.length > 1 ? { data: _yKeys, textStyle: { color: '#6b7280' } } : undefined";
+      lines.push(`      _chart.setOption({ color: _colors, tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', textStyle: { color: '#1f2937' } }, legend: ${legendExpr}, xAxis: { type: 'category', data: _xData, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { color: '#6b7280', fontSize: 12 } }, series: _series, grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true } }, true);`);
     }
 
     lines.push(`    }`);
@@ -5916,8 +5962,11 @@ ${options}
 
         case NodeType.CHART: {
           const chartId = node.ui.id;
+          const subtitleHtml = node.subtitle
+            ? `\n      <p class="text-sm text-base-content/50 -mt-2 mb-3">${node.subtitle}</p>`
+            : '';
           parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm px-6 pt-5 pb-4" id="${chartId}">
-      <h3 class="text-base font-semibold text-base-content mb-4">${node.title}</h3>
+      <h3 class="text-base font-semibold text-base-content mb-4">${node.title}</h3>${subtitleHtml}
       <div id="${chartId}_canvas" style="width:100%;height:350px;"></div>
     </div>`);
           hasChart = true;
@@ -6201,16 +6250,33 @@ ${options}
             case 'divider':
               parts.push(`    <div class="divider my-4"></div>`);
               break;
+            case 'image': {
+              const src = node.text || '';
+              const roundedClass = node.rounded ? ' rounded-full object-cover' : ' rounded-lg';
+              const widthStyle = node.width ? ` width="${node.width}"` : '';
+              const heightStyle = node.height ? ` height="${node.height}"` : '';
+              const sizeClass = (node.width || node.height) ? '' : ' w-full';
+              parts.push(`    <img src="${src}" alt=""${widthStyle}${heightStyle} class="${sizeClass}${roundedClass}" loading="lazy" />`);
+              break;
+            }
           }
           break;
         }
 
         case NodeType.SHOW: {
           // Component call: show Card(name) -> container div for reactive rendering
-          if (node.expression && node.expression.type === NodeType.CALL && node.expression.name) {
+          // Only uppercase function names are components (lowercase are regular functions)
+          if (node.expression && node.expression.type === NodeType.CALL && node.expression.name && /^[A-Z]/.test(node.expression.name)) {
             const containerId = `comp_${compRenderCounter++}`;
             parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
           }
+          break;
+        }
+
+        case NodeType.COMPONENT_USE: {
+          // Block-form component: show Panel: ... -> container div for reactive rendering
+          const containerId = `comp_${compRenderCounter++}`;
+          parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
           break;
         }
 
@@ -7367,6 +7433,11 @@ const BUILTIN_PRESET_CLASSES = {
   app_modal:         'bg-base-100 rounded-xl border border-base-300/40 shadow-2xl p-8 max-w-md mx-auto flex flex-col gap-5 ring-1 ring-base-300/20',
   empty_state:       'bg-base-100 rounded-xl border-2 border-dashed border-base-300/30 p-12 flex flex-col items-center justify-center text-center gap-3 min-h-[180px]',
   app_list:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden divide-y divide-base-300/20',
+
+  // --- Blog presets ---
+  blog_grid:         'bg-base-100 py-16 lg:py-24 px-6',
+  blog_card:         'bg-base-100 rounded-2xl overflow-hidden border border-base-300/40 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col group',
+  blog_article:      'bg-base-100 py-16 px-6 max-w-3xl mx-auto',
 };
 
 // Legacy BUILTIN_STYLES array -- only used as fallback when user doesn't override.
