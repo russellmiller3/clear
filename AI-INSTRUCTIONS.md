@@ -785,6 +785,282 @@ style page_hero:
   padding = 100
 ```
 
+## Design System & Presets
+
+This is the complete reference for building beautiful pages with Clear's
+built-in preset system. Use presets first, customize second. Every preset
+compiles to Tailwind/DaisyUI classes -- zero custom CSS.
+
+### The 20 Pareto Presets
+
+These cover ~90% of all UI you'll ever build. Reach for a preset before
+writing a custom style block.
+
+#### Marketing Presets (12)
+
+| Preset | What it does | Use for |
+|--------|-------------|---------|
+| `page_navbar` | Sticky nav, backdrop blur, logo + links + CTA button, mobile hamburger drawer | Top of every marketing page |
+| `page_hero` | Centered text, py-24, radial gradient glow from primary color | Main hero section |
+| `hero_left` | Left-aligned hero, py-28, radial gradient glow right side | Hero with image/screenshot on right |
+| `logo_bar` | Light bg, border-y, py-8, opacity-muted logos | "Trusted by" social proof strip |
+| `feature_grid` | bg-base-100, py-16/24, auto-wraps children into grid | 3-col feature cards |
+| `feature_split` | bg-base-100, py-20, side-by-side layout | Feature with image + text |
+| `stats_row` | bg-base-200, py-14/20, centered numbers | "10K+ users" stat strip |
+| `testimonial_grid` | bg-base-200/50, py-16/24 | Customer quote cards |
+| `pricing_grid` | bg-base-200, py-20 | 2-3 tier pricing cards |
+| `page_cta` | bg-primary, white text, py-20/28, centered | Full-width conversion CTA |
+| `faq_section` | bg-base-100, py-16/24 | Accordion Q&A |
+| `page_footer` | bg-base-200, border-t, py-12/16 | Links, legal, copyright |
+
+#### App UI Presets (8)
+
+| Preset | What it does | Use for |
+|--------|-------------|---------|
+| `app_layout` | `flex h-screen overflow-hidden` | Root wrapper for any dashboard |
+| `app_sidebar` | w-56, bg-base-200/60, border-r, flex-col | Navigation sidebar |
+| `app_header` | Sticky, h-16, backdrop blur, border-b, flex between | Top bar with title + actions |
+| `app_main` | flex-1 flex-col, overflow hidden | Right-side container (header + content) |
+| `app_content` | flex-1, overflow-y-auto, p-6, flex-col gap-5 | Scrollable main content area |
+| `app_card` | bg-base-200, rounded-xl, border, shadow-md, p-5 | Any content card in a dashboard |
+| `metric_card` | bg-base-200, rounded-xl, p-6, border | KPI / stat display card |
+| `app_table` | bg-base-200, rounded-xl, border, overflow hidden | Data table wrapper |
+| `app_modal` | bg-base-100, rounded-xl, shadow-2xl, p-8, max-w-md, ring | Dialog / confirmation box |
+| `empty_state` | bg-base-200/50, dashed border, p-12, centered, min-h-200 | "No items yet" placeholder |
+| `app_list` | bg-base-200, rounded-xl, border, divide-y | Stacked list items |
+| `form` | bg-base-100, rounded-xl, border, shadow-sm, p-8, max-w-lg, centered | Standalone form card |
+
+### Layout Diagrams
+
+**Typical marketing landing page:**
+```
+# ┌──────────────────────────────────────────┐
+# │  page_navbar                             │  sticky, backdrop-blur
+# ├──────────────────────────────────────────┤
+# │            page_hero                     │  py-24, centered, radial glow
+# │   badge · headline · subhead · CTA       │
+# ├──────────────────────────────────────────┤
+# │  logo_bar   [Logo] [Logo] [Logo]        │  py-8, muted opacity
+# ├──────────────────────────────────────────┤
+# │  feature_grid                            │  py-16/24
+# │   [feature_card] [feature_card] [card]   │  3-col auto-grid
+# ├──────────────────────────────────────────┤
+# │  stats_row    10K+   99.9%   <1s        │  py-14/20, bg-base-200
+# ├──────────────────────────────────────────┤
+# │  testimonial_grid                        │  py-16/24
+# │   [quote]  [quote]  [quote]              │
+# ├──────────────────────────────────────────┤
+# │  pricing_grid                            │  py-20
+# │   [Starter] [Pro*] [Enterprise]          │  * = featured card
+# ├──────────────────────────────────────────┤
+# │  page_cta     bg-primary, white text     │  py-20/28
+# │     headline  ·  button                  │
+# ├──────────────────────────────────────────┤
+# │  faq_section                             │  py-16/24, accordion
+# ├──────────────────────────────────────────┤
+# │  page_footer   links · legal · (c)       │  py-12/16, bg-base-200
+# └──────────────────────────────────────────┘
+```
+
+**Typical app dashboard:**
+```
+# ┌────────────┬───────────────────────────────────┐
+# │            │  app_header          [Search] [+]  │  sticky, h-16
+# │ app_       ├───────────────────────────────────┤
+# │ sidebar    │  app_content (scrollable)          │
+# │            │                                    │
+# │ Dashboard  │  ┌─metric──┐ ┌─metric──┐ ┌─────┐ │
+# │ Projects   │  │ Revenue │ │  Users  │ │ NPS │ │
+# │ Settings   │  │ $42.3K  │ │  1,204  │ │  72 │ │
+# │            │  └─────────┘ └─────────┘ └─────┘ │
+# │ w-56       │                                    │
+# │ border-r   │  ┌─app_table──────────────────┐   │
+# │            │  │  Name    Status    Action   │   │
+# │            │  │  Alice   Active    [Edit]   │   │
+# │            │  │  Bob     Pending   [Edit]   │   │
+# │            │  └────────────────────────────┘   │
+# ├────────────┴───────────────────────────────────┤
+# │        app_layout  (flex h-screen)              │
+# └─────────────────────────────────────────────────┘
+```
+
+### Theme & Font System
+
+Clear ships with 4 primary themes. Set once at the top of your file:
+
+```
+theme 'midnight'   # dark SaaS (Linear, Vercel vibe)
+theme 'ivory'      # light enterprise (Stripe, Ramp) -- default
+theme 'slate'      # dark neutral (GitHub dark)
+theme 'nova'       # warm creative (Lovable, Amie)
+```
+
+**Font stack (all themes):**
+- **Body:** DM Sans -- clean, geometric sans-serif. All UI text, nav, labels.
+- **Display:** Plus Jakarta Sans (semibold-black) -- headlines, hero text. Used via `font-display` class.
+- **Mono:** Geist Mono -- code blocks, badges, data values. Used via `font-mono` class.
+
+Fonts load from Google Fonts CDN automatically. No configuration needed.
+
+### Spacing Rhythm
+
+Consistent vertical rhythm makes pages feel professional. These are the
+spacing values baked into presets -- follow them in custom sections too:
+
+| Section type | Vertical padding | Why |
+|-------------|-----------------|-----|
+| Hero | `py-24` (96px) to `py-28` (112px) | Breathing room, draws the eye |
+| Landing sections | `py-16` (64px) to `py-24` (96px) | Comfortable reading rhythm |
+| CTA | `py-20` (80px) to `py-28` (112px) | Big, bold, conversion-focused |
+| Footer | `py-12` (48px) to `py-16` (64px) | Compact but not cramped |
+| Card padding | `p-5` to `p-8` (20-32px) | App cards p-5, marketing cards p-7/p-8 |
+| App content area | `p-6` (24px) with `gap-5` (20px) | Dashboard grid breathing room |
+| Stats row | `py-14` (56px) to `py-20` (80px) | Numbers need vertical space |
+| Header bar | `h-16` (64px) | Standard app header height |
+
+### Common Patterns
+
+**Full marketing landing page:**
+```
+build for web
+
+theme 'midnight'
+
+page 'Landing' at '/':
+
+  section 'Nav' with style page_navbar:
+    heading 'Acme'
+    link 'Features' to '#features'
+    link 'Pricing' to '#pricing'
+    button 'Get Started'
+
+  section 'Hero' with style page_hero:
+    show text 'Ship 10x faster with AI'
+    show text 'Build production apps in plain English. No frameworks, no config.'
+    button 'Start Free'
+    button 'See Demo'
+
+  section 'Logos' with style logo_bar:
+    show text 'Trusted by 500+ teams'
+    show image 'stripe.svg'
+    show image 'linear.svg'
+    show image 'vercel.svg'
+
+  section 'Features' with style feature_grid:
+    show heading 'Everything you need'
+    section 'Card 1' with style feature_card:
+      show heading 'AI Compiler'
+      show text 'Write English, get production code.'
+    section 'Card 2' with style feature_card:
+      show heading 'One-Click Deploy'
+      show text 'Push to production in seconds.'
+    section 'Card 3' with style feature_card:
+      show heading 'Built-in Auth'
+      show text 'User accounts out of the box.'
+
+  section 'Stats' with style stats_row:
+    section 'S1' with style stat_item:
+      show heading '10K+'
+      show text 'Developers'
+    section 'S2' with style stat_item:
+      show heading '99.9%'
+      show text 'Uptime'
+    section 'S3' with style stat_item:
+      show heading '<1s'
+      show text 'Compile time'
+
+  section 'CTA' with style page_cta:
+    show heading 'Ready to ship?'
+    show text 'Start building for free. No credit card required.'
+    button 'Get Started Free'
+
+  section 'Footer' with style page_footer:
+    show text '(c) 2026 Acme Inc.'
+    link 'Privacy' to '/privacy'
+    link 'Terms' to '/terms'
+```
+
+**App dashboard skeleton:**
+```
+build for web and javascript backend
+
+page 'Dashboard' at '/':
+
+  section 'Root' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      show heading 'MyApp'
+      link 'Dashboard' to '/'
+      link 'Projects' to '/projects'
+      link 'Settings' to '/settings'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        show heading 'Dashboard'
+        button 'New Project'
+
+      section 'Body' with style app_content:
+        section 'Metrics' side by side:
+          section 'Rev' with style metric_card:
+            show text 'Revenue'
+            show heading '$42,300'
+          section 'Users' with style metric_card:
+            show text 'Active Users'
+            show heading '1,204'
+          section 'NPS' with style metric_card:
+            show text 'NPS Score'
+            show heading '72'
+
+        section 'Table' with style app_table:
+          display projects as table showing name, status, owner
+```
+
+**Form with modal:**
+```
+section 'Add Contact' with style form:
+  'Name' is a text input saved as a name
+  'Email' is a text input saved as an email
+  button 'Save':
+    send name and email to '/api/contacts'
+
+section 'Confirm Delete' with style app_modal:
+  show heading 'Delete this contact?'
+  show text 'This cannot be undone.'
+  button 'Delete':
+    close modal
+  button 'Cancel':
+    close modal
+```
+
+**Empty state (no data yet):**
+```
+if projects list is empty:
+  section 'No Projects' with style empty_state:
+    show heading 'No projects yet'
+    show text 'Create your first project to get started.'
+    button 'New Project'
+```
+
+**List preset:**
+```
+section 'Recent Activity' with style app_list:
+  for each event in events list:
+    section 'Item' padded:
+      show text event's description
+      show text event's timestamp
+```
+
+### Preset Selection Cheat Sheet
+
+**Ask yourself:**
+1. Is this a marketing/landing page? Start with `page_navbar` + `page_hero` + alternating `feature_grid` / `stats_row` / `testimonial_grid` + `page_cta` + `page_footer`.
+2. Is this an app/dashboard? Start with `app_layout` > `app_sidebar` + `app_main` > `app_header` + `app_content`. Fill content with `metric_card`, `app_table`, `app_card`.
+3. Need a standalone form? Use `form`.
+4. Need a dialog? Use `app_modal`.
+5. No data to show? Use `empty_state`.
+6. Showing a list? Use `app_list`.
+
+**Never define a custom style for something a preset already handles.**
+
 ## Interactive Patterns
 
 **Tabs -- for switching between content panels:**
