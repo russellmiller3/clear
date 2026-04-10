@@ -371,11 +371,11 @@ const systemPrompt = readFileSync(join(__dirname, 'system-prompt.md'), 'utf8');
 const TOOLS = [
   {
     name: 'edit_code',
-    description: 'Read or replace the Clear source code in the editor. Use action="read" to see current code. Use action="write" with the code parameter to replace the editor content.',
+    description: 'Read, replace, or undo the Clear source code in the editor. Use action="read" to see current code. Use action="write" with the code parameter to replace the editor content. Use action="undo" to revert the last change (the user also has an Undo button in the toolbar).',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['read', 'write'], description: 'read to get current code, write to replace it' },
+        action: { type: 'string', enum: ['read', 'write', 'undo'], description: 'read to get current code, write to replace it, undo to revert last change' },
         code: { type: 'string', description: 'The new Clear source code (only for action=write)' },
       },
       required: ['action'],
@@ -509,6 +509,11 @@ app.post('/api/chat', async (req, res) => {
           } catch (err) {
             return JSON.stringify({ applied: true, compileError: err.message });
           }
+        }
+        if (input.action === 'undo') {
+          // Signal client to trigger editor undo; actual undo happens client-side
+          send({ type: 'undo' });
+          return JSON.stringify({ undone: true });
         }
         return JSON.stringify({ error: 'Invalid action' });
 

@@ -307,6 +307,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
+    <button class="toolbar-btn" onclick="doUndo()" title="Undo last change (Ctrl+Z)">Undo</button>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doSave()" title="Save to Desktop">Save</button>
     <button id="download-btn" class="toolbar-btn" onclick="doDownload()" title="Download compiled HTML" style="display:none">Download</button>
@@ -643,6 +644,9 @@ async function autoCompile() {
   }
 }
 window.doCompile = autoCompile;
+// Undo: find the undo command from historyKeymap and invoke it
+const undoCmd = historyKeymap.find(k => k.key === 'Mod-z')?.run;
+window.doUndo = function() { if (undoCmd) undoCmd(editor); editor.focus(); };
 
 // ==========================================================================
 // PREVIEW
@@ -1432,6 +1436,9 @@ window.sendChat = async function() {
         } else if (ev.type === 'terminal_append') {
           appendTerminal(`<span class="term-cmd">${escHtml(ev.text)}</span>\n`);
           if (activeTab !== 'terminal') showToast(ev.text.slice(0, 60));
+        } else if (ev.type === 'undo') {
+          if (undoCmd) undoCmd(editor);
+          autoCompile();
         } else if (ev.type === 'screenshot_request') {
           captureOutputScreenshot();
         } else if (ev.type === 'done') {
