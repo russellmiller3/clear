@@ -7280,13 +7280,13 @@ const BUILTIN_PRESET_CLASSES = {
   feature_card_dark:      'bg-white/5 rounded-2xl p-7 flex flex-col gap-3 border border-white/10 hover:border-primary/40 transition-colors',
   // feature_card_large: bold primary bg — the "hero card" in the asymmetric split (Clay-style)
   feature_card_large:     'bg-primary text-primary-content rounded-2xl p-10 flex flex-col gap-5 shadow-xl min-h-[280px]',
-  // Colored accent cards for bento grids (Clay/Notion style)
-  feature_card_teal:      'bg-teal-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_purple:    'bg-violet-600 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_indigo:    'bg-indigo-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_emerald:   'bg-emerald-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_rose:      'bg-rose-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
-  feature_card_amber:     'bg-amber-500 text-white rounded-2xl p-7 flex flex-col gap-3 shadow-md',
+  // Colored accent cards for bento grids — muted tones that work on both light and dark
+  feature_card_teal:      'bg-teal-700/80 text-teal-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-teal-400/20',
+  feature_card_purple:    'bg-violet-800/80 text-violet-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-violet-400/20',
+  feature_card_indigo:    'bg-indigo-700/80 text-indigo-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-indigo-400/20',
+  feature_card_emerald:   'bg-emerald-700/80 text-emerald-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-emerald-400/20',
+  feature_card_rose:      'bg-rose-700/80 text-rose-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-rose-400/20',
+  feature_card_amber:     'bg-amber-700/80 text-amber-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-amber-400/20',
   pricing_card:           'bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200',
   pricing_card_featured:  'bg-primary text-primary-content rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1 ring-2 ring-primary/20 ring-offset-2 ring-offset-base-200 scale-[1.02]',
   testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/50 shadow-md hover:shadow-lg transition-shadow relative',
