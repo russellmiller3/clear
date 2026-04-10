@@ -5370,22 +5370,34 @@ function buildHTML(body) {
               // Last link becomes primary CTA if no button nodes exist
               const ctaLink = nbCtas.length === 0 && nbLinks.length > 0 ? nbLinks.pop() : null;
               parts.push(`    <nav class="sticky top-0 z-50 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0">`);
-              parts.push(`      <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">`);
+              parts.push(`      <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">`);
               parts.push(`        <div class="flex items-center gap-8">`);
-              if (brandText) parts.push(`          <span class="text-lg font-bold text-base-content tracking-tight">${brandText}</span>`);
+              if (brandText) parts.push(`          <span class="font-display text-lg font-bold text-base-content tracking-tight">${brandText}</span>`);
               if (nbLinks.length > 0) {
                 parts.push(`          <div class="hidden md:flex items-center gap-6">`);
                 for (const lk of nbLinks) {
                   const fmt = formatInlineText(lk.ui.text);
                   const href = lk.ui?.href || '#';
-                  parts.push(`            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="${href}">${fmt}</a>`);
+                  parts.push(`            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="${href}">${fmt}</a>`);
                 }
                 parts.push(`          </div>`);
               }
               parts.push(`        </div>`);
               parts.push(`        <div class="flex items-center gap-3">`);
-              for (const btn of nbCtas) {
-                parts.push(`          <button class="btn btn-primary btn-sm" id="${btn.ui.id}">${btn.ui.label}</button>`);
+              // Mobile hamburger menu
+              if (nbLinks.length > 0) {
+                parts.push(`          <label for="nav-drawer" class="btn btn-ghost btn-sm btn-square md:hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></label>`);
+              }
+              // CTA buttons: ghost variant for secondary, primary for last
+              if (nbCtas.length >= 2) {
+                nbCtas.forEach((btn, idx) => {
+                  const btnCls = idx < nbCtas.length - 1 ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm';
+                  parts.push(`          <button class="${btnCls}" id="${btn.ui.id}">${btn.ui.label}</button>`);
+                });
+              } else {
+                for (const btn of nbCtas) {
+                  parts.push(`          <button class="btn btn-primary btn-sm" id="${btn.ui.id}">${btn.ui.label}</button>`);
+                }
               }
               if (ctaLink) {
                 const fmt = formatInlineText(ctaLink.ui.text);
@@ -5395,6 +5407,18 @@ function buildHTML(body) {
               parts.push(`        </div>`);
               parts.push(`      </div>`);
               parts.push(`    </nav>`);
+              // Mobile drawer for nav links
+              if (nbLinks.length > 0) {
+                parts.push(`    <input id="nav-drawer" type="checkbox" class="hidden peer">`);
+                parts.push(`    <div class="fixed inset-0 z-40 bg-base-100 flex flex-col p-6 pt-20 gap-4 peer-checked:flex hidden md:hidden">`);
+                parts.push(`      <label for="nav-drawer" class="absolute top-4 right-4 btn btn-ghost btn-sm btn-square"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></label>`);
+                for (const lk of nbLinks) {
+                  const fmt = formatInlineText(lk.ui.text);
+                  const href = lk.ui?.href || '#';
+                  parts.push(`      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="${href}">${fmt}</a>`);
+                }
+                parts.push(`    </div>`);
+              }
               break;
             }
 
@@ -5500,7 +5524,7 @@ function buildHTML(body) {
                 parts.push(`      </div>`);
               }
               if (sn === 'logo_bar' || sn === 'logo_bar_dark') {
-                parts.push(`      <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-8 md:gap-14">`);
+                parts.push(`      <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-12 gap-y-6">`);
                 walk(cardNodes);
                 parts.push(`      </div>`);
               } else if (sn === 'feature_split' || sn === 'feature_split_dark') {
@@ -5887,7 +5911,8 @@ ${options}
             case 'subheading':
               if (inHero) {
                 const heroSubAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
-                parts.push(`    <p class="text-xl text-base-content/60 leading-relaxed max-w-xl ${heroSubAlign}">${formatted}</p>`);
+                const heroSubMaxW = inHeroLeft ? 'max-w-xl' : 'max-w-2xl';
+                parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed ${heroSubMaxW} ${heroSubAlign}">${formatted}</p>`);
               } else if (inPricingCard) {
                 parts.push(`    <p class="text-3xl font-bold text-primary">${formatted}</p>`);
               } else if (inFeaturedPricing) {
@@ -5921,7 +5946,7 @@ ${options}
               } else if (inMetricCard) {
                 parts.push(`    <p class="text-xs text-base-content/40 font-mono">${formatted}</p>`);
               } else if (inHero) {
-                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed">${formatted}</p>`);
+                parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl ${inHeroLeft ? 'text-left' : 'text-center mx-auto'}">${formatted}</p>`);
               } else if (inStatItem) {
                 parts.push(`    <p class="text-sm text-base-content/50 mt-1">${formatted}</p>`);
               } else if (inLogoItem) {
@@ -7088,7 +7113,7 @@ function resolveStyleTokens(properties) {
 const BUILTIN_PRESET_CLASSES = {
   // --- Landing page presets ---
   page_navbar:       '__navbar__', // special rendering handled in section renderer
-  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-8 relative overflow-hidden',
+  page_hero:         'bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6 relative overflow-hidden',
   page_section:      'bg-base-100 py-16 px-6',
   page_section_dark: 'bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8',
   page_card:         'bg-base-200 rounded-2xl p-8 hover:border-primary/30 transition-colors flex flex-col gap-3 border border-base-300/40 shadow-sm',
@@ -7097,7 +7122,7 @@ const BUILTIN_PRESET_CLASSES = {
 
   // --- v2 landing sections ---
   hero_left:              'bg-base-100 py-28 px-6 flex flex-col items-start gap-6 overflow-hidden',
-  logo_bar:               'bg-base-200/60 border-y border-base-300/40 py-6 px-6',
+  logo_bar:               'bg-base-200/60 border-y border-base-300/40 py-8 lg:py-10 px-6',
   logo_bar_dark:          'bg-neutral text-neutral-content border-y border-neutral-content/10 py-6 px-6',
   feature_split:          'bg-base-100 py-20 px-6',
   feature_split_dark:     'bg-neutral text-neutral-content py-20 px-6 border-y border-base-content/8',
@@ -7127,7 +7152,7 @@ const BUILTIN_PRESET_CLASSES = {
   pricing_card_featured:  'bg-primary rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1',
   testimonial_card:       'bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/40 shadow-sm',
   stat_item:              'flex flex-col items-center text-center gap-1 min-w-[140px]',
-  logo_item:              'flex items-center justify-center',
+  logo_item:              'flex items-center justify-center opacity-40 hover:opacity-70 transition-opacity grayscale',
 
   // --- App/dashboard presets ---
   app_layout:        'flex h-screen overflow-hidden',
