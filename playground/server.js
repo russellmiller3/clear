@@ -468,7 +468,7 @@ app.get('/api/config', (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, editorContent, errors: editorErrors, webTools: enableWebTools } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, webTools: enableWebTools } = req.body;
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
   if (!resolvedKey) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
@@ -641,7 +641,7 @@ app.post('/api/chat', async (req, res) => {
       const payload = {
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
-        system: systemPrompt,
+        system: personality ? systemPrompt + '\n\n## User Custom Instructions\n' + personality : systemPrompt,
         tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
         stream: true,
         messages: currentMessages,

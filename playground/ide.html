@@ -202,6 +202,14 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #chat-send:disabled { opacity: .3; cursor: default; transform: none; box-shadow: none; }
 #chat-stop { background: var(--red, #f43f5e); color: #fff; border: none; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 700; font-family: var(--font); cursor: pointer; transition: all .15s; }
 #chat-stop:hover { opacity: .85; transform: translateY(-1px); }
+#personality-setup { padding: 20px; color: var(--tx3); font-family: var(--font); display: flex; flex-direction: column; gap: 10px; height: 100%; }
+#personality-setup textarea { background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 10px; width: 100%; flex: 1; min-height: 120px; font-family: var(--font); font-size: 12px; resize: none; transition: border-color .15s; line-height: 1.5; }
+#personality-setup textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+#personality-setup .btn-row { display: flex; gap: 8px; }
+#personality-setup button { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 20px; cursor: pointer; font-weight: 700; font-family: var(--font); transition: all .15s; }
+#personality-setup button:hover { background: var(--accent2); transform: translateY(-1px); }
+#personality-setup button.btn-ghost { background: transparent; color: var(--tx3); border: 1px solid var(--bd2); }
+#personality-setup button.btn-ghost:hover { background: var(--bg3); color: var(--tx); }
 #api-key-setup { padding: 24px; text-align: center; color: var(--tx3); font-family: var(--font); }
 #api-key-setup input { background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 10px; width: 100%; margin: 10px 0; font-family: var(--font); font-size: 12px; transition: border-color .15s; }
 #api-key-setup input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -355,7 +363,11 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
         <span style="width:8px;height:8px;border-radius:50%;background:var(--green);"></span>
         Claude Agent
       </span>
-      <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
+      <div style="display:flex;gap:4px;">
+        <button class="toolbar-btn" onclick="newChat()" style="font-size:11px;padding:2px 8px;" title="Clear chat history">New</button>
+        <button class="toolbar-btn" onclick="showPersonality()" style="font-size:11px;padding:2px 8px;" title="Custom instructions for Claude">Personality</button>
+        <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
+      </div>
     </div>
     <div id="chat-messages"></div>
     <div id="chat-input-area">
@@ -1025,9 +1037,53 @@ window.jumpToLine = function(line) {
 // ==========================================================================
 let chatMessages = [];
 let apiKey = localStorage.getItem('clear_api_key') || '';
+let personality = localStorage.getItem('clear_personality') || '';
 let serverHasKey = false;
 
 let showingKeySetup = false;
+
+window.newChat = function() {
+  if (currentAbort) currentAbort.abort();
+  chatMessages = [];
+  showingKeySetup = false;
+  document.getElementById('chat-messages').innerHTML = '';
+  addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+  document.getElementById('chat-send').disabled = false;
+  document.getElementById('chat-send').style.display = '';
+  document.getElementById('chat-stop').style.display = 'none';
+};
+
+window.showPersonality = function() {
+  showingKeySetup = true; // reuse flag to prevent renderChat from overwriting
+  const el = document.getElementById('chat-messages');
+  const escaped = personality.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  el.innerHTML = `<div id="personality-setup">
+    <div style="font-size:14px;font-weight:600;color:var(--tx);">Custom Instructions</div>
+    <div style="font-size:12px;">Tell Claude how to behave — tone, focus areas, things to avoid. Saved locally.</div>
+    <textarea id="personality-input" placeholder="e.g. Always use ivory theme. Keep code minimal. Explain your reasoning.">${escaped}</textarea>
+    <div class="btn-row">
+      <button onclick="savePersonality()">Save</button>
+      <button class="btn-ghost" onclick="clearPersonality()">Clear</button>
+      <button class="btn-ghost" onclick="closePersonality()">Cancel</button>
+    </div>
+  </div>`;
+};
+
+window.savePersonality = function() {
+  personality = document.getElementById('personality-input').value.trim();
+  localStorage.setItem('clear_personality', personality);
+  closePersonality();
+  addChatMsg('assistant', personality ? 'Custom instructions saved.' : 'Custom instructions cleared.');
+};
+
+window.clearPersonality = function() {
+  document.getElementById('personality-input').value = '';
+};
+
+window.closePersonality = function() {
+  showingKeySetup = false;
+  renderChat();
+};
 window.showKeySetup = function() {
   showingKeySetup = true;
   const el = document.getElementById('chat-messages');
@@ -1323,6 +1379,7 @@ window.sendChat = async function() {
       body: JSON.stringify({
         messages: apiMessages,
         apiKey,
+        personality,
         editorContent: editor.state.doc.toString(),
         errors: lastCompiled?.errors || [],
         webTools: document.getElementById('web-tools-toggle')?.checked || false,
