@@ -104,7 +104,44 @@ page 'Hatch API' at '/':
       text 'SLA guarantee'
       link 'Contact sales' to '/contact'
 
+  section 'FAQ' with style faq_section:
+    heading 'Frequently asked questions'
+    subheading 'Common questions about Hatch API testing.'
+    section 'Q1':
+      heading 'How do I install Hatch?'
+      text 'Run npm install -g hatch-api or brew install hatch. One binary, no dependencies. Works on Mac, Linux, and Windows.'
+    section 'Q2':
+      heading 'Is the open source version really free?'
+      text 'Yes. The CLI, test runner, and CI integration are MIT licensed and free forever. Cloud features like dashboards and alerts are paid.'
+    section 'Q3':
+      heading 'What languages and frameworks does Hatch support?'
+      text 'Hatch tests any HTTP API regardless of language. If your server speaks HTTP, Hatch can test it. REST, GraphQL, and WebSocket support built in.'
+    section 'Q4':
+      heading 'Can I self-host the dashboard?'
+      text 'Yes. The Teams plan includes a Docker image for self-hosting the dashboard and test history. Your data never leaves your infrastructure.'
+    section 'Q5':
+      heading 'How does Hatch handle authentication?'
+      text 'Define auth strategies once in your config. Bearer tokens, API keys, OAuth flows, and cookie sessions inject automatically into every request that needs them.'
+
   section 'CTA' with style page_cta:
     heading 'Your API is only as good as your tests.'
     text 'Add Hatch to your repo in under 5 minutes.'
     link 'Get started free' to '/signup'
+
+  section 'Footer' with style page_footer:
+    heading 'Hatch'
+    section 'Product':
+      link 'Features' to '#features'
+      link 'Pricing' to '#pricing'
+      link 'Changelog' to '/changelog'
+      link 'Roadmap' to '/roadmap'
+    section 'Developers':
+      link 'Documentation' to '/docs'
+      link 'API Reference' to '/api'
+      link 'GitHub' to 'https://github.com'
+      link 'Discord' to '/discord'
+    section 'Company':
+      link 'About' to '/about'
+      link 'Blog' to '/blog'
+      link 'Privacy' to '/privacy'
+      link 'Terms' to '/terms'
