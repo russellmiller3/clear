@@ -5391,14 +5391,22 @@ function buildHTML(body) {
             if (needsWrapper) parts.push(`      </div>`);
             parts.push(`    </div>`);
           } else if (hasUserStyle || hasInline) {
-            // User-defined style (custom CSS): full-width outer, contained inner
-            const allClasses = [node.ui.cssClass, inlineClass, tailwindClasses].filter(Boolean).join(' ');
+            // User-defined style: resolve semantic tokens to Tailwind, rest to CSS class
+            const styleDef = node.styleName
+              ? body.find(n => n.type === NodeType.STYLE_DEF && n.name === node.styleName)
+              : null;
+            const { tailwindClasses: tokenClasses, rawProperties } =
+              styleDef ? resolveStyleTokens(styleDef.properties) : { tailwindClasses: '', rawProperties: [] };
+            // Only add CSS class if there are raw (non-token) properties to generate CSS for
+            const cssClass = (hasUserStyle && rawProperties.length > 0) ? node.ui.cssClass : '';
+            const allClasses = [tokenClasses, cssClass, inlineClass, tailwindClasses].filter(Boolean).join(' ');
             parts.push(`    <div class="${allClasses}">`);
-            if (hasUserStyle && !hasInline) {
+            // Wrapper for raw-CSS-only styles (treats like old behavior); skip for pure-token styles
+            if (hasUserStyle && !hasInline && rawProperties.length > 0) {
               parts.push(`      <div class="max-w-5xl mx-auto px-4">`);
             }
             walk(node.body);
-            if (hasUserStyle && !hasInline) {
+            if (hasUserStyle && !hasInline && rawProperties.length > 0) {
               parts.push(`      </div>`);
             }
             parts.push(`    </div>`);
@@ -6569,6 +6577,96 @@ function friendlyPropToCSS(name, value) {
   return `${entry.css}: ${cssVal}`;
 }
 
+// =============================================================================
+// SEMANTIC STYLE TOKENS
+// =============================================================================
+// Token key format: "propertyName:value"  (e.g. "background:surface", "has_shadow:true")
+// Token properties compile INLINE on the element — no custom .style-X CSS generated.
+// Raw CSS properties (not in this map) fall through to the existing CSS path.
+const STYLE_TOKENS = {
+  // Background — adapts to all three themes via DaisyUI base tokens
+  'background:surface':     'bg-base-100',
+  'background:canvas':      'bg-base-200',
+  'background:sunken':      'bg-base-300',
+  'background:dark':        'bg-neutral',
+  'background:primary':     'bg-primary',
+  'background:transparent': 'bg-transparent',
+
+  // Text color
+  'text:default':  'text-base-content',
+  'text:muted':    'text-base-content/60',
+  'text:subtle':   'text-base-content/40',
+  'text:light':    'text-neutral-content',
+  'text:primary':  'text-primary',
+  'text:small':    'text-sm',
+  'text:large':    'text-lg',
+
+  // Padding (uniform p-*)
+  'padding:none':        'p-0',
+  'padding:tight':       'p-3',
+  'padding:normal':      'p-4',
+  'padding:comfortable': 'p-6',
+  'padding:spacious':    'p-8',
+  'padding:loose':       'p-12',
+
+  // Gap (flex/grid children spacing)
+  'gap:none':        'gap-0',
+  'gap:tight':       'gap-2',
+  'gap:normal':      'gap-4',
+  'gap:comfortable': 'gap-5',
+  'gap:large':       'gap-8',
+
+  // Border radius
+  'corners:sharp':        'rounded-none',
+  'corners:subtle':       'rounded-md',
+  'corners:rounded':      'rounded-xl',
+  'corners:very rounded': 'rounded-2xl',
+  'corners:pill':         'rounded-full',
+
+  // Shadow
+  'has_shadow:true':       'shadow-sm',
+  'has_large_shadow:true': 'shadow-md',
+  'no_shadow:true':        '',            // explicit removal — empty = no class added
+
+  // Border
+  'has_border:true':        'border border-base-300/40',
+  'has_strong_border:true': 'border border-base-300',
+  'no_border:true':         'border-0',
+
+  // Layout (flex/grid)
+  'layout:column':    'flex flex-col',
+  'layout:row':       'flex flex-row items-center',
+  'layout:centered':  'flex flex-col items-center text-center',
+  'layout:split':     'flex items-center justify-between',
+  'layout:2 columns': 'grid grid-cols-2 gap-5',
+  'layout:3 columns': 'grid grid-cols-3 gap-5',
+  'layout:4 columns': 'grid grid-cols-4 gap-4',
+
+  // Width
+  'width:full':      'w-full',
+  'width:narrow':    'max-w-sm mx-auto',
+  'width:contained': 'max-w-5xl mx-auto',
+  'width:wide':      'max-w-6xl mx-auto',
+};
+
+// Resolve semantic style tokens to Tailwind classes.
+// Returns { tailwindClasses: string, rawProperties: array }
+// rawProperties are props not in STYLE_TOKENS — fall back to CSS.
+function resolveStyleTokens(properties) {
+  const classes = [];
+  const rawProperties = [];
+  for (const prop of properties) {
+    const key = `${prop.name}:${prop.value}`;
+    if (Object.prototype.hasOwnProperty.call(STYLE_TOKENS, key)) {
+      const cls = STYLE_TOKENS[key];
+      if (cls) classes.push(cls); // empty string = intentional removal, skip
+    } else {
+      rawProperties.push(prop);
+    }
+  }
+  return { tailwindClasses: classes.join(' '), rawProperties };
+}
+
 // Built-in style presets: name -> Tailwind/DaisyUI classes.
 // The section renderer uses these classes directly on the div.
 // No custom CSS is generated for built-in presets.
@@ -6647,6 +6745,10 @@ function stylesToCSS(styles, vars = {}) {
     const focusProps = [];
     let hasTransition = false;
     for (const p of style.properties) {
+      // Skip semantic token properties — they compile to inline Tailwind, not CSS
+      const tokenKey = `${p.name}:${p.value}`;
+      if (Object.prototype.hasOwnProperty.call(STYLE_TOKENS, tokenKey)) continue;
+
       let val = p.value;
       if (typeof val === 'string' && vars[val] !== undefined) val = vars[val];
       if (p.name.startsWith('hover_')) {
@@ -6668,6 +6770,9 @@ function stylesToCSS(styles, vars = {}) {
     if ((hoverProps.length > 0 || focusProps.length > 0) && !hasTransition) {
       baseProps.push('  transition: all 0.2s ease;');
     }
+    // Skip entirely if all properties were tokens (no raw CSS to emit)
+    if (baseProps.length === 0 && hoverProps.length === 0 && focusProps.length === 0) continue;
+
     const lineComment = style.line ? `/* clear:${style.line} */\n` : '';
     let rule = `${lineComment}.${className} {\n${baseProps.join('\n')}\n}`;
     if (hoverProps.length > 0) {

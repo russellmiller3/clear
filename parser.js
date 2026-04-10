@@ -3460,7 +3460,7 @@ function parseStyleDef(lines, startIdx, blockIndent, errors) {
     const pLine = first.line;
 
     // "name = value" or "name is value" — standard property
-    if (propTokens.length >= 2 && (propTokens[1].type === TokenType.ASSIGN || propTokens[1].canonical === 'is')) {
+    if (propTokens.length >= 2 && (propTokens[1].type === TokenType.ASSIGN || propTokens[1].canonical === 'is' || propTokens[1].value === 'are')) {
       const propName = first.value;
       if (propName === 'for_screen' && propTokens.length >= 3 && propTokens[2].type === TokenType.STRING) {
         mediaQuery = propTokens[2].value;
