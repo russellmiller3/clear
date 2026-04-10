@@ -1392,7 +1392,7 @@ page 'App' at '/':
     text 'Card content'`;
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('rounded-xl border border-base-300/40 shadow-sm p-5');
+    expect(result.html).toContain('rounded-xl border border-base-300/50 shadow-md p-5');
   });
 
   it('app presets skip max-width wrapper', () => {
@@ -1438,7 +1438,7 @@ page 'Dashboard' at '/':
     expect(result.html).toContain('w-52');
     expect(result.html).toContain('sticky top-0');
     expect(result.html).toContain('overflow-y-auto');
-    expect(result.html).toContain('rounded-xl border border-base-300/40 shadow-sm p-5');
+    expect(result.html).toContain('rounded-xl border border-base-300/50 shadow-md p-5');
   });
 });
 

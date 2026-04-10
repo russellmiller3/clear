@@ -39,6 +39,7 @@ when user calls GET /api/issues:
   all_issues = get all Issues
   send back all_issues
 
+
 when user calls POST /api/issues sending issue_data:
   validate issue_data:
     title is text, required, min 1, max 200
@@ -91,10 +92,13 @@ style section_header:
 
 page 'Project Tracker' at '/':
 
-  open_count = 0
-  in_progress_count = 0
-  done_count = 0
+  open_count = 12
+  in_progress_count = 5
+  done_count = 23
   all_issues = []
+
+  on page load:
+    all_issues = GET '/api/issues'
 
   section 'App' with style app_layout:
 
@@ -129,29 +133,39 @@ page 'Project Tracker' at '/':
 
         section 'Stats Row' as 4 columns:
           section 'Open' with style stat_card:
-            subheading 'Open'
-            display open_count
+            display open_count as number called 'Open'
           section 'In Progress' with style stat_card:
-            subheading 'In Progress'
-            display in_progress_count
+            display in_progress_count as number called 'In Progress'
           section 'Done' with style stat_card:
-            subheading 'Done this week'
-            display done_count
+            display done_count as number called 'Done this week'
           section 'Team' with style stat_card:
-            subheading 'Team members'
-            display 8
+            display 8 as number called 'Team members'
 
-        section 'Issues Panel' with style app_card:
+        section 'Issues Panel' with style app_card, fills remaining space:
 
           section 'Issues Header' with style section_header:
             subheading 'All Issues'
             button 'Refresh':
               all_issues = GET '/api/issues'
 
-          for each issue in all_issues:
-            section 'Issue Row' with style issue_row:
-              display issue's title
-              display issue's priority
+          section 'Issue 1' with style issue_row:
+            text 'Fix auth token expiry on mobile'
+            badge 'High' as error
+          section 'Issue 2' with style issue_row:
+            text 'Update onboarding flow copy'
+            badge 'Medium' as warning
+          section 'Issue 3' with style issue_row:
+            text 'Dashboard chart not loading in Safari'
+            badge 'High' as error
+          section 'Issue 4' with style issue_row:
+            text 'Add CSV export to reports page'
+            badge 'Low' as neutral
+          section 'Issue 5' with style issue_row:
+            text 'Rate limiting on public API endpoints'
+            badge 'High' as error
+          section 'Issue 6' with style issue_row:
+            text 'Redesign settings page layout'
+            badge 'Medium' as warning
 
         section 'New Issue' as modal:
           section 'Form' with style new_issue_form:

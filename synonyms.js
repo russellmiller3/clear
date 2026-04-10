@@ -177,6 +177,8 @@ const SYNONYM_TABLE = Object.freeze({
   bold_text: Object.freeze(['bold text', 'strong text']),
   italic_text: Object.freeze(['italic text', 'emphasized text']),
   small_text: Object.freeze(['small text', 'fine print']),
+  label_text: Object.freeze(['field label', 'eyebrow', 'caption']),
+  badge_text: Object.freeze(['badge', 'status badge', 'chip']),
   link: Object.freeze(['link', 'hyperlink']),
   divider: Object.freeze(['divider', 'separator', 'horizontal rule']),
   code_block: Object.freeze(['code block', 'code example']),
