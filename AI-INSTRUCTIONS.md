@@ -1742,3 +1742,65 @@ These compile to `try/catch` with backoff (retry), `Promise.race` with reject
 timer (timeout), and `Promise.race` with concurrent tasks (race). All three
 work in both JS and Python.
 
+
+## General-Purpose Language Features
+
+### String Interpolation
+Embed expressions inside strings with `{...}`:
+```
+set msg to 'Hello, {name}!'
+set summary to 'Total: {price * quantity} items'
+set info to 'User: {user's email}'   # possessive works inside {}
+```
+Compiles to JS template literals / Python f-strings. Works in single OR double quoted strings.
+
+### Typed Function Parameters
+Annotate params for documentation and type-mismatch warnings:
+```
+define function add(a is number, b is number) returns number:
+  return a + b
+
+define function greet(name is text) returns text:
+  return 'Hello, {name}!'
+```
+Emits JSDoc `@param`/`@returns` in JS. Python output is unaffected.
+Types: `text`, `number`, `boolean`, `list`, `map`, `any`.
+
+### Map Iteration
+Iterate over both keys and values in one loop:
+```
+for each key, value in settings:
+  show '{key}: {value}'
+```
+Access map metadata:
+```
+set k to keys of settings
+set v to values of settings
+if 'theme' exists in settings:
+  show 'has theme'
+```
+
+### First-Class Functions (Higher-Order)
+Pass named functions to map/filter:
+```
+define function double(x):
+  return x * 2
+
+set doubled to apply double to each in numbers   # → list.map(double)
+set evens to filter numbers using is_even         # → list.filter(is_even)
+```
+
+### Typed Error Handling
+Route errors by type and access the error object:
+```
+try:
+  fetch data from '/api/items'
+if error 'not found':
+  show 'Item does not exist'
+if error 'forbidden':
+  show error's message        # error's message, error's status, etc.
+if error:
+  show 'Unexpected: {error's message}'
+```
+Status mappings: `not found`=404, `forbidden`=403, `unauthorized`=401, `bad request`=400, `server error`=500.
+`error` is automatically bound in every handler body.
