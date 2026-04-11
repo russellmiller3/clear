@@ -818,12 +818,29 @@ app.post('/api/chat', async (req, res) => {
         messages: currentMessages,
       };
 
-      const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
-      if (!r.ok) {
-        const errText = await r.text();
-        send({ type: 'error', message: errText });
-        res.end();
-        return;
+      // Retry with exponential backoff on transient failures
+      let r;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
+          if (r.ok) break;
+          // Retry on 429 (rate limit), 500, 502, 503, 529 (overloaded)
+          const retryable = [429, 500, 502, 503, 529].includes(r.status);
+          if (!retryable || attempt === 2) {
+            const errText = await r.text();
+            send({ type: 'error', message: errText });
+            res.end();
+            return;
+          }
+          const delay = (attempt + 1) * 2000; // 2s, 4s
+          send({ type: 'text', delta: `\n*API hiccup (${r.status}), retrying in ${delay/1000}s...*\n` });
+          await new Promise(ok => setTimeout(ok, delay));
+        } catch (fetchErr) {
+          if (attempt === 2) throw fetchErr;
+          const delay = (attempt + 1) * 2000;
+          send({ type: 'text', delta: `\n*Network error, retrying in ${delay/1000}s...*\n` });
+          await new Promise(ok => setTimeout(ok, delay));
+        }
       }
 
       // Parse SSE stream from Anthropic
@@ -888,6 +905,25 @@ app.post('/api/chat', async (req, res) => {
         let input;
         try { input = JSON.parse(tb.inputJson || '{}'); } catch { input = {}; }
         assistantContent.push({ type: 'tool_use', id: tb.id, name: tb.name, input });
+
+        // Human-readable tool summary for chat UI
+        const toolSummary = (() => {
+          switch (tb.name) {
+            case 'edit_code': return input.action === 'write' ? 'Editing code' : input.action === 'read' ? 'Reading editor' : input.action === 'undo' ? 'Undoing last change' : 'edit_code';
+            case 'read_file': return `Reading ${input.filename || 'file'}`;
+            case 'edit_file': return `${input.action || 'editing'} ${input.filename || 'file'}`;
+            case 'run_command': return `$ ${(input.command || '').slice(0, 60)}`;
+            case 'compile': return 'Compiling...';
+            case 'run_app': return 'Starting app server';
+            case 'stop_app': return 'Stopping app server';
+            case 'http_request': return `${input.method || 'GET'} ${input.path || '/'}`;
+            case 'read_terminal': return 'Checking terminal output';
+            case 'screenshot_output': return 'Taking screenshot';
+            case 'highlight_code': return `Highlighting lines ${input.start_line || ''}–${input.end_line || ''}`;
+            default: return tb.name;
+          }
+        })();
+        send({ type: 'tool_start', name: tb.name, summary: toolSummary });
 
         // Auto-switch IDE tab based on what Claude is doing — before execution
         if (tb.name === 'edit_code' && input.action === 'write') {
