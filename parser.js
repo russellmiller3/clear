@@ -1047,8 +1047,27 @@ const CANONICAL_DISPATCH = new Map([
     const methodMap = { post_to: 'POST', get_from: 'GET', put_to: 'PUT', delete_from: 'DELETE' };
     const method = methodMap[ctx.tokens[0].canonical];
     let url = '';
-    if (ctx.tokens.length > 1 && ctx.tokens[1].type === TokenType.STRING) url = ctx.tokens[1].value;
-    ctx.body.push({ type: NodeType.API_CALL, method, url, fields: [], line: ctx.line });
+    let pos = 1;
+    if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.STRING) { url = ctx.tokens[pos].value; pos++; }
+    // Parse "with field1, field2" or "with form data" (sends all input fields)
+    const fields = [];
+    let sendFormData = false;
+    if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
+      pos++;
+      // "with form data" or "with form" → send all input state fields
+      if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'form' || ctx.tokens[pos].value === 'data')) {
+        sendFormData = true;
+      } else {
+        // "with field1, field2, ..." → send specific fields
+        while (pos < ctx.tokens.length) {
+          if (ctx.tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+          if (ctx.tokens[pos].canonical === 'and') { pos++; continue; }
+          fields.push(ctx.tokens[pos].value);
+          pos++;
+        }
+      }
+    }
+    ctx.body.push({ type: NodeType.API_CALL, method, url, fields, sendFormData, line: ctx.line });
     return ctx.i + 1;
   }],
   ['get_from', (ctx) => {
@@ -6401,10 +6420,13 @@ function parseAssignment(tokens, line) {
   // Check for "ask AgentName with input" on the right side of assignment
   // e.g. result = ask Summarizer with topic
   // e.g. result = ask HNDigestAgent with { url: hn_url }
+  // e.g. result = ask agent 'Helper' with data (keyword 'agent' before name)
   if (pos < tokens.length && tokens[pos].value === 'ask' &&
       pos + 1 < tokens.length && tokens[pos + 1].value !== 'ai' && tokens[pos + 1].value !== 'claude' &&
-      (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD)) {
+      (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD || tokens[pos + 1].type === TokenType.STRING)) {
     pos++; // skip 'ask'
+    // Skip optional 'agent' keyword: "ask agent 'Helper'" → agentName = 'Helper'
+    if (tokens[pos].canonical === 'agent' && pos + 1 < tokens.length) pos++;
     const agentName = tokens[pos].value; pos++;
     let argument = null;
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {

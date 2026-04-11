@@ -204,7 +204,8 @@ const UTILITY_FUNCTIONS = [
   const debug = typeof process !== 'undefined' && process.env.CLEAR_DEBUG;
   const status = err.status || (err.message && (err.message.includes('required') || err.message.includes('must be') || err.message.includes('must be unique') || err.message.includes('already exists')) ? 400 : 500);
   const safeMsg = status === 400 ? err.message : 'Something went wrong';
-  if (!debug) return { status, response: { error: safeMsg } };
+  // Always compute hints and structured info (not just in debug mode)
+  // Debug mode adds verbose context; non-debug still gets hints.
   const PII_FIELDS = ['password','secret','token','key','credit_card','ssn','api_key','api_secret'];
   function redact(obj) {
     if (!obj || typeof obj !== 'object') return obj;
@@ -283,9 +284,8 @@ const UTILITY_FUNCTIONS = [
       error: safeMsg,
       clear_line: resolvedClearLine,
       clear_file: ctx.file || null,
-      clear_source: ctx.source || null,
       hint: hint,
-      technical: msg
+      ...(debug ? { technical: msg, clear_source: ctx.source || null } : {})
     }
   };
   if (clearLineFromStack && clearLineFromStack !== ctx.line) {
@@ -4286,11 +4286,21 @@ ${pad}}`;
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
         return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
       }
-      // POST/PUT/DELETE: send specific fields or full state
+      // POST/PUT/DELETE: send specific fields, form inputs, or full state
       let bodyExpr;
       if (node.fields && node.fields.length > 0) {
+        // Specific fields: post to '/api/tasks' with title, description
         const fieldObj = node.fields.map(f => `${sanitizeName(f)}: _state.${sanitizeName(f)}`).join(', ');
         bodyExpr = `{ ${fieldObj} }`;
+      } else if (node.sendFormData && ctx.stateVars) {
+        // "with form data" — send only input-bound state vars, not the whole _state
+        const inputFields = [...ctx.stateVars].filter(v => !v.startsWith('_'));
+        if (inputFields.length > 0) {
+          const fieldObj = inputFields.map(f => `${f}: _state.${f}`).join(', ');
+          bodyExpr = `{ ${fieldObj} }`;
+        } else {
+          bodyExpr = '_state';
+        }
       } else {
         bodyExpr = '_state';
       }
@@ -7419,7 +7429,14 @@ function compileToBrowserServer(body, errors) {
         lines.push('  const incoming = { ...req.body, ...req.params };');
       }
       lines.push(handlerBody);
-      lines.push('  } catch(err) { res.status(500).json({ error: err.message }); }');
+      lines.push('  } catch(err) {');
+      lines.push('    const ctx = err._clearCtx || {};');
+      lines.push('    let hint = null;');
+      lines.push('    if (err.message.includes("SQLITE_CONSTRAINT")) hint = "A unique constraint was violated — a record with this value may already exist.";');
+      lines.push('    else if (err.message.includes("no such table")) hint = "This table does not exist yet. Check your table definition.";');
+      lines.push('    console.error("[Runtime Error]", ctx.op || "unknown", ctx.table ? "on " + ctx.table : "", err.message);');
+      lines.push('    res.status(500).json({ error: err.message, hint: hint || ctx.hint || null, context: ctx.op || null, table: ctx.table || null });');
+      lines.push('  }');
       lines.push('}});');
     }
   }

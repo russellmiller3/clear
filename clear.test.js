@@ -15230,16 +15230,16 @@ when user calls GET /api/health:
   });
 
   describe('production safety', () => {
-    it('no _clearMap or source info in production (CLEAR_DEBUG off)', () => {
+    it('always returns structured error with hint in production', () => {
       const src = `
 build for javascript backend
 when user calls GET /api/health:
   send back 'ok'`;
       const r = compileProgram(src);
       expect(r.errors).toHaveLength(0);
-      // _clearError handles production safety at runtime:
-      // when CLEAR_DEBUG is off, only { error: safeMsg } is returned
-      expect(r.javascript).toContain("if (!debug) return { status, response: { error: safeMsg } }");
+      // _clearError always returns structured response with hint
+      expect(r.javascript).toContain('hint:');
+      expect(r.javascript).toContain('error: safeMsg');
     });
 
     it('500 errors show safe message, not internal details', () => {
@@ -15505,7 +15505,7 @@ page 'App' at '/':
       // (it's tree-shaken, only emitted when used)
     });
 
-    it('debug info hidden in production (CLEAR_DEBUG off)', () => {
+    it('technical details only shown in debug mode', () => {
       const src = `
 build for javascript backend
 create a Items table:
@@ -15516,8 +15516,8 @@ when user calls POST /api/items sending data:
   send back new_item`;
       const r = compileProgram(src);
       expect(r.errors).toHaveLength(0);
-      // _clearError returns safe message when debug is off
-      expect(r.javascript).toContain("if (!debug) return { status, response: { error: safeMsg } }");
+      // technical field only included when debug is on
+      expect(r.javascript).toContain('debug ? { technical:');
     });
 
     it('PII redaction in verbose mode', () => {
