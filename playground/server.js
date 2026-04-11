@@ -497,6 +497,22 @@ app.get('/api/config', (req, res) => {
   res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
 });
 
+// Memory file endpoints (for UI button — Meph also accesses via edit_file tool)
+app.post('/api/read-file', (req, res) => {
+  const fname = String(req.body.filename || '').replace(/[^a-zA-Z0-9._-]/g, '-');
+  if (fname !== 'meph-memory.md') return res.json({ error: 'Only meph-memory.md is readable from the UI.' });
+  const fpath = join(ROOT_DIR, fname);
+  if (!existsSync(fpath)) return res.json({ content: '' });
+  res.json({ content: readFileSync(fpath, 'utf8') });
+});
+
+app.post('/api/write-file', (req, res) => {
+  const fname = String(req.body.filename || '').replace(/[^a-zA-Z0-9._-]/g, '-');
+  if (fname !== 'meph-memory.md') return res.json({ error: 'Only meph-memory.md is writable from the UI.' });
+  writeFileSync(join(ROOT_DIR, fname), req.body.content || '', 'utf8');
+  res.json({ written: true });
+});
+
 app.post('/api/chat', async (req, res) => {
   const { messages, apiKey, personality, editorContent, errors: editorErrors, webTools: enableWebTools } = req.body;
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;

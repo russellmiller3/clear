@@ -391,6 +391,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
       </span>
       <div style="display:flex;gap:4px;">
         <button class="toolbar-btn" onclick="newChat()" style="font-size:11px;padding:2px 8px;" title="Clear chat history">New</button>
+        <button class="toolbar-btn" onclick="showMemory()" style="font-size:11px;padding:2px 8px;" title="Meph's persistent memory">Memory</button>
         <button class="toolbar-btn" onclick="showPersonality()" style="font-size:11px;padding:2px 8px;" title="Custom instructions for Claude">Personality</button>
         <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
       </div>
@@ -1248,6 +1249,45 @@ window.clearPersonality = function() {
 };
 
 window.closePersonality = function() {
+  showingKeySetup = false;
+  renderChat();
+};
+
+window.showMemory = async function() {
+  showingKeySetup = true;
+  const el = document.getElementById('chat-messages');
+  el.innerHTML = `<div id="personality-setup"><div style="font-size:14px;font-weight:600;color:var(--tx);">Meph's Memory</div><div style="font-size:12px;">Loading...</div></div>`;
+  try {
+    const res = await fetch('/api/read-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: 'meph-memory.md' }) });
+    const data = await res.json();
+    const content = data.content || '';
+    const escaped = content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    el.innerHTML = `<div id="personality-setup">
+      <div style="font-size:14px;font-weight:600;color:var(--tx);">Meph's Memory</div>
+      <div style="font-size:12px;">Persistent memory across conversations. Edit directly or tell Meph "remember this".</div>
+      <textarea id="memory-input" placeholder="[pref] Russell likes midnight theme\n[quirk] display as list needs workaround\n[pattern] CRUD apps need: build, database, table, endpoints, page">${escaped}</textarea>
+      <div class="btn-row">
+        <button onclick="saveMemory()">Save</button>
+        <button class="btn-ghost" onclick="closeMemory()">Cancel</button>
+      </div>
+    </div>`;
+  } catch (e) {
+    el.innerHTML = `<div id="personality-setup"><div style="color:var(--err);">Failed to load memory: ${e.message}</div><div class="btn-row"><button class="btn-ghost" onclick="closeMemory()">Close</button></div></div>`;
+  }
+};
+
+window.saveMemory = async function() {
+  const content = document.getElementById('memory-input').value;
+  try {
+    await fetch('/api/write-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: 'meph-memory.md', content }) });
+    closeMemory();
+    addChatMsg('assistant', 'Memory saved.');
+  } catch (e) {
+    addChatMsg('assistant', 'Failed to save memory: ' + e.message);
+  }
+};
+
+window.closeMemory = function() {
   showingKeySetup = false;
   renderChat();
 };
