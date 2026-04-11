@@ -18755,4 +18755,69 @@ describe('Error variable binding in handlers', () => {
   });
 });
 
+// Phase 99: npm package imports
+describe('npm package imports', () => {
+  it('emits require at top of JS backend for simple package', () => {
+    const r = compileProgram(
+      "build for javascript backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const stripe = require('stripe');");
+  });
+  it('uses alias when specified', () => {
+    const r = compileProgram(
+      "build for javascript backend\nuse npm 'openai' as OpenAI\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const OpenAI = require('openai');");
+  });
+  it('handles scoped npm packages', () => {
+    const r = compileProgram(
+      "build for javascript backend\nuse npm '@sendgrid/mail' as sendgrid\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const sendgrid = require('@sendgrid/mail');");
+  });
+  it('does not emit duplicate require', () => {
+    const r = compileProgram(
+      "build for javascript backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    const count = (r.javascript.match(/require\('stripe'\)/g) || []).length;
+    expect(count).toBe(1);
+  });
+  it('emits python import for Python backend', () => {
+    const r = compileProgram(
+      "build for python backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('import stripe');
+  });
+});
+
+// Phase 100: Shell command execution
+describe('run command — shell execution', () => {
+  it('emits execSync in JS backend', () => {
+    const r = compileProgram(
+      "build for javascript backend\nwhen user calls POST /api/build:\n  run command 'npm run build'\n  send back 'done'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const { execSync } = require('child_process');");
+    expect(r.javascript).toContain('execSync("npm run build"');
+  });
+  it('emits subprocess.run in Python backend', () => {
+    const r = compileProgram(
+      "build for python backend\nwhen user calls POST /api/deploy:\n  run command './deploy.sh'\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('import subprocess');
+    expect(r.python).toContain('subprocess.run("./deploy.sh"');
+  });
+  it('does not emit child_process when not used', () => {
+    const r = compileProgram(
+      "build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'"
+    );
+    expect(r.javascript).not.toContain('child_process');
+  });
+});
+
 run();

@@ -2300,15 +2300,43 @@ New nodes: `MAP_KEYS`, `MAP_VALUES`, `MAP_EXISTS`, `MAP_APPLY`, `FILTER_APPLY` (
 Tokenizer: brace-depth tracking in strings (fixes `'s` inside `{}`)
 Validator: `validateTypedCallArgs` — warns on literal type mismatches at call sites
 
+**Phase 99: npm Package Imports (DONE — 2026-04-10)**
+
+| Feature | Status | Syntax |
+|---------|--------|--------|
+| `use npm 'package'` | Done | `use npm 'stripe'` → `const stripe = require('stripe');` |
+| `use npm 'package' as alias` | Done | `use npm 'openai' as OpenAI` |
+| Scoped packages | Done | `use npm '@sendgrid/mail' as sendgrid` |
+| Deployment integration | Done | `clear package` auto-adds npm packages to package.json |
+| Python backend | Done | `use npm 'stripe'` → `import stripe` |
+
+Parser: detects `npm` keyword after `use`, parses package name + optional `as alias`.
+Compiler (JS backend): emits `require()` at the top of server.js alongside built-in requires.
+Validator: registers alias as a declared variable — no false "undeclared" warnings.
+
+1563 tests, all passing.
+
+**Phase 100: Shell Command Execution (DONE — 2026-04-10)**
+
+| Feature | Syntax | Compiles to (JS) |
+|---------|--------|-----------------|
+| Run shell command | `run command 'npm run build'` | `execSync('cmd', { stdio: 'inherit' })` |
+| Python backend | same | `subprocess.run('cmd', shell=True, check=True)` |
+
+`child_process` is auto-imported only when `run command` is used.
+`subprocess` is auto-imported only when `run command` is used (Python).
+
+1566 tests, all passing.
+
 **Current priority order (hosted platform focus):**
-1. CodeMirror Clear mode (syntax highlighting for hosted editor)
-2. Hosted compile API (HTTP wrapper around compileProgram)
-3. One-click deploy (compile → container → live URL)
-4. Type system — inferred (catch `'hello' * 1.08` at compile time)
-5. Live preview (right pane shows running app)
-6. Source maps (map runtime errors to Clear lines)
-7. Package registry (shareable Clear modules)
-8. Production tiers (real DB, persistent sessions)
+1. ~~CodeMirror Clear mode~~ Done
+2. ~~Hosted compile API~~ Done
+3. ~~npm package imports~~ Done
+4. ~~Shell command execution~~ Done
+5. One-click deploy (compile → container → live URL)
+6. Type system — inferred (catch `'hello' * 1.08` at compile time)
+7. Live preview hot-reload (current: preview shows on compile; add ws push)
+8. Source maps (map runtime errors to Clear lines)
 
 ---
 

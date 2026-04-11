@@ -260,6 +260,8 @@ function validateForwardReferences(body, errors) {
           localDefined.add(node.variable);
           break;
         case NodeType.USE:
+          // npm package imports define the alias as a variable
+          if (node.isNpm && node.npmAlias) localDefined.add(node.npmAlias);
           // Namespaced module imports define the namespace variable
           if (node._namespace) localDefined.add(node._namespace);
           // Selective imports define the imported names directly

@@ -160,6 +160,9 @@ export const NodeType = Object.freeze({
   // Modules (Phase 3)
   USE: 'use',
 
+  // Shell command execution (Phase 100)
+  RUN_COMMAND: 'run_command',
+
   // Database declaration
   DATABASE_DECL: 'database_decl',
 
@@ -834,6 +837,16 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['raw_run', (ctx) => {
     let qPos = 1;
+    // run command 'shell-cmd' — shell execution
+    if (qPos < ctx.tokens.length && ctx.tokens[qPos].value === 'command') {
+      qPos++; // skip 'command'
+      if (qPos < ctx.tokens.length && ctx.tokens[qPos].type === TokenType.STRING) {
+        const cmd = ctx.tokens[qPos].value;
+        ctx.body.push({ type: NodeType.RUN_COMMAND, command: cmd, line: ctx.line });
+      }
+      return ctx.i + 1;
+    }
+    // run 'SQL query' — raw SQL
     if (qPos < ctx.tokens.length && ctx.tokens[qPos].type === TokenType.STRING) {
       const sql = ctx.tokens[qPos].value;
       qPos++;
@@ -3348,6 +3361,28 @@ function parseUse(tokens, line) {
   let pos = 1; // skip "use"
   if (pos >= tokens.length) {
     return { error: 'The use statement needs a module name in quotes — which file do you want to use? Example: use "helpers"' };
+  }
+
+  // npm package import: use npm 'stripe' or use npm 'stripe' as stripe_client
+  if (pos < tokens.length && tokens[pos].value === 'npm') {
+    pos++; // skip 'npm'
+    if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+      return { error: "use npm needs a package name in quotes. Example: use npm 'stripe'" };
+    }
+    const npmPackage = tokens[pos].value;
+    pos++;
+    // Optional: as alias
+    let npmAlias = npmPackage.replace(/^@[^/]+\//, '').replace(/[^a-zA-Z0-9_]/g, '_');
+    if (pos < tokens.length && tokens[pos].value === 'as' && pos + 1 < tokens.length) {
+      pos++; // skip 'as'
+      npmAlias = tokens[pos].value;
+      pos++;
+    }
+    const node = useNode(npmPackage, line);
+    node.isNpm = true;
+    node.npmPackage = npmPackage;
+    node.npmAlias = npmAlias.replace(/[^a-zA-Z0-9_$]/g, '_');
+    return { node };
   }
 
   // Inline-all import: use everything from 'helpers'
