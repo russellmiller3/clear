@@ -422,7 +422,7 @@ const TOOLS = [
   },
   {
     name: 'write_file',
-    description: 'Write text content to a file in the project root. Use this to save source code, logs, config, or data files. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.',
+    description: 'Write text content to a file in the project root. You can overwrite .clear files and compiler-requests.md. You can create new files of any allowed type. You CANNOT overwrite other existing files. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.',
     input_schema: {
       type: 'object',
       properties: {
@@ -598,6 +598,12 @@ app.post('/api/chat', async (req, res) => {
         const ext = safeName.includes('.') ? '.' + safeName.split('.').pop() : '';
         if (!ALLOWED_EXT.includes(ext)) return JSON.stringify({ error: `Extension '${ext}' not allowed. Use: ${ALLOWED_EXT.join(', ')}` });
         const dest = join(ROOT_DIR, safeName);
+        // Safety: only allow overwriting .clear files and compiler-requests.md
+        // Other existing files cannot be overwritten — only new files can be created
+        const WRITABLE_EXISTING = ['compiler-requests.md'];
+        if (existsSync(dest) && ext !== '.clear' && !WRITABLE_EXISTING.includes(safeName)) {
+          return JSON.stringify({ error: `Cannot overwrite existing file '${safeName}'. You can only modify .clear files and compiler-requests.md. New files are fine.` });
+        }
         writeFileSync(dest, input.content, 'utf8');
         return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
       }

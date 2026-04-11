@@ -19477,4 +19477,73 @@ when user calls GET /api/version:
   });
 });
 
+// ============================================================
+// P13 — Native AI Streaming in Endpoints
+// ============================================================
+describe('AI streaming in endpoints (P13)', () => {
+  it('bare ask claude streams by default', () => {
+    const src = `build for javascript backend
+
+when user calls POST /api/chat receiving data:
+  ask claude 'Help the user' with data's message
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("text/event-stream");
+    expect(r.javascript).toContain("_askAIStream");
+    expect(r.javascript).toContain("for await");
+    expect(r.javascript).toContain("res.end()");
+  });
+
+  it('assigned ask claude waits for full response (no streaming)', () => {
+    const src = `build for javascript backend
+
+when user calls POST /api/chat receiving data:
+  result = ask claude 'Help the user' with data's message
+  send back result
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("_askAI(");
+    expect(r.javascript).not.toContain("_askAIStream");
+    expect(r.javascript).not.toContain("text/event-stream");
+  });
+
+  it('stream ask claude also works as explicit keyword', () => {
+    const src = `build for javascript backend
+
+when user calls POST /api/chat receiving data:
+  stream ask claude 'Help the user' with data's message
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("_askAIStream");
+    expect(r.javascript).toContain("text/event-stream");
+  });
+
+  it('bare ask ai without context', () => {
+    const src = `build for javascript backend
+
+when user calls POST /api/generate receiving data:
+  ask ai 'Write a poem'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("_askAIStream");
+    expect(r.javascript).toContain("text/event-stream");
+  });
+
+  it('bare ask claude compiles to Python SSE', () => {
+    const src = `build for python backend
+
+when user calls POST /api/chat receiving data:
+  ask claude 'Help the user' with data's message
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain("StreamingResponse");
+    expect(r.python).toContain("_ask_ai_stream");
+  });
+});
+
 run();
