@@ -2289,6 +2289,15 @@ function parseComponentDef(lines, startIdx, blockIndent, errors) {
   const name = tokens[pos].value;
   pos++;
 
+  // Check for reserved content type names that would collide with 'show' parsing
+  const reservedComponentNames = new Set([
+    'Text', 'Heading', 'Subheading', 'Badge', 'Link', 'Divider', 'Image',
+    'Button', 'Display', 'Section',
+  ]);
+  if (reservedComponentNames.has(name)) {
+    errors.push({ line, message: `Component name '${name}' collides with a built-in keyword. Use a more specific name like '${name}Card', 'Custom${name}', or 'My${name}'.` });
+  }
+
   // Optional "receiving" + prop list
   const props = [];
   if (pos < tokens.length && (tokens[pos].canonical === 'receiving' || tokens[pos].canonical === 'with')) {

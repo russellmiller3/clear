@@ -9023,13 +9023,13 @@ describe('Component imports across files', () => {
 
   it('namespaced import includes component in namespace', () => {
     const resolver = (name) => {
-      if (name === 'ui') return "define component Badge receiving label:\n  text 'Badge: ' + label";
+      if (name === 'ui') return "define component StatusBadge receiving label:\n  text 'Badge: ' + label";
       return null;
     };
     // Namespace includes the component (compiled to JS object property)
-    const result = compileProgram("build for javascript backend\nuse 'ui'\nshow ui's Badge('Active')", { moduleResolver: resolver });
+    const result = compileProgram("build for javascript backend\nuse 'ui'\nshow ui's StatusBadge('Active')", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('ui.Badge');
+    expect(result.javascript).toContain('ui.StatusBadge');
   });
 
   it('COMPONENT_DEF included in importable types', () => {
@@ -13268,12 +13268,12 @@ describe('Stress R2: Component Edge Cases', () => {
     // This means you can't use bold/italic text with dynamic content in components.
     const src = [
       "build for web",
-      "define component Badge receiving label:",
+      "define component StatusTag receiving label:",
       "  bold text label",
       "page 'Test' at '/':",
       "  on page load get items from '/api/items'",
       "  for each item in items list:",
-      "    show Badge(item)",
+      "    show StatusTag(item)",
     ].join('\n');
     const result = compileProgram(src);
     // EXPECTED: errors.length === 0 (bold text should accept variable names)
@@ -14420,8 +14420,8 @@ page 'App' at '/':
 use everything from 'components'
 page 'App' at '/':
   heading 'App'`;
-    const compSrc = `define component Badge receiving label:
-  bold text 'Badge'`;
+    const compSrc = `define component StatusTag receiving label:
+  bold text 'Tag'`;
     const resolver = (name) => name === 'components' ? compSrc : null;
     const r = compileProgram(mainSrc, { moduleResolver: resolver });
     expect(r.errors).toHaveLength(0);
@@ -18339,6 +18339,160 @@ describe('Display as cards', () => {
     expect(result.javascript).toContain('_cardsEl');
     expect(result.javascript).toContain('["title","excerpt"]');
     expect(result.javascript).toContain('rounded-2xl');
+  });
+});
+
+// ── Component Composition Stress Tests ────────────────────────────────────────
+
+describe('Component stress: nested sections in body', () => {
+  it('compiles component with section child', () => {
+    const src = `build for web
+define component Card receiving title:
+  section 'Inner' padded:
+    show title
+page 'App':
+  show Card('Hello')`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('function Card(');
+    expect(result.javascript).toContain('_html');
+  });
+});
+
+describe('Component stress: multiple content types in block-form', () => {
+  it('compiles block-form with heading + text + badge', () => {
+    const src = `build for web
+define component Card receiving content:
+  show content
+page 'App':
+  show Card:
+    heading 'Title'
+    text 'Body paragraph'
+    badge 'New' as info`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('clear-component');
+  });
+});
+
+describe('Component stress: inline component with multiple args', () => {
+  it('compiles component with 3 props', () => {
+    const src = `build for web
+define component InfoCard receiving title, desc, note:
+  show title
+  show desc
+  show note
+page 'App':
+  show InfoCard('Hello', 'World', 'Bye')`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('InfoCard(');
+  });
+});
+
+describe('Component stress: component with reactive state prop', () => {
+  it('passes state variable to component and renders', () => {
+    const src = `build for web
+define component Greeting receiving name:
+  show name
+page 'App':
+  username is 'Alice'
+  'Name' as text input saves to username
+  show Greeting(username)`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Greeting(_state.username)');
+  });
+});
+
+describe('Component stress: two components coexist', () => {
+  it('compiles two different components on same page', () => {
+    const src = `build for web
+define component PageHeader receiving title:
+  show title
+define component PageFooter receiving note:
+  show note
+page 'App':
+  show PageHeader('Welcome')
+  show PageFooter('Copyright')`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('comp_0');
+    expect(result.html).toContain('comp_1');
+    expect(result.javascript).toContain('PageHeader(');
+    expect(result.javascript).toContain('PageFooter(');
+  });
+});
+
+describe('Component stress: block-form with image element', () => {
+  it('compiles block-form children including image', () => {
+    const src = `build for web
+define component Card receiving content:
+  show content
+page 'App':
+  show Card:
+    image 'https://example.com/photo.jpg'
+    heading 'Title'
+    text 'Description'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('clear-component');
+  });
+});
+
+describe('Component stress: component used twice with different args', () => {
+  it('renders both instances with unique container IDs', () => {
+    const src = `build for web
+define component StatusTag receiving label:
+  show label
+page 'App':
+  show StatusTag('First')
+  show StatusTag('Second')`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('comp_0');
+    expect(result.html).toContain('comp_1');
+    expect(result.javascript).toContain('StatusTag("First")');
+    expect(result.javascript).toContain('StatusTag("Second")');
+  });
+});
+
+describe('Component stress: component inside conditional', () => {
+  it('compiles component call inside if block', () => {
+    const src = `build for web
+define component Card receiving title:
+  show title
+page 'App':
+  step = 1
+  if step is 1:
+    show Card('Step 1')`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('Card(');
+  });
+});
+
+describe('Component stress: name collision with content types', () => {
+  it('component named Badge collides with badge content type', () => {
+    const src = `build for web
+define component Badge receiving label:
+  show label
+page 'App':
+  show Badge('Active')`;
+    const result = compileProgram(src);
+    // Badge collides with content type 'badge' — parser treats 'show Badge(...)' as badge content
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('component named Text collides with text content type', () => {
+    const src = `build for web
+define component Text receiving value:
+  show value
+page 'App':
+  show Text('Hello')`;
+    const result = compileProgram(src);
+    // 'Text' lowercases to 'text' — a content type keyword
+    expect(result.errors.length).toBeGreaterThan(0);
   });
 });
 

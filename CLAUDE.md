@@ -19,7 +19,7 @@ Run ToolSearch for these before doing anything else:
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1515 compiler tests)
+- Run all tests: `node clear.test.js` (1525 compiler tests)
 - Run playground tests (each is a separate file):
   - `node playground/server.test.js` (~85 server API tests)
   - `node playground/e2e.test.js` (~60 template compile + endpoint tests)

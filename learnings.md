@@ -29,6 +29,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 18: ECharts Analytics Dashboard + Chart Syntax Upgrade](#session-18-echarts-analytics-dashboard--chart-syntax-upgrade-2026-04-10) | overflow-hidden collapses flex children, flex-col vs space-y-6 for scrollable content, ECharts init needs visible container, chart groupBy for all types, type-first chart syntax, removing `area` synonym from section, metric_card trend detection |
 | [Session 19: Tests, Charts, Blog, Images](#session-19-tests-charts-blog-images-2026-04-10) | Component test fixes (4 distinct bugs), `photo`/`picture` synonym collisions, image element `ui` object shape, seed auto-dedup at compiler level, `db.findAll()` not `db.getAll()`, chart subtitle/stacked modifiers |
 | [Session 19b: Display as Cards](#session-19b-display-as-cards-2026-04-10) | `author` field must match before `name`/`title` in heuristics, `ui.tag = 'cards'` is third option, smart field detection by column name |
+| [Session 19c: Component Stress Test](#session-19c-component-stress-test-2026-04-10) | Component names collide with content types, reserved name validator in `parseComponentDef()`, 8 edge case patterns all passing |
 
 ---
 
@@ -551,3 +552,22 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Smart heuristics by column name** — image/avatar/url fields → images, category/tag/status → badges, title/name → headings, excerpt/description/body → truncated text, author/date → meta row. Fallback: first unmatched field → title, second → body.
 - **Auto-exclude internal fields** — When no `showing` columns specified, auto-filters out `id` and fields ending with `_at` or `_at_date` (timestamps).
 - **Card HTML uses same classes as `blog_card` preset** — `rounded-2xl`, `border-base-300/40`, `hover:shadow-lg hover:-translate-y-0.5` for visual consistency between static and dynamic cards.
+
+---
+
+## Session 19c: Component Stress Test (2026-04-10)
+
+### Component Names Collide with Content Types
+- **`Badge`, `Text`, `Heading`, `Image`, `Button`, `Link`, `Divider`, `Section`, `Display` are reserved.** The `show` parser checks content canonicals BEFORE component calls. `show Badge('Active')` parses as `badge text 'Active'` instead of a component call.
+- **No parser fix is practical.** Content type dispatch happens first and can't easily be reordered without breaking everything. The right fix is a compile-time error: `parseComponentDef()` rejects reserved names with a helpful suggestion (`Badge` → `StatusBadge`, `CustomBadge`, `MyBadge`).
+- **Reserved name set is hard-coded in `parseComponentDef()`** — not derived from synonyms. Only the 10 names that actually collide are blocked.
+
+### Component Edge Cases (8 stress tests)
+- **Nested sections inside components** — components containing `section` blocks compile correctly.
+- **Multiple content types** — `heading` + `text` + `badge` + `divider` all work inside one component.
+- **Multiple args** — `define component X receiving a, b, c:` works, all args accessible.
+- **Reactive state as prop** — passing a state variable to a component triggers recompute correctly.
+- **Two components on one page** — no namespace collision.
+- **Block-form with image** — `image` element inside component body works.
+- **Same component used twice** — no duplication or ID collision.
+- **Component inside conditional** — `if X then show MyComponent(Y)` compiles correctly.
