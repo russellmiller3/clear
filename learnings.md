@@ -33,6 +33,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 20: GP Language Features](#session-20-general-purpose-language-features-2026-04-10) | `of`→`in` canonical, `using`→`with`, `returns`→`responds_with`, `exists in` is compound token `key_exists`, `parsePrimary` has no errors array, `run()` exits immediately, params are `{name,type}` objects, TRY_HANDLE uses `handlers` array, typed handler body indent math, Edit tool fails on large files with template literals |
 | [Session 21: RL Foundation + Source Maps + Page Slugs](#session-21-rl-foundation--source-maps--page-slugs-2026-04-11) | npm require double-quotes bug, backend `// clear:N` always-on for source maps, `_clearLineMap` injected as line 2 (shift off-by-one), `pageNode` always sets route now (single-page apps safe because `hasRouting = pages.length > 1`), sandbox symlinkSync needs `'junction'` type on Windows |
 | [Session 22: Compiler Requests + RL Infrastructure](#session-22-compiler-requests--rl-infrastructure-2026-04-11) | Optional chaining `?.` only for user-written possessive access (not compiler-generated `req.body`), `error.message` needs hard `.` (exception to `?.` rule), keyword guard must whitelist content-type words (`text`, `heading` etc.), `_pick` JSON.stringify for nested objects, `_revive` JSON.parse on retrieval, user-written TEST_DEF bodies go through `generateE2ETests` not `compileNode`, cron tokenizer splits `2:30pm` into multi-token sequence, patch API body indentation must always add 2-space prefix (not skip if already indented), `run command` capture mode via ASSIGN special-case (not exprToCode) |
+| [Session 20: Compiler Bug Fixes + SVG Rendering](#session-20-compiler-bug-fixes--svg-rendering-2026-04-11) | Tree-shaker callback blind spot, conditional DOM needs reactive path, `text` guard too strict, SHOW needs DOM targets, bare SVG streaming |
 
 ---
 
@@ -658,3 +659,31 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 ### `hasRunCommand` detector must check inside ASSIGN expressions
 - The `child_process` import detector (`usesRunCommand`) originally only checked for standalone RUN_COMMAND nodes and endpoint bodies. When output capture was added, `result = run command 'cmd'` creates an ASSIGN node whose expression is RUN_COMMAND — the detector missed this. Fixed with a recursive `hasRunCommand(nodes)` that also checks ASSIGN expressions and CRON bodies.
+
+---
+
+## Session 20: Compiler Bug Fixes + SVG Rendering (2026-04-11)
+
+### Tree-shaker callback blind spot
+- `_getUsedUtilities()` checked for `utilName + '('` to detect function usage. But `.map(_revive)` passes the function as a callback — no open paren. Fix: also check for `utilName + ')'`, `utilName + ','`, `utilName + ';'`. This one bug broke every GET endpoint in Clear for weeks — `_revive` was tree-shaken out of every compiled server.
+
+### Conditional DOM visibility requires reactive path
+- Static pages with `if/else` containing UI nodes (`text`, `heading`, etc.) compiled to empty JS if-bodies because UI nodes produce HTML but no JS. Fix: mark pages with block-form `IF_THEN` as reactive (`isReactiveApp`), and recurse `findConditionals` into IF_THEN branches (not just PAGE/SECTION) to match HTML scaffold's walk order.
+
+### `show alert` parsed as expression, not toast
+- Parser checked `tokens[1].value === 'toast'` but user writes `show alert`. Fix: accept `alert` and `notification` as synonyms for `toast` in the parser dispatch, not the synonym table (avoids tokenizer collisions with `show alert` as a bare expression path).
+
+### `text item` in for-each — guard too strict
+- The `content_text` dispatch guarded `text` as content-keyword only when followed by `TokenType.STRING`. `text item` (identifier) fell through to variable reference → `console.log(text)`. Fix: also accept identifiers, parse as SHOW node via `parseExpression`.
+
+### String concat in `text` dropped variables
+- `text 'Price: ' + price` — parser routed to `parseContent` which only reads the first string token. Fix: check for operator after string, route to expression parser if found.
+
+### SHOW nodes in web pages need DOM targets
+- `compileNode` for SHOW always emitted `console.log()`. In web frontend pages, SHOW nodes should target DOM elements. Fix: HTML scaffold creates `<p id="show_N">` placeholders, JS compiler emits `getElementById` updates when `ctx.insidePage` is set.
+
+### `display as list` — missing format path
+- HTML scaffold and reactive compiler only handled `table` and `cards` formats. `list` fell through to stat-card widget. Fix: added `list` tag in `displayNode`, `<ul>` in HTML scaffold, list iteration JS in reactive compiler, and `isReactiveApp` detection.
+
+### Bare SVG in chat — streaming UX
+- Claude models emit raw `<svg>` without code fences. `markdownToHtml` only detected fenced SVG. Fix: Phase 2 regex extracts bare `<svg>...</svg>` from text parts. Phase 3 detects incomplete SVG during streaming (`<svg` without `</svg>`) and shows "*Rendering diagram...*" placeholder.

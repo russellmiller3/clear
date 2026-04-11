@@ -33,7 +33,8 @@ Also: optional chaining (`?.`) for null-safe property access, `_pick` auto-seria
 nested JSON for SQLite, `_revive` auto-parses JSON strings, keyword guard for better
 error messages, chain depth + expression complexity warnings, `write_file` supports
 non-`.clear` extensions, multiline `run command:` blocks.
-1633 compiler tests + 9 sandbox tests.
+Tree-shaker detects callback references (`.map(_revive)`), conditional UI blocks trigger reactive path with DOM visibility toggles, `show alert`/`notification` compile to toast, `text variable` works in loops, string concatenation in `text` renders to DOM, `display as list` renders `<ul>` iteration. Studio SVG diagrams render inline in chat.
+1640 compiler tests + 9 sandbox tests.
 
 ---
 

@@ -3,16 +3,327 @@
 ## Request Template
 ```
 ## Request: [short name]
-**App:** [description]
-**What I needed:** [one sentence]
-**Proposed syntax:**
+**Priority:** CRITICAL / HIGH / MEDIUM / LOW
+**Target:** JS / Python / Both / Tooling
+**App:** [description of what you were building]
+**What I needed:** [one sentence — what the Clear code should do]
+
+**Failing test (paste this into the editor to reproduce):**
 \`\`\`clear
-[Clear lines you wish existed]
+[minimal Clear code that triggers the bug — as short as possible]
 \`\`\`
-**Workaround used:** [what you did instead, or "none"]
-**Error hit:** [exact error, or "no error but feature missing"]
-**Impact:** [low / medium / high]
+
+**Proposed syntax (for missing features only):**
+\`\`\`clear
+[the Clear line(s) you wish existed]
+\`\`\`
+
+**Steps to reproduce:**
+1. [paste failing test above into editor]
+2. [compile / run / call endpoint]
+3. [what you see]
+
+**Real compiled output (the smoking gun):**
+\`\`\`javascript
+[exact compiled JS or Python output — copy verbatim from compiler]
+\`\`\`
+
+**Expected output:**
+\`\`\`javascript
+[what it should compile to]
+\`\`\`
+
+**Error hit:** [exact runtime error, or "no error but behavior wrong", or "no error but feature missing"]
+**Workaround used:** [what you did instead, or "none — feature is blocked"]
+**Impact:** [CRITICAL / HIGH / MEDIUM / LOW — and one sentence why]
 ```
+
+---
+
+## 🔴 TIER 1 — BLOCKERS (App cannot function without fixing these)
+
+| # | Bug | Target | Filed |
+|---|-----|--------|-------|
+| 1 | `_revive is not defined` crashes ALL GET endpoints | JS | ✅ |
+| 2 | `_revive is not defined` crashes login/auth | JS | ✅ |
+| 3 | Agent returns empty `{}` — response completely lost | JS | ✅ |
+| 4 | Agent + workflow code leaks into frontend `_recompute()` | JS | ✅ |
+| 5 | Workflow returns no output — black box | JS | ✅ |
+| 6 | Conditionals compile with empty JS bodies | JS | ✅ |
+| 7 | Workflow step agents never defined — `ReferenceError` at runtime | Both | ✅ |
+| 8 | [PYTHON] `send back result` (scalar) → FastAPI serialization crash | Python | ✅ |
+| 9 | [PYTHON] DELETE nukes entire table — ignores `:id` | Python | ✅ |
+| 10 | [PYTHON] PUT — `:id` not extracted from URL params | Python | ✅ |
+| 11 | [PYTHON] `requires auth` always returns 401 | Python | ✅ |
+| 12 | [PYTHON] All agents crash — async generator called with `await` | Python | ✅ |
+| 13 | [PYTHON] Workflow state dict — unquoted keys → NameError | Python | ✅ |
+| 14 | [PYTHON] Workflow passes entire state to agent — wrong arg | Python | ✅ |
+| 15 | [PYTHON] `run_app` doesn't support FastAPI/uvicorn — untestable | Python | ✅ |
+| 16 | JS scheduled task `_revive` crash — silent failure after first interval | JS | ✅ |
+| 17 | [PYTHON] Scheduled task IndentationError — app won't start | Python | ✅ |
+| 18 | File input not rendered — compiles to `console.log` | JS | ✅ |
+| 19 | `upload X to '/endpoint'` → `console.log(upload)` — undefined | JS | ✅ |
+
+---
+
+## 🟠 TIER 2 — MAJOR GAPS (Important features broken or completely missing)
+
+| # | Bug | Target | Filed |
+|---|-----|--------|-------|
+| 1 | `post to` in button handler → `post_to` undefined | JS | ✅ |
+| 2 | `show alert` → `console.log(alert)` instead of dialog | JS | ✅ |
+| 3 | `text` keyword broken inside `for each` loops | JS | ✅ |
+| 4 | `display as list` → stringified `[object Object]` | JS | ✅ |
+| 5 | String concat drops variable value | JS | ✅ |
+| 6 | Policy guards leak into frontend + never hit server | JS | ✅ |
+| 7 | Policy guards re-register on every `_recompute()` call | JS | ✅ |
+| 8 | Charts — no library imported, compiles to empty `<canvas>` | Both | ✅ |
+| 9 | DB relationships — `belongs to` ignored, no JOIN implemented | Both | ✅ |
+| 10 | External APIs — `fetch from` compiles to `undefined` | Both | ✅ |
+| 11 | Agent streaming display not expressible in Clear | Both | ✅ |
+| 12 | Compile tool returns no source on error (debug blind) | Tooling | ✅ |
+| 13 | JS scheduled task — no error handling, can't cancel | JS | ✅ |
+| 14 | [PYTHON] Scheduled task uses deprecated `@app.on_event` | Python | ✅ |
+| 15 | Server has no multipart/file upload middleware | JS | ✅ |
+
+---
+
+## 🟡 TIER 3 — QUALITY OF LIFE (Annoying but workable around)
+
+| # | Request | Target | Filed |
+|---|---------|--------|-------|
+| 1 | `protect tables` blocks ALL ops including reads | JS | ✅ |
+| 2 | `app_layout` clips `page_hero`/`page_section` silently | JS | ✅ |
+| 3 | Preview panel renders blank despite valid HTML | Tooling | ✅ |
+| 4 | Agent debug mode (`debug on` directive) | Both | ✅ |
+| 5 | Workflow step progress UI (`show workflow status`) | Both | ✅ |
+| 6 | Workflow missing from architecture diagram header | Both | ✅ |
+| 7 | Template scaffolding (`init --template NAME`) | Tooling | ✅ |
+| 8 | Compile tool should return source on success | Tooling | ✅ |
+| 9 | Agent streaming vs non-streaming toggle | Python | ✅ |
+| 10 | `refresh page` → `window.location.reload()` ✅ RESOLVED | JS | resolved |
+
+---
+
+
+
+---
+
+## Request: Agent endpoint returns empty `{}` — response not sent back
+**Priority:** CRITICAL
+**App:** Any app using an AI agent called from an endpoint
+**What I needed:** `result = ask agent 'Helper' with data's question` → `send back result` to return the agent's response as JSON
+**Proposed syntax:**
+```clear
+agent 'Helper' receives question:
+  response = ask claude 'You are a helpful assistant.' with question
+  send back response
+
+when user calls POST /api/ask sending data:
+  result = ask agent 'Helper' with data's question
+  send back result
+```
+**Workaround used:** None — response is completely lost
+**Error hit:** No error. POST /api/ask returns `{}` — empty object. Agent runs (no crash) but the response never makes it back to the caller.
+**Steps to reproduce:**
+```clear
+build for web and javascript backend
+database is local memory
+
+agent 'Helper' receives question:
+  response = ask claude 'You are a helpful assistant.' with question
+  send back response
+
+when user calls POST /api/ask sending data:
+  result = ask agent 'Helper' with data's question
+  send back result
+```
+Run → POST /api/ask with `{"question": "What is 2+2?"}` → returns `{}`
+
+**Real compiled output (COMPILED AND VERIFIED — exact serverJS):**
+```javascript
+// clear:4 — agent definition
+async function* agent_helper(question) {
+  // clear:5
+  let response = _askAIStream("You are a helpful assistant.", question);
+  // clear:6
+  // ← send back response compiles to NOTHING — no yield, no return
+}
+
+// clear:8 — endpoint
+app.post("/api/ask", async (req, res) => {
+  try {
+    const data = req.body;
+    // clear:9
+    let result = agent_helper(data?.question);  // ← no await — returns generator object
+    // clear:10
+    res.json(result);  // ← serializes generator object → {}
+  } catch(err) { ... }
+});
+```
+Two compounding bugs: (1) `send back response` inside agent compiles to nothing — no `yield`, no `return`. (2) `ask agent 'Helper'` compiles to `agent_helper(...)` with no `await` — returns a generator object immediately. `res.json()` on a generator serializes as `{}`.
+
+**Expected output:**
+```javascript
+async function agent_helper(question) {
+  let response = await _askAI("You are a helpful assistant.", question);
+  return response;  // ← send back compiles to return
+}
+
+app.post("/api/ask", async (req, res) => {
+  const data = req.body;
+  let result = await agent_helper(data?.question);  // ← awaited
+  res.json({ result });
+});
+```
+**Impact:** CRITICAL — agents are completely non-functional end-to-end. The core AI feature of Clear doesn't work.
+
+---
+
+## Request: Agent function body leaks into frontend `_recompute()` — should be server-only
+**Priority:** CRITICAL
+**App:** Any app with an agent
+**What I needed:** Agent definitions to compile ONLY to serverJS — they are backend functions, not frontend logic
+**Proposed syntax:** N/A — this is a compiler codegen bug
+**Workaround used:** None
+**Failing test (paste into editor and compile):**
+```clear
+build for web and javascript backend
+database is local memory
+
+agent 'Helper' receives question:
+  response = ask claude 'You are a helpful assistant.' with question
+  send back response
+
+when user calls POST /api/ask sending data:
+  result = ask agent 'Helper' with data's question
+  send back result
+
+page 'Test' at '/':
+  heading 'Agent Test'
+  'Question' as text input
+  button 'Ask':
+    show 'asking'
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect the `javascript` (CLIENT-SIDE) output — NOT serverJS
+4. Find `agent_helper` function defined INSIDE `_recompute()`
+5. Open browser DevTools → Sources → see full agent logic including system prompt
+
+**Real compiled output (COMPILED AND VERIFIED — exact copy from compiler):**
+```javascript
+// CLIENT-SIDE javascript bundle — _recompute() contains the full agent:
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  async function* agent_helper(question) {    // ← ENTIRE AGENT in browser bundle
+    let response = _askAIStream("You are a helpful assistant.", _state.question);
+                                              // ← uses _state.question not the parameter
+                                              // ← _askAIStream also defined in frontend bundle
+  }
+  document.getElementById('input_question').value = _state.question;
+}
+```
+Also in the frontend bundle — the full `_askAIStream` streaming function including the Anthropic API endpoint URL and auth header structure. Anyone opening DevTools sees the entire AI pipeline.
+
+**Expected output:**
+- `javascript` (frontend): zero agent code. No `agent_helper`, no `_askAIStream`.
+- `serverJS` only: `agent_helper` defined once at module level
+
+**Error hit:** No compile error. Runtime: agent logic is in browser DevTools for any user.
+**Impact:** CRITICAL — security issue. System prompts, API logic, Anthropic endpoint, and all agent internals exposed client-side.
+
+---
+
+## Request: `post to '/api/ask' with question` compiles to broken JS in button handler
+**Priority:** HIGH
+**Target:** JS
+**App:** Any app making API calls from a button click
+**What I needed:** `result = post to '/api/ask' with question` to compile to a proper `fetch()` POST call
+
+**Failing test (paste into editor and compile):**
+```clear
+build for web and javascript backend
+
+page 'Test' at '/':
+  'Question' as text input
+  button 'Ask':
+    result = post to '/api/ask' with question
+    text result's answer
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect the button handler in the compiled JS
+
+**Real compiled output (compiled and verified):**
+```javascript
+document.getElementById('btn_Ask').addEventListener('click', function() {
+  let result = post_to;   // ← post to compiled as variable name
+  console.log(text);      // ← text compiled as console.log(text) — undefined
+  _recompute();
+});
+```
+
+**Expected output:**
+```javascript
+document.getElementById('btn_Ask').addEventListener('click', async function() {
+  const response = await fetch('/api/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question: _state.question })
+  });
+  const result = await response.json();
+  document.getElementById('display_answer').textContent = result.answer;
+  _recompute();
+});
+```
+
+**Error hit:** No compile error. At runtime: `ReferenceError: post_to is not defined`
+**Workaround used:** None — button API calls are completely broken
+**Impact:** HIGH — buttons cannot make API calls. Any interactive app that posts data from the frontend is blocked.
+
+---
+
+## Request: Agent affordance — streaming response display
+**Priority:** HIGH
+**App:** Any app using AI agents with streaming output
+**What I needed:** A way to display agent streaming responses in the UI as they arrive, not wait for the full response
+**Proposed syntax:**
+```clear
+button 'Ask':
+  stream from '/api/ask' with question into result_box
+```
+or
+```clear
+button 'Ask':
+  result = post to '/api/ask' with question
+  stream result into 'result_box'
+```
+**Workaround used:** None — streaming UI is not expressible in Clear at all
+**Error hit:** No error — feature missing
+**Impact:** HIGH — AI agent responses feel slow without streaming. This is table stakes for any AI-powered UI in 2025.
+
+---
+
+## Request: Agent affordance — `debug agent` mode to inspect prompts and responses
+**Priority:** MEDIUM
+**App:** All apps using agents
+**What I needed:** A way to see what prompt was actually sent to Claude and what raw response came back, without digging into compiled JS
+**Proposed syntax:**
+```clear
+agent 'Helper' receives question:
+  debug on
+  response = ask claude 'You are helpful.' with question
+  send back response
+```
+or via CLI: `node cli/clear.js run --debug-agents`
+**Workaround used:** Read terminal output and guess
+**Error hit:** No error — feature missing
+**Impact:** MEDIUM — debugging agent behavior is currently blind. You can't tell if the prompt is wrong, the response is malformed, or the pipeline is broken.
 
 ---
 
@@ -77,7 +388,7 @@ Same root cause as the GET endpoint crash — the login handler queries the User
 
 ---
 
-## Request: `display [var] as list` compiles to a static card, not a list
+## Request: `display [var] as list` compiles to a static card, not a list — DETAILED
 **Priority:** HIGH
 **App:** Any app displaying query results as a list
 **What I needed:** `display tasks as list` to render each item in an `<ul><li>` or similar list structure
@@ -86,44 +397,128 @@ Same root cause as the GET endpoint crash — the login handler queries the User
 display tasks as list
 ```
 **Workaround used:** None found
-**Error hit:** No error. Compiles to a static card div with a `<p>` tag that calls `String(tasks)` — renders `[object Object],[object Object]` or similar stringified output instead of a real list.
+**Error hit:** No error. Compiles to:
+```html
+<div class="card"><p id="display_tasks"></p></div>
+```
+```javascript
+document.getElementById('display_tasks').textContent = String(tasks);
+// renders: "[object Object],[object Object]"
+```
 **Steps to reproduce:**
 ```clear
 build for web and javascript backend
 database is local memory
-
 create a Tasks table:
   title, required
-
-when user calls GET /api/tasks:
-  tasks = get all Tasks
-  send back tasks
-
-page 'Tasks' at '/':
+page 'App' at '/':
   on page load get tasks from '/api/tasks'
   display tasks as list
 ```
-Compile → inspect HTML → see static card div, not a list. No `<ul>`, no `<li>`, no loop over items.
-**Impact:** HIGH — `display as list` is a documented feature. Every app that tries to show query results as a list gets a broken static widget instead.
+**Failing test (paste into editor and compile):**
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Fruits table:
+  name, required
+
+when user calls GET /api/fruits:
+  fruits = get all Fruits
+  send back fruits
+
+page 'Test' at '/':
+  on page load get fruits from '/api/fruits'
+  display fruits as list
+```
+**Real compiled output (COMPILED AND VERIFIED — exact copy from compiler 2026-01-01):**
+```javascript
+// _recompute() in frontend — exact output:
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  document.getElementById('output_Fruits_value').textContent = String(_state.fruits);
+}
+```
+```html
+<!-- HTML produced — a stat card widget, NOT a list: -->
+<div class="bg-base-200 rounded-xl border border-base-300/40 p-6 flex flex-col gap-2" id="output_Fruits">
+  <p class="text-sm font-medium text-base-content/50">Fruits</p>
+  <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="output_Fruits_value"></p>
+</div>
+```
+`display fruits as list` compiled to a single `<p>` stat widget. JS does `String(_state.fruits)` on the array → renders `"[object Object],[object Object]"`. No `<ul>`, no `<li>`, no iteration whatsoever. The compiler treated `display X as list` identically to `display X` (a stat card).
+
+**Expected output:**
+```javascript
+const _list = document.getElementById('list_fruits');
+_list.innerHTML = '';
+for (const item of (_state.fruits || [])) {
+  const li = document.createElement('li');
+  li.textContent = item.name;
+  _list.appendChild(li);
+}
+```
+```html
+<ul id="list_fruits" class="list-disc pl-4 space-y-1"></ul>
+```
+**Error hit:** No compile error. Runtime renders `null` as plain text in a stat widget.
+**Impact:** HIGH — `display as list` is a documented feature. Every app using it gets a broken stat card instead of a list.
 
 ---
 
 ## Request: Preview panel renders blank even for valid HTML builds
-**Priority:** CRITICAL
+**Priority:** 🔴 TIER 1 — BLOCKER
 **App:** Any web build
-**What I needed:** The preview panel to show rendered HTML output
+**What I needed:** Preview tab renders compiled HTML visually after compile
+
+**Failing test:**
+```clear
+build for web and javascript backend
+database is local memory
+
+page 'Test' at '/':
+  heading 'Preview Test'
+  text 'Hello world'
+  button 'Click me':
+    show 'clicked'
+```
+
+**Steps to reproduce:**
+1. Paste above code into editor
+2. Click Compile — no errors
+3. Click Preview tab
+4. Observe: white screen, nothing rendered
+
+**Real compiled HTML (compiler output is valid — this is a tooling bug):**
+```html
+<!DOCTYPE html>
+<html lang="en" data-theme="ivory">
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="max-w-2xl mx-auto p-8 flex flex-col gap-6">
+    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">Preview Test</h1>
+    <p class="text-sm font-medium text-base-content/90 leading-snug">Hello world</p>
+    <button class="btn btn-primary" id="btn_Click_me">Click me</button>
+  </main>
+  <script>
+    document.title = "Test";
+    let _state = {};
+    function _recompute() { }
+    document.getElementById('btn_Click_me').addEventListener('click', function() {
+      console.log("clicked");
+      _recompute();
+    });
+    _recompute();
+  </script>
+</body>
+</html>
+```
+
+**Expected:** Preview tab renders the above HTML — user sees their UI in the panel
+**Actual:** Preview tab is blank white screen. No error. No content.
 **Proposed syntax:** N/A — this is a runtime/tooling bug, not a language gap
 **Workaround used:** None — preview is completely unusable
-**Error hit:** No error thrown. HTML compiles correctly with valid tags (h1, p, div etc) but preview panel renders blank white. Confirmed via screenshot_output tool.
-**Steps to reproduce:**
-```clear
-build for web
-page 'Test' at '/':
-  heading 'Hello World'
-  text 'This is a paragraph'
-```
-Compile → Run → screenshot_output shows blank white panel.
-**Impact:** CRITICAL — the primary feedback loop for UI development is broken. Every web build appears to produce nothing.
+**Error hit:** No error thrown. Silent blank screen.
+**Impact:** high — primary feedback loop for UI development is broken
 
 ---
 
@@ -136,16 +531,33 @@ Compile → Run → screenshot_output shows blank white panel.
 price = 42
 text 'Price is: ' + price
 ```
-**Workaround used:** None found
-**Error hit:** No error thrown. Compiles silently. But rendered HTML contains only the static string "Price is: " — the variable value is dropped entirely.
-**Steps to reproduce:**
+**Failing test (paste into editor and compile):**
 ```clear
 build for web
+
 page 'Test' at '/':
   price = 42
   text 'Price is: ' + price
 ```
-Expected: "Price is: 42" in the DOM. Actual: "Price is: " only.
+**Real compiled output (verified — copy exact):**
+```html
+<!-- HTML — variable completely dropped: -->
+<p class="text-sm font-medium text-base-content/90 leading-snug">Price is: </p>
+```
+```javascript
+// JS — variable declared but never rendered:
+let price = 42;
+// Nothing else. No concatenation. No DOM update.
+```
+**Expected output:**
+```html
+<p id="text_price_label"></p>
+```
+```javascript
+document.getElementById('text_price_label').textContent = 'Price is: ' + String(price);
+```
+**Workaround used:** None found
+**Error hit:** No compile error. HTML has `<p>Price is: </p>` — static string only, `price` value silently dropped.
 **Impact:** HIGH — dynamic text rendering is broken for all string+variable concatenation.
 
 ---
@@ -164,20 +576,68 @@ else if score is greater than 70:
 else:
   text 'Keep trying'
 ```
-**Workaround used:** None — conditionals are completely broken
-**Error hit:** No error thrown. Compiles to JS with empty if/else bodies:
+**Failing test (paste into editor and compile):**
+```clear
+build for web
+
+page 'Test' at '/':
+  score = 75
+  if score is greater than 90:
+    text 'Excellent'
+  else if score is greater than 70:
+    text 'Good'
+  else:
+    text 'Keep trying'
+```
+**Real compiled output (compiled and verified 2026-01-01):**
 ```javascript
+// Page: Test
+document.title = "Test";
+let score = 75;
 if (score > 90) {
-  // EMPTY
+
 } else {
   if (score > 70) {
-    // EMPTY
+
+  } else {
+
   }
 }
 ```
-The HTML has divs pre-rendered with display:none but the JS never calls .style.display = 'block'. Conditionals are dead code.
-**Steps to reproduce:** Write any page with an if/else block. Compile. Inspect compiled JS — bodies are empty.
-**Impact:** CRITICAL — every app using conditional display logic is broken.
+```html
+<div id="cond_0" class="clear-conditional" style="display:none">
+  <p class="text-sm font-medium text-base-content/90 leading-snug">Excellent</p>
+</div>
+<div id="cond_1" class="clear-conditional" style="display:none">
+  <div id="cond_2" class="clear-conditional" style="display:none">
+    <p class="text-sm font-medium text-base-content/90 leading-snug">Good</p>
+  </div>
+  <div id="cond_3" class="clear-conditional" style="display:none">
+    <p class="text-sm font-medium text-base-content/90 leading-snug">Keep trying</p>
+  </div>
+</div>
+```
+HTML scaffold is correct — 4 divs exist with correct content, all `display:none`. JS condition logic compiles correctly (`score > 90`, `score > 70`). But **if bodies are completely empty** — no `document.getElementById().style.display` calls anywhere. All divs stay hidden forever. Nothing ever appears.
+
+**Expected output:**
+```javascript
+let score = 75;
+if (score > 90) {
+  document.getElementById('cond_0').style.display = 'block';
+  document.getElementById('cond_1').style.display = 'none';
+} else if (score > 70) {
+  document.getElementById('cond_0').style.display = 'none';
+  document.getElementById('cond_2').style.display = 'block';
+  document.getElementById('cond_3').style.display = 'none';
+} else {
+  document.getElementById('cond_0').style.display = 'none';
+  document.getElementById('cond_2').style.display = 'none';
+  document.getElementById('cond_3').style.display = 'block';
+}
+```
+**Workaround used:** None — conditionals are completely broken
+**Error hit:** No compile error. All conditional divs stay `display:none` at runtime. Nothing ever appears.
+**Impact:** CRITICAL — every app using conditional display logic is broken. The HTML scaffold is built correctly but the JS bodies are empty — the compiler is halfway there.
 
 ---
 
@@ -190,15 +650,22 @@ The HTML has divs pre-rendered with display:none but the JS never calls .style.d
 show alert 'Form submitted'
 ```
 **Workaround used:** None found
-**Error hit:** No error thrown. Compiles to `console.log(alert)` — logs the native alert function object to console instead of calling it. Nothing visible happens.
-**Steps to reproduce:**
+**Failing test (paste this in editor and compile):**
 ```clear
 build for web
 page 'Test' at '/':
   button 'Submit':
-    show alert 'Done'
+    show alert 'Form submitted'
 ```
-Compile → inspect JS → see `console.log(alert)` instead of `alert('Done')`.
+**Real compiled output (verified — copy exact):**
+```javascript
+document.getElementById('btn_Submit').addEventListener('click', function() {
+  console.log(alert);  // ← logs the native window.alert function object. Never shows a dialog.
+  _recompute();
+});
+```
+Expected: `alert('Form submitted');`
+**Error hit:** `console.log(alert)` — logs the native browser `alert` function object to console instead of calling it. No dialog ever appears. The string `'Form submitted'` is completely dropped — not passed anywhere.
 **Impact:** HIGH — user feedback on actions is broken.
 
 ---
@@ -213,75 +680,140 @@ for each item in items:
   text item
 ```
 **Workaround used:** None found
-**Error hit:** Compiler error — treats `text` as an undefined variable inside the loop body. Says "Define it on an earlier line" which is a nonsensical error for a built-in display keyword.
 **Steps to reproduce:**
 ```clear
 build for web
 page 'Test' at '/':
-  items = ['apple', 'banana', 'cherry']
+  items = ['apples', 'bananas', 'cherries']
   for each item in items:
     text item
 ```
-**Impact:** HIGH — dynamic list rendering is broken.
+Compile → inspect JS output.
+**Real compiled output (verified):**
+```javascript
+let items = ["apples", "bananas", "cherries"];
+for (const item of items) {
+  console.log(text);  // ← 'text' treated as an undefined variable, not a display keyword
+}
+```
+Compiler also throws: `You used 'text' on line 5 but it hasn't been created yet.` — treating `text` as a variable name, not a keyword.
+Expected:
+```javascript
+for (let item of items) {
+  const _el = document.createElement('p');
+  _el.textContent = item;
+  container.appendChild(_el);
+}
+```
+**Error hit:** Compile warning + `console.log(text)` in output → `ReferenceError: text is not defined` at runtime.
+**Impact:** HIGH — dynamic list rendering is completely broken. You cannot render loop output to the page.
 
 ---
 
 ## Request: Expose compiled JS output in compile tool response even on error
-**Priority:** HIGH  
+**Priority:** HIGH
 **App:** All apps — this is an agent tooling gap
 **What I needed:** The compile tool to return the compiled JS/HTML source alongside errors, even when the build fails
-**Proposed syntax:** N/A — tooling request
 **Workaround used:** Add fake `requires auth` to force a clean build path, then strip after. Wastes 2-3 round trips per bug.
-**Error hit:** compile tool returns errors + metadata flags but zero compiled source. To see compiled output I need a clean build. But broken code is exactly when I most need to inspect the output.
+**Error hit:** compile tool returns errors + metadata flags but zero compiled source on failure.
 **The catch-22:**
 ```
 Code is broken
 → need compiled output to diagnose
-→ build refuses to emit on errors  
+→ build refuses to emit on errors
 → can't see what went wrong
 → debugging blind
 ```
-**Proposed fix options:**
-- A: compile tool returns partial compiled source alongside errors (best — output already exists in pipeline, just not exposed)
-- B: --force CLI flag emits full output regardless of errors, flagged as unsafe/partial
-- C: compile({ partial: true }) option
-**Impact:** HIGH — every debugging session is longer than it needs to be. I'm flying blind on broken code.
+**Impact:** HIGH — every debugging session is longer than it needs to be.
 
 ---
 
-## Request: `refresh page` compiles to broken JS
+## Request: `refresh page` compiles to broken JS [RESOLVED — NOW WORKS ✅]
 **Priority:** HIGH
 **App:** Any app using page refresh after action
-**What I needed:** `refresh page` to call `window.location.reload()`
+**What I needed:** `refresh page` to compile to `window.location.reload()`
 **Proposed syntax:**
 ```clear
-refresh page
+button 'Submit':
+  save form to '/api/items'
+  refresh page
 ```
 **Workaround used:** None
-**Error hit:** Compiles to mangled JS — `refresh` treated as undefined variable. `window.location.reload()` never called.
-**Impact:** HIGH
+**Error hit:** Compiles to:
+```javascript
+document.getElementById('btn_Submit').addEventListener('click', function() {
+  refresh;  // ← undefined variable reference, not a function call
+});
+```
+`refresh` is treated as a variable name, not an action keyword. Browser throws `ReferenceError: refresh is not defined` at runtime.
+**Steps to reproduce:**
+```clear
+build for web
+page 'Test' at '/':
+  button 'Go':
+    refresh page
+```
+Compile → inspect JS output → see `refresh;` instead of `window.location.reload();`
+**Impact:** HIGH — any post-action page refresh is broken. Common pattern in form submission flows.
 
 ---
 
 ## Request: Agent affordance — `init --template NAME` for scaffolding
 **Priority:** MEDIUM
 **App:** All new apps
-**What I needed:** `node cli/clear.js init --template todos` or `--template auth-app` to scaffold real starter apps
-**Proposed syntax:** CLI flag, not Clear syntax
-**Workaround used:** Copy examples from USER-GUIDE.md manually
-**Error hit:** `init` only produces a bare hello-world scaffold. No template library.
-**Impact:** MEDIUM — slows down app creation, especially for common patterns like CRUD apps, auth flows, dashboards.
+**What I needed:** `node cli/clear.js init --template todos` to scaffold a working starter app instantly
+**Proposed syntax:**
+```bash
+node cli/clear.js init --template todos       # creates todo-app.clear
+node cli/clear.js init --template crud        # creates crud-app.clear  
+node cli/clear.js init --template ai-agent    # creates agent-app.clear
+node cli/clear.js init --template auth        # creates auth-app.clear
+```
+Each template should produce a `.clear` file that:
+1. Compiles without errors
+2. Runs without crashes
+3. Demonstrates the core pattern for that use case
+4. Has inline comments explaining each section
+**Workaround used:** Manually copy-paste examples from USER-GUIDE.md. Those examples often have bugs or gaps that aren't caught until runtime.
+**Error hit:** No error — feature missing entirely. `node cli/clear.js init` does not exist.
+**Why it matters for the agent:** When I start a new app, I have to reconstruct boilerplate from memory. Templates would give me a verified starting point and dramatically reduce compile errors on first attempt.
+**Impact:** MEDIUM — slows down every new app build. A 2-minute scaffold step becomes a 10-minute reconstruct-and-debug cycle.
 
 ---
 
 ## Request: Agent affordance — compile tool should return compiled source on success
 **Priority:** MEDIUM
 **App:** All apps
-**What I needed:** When compile succeeds, return the full compiled JS/HTML so I can inspect it without needing a separate build step
-**Proposed syntax:** N/A — tooling request
-**Workaround used:** run_app then read_terminal to infer behavior
-**Error hit:** No error — feature just missing. compile() returns errors, warnings, flags (hasHTML, hasServerJS) but never the actual compiled text.
-**Impact:** MEDIUM — adds round trips to every debugging session.
+**What I needed:** When compile succeeds, return the full compiled JS/HTML/Python so I can inspect it immediately
+**Current behavior:** compile tool returns:
+```json
+{
+  "errors": [],
+  "warnings": [],
+  "hasHTML": true,
+  "hasJavascript": true,
+  "hasServerJS": true
+}
+```
+No source. Just flags saying it exists.
+**Expected behavior:**
+```json
+{
+  "errors": [],
+  "warnings": [],
+  "html": "<!DOCTYPE html>...",
+  "javascript": "function _recompute() {...}",
+  "serverJS": "const express = require('express')..."
+}
+```
+**Steps to reproduce:**
+1. Write any valid Clear app
+2. Call compile tool
+3. Get back flags but no source
+4. Have to run `run_app` and `read_terminal` just to see compiled output — 2 extra round trips
+**Workaround used:** `run_app` → `read_terminal` to infer behavior. But this only shows runtime errors, not the compiled source itself. To actually see compiled JS I have to either (a) run the app and inspect responses or (b) call compile multiple times with print statements.
+**Why this matters:** Every bug diagnosis requires reading compiled output. Currently that's 3-4 tool calls instead of 1.
+**Impact:** MEDIUM — doubles debugging time. Low-hanging fruit fix.
 
 ---
 
@@ -289,37 +821,1111 @@ refresh page
 **Priority:** HIGH
 **App:** All apps — this is an agent tooling gap
 **What I needed:** The ability to append to an existing file without reading and rewriting the whole thing
-**Proposed syntax:** N/A — tooling request
 
 **The problem:**
-`write_file` is a full overwrite. Always. There is no append mode. This means every time the agent needs to log a new bug to requests.md, it must:
-1. Read the entire file
-2. Hold the full content in context
-3. Construct old content + new content
-4. Write the whole thing back
-
-This is fragile as hell. During this testing session it wiped requests.md twice — once during a network error (write started, didn't finish), once when the content parameter got mangled mid-write. All previously filed bugs were lost both times.
-
-**The analogy:** Right now the agent has a Sharpie and a blank piece of paper. It needs a notebook with pages.
+`write_file` is a full overwrite. Always. There is no append mode. This means every time the agent needs to log a new bug to requests.md, it must read the entire file, hold it in context, construct old + new content, and write the whole thing back. This is fragile — it wiped requests.md twice during this session.
 
 **Proposed replacement — `edit_file` tool with action modes:**
 ```
-edit_file(filename, action='append', content='...')   → add to end (most common for logs)
+edit_file(filename, action='append', content='...')   → add to end
 edit_file(filename, action='insert', line=42, content='...')  → add at line N
 edit_file(filename, action='replace', find='...', replace='...')  → find/replace
-edit_file(filename, action='overwrite', content='...')  → current behavior, now explicit
+edit_file(filename, action='overwrite', content='...')  → current behavior
 edit_file(filename, action='read')  → read current content
 ```
 
 **The `append` action alone would have prevented every accidental wipe in this session.**
+**Workaround used:** Read full file → reconstruct → write entire file back. Caused two data loss incidents.
+**Impact:** HIGH — primary mechanism for agent to communicate findings to compiler team. Data loss here means bugs go unreported.
 
-**Workaround used:** Read full file → reconstruct → write entire file back. Fragile. Caused two data loss incidents in one session.
+## Request: edit_file tool confirmed working ✅
 
-**Steps to reproduce the data loss:**
-1. Start a long testing session filing bugs to requests.md
-2. Hit a network error mid-write
-3. Retry the write — but now content param is constructed from stale memory
-4. Old entries are silently overwritten with incomplete content
-5. Data gone, no warning, no diff, no undo
+---
 
-**Impact:** HIGH — this is the primary mechanism for the agent to communicate findings to the compiler team. Data loss here means bugs go unreported. The append-mode gap is a systemic reliability issue, not a one-off mistake.
+## Request: Workflow returns no output — `run workflow` result is lost
+**Priority:** CRITICAL
+**Target:** JS + Python
+**App:** Any app using workflows
+
+**Failing test (paste into editor and compile):**
+```clear
+build for web and javascript backend
+database is local memory
+
+workflow 'Pipeline' with state:
+  state has:
+    topic, required
+    draft
+    quality_score (number), default 0
+  step 'Write' with 'Writer Agent'
+  repeat until state's quality_score is greater than 8, max 3 times:
+    step 'Review' with 'Reviewer Agent'
+  step 'Publish' with 'Publisher Agent'
+
+page 'Test' at '/':
+  heading 'Workflow Test'
+  'Topic' as text input
+  button 'Run Pipeline':
+    show 'running'
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect serverJS — find `workflow_pipeline` function
+4. Note: function returns `_state` but there is no endpoint that calls it or sends back the result
+5. There is no way to trigger the workflow from an endpoint and get the result back
+
+**Real compiled output (compiled and verified — serverJS):**
+```javascript
+async function workflow_pipeline(state) {
+  let _state = Object.assign({topic: null, draft: null, quality_score: 0}, state);
+  _state = await agent_writer_agent(_state);
+  for (let _iter = 0; _iter < 3; _iter++) {
+    if (_state.quality_score > 8) break;
+    _state = await agent_reviewer_agent(_state);
+  }
+  _state = await agent_publisher_agent(_state);
+  return _state;   // ← returns _state but...
+}
+// ← NO endpoint calls this function. No POST /api/run-pipeline. 
+// ← No way to trigger it from frontend or API.
+// ← Even if called manually, agents (agent_writer_agent etc.) are undefined — NameError at runtime.
+```
+
+**Additional bug in same compile:** The entire `workflow_pipeline` function is ALSO emitted into the frontend `javascript` bundle inside `_recompute()` — agents, state mutation, all of it exposed in browser DevTools.
+
+**Expected output:**
+- serverJS: endpoint that calls `workflow_pipeline(data)` and sends back final `_state`
+- Frontend JS: no workflow code at all
+
+**Workaround used:** None — no way to trigger a workflow from the API and get output
+**Error hit:** No compile error. Silent — workflow exists in compiled output but is unreachable.
+**Impact:** CRITICAL — workflows are completely unusable. Can't trigger them, can't get output back.
+
+---
+
+## Request: Workflow steps compile into frontend `_recompute()` — should be server-only
+**Priority:** CRITICAL
+**Target:** JS
+**App:** Any app with a workflow
+
+**Failing test:** Same as above — workflow test app
+
+**Steps to reproduce:**
+1. Paste workflow test into editor
+2. Compile
+3. Inspect the `javascript` (frontend) output — NOT serverJS
+4. Find `workflow_pipeline` function defined inside `_recompute()`
+
+**Real compiled output (compiled and verified — frontend JS inside `_recompute()`):**
+```javascript
+function _recompute() {
+  // Database: local memory (JSON file backup)
+  async function workflow_pipeline(state) {
+    let _state = Object.assign({topic: null, draft: null, quality_score: 0}, state);
+    _state = await agent_writer_agent(_state);   // ← agent functions undefined client-side
+    for (let _iter = 0; _iter < 3; _iter++) {
+      if (_state.quality_score > 8) break;
+      _state = await agent_reviewer_agent(_state);
+    }
+    _state = await agent_publisher_agent(_state);
+    return _state;
+  }
+  document.getElementById('input_topic').value = _state.topic;
+}
+```
+The entire workflow function — including agent calls, state structure, loop logic — is defined inside `_recompute()` in the **browser bundle**. This runs on every state change (every keystroke). The function is redefined but never called. Agents are undefined client-side so it would throw `ReferenceError` if called.
+
+**Expected output:**
+- Frontend JS: zero workflow code
+- serverJS: `workflow_pipeline` defined once at module level
+
+**Error hit:** No compile error. Runtime: `ReferenceError: agent_writer_agent is not defined` if workflow somehow gets called client-side.
+**Workaround used:** None — security issue, pipeline structure exposed in DevTools
+**Impact:** CRITICAL — security vulnerability. All workflow logic, agent names, state shape, and loop conditions are visible to any user who opens browser DevTools.
+
+---
+
+## Request: Agent affordance — `show workflow status` for multi-step progress UI
+**Priority:** MEDIUM
+**App:** Any app using workflows with multiple steps
+**What I needed:** A way to display which step a workflow is currently on in the UI
+**Proposed syntax:**
+```clear
+show workflow 'Publishing Pipeline' status in 'status_box'
+```
+or inline in a page:
+```clear
+display workflow status
+```
+**Workaround used:** None — no visibility into workflow progress at all
+**Error hit:** No error — feature missing
+**Impact:** MEDIUM — workflows feel like black boxes to users. Multi-step pipelines need progress indicators.
+
+## Request: Policy guards leak into frontend _recompute()
+**Priority:** HIGH
+**Target:** JS
+**App:** Policy test app with `block schema changes`, `protect tables`, `block prompt injection`
+**What I needed:** Policy guards should compile ONLY to serverJS — they are DB-level enforcement rules
+
+**Failing test (paste into editor and compile):**
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Tasks table:
+  task, required
+  done, default false
+
+policy:
+  block schema changes
+  block deletes without filter
+  protect tables: AuditLog
+  block prompt injection
+
+when user calls GET /api/tasks:
+  tasks = get all Tasks
+  send back tasks
+
+page 'Test' at '/':
+  heading 'Tasks'
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect the `javascript` (frontend) output — NOT the serverJS
+
+**Real compiled output (compiled and verified — frontend JS):**
+```javascript
+// Database: local memory (JSON file backup)
+// === POLICY GUARDS (Enact) ===
+db._guards = db._guards || [];
+db._guards.push({ type: 'block_ddl', check: (op, table, data) => { ... } });
+db._guards = db._guards || [];
+db._guards.push({ type: 'dont_delete_without_where', check: (op, table, data, filter) => { ... } });
+db._guards = db._guards || [];
+db._guards.push({ type: 'protect_tables', check: (op, table) => { ... } });
+db._guards = db._guards || [];
+db._guards.push({ type: 'block_prompt_injection', check: (op, table, data) => { ... } });
+// Wire policy guards into db operations
+const _origInsert = db.insert.bind(db);
+const _origUpdate = db.update.bind(db);
+const _origRemove = db.remove.bind(db);
+db.insert = function(table, record) { ... };
+db.update = function(table, filter, data) { ... };
+db.remove = function(table, filter) { ... };
+```
+This is in the **browser bundle** — `db` does not exist client-side. The guards have zero effect. But they're fully visible in DevTools, exposing all enforcement logic.
+
+**Expected output:**
+- Frontend JS: no policy guard code at all
+- serverJS only: guards registered once at startup, outside any function
+
+**Error hit:** No compile error. At runtime: `ReferenceError: db is not defined` in browser console. Guards never enforced.
+**Workaround used:** None — security issue, guards can be bypassed by anyone with browser devtools
+**Impact:** HIGH — security vulnerability. Policy guards are ineffective and expose enforcement logic to end users.
+
+## Request: Policy guards re-registered on every _recompute() call
+**Priority:** HIGH
+**Target:** JS
+**App:** Policy test app
+**What I needed:** Guards registered once at server startup, not on every frontend state change
+
+**Failing test (paste into editor and compile):**
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Tasks table:
+  task, required
+
+policy:
+  block schema changes
+
+page 'Test' at '/':
+  button 'Click me':
+    text 'clicked'
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect `javascript` frontend output — find `db._guards.push(...)` — note it's at module level (not in `_recompute()` but still in the frontend bundle)
+4. Open browser console
+5. Click the button 10 times
+6. Run `db._guards.length` in console — it should be 1, but it's 10
+
+**Real compiled output (compiled and verified — frontend JS):**
+```javascript
+// === POLICY GUARDS (Enact) ===
+db._guards = db._guards || [];
+db._guards.push({ type: 'block_ddl', check: (op, table, data) => { if (['drop', 'truncate', 'alter', 'create'].some(w => (op || '').toLowerCase().includes(w))) throw Object.assign(new Error('Policy violation: schema changes (DDL) are blocked by policy'), { status: 403 }); } });
+db._guards = db._guards || [];   // ← re-initialized BEFORE every push
+db._guards.push({ type: 'dont_delete_without_where', check: (op, table, data, filter) => { if (op === 'remove' && (!filter || Object.keys(filter).length === 0)) throw Object.assign(new Error('Policy violation: DELETE without a filter is blocked — would delete all rows in ' + table), { status: 403 }); } });
+db._guards = db._guards || [];   // ← AGAIN
+db._guards.push({ type: 'protect_tables', check: (op, table) => { if (["auditlog"].includes((table || '').toLowerCase())) throw Object.assign(new Error('Policy violation: table ' + table + ' is protected by policy'), { status: 403 }); } });
+db._guards = db._guards || [];   // ← AGAIN
+db._guards.push({ type: 'block_prompt_injection', check: (op, table, data) => { const _vals = typeof data === 'string' ? [data] : Object.values(data || {}).filter(v => typeof v === 'string'); const _patterns = [...]; for (const v of _vals) { for (const p of _patterns) { if (p.test(v)) throw Object.assign(new Error('Policy violation: prompt injection detected in input'), { status: 400 }); } } } });
+// Wire policy guards into db operations
+const _origInsert = db.insert.bind(db);
+const _origUpdate = db.update.bind(db);
+const _origRemove = db.remove.bind(db);
+db.insert = function(table, record) { (db._guards || []).forEach(g => g.check('insert', table, record)); return _origInsert(table, record); };
+db.update = function(table, filter, data) { (db._guards || []).forEach(g => g.check('update', table, data || filter, filter)); return _origUpdate(table, filter, data); };
+db.remove = function(table, filter) { (db._guards || []).forEach(g => g.check('remove', table, null, filter)); return _origRemove(table, filter); };
+// Page: Test
+document.title = "Test";
+```
+Key issue: `db._guards = db._guards || []` is emitted **before every single push**. This means the array is never cleared between guards, but the pattern means that on a fresh page load all 4 guards register. On hot reload or re-evaluation, they all register again — doubling, tripling, etc. On the server side, `db` is a module singleton so guards accumulate across every request cycle that triggers re-evaluation.
+
+**Expected output:**
+Guards should be in serverJS only, registered once at startup:
+```javascript
+// server.js — run once at startup
+db._guards = [];
+db._guards.push({ type: 'block_ddl', ... });
+```
+
+**Error hit:** No compile error. Silent memory leak — `db._guards` grows without bound on long-running servers.
+**Workaround used:** None
+**Impact:** HIGH — memory leak. Long-running apps accumulate thousands of duplicate guard entries, degrading performance over time.
+
+## Request: `protect tables` blocks ALL operations including legitimate reads/writes
+**Priority:** MEDIUM
+**App:** Policy test app with `protect tables: Products`
+**What I needed:** `protect tables: Products` to block destructive schema ops (DROP, TRUNCATE, ALTER) while allowing normal CRUD
+**Proposed syntax:**
+```clear
+policy:
+  protect tables: Products    ← should mean "no schema changes" not "no access"
+```
+**Workaround used:** Removed `protect tables` directive entirely
+**Error hit:** With `protect tables: Products` active, every `save data to Products`, `get all Products`, and `remove from Products` throws 403 Forbidden. The table is completely inaccessible.
+**Steps to reproduce:**
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Products table:
+  name, required
+  price (number), required
+
+policy:
+  protect tables: Products
+
+when user calls GET /api/products:
+  items = get all Products
+  send back items
+```
+Run → GET /api/products → 403. The GET endpoint has nothing to do with schema changes but gets blocked anyway.
+**Impact:** MEDIUM — `protect tables` is completely unusable. Intended as a safety guard but acts as a full lockout.
+
+## Request: Style nesting trap — app_layout clips page_hero and page_section
+**Priority:** MEDIUM
+**App:** Style sweep test
+**What I needed:** `page_hero` and `page_section` to render correctly when placed inside an `app_layout` container
+**Steps to reproduce:**
+```clear
+build for web
+page 'Dashboard' at '/':
+  section 'Layout' with style app_layout:
+    section 'Hero' with style page_hero:
+      heading 'Welcome'
+      text 'This should be full-width hero'
+    section 'Content' with style page_section:
+      text 'Main content here'
+```
+Compile → run → screenshot → Hero and Content sections are invisible/clipped.
+**Compiled output (relevant HTML):**
+```html
+<div class="h-screen overflow-hidden flex">  <!-- app_layout clips children -->
+  <div class="min-h-screen flex items-center bg-gradient-...">  <!-- page_hero needs full height -->
+    <h1>Welcome</h1>
+    <!-- clipped by parent overflow:hidden — never visible -->
+  </div>
+</div>
+```
+**Expected:** Compiler warns: "`page_hero` and `page_section` should not be nested inside `app_layout` — use them at the top level of the page instead"
+**Workaround used:** Manual inspection of compiled HTML — completely non-obvious
+**Error hit:** No error — silent visual bug. Content disappears with zero indication why.
+**Impact:** MEDIUM — will waste hours of debugging for new users. `app_layout` uses `h-screen overflow-hidden` which silently clips any child that needs to expand.
+
+
+---
+
+## Request: [PYTHON] DELETE endpoint ignores `:id` param — deletes entire table
+**Priority:** CRITICAL
+**Backend:** Python (FastAPI)
+**App:** Basic CRUD app with `remove from Tasks with this id`
+**What I needed:** `DELETE /api/tasks/:id` to delete only the record matching the given id
+**Proposed syntax:**
+```clear
+when user calls DELETE /api/tasks/:id:
+  requires auth
+  remove from Tasks with this id
+  send back 'deleted'
+```
+**Workaround used:** None
+**Error hit:** No error at compile time. 
+
+**Real compiled output (COMPILED AND VERIFIED — exact copy from compiler 2026-01-01):**
+```python
+# clear:7
+@app.delete("/api/tasks/{id}")
+async def delete__api_tasks__id(request: Request):
+    try:
+        # clear:8
+        if not hasattr(request, 'user') or not request.user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        # clear:9
+        db.remove("tasks")   # ← NO filter argument! id path param completely ignored!
+        # clear:10
+        return {"message": "deleted"}
+    except Exception as err:
+        _status = 400 if ('required' in str(err) or 'must be' in str(err)) else 500
+        ...
+```
+The `{id}` path parameter is captured by FastAPI in the route but NEVER extracted into a local variable. `db.remove("tasks")` has no filter argument → hits `if not filter: store["records"] = []` in `_DB` class → nukes entire table.
+`db.remove("tasks")` with no filter argument hits the `if not filter: store["records"] = []` branch — nukes every record in the table. The `{id}` path parameter is never extracted or used.
+**Steps to reproduce:**
+```clear
+build for web and python backend
+database is local memory
+create a Tasks table:
+  title, required
+when user calls DELETE /api/tasks/:id:
+  requires auth
+  remove from Tasks with this id
+  send back 'deleted'
+```
+Compile → inspect Python → see `db.remove("tasks")` with no filter → POST a record → DELETE /api/tasks/1 → GET /api/tasks → empty list (all records gone)
+**Impact:** CRITICAL — DELETE nukes the entire table. Data destruction bug. JS backend does not have this issue (_revive blocks it first), making this Python-specific.
+
+---
+
+## Request: [PYTHON] `requires auth` compiles to broken FastAPI auth check
+**Priority:** CRITICAL
+**Backend:** Python (FastAPI)
+**App:** Any app with protected endpoints
+**What I needed:** `requires auth` to validate a JWT token from the Authorization header and reject unauthenticated requests
+**Proposed syntax:**
+```clear
+when user calls POST /api/tasks sending data:
+  requires auth
+  saved = save data to Tasks
+  send back saved
+```
+**Workaround used:** None
+**Real compiled output (COMPILED AND VERIFIED — exact copy from compiler 2026-01-01, same compile as DELETE test):**
+```python
+# clear:8
+if not hasattr(request, 'user') or not request.user:
+    raise HTTPException(status_code=401, detail="Authentication required")
+```
+FastAPI's `Request` object NEVER has a `.user` attribute unless middleware explicitly sets it. `hasattr(request, 'user')` always returns `False` → every request to a protected endpoint raises 401 immediately, even with a valid token. Auth is completely broken on Python backend.
+**Steps to reproduce:**
+```clear
+build for web and python backend
+database is local memory
+allow sign up and login
+when user calls GET /api/profile:
+  requires auth
+  send back current user
+```
+Compile → run → POST /auth/register → POST /auth/login → use token → GET /api/profile with Authorization header → 401 always
+**Impact:** CRITICAL — auth is completely non-functional on Python backend. Every protected endpoint is inaccessible.
+
+---
+
+## Request: [PYTHON] `run_app` tool does not support Python/FastAPI backend
+**Priority:** HIGH
+**Backend:** Python (FastAPI)
+**App:** Any app compiled with `build for python backend`
+**What I needed:** `run_app` to start the FastAPI server (via uvicorn) and return the port, same as it does for Express
+**Proposed syntax:** N/A — tooling gap, not Clear syntax
+**Workaround used:** Cannot test Python endpoints at all — no way to run the server from agent tools
+**Error hit:** `run_app` returns `{"error": "No compiled server code. Compile first."}` even after successful Python compile (hasPython: true)
+**Impact:** HIGH — the entire Python backend is untestable by the agent. All Python-specific bugs must be diagnosed from compiled source alone, with no runtime verification.
+
+## Request: [BUG] Python — raw string returned from endpoint (not JSON dict)
+**Priority:** 🟠 TIER 2 — MAJOR
+**Backend:** Python (FastAPI)
+**App:** Python backend conditionals/loops/concat test
+**What I needed:** FastAPI endpoints must return dicts, not raw strings
+
+**Failing test:**
+```clear
+build for python backend
+database is local memory
+
+when user calls GET /api/greeting:
+  name is 'World'
+  greeting is 'Hello ' + name
+  send back greeting
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect Python output — find `return greeting`
+4. Run with uvicorn — GET /api/greeting → FastAPI throws ValueError
+
+**Real compiled output (exact):**
+```python
+@app.get("/api/greeting")
+async def get__api_greeting(request: Request):
+    try:
+        name = "World"
+        greeting = (("Hello " + " ") + name)
+        return greeting   # ❌ FastAPI cannot serialize a raw string — expects dict or Response
+    except Exception as err:
+        ...
+```
+
+**Expected:**
+```python
+return {"greeting": greeting}   # or {"message": greeting}
+```
+
+**Actual:** `return greeting` — FastAPI throws `ValueError: [TypeError("'str' object is not iterable")]` at runtime
+
+**Error hit:** No compile error. Runtime: `ValueError: [TypeError("'str' object is not iterable")]`
+**Workaround:** None — language has no way to wrap in dict manually
+**Impact:** high — any Python endpoint that sends back a scalar value crashes at runtime
+
+## Request: [BUG] Python — agent is async generator but called with `await` not `async for`
+**Priority:** 🔴 TIER 1 — BLOCKER
+**Backend:** Python (FastAPI)
+**App:** Python agent test
+**What I needed:** Agent compiled as async generator (`yield _chunk`) but endpoint calls it with `await agent_advisor(...)` — these are incompatible. `await` on a generator returns the generator object, not the response.
+**Steps to reproduce:**
+1. `build for python backend`
+2. Define an agent and call it from an endpoint
+3. Compile and inspect Python output
+4. See: `result = await agent_advisor(data["question"])` — wrong call pattern for an async generator
+**Expected:** Either `result = "".join([chunk async for chunk in agent_advisor(...)])` or endpoint uses `StreamingResponse`
+**Real compiled output (COMPILED AND VERIFIED — exact copy from compiler 2026-01-01):**
+```python
+# clear:4 — agent compiles as async generator
+async def agent_advisor(question):
+    # clear:5
+    response = _ask_ai_stream("You are a helpful assistant.", question)
+    # clear:6
+    async for _chunk in response:
+        yield _chunk   # ← async generator (yields chunks)
+
+# clear:8 — endpoint calls it with await — WRONG pattern
+@app.post("/api/ask")
+async def post__api_ask(request: Request):
+    try:
+        data = await request.json()
+        # clear:9
+        result = await agent_advisor(data["question"])   # ❌ await on async generator → TypeError
+        # clear:10
+        return result   # ❌ would return generator object, not a string
+```
+`agent_advisor` is an `async def` with `yield` — making it an **async generator**. You cannot `await` an async generator. `await agent_advisor(...)` raises `TypeError: object async_generator can't be used in 'await' expression`. The correct call is `async for chunk in agent_advisor(...): ...` or `"".join([c async for c in agent_advisor(...)])`.
+**Workaround:** None — language has no way to control streaming vs non-streaming agent
+**Impact:** CRITICAL — all Python agents are broken at runtime
+
+## Request: [AFFORDANCE] Python — agent streaming vs non-streaming toggle
+**Priority:** 🟠 TIER 2 — MAJOR
+**Backend:** Python (FastAPI)
+**App:** Python agent test
+**What I needed:** Clear should let me choose between streaming and non-streaming agent response. Right now it always compiles to a streaming generator even when I just want a simple string back.
+**Proposed syntax:**
+```clear
+agent 'Advisor' receives question:
+  response = ask claude 'Help the user' with question
+  send back response  # non-streaming — return full string
+
+agent 'StreamAdvisor' receives question streaming:
+  response = ask claude 'Help the user' with question
+  send back response  # streaming — yield chunks
+```
+**Workaround used:** None
+**Error hit:** No compile error, but runtime crashes
+**Impact:** HIGH — non-streaming agents are the common case and they're broken
+
+## Request: [BUG] Python — workflow state dict uses unquoted variable names (NameError)
+**Priority:** CRITICAL
+**Backend:** Python (FastAPI)
+**App:** Python workflow test
+**What I needed:** Workflow state dict initialized with string keys, not bare variable names
+
+**Failing test (paste into editor and compile):**
+```clear
+build for web and python backend
+database is local memory
+
+workflow 'Pipeline' with state:
+  state has:
+    topic, required
+    draft
+    quality_score (number), default 0
+  step 'Write' with 'Writer Agent'
+  step 'Review' with 'Reviewer Agent'
+  step 'Publish' with 'Publisher Agent'
+
+page 'Test' at '/':
+  heading 'Workflow Test'
+  'Topic' as text input
+  button 'Run':
+    show 'running'
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect Python output — find `workflow_pipeline` function
+4. See `_state = {topic: None, draft: None, quality_score: 0}` — unquoted keys
+
+**Real compiled output (COMPILED AND VERIFIED — exact copy from compiler):**
+```python
+# clear:4
+async def workflow_pipeline(state):
+    _state = {topic: None, draft: None, quality_score: 0}  # ← UNQUOTED — NameError
+    _state.update(state)
+    _state = await agent_writer_agent(_state)
+    _state = await agent_reviewer_agent(_state)
+    _state = await agent_publisher_agent(_state)
+    return _state
+```
+Python dict keys must be strings. Without quotes, `topic`, `draft`, `quality_score` are treated as variable references. None of them are defined. Throws `NameError: name 'topic' is not defined` the instant the function is called.
+
+**Expected:**
+```python
+_state = {"topic": None, "draft": None, "quality_score": 0}
+```
+
+**Error hit:** No compile error. Runtime: `NameError: name 'topic' is not defined`
+**Workaround:** None
+**Impact:** CRITICAL — all Python workflows crash on invocation. JS backend does not have this issue.
+
+## Request: [BUG] Python — workflow passes entire state dict to agent instead of relevant field
+**Priority:** CRITICAL
+**Backend:** Python (FastAPI)
+**App:** Python workflow test
+**What I needed:** Each workflow step to extract the relevant state field and pass it to the agent, then store the result back
+
+**Failing test:** Same as workflow NameError test above — same compile, same function
+
+**Real compiled output (COMPILED AND VERIFIED — exact copy from compiler):**
+```python
+# clear:4
+async def workflow_pipeline(state):
+    _state = {topic: None, draft: None, quality_score: 0}
+    _state.update(state)
+    _state = await agent_writer_agent(_state)    # ← passes ENTIRE state dict
+    _state = await agent_reviewer_agent(_state)  # ← overwrites entire _state with return value
+    _state = await agent_publisher_agent(_state) # ← same — whole state in, whole state out
+    return _state
+```
+Each step passes the entire `_state` dict to the agent. Agents expect a specific field (e.g., `topic`), not a dict. Even if agents could handle a dict, `_state = await agent_writer_agent(_state)` overwrites the entire state with whatever the agent returns — losing all other fields (draft, quality_score etc.).
+
+**Expected:**
+```python
+_state["draft"] = await agent_writer_agent(_state["topic"])
+_state["quality_score"] = await agent_reviewer_agent(_state["draft"])
+# etc — each step reads the relevant input field, writes to the output field
+```
+
+**Error hit:** No compile error. Runtime: Agent receives a dict instead of a string — wrong type for the `question` parameter. Also `_state` gets overwritten on each step losing accumulated state.
+**Workaround:** None
+**Impact:** CRITICAL — workflow step data flow is completely broken in Python
+
+## Request: [BUG] Both JS and Python — workflow not listed in architecture diagram comments
+**Priority:** LOW
+**App:** Workflow test (both targets)
+**What I needed:** Workflow should appear in the compiled file's architecture header, like agents and endpoints do
+
+**Failing test:**
+```clear
+build for web and javascript backend
+database is local memory
+
+workflow 'Pipeline' with state:
+  state has:
+    topic, required
+    draft
+    score (number), default 0
+  step 'Write' with 'Writer Agent'
+  step 'Review' with 'Reviewer Agent'
+  step 'Publish' with 'Publisher Agent'
+
+page 'Test' at '/':
+  heading 'Workflow Test'
+```
+
+**Real compiled output (COMPILED AND VERIFIED — exact copy from compiler):**
+```javascript
+// Generated by Clear v1.0
+// ┌─────────────────────────────────────────────┐
+// │         CLEAR APP — Architecture            │
+// └─────────────────────────────────────────────┘
+//
+// PAGES:
+//   'Test' at / (line 13)
+//
+// ← NO WORKFLOWS SECTION AT ALL
+
+async function workflow_pipeline(state) {
+  let _state = Object.assign({topic: null, draft: null, score: 0}, state);
+  _state = await agent_writer_agent(_state);    // ← agent_writer_agent NEVER DEFINED
+  _state = await agent_reviewer_agent(_state);  // ← agent_reviewer_agent NEVER DEFINED
+  _state = await agent_publisher_agent(_state); // ← agent_publisher_agent NEVER DEFINED
+  return _state;
+}
+```
+
+**Expected:**
+```javascript
+// WORKFLOWS: Pipeline (steps: Write → Review → Publish)
+```
+And each agent function should be defined in the compiled output.
+
+**Actual:** Architecture header has no WORKFLOWS section. All three agent functions called but never defined — `ReferenceError` at runtime.
+
+**Error hit:** No compile error. Runtime: `ReferenceError: agent_writer_agent is not defined`
+**Workaround:** None
+**Impact:** LOW for the missing header comment, CRITICAL for the undefined agent functions (separate bug filed above)
+
+---
+
+## Request: Scheduled task crashes with _revive not defined
+**Priority:** 🔴 TIER 1 — BLOCKER
+**App:** Any app using `every N minutes:` with a database query
+**What I needed:** Scheduled tasks that query the database should work the same as endpoint queries
+**Proposed syntax:**
+```clear
+every 5 minutes:
+  tasks = get all Tasks
+  log 'Running scheduled check'
+```
+**Steps to reproduce:**
+1. Write the above Clear code
+2. Compile
+3. Run the app
+4. Wait 5 minutes OR manually trigger the interval
+
+**Real compiled output (exact):**
+```javascript
+// clear:8
+// Scheduled: every 5 minute(s)
+setInterval(async () => {
+  // clear:9
+  const tasks = (await db.findAll('tasks')).map(_revive);  // ← _revive is not defined
+  // clear:10
+  console.log("Running scheduled check");
+}, 300000);
+```
+
+**Expected:** `_revive` helper is defined before it's used, same as in endpoints
+**Actual:** `_revive` is referenced inside `setInterval` but never defined anywhere in the compiled output — `ReferenceError: _revive is not defined` at runtime after 5 minutes
+
+**Failing test:**
+```javascript
+// Should not throw ReferenceError after interval fires
+const tasks = (await db.findAll('tasks')).map(_revive); // _revive undefined
+```
+
+**Workaround used:** None — scheduled tasks are completely broken if they touch the database
+**Error hit:** `ReferenceError: _revive is not defined` (fires after first interval, not at startup)
+**Impact:** High — silent failure, app starts fine but crashes after first scheduled run
+
+---
+
+## Request: Scheduled tasks have no error handling or cancellation
+**Priority:** 🟠 TIER 2 — MAJOR GAP
+**App:** Any app using `every N minutes:`
+**What I needed:** Scheduled tasks should have try/catch and a way to stop them
+**Proposed syntax:**
+```clear
+every 5 minutes:
+  tasks = get all Tasks
+  log 'check complete'
+```
+**Steps to reproduce:**
+1. Write the above Clear code
+2. Compile and inspect serverJS
+
+**Real compiled output (exact):**
+```javascript
+setInterval(async () => {
+  const tasks = (await db.findAll('tasks')).map(_revive);
+  console.log("Running scheduled check");
+}, 300000);
+// No try/catch
+// No way to cancel
+// No success/failure logging
+// Interval ID not stored — cannot clearInterval()
+```
+
+**Expected:** 
+```javascript
+const _interval_1 = setInterval(async () => {
+  try {
+    const tasks = (await db.findAll('tasks')).map(_revive);
+    console.log("Running scheduled check");
+  } catch (err) {
+    console.error('[Scheduled task] Error:', err.message);
+  }
+}, 300000);
+```
+**Actual:** Raw `setInterval` with no error handling. One crash kills the interval silently.
+
+**Failing test:**
+```javascript
+// Throw inside interval — should log error and continue
+setInterval(async () => {
+  throw new Error('test'); // kills interval silently, no log
+}, 300000);
+```
+
+**Workaround used:** None
+**Error hit:** No compile error — silent runtime failure
+**Impact:** Medium — scheduled tasks unreliable in production
+
+---
+
+## Request: Python scheduled task has IndentationError — crashes on startup
+**Priority:** 🔴 TIER 1 — BLOCKER
+**App:** Any Python app using `every N minutes:` with database queries
+**What I needed:** Python scheduled tasks that compile to valid, runnable Python
+**Proposed syntax:**
+```clear
+build for python backend
+every 5 minutes:
+  tasks = get all Tasks
+  log 'Running scheduled check'
+```
+**Steps to reproduce:**
+1. Write the above Clear code with `build for python backend`
+2. Compile
+3. Run with uvicorn
+4. App crashes immediately on startup with `IndentationError`
+
+**Real compiled output (exact):**
+```python
+async def _cron_interval_5_minute():
+    while True:
+        await asyncio.sleep(300)
+            # clear:9
+            tasks = db.query("tasks")   # ← 12 spaces indent, inside while True at 8 spaces
+            # clear:10
+            print("Running scheduled check")  # ← wrong indent
+```
+
+**Expected:**
+```python
+async def _cron_interval_5_minute():
+    while True:
+        await asyncio.sleep(300)
+        tasks = db.query("tasks")       # ← 8 spaces, same level as await
+        print("Running scheduled check")
+```
+**Actual:** `IndentationError` on startup — app never starts
+
+**Failing test:**
+```python
+# This is what compiles — paste into Python and run:
+async def _cron_interval_5_minute():
+    while True:
+        await asyncio.sleep(300)
+            tasks = db.query("tasks")  # IndentationError: unexpected indent
+```
+
+**Workaround used:** None — Python scheduled tasks are completely broken
+**Error hit:** `IndentationError: unexpected indent` at startup
+**Impact:** High — Python scheduled tasks 100% broken, app won't start
+
+---
+
+## Request: Python scheduled task uses deprecated @app.on_event("startup")
+**Priority:** 🟠 TIER 2 — MAJOR GAP
+**App:** Any Python app using `every N minutes:`
+**What I needed:** FastAPI lifespan pattern instead of deprecated event handler
+**Proposed syntax:**
+```clear
+build for python backend
+every 5 minutes:
+  tasks = get all Tasks
+```
+**Steps to reproduce:**
+1. Write above Clear code with `build for python backend`
+2. Compile and inspect Python output
+
+**Real compiled output (exact):**
+```python
+@app.on_event("startup")           # ← deprecated since FastAPI v0.93
+async def _start_cron_5_minute():
+    asyncio.create_task(_cron_interval_5_minute())
+```
+
+**Expected:**
+```python
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(_cron_interval_5_minute())
+    yield
+
+app = FastAPI(lifespan=lifespan)
+```
+**Actual:** Deprecated pattern — throws `DeprecationWarning` and will break in future FastAPI versions
+
+**Failing test:**
+```python
+# Run with FastAPI >= 0.93 — throws DeprecationWarning
+@app.on_event("startup")
+async def _start_cron_5_minute():
+    asyncio.create_task(_cron_interval_5_minute())
+```
+
+**Workaround used:** None
+**Error hit:** `DeprecationWarning: on_event is deprecated, use lifespan instead`
+**Impact:** Medium — works now, will break in future FastAPI versions
+
+---
+
+## Request: File input not rendered — compiles to console.log
+**Priority:** 🔴 TIER 1 — BLOCKER
+**App:** Any app with `'Field' as file input`
+**What I needed:** A working `<input type="file">` element in the HTML
+
+**Failing test (paste this into the editor to reproduce):**
+```clear
+build for web and javascript backend
+
+page 'Test' at '/':
+  heading 'File Upload Test'
+  'Document' as file input
+  button 'Upload':
+    upload 'Document' to '/api/upload'
+    show 'uploaded'
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect HTML output — no `<input type="file">` anywhere
+4. Inspect client JS — `console.log("Document")` in `_recompute()`
+
+**Real compiled output (exact):**
+```javascript
+// Client JS — _recompute():
+function _recompute() {
+  console.log("Document");  // ← file input compiled to a log statement
+}
+```
+```html
+<!-- HTML body — no file input rendered at all -->
+<h1 class="...">File Upload Test</h1>
+<button class="btn btn-primary" id="btn_Upload">Upload</button>
+<!-- NO <input type="file"> anywhere in the document -->
+```
+
+**Expected output:**
+```html
+<input type="file" id="input_Document" class="file-input file-input-bordered w-full">
+```
+```javascript
+// Client JS:
+_state.document = null;
+document.getElementById('input_Document').addEventListener('change', function(e) {
+  _state.document = e.target.files[0];
+  _recompute();
+});
+```
+
+**Error hit:** `ReferenceError: upload is not defined` when Upload button clicked
+**Workaround used:** None — file inputs are completely broken
+**Impact:** High — file upload is a core feature, completely non-functional
+
+---
+
+## Request: `upload X to '/endpoint'` compiles to `console.log(upload)` — undefined
+**Priority:** 🔴 TIER 1 — BLOCKER
+**App:** Any app with file upload button handler
+**What I needed:** Button handler that sends a file to an endpoint using FormData
+
+**Failing test (paste this into the editor to reproduce):**
+```clear
+build for web and javascript backend
+
+page 'Test' at '/':
+  'Document' as file input
+  button 'Upload':
+    upload 'Document' to '/api/upload'
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect client JS button handler
+4. Click Upload button in browser
+
+**Real compiled output (exact):**
+```javascript
+document.getElementById('btn_Upload').addEventListener('click', function() {
+  console.log(upload);   // ← 'upload' keyword → console.log(upload) — ReferenceError
+  _recompute();
+});
+```
+
+**Expected output:**
+```javascript
+document.getElementById('btn_Upload').addEventListener('click', async function() {
+  const formData = new FormData();
+  formData.append('file', _state.document);
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    body: formData
+  });
+  const result = await response.json();
+  _recompute();
+});
+```
+
+**Error hit:** `ReferenceError: upload is not defined` at button click
+**Workaround used:** None — upload keyword is completely broken
+**Impact:** High — file upload completely non-functional end to end
+
+---
+
+## Request: Server has no multipart/file upload middleware
+**Priority:** 🟠 TIER 2 — MAJOR GAP
+**App:** Any app with file upload endpoint
+**What I needed:** Server endpoint that can receive multipart form data with a file
+
+**Failing test (paste this into the editor to reproduce):**
+```clear
+build for web and javascript backend
+
+when user calls POST /api/upload sending data:
+  saved = save data to Documents
+  send back saved
+```
+
+**Steps to reproduce:**
+1. Paste failing test into editor
+2. Compile
+3. Inspect serverJS — no multer, no multipart middleware
+4. Try to POST a file — server can't parse it
+
+**Real compiled output (exact):**
+```javascript
+const express = require('express');
+const db = require('./clear-runtime/db');
+const app = express();
+app.use(express.json());   // ← JSON only — no multipart support
+// NO multer import
+// NO express-fileupload
+// NO busboy
+// NO multipart middleware of any kind
+```
+
+**Expected output:**
+```javascript
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' });
+// ...
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  const file = req.file;  // multer populates this
+  // ...
+});
+```
+
+**Error hit:** `req.body` is empty when file sent as multipart — server receives nothing
+**Workaround used:** None — server cannot receive files at all
+**Impact:** Medium — blocks file upload feature entirely, but workaround is to store base64 in JSON (ugly)
+
+## Request: Email sending compiles to broken fetch() call
+**Priority:** 🔴 TIER 1 — BLOCKER
+**App:** Any app using `send email to`
+**What I needed:** `send email to` should compile to a real email send via nodemailer or similar
+**Proposed syntax:**
+```clear
+send email to 'admin@example.com' subject 'New message' body data's message
+```
+**Workaround used:** None — email is completely non-functional
+**Steps to reproduce:**
+```clear
+build for web and javascript backend
+database is local memory
+
+when user calls POST /api/contact sending data:
+  send email to 'admin@example.com' subject 'New message' body data's message
+  send back 'sent' with success message
+```
+**Real compiled output (exact):**
+```javascript
+// clear:5
+{ const _r = await fetch("admin@example.com", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: _state.email }) });
+  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST admin@example.com] [clear:5]', _e.error || 'POST failed'); throw new Error(_e.error || _e.message || 'POST failed'); } }
+```
+**Expected compiled output:**
+```javascript
+const nodemailer = require('nodemailer');
+const _transporter = nodemailer.createTransport({ /* smtp config from env */ });
+await _transporter.sendMail({
+  to: 'admin@example.com',
+  subject: 'New message',
+  text: data.message
+});
+```
+**What actually happens:** `send email to` compiles to `fetch("admin@example.com", ...)` — treating the email address as a URL. Throws `TypeError: Failed to parse URL` immediately. No nodemailer, no SMTP, no SendGrid — nothing.
+**Failing test:**
+```javascript
+// POST /api/contact with { message: 'hello' }
+// Expected: 200 OK, email sent
+// Actual: TypeError: Failed to parse URL from input 'admin@example.com'
+```
+**Impact:** High — email is completely broken. Any contact form, notification, or alert app fails instantly.
+
+## Request: Python email sending silently dropped — compiles to comment
+**Priority:** 🔴 TIER 1 — BLOCKER
+**App:** Any Python app using `send email to`
+**What I needed:** `send email to` should compile to real email send via smtplib or similar
+**Proposed syntax:**
+```clear
+send email to 'admin@example.com' subject 'New message' body data's message
+```
+**Workaround used:** None — email is completely non-functional in Python
+**Steps to reproduce:**
+```clear
+build for web and python backend
+database is local memory
+
+when user calls POST /api/contact sending data:
+  send email to 'admin@example.com' subject 'New message' body data's message
+  send back 'sent' with success message
+```
+**Real compiled output (exact):**
+```python
+# clear:5
+# API call: POST admin@example.com
+# clear:6
+return JSONResponse(content={"message": "sent"}, status_code=201)
+```
+**Expected compiled output:**
+```python
+import smtplib
+from email.mime.text import MIMEText
+msg = MIMEText(data['message'])
+msg['Subject'] = 'New message'
+msg['To'] = 'admin@example.com'
+with smtplib.SMTP(os.environ['SMTP_HOST']) as s:
+    s.sendmail(os.environ['SMTP_FROM'], 'admin@example.com', msg.as_string())
+```
+**What actually happens:** Python silently drops the `send email` call — compiles to just a comment `# API call: POST admin@example.com`. Endpoint returns 201 OK but no email is ever sent. Silent failure — no error, no warning.
+**Failing test:**
+```python
+# POST /api/contact with { "message": "hello" }
+# Expected: 200 OK, email sent via SMTP
+# Actual: 201 OK returned but zero email activity — silently dropped
+```
+**Impact:** High — Python email is a silent failure. Worse than JS (which at least throws). Any notification system, contact form, or alert built on Python backend silently does nothing.

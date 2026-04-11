@@ -440,7 +440,7 @@ describe('Guard: balance subtraction warning', () => {
   it('warns on subtraction from balance field without guard', () => {
     const src = `build for javascript backend
 database is local memory
-create a Accounts table:
+create an Accounts table:
   name, required
   balance (number), default 0
 when user calls POST /api/withdraw sending data:
@@ -477,7 +477,7 @@ describe('Guard: capacity overflow warning', () => {
   it('warns on insert into child of capacity table without guard', () => {
     const src = `build for javascript backend
 database is local memory
-create a Events table:
+create an Events table:
   title, required
   capacity (number), required
   tickets_sold (number), default 0

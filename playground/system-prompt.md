@@ -332,18 +332,93 @@ page 'Hello' at '/':
 Other languages get a **Copy** button. HTML blocks also get a **Preview** toggle.
 
 ### SVG Diagrams
-Wrap SVG markup in an `svg` fenced block to render it inline as a visual diagram:
-````
-```svg
-<svg width="200" height="60" xmlns="http://www.w3.org/2000/svg">
-  <rect x="0" y="10" width="80" height="40" rx="6" fill="#4361ee" opacity=".8"/>
-  <text x="40" y="35" fill="#fff" text-anchor="middle" font-size="12">Parser</text>
-  <line x1="85" y1="30" x2="115" y2="30" stroke="#888" stroke-width="2" marker-end="url(#a)"/>
-  <rect x="120" y="10" width="80" height="40" rx="6" fill="#059669" opacity=".8"/>
-  <text x="160" y="35" fill="#fff" text-anchor="middle" font-size="12">Compiler</text>
+Output bare `<svg>` tags directly in your response — NO code fences needed. The chat renders them as visual diagrams automatically.
+
+**Always use this style:**
+- `viewBox` instead of fixed width/height (scales to fit chat panel)
+- Dark background: `#151D2B` or `#0f1117`
+- Box fill: `#1E2D42`, strokes: `#5BA3D9` (blue) / `#6ECB8B` (green) / `#F59E0B` (amber)
+- Text: `fill="#E4EAF0"`, `font-family="sans-serif"`, `font-size="13"`, `text-anchor="middle"`
+- Rounded boxes: `rx="6"`
+- Arrowheads via `<defs>` + `<marker>`
+
+Kitchen-sink example showing every primitive — use this as your reference:
+
+<svg viewBox="0 0 520 320" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="520" height="320" fill="#151D2B" rx="8"/>
+
+  <!-- Title -->
+  <text x="260" y="24" font-family="sans-serif" font-size="14" font-weight="bold" fill="#E4EAF0" text-anchor="middle">Clear Compiler Pipeline</text>
+
+  <!-- Arrowhead defs -->
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#5BA3D9"/>
+    </marker>
+    <marker id="arr-g" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#6ECB8B"/>
+    </marker>
+  </defs>
+
+  <!-- Row 1: Pipeline boxes with arrows -->
+  <rect x="20" y="50" width="100" height="50" rx="6" fill="#1E2D42" stroke="#5BA3D9" stroke-width="1.5"/>
+  <text x="70" y="80" font-family="sans-serif" font-size="13" fill="#E4EAF0" text-anchor="middle">Tokenizer</text>
+
+  <line x1="120" y1="75" x2="150" y2="75" stroke="#5BA3D9" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="150" y="50" width="100" height="50" rx="6" fill="#1E2D42" stroke="#5BA3D9" stroke-width="1.5"/>
+  <text x="200" y="80" font-family="sans-serif" font-size="13" fill="#E4EAF0" text-anchor="middle">Parser</text>
+
+  <line x1="250" y1="75" x2="280" y2="75" stroke="#5BA3D9" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="280" y="50" width="100" height="50" rx="6" fill="#1E2D42" stroke="#5BA3D9" stroke-width="1.5"/>
+  <text x="330" y="80" font-family="sans-serif" font-size="13" fill="#E4EAF0" text-anchor="middle">Validator</text>
+
+  <line x1="380" y1="75" x2="410" y2="75" stroke="#5BA3D9" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="410" y="50" width="100" height="50" rx="6" fill="#1E2D42" stroke="#6ECB8B" stroke-width="1.5"/>
+  <text x="460" y="80" font-family="sans-serif" font-size="13" fill="#E4EAF0" text-anchor="middle">Compiler</text>
+
+  <!-- Row 2: Output nodes (circles) -->
+  <line x1="440" y1="100" x2="440" y2="140" stroke="#6ECB8B" stroke-width="1.5" marker-end="url(#arr-g)"/>
+
+  <!-- Fan-out paths using curved path -->
+  <circle cx="120" cy="180" r="28" fill="#1E2D42" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="120" y="176" font-family="sans-serif" font-size="11" fill="#E4EAF0" text-anchor="middle">HTML</text>
+  <text x="120" y="190" font-family="sans-serif" font-size="9" fill="#8899AA" text-anchor="middle">scaffold</text>
+
+  <circle cx="260" cy="180" r="28" fill="#1E2D42" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="260" y="176" font-family="sans-serif" font-size="11" fill="#E4EAF0" text-anchor="middle">JS</text>
+  <text x="260" y="190" font-family="sans-serif" font-size="9" fill="#8899AA" text-anchor="middle">frontend</text>
+
+  <circle cx="400" cy="180" r="28" fill="#1E2D42" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="400" y="176" font-family="sans-serif" font-size="11" fill="#E4EAF0" text-anchor="middle">Server</text>
+  <text x="400" y="190" font-family="sans-serif" font-size="9" fill="#8899AA" text-anchor="middle">backend</text>
+
+  <path d="M440,145 Q440,160 120,155" stroke="#6ECB8B" stroke-width="1" fill="none" stroke-dasharray="4,3"/>
+  <path d="M440,145 Q440,155 260,155" stroke="#6ECB8B" stroke-width="1" fill="none" stroke-dasharray="4,3"/>
+  <path d="M440,145 Q440,155 400,155" stroke="#6ECB8B" stroke-width="1" fill="none" stroke-dasharray="4,3"/>
+
+  <!-- Legend row at bottom -->
+  <rect x="20" y="240" width="480" height="60" rx="6" fill="#0D1520" stroke="#2A3650" stroke-width="1"/>
+
+  <!-- Legend items -->
+  <rect x="40" y="256" width="16" height="16" rx="3" fill="#1E2D42" stroke="#5BA3D9" stroke-width="1"/>
+  <text x="64" y="268" font-family="sans-serif" font-size="10" fill="#8899AA">Pipeline stage</text>
+
+  <circle cx="168" cy="264" r="8" fill="#1E2D42" stroke="#F59E0B" stroke-width="1"/>
+  <text x="184" y="268" font-family="sans-serif" font-size="10" fill="#8899AA">Output target</text>
+
+  <line x1="280" y1="264" x2="310" y2="264" stroke="#5BA3D9" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="318" y="268" font-family="sans-serif" font-size="10" fill="#8899AA">Data flow</text>
+
+  <line x1="400" y1="264" x2="430" y2="264" stroke="#6ECB8B" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="438" y="268" font-family="sans-serif" font-size="10" fill="#8899AA">Fan-out</text>
 </svg>
-```
-````
+
+This example covers every primitive: `<rect>` boxes (rx corners), `<circle>` nodes, `<text>` labels (multi-line via stacked text), `<line>` straight connectors, `<path>` curved connectors, `<defs>`+`<marker>` arrowheads, `stroke-dasharray` dashed lines, legend row. Use `viewBox` — never fixed width/height.
+
 Use SVG diagrams to explain architecture, data flow, component relationships, or layout structure. They render right in the chat.
 
 ### Markdown

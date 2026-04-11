@@ -329,7 +329,7 @@ when user calls PUT /api/contacts/:id sending data:
 **AT-4: Foreign key orphan**
 ```clear
 # Bug: line item references non-existent invoice
-create a Invoices table:
+create an Invoices table:
   title, required
 create a LineItems table:
   invoice_id, required

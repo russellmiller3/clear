@@ -506,7 +506,7 @@ build for web and javascript backend
 
 # Database
 database is local memory
-create a Expenses table:
+create an Expenses table:
   description, required
   amount (number), required
   category, default 'other'

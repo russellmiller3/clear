@@ -56,7 +56,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #ep-resizer { width: 5px; flex-shrink: 0; background: var(--bd2); cursor: col-resize; transition: background .15s; position: relative; z-index: 10; }
 #ep-resizer:hover, #ep-resizer.dragging { background: var(--accent); }
 #preview-pane { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; border-left: 1px solid var(--bd); border-right: 1px solid var(--bd); }
-#chat-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--bg2); flex: 0 0 360px; min-width: 0; transition: flex-basis .2s ease; }
+#chat-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--bg2); flex: 0 0 360px; min-width: 0; transition: flex-basis .2s ease; position: relative; }
 #chat-pane.collapsed { flex-basis: 0 !important; }
 #chat-resizer { width: 5px; flex-shrink: 0; background: var(--bd2); cursor: col-resize; transition: background .15s; position: relative; z-index: 10; }
 #chat-resizer:hover, #chat-resizer.dragging { background: var(--accent); }
@@ -221,6 +221,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .stream-cursor { animation: cursorBlink .7s step-end infinite; color: var(--accent); }
 @keyframes claudeHighlight { 0%,100%{background:transparent} 20%,80%{background:rgba(108,140,255,.3)} }
 .cm-claude-line { animation: claudeHighlight 1.8s ease; }
+#chat-scroll-btn { display: none; position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--bg3); color: var(--tx2); border: 1px solid var(--bd2); border-radius: 20px; padding: 5px 16px; font-size: 12px; font-weight: 500; cursor: pointer; z-index: 10; box-shadow: 0 2px 12px rgba(0,0,0,.15); opacity: 0.9; }
+#chat-scroll-btn:hover { background: var(--accent2); color: #fff; border-color: var(--accent2); opacity: 1; }
 #chat-input-area { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--bd); background: var(--bg2); }
 #chat-input { flex: 1; background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 10px; padding: 10px 14px; font-size: 13px; font-family: var(--font); resize: none; transition: border-color .15s; }
 #chat-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -423,6 +425,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
       <span id="context-label"></span>
     </div>
     <div id="chat-messages"></div>
+    <button id="chat-scroll-btn" onclick="scrollChatToBottom()" title="Scroll to bottom">↓ Latest</button>
     <div id="chat-input-area">
       <textarea id="chat-input" rows="2" placeholder="Ask Claude to build something... (Enter to send)"></textarea>
       <button id="chat-send" onclick="sendChat()">Send</button>
@@ -569,7 +572,7 @@ show 'Hello, Clear!'
     EditorView.updateListener.of(update => {
       if (update.docChanged && !suppressAutoCompile) {
         clearTimeout(compileTimer);
-        compileTimer = setTimeout(() => autoCompile(), 500);
+        // Don't auto-compile on keystrokes — user presses Compile manually
       }
       if (update.docChanged) {
         updateEditorTOC(update.state.doc.toString());
@@ -640,6 +643,7 @@ showOutput();
 // COMPILE
 // ==========================================================================
 let compileAnimCancel = false;
+let compileAnimRunning = false;
 
 async function runScanAnimation(source) {
   // Lightweight pre-compile scan — just shows Clear lines being "read"
@@ -690,7 +694,7 @@ async function runCompileAnimation(clearSource, compiledCode) {
 
   showTab('compiled');
   const el = document.getElementById('preview-content');
-  const msPerBlock = Math.max(40, Math.min(100, 3000 / Math.max(mapping.length, 1)));
+  const msPerBlock = Math.max(300, Math.min(800, 12000 / Math.max(mapping.length, 1)));
 
   // Build split view HTML
   el.innerHTML = `
@@ -712,6 +716,7 @@ async function runCompileAnimation(clearSource, compiledCode) {
     </div>`;
 
   compileAnimCancel = false;
+  compileAnimRunning = true;
   const outEl = document.getElementById('ca-output');
 
   for (const block of mapping) {
@@ -734,7 +739,8 @@ async function runCompileAnimation(clearSource, compiledCode) {
   }
 
   // Brief pause, then show normal code tab
-  if (!compileAnimCancel) await new Promise(r => setTimeout(r, 400));
+  if (!compileAnimCancel) await new Promise(r => setTimeout(r, 600));
+  compileAnimRunning = false;
   showCompiled();
 }
 
@@ -792,16 +798,21 @@ async function autoCompile() {
       }
 
       // Auto-preview: web apps show instantly; JS backends auto-run
-      if (lastCompiled.html && !lastCompiled.serverJS) {
-        // Pure web app — show in iframe immediately, no server needed
-        showTab('output');
+      // BUT don't switch tabs if compile animation is playing
+      if (!compileAnimRunning) {
+        if (lastCompiled.html && !lastCompiled.serverJS) {
+          showTab('output');
+        } else if (lastCompiled.serverJS) {
+          if (runningPort) { await fetch('/api/stop', { method: 'POST' }); runningPort = null; }
+          doRun();
+        } else {
+          if (activeTab === 'output') showOutput();
+          else if (activeTab === 'compiled') showCompiled();
+        }
       } else if (lastCompiled.serverJS) {
-        // JS backend — auto-start server (stop previous instance first)
+        // Still start the server in the background, just don't switch tabs
         if (runningPort) { await fetch('/api/stop', { method: 'POST' }); runningPort = null; }
         doRun();
-      } else {
-        if (activeTab === 'output') showOutput();
-        else if (activeTab === 'compiled') showCompiled();
       }
     } else {
       if (dot) dot.className = 'dot err';
@@ -1277,9 +1288,11 @@ window.doRun = async function() {
       if (data.logs) data.logs.forEach(l => appendTerminalText(l));
       setStatus('ok', 'Running :' + data.port);
       runningPort = data.port;
-      // Always show Output — iframe for backend, data tab if tables exist
-      if (lastCompiled.html && getTableNames().length > 0) showTab('data');
-      else showTab('output');
+      // Show output — but don't switch tabs if compile animation is playing
+      if (!compileAnimRunning) {
+        if (lastCompiled.html && getTableNames().length > 0) showTab('data');
+        else showTab('output');
+      }
     }
   } catch (err) {
     appendTerminal('<span class="term-err">' + escHtml(err.message) + '</span>\n');
@@ -1470,8 +1483,9 @@ function markdownToHtml(text) {
   // Escape helper for non-code content
   const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-  // Split out fenced code blocks first
+  // Split out fenced code blocks first, then bare SVG blocks
   const parts = [];
+  // Phase 1: extract fenced code blocks
   const codeRe = /```(\w*)\n?([\s\S]*?)```/g;
   let last = 0, m;
   while ((m = codeRe.exec(text)) !== null) {
@@ -1480,6 +1494,42 @@ function markdownToHtml(text) {
     last = m.index + m[0].length;
   }
   if (last < text.length) parts.push({ type: 'text', s: text.slice(last) });
+  // Phase 2: extract bare <svg>...</svg> from text parts (Meph often emits SVG without fences)
+  const svgRe = /<svg[\s\S]*?<\/svg>/gi;
+  const expanded = [];
+  for (const p of parts) {
+    if (p.type !== 'text') { expanded.push(p); continue; }
+    let svgLast = 0, svgM;
+    svgRe.lastIndex = 0;
+    let found = false;
+    while ((svgM = svgRe.exec(p.s)) !== null) {
+      found = true;
+      if (svgM.index > svgLast) expanded.push({ type: 'text', s: p.s.slice(svgLast, svgM.index) });
+      expanded.push({ type: 'code', lang: 'svg', s: svgM[0] });
+      svgLast = svgM.index + svgM[0].length;
+    }
+    if (found && svgLast < p.s.length) expanded.push({ type: 'text', s: p.s.slice(svgLast) });
+    if (!found) expanded.push(p);
+  }
+  parts.length = 0;
+  parts.push(...expanded);
+  // Phase 3: suppress incomplete SVG during streaming — show placeholder instead of raw tags
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i].type !== 'text') continue;
+    const s = parts[i].s;
+    const svgStart = s.indexOf('<svg');
+    if (svgStart !== -1 && s.indexOf('</svg>', svgStart) === -1) {
+      // Incomplete SVG — cut it off and show placeholder
+      const before = s.slice(0, svgStart);
+      parts[i] = { type: 'text', s: before + '\n*Rendering diagram...*\n' };
+    }
+    // Also suppress incomplete fenced svg blocks: ```svg\n<svg... (no closing ```)
+    const fencedSvg = s.indexOf('```svg');
+    if (fencedSvg !== -1 && s.indexOf('```', fencedSvg + 6) === -1) {
+      const before = s.slice(0, fencedSvg);
+      parts[i] = { type: 'text', s: before + '\n*Rendering diagram...*\n' };
+    }
+  }
 
   function renderInline(s) {
     return esc(s)
@@ -1585,7 +1635,7 @@ function restoreChatOrWelcome() {
         delete m.streaming;
         return m;
       });
-      renderChat();
+      renderChat(true);
       return;
     } catch (_) {}
   }
@@ -1608,9 +1658,10 @@ function updateContextMeter(percent, used, max) {
 function saveChatState() {
   try {
     const toSave = chatMessages
-      .map(({ role, content, toolSteps, streaming }) => ({
+      .map(({ role, content, toolSteps, timeline, streaming }) => ({
         role, content,
         toolSteps: toolSteps || [],
+        timeline: timeline || [],
         ...(streaming ? { interrupted: true } : {}),
       }));
     localStorage.setItem('clear_chat_messages', JSON.stringify(toSave));
@@ -1625,21 +1676,41 @@ function addChatMsg(role, content, toolSteps) {
 
 function renderMsgInner(m, isLast) {
   let html = '';
-  if (m.toolSteps && m.toolSteps.length) {
-    html += m.toolSteps.map((t, i) => {
-      const isLast = i === m.toolSteps.length - 1;
-      const active = m.streaming && isLast;
-      const icon = active ? '◌' : '✓';
-      const cls = active ? 'tool-step active' : 'tool-step';
-      const label = typeof t === 'object' ? t.summary : t;
-      return `<div class="${cls}"><span class="tool-icon">${icon}</span>${escHtml(label)}</div>`;
-    }).join('');
-  }
   if (m.role === 'assistant') {
-    if (isLast && m.streaming && !m.content && !m.toolSteps?.length) {
-      // No text yet — show animated dots instead of empty bubble
+    const hasAnything = (m.content || '') + (m.toolSteps?.length || 0) + (m.timeline?.length || 0);
+    if (isLast && m.streaming && !hasAnything) {
       html += '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+    } else if (m.timeline && m.timeline.length) {
+      // Interleaved timeline rendering — tools inline with text
+      let textBuf = '';
+      for (let i = 0; i < m.timeline.length; i++) {
+        const ev = m.timeline[i];
+        if (ev.type === 'text') {
+          textBuf += ev.text;
+        } else if (ev.type === 'tool') {
+          // Flush any accumulated text before the tool step
+          if (textBuf) { html += markdownToHtml(textBuf); textBuf = ''; }
+          const isLastTool = m.streaming && i === m.timeline.length - 1;
+          const icon = (isLastTool && !ev.done) ? '◌' : '✓';
+          const cls = (isLastTool && !ev.done) ? 'tool-step active' : 'tool-step';
+          const label = ev.summary || ev.name;
+          html += `<div class="${cls}"><span class="tool-icon">${icon}</span>${escHtml(label)}</div>`;
+        }
+      }
+      // Flush remaining text
+      if (textBuf) html += markdownToHtml(textBuf);
+      if (isLast && m.streaming) html += '<span class="stream-cursor">▌</span>';
     } else {
+      // Legacy: no timeline, just content + toolSteps at top
+      if (m.toolSteps && m.toolSteps.length) {
+        html += m.toolSteps.map((t, i) => {
+          const active = m.streaming && i === m.toolSteps.length - 1;
+          const icon = active ? '◌' : '✓';
+          const cls = active ? 'tool-step active' : 'tool-step';
+          const label = typeof t === 'object' ? t.summary : t;
+          return `<div class="${cls}"><span class="tool-icon">${icon}</span>${escHtml(label)}</div>`;
+        }).join('');
+      }
       html += markdownToHtml(m.content || '');
       if (isLast && m.streaming) html += '<span class="stream-cursor">▌</span>';
     }
@@ -1666,17 +1737,34 @@ function renderMsgHtml(m, isLast) {
   return `<div class="msg ${cls}" data-idx="${m._idx}">${renderMsgInner(m, isLast)}</div>`;
 }
 
-function renderChat() {
+function renderChat(forceBottom) {
   if (showingKeySetup) return;
   const el = document.getElementById('chat-messages');
-  const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 40;
+  const atBottom = forceBottom || el.scrollHeight - el.scrollTop <= el.clientHeight + 40;
   const visible = chatMessages.filter(m => m.role !== 'system');
   el.innerHTML = visible.map((m, i) => {
     m._idx = i;
     return renderMsgHtml(m, i === visible.length - 1);
   }).join('');
   if (atBottom) el.scrollTop = el.scrollHeight;
+  updateScrollBtn();
 }
+
+window.scrollChatToBottom = function() {
+  const el = document.getElementById('chat-messages');
+  el.scrollTop = el.scrollHeight;
+  document.getElementById('chat-scroll-btn').style.display = 'none';
+};
+
+function updateScrollBtn() {
+  const el = document.getElementById('chat-messages');
+  const btn = document.getElementById('chat-scroll-btn');
+  if (!btn || !el) return;
+  const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 60;
+  btn.style.display = atBottom ? 'none' : 'block';
+}
+
+document.getElementById('chat-messages').addEventListener('scroll', updateScrollBtn);
 
 function updateLastMsg() {
   const el = document.getElementById('chat-messages');
@@ -1825,7 +1913,7 @@ window.sendChat = async function() {
 
   // Create streaming assistant message
   const aIdx = chatMessages.length;
-  chatMessages.push({ role: 'assistant', content: '', toolSteps: [], streaming: true, _idx: aIdx });
+  chatMessages.push({ role: 'assistant', content: '', toolSteps: [], timeline: [], streaming: true, _idx: aIdx });
   renderChat();
 
   // AbortController for stop button
@@ -1907,11 +1995,22 @@ window.sendChat = async function() {
         const am = chatMessages[aIdx];
         if (ev.type === 'text') {
           am.content += ev.delta;
+          // Append to timeline: merge with last text entry or create new one
+          const last = am.timeline[am.timeline.length - 1];
+          if (last && last.type === 'text') { last.text += ev.delta; }
+          else { am.timeline.push({ type: 'text', text: ev.delta }); }
           updateLastMsg();
         } else if (ev.type === 'tool_start') {
           am.toolSteps.push({ name: ev.name, summary: ev.summary || ev.name });
+          am.timeline.push({ type: 'tool', name: ev.name, summary: ev.summary || ev.name, done: false });
           updateLastMsg();
         } else if (ev.type === 'tool_done') {
+          // Mark the tool as done in timeline
+          for (let i = am.timeline.length - 1; i >= 0; i--) {
+            if (am.timeline[i].type === 'tool' && am.timeline[i].name === ev.name && !am.timeline[i].done) {
+              am.timeline[i].done = true; break;
+            }
+          }
           // Checkpoint after every tool completion — survives connection drops
           saveChatState();
         } else if (ev.type === 'code_update') {
@@ -2120,10 +2219,7 @@ document.getElementById('template-picker').addEventListener('change', async func
     // Update editor header with template name
     const label = document.getElementById('editor-label');
     if (label) label.textContent = this.value + '/main.clear';
-    // Auto-compile and preview immediately
     lastCompiled = null;
-    showTab('output');
-    autoCompile();
   } catch {}
 });
 
