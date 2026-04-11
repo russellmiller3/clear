@@ -1758,7 +1758,13 @@ document.getElementById('template-picker').addEventListener('change', async func
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); autoCompile(); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); doRun(); }
-  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); document.getElementById('chat-input').focus(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    const pane = document.getElementById('chat-pane');
+    const wasCollapsed = pane.classList.contains('collapsed');
+    toggleChat();
+    if (wasCollapsed) document.getElementById('chat-input').focus();
+  }
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'C') { e.preventDefault(); quoteSelectionInChat(); }
 });
 
