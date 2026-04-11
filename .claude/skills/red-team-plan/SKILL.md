@@ -149,6 +149,27 @@ Also note in the attack report which phases will need `intent.md` changes.
 
 ---
 
+### PRIORITY 6: Tech Debt Scan
+
+While reading files referenced in the plan, actively look for tech debt in the surrounding code — not just the lines the plan touches.
+
+**Minor tech debt** (add as cleanup tasks in the plan):
+- Dead code paths (unreachable handlers, unused variables, stale comments)
+- Naming inconsistencies (same concept with different names in different files)
+- Duplicated logic that could be a shared helper
+- Outdated comments that describe behavior that changed
+- Missing error handling at system boundaries
+
+**Major tech debt** (flag to user, do NOT silently add to plan):
+- Architectural issues (two systems that should be one, wrong abstraction level)
+- Systemic patterns that affect multiple files (e.g. dispatch table design)
+- Design decisions that will cause compounding pain as features are added
+- Performance patterns that won't scale
+
+For major debt, write: "TECH DEBT FLAG: [description]. Estimated scope: [small/medium/large]. Recommend addressing [now/before next feature/when time allows]. Reason: [why it matters]."
+
+---
+
 ## Step 3: Attack Checklists
 
 Run these against every relevant part of the plan.

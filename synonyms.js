@@ -167,7 +167,7 @@ const SYNONYM_TABLE = Object.freeze({
   number_input: Object.freeze(['number input']),
   file_input: Object.freeze(['file input', 'file upload']),
   dropdown: Object.freeze(['dropdown', 'select']),
-  checkbox: Object.freeze(['checkbox', 'toggle']),
+  checkbox: Object.freeze(['checkbox']),
   text_area: Object.freeze(['text area', 'textarea']),
   saves_to: Object.freeze(['saves to', 'saved as']),
   // Static content elements
@@ -382,6 +382,35 @@ const SYNONYM_TABLE = Object.freeze({
   // NOTE: 'send email via sendgrid' is NOT a synonym — collides with 'send email:' (SMTP).
   // Parser checks for 'via' token after 'send email' to disambiguate.
   needs_login: Object.freeze(['needs login', 'need login', 'requires login']),
+
+  // Self-synonyms — words with no alternate spellings that still need a canonical
+  // value so the unified dispatch table can find them. Without these, a word like
+  // 'database' has no .canonical and would need a separate RAW_DISPATCH map.
+  database: Object.freeze(['database']),
+  chart: Object.freeze(['chart']),
+  bar: Object.freeze(['bar']),
+  line: Object.freeze(['line']),
+  pie: Object.freeze(['pie']),
+  area: Object.freeze(['area']),
+  agent: Object.freeze(['agent']),
+  script: Object.freeze(['script']),
+  tab: Object.freeze(['tab']),
+  retry: Object.freeze(['retry']),
+  first: Object.freeze(['first']),
+  background: Object.freeze(['background']),
+  every: Object.freeze(['every']),
+  store: Object.freeze(['store']),
+  restore: Object.freeze(['restore']),
+  pipeline: Object.freeze(['pipeline']),
+  skill: Object.freeze(['skill']),
+  workflow: Object.freeze(['workflow']),
+  policy: Object.freeze(['policy']),
+  mock: Object.freeze(['mock']),
+  toggle: Object.freeze(['toggle']),
+  open: Object.freeze(['open']),
+  close: Object.freeze(['close']),
+  ask: Object.freeze(['ask']),
+  call: Object.freeze(['call']),
 });
 
 // Build the reverse lookup: synonym string → canonical token
@@ -405,6 +434,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.13.0';
+const SYNONYM_VERSION = '0.14.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };
