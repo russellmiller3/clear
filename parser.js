@@ -283,6 +283,7 @@ export const NodeType = Object.freeze({
 
   // Frontend navigation + API calls (Phase 21)
   NAVIGATE: 'navigate',
+  REFRESH: 'refresh',
   API_CALL: 'api_call',
 
   // Components (Phase 21)
@@ -2105,6 +2106,12 @@ CANONICAL_DISPATCH.set('close', (ctx) => {
     return ctx.i + 1;
   }
   return undefined;
+});
+
+// "refresh page" / "reload page" — page refresh in web apps
+CANONICAL_DISPATCH.set('refresh', (ctx) => {
+  ctx.body.push({ type: NodeType.REFRESH, line: ctx.line });
+  return ctx.i + 1;
 });
 
 // "ask" dispatch — handles multiple forms:

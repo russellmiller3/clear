@@ -32,8 +32,57 @@ Filed by Meph (the Studio agent) or by the user. Read by the compiler team.
 
 ---
 
-## Request: Studio should inject ANTHROPIC_API_KEY at runtime
-**Priority:** CRITICAL
+## Request: `refresh page` compiles to `console.log(refresh)` — crashes frontend ✅ FIXED
+**Priority:** CRITICAL (FIXED — compiles to `location.reload()` now)
+**What I was building:** A task CRUD app with a button that posts a form and refreshes the page
+**What I wrote in Clear:**
+```clear
+button 'Add Task':
+  post to '/api/tasks' with form data
+  refresh page
+```
+**What I expected:** After the POST succeeds, the page reloads (or the task list re-fetches)
+**What actually happened:** Frontend JS crashes silently. The button click handler throws a ReferenceError because `refresh` is undefined.
+**Compiled output (if applicable):**
+```javascript
+document.getElementById('btn_Add_Task').addEventListener('click', async function() {
+  try {
+    { const _r = await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_state) });
+      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
+    console.log(refresh);  // <-- BUG: should be location.reload() or re-fetch
+  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
+});
+```
+**Steps to reproduce:**
+1. Write any button block with `refresh page` as the last action
+2. Compile and run
+3. Click the button — frontend throws `ReferenceError: refresh is not defined`
+**Workaround used:** Blocked. No way to trigger a page refresh or data re-fetch from a button.
+**Impact:** Kills every CRUD form. After a POST, the user has no way to see the updated data. Affects all interactive apps.
+
+---
+
+## Request: `post to` with form data sends entire `_state` instead of form fields only
+**Priority:** MAJOR
+**What I was building:** A task CRUD app — button POSTs form inputs to an API
+**What I wrote in Clear:**
+```clear
+button 'Add Task':
+  post to '/api/tasks' with form data
+```
+**What I expected:** POST body contains only the form fields defined in that section (title, description, priority)
+**What actually happened:** POST body is `JSON.stringify(_state)` — the entire app state object, including unrelated fields. This sends garbage to the API and breaks validation.
+**Compiled output (if applicable):**
+```javascript
+body: JSON.stringify(_state)  // sends ALL state, not just form fields
+```
+**Workaround used:** None — no syntax to specify a subset of state fields in a POST
+**Impact:** Any app with multiple inputs or sections will send polluted data to the API.
+
+---
+
+## Request: Studio should inject ANTHROPIC_API_KEY at runtime ✅ FIXED
+**Priority:** CRITICAL (FIXED — API key from chat settings now passed to child processes)
 **What I was building:** Any app with an `agent` block using `ask claude`
 **What I wrote in Clear:**
 ```clear

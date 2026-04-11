@@ -168,6 +168,13 @@ app.get('/api/terminal-log', (req, res) => {
   res.json({ lines: terminalBuffer.slice(-100), frontendErrors: frontendErrors.slice(-20) });
 });
 
+// Store API key server-side so child processes (compiled apps with agents) can use it
+let storedApiKey = process.env.ANTHROPIC_API_KEY || '';
+app.post('/api/set-key', (req, res) => {
+  storedApiKey = req.body.key || '';
+  res.json({ ok: true });
+});
+
 app.post('/api/run', (req, res) => {
   const { serverJS, html, css } = req.body;
   if (!serverJS) return res.status(400).json({ error: 'No server code to run' });
@@ -197,7 +204,7 @@ app.post('/api/run', (req, res) => {
   if (runningPort > 4100) runningPort = 4001;
 
   // Start child
-  const env = { ...process.env, PORT: String(runningPort) };
+  const env = { ...process.env, PORT: String(runningPort), ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
   const child = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
   runningChild = child;
 
@@ -383,11 +390,13 @@ const TOOLS = [
   },
   {
     name: 'read_file',
-    description: 'Read a reference doc to look up syntax, conventions, or known bugs. Available files: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md.',
+    description: 'Read a reference doc. Small files (PHILOSOPHY.md, requests.md) return in full. Large files (SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md) return a table of contents with line numbers on first call — then use startLine/endLine to read specific sections.',
     input_schema: {
       type: 'object',
       properties: {
         filename: { type: 'string', description: 'One of: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md' },
+        startLine: { type: 'number', description: 'Start line (1-based). Omit to get full file or TOC.' },
+        endLine: { type: 'number', description: 'End line (1-based, inclusive). Omit to get full file or TOC.' },
       },
       required: ['filename'],
     },
@@ -608,9 +617,36 @@ app.post('/api/chat', async (req, res) => {
         if (!READABLE.includes(fname)) return JSON.stringify({ error: `Can only read: ${READABLE.join(', ')}` });
         const fpath = join(ROOT_DIR, fname);
         if (!existsSync(fpath)) return JSON.stringify({ error: `File not found: ${fname}` });
-        const content = readFileSync(fpath, 'utf8');
-        // Truncate to ~20k chars to avoid blowing up context
-        return JSON.stringify({ filename: fname, content: content.slice(0, 20000), truncated: content.length > 20000 });
+        const lines = readFileSync(fpath, 'utf8').split('\n');
+
+        // Line-range mode: return specific section
+        if (input.startLine && input.endLine) {
+          const start = Math.max(1, input.startLine) - 1;
+          const end = Math.min(lines.length, input.endLine);
+          const section = lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join('\n');
+          return JSON.stringify({ filename: fname, lines: `${start+1}-${end}`, totalLines: lines.length, content: section });
+        }
+
+        // Small files (<800 lines): return in full
+        const SMALL_THRESHOLD = 800;
+        if (lines.length < SMALL_THRESHOLD) {
+          return JSON.stringify({ filename: fname, totalLines: lines.length, content: lines.join('\n') });
+        }
+
+        // Large files: return TOC (headings with line numbers)
+        const toc = [];
+        lines.forEach((line, i) => {
+          if (line.startsWith('## ') || line.startsWith('### ') || line.startsWith('# ')) {
+            toc.push(`${i + 1}: ${line}`);
+          }
+        });
+        return JSON.stringify({
+          filename: fname,
+          totalLines: lines.length,
+          mode: 'toc',
+          hint: 'Large file. Use startLine/endLine to read specific sections.',
+          toc: toc.join('\n'),
+        });
       }
 
       case 'write_file': {
