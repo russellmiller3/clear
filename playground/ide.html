@@ -191,7 +191,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 /* Chat */
 #chat-header { padding: 12px 16px; border-bottom: 1px solid var(--bd); font-size: 13px; font-weight: 600; color: var(--tx2); font-family: var(--font); display: flex; align-items: center; justify-content: space-between; background: linear-gradient(180deg, rgba(108,140,255,.03), transparent); }
 #chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
-.msg { padding: 10px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.6; max-width: 60ch; animation: msgIn .2s ease; }
+.msg { padding: 10px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.6; max-width: 50ch; animation: msgIn .2s ease; }
 @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .msg.user { background: var(--accent2); color: #dde4ff; align-self: flex-end; border-bottom-right-radius: 4px; }
 .msg.assistant { background: var(--bg3); color: var(--tx); align-self: flex-start; border: 1px solid var(--bd); border-bottom-left-radius: 4px; font-family: 'Lora', Georgia, serif; font-size: 14.5px; }
@@ -297,6 +297,19 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 /* Jump-to highlight — flash a line in the editor */
 @keyframes lineFlash { 0%,100% { background: transparent; } 20%,60% { background: rgba(251,191,36,.25); } }
 .cm-jump-line { animation: lineFlash .9s ease; }
+
+/* Compile animation — split view */
+.compile-anim { display: flex; height: 100%; gap: 0; }
+.compile-anim-left, .compile-anim-right { flex: 1; overflow: auto; padding: 8px; scrollbar-width: thin; }
+.compile-anim-left { border-right: 1px solid var(--bd); }
+.compile-anim-arrow { display: flex; align-items: center; padding: 0 8px; color: var(--accent); font-size: 18px; font-weight: bold; }
+.compile-anim-header { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--tx3); padding: 2px 0 6px; }
+.compile-anim pre { font-family: var(--mono); font-size: 11px; line-height: 1.6; margin: 0; }
+.ca-line { display: block; padding: 0 4px; border-radius: 2px; transition: background .15s; }
+.ca-active { background: rgba(108,140,255,.25); color: var(--accent); }
+.ca-done { opacity: 0.5; }
+.ca-reveal { animation: caReveal .25s ease forwards; }
+@keyframes caReveal { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
 
 /* Compiled code — line numbers */
 #preview-content pre { counter-reset: compiled-line; padding: 0; }
@@ -626,20 +639,103 @@ showOutput();
 // ==========================================================================
 // COMPILE
 // ==========================================================================
+let compileAnimCancel = false;
+
 async function runScanAnimation(source) {
+  // Lightweight pre-compile scan — just shows Clear lines being "read"
   const lines = source.split('\n');
-  const msPerLine = Math.max(40, Math.min(80, 2400 / Math.max(lines.length, 1)));
-  const totalMs = lines.length * msPerLine;
+  if (lines.length > 150) return; // skip for large files
+  const msPerLine = Math.max(30, Math.min(60, 1800 / Math.max(lines.length, 1)));
   showTab('compiled');
   const el = document.getElementById('preview-content');
   el.innerHTML = '<pre>' + lines.map((l, i) =>
     `<span class="cl" id="scan-${i}"><span class="cl-code">${escHtml(l)}</span></span>`
   ).join('\n') + '</pre>';
+  compileAnimCancel = false;
   for (let i = 0; i < lines.length; i++) {
+    if (compileAnimCancel) return;
     const span = document.getElementById('scan-' + i);
     if (span) span.classList.add('cm-scan-line');
     await new Promise(r => setTimeout(r, msPerLine));
   }
+}
+
+// Post-compile animation: split view — Clear source (left) → compiled output (right)
+// Maps lines using // clear:N markers in compiled output
+async function runCompileAnimation(clearSource, compiledCode) {
+  if (!compiledCode) return;
+  const clearLines = clearSource.split('\n');
+  const compiledLines = compiledCode.split('\n');
+  if (clearLines.length > 150) return; // too big, skip
+
+  // Parse // clear:N markers to build mapping
+  const mapping = []; // [{ clearLine, compiledStart, compiledEnd }]
+  let currentClear = null;
+  let blockStart = -1;
+  for (let i = 0; i < compiledLines.length; i++) {
+    const m = compiledLines[i].match(/\/\/ clear:(\d+)/);
+    if (m) {
+      if (currentClear !== null && blockStart >= 0) {
+        mapping.push({ clearLine: currentClear, start: blockStart, end: i - 1 });
+      }
+      currentClear = parseInt(m[1]);
+      blockStart = i;
+    }
+  }
+  if (currentClear !== null && blockStart >= 0) {
+    mapping.push({ clearLine: currentClear, start: blockStart, end: compiledLines.length - 1 });
+  }
+
+  if (mapping.length === 0) return; // no markers, skip
+
+  showTab('compiled');
+  const el = document.getElementById('preview-content');
+  const msPerBlock = Math.max(40, Math.min(100, 3000 / Math.max(mapping.length, 1)));
+
+  // Build split view HTML
+  el.innerHTML = `
+    <div class="compile-anim">
+      <div class="compile-anim-left">
+        <div class="compile-anim-header">Clear Source</div>
+        <pre>${clearLines.map((l, i) =>
+          `<span class="ca-line" id="ca-src-${i+1}">${escHtml(l)}</span>`
+        ).join('\n')}</pre>
+      </div>
+      <div class="compile-anim-arrow">→</div>
+      <div class="compile-anim-right">
+        <div class="compile-anim-header">Compiled Output</div>
+        <pre id="ca-output"></pre>
+      </div>
+    </div>
+    <div style="text-align:center;padding:6px">
+      <button class="toolbar-btn" onclick="compileAnimCancel=true" style="font-size:11px;padding:2px 10px;">Skip</button>
+    </div>`;
+
+  compileAnimCancel = false;
+  const outEl = document.getElementById('ca-output');
+
+  for (const block of mapping) {
+    if (compileAnimCancel) break;
+
+    // Highlight Clear source line
+    const srcSpan = document.getElementById('ca-src-' + block.clearLine);
+    if (srcSpan) { srcSpan.classList.add('ca-active'); srcSpan.scrollIntoView({ block: 'nearest' }); }
+
+    // Reveal compiled lines for this block
+    const chunk = compiledLines.slice(block.start, block.end + 1);
+    const chunkHtml = chunk.map(l => `<span class="ca-line ca-reveal">${escHtml(l)}</span>`).join('\n');
+    outEl.innerHTML += (outEl.innerHTML ? '\n' : '') + chunkHtml;
+    outEl.scrollTop = outEl.scrollHeight;
+
+    await new Promise(r => setTimeout(r, msPerBlock));
+
+    // Dim the source line after revealing
+    if (srcSpan) { srcSpan.classList.remove('ca-active'); srcSpan.classList.add('ca-done'); }
+  }
+
+  // Brief pause, then show normal code tab
+  if (!compileAnimCancel) await new Promise(r => setTimeout(r, 400));
+  showCompiled();
 }
 
 async function autoCompile() {
@@ -688,6 +784,13 @@ async function autoCompile() {
       document.getElementById('api-tab-btn').style.display = srcInfo.endpoints.length > 0 ? '' : 'none';
       document.getElementById('download-btn').style.display = lastCompiled.html ? '' : 'none';
       showMetaChips();
+      // Compiler animation — show line-by-line mapping if we have source markers
+      compileAnimCancel = true; // cancel any in-progress pre-scan
+      const animTarget = lastCompiled.serverJS || lastCompiled.javascript;
+      if (animTarget && animTarget.includes('// clear:') && clearLines <= 150) {
+        runCompileAnimation(source, animTarget);
+      }
+
       // Auto-preview: web apps show instantly; JS backends auto-run
       if (lastCompiled.html && !lastCompiled.serverJS) {
         // Pure web app — show in iframe immediately, no server needed
@@ -1446,8 +1549,11 @@ function markdownToHtml(text) {
       const lang = p.lang || '';
       // SVG: render as actual inline SVG diagram
       if (lang === 'svg' || (lang === '' && p.s.trim().startsWith('<svg'))) {
-        // Sanitize: only allow SVG elements (strip script tags)
-        const sanitized = p.s.replace(/<script[\s\S]*?<\/script>/gi, '');
+        // Sanitize: strip scripts and event handlers
+        const sanitized = p.s
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '')
+          .replace(/javascript:/gi, '');
         return `<div class="svg-diagram">${sanitized}</div>`;
       }
       // HTML: render preview + source
@@ -1517,7 +1623,7 @@ function addChatMsg(role, content, toolSteps) {
   saveChatState();
 }
 
-function renderMsgInner(m) {
+function renderMsgInner(m, isLast) {
   let html = '';
   if (m.toolSteps && m.toolSteps.length) {
     html += m.toolSteps.map((t, i) => {
@@ -1530,12 +1636,12 @@ function renderMsgInner(m) {
     }).join('');
   }
   if (m.role === 'assistant') {
-    if (m.streaming && !m.content && !m.toolSteps?.length) {
+    if (isLast && m.streaming && !m.content && !m.toolSteps?.length) {
       // No text yet — show animated dots instead of empty bubble
       html += '<div class="typing-indicator"><span></span><span></span><span></span></div>';
     } else {
       html += markdownToHtml(m.content || '');
-      if (m.streaming) html += '<span class="stream-cursor">▌</span>';
+      if (isLast && m.streaming) html += '<span class="stream-cursor">▌</span>';
     }
   } else {
     // Content can be a string or an array (when images are pasted)
@@ -1555,18 +1661,19 @@ function renderMsgInner(m) {
   return html;
 }
 
-function renderMsgHtml(m) {
+function renderMsgHtml(m, isLast) {
   const cls = m.role === 'user' ? 'user' : 'assistant';
-  return `<div class="msg ${cls}" data-idx="${m._idx}">${renderMsgInner(m)}</div>`;
+  return `<div class="msg ${cls}" data-idx="${m._idx}">${renderMsgInner(m, isLast)}</div>`;
 }
 
 function renderChat() {
   if (showingKeySetup) return;
   const el = document.getElementById('chat-messages');
   const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 40;
-  el.innerHTML = chatMessages.filter(m => m.role !== 'system').map((m, i) => {
+  const visible = chatMessages.filter(m => m.role !== 'system');
+  el.innerHTML = visible.map((m, i) => {
     m._idx = i;
-    return renderMsgHtml(m);
+    return renderMsgHtml(m, i === visible.length - 1);
   }).join('');
   if (atBottom) el.scrollTop = el.scrollHeight;
 }
@@ -1578,7 +1685,7 @@ function updateLastMsg() {
   const div = el.querySelector(`[data-idx="${m._idx}"]`);
   if (div) {
     // Use innerHTML (not outerHTML) so the element stays in the DOM — prevents blink on each delta
-    div.innerHTML = renderMsgInner(m);
+    div.innerHTML = renderMsgInner(m, true);
     el.scrollTop = el.scrollHeight;
   } else {
     renderChat();
