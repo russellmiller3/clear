@@ -454,9 +454,17 @@ function useNode(module, line) {
 }
 
 // Phase 4: Web app
+function slugifyTitle(title) {
+  return '/' + title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function pageNode(title, body, line, route) {
   const node = { type: NodeType.PAGE, title, body, line };
-  if (route) node.route = route;
+  // Auto-slugify title if no explicit route given: 'HN Daily Digest' → '/hn-daily-digest'
+  node.route = route || slugifyTitle(title);
   return node;
 }
 

@@ -1,89 +1,66 @@
-# Handoff — 2026-04-10
+# Handoff — 2026-04-11
 
 ## Current State
-- **Branch:** `main` (just merged `feature/component-stress-test`)
-- **Tests:** 1525 passing / 0 failing
+- **Branch:** `main` (just merged `feature/npm-imports-run-command`)
+- **Tests:** 1588 passing / 0 failing (compiler) + 9 sandbox integration tests
 - **Synonym version:** 0.13.0
 
 ## What Was Done This Session
 
-### Component Composition Fix (7 tests → 0 failures)
-- **4 distinct bugs fixed:** reactive detection missed COMPONENT_USE, component functions emitted inside `_recompute`, COMPONENT_USE children on wrong property, lowercase SHOW+CALL incorrectly got component containers.
-- **Test adjustments:** Changed `heading title` → `show title` in component bodies (parser rejects bare identifiers after heading).
+### npm Package Imports
+- `use npm 'stripe' as Stripe` → `const Stripe = require('stripe');` at top of server.js
+- Alias defaults to sanitized package name if `as` omitted
+- Validator adds npm aliases to declared variables (prevents false "undefined variable" errors)
+- CLI `package` command includes npm deps in generated `package.json`
 
-### Chart Modifiers
-- **Subtitle:** `bar chart 'Title' subtitle 'Description' showing data` — renders as `<p>` below chart title.
-- **Stacked:** `showing data stacked` — adds `stack: 'total'` to all ECharts series for stacked bar charts.
-- Both are optional keyword modifiers parsed positionally in `parseChartRemainder`.
+### Shell Commands
+- `run command 'git pull'` → `execSync(cmd, { stdio: 'inherit' })` in JS / `subprocess.run()` in Python
+- `child_process` / `subprocess` auto-imported only when used
 
-### Image Element (New)
-- **Syntax:** `image 'url'` with optional `rounded`, `Npx wide`, `Npx tall` modifiers.
-- **Parser:** `parseImage()` function, added `image` to contentCanonicals and dispatch.
-- **Compiler:** Renders `<img>` tag with `loading="lazy"`, responsive or fixed sizing, optional `rounded-full`.
-- **Synonym:** Only `image` registered — `photo`/`picture` collide with file input tests.
+### P1 — Inferred Type System
+- `price = 'hello'` then `price * 1.08` → **compile error** (not warning)
+- Tracks literal-assigned variable types, flags arithmetic on text variables
+- Error message: `'price' is text, not a number — can't use it in * arithmetic`
+- Wired into `validate()` via `validateInferredTypes()`
 
-### Blog Presets (3 new)
-- `blog_grid` — Card listing page (3-column responsive grid, py-16 lg:py-24)
-- `blog_card` — Post card with hover lift effect (border, shadow, translate-y)
-- `blog_article` — Medium-style single post (max-w-3xl mx-auto centered)
+### P2 — Structured Eval Stats
+- `compileProgram()` now returns `result.stats` with: `ok, endpoints, tables, pages, tests.defined, functions, agents, workflows, npm_packages, has_auth, has_database, lines, warnings`
+- `ok` is `false` if any errors exist
+- Used as the reward signal for RL training loops
 
-### Blog Demo Apps (2 new)
-- `apps/blog-landing/main.clear` — 3 blog cards with images, badges, author avatars
-- `apps/blog-article/main.clear` — Full article with author meta, hero image, paragraphs, author bio card
+### P3 — Source Maps
+- Backend JS always emits `// clear:N` before each statement (even inside endpoint bodies — indent ≤ 2 in backend mode)
+- `_clearLineMap` injected as line 2 of every compiled server: `{ jsLine: clearLine }`
+- `_clearError` now parses `err.stack`, finds `server.js:LINE`, looks up in `_clearLineMap`, reports actual failing Clear line
+- Stack-traced line takes priority over endpoint-level `ctx.line`
 
-### Seed Auto-Dedup
-- Compiler auto-injects `findAll` check at top of seed endpoints.
-- If table already has records, returns `{ message: 'already seeded' }` instead of inserting duplicates.
-- Production guard also injected: seed endpoints return 403 in production.
+### P4 — Sandbox Runner (`sandbox.js`)
+- `runClear(source, { timeout, tests })` → compiles, writes to temp dir, symlinks node_modules, spawns server, runs HTTP assertions, returns `{ ok, exitCode, testResults, stats, stdout, stderr }`
+- Parallel RL episodes: each `Sandbox` instance gets unique port from 14000+ pool
+- 9 integration tests in `sandbox.test.js`
 
-### Trend Alignment Fix
-- Metric card trend text (`+3 this week`) now uses `flex items-center gap-1` for proper horizontal alignment of arrow SVG + text.
+### Page Auto-Slug
+- `page 'HN Daily Digest':` → route `/hn-daily-digest` (no `at` required)
+- Explicit `page 'Home' at '/':` still overrides
+- Single-page apps unaffected (`hasRouting = pages.length > 1` gates routing independently)
 
-### Display as Cards (New)
-- **`display X as cards`** — New display format renders API data as responsive 3-column card grid
-- **Smart field detection** — Auto-detects: `image_url` → hero, `avatar` → circle, `category` → badge, `title` → heading, `excerpt` → body, `author` → meta
-- **Priority: `author` checked before `name/title`** — prevents `author_name` matching as card title
+## What's Next
 
-### Full-Stack Blog App
-- `apps/blog-fullstack/main.clear` — CRUD backend + card grid + New Post modal
+Priority order (from ROADMAP.md):
 
-### Component Stress Test (10 new tests)
-- **8 edge case patterns** — nested sections, multiple content types, multiple args, reactive state, two components, block-form with image, used twice, inside conditional. All passing.
-- **Reserved component name validator** — `parseComponentDef()` rejects names that collide with built-in content types: Badge, Text, Heading, Subheading, Image, Button, Link, Divider, Section, Display.
-- **2 collision tests** — Verify error messages suggest alternatives.
-- **3 existing tests fixed** — Renamed `Badge` → `StatusBadge`/`StatusTag` in existing component tests.
-
-### GAN App Preset Upgrades
-- All app presets upgraded to TailAdmin quality bar — white cards on gray content backgrounds
-- Dashboard and project-tracker demo apps updated with improved presets
-
-## Key Decisions Made
-- **Image has no synonyms** — `photo` and `picture` collide with file input patterns. Only `image` works.
-- **Seed dedup at compiler level, not language level** — `guard existing is empty` doesn't work because `empty` = `nothing` (null), but `findAll` returns `[]` (truthy). Auto-injection is safer.
-- **Component functions hoisted before _recompute** — COMPONENT_DEF and FUNCTION_DEF must be defined before the reactive loop that calls them.
-- **Reserved component names are hard-coded** — Not derived from synonyms. Only the 10 names that actually collide are blocked.
-
-## Known Issues
-- `overflow-hidden` on card containers can collapse ECharts canvases — removed from chart cards, still on app_table/app_list (fine for those).
-- Blog demo apps have compiled `index.html` checked in — these are build artifacts but useful as references.
-
-## Next Steps (Priority Order)
-1. **Multi-series bar charts** — True multi-series (opened+closed by week) needs syntax for multiple `showing` clauses
-2. **Chart time range tabs** — "12 months / 30 days / 7 days" tabs above charts
-3. **Card template customization** — Explicit field role mapping instead of name-based auto-detection
-4. **Component composition edge cases** — Block-form components with complex children untested
-
-## Files to Read First
-| File | Why |
-|------|-----|
-| `compiler.js` — display cards reactive (~line 4960) | Smart field detection + card HTML generation |
-| `compiler.js` — seed dedup (~line 1664) | Auto-injected findAll guard at top of seed endpoints |
-| `compiler.js` — blog presets in BUILTIN_PRESET_CLASSES (~line 7450) | blog_grid, blog_card, blog_article CSS |
-| `parser.js` — `displayNode()` (~line 487) | cards tag detection |
-| `parser.js` — `parseComponentDef()` (~line 2279) | Reserved name validator |
-| `apps/blog-fullstack/main.clear` | Full-stack blog with display-as-cards |
+1. **P5 — HTTP Test Assertions in Clear** — `test 'create user': call POST /api/users...` — closes the loop so reward function lives IN the Clear program
+2. **OAuth / Social Login** — `allow login with Google` — #1 real-app blocker
+3. **File Upload / Download** — `save file to 'uploads/'`
+4. **Built-in Email** — `send email to user's email with subject '...'`
+5. **Cron / Scheduled Tasks** — `every day at 9am:`
+6. **P6 — Curriculum Task Library** — 20 benchmark tasks with acceptance criteria for RL
 
 ## Resume Prompt
-> Read `HANDOFF.md` and continue from where we left off.
->
-> Branch: `main`. All 1525 tests passing. Component stress tests done — 8 edge cases + reserved name validator. Next priorities: multi-series charts, chart time-range tabs, card template customization.
+
+"Continue Clear language development. Run tests first (`node clear.test.js`). Check ROADMAP.md for the priority queue — P5 (HTTP test assertions in Clear syntax) is next, then OAuth. Narrate what you're doing and why as you go (Science Documentary Rule in CLAUDE.md)."
+
+## Known Issues / Caveats
+
+- Sandbox symlink requires Windows junction type (`'junction'` arg to symlinkSync) — may need admin on some Windows setups
+- `_clearLineMap` off-by-one: if injection point changes (not line 2), the `idx + 2` offset in map-building must be updated
+- Source map granularity: markers only at indent ≤ 2 in backend mode — deeply nested branches (if/else inside endpoint) don't get per-statement markers yet

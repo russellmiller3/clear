@@ -246,7 +246,8 @@ not x                     # inverse
 ```clear
 build for web
 
-page 'My App' at '/':
+# Route is optional — title auto-slugifies: 'My App' → /my-app
+page 'My App':
   heading 'Welcome'
   text 'Hello world'
   subheading 'Details'
@@ -412,11 +413,13 @@ if step is 2:
 ```clear
 go to '/dashboard'
 
-# Multi-page SPA
-page 'Home' at '/':
+# Multi-page SPA — routes auto-slugify from title
+page 'Home' at '/':      # explicit root
   heading 'Home'
-page 'About' at '/about':
+page 'About':            # auto-routes to /about
   heading 'About'
+page 'Contact Us':       # auto-routes to /contact-us
+  heading 'Contact'
 ```
 
 ## On Page Load
@@ -1483,6 +1486,40 @@ node cli/clear.js package app.clear --out deploy/
 docker build -t myapp deploy/
 docker run -p 3000:3000 myapp
 ```
+
+## npm Package Imports
+
+Use any npm package directly in backend apps:
+
+```clear
+use npm 'stripe' as Stripe
+use npm 'nodemailer' as mailer
+use npm '@sendgrid/mail' as sendgrid   # scoped packages work too
+
+when user calls POST /api/charge sending params:
+  client = Stripe(env('STRIPE_SECRET'))
+  script:
+    const charge = await client.charges.create({ amount: params.amount, currency: 'usd' });
+  send back 'charged'
+```
+
+- Compiles to `const Stripe = require('stripe');` at the top of server.js
+- `as` sets the variable name; defaults to a sanitized version of the package name
+- `clear package` includes npm deps in the generated `package.json`
+
+## Shell Commands
+
+Run shell commands from backend endpoints:
+
+```clear
+when user calls POST /api/deploy:
+  run command 'git pull origin main'
+  run command 'npm run build'
+  send back 'Deployed'
+```
+
+- Compiles to `execSync(cmd, { stdio: 'inherit' })` in JS, `subprocess.run()` in Python
+- `child_process` / `subprocess` auto-imported only when used — no manual imports needed
 
 ## External API Calls
 

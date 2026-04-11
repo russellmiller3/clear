@@ -3372,14 +3372,34 @@ page 'About' at '/about':
     expect(result.html).toContain('About');
   });
 
-  it('page without route still works (single-page)', () => {
+  it('page without route auto-slugifies title', () => {
     const ast = parse(`
 page 'My App':
   heading 'Hello'
     `);
     expect(ast.errors).toHaveLength(0);
     const page = ast.body.find(n => n.type === 'page');
-    expect(page.route).toBeUndefined();
+    expect(page.route).toBe('/my-app');
+  });
+
+  it('explicit at path overrides auto-slug', () => {
+    const ast = parse(`
+page 'My App' at '/':
+  heading 'Hello'
+    `);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === 'page');
+    expect(page.route).toBe('/');
+  });
+
+  it('slugifies multi-word title correctly', () => {
+    const ast = parse(`
+page 'HN Daily Digest':
+  heading 'hello'
+    `);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === 'page');
+    expect(page.route).toBe('/hn-daily-digest');
   });
 });
 
@@ -8712,10 +8732,11 @@ describe('Source Maps', () => {
     expect(result.python).toContain('# clear:3');
   });
 
-  it('does NOT add source map comments by default', () => {
+  it('always adds source map comments in JS backend mode (for runtime error translation)', () => {
     const result = compileProgram("build for javascript backend\nprice = 100");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).not.toContain('// clear:');
+    // Backend always emits // clear:N markers so _clearLineMap can translate runtime stack traces
+    expect(result.javascript).toContain('// clear:');
   });
 
   it('annotates if-then blocks', () => {
@@ -8748,6 +8769,36 @@ describe('Source Maps', () => {
     expect(result.javascript).toContain('// clear:2');
     expect(result.javascript).toContain('// clear:3');
     expect(result.javascript).toContain('// clear:4');
+  });
+
+  it('embeds _clearLineMap in JS backend output', () => {
+    const result = compileProgram("build for javascript backend\nwhen user calls GET /api/ping:\n  send back 'pong'");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_clearLineMap');
+    expect(result.javascript).toContain('process.env.CLEAR_DEBUG');
+  });
+
+  it('_clearLineMap maps JS lines back to Clear endpoint lines', () => {
+    const src = "build for javascript backend\nwhen user calls GET /api/ping:\n  send back 'pong'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Extract the _clearLineMap JSON from compiled output
+    const m = result.javascript.match(/_clearLineMap = process\.env\.CLEAR_DEBUG \? (\{.*?\}) : null/);
+    expect(m).not.toBeNull();
+    const lineMap = JSON.parse(m[1]);
+    // At least one entry should map to Clear line 2 (the endpoint declaration)
+    const clearLines = Object.values(lineMap);
+    expect(clearLines).toContain(2);
+  });
+
+  it('adds per-statement markers inside endpoint bodies', () => {
+    const src = "build for javascript backend\nwhen user calls GET /api/users:\n  result = look up all Users\n  send back result";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Should have markers for both the endpoint AND inner statements
+    expect(result.javascript).toContain('// clear:2'); // endpoint
+    expect(result.javascript).toContain('// clear:3'); // result = look up
+    expect(result.javascript).toContain('// clear:4'); // send back
   });
 });
 

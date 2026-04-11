@@ -19,7 +19,11 @@ arbitrary text), which makes exploration tractable. No other language has all fo
 Full-stack CRUD, agents, workflows, streaming, SQLite, auth, rate limits, policies,
 WebSockets, ECharts charts, DaisyUI landing pages, CodeMirror IDE, playground server,
 Claude agent chat, general-purpose language (types, HOFs, maps, interpolation),
-npm imports, shell commands. 1566 tests.
+npm imports, shell commands. **P1** inferred type system (compile errors on text-in-math).
+**P2** structured eval stats (`compileProgram()` returns `stats{}`). **P3** source maps
+(`_clearLineMap` + per-statement `// clear:N` markers + stack trace translation in
+`_clearError`). **P4** sandbox runner (`sandbox.js` — isolated child process, HTTP test
+assertions, parallel RL episodes). 1586 compiler tests + 9 sandbox tests.
 
 ---
 
