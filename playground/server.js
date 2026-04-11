@@ -731,7 +731,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     for (let iter = 0; iter < 15; iter++) {
       const payload = {
-        model: 'claude-sonnet-4-6[1m]',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: personality
           ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n' + systemPrompt
