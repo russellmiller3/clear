@@ -63,6 +63,9 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #status-bar { flex-shrink: 0; height: 24px; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: var(--accent2); color: rgba(255,255,255,.8); font-size: 11px; font-family: var(--font); border-top: 1px solid var(--bd); }
 #status-bar span { white-space: nowrap; }
 .sb-sep { width: 1px; height: 12px; background: rgba(255,255,255,.2); }
+.compile-stats-badge { display: none; font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 600; padding: 2px 10px; border-radius: 20px; background: color-mix(in oklch, var(--accent) 12%, transparent); border: 1px solid color-mix(in oklch, var(--accent) 25%, transparent); white-space: nowrap; letter-spacing: .3px; }
+.compile-stats-badge.visible { display: inline-flex; align-items: center; gap: 6px; animation: stats-pop .3s ease-out; }
+@keyframes stats-pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 #chat-toggle-btn { background: none; border: 1px solid var(--bd2); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--tx3); font-size: 11px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 4px; transition: all .15s; flex-shrink: 0; margin-left: auto; }
 #chat-toggle-btn:hover { background: var(--bg3); color: var(--tx); border-color: var(--accent); }
 @media (max-width: 1100px) { #chat-pane { width: 0 !important; } }
@@ -320,6 +323,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <select id="template-picker"><option value="">Templates...</option></select>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
+    <span id="compile-stats-badge" class="compile-stats-badge"></span>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
     <span class="toolbar-sep"></span>
@@ -644,6 +648,14 @@ async function autoCompile() {
       const codeLines = outCode.split('\n').filter(l => l.trim()).length;
       const statsEl = document.getElementById('sb-compile-stats');
       if (statsEl) { statsEl.textContent = `${clearLines} → ${codeLines} lines · ${elapsed}ms`; statsEl.style.display = ''; }
+      // Prominent badge in toolbar
+      const badge = document.getElementById('compile-stats-badge');
+      if (badge) {
+        badge.textContent = `${clearLines} → ${codeLines} lines · ${elapsed}ms`;
+        badge.classList.remove('visible');
+        void badge.offsetWidth; // force reflow for re-animation
+        badge.classList.add('visible');
+      }
       // Update target info in status bar
       const target = lastCompiled.html ? (lastCompiled.serverJS ? 'web + backend' : 'web') : (lastCompiled.python ? 'python' : lastCompiled.javascript ? 'backend' : 'script');
       const tEl = document.getElementById('sb-target');
