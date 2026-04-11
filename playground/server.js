@@ -648,7 +648,9 @@ app.post('/api/chat', async (req, res) => {
       const payload = {
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
-        system: personality ? systemPrompt + '\n\n## User Custom Instructions\n' + personality : systemPrompt,
+        system: personality
+          ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n' + systemPrompt
+          : systemPrompt,
         tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
         stream: true,
         messages: currentMessages,
