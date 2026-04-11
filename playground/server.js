@@ -382,6 +382,17 @@ const TOOLS = [
     },
   },
   {
+    name: 'read_file',
+    description: 'Read a reference doc to look up syntax, conventions, or known bugs. Available files: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'One of: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md' },
+      },
+      required: ['filename'],
+    },
+  },
+  {
     name: 'run_command',
     description: 'Run a CLI command. Allowed: node cli/clear.js (check, build, test, lint), curl, ls, cat. Returns stdout, stderr, exitCode.',
     input_schema: {
@@ -422,7 +433,7 @@ const TOOLS = [
   },
   {
     name: 'write_file',
-    description: 'Write text content to a file in the project root. You can overwrite .clear files and compiler-requests.md. You can create new files of any allowed type. You CANNOT overwrite other existing files. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.',
+    description: 'Write text content to a file in the project root. You can overwrite .clear files and requests.md. You can create new files of any allowed type. You CANNOT overwrite other existing files. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.',
     input_schema: {
       type: 'object',
       properties: {
@@ -591,6 +602,17 @@ app.post('/api/chat', async (req, res) => {
         if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
         return JSON.stringify({ stopped: true });
 
+      case 'read_file': {
+        const READABLE = ['SYNTAX.md', 'AI-INSTRUCTIONS.md', 'PHILOSOPHY.md', 'USER-GUIDE.md', 'requests.md'];
+        const fname = input.filename;
+        if (!READABLE.includes(fname)) return JSON.stringify({ error: `Can only read: ${READABLE.join(', ')}` });
+        const fpath = join(ROOT_DIR, fname);
+        if (!existsSync(fpath)) return JSON.stringify({ error: `File not found: ${fname}` });
+        const content = readFileSync(fpath, 'utf8');
+        // Truncate to ~20k chars to avoid blowing up context
+        return JSON.stringify({ filename: fname, content: content.slice(0, 20000), truncated: content.length > 20000 });
+      }
+
       case 'write_file': {
         // Restrict to safe extensions in project root only — no path traversal
         const safeName = input.filename.replace(/[^a-zA-Z0-9._-]/g, '-');
@@ -598,11 +620,11 @@ app.post('/api/chat', async (req, res) => {
         const ext = safeName.includes('.') ? '.' + safeName.split('.').pop() : '';
         if (!ALLOWED_EXT.includes(ext)) return JSON.stringify({ error: `Extension '${ext}' not allowed. Use: ${ALLOWED_EXT.join(', ')}` });
         const dest = join(ROOT_DIR, safeName);
-        // Safety: only allow overwriting .clear files and compiler-requests.md
+        // Safety: only allow overwriting .clear files and requests.md
         // Other existing files cannot be overwritten — only new files can be created
-        const WRITABLE_EXISTING = ['compiler-requests.md'];
+        const WRITABLE_EXISTING = ['requests.md'];
         if (existsSync(dest) && ext !== '.clear' && !WRITABLE_EXISTING.includes(safeName)) {
-          return JSON.stringify({ error: `Cannot overwrite existing file '${safeName}'. You can only modify .clear files and compiler-requests.md. New files are fine.` });
+          return JSON.stringify({ error: `Cannot overwrite existing file '${safeName}'. You can only modify .clear files and requests.md. New files are fine.` });
         }
         writeFileSync(dest, input.content, 'utf8');
         return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
