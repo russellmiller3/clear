@@ -1,0 +1,64 @@
+build for javascript backend
+
+# GP Language Demo — all 5 new general-purpose language features
+
+# ─── Phase 4: Typed Parameters ─────────────────────────────────────────────
+
+define function format_price(amount is number, currency is text) returns text:
+  return '{currency}{amount}'
+
+define function clamp(value is number, lo is number, hi is number) returns number:
+  if value is less than lo:
+    return lo
+  if value is greater than hi:
+    return hi
+  return value
+
+# ─── Phase 3: Higher-Order Functions ────────────────────────────────────────
+
+define function double(x):
+  return x * 2
+
+define function is_positive(x):
+  return x > 0
+
+prices is [10, -5, 25, -2, 40]
+doubled   = apply double to each in prices
+positives = filter prices using is_positive
+
+# ─── Phase 1: Map Iteration ──────────────────────────────────────────────────
+
+create config:
+  theme is 'midnight'
+  language is 'english'
+  version is '1.0'
+
+all_keys = keys of config
+has_theme = 'theme' exists in config
+
+# ─── Phase 2: String Interpolation ──────────────────────────────────────────
+
+user_name is 'Alice'
+item_count = 3
+summary = 'Hello, {user_name}! You have {item_count} item(s). Theme: {config's theme}.'
+
+# ─── Phase 5: Typed Error Handling ──────────────────────────────────────────
+
+when user calls GET /api/summary:
+  try:
+    label = format_price(99, '$')
+    send back label
+  if error 'not found':
+    send back error's message
+  if error:
+    send back error's message
+
+when user calls POST /api/clamp sending params:
+  val     = params's value
+  lo      = params's lo
+  hi      = params's hi
+  result  = clamp(val, lo, hi)
+  send back result
+
+when user calls GET /api/data:
+  send back doubled
