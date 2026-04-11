@@ -33,15 +33,21 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `ASSIGN` | `x = 5` / `name is 'Alice'` / `define x as: expr` | `const x = 5` / `x = 5` |
 | `SHOW` | `show x` / `display x as dollars` | `console.log(x)` / `print(x)` |
 | `IF_THEN` | `if x is 5 then show 'yes'` / `if x is 5:` block | `if (x === 5) { ... }` |
-| `FUNCTION_DEF` | `double(x) = x * 2` / `define function greet(name):` | `function double(x) { return x * 2; }` |
+| `FUNCTION_DEF` | `define function greet(name):` / `define function add(a is number, b is number) returns number:` | `function greet(name) { ... }` — typed params emit JSDoc `@param`/`@returns` |
 | `RETURN` | `return value` | `return value;` |
 | `REPEAT` | `repeat 5 times:` | `for (let _i = 0; _i < 5; _i++) { ... }` |
-| `FOR_EACH` | `for each item in items list:` | `for (const item of items) { ... }` |
+| `FOR_EACH` | `for each item in items:` / `for each key, value in map:` | `for (const item of items)` / `for (const [key, value] of Object.entries(map))` |
+| `MAP_KEYS` | `keys of map` (expression) | `Object.keys(map)` |
+| `MAP_VALUES` | `values of map` (expression) | `Object.values(map)` |
+| `MAP_EXISTS` | `'key' exists in map` (expression) | `Object.prototype.hasOwnProperty.call(map, 'key')` |
+| `MAP_APPLY` | `apply fn to each in list` (expression) | `list.map(fn)` |
+| `FILTER_APPLY` | `filter list using fn` (expression) | `list.filter(fn)` |
 | `WHILE` | `while count is less than 10:` | `while (count < 10) { ... }` |
 | `BREAK` | `stop` / `break` | `break;` |
 | `CONTINUE` | `skip` / `continue` | `continue;` |
 | `COMMENT` | `# text` | `// text` / `# text` |
-| `TRY_HANDLE` | `try:` + `if there's an error:` | `try { ... } catch (e) { ... }` |
+| `TRY_HANDLE` | `try:` + `if error:` / `if error 'not found':` / `if error 'forbidden':` | `try { ... } catch (_err) { if (_err.status === 404) { ... } }` — typed handlers emit status checks; multiple handlers chain as `if/else if/else` |
+| `LITERAL_STRING` (interpolated) | `'Hello, {name}!'` | `` `Hello, ${name}!` `` (JS) / `f"Hello, {name}!"` (Python) |
 | `USE` | `use 'helpers'` / `use double from 'helpers'` / `use everything from 'helpers'` / `use 'lib' from './lib.js'` | Module import (namespaced, selective, inline-all, or external JS) |
 | `SCRIPT` | `script:` + indented block | Raw JS escape hatch (emitted as-is) |
 | `STORE` | `store settings` / `store settings as 'prefs'` | Save to localStorage (JSON) |

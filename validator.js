@@ -167,7 +167,7 @@ function validateForwardReferences(body, errors) {
         case NodeType.FUNCTION_DEF: {
           // Function body gets its own scope with params
           const fnScope = new Set(localDefined);
-          for (const p of node.params) fnScope.add(p);
+          for (const p of node.params) fnScope.add(typeof p === 'string' ? p : p.name);
           checkNode(node.body, fnScope, true);
           break;
         }
@@ -207,8 +207,12 @@ function validateForwardReferences(body, errors) {
           break;
         case NodeType.TRY_HANDLE:
           checkNode(node.tryBody, localDefined);
-          if (node.errorVar) localDefined.add(node.errorVar);
-          checkNode(node.handleBody, localDefined);
+          if (node.handlers) {
+            node.handlers.forEach(h => checkNode(h.body, localDefined));
+          } else {
+            if (node.errorVar) localDefined.add(node.errorVar);
+            checkNode(node.handleBody, localDefined);
+          }
           break;
         case NodeType.ENDPOINT: {
           // Endpoint body gets its own scope
