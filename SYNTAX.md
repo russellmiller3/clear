@@ -311,6 +311,25 @@ bar chart 'Weekly Trends' subtitle 'Opened vs closed' showing weekly_stats stack
 bar chart 'Weekly Trends' subtitle 'Last 4 weeks' showing data by category stacked
 ```
 
+## Display as Cards
+
+```clear
+# Render API data as a card grid instead of a table
+display posts as cards showing image_url, category, title, excerpt, author_name
+
+# Auto-detect columns (excludes id and timestamp fields)
+display products as cards
+```
+
+The compiler auto-detects field roles by name:
+- `image`/`url`/`img` → hero image; `avatar` → circular avatar in meta row
+- `category`/`tag`/`status` → colored badge
+- `title`/`name` → card heading
+- `excerpt`/`description`/`body` → truncated text (120 chars max)
+- `author`/`date` → meta row at bottom
+
+Renders as a responsive 3-column grid with hover lift effect.
+
 ## Reactive Input Handlers
 
 ```clear

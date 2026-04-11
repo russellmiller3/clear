@@ -684,6 +684,12 @@ display todos as table showing todo, completed   # only these columns
 display users as table showing name, email       # hides id, created_at, etc.
 ```
 
+**Display as card grid (instead of table):**
+```
+display posts as cards showing image_url, category, title, excerpt, author_name
+```
+Auto-detects field roles by name: `image_url` → hero image, `category` → badge, `title` → heading, `excerpt` → body, `author` → meta row. Renders as responsive 3-column grid.
+
 ## Components
 
 **Name what you're receiving:**

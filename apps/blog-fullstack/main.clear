@@ -97,7 +97,7 @@ page 'Blog' at '/':
     text 'Learn how to grow your business with our expert advice.'
 
   section 'Posts' with style blog_grid:
-    display posts as table showing image_url, category, title, excerpt, author_name
+    display posts as cards showing image_url, category, title, excerpt, author_name, author_avatar
 
   section 'Footer' with style page_footer:
     text '© 2026 Acme Blog. All rights reserved.'

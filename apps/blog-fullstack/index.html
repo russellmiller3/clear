@@ -82,17 +82,7 @@ body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; 
     </div>
     <div class="bg-base-100 py-16 lg:py-24 px-6">
       <div class="max-w-4xl mx-auto">
-    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="output_Posts">
-      <div class="px-6 py-4 border-b border-base-300/40">
-        <h3 class="text-sm font-semibold text-base-content">Posts</h3>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="table table-sm w-full" id="output_Posts_table">
-          <thead class="bg-base-200"><tr><th class="text-xs uppercase tracking-widest font-semibold text-base-content/50"></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto" id="output_Posts_cards"></div>
       </div>
     </div>
     <div class="bg-base-200 border-t border-base-300/40 py-12 lg:py-16 px-6">
@@ -213,15 +203,39 @@ let _state = {
 function _recompute() {
   // Database: local memory (JSON file backup)
   {
-    const _tableEl = document.getElementById('output_Posts_table');
+    const _cardsEl = document.getElementById('output_Posts_cards');
     const _data = _state.posts;
-    if (_tableEl && Array.isArray(_data) && _data.length > 0) {
-      const _keys = ["image_url","category","title","excerpt","author_name"];
-      _tableEl.querySelector('thead tr').innerHTML = _keys.map(k => '<th class="text-xs uppercase tracking-widest font-semibold text-base-content/50">' + _esc(k) + '</th>').join('');
-      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5">' + _keys.map(k => '<td class="text-sm text-base-content">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('') + '</tr>').join('');
-    } else if (_tableEl) {
-      _tableEl.querySelector('thead tr').innerHTML = '';
-      _tableEl.querySelector('tbody').innerHTML = '';
+    if (_cardsEl && Array.isArray(_data) && _data.length > 0) {
+      const _keys = ["image_url","category","title","excerpt","author_name","author_avatar"];
+      _cardsEl.innerHTML = _data.map(row => {
+        let _img = '', _badge = '', _title = '', _body = '', _meta = '';
+        for (const k of _keys) {
+          const v = row[k] != null ? String(row[k]) : '';
+          if (!v) continue;
+          if ((k.includes('image') || k.includes('avatar') || k.includes('photo') || k.includes('url') || k.includes('img') || k.includes('thumbnail')) && (v.startsWith('http') || v.startsWith('/'))) {
+            if (k.includes('avatar')) { _meta += '<img src="' + _esc(v) + '" alt="" class="w-10 h-10 rounded-full object-cover" />'; }
+            else { _img = '<img src="' + _esc(v) + '" alt="" class="w-full h-48 object-cover" loading="lazy" />'; }
+          } else if (k.includes('category') || k.includes('tag') || k.includes('type') || k.includes('badge') || k.includes('status')) {
+            _badge = '<span class="badge badge-info badge-sm">' + _esc(v) + '</span>';
+          } else if (k.includes('author') || k.includes('date') || k.includes('created')) {
+            _meta += '<span class="text-xs text-base-content/50 uppercase">' + _esc(v) + '</span>';
+          } else if (k.includes('title') || k.includes('name') || k.includes('heading')) {
+            _title = '<h3 class="text-lg font-semibold text-base-content mt-2">' + _esc(v) + '</h3>';
+          } else if (k.includes('excerpt') || k.includes('description') || k.includes('summary') || k.includes('body')) {
+            const _short = v.length > 120 ? v.substring(0, 120) + '...' : v;
+            _body = '<p class="text-sm text-base-content/60 mt-2">' + _esc(_short) + '</p>';
+          } else if (!_title) {
+            _title = '<h3 class="text-lg font-semibold text-base-content mt-2">' + _esc(v) + '</h3>';
+          } else if (!_body) {
+            const _short = v.length > 120 ? v.substring(0, 120) + '...' : v;
+            _body = '<p class="text-sm text-base-content/60 mt-2">' + _esc(_short) + '</p>';
+          }
+        }
+        const _metaRow = _meta ? '<div class="flex items-center gap-3 mt-4">' + _meta + '</div>' : '';
+        return '<div class="bg-base-100 rounded-2xl overflow-hidden border border-base-300/40 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">' + _img + '<div class="p-6 flex flex-col flex-1">' + _badge + _title + _body + _metaRow + '</div></div>';
+      }).join('');
+    } else if (_cardsEl) {
+      _cardsEl.innerHTML = '';
     }
   }
   document.getElementById('input_new_title').value = _state.new_title;

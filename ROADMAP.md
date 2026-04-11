@@ -23,10 +23,17 @@ The user only reads `main.clear`. Everything in `build/` is generated output.
 
 ---
 
-## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2, Pareto 20, IDE Chat v2, ECharts Analytics, Tests/Charts/Blog -- All Complete)
+## What's Built (Phases 1-28, 30-46b, 47, 47b, 75-90, Landing Pages v2, Pareto 20, IDE Chat v2, ECharts Analytics, Tests/Charts/Blog, Display-as-Cards -- All Complete)
 
 All features below are **implemented, tested, and compiling**.
-1511 tests, all passing.
+1515 tests, all passing.
+
+### Display as Cards + Full-Stack Blog (Apr 2026)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `display X as cards` | Done | New display format — renders API data as responsive 3-column card grid with smart field detection |
+| Smart field roles | Done | Auto-detects image/badge/title/excerpt/author fields by name |
+| Full-stack blog app | Done | `apps/blog-fullstack` — CRUD backend + card grid frontend with New Post modal |
 
 ### Tests, Charts, Blog & Images (Apr 2026)
 | Feature | Status | Description |

@@ -18305,5 +18305,42 @@ page 'App' at '/':
   });
 });
 
+// ── Display as Cards ──────────────────────────────────────────────────────────
+
+describe('Display as cards', () => {
+  it('parses display as cards with columns', () => {
+    const ast = parse("page 'App':\n  display posts as cards showing image_url, category, title, excerpt");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.format).toBe('cards');
+    expect(disp.columns).toEqual(['image_url', 'category', 'title', 'excerpt']);
+    expect(disp.ui.tag).toBe('cards');
+  });
+
+  it('parses display as cards without columns', () => {
+    const ast = parse("page 'App':\n  display posts as cards");
+    expect(ast.errors).toHaveLength(0);
+    const disp = ast.body[0].body[0];
+    expect(disp.format).toBe('cards');
+    expect(disp.columns).toBe(null);
+    expect(disp.ui.tag).toBe('cards');
+  });
+
+  it('compiles cards grid container in HTML', () => {
+    const result = compileProgram("build for web\npage 'App':\n  'X' is a text input\n  button 'Go':\n    get posts from '/api/posts'\n  display posts as cards showing title, excerpt");
+    expect(result.errors).toHaveLength(0);
+    expect(result.html).toContain('_cards"');
+    expect(result.html).toContain('grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3');
+  });
+
+  it('compiles reactive card rendering JS', () => {
+    const result = compileProgram("build for web\npage 'App':\n  'X' is a text input\n  button 'Go':\n    get posts from '/api/posts'\n  display posts as cards showing title, excerpt");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_cardsEl');
+    expect(result.javascript).toContain('["title","excerpt"]');
+    expect(result.javascript).toContain('rounded-2xl');
+  });
+});
+
 run();
 
