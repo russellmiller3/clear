@@ -715,13 +715,23 @@ app.post('/api/chat', async (req, res) => {
   }
 
   // Multi-turn tool-use loop with streaming
-  let currentMessages = messages.slice(-20);
+  let currentMessages = messages.slice(-50); // 1M context supports much longer conversations
   let toolResults = [];
+
+  // Estimate context usage (rough: ~4 chars per token)
+  function estimateContextUsage() {
+    const MAX_TOKENS = 1000000; // Sonnet 4.6 with 1M context
+    const systemChars = (systemPrompt.length + (personality || '').length);
+    const toolChars = JSON.stringify(enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS).length;
+    const msgChars = currentMessages.reduce((sum, m) => sum + JSON.stringify(m.content || '').length, 0);
+    const totalTokens = Math.round((systemChars + toolChars + msgChars) / 4);
+    return { used: totalTokens, max: MAX_TOKENS, percent: Math.round((totalTokens / MAX_TOKENS) * 100) };
+  }
 
   try {
     for (let iter = 0; iter < 15; iter++) {
       const payload = {
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-6[1m]',
         max_tokens: 4096,
         system: personality
           ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n' + systemPrompt
@@ -866,6 +876,7 @@ app.post('/api/chat', async (req, res) => {
       currentMessages.push({ role: 'user', content: toolResultBlocks });
     }
 
+    send({ type: 'context_usage', ...estimateContextUsage() });
     send({ type: 'done', toolResults, source: currentSource });
     res.end();
   } catch (err) {
