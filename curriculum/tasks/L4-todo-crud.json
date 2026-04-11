@@ -1,0 +1,32 @@
+{
+  "id": "todo-crud",
+  "level": 4,
+  "title": "Todo CRUD API",
+  "description": "Build a full CRUD API for a Todos table with fields: title (required, text), done (boolean, defaults to false). POST /api/todos creates, GET /api/todos lists all, GET /api/todos/:id gets one, PUT /api/todos/:id updates, DELETE /api/todos/:id removes.",
+  "skeleton": "build for javascript backend\n\ncreate a Todos table:\n  title, required\n  done\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/todos",
+      "body": { "title": "Buy groceries" },
+      "expect": { "status": 201, "bodyHas": ["id", "title"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/todos",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/todos",
+      "body": {},
+      "expect": { "status": 400 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/todos",
+      "body": { "title": "Walk the dog" },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    }
+  ]
+}

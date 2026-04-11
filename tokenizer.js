@@ -304,9 +304,9 @@ export function tokenizeLine(line, lineNumber = 1) {
         if (canonical === 'data_from' && tokens.length > 0) {
           // There's already a token before us — "data from" is mid-line
           const prevToken = tokens[tokens.length - 1];
-          // Allow after set/define (e.g., "define result as: data from 'url'")
+          // Allow after set/define/= (e.g., "define result as: data from 'url'", "x = fetch from 'url'")
           if (prevToken.canonical !== 'set' && prevToken.canonical !== 'define' &&
-              prevToken.canonical !== 'as_format') {
+              prevToken.canonical !== 'as_format' && prevToken.type !== 'assign') {
             matchedSynonym = null; // Not at line start — treat words individually
           }
         }

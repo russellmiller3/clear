@@ -1,0 +1,21 @@
+{
+  "id": "echo",
+  "level": 2,
+  "title": "Echo Server",
+  "description": "Write a POST /api/echo endpoint that returns whatever JSON body was sent to it.",
+  "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/echo",
+      "body": { "message": "ping" },
+      "expect": { "status": 200, "bodyHas": ["message"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/echo",
+      "body": { "foo": "bar", "num": 42 },
+      "expect": { "status": 200, "bodyHas": ["foo", "num"] }
+    }
+  ]
+}

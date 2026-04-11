@@ -422,11 +422,11 @@ const TOOLS = [
   },
   {
     name: 'write_file',
-    description: 'Write text content to a file in the project root. Use this to save Clear source code to a .clear file so you can run CLI commands (check, lint, info, test) on it. Filename must end in .clear and contain only safe characters.',
+    description: 'Write text content to a file in the project root. Use this to save source code, logs, config, or data files. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.',
     input_schema: {
       type: 'object',
       properties: {
-        filename: { type: 'string', description: 'Filename relative to project root, e.g. "temp-app.clear". Must end in .clear.' },
+        filename: { type: 'string', description: 'Filename relative to project root, e.g. "temp-app.clear" or "output.json". Must use an allowed extension.' },
         content: { type: 'string', description: 'The text content to write.' },
       },
       required: ['filename', 'content'],
@@ -592,9 +592,11 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ stopped: true });
 
       case 'write_file': {
-        // Restrict to .clear files in project root only — no path traversal
+        // Restrict to safe extensions in project root only — no path traversal
         const safeName = input.filename.replace(/[^a-zA-Z0-9._-]/g, '-');
-        if (!safeName.endsWith('.clear')) return JSON.stringify({ error: 'Only .clear files allowed' });
+        const ALLOWED_EXT = ['.clear', '.md', '.json', '.txt', '.csv', '.html', '.css', '.js', '.py'];
+        const ext = safeName.includes('.') ? '.' + safeName.split('.').pop() : '';
+        if (!ALLOWED_EXT.includes(ext)) return JSON.stringify({ error: `Extension '${ext}' not allowed. Use: ${ALLOWED_EXT.join(', ')}` });
         const dest = join(ROOT_DIR, safeName);
         writeFileSync(dest, input.content, 'utf8');
         return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });

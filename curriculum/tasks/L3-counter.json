@@ -1,0 +1,34 @@
+{
+  "id": "counter",
+  "level": 3,
+  "title": "Counter API",
+  "description": "Build a stateful counter. GET /api/count returns { count: N }. POST /api/increment increases count by 1 and returns the new count. POST /api/reset sets count to 0.",
+  "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/reset",
+      "expect": { "status": 200 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/count",
+      "expect": { "status": 200, "bodyHas": ["count"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/increment",
+      "expect": { "status": 200, "bodyHas": ["count"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/increment",
+      "expect": { "status": 200, "bodyHas": ["count"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/count",
+      "expect": { "status": 200, "bodyHas": ["count"] }
+    }
+  ]
+}

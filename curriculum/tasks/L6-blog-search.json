@@ -1,0 +1,38 @@
+{
+  "id": "blog-search",
+  "level": 6,
+  "title": "Blog with Search",
+  "description": "Build a blog API. Posts table with title, body, author. POST /api/posts creates. GET /api/posts lists all (support ?search= query param for title search). GET /api/posts/:id gets one post. Validate title and body are required, title max 200 chars.",
+  "skeleton": "build for javascript backend\n\ncreate a Posts table:\n  title, required, max 200\n  body, required\n  author\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/posts",
+      "body": { "title": "First Post", "body": "Hello world", "author": "Alice" },
+      "expect": { "status": 201, "bodyHas": ["id", "title", "body"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/posts",
+      "body": { "title": "Second Post", "body": "More content", "author": "Bob" },
+      "expect": { "status": 201 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/posts",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/posts",
+      "body": { "body": "No title" },
+      "expect": { "status": 400 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/posts",
+      "body": { "title": "" },
+      "expect": { "status": 400 }
+    }
+  ]
+}

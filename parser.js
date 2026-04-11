@@ -95,8 +95,8 @@
 //                                      parseChartRemainder() — ECharts (line, bar, pie, area)
 //   BUTTON ............................ parseButton()
 //   ENDPOINT .......................... parseEndpoint()
-//   ADVANCED FEATURES ................. parseStream, parseBackground, parseSubscribe,
-//                                      parseUpdateDatabase, parseMigration, parseWait
+//   ADVANCED FEATURES ................. parseStream, parseBackground, parseCron,
+//                                      parseSubscribe, parseUpdateDatabase, parseMigration, parseWait
 //   FILE UPLOADS & EXTERNAL APIS ...... parseAcceptFile, parseExternalFetch
 //   BILLING & PAYMENTS ................ parseCheckout, parseUsageLimit
 //   WEBHOOKS & OAUTH .................. parseWebhook, parseOAuthConfig
@@ -219,6 +219,8 @@ export const NodeType = Object.freeze({
   // Testing (Phase 11)
   TEST_DEF: 'test_def',
   EXPECT: 'expect',
+  HTTP_TEST_CALL: 'http_test_call',
+  EXPECT_RESPONSE: 'expect_response',
   STYLE_DEF: 'style_def',
   THEME: 'theme',
 
@@ -259,6 +261,7 @@ export const NodeType = Object.freeze({
   SUBSCRIBE: 'subscribe',
   MIGRATION: 'migration',
   WAIT: 'wait',
+  CRON: 'cron',
 
   // List operations (Phase 21)
   LIST_PUSH: 'list_push',
@@ -851,6 +854,26 @@ const CANONICAL_DISPATCH = new Map([
       if (qPos < ctx.tokens.length && ctx.tokens[qPos].type === TokenType.STRING) {
         const cmd = ctx.tokens[qPos].value;
         ctx.body.push({ type: NodeType.RUN_COMMAND, command: cmd, line: ctx.line });
+        return ctx.i + 1;
+      }
+      // Multiline: "run command:" with indented text block
+      // Each indented line becomes one command joined with " && "
+      // This lets you write complex shell commands with quotes/newlines.
+      let j = ctx.i + 1;
+      const cmdLines = [];
+      while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
+        const raw = ctx.lines[j].raw;
+        if (raw !== undefined && raw.trim() !== '') cmdLines.push(raw.trim());
+        else {
+          const toks = ctx.lines[j].tokens;
+          if (toks.length > 0) cmdLines.push(toks.map(t => t.value).join(' '));
+        }
+        j++;
+      }
+      if (cmdLines.length > 0) {
+        const cmd = cmdLines.join(' && ');
+        ctx.body.push({ type: NodeType.RUN_COMMAND, command: cmd, line: ctx.line });
+        return j;
       }
       return ctx.i + 1;
     }
@@ -1104,6 +1127,40 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['expect', (ctx) => {
+    // Check for "expect response status/body" — HTTP test assertion
+    if (ctx.tokens.length >= 3 && ctx.tokens[1].value === 'response') {
+      const prop = ctx.tokens[2].value; // status, body, header
+      if (prop === 'status' || prop === 'body') {
+        let check = 'exists', value = null, field = null;
+        let pos = 3;
+        if (prop === 'status' && pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) {
+          pos++;
+          if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.NUMBER) {
+            check = 'equals'; value = ctx.tokens[pos].value;
+          }
+        }
+        if (prop === 'body') {
+          if (pos < ctx.tokens.length && ctx.tokens[pos].value === 'has') {
+            pos++;
+            check = 'has_field';
+            if (pos < ctx.tokens.length) field = ctx.tokens[pos].value;
+          } else if (pos < ctx.tokens.length && ctx.tokens[pos].value === 'length') {
+            pos++;
+            check = 'length';
+            if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) pos++;
+            if (pos < ctx.tokens.length && ctx.tokens[pos].value === 'greater') {
+              pos++; // skip 'greater'
+              if (pos < ctx.tokens.length && ctx.tokens[pos].value === 'than') pos++;
+              if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.NUMBER) value = ctx.tokens[pos].value;
+            } else if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.NUMBER) {
+              value = ctx.tokens[pos].value;
+            }
+          }
+        }
+        ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: prop, check, value, field, line: ctx.line });
+        return ctx.i + 1;
+      }
+    }
     const parsed = parseExpect(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
@@ -1853,6 +1910,13 @@ const RAW_DISPATCH = new Map([
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
   }],
+  ['every', (ctx) => {
+    // "every 5 minutes:" or "every day at 9am:" — cron/scheduled block
+    // Only valid at backend level (inside endpoint/agent or top-level backend)
+    const result = parseCron(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (result.node) ctx.body.push(result.node);
+    return result.endIdx;
+  }],
   ['store', (ctx) => {
     if (ctx.tokens.length < 2) return undefined;
     const varName = ctx.tokens[1].value;
@@ -2032,6 +2096,42 @@ RAW_DISPATCH.set('close', (ctx) => {
     return ctx.i + 1;
   }
   return undefined;
+});
+
+// HTTP test call: "call POST /api/users with name is 'Alice', email is 'test'"
+RAW_DISPATCH.set('call', (ctx) => {
+  const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
+  if (ctx.tokens.length < 3) return undefined;
+  const methodToken = ctx.tokens[1];
+  const method = String(methodToken.value).toUpperCase();
+  if (!HTTP_METHODS.has(method)) return undefined;
+  const pathToken = ctx.tokens[2];
+  const path = String(pathToken.value);
+  if (!path.startsWith('/')) return undefined;
+  // Parse optional body: "with name is 'Alice', email is 'test'"
+  let bodyFields = [];
+  let pos = 3;
+  if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
+    pos++;
+    while (pos < ctx.tokens.length) {
+      if (ctx.tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+      if (ctx.tokens[pos].canonical === 'and') { pos++; continue; }
+      const fieldName = ctx.tokens[pos].value;
+      pos++;
+      if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) {
+        pos++;
+        if (pos < ctx.tokens.length) {
+          const valExpr = parseExpression(ctx.tokens, pos, ctx.line);
+          if (!valExpr.error) {
+            bodyFields.push({ name: fieldName, value: valExpr.node });
+            pos = valExpr.pos || pos + 1;
+          } else pos++;
+        }
+      }
+    }
+  }
+  ctx.body.push({ type: NodeType.HTTP_TEST_CALL, method, path, bodyFields, line: ctx.line });
+  return ctx.i + 1;
 });
 
 function parseBlock(lines, startIdx, parentIndent, errors) {
@@ -2277,6 +2377,51 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
           continue;
         }
         body.push(assignNode(parsed.name, parsed.expression, line));
+        i++;
+        continue;
+      }
+
+      // Guard: if the line starts with a KEYWORD (recognized Clear word) but no
+      // dispatch handler matched, it's almost certainly unrecognized syntax —
+      // NOT a bare expression. Emit a specific error rather than silently treating
+      // the keyword as a variable name, which leads to the confusing "X hasn't been
+      // created yet" error from the forward-ref validator.
+      //
+      // Also covers common identifiers that look like Clear syntax but aren't keywords
+      // (e.g. "call", "ask", "fetch") — these are frequent AI mistakes.
+      const EXPRESSION_SAFE_KEYWORDS = new Set([
+        'true', 'false', 'null', 'undefined', 'yes', 'no', 'none', 'not',
+        'the', 'a', 'an', 'in', 'on', 'to', 'by', 'as', 'at',
+        // Content type keywords that may appear before variables (e.g. "text title" in components)
+        'text', 'heading', 'subheading', 'bold', 'italic', 'small', 'label', 'badge',
+      ]);
+      // Common near-miss identifiers that look like Clear keywords but aren't in the synonym table
+      const COMMON_MISUSE_HINTS = {
+        call: " — did you mean: call api 'URL'  OR  result = call api 'URL'?",
+        ask:  " — did you mean: ask ai 'prompt'  OR  result = ask AgentName with input?",
+        fetch:" — did you mean: data = fetch from 'URL'?",
+        get:  " — did you mean: data = get from 'URL'  OR  when user calls GET /api/...?",
+        post: " — did you mean: when user calls POST /api/...?",
+        put:  " — did you mean: when user calls PUT /api/...?",
+        delete:" — did you mean: when user calls DELETE /api/...?",
+        import:" — did you mean: use 'module-name'?",
+        export:" — Clear has no exports. Code is compiled, not imported by other code.",
+        async:" — Clear handles async automatically. Just write the code.",
+        await:" — Clear handles async automatically. No await needed.",
+        const:" — did you mean: set x = value  OR  x is 'value'?",
+        let:  " — did you mean: set x = value  OR  x is 'value'?",
+        var:  " — did you mean: set x = value  OR  x is 'value'?",
+        function:" — did you mean: define function name of params:?",
+      };
+      const firstVal = firstToken.value?.toLowerCase();
+      const isFailedKeyword = firstToken.type === TokenType.KEYWORD && firstToken.canonical &&
+        !EXPRESSION_SAFE_KEYWORDS.has(firstVal) && !isAssignmentLine(tokens);
+      const isMisusedIdent = firstToken.type === TokenType.IDENTIFIER &&
+        firstVal in COMMON_MISUSE_HINTS && !isAssignmentLine(tokens);
+      if (isFailedKeyword || isMisusedIdent) {
+        const kw = firstToken.value;
+        const hint = COMMON_MISUSE_HINTS[firstVal] || '';
+        errors.push({ line, message: `Unrecognized syntax near '${kw}'${hint}` });
         i++;
         continue;
       }
@@ -4967,6 +5112,106 @@ function parseBackground(lines, startIdx, blockIndent, errors) {
   return { node: backgroundNode(name, schedule, bodyNodes, line), endIdx: j };
 }
 
+// "every 5 minutes:" / "every 1 hour:" / "every day at 9am:" / "every day at 14:30:"
+function parseCron(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  let pos = 1; // skip 'every'
+
+  // Form 1: every day at <time>:
+  if (pos < tokens.length && (tokens[pos].value === 'day' || tokens[pos].value === 'days')) {
+    pos++; // skip 'day'
+    if (pos < tokens.length && tokens[pos].value === 'at') {
+      pos++; // skip 'at'
+      if (pos >= tokens.length) {
+        errors.push({ line, message: "Expected time after 'every day at'. Example: every day at 9am:" });
+        return { node: null, endIdx: startIdx + 1 };
+      }
+      // Parse time — may be: "9am", "9:30am", "14:30", "14"
+      // Tokenizer splits 2:30pm as: NUMBER(2) COLON NUMBER(30) IDENTIFIER(pm) COLON
+      // So we handle multi-token time here.
+      let hour = 0, minute = 0;
+      const firstTok = tokens[pos];
+      if (firstTok.type === TokenType.NUMBER) {
+        hour = Number(firstTok.value);
+        pos++;
+        // Check for ":MM" part
+        if (pos < tokens.length && tokens[pos].type === TokenType.COLON) {
+          pos++; // skip ':'
+          if (pos < tokens.length && tokens[pos].type === TokenType.NUMBER) {
+            minute = Number(tokens[pos].value);
+            pos++;
+          }
+        }
+        // Check for am/pm suffix (may be glued to number as identifier, or separate)
+        if (pos < tokens.length) {
+          const raw = String(tokens[pos].value).toLowerCase();
+          if (raw === 'pm') { if (hour < 12) hour += 12; pos++; }
+          else if (raw === 'am') { if (hour === 12) hour = 0; pos++; }
+          else {
+            // Could be something like "9am" as one token (NUMBER glued with am/pm)
+            const numRaw = String(firstTok.value);
+            const ampmMatch = numRaw.match(/^(\d+)(am|pm)?$/i);
+            if (ampmMatch && ampmMatch[2]) {
+              const ampm = ampmMatch[2].toLowerCase();
+              if (ampm === 'pm' && hour < 12) hour += 12;
+              if (ampm === 'am' && hour === 12) hour = 0;
+            }
+          }
+        }
+      } else if (firstTok.type === TokenType.STRING || firstTok.type === TokenType.IDENTIFIER) {
+        // e.g. "9am" stored as identifier
+        const timeStr = String(firstTok.value);
+        pos++;
+        const ampmMatch = timeStr.match(/^(\d+)(?::(\d+))?(am|pm)?$/i);
+        if (ampmMatch) {
+          hour = parseInt(ampmMatch[1], 10);
+          minute = ampmMatch[2] ? parseInt(ampmMatch[2], 10) : 0;
+          const ampm = ampmMatch[3] ? ampmMatch[3].toLowerCase() : null;
+          if (ampm === 'pm' && hour < 12) hour += 12;
+          if (ampm === 'am' && hour === 12) hour = 0;
+        } else {
+          errors.push({ line, message: `Unrecognized time format '${timeStr}'. Examples: 9am, 2:30pm, 14:30` });
+          return { node: null, endIdx: startIdx + 1 };
+        }
+      } else {
+        errors.push({ line, message: `Expected a time after 'every day at'. Examples: 9am, 2:30pm, 14:30` });
+        return { node: null, endIdx: startIdx + 1 };
+      }
+      const timeLabel = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
+      const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+      if (body.length === 0) {
+        errors.push({ line, message: `'every day at ${timeLabel}' block is empty — add code inside` });
+      }
+      return { node: { type: NodeType.CRON, mode: 'at', hour, minute, body, line }, endIdx };
+    }
+    errors.push({ line, message: "Expected 'at' after 'every day'. Example: every day at 9am:" });
+    return { node: null, endIdx: startIdx + 1 };
+  }
+
+  // Form 2: every N minutes/hours/seconds:
+  if (pos < tokens.length && tokens[pos].type === TokenType.NUMBER) {
+    const value = tokens[pos].value;
+    pos++;
+    let unit = 'minute';
+    if (pos < tokens.length) {
+      const raw = String(tokens[pos].value).toLowerCase().replace(/s$/, '');
+      if (raw === 'second' || raw === 'minute' || raw === 'hour') {
+        unit = raw;
+        pos++;
+      }
+    }
+    const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+    if (body.length === 0) {
+      errors.push({ line, message: `'every ${value} ${unit}s' block is empty — add code inside` });
+    }
+    return { node: { type: NodeType.CRON, mode: 'interval', value, unit, body, line }, endIdx };
+  }
+
+  errors.push({ line, message: "Unrecognized schedule syntax. Examples: every 5 minutes:  OR  every day at 9am:" });
+  return { node: null, endIdx: startIdx + 1 };
+}
+
 function parseSubscribe(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
@@ -6068,6 +6313,41 @@ function parseAssignment(tokens, line) {
     return { name, expression: { type: NodeType.HTTP_REQUEST, url, line }, needsBlock: true };
   }
 
+  // Check for "fetch from 'url'" / "data from 'url'" on the right side of assignment
+  // e.g. data = fetch from 'https://api.example.com'
+  if (pos < tokens.length && tokens[pos].canonical === 'data_from') {
+    pos++; // skip 'fetch from' / 'data from'
+    if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
+      return { error: "fetch from needs a URL in quotes. Example: data = fetch from 'https://api.example.com'" };
+    }
+    const url = tokens[pos].value;
+    pos++;
+    // SSRF guard — same check as parseExternalFetch
+    const lowerUrl = url.toLowerCase();
+    if (lowerUrl.includes('localhost') || lowerUrl.includes('127.0.0.1') || lowerUrl.includes('0.0.0.0')
+        || lowerUrl.match(/192\.168\.|10\.\d+\.|172\.(1[6-9]|2\d|3[01])\./)) {
+      return { error: `"${url}" is a private address — fetch from only allows public URLs.` };
+    }
+    return { name, expression: { type: NodeType.EXTERNAL_FETCH, url, config: { timeout: null, cache: null, errorFallback: null }, line } };
+  }
+
+  // Check for "ask AgentName with input" on the right side of assignment
+  // e.g. result = ask Summarizer with topic
+  // e.g. result = ask HNDigestAgent with { url: hn_url }
+  if (pos < tokens.length && tokens[pos].value === 'ask' &&
+      pos + 1 < tokens.length && tokens[pos + 1].value !== 'ai' && tokens[pos + 1].value !== 'claude' &&
+      (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD)) {
+    pos++; // skip 'ask'
+    const agentName = tokens[pos].value; pos++;
+    let argument = null;
+    if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
+      pos++;
+      const expr = parseExpression(tokens, pos, line);
+      if (!expr.error) argument = expr.node;
+    }
+    return { name, expression: { type: NodeType.RUN_AGENT, agentName, argument, line } };
+  }
+
   // Check for "ask ai/claude 'prompt'" on the right side of assignment
   // e.g. answer = ask ai 'Summarize this' with context_data
   // e.g. answer = ask claude 'Summarize this' with context_data
@@ -6133,6 +6413,15 @@ function parseAssignment(tokens, line) {
       argument = expr.node;
     }
     return { name, expression: { type: NodeType.RUN_WORKFLOW, workflowName, argument, line } };
+  }
+
+  // Check for "run command 'cmd'" as expression (capture output)
+  if (pos < tokens.length && (tokens[pos].value === 'run' || tokens[pos].canonical === 'raw_run') &&
+      pos + 1 < tokens.length && tokens[pos + 1].value === 'command' &&
+      pos + 2 < tokens.length && tokens[pos + 2].type === TokenType.STRING) {
+    pos += 2; // skip 'run command'
+    const command = tokens[pos].value;
+    return { name, expression: { type: NodeType.RUN_COMMAND, command, capture: true, line } };
   }
 
   // Check for "call pipeline 'Name' with data" (must come BEFORE call 'Agent')

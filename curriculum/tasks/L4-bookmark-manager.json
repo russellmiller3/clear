@@ -1,0 +1,32 @@
+{
+  "id": "bookmark-manager",
+  "level": 4,
+  "title": "Bookmark Manager",
+  "description": "Build a CRUD API for bookmarks. Each bookmark has: url (required, must be a URL), title (required), tags (text). POST /api/bookmarks creates, GET /api/bookmarks lists all, DELETE /api/bookmarks/:id removes. Validate that url is actually a URL format.",
+  "skeleton": "build for javascript backend\n\ncreate a Bookmarks table:\n  url, required\n  title, required\n  tags\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/bookmarks",
+      "body": { "url": "https://example.com", "title": "Example" },
+      "expect": { "status": 201, "bodyHas": ["id", "url", "title"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/bookmarks",
+      "body": { "url": "not-a-url", "title": "Bad" },
+      "expect": { "status": 400 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/bookmarks",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/bookmarks",
+      "body": { "title": "No URL" },
+      "expect": { "status": 400 }
+    }
+  ]
+}

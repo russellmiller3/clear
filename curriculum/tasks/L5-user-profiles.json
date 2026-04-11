@@ -1,0 +1,32 @@
+{
+  "id": "user-profiles",
+  "level": 5,
+  "title": "User Profiles",
+  "description": "Build a user registration/login system with profiles. POST /api/register (email, password, name). POST /api/login returns token. GET /api/me returns current user profile (requires auth). PUT /api/me updates profile name.",
+  "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n  name, required\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "body": { "email": "alice@test.com", "password": "pass123", "name": "Alice" },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/login",
+      "body": { "email": "alice@test.com", "password": "pass123" },
+      "expect": { "status": 200, "bodyHas": ["token"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/me",
+      "expect": { "status": 401 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/me",
+      "headers": { "Authorization": "Bearer {{token}}" },
+      "expect": { "status": 200, "bodyHas": ["email", "name"] }
+    }
+  ]
+}

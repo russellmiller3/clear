@@ -1,0 +1,20 @@
+{
+  "id": "agent-categorizer",
+  "level": 9,
+  "title": "AI Ticket Categorizer",
+  "description": "Build an AI agent that categorizes support tickets. Define a Categorizer agent that returns { category, priority, suggested_action }. Tickets table stores the result. POST /api/tickets receives { subject, description } and returns the categorized ticket.",
+  "skeleton": "build for javascript backend\n\ncreate a Tickets table:\n  subject, required\n  description\n  category\n  priority\n\n# Define a Categorizer agent\n# POST /api/tickets endpoint\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/tickets",
+      "body": { "subject": "Login broken", "description": "Can't log in since yesterday" },
+      "expect": { "status": 201, "bodyHas": ["id", "subject"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tickets",
+      "expect": { "status": 200 }
+    }
+  ]
+}

@@ -32,6 +32,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 19c: Component Stress Test](#session-19c-component-stress-test-2026-04-10) | Component names collide with content types, reserved name validator in `parseComponentDef()`, 8 edge case patterns all passing |
 | [Session 20: GP Language Features](#session-20-general-purpose-language-features-2026-04-10) | `of`→`in` canonical, `using`→`with`, `returns`→`responds_with`, `exists in` is compound token `key_exists`, `parsePrimary` has no errors array, `run()` exits immediately, params are `{name,type}` objects, TRY_HANDLE uses `handlers` array, typed handler body indent math, Edit tool fails on large files with template literals |
 | [Session 21: RL Foundation + Source Maps + Page Slugs](#session-21-rl-foundation--source-maps--page-slugs-2026-04-11) | npm require double-quotes bug, backend `// clear:N` always-on for source maps, `_clearLineMap` injected as line 2 (shift off-by-one), `pageNode` always sets route now (single-page apps safe because `hasRouting = pages.length > 1`), sandbox symlinkSync needs `'junction'` type on Windows |
+| [Session 22: Compiler Requests + RL Infrastructure](#session-22-compiler-requests--rl-infrastructure-2026-04-11) | Optional chaining `?.` only for user-written possessive access (not compiler-generated `req.body`), `error.message` needs hard `.` (exception to `?.` rule), keyword guard must whitelist content-type words (`text`, `heading` etc.), `_pick` JSON.stringify for nested objects, `_revive` JSON.parse on retrieval, user-written TEST_DEF bodies go through `generateE2ETests` not `compileNode`, cron tokenizer splits `2:30pm` into multi-token sequence, patch API body indentation must always add 2-space prefix (not skip if already indented), `run command` capture mode via ASSIGN special-case (not exprToCode) |
 
 ---
 
@@ -624,3 +625,36 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 ### Sandbox HTTP poll: any status code = server ready
 - The sandbox polls for server readiness by making an HTTP request to `/`. The poll resolves as soon as ANY response comes back (200, 404, 500 — all count). The server is "ready" as soon as it responds, regardless of status. Only ECONNREFUSED means it's not up yet. Don't check `response.status` in the readiness poll.
+
+---
+
+## Session 22: Compiler Requests + RL Infrastructure (2026-04-11)
+
+### Optional chaining `?.` only applies to user-written possessive access
+- MEMBER_ACCESS nodes are created by the parser for Clear possessive syntax like `user's name`. The compiler now emits `user?.name` instead of `user.name` for null-safety.
+- BUT: compiler-generated property access (`req.body`, `db.findAll`) is NOT MEMBER_ACCESS — it's hardcoded strings in the compiler. So `?.` only affects user-written code, which is exactly what you want.
+- Exception: `error.message` inside catch blocks needs hard `.` (error is always defined in the catch). Added `isErrorObj` check to preserve `.` for the `error` variable.
+
+### Keyword guard must whitelist content-type words
+- The new "unrecognized syntax" guard catches unknown keywords before the bare-expression fallback. But `text title` inside a component body was flagged because `text` is a keyword (canonical `content_text`). Fix: `EXPRESSION_SAFE_KEYWORDS` set includes content types (`text`, `heading`, `subheading`, etc.).
+
+### `_pick` auto-serializes nested objects for SQLite
+- SQLite can't store JSON objects in columns. The `_pick` helper now detects nested values (`typeof v === "object"`) and `JSON.stringify`s them before INSERT.
+- Complementary `_revive` helper auto-parses JSON strings back to objects on retrieval (`findOne`/`findAll` wrapped with `.map(_revive)`).
+
+### User-written TEST_DEF bodies go through `generateE2ETests`, not `compileNode`
+- `compileNode` handles TEST_DEF at line ~3725 for the standard compilation path. But the auto-generated E2E test file is built by `generateE2ETests()` (line ~688), which pushes string lines — a completely separate codepath.
+- User-written test blocks must be collected from the AST and compiled into `generateE2ETests()`. They appear after all auto-generated tests, with a `_baseUrl = BASE` alias and an `expect()` shim.
+
+### Cron tokenizer splits `2:30pm` into multi-token sequence
+- The tokenizer splits `2:30pm:` as `NUMBER(2) COLON NUMBER(30) IDENTIFIER(pm) COLON`. There's no "time literal" in the token system.
+- `parseCron()` handles this by consuming tokens individually: number, optional colon+number for minutes, optional am/pm identifier. Don't try to make the tokenizer understand time.
+
+### Patch API body indentation: always add 2-space prefix
+- When `add_endpoint` adds body lines, it must ALWAYS prepend `  ` (2 spaces). The original code skipped lines that already started with `  `, but those were relative to the body (0-indent), not the file root. A `validate data:` line with sub-rules like `  name must not be empty` needs to become `    name must not be empty` (4 spaces) in the file.
+
+### `run command` capture mode uses ASSIGN special-case, not exprToCode
+- `result = run command 'cmd'` is parsed as an ASSIGN node where `expression.type === RUN_COMMAND` with `capture: true`. The ASSIGN compiler case handles it directly (like EXTERNAL_FETCH), NOT through `exprToCode`. This is because `execSync(...)` is a statement, not an expression in the compiler's model.
+
+### `hasRunCommand` detector must check inside ASSIGN expressions
+- The `child_process` import detector (`usesRunCommand`) originally only checked for standalone RUN_COMMAND nodes and endpoint bodies. When output capture was added, `result = run command 'cmd'` creates an ASSIGN node whose expression is RUN_COMMAND — the detector missed this. Fixed with a recursive `hasRunCommand(nodes)` that also checks ASSIGN expressions and CRON bodies.

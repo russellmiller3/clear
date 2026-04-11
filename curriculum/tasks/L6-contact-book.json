@@ -1,0 +1,32 @@
+{
+  "id": "contact-book",
+  "level": 6,
+  "title": "Contact Book",
+  "description": "Build a contacts API. Contacts table with name (required), email (must be valid email, unique), phone, notes. Full CRUD. POST /api/contacts validates email format and uniqueness. GET /api/contacts lists all.",
+  "skeleton": "build for javascript backend\n\ncreate a Contacts table:\n  name, required\n  email, required, unique, email\n  phone\n  notes\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/contacts",
+      "body": { "name": "Alice", "email": "alice@example.com" },
+      "expect": { "status": 201, "bodyHas": ["id", "name", "email"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/contacts",
+      "body": { "name": "Bad Email", "email": "not-an-email" },
+      "expect": { "status": 400 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/contacts",
+      "body": { "name": "Duplicate", "email": "alice@example.com" },
+      "expect": { "status": 400 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/contacts",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    }
+  ]
+}

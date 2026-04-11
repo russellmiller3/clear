@@ -1,0 +1,35 @@
+{
+  "id": "key-value-store",
+  "level": 3,
+  "title": "Key-Value Store",
+  "description": "Build an in-memory key-value store. POST /api/store receives { key, value } and saves it. GET /api/store/:key returns { key, value } or 404 if not found. DELETE /api/store/:key removes the key.",
+  "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/store",
+      "body": { "key": "color", "value": "blue" },
+      "expect": { "status": 200 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/store/color",
+      "expect": { "status": 200, "bodyHas": ["key", "value"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/store/missing",
+      "expect": { "status": 404 }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/store/color",
+      "expect": { "status": 200 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/store/color",
+      "expect": { "status": 404 }
+    }
+  ]
+}

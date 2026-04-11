@@ -1149,7 +1149,7 @@ describe('Compiler - Objects (JS)', () => {
 
   it('compiles dot access to JS', () => {
     const result = compileProgram('show person.name', { target: 'web' });
-    expect(result.javascript).toContain('console.log(person.name);');
+    expect(result.javascript).toContain('console.log(person?.name);');
   });
 
   it('compiles dot assignment to JS', () => {
@@ -1217,7 +1217,7 @@ show person.age
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('let person = { name: "Alice", age: 30 };');
-    expect(result.javascript).toContain('console.log(person.name);');
+    expect(result.javascript).toContain('console.log(person?.name);');
     expect(result.javascript).toContain('person.age = 31;');
     expect(result.python).toContain('person = { "name": "Alice", "age": 30 }');
     expect(result.python).toContain('print(person["name"])');
@@ -1556,7 +1556,7 @@ describe("Possessive 's access", () => {
 
   it("compiles person's name to JS dot notation", () => {
     const result = compileProgram("show person's name", { target: 'web' });
-    expect(result.javascript).toContain('console.log(person.name);');
+    expect(result.javascript).toContain('console.log(person?.name);');
   });
 
   it("compiles person's name to Python bracket notation", () => {
@@ -1597,8 +1597,8 @@ show city
     `;
     const result = compileProgram(source, { target: 'web' });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('let address = person.address;');
-    expect(result.javascript).toContain('let city = address.city;');
+    expect(result.javascript).toContain('let address = person?.address;');
+    expect(result.javascript).toContain('let city = address?.city;');
   });
 });
 
@@ -1728,8 +1728,8 @@ show worth
     const result = compileProgram(source);
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('function total_value(item)');
-    expect(result.javascript).toContain('item.price');
-    expect(result.javascript).toContain('item.quantity');
+    expect(result.javascript).toContain('item?.price');
+    expect(result.javascript).toContain('item?.quantity');
     expect(result.python).toContain('def total_value(item):');
     expect(result.python).toContain('item["price"]');
   });
@@ -5043,7 +5043,7 @@ when user calls GET /api/items/:id:
   item = look up Items where id is incoming's id
   send back item
     `);
-    expect(result.javascript).toContain('{ id: incoming.id }');
+    expect(result.javascript).toContain('{ id: incoming?.id }');
   });
 
   it('compiles remove where to filter object', () => {
@@ -5053,7 +5053,7 @@ when user calls DELETE /api/items/:id:
   remove from Items where id is incoming's id
   send back 'deleted'
     `);
-    expect(result.javascript).toContain("db.remove('items', { id: incoming.id })");
+    expect(result.javascript).toContain("db.remove('items', { id: incoming?.id })");
   });
 
   it('compiles where condition to filter object in Python', () => {
@@ -6473,8 +6473,8 @@ when user calls GET /api/me:
   send back user_id
     `);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('req.user.id');
-    expect(result.javascript).toContain('req.user.email');
+    expect(result.javascript).toContain('req.user?.id');
+    expect(result.javascript).toContain('req.user?.email');
   });
 
   it('compiles current user in Python backend', () => {
@@ -7350,7 +7350,7 @@ define function process(node):
 show 'ok'
     `);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('node.type == "text"');
+    expect(result.javascript).toContain('node?.type == "text"');
   });
 });
 
@@ -8834,7 +8834,7 @@ describe('Compiler - Multi-file modules', () => {
     };
     const result = compileProgram("build for javascript backend\nuse 'helpers'\nresult = helpers's double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('helpers.double(5)');
+    expect(result.javascript).toContain('helpers?.double(5)');
   });
 
   it('resolver returns null for adapters (not files)', () => {
@@ -8857,8 +8857,8 @@ describe('Compiler - Multi-file modules', () => {
     };
     const result = compileProgram("build for javascript backend\nuse 'math_utils'\nfirst_result = math_utils's double(5)\nsecond_result = math_utils's triple(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('math_utils.double(5)');
-    expect(result.javascript).toContain('math_utils.triple(5)');
+    expect(result.javascript).toContain('math_utils?.double(5)');
+    expect(result.javascript).toContain('math_utils?.triple(5)');
   });
 
   it('namespaces variables from imported module', () => {
@@ -8868,7 +8868,7 @@ describe('Compiler - Multi-file modules', () => {
     };
     const result = compileProgram("build for javascript backend\nuse 'config'\ntotal = 100 * config's tax_rate", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('config.tax_rate');
+    expect(result.javascript).toContain('config?.tax_rate');
   });
 
   it('works with Python backend', () => {
@@ -8904,26 +8904,26 @@ describe('Namespaced module imports', () => {
   it('wraps imports in namespace object', () => {
     const result = compileProgram("build for javascript backend\nuse 'helpers'\nresult = helpers's double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('helpers.double(5)');
+    expect(result.javascript).toContain('helpers?.double(5)');
   });
 
   it('dot access also works', () => {
     const result = compileProgram("build for javascript backend\nuse 'helpers'\nresult = helpers.double(5)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('helpers.double(5)');
+    expect(result.javascript).toContain('helpers?.double(5)');
   });
 
   it('namespace contains all exported functions', () => {
     const result = compileProgram("build for javascript backend\nuse 'helpers'\nfirst_val = helpers's double(1)\nsecond_val = helpers's triple(2)", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('helpers.double(1)');
-    expect(result.javascript).toContain('helpers.triple(2)');
+    expect(result.javascript).toContain('helpers?.double(1)');
+    expect(result.javascript).toContain('helpers?.triple(2)');
   });
 
   it('namespace contains variables', () => {
     const result = compileProgram("build for javascript backend\nuse 'config'\ntotal = 100 * config's tax_rate", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('config.tax_rate');
+    expect(result.javascript).toContain('config?.tax_rate');
   });
 
   it('bare function name is not available (forward ref error)', () => {
@@ -8953,7 +8953,7 @@ describe('Namespaced module imports', () => {
     };
     const result = compileProgram("build for javascript backend\nuse 'lib/helpers'\nresult = helpers's double(5)", { moduleResolver: pathResolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('helpers.double(5)');
+    expect(result.javascript).toContain('helpers?.double(5)');
   });
 });
 
@@ -9080,7 +9080,7 @@ describe('Component imports across files', () => {
     // Namespace includes the component (compiled to JS object property)
     const result = compileProgram("build for javascript backend\nuse 'ui'\nshow ui's StatusBadge('Active')", { moduleResolver: resolver });
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('ui.StatusBadge');
+    expect(result.javascript).toContain('ui?.StatusBadge');
   });
 
   it('COMPONENT_DEF included in importable types', () => {
@@ -9177,7 +9177,7 @@ describe('Syntax v2 - delete the X with this id', () => {
     const result = compileProgram("build for javascript backend\nwhen user calls DELETE /api/todos/:id:\n  requires auth\n  delete the Todo with this id\n  send back 'ok'");
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('db.remove');
-    expect(result.javascript).toContain('incoming.id');
+    expect(result.javascript).toContain('incoming?.id');
   });
 });
 
@@ -10188,7 +10188,7 @@ when user calls GET /api/leads:
   it('ask ai compiles to _askAIStream (streaming default)', () => {
     const js = compileProgram(src).javascript;
     expect(js).toContain('_askAIStream("Rate this company');
-    expect(js).toContain('lead.company');
+    expect(js).toContain('lead?.company');
   });
 
   it('includes _askAIStream utility with BYOK (streaming default)', () => {
@@ -10743,7 +10743,7 @@ describe('use from (external JS import)', () => {
     const src = "build for web\nuse 'lib' from './lib.js'\npage 'T' at '/':\n  result is ''\n  button 'Go':\n    set result to lib's doThing(result)";
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.html).toContain('lib.doThing');
+    expect(result.html).toContain('lib?.doThing');
   });
 
   it('plain use without from still works', () => {
@@ -10868,8 +10868,8 @@ agent 'T' receiving d:
   send back d`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('d.score = result.score');
-    expect(result.javascript).toContain('d.reason = result.reason');
+    expect(result.javascript).toContain('d.score = result?.score');
+    expect(result.javascript).toContain('d.reason = result?.reason');
   });
 
   it('works without context (ask ai with no with)', () => {
@@ -18942,11 +18942,538 @@ describe('run command — shell execution', () => {
     expect(r.python).toContain('import subprocess');
     expect(r.python).toContain('subprocess.run("./deploy.sh"');
   });
+  it('supports multiline run command block', () => {
+    const r = compileProgram(
+      "build for javascript backend\nwhen user calls POST /api/deploy:\n  run command:\n    npm install\n    npm run build\n  send back 'done'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('execSync("npm install && npm run build"');
+  });
   it('does not emit child_process when not used', () => {
     const r = compileProgram(
       "build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'"
     );
     expect(r.javascript).not.toContain('child_process');
+  });
+});
+
+// Phase 101: Structural bug prevention
+describe('structural safety — null-safe possessive chains', () => {
+  it('compiles possessive read access to optional chaining ?.', () => {
+    const r = compileProgram("show person's name", { target: 'web' });
+    expect(r.javascript).toContain('person?.name');
+  });
+
+  it('chains multiple possessives with ?. at each step', () => {
+    const r = compileProgram(`
+build for javascript backend
+when user calls GET /api/x:
+  receiving incoming:
+  u = look up User where id is incoming's id
+  url = u's profile's avatar's url
+  send back url
+    `);
+    expect(r.javascript).toContain("u?.profile?.avatar?.url");
+  });
+
+  it('keeps hard dot for error.message (known Error object)', () => {
+    const r = compileProgram(
+      "build for javascript backend\ntry:\n  set x to 1\nif error:\n  show error's message"
+    );
+    expect(r.javascript).toContain('error.message');
+    expect(r.javascript).not.toContain('error?.message');
+  });
+
+  it('assignment targets still use hard dot (not optional chaining)', () => {
+    const r = compileProgram("person's age is 31", { target: 'web' });
+    expect(r.javascript).toContain('person.age = 31');
+  });
+});
+
+describe('structural safety — chain depth and complexity warnings', () => {
+  it('warns when possessive chain is 4+ levels deep', () => {
+    const r = compileProgram(`
+build for javascript backend
+when user calls GET /api/x:
+  result = a's b's c's d's e
+  send back result
+    `);
+    const chainWarn = r.warnings?.find(w => w.message?.includes('levels deep'));
+    expect(chainWarn).toBeDefined();
+    expect(chainWarn.message).toContain('named steps');
+  });
+
+  it('does not warn for chains 3 levels or fewer', () => {
+    const r = compileProgram(`
+build for javascript backend
+when user calls GET /api/x:
+  result = a's b's c
+  send back result
+    `);
+    const chainWarn = r.warnings?.find(w => w.message?.includes('levels deep'));
+    expect(chainWarn).toBeUndefined();
+  });
+
+  it('warns when expression has 3+ operators', () => {
+    const r = compileProgram("x = 1 plus 2 times 3 minus 4", { target: 'web' });
+    const complexWarn = r.warnings?.find(w => w.message?.includes('operations on one line'));
+    expect(complexWarn).toBeDefined();
+  });
+
+  it('does not warn for expressions with 2 or fewer operators', () => {
+    const r = compileProgram("x = a plus b times c", { target: 'web' });
+    const complexWarn = r.warnings?.find(w => w.message?.includes('operations on one line'));
+    expect(complexWarn).toBeUndefined();
+  });
+});
+
+// Phase 101b: Better error messages (P1-4)
+describe('structural safety — unrecognized syntax errors', () => {
+  it('catches "call external url" with helpful hint', () => {
+    const r = compileProgram("build for javascript backend\nwhen user calls GET /api/x:\n  call external url 'https://api.com'");
+    const err = r.errors.find(e => e.message.includes('Unrecognized syntax'));
+    expect(err).toBeDefined();
+    expect(err.message).toContain('call');
+    expect(err.message).toContain('call api');
+  });
+
+  it('catches "ask AgentName" with helpful hint', () => {
+    const r = compileProgram("build for javascript backend\nwhen user calls GET /api/x:\n  ask HNDigest with topic");
+    const err = r.errors.find(e => e.message.includes('Unrecognized syntax'));
+    expect(err).toBeDefined();
+    expect(err.message).toContain('ask ai');
+  });
+
+  it('catches JS-isms like async/const/import with Clear equivalents', () => {
+    const r1 = compileProgram("async function doStuff");
+    expect(r1.errors.find(e => e.message.includes('async automatically'))).toBeDefined();
+
+    const r2 = compileProgram("function greet");
+    expect(r2.errors.find(e => e.message.includes('define function'))).toBeDefined();
+  });
+
+  it('does not false-positive on valid syntax like text in components', () => {
+    const r = compileProgram("define component Card receiving title:\n  text title");
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('does not false-positive on valid assignment with identifier', () => {
+    const r = compileProgram("call = 5");
+    expect(r.errors.find(e => e.message.includes('Unrecognized'))).toBeUndefined();
+  });
+});
+
+// Phase 101c: Nested JSON save (P2-1)
+describe('nested JSON save to table', () => {
+  it('_pick serializes nested objects to JSON strings', () => {
+    const r = compileProgram(`
+build for javascript backend
+create a Digests table:
+  title, required
+  stories
+
+when user calls POST /api/save receiving data:
+  save data to Digests
+  send back 'saved'
+    `);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_pick');
+    // _pick should serialize nested values
+    expect(r.javascript).toContain('JSON.stringify(v)');
+  });
+
+  it('_revive auto-parses JSON strings on lookup', () => {
+    const r = compileProgram(`
+build for javascript backend
+create a Digests table:
+  title, required
+  stories
+
+when user calls GET /api/digests:
+  items = look up all Digests
+  send back items
+    `);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_revive');
+  });
+});
+
+// Phase 103: Cron / scheduled tasks
+describe('cron — scheduled task blocks', () => {
+  it('compiles every N minutes to setInterval', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery 5 minutes:\n  show \"tick\""
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('setInterval(async () => {');
+    expect(r.javascript).toContain('}, 300000);');
+    expect(r.javascript).toContain('console.log("tick")');
+  });
+
+  it('compiles every 1 hour to setInterval with correct ms', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery 1 hour:\n  show \"hourly\""
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('}, 3600000);');
+  });
+
+  it('compiles every day at 9am to daily scheduler', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery day at 9am:\n  show \"morning\""
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('setHours(9, 0, 0, 0)');
+    expect(r.javascript).toContain('setTimeout(_tick, _nextMs())');
+    expect(r.javascript).toContain('86400000');
+  });
+
+  it('parses 2:30pm correctly as hour=14 minute=30', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery day at 2:30pm:\n  show \"afternoon\""
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('setHours(14, 30, 0, 0)');
+  });
+
+  it('compiles every N minutes to Python asyncio', () => {
+    const r = compileProgram(
+      "build for python backend\n\nevery 10 minutes:\n  show \"tick\""
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('asyncio.sleep(600)');
+    expect(r.python).toContain('@app.on_event("startup")');
+  });
+
+  it('compiles every day at time to Python asyncio', () => {
+    const r = compileProgram(
+      "build for python backend\n\nevery day at 8am:\n  show \"digest\""
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('hour=8, minute=0');
+    expect(r.python).toContain('timedelta(days=1)');
+  });
+
+  it('errors on empty cron block', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery 5 minutes:\n"
+    );
+    expect(r.errors.length).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================
+// P5 — HTTP Test Assertions in Clear
+// ============================================================
+describe('HTTP test assertions in test blocks', () => {
+  it('parses call POST with body fields into HTTP_TEST_CALL node', () => {
+    const src = `build for javascript backend
+create a Users table:
+  name, required
+  email, required
+
+when user calls POST /api/users receiving data:
+  validate data:
+    name must not be empty
+    email must not be empty
+  save data to Users
+  send back data with status 201
+
+test 'create a user':
+  call POST /api/users with name is 'Alice' and email is 'alice@test.com'
+  expect response status is 201
+  expect response body has name
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('create a user');
+    expect(r.tests).toContain('fetch(_baseUrl');
+    expect(r.tests).toContain('POST');
+    expect(r.tests).toContain('/api/users');
+  });
+
+  it('compiles expect response status to assertion', () => {
+    const src = `build for javascript backend
+create a Items table:
+  name, required
+
+when user calls GET /api/items:
+  items = look up all Items
+  send back items
+
+test 'items returns 200':
+  call GET /api/items
+  expect response status is 200
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('items returns 200');
+    expect(r.tests).toContain('_response.status');
+    expect(r.tests).toContain('toBe(200)');
+  });
+
+  it('compiles expect response body has field', () => {
+    const src = `build for javascript backend
+create a Tasks table:
+  title, required
+
+when user calls POST /api/tasks receiving data:
+  validate data:
+    title must not be empty
+  save data to Tasks
+  send back data with status 201
+
+test 'task has id':
+  call POST /api/tasks with title is 'Test'
+  expect response body has id
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('task has id');
+    expect(r.tests).toContain('toHaveProperty');
+  });
+
+  it('includes expect shim for user-written tests', () => {
+    const src = `build for javascript backend
+create a Things table:
+  name, required
+
+when user calls GET /api/things:
+  things = look up all Things
+  send back things
+
+test 'basic check':
+  call GET /api/things
+  expect response status is 200
+`;
+    const r = compileProgram(src);
+    expect(r.tests).toContain('function expect(val)');
+    expect(r.tests).toContain('toBe');
+    expect(r.tests).toContain('toBeTruthy');
+    expect(r.tests).toContain('toHaveProperty');
+  });
+
+  it('user tests appear after auto-generated tests', () => {
+    const src = `build for javascript backend
+create a Notes table:
+  body, required
+
+when user calls POST /api/notes receiving data:
+  validate data:
+    body must not be empty
+  save data to Notes
+  send back data with status 201
+
+when user calls GET /api/notes:
+  notes = look up all Notes
+  send back notes
+
+test 'my custom test':
+  call GET /api/notes
+  expect response status is 200
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const autoIdx = r.tests.indexOf('POST /api/notes with valid data');
+    const userIdx = r.tests.indexOf('my custom test');
+    expect(autoIdx).toBeGreaterThan(-1);
+    expect(userIdx).toBeGreaterThan(-1);
+    expect(userIdx).toBeGreaterThan(autoIdx);
+  });
+});
+
+// ============================================================
+// P7 — Program Diff / Patch API
+// ============================================================
+// Import patch at module level for tests
+import { patch as patchFn } from './patch.js';
+
+describe('patch API', () => {
+
+  it('add_endpoint appends a new endpoint', () => {
+    const src = "build for javascript backend\n";
+    const r = patchFn(src, [
+      { op: 'add_endpoint', method: 'GET', path: '/api/health', body: "send back 'OK'" }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).toContain("when user calls GET /api/health:");
+    expect(r.source).toContain("send back 'OK'");
+  });
+
+  it('add_endpoint rejects duplicate paths', () => {
+    const src = "build for javascript backend\n\nwhen user calls GET /api/health:\n  send back 'OK'\n";
+    const r = patchFn(src, [
+      { op: 'add_endpoint', method: 'GET', path: '/api/health', body: "send back 'OK'" }
+    ]);
+    expect(r.skipped).toBe(1);
+    expect(r.errors.length).toBeGreaterThan(0);
+  });
+
+  it('add_field adds a field to an existing table', () => {
+    const src = "build for javascript backend\n\ncreate a Users table:\n  name, required\n";
+    const r = patchFn(src, [
+      { op: 'add_field', table: 'Users', field: 'email', constraints: 'required, unique' }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).toContain("  email, required, unique");
+  });
+
+  it('add_field rejects duplicate field', () => {
+    const src = "build for javascript backend\n\ncreate a Users table:\n  name, required\n  email\n";
+    const r = patchFn(src, [
+      { op: 'add_field', table: 'Users', field: 'email', constraints: 'required' }
+    ]);
+    expect(r.skipped).toBe(1);
+  });
+
+  it('remove_field removes a field', () => {
+    const src = "build for javascript backend\n\ncreate a Users table:\n  name, required\n  temp_field\n  email\n";
+    const r = patchFn(src, [
+      { op: 'remove_field', table: 'Users', field: 'temp_field' }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).not.toContain('temp_field');
+    expect(r.source).toContain('email');
+  });
+
+  it('fix_line replaces a specific line', () => {
+    const src = "build for javascript backend\nbroken line here\n";
+    const r = patchFn(src, [
+      { op: 'fix_line', line: 2, replacement: "fixed line here" }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).toContain('fixed line here');
+    expect(r.source).not.toContain('broken line here');
+  });
+
+  it('insert_line inserts after a line', () => {
+    const src = "line 1\nline 2\nline 3\n";
+    const r = patchFn(src, [
+      { op: 'insert_line', after: 2, content: 'inserted line' }
+    ]);
+    expect(r.applied).toBe(1);
+    const lines = r.source.split('\n');
+    expect(lines[2]).toBe('inserted line');
+    expect(lines[3]).toBe('line 3');
+  });
+
+  it('remove_line deletes a line', () => {
+    const src = "line 1\nline to remove\nline 3\n";
+    const r = patchFn(src, [
+      { op: 'remove_line', line: 2 }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).not.toContain('line to remove');
+    expect(r.source).toContain('line 3');
+  });
+
+  it('add_test appends a test block', () => {
+    const src = "build for javascript backend\n";
+    const r = patchFn(src, [
+      { op: 'add_test', name: 'health check', body: ["call GET /api/health", "expect response status is 200"] }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).toContain("test 'health check':");
+    expect(r.source).toContain("  call GET /api/health");
+    expect(r.source).toContain("  expect response status is 200");
+  });
+
+  it('add_validation inserts validation into existing endpoint', () => {
+    const src = "build for javascript backend\n\nwhen user calls POST /api/users receiving data:\n  save data to Users\n";
+    const r = patchFn(src, [
+      { op: 'add_validation', path: '/api/users', rules: ['name must not be empty', 'email must be a valid email'] }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).toContain("  validate data:");
+    expect(r.source).toContain("    name must not be empty");
+  });
+
+  it('add_table creates a new table definition', () => {
+    const src = "build for javascript backend\n";
+    const r = patchFn(src, [
+      { op: 'add_table', name: 'Posts', fields: [{ name: 'title', constraints: 'required' }, { name: 'body' }] }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).toContain("create a Posts table:");
+    expect(r.source).toContain("  title, required");
+    expect(r.source).toContain("  body");
+  });
+
+  it('add_agent creates an agent definition', () => {
+    const src = "build for javascript backend\n";
+    const r = patchFn(src, [
+      { op: 'add_agent', name: 'Summarizer', prompt: 'Summarize text concisely', returns: [{ name: 'summary' }, { name: 'key_points' }] }
+    ]);
+    expect(r.applied).toBe(1);
+    expect(r.source).toContain("define agent Summarizer:");
+    expect(r.source).toContain("your job is 'Summarize text concisely'");
+    expect(r.source).toContain("  returning:");
+    expect(r.source).toContain("    summary, text");
+  });
+
+  it('applies multiple ops in sequence', () => {
+    const src = "build for javascript backend\n";
+    const r = patchFn(src, [
+      { op: 'add_table', name: 'Items', fields: [{ name: 'name', constraints: 'required' }] },
+      { op: 'add_endpoint', method: 'POST', path: '/api/items', receiving: 'data', body: ["validate data:", "  name must not be empty", "save data to Items", "send back data with status 201"] },
+      { op: 'add_endpoint', method: 'GET', path: '/api/items', body: ["items = look up all Items", "send back items"] },
+      { op: 'add_test', name: 'create item', body: ["call POST /api/items with name is 'Test'", "expect response status is 201"] }
+    ]);
+    expect(r.applied).toBe(4);
+    expect(r.skipped).toBe(0);
+    // The result should be valid Clear that compiles
+    const compiled = compileProgram(r.source);
+    expect(compiled.errors).toHaveLength(0);
+  });
+
+  it('reports unknown ops as errors', () => {
+    const r = patchFn("test\n", [{ op: 'explode' }]);
+    expect(r.skipped).toBe(1);
+    expect(r.errors[0]).toContain('Unknown op');
+  });
+});
+
+// ============================================================
+// P14 — Output Capture from Commands
+// ============================================================
+describe('output capture from run command', () => {
+  it('result = run command captures stdout as string', () => {
+    const src = `build for javascript backend
+
+when user calls GET /api/version:
+  version = run command 'node --version'
+  send back version
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("execSync");
+    expect(r.javascript).toContain("encoding: 'utf-8'");
+    expect(r.javascript).toContain(".trim()");
+  });
+
+  it('statement run command still uses stdio inherit', () => {
+    const src = `build for javascript backend
+
+when user calls POST /api/deploy:
+  run command 'echo deployed'
+  send back 'done'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("stdio: 'inherit'");
+  });
+
+  it('captures stdout in Python backend', () => {
+    const src = `build for python backend
+
+when user calls GET /api/version:
+  version = run command 'python --version'
+  send back version
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain("capture_output=True");
+    expect(r.python).toContain(".stdout.strip()");
   });
 });
 
