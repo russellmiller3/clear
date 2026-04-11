@@ -1470,7 +1470,15 @@ function restoreChatOrWelcome() {
   const saved = localStorage.getItem('clear_chat_messages');
   if (saved) {
     try {
-      chatMessages = JSON.parse(saved).filter(m => !m.streaming);
+      chatMessages = JSON.parse(saved).map(m => {
+        if (m.interrupted) {
+          // Mark interrupted messages so user sees what was in progress
+          m.content = (m.content || '') + (m.content ? '\n\n' : '') + '*— interrupted by connection error —*';
+          delete m.interrupted;
+        }
+        delete m.streaming;
+        return m;
+      });
       renderChat();
       return;
     } catch (_) {}
@@ -1494,8 +1502,11 @@ function updateContextMeter(percent, used, max) {
 function saveChatState() {
   try {
     const toSave = chatMessages
-      .filter(m => !m.streaming)
-      .map(({ role, content, toolSteps }) => ({ role, content, toolSteps: toolSteps || [] }));
+      .map(({ role, content, toolSteps, streaming }) => ({
+        role, content,
+        toolSteps: toolSteps || [],
+        ...(streaming ? { interrupted: true } : {}),
+      }));
     localStorage.setItem('clear_chat_messages', JSON.stringify(toSave));
   } catch (_) {}
 }
@@ -1793,6 +1804,9 @@ window.sendChat = async function() {
         } else if (ev.type === 'tool_start') {
           am.toolSteps.push({ name: ev.name, summary: ev.summary || ev.name });
           updateLastMsg();
+        } else if (ev.type === 'tool_done') {
+          // Checkpoint after every tool completion — survives connection drops
+          saveChatState();
         } else if (ev.type === 'code_update') {
           suppressAutoCompile = true;
           editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: ev.code } });
@@ -1828,9 +1842,10 @@ window.sendChat = async function() {
       am.content += am.content ? '\n\n*Stopped.*' : '*Stopped.*';
     } else {
       const isNetErr = err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ERR_CONNECTION');
-      am.content = isNetErr
-        ? 'Connection error: The studio server at localhost:3456 is not responding. Make sure it\'s running: `node playground/server.js`'
-        : 'Connection error: ' + err.message;
+      const errMsg = isNetErr
+        ? '*Connection lost. Work above this line was saved.*'
+        : '*Connection error: ' + err.message + '*';
+      am.content += (am.content ? '\n\n' : '') + errMsg;
     }
     am.streaming = false;
     updateLastMsg();
