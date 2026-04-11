@@ -1,8 +1,8 @@
 # Handoff — 2026-04-10
 
 ## Current State
-- **Branch:** `main` (just merged `feature/fullstack-blog`)
-- **Tests:** 1515 passing / 0 failing
+- **Branch:** `main` (just merged `feature/component-stress-test`)
+- **Tests:** 1525 passing / 0 failing
 - **Synonym version:** 0.13.0
 
 ## What Was Done This Session
@@ -39,15 +39,6 @@
 ### Trend Alignment Fix
 - Metric card trend text (`+3 this week`) now uses `flex items-center gap-1` for proper horizontal alignment of arrow SVG + text.
 
-## Key Decisions Made
-- **Image has no synonyms** — `photo` and `picture` collide with file input patterns. Only `image` works.
-- **Seed dedup at compiler level, not language level** — `guard existing is empty` doesn't work because `empty` = `nothing` (null), but `findAll` returns `[]` (truthy). Auto-injection is safer.
-- **Component functions hoisted before _recompute** — COMPONENT_DEF and FUNCTION_DEF must be defined before the reactive loop that calls them.
-
-## Known Issues
-- `overflow-hidden` on card containers can collapse ECharts canvases — removed from chart cards, still on app_table/app_list (fine for those).
-- Blog demo apps have compiled `index.html` checked in — these are build artifacts but useful as references.
-
 ### Display as Cards (New)
 - **`display X as cards`** — New display format renders API data as responsive 3-column card grid
 - **Smart field detection** — Auto-detects: `image_url` → hero, `avatar` → circle, `category` → badge, `title` → heading, `excerpt` → body, `author` → meta
@@ -55,6 +46,26 @@
 
 ### Full-Stack Blog App
 - `apps/blog-fullstack/main.clear` — CRUD backend + card grid + New Post modal
+
+### Component Stress Test (10 new tests)
+- **8 edge case patterns** — nested sections, multiple content types, multiple args, reactive state, two components, block-form with image, used twice, inside conditional. All passing.
+- **Reserved component name validator** — `parseComponentDef()` rejects names that collide with built-in content types: Badge, Text, Heading, Subheading, Image, Button, Link, Divider, Section, Display.
+- **2 collision tests** — Verify error messages suggest alternatives.
+- **3 existing tests fixed** — Renamed `Badge` → `StatusBadge`/`StatusTag` in existing component tests.
+
+### GAN App Preset Upgrades
+- All app presets upgraded to TailAdmin quality bar — white cards on gray content backgrounds
+- Dashboard and project-tracker demo apps updated with improved presets
+
+## Key Decisions Made
+- **Image has no synonyms** — `photo` and `picture` collide with file input patterns. Only `image` works.
+- **Seed dedup at compiler level, not language level** — `guard existing is empty` doesn't work because `empty` = `nothing` (null), but `findAll` returns `[]` (truthy). Auto-injection is safer.
+- **Component functions hoisted before _recompute** — COMPONENT_DEF and FUNCTION_DEF must be defined before the reactive loop that calls them.
+- **Reserved component names are hard-coded** — Not derived from synonyms. Only the 10 names that actually collide are blocked.
+
+## Known Issues
+- `overflow-hidden` on card containers can collapse ECharts canvases — removed from chart cards, still on app_table/app_list (fine for those).
+- Blog demo apps have compiled `index.html` checked in — these are build artifacts but useful as references.
 
 ## Next Steps (Priority Order)
 1. **Multi-series bar charts** — True multi-series (opened+closed by week) needs syntax for multiple `showing` clauses
@@ -69,9 +80,10 @@
 | `compiler.js` — seed dedup (~line 1664) | Auto-injected findAll guard at top of seed endpoints |
 | `compiler.js` — blog presets in BUILTIN_PRESET_CLASSES (~line 7450) | blog_grid, blog_card, blog_article CSS |
 | `parser.js` — `displayNode()` (~line 487) | cards tag detection |
+| `parser.js` — `parseComponentDef()` (~line 2279) | Reserved name validator |
 | `apps/blog-fullstack/main.clear` | Full-stack blog with display-as-cards |
 
 ## Resume Prompt
 > Read `HANDOFF.md` and continue from where we left off.
 >
-> Branch: `main`. All 1515 tests passing. New feature: `display X as cards` renders API data as card grids with smart field detection. Full-stack blog app demonstrates it. Next priorities: multi-series charts, chart time-range tabs, card template customization.
+> Branch: `main`. All 1525 tests passing. Component stress tests done — 8 edge cases + reserved name validator. Next priorities: multi-series charts, chart time-range tabs, card template customization.

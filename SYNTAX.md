@@ -405,6 +405,17 @@ for each user in users list:
   show UserCard(user)
 ```
 
+### Reserved Component Names
+
+These names collide with built-in content types and **cannot** be used as component names:
+`Text`, `Heading`, `Subheading`, `Badge`, `Link`, `Divider`, `Image`, `Button`, `Display`, `Section`
+
+The compiler will error with a suggestion:
+```
+Component name 'Badge' collides with a built-in keyword.
+Use a more specific name like 'BadgeCard', 'CustomBadge', or 'MyBadge'.
+```
+
 ---
 
 ## Styles
