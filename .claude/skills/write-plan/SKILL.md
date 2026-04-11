@@ -203,6 +203,14 @@ Then **immediately run the red-team-plan skill** on the plan you just wrote. Do 
 - Ordering bugs (dependencies between phases)
 - Security holes
 - Untested paths
+- Tech debt (see below)
+
+## Tech Debt Rule
+
+While exploring code for any plan, actively watch for tech debt:
+
+- **Minor refactors** (dead code, naming inconsistencies, duplicated logic, stale comments): add them as a "Cleanup" phase at the end of the plan. These get done as part of the work.
+- **Major refactors** (architectural issues, systemic patterns that need rethinking, design flaws): flag them explicitly to the user with a description of the problem and estimated scope. Do NOT silently add them to the plan — the user decides whether to tackle them now or later.
 
 Fix any issues the red-team identifies before presenting the plan to the user.
 

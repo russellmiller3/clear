@@ -112,7 +112,7 @@
 //   EXPRESSION PARSER ................. parseExpression, parseExprPrec, parsePrimary,
 //                                      parseListLiteral, parseEachExpression,
 //                                      parseFunctionCall
-//   DISPATCH VALIDATION ............... _validateDispatchTables() — catches dead/overlapping entries
+//   DISPATCH (unified) ................ CANONICAL_DISPATCH — one Map, keyed on token.canonical
 //   OPERATOR HELPERS .................. getOperatorKey, normalizeOperator, findCanonical
 //
 // =============================================================================
@@ -1837,9 +1837,12 @@ const CANONICAL_DISPATCH = new Map([
   }],
 ]);
 
-// Raw-value handlers (keyed on firstToken.value, for keywords not in synonym table)
-const RAW_DISPATCH = new Map([
-  ['database', (ctx) => {
+// ── Formerly RAW_DISPATCH — now unified into CANONICAL_DISPATCH ──────────────
+// These words used to need a separate dispatch map because they had no synonyms.
+// Now they all have self-synonyms (e.g. database → database) so every token has
+// a .canonical value and one map handles everything.
+
+CANONICAL_DISPATCH.set('database', (ctx) => {
     if (ctx.tokens.length < 3 || !(ctx.tokens[1].canonical === 'is' || ctx.tokens[1].type === TokenType.ASSIGN)) return undefined;
     const parts = ctx.tokens.slice(2).map(t => t.value);
     const atIdx = parts.indexOf('at');
@@ -1852,50 +1855,50 @@ const RAW_DISPATCH = new Map([
     }
     ctx.body.push({ type: NodeType.DATABASE_DECL, backend: backend.toLowerCase(), connection: connectionExpr, line: ctx.line });
     return ctx.i + 1;
-  }],
-  ['chart', (ctx) => {
+});
+CANONICAL_DISPATCH.set('chart', (ctx) => {
     // Old syntax: chart 'Title' as bar showing data — still supported
     if (ctx.tokens.length < 4 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const parsed = parseChart(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
-  }],
-  ['bar', (ctx) => {
+});
+CANONICAL_DISPATCH.set('bar', (ctx) => {
     if (ctx.tokens.length < 4 || ctx.tokens[1].value !== 'chart') return undefined;
     const parsed = parseChartTypeFirst(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
-  }],
-  ['line', (ctx) => {
+});
+CANONICAL_DISPATCH.set('line', (ctx) => {
     if (ctx.tokens.length < 4 || ctx.tokens[1].value !== 'chart') return undefined;
     const parsed = parseChartTypeFirst(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
-  }],
-  ['pie', (ctx) => {
+});
+CANONICAL_DISPATCH.set('pie', (ctx) => {
     if (ctx.tokens.length < 4 || ctx.tokens[1].value !== 'chart') return undefined;
     const parsed = parseChartTypeFirst(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
-  }],
-  ['area', (ctx) => {
+});
+CANONICAL_DISPATCH.set('area', (ctx) => {
     if (ctx.tokens.length < 4 || ctx.tokens[1].value !== 'chart') return undefined;
     const parsed = parseChartTypeFirst(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
-  }],
-  ['agent', (ctx) => {
+});
+CANONICAL_DISPATCH.set('agent', (ctx) => {
     if (ctx.tokens.length < 2) return undefined;
     const result = parseAgent(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
-  }],
-  ['script', (ctx) => {
+});
+CANONICAL_DISPATCH.set('script', (ctx) => {
     const scriptLines = [];
     let j = ctx.i + 1;
     while (j < ctx.lines.length && ctx.lines[j].indent > ctx.indent) {
@@ -1908,42 +1911,42 @@ const RAW_DISPATCH = new Map([
       ctx.body.push({ type: NodeType.SCRIPT, code: scriptLines.join('\n'), line: ctx.line });
     }
     return j;
-  }],
-  ['tab', (ctx) => {
+});
+CANONICAL_DISPATCH.set('tab', (ctx) => {
     if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const tabTitle = ctx.tokens[1].value;
     const { body: tabBody, endIdx: tabEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
     ctx.body.push({ type: NodeType.TAB, title: tabTitle, body: tabBody, line: ctx.line });
     return tabEnd;
-  }],
-  ['retry', (ctx) => {
+});
+CANONICAL_DISPATCH.set('retry', (ctx) => {
     if (ctx.tokens.length < 3) return undefined;
     const count = typeof ctx.tokens[1].value === 'number' ? ctx.tokens[1].value : parseInt(ctx.tokens[1].value, 10) || 3;
     const { body: retryBody, endIdx: retryEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
     ctx.body.push({ type: NodeType.RETRY, count, body: retryBody, line: ctx.line });
     return retryEnd;
-  }],
-  ['first', (ctx) => {
+});
+CANONICAL_DISPATCH.set('first', (ctx) => {
     if (ctx.tokens.length < 2 || !ctx.tokens.some(t => t.value === 'finish')) return undefined;
     const { body: raceBody, endIdx: raceEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
     ctx.body.push({ type: NodeType.RACE, body: raceBody, line: ctx.line });
     return raceEnd;
-  }],
-  ['background', (ctx) => {
+});
+CANONICAL_DISPATCH.set('background', (ctx) => {
     // Only match if followed by STRING (not CSS background)
     if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const result = parseBackground(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
-  }],
-  ['every', (ctx) => {
+});
+CANONICAL_DISPATCH.set('every', (ctx) => {
     // "every 5 minutes:" or "every day at 9am:" — cron/scheduled block
     // Only valid at backend level (inside endpoint/agent or top-level backend)
     const result = parseCron(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
-  }],
-  ['store', (ctx) => {
+});
+CANONICAL_DISPATCH.set('store', (ctx) => {
     if (ctx.tokens.length < 2) return undefined;
     const varName = ctx.tokens[1].value;
     let key = varName;
@@ -1952,8 +1955,8 @@ const RAW_DISPATCH = new Map([
     }
     ctx.body.push({ type: NodeType.STORE, variable: varName, key, line: ctx.line });
     return ctx.i + 1;
-  }],
-  ['restore', (ctx) => {
+});
+CANONICAL_DISPATCH.set('restore', (ctx) => {
     if (ctx.tokens.length < 2) return undefined;
     const varName = ctx.tokens[1].value;
     let key = varName;
@@ -1962,27 +1965,27 @@ const RAW_DISPATCH = new Map([
     }
     ctx.body.push({ type: NodeType.RESTORE, variable: varName, key, line: ctx.line });
     return ctx.i + 1;
-  }],
-  // Agent Tier 7 features
-  ['pipeline', (ctx) => {
+});
+// Agent Tier 7 features
+CANONICAL_DISPATCH.set('pipeline', (ctx) => {
     if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const result = parsePipeline(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
-  }],
-  ['skill', (ctx) => {
+});
+CANONICAL_DISPATCH.set('skill', (ctx) => {
     if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const result = parseSkill(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
-  }],
-  ['workflow', (ctx) => {
+});
+CANONICAL_DISPATCH.set('workflow', (ctx) => {
     if (ctx.tokens.length < 2 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
     const result = parseWorkflow(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (result.node) ctx.body.push(result.node);
     return result.endIdx;
-  }],
-  ['policy', (ctx) => {
+});
+CANONICAL_DISPATCH.set('policy', (ctx) => {
     const policyIndent = ctx.lines[ctx.i].indent;
     const rules = [];
     let j = ctx.i + 1;
@@ -1997,10 +2000,8 @@ const RAW_DISPATCH = new Map([
     }
     if (rules.length > 0) ctx.body.push({ type: NodeType.POLICY, rules, line: ctx.line });
     return j;
-  }],
-  // NOTE: 'ask' is handled in RAW_DISPATCH (not here) because 'ask' is an identifier
-  // with no canonical value. A CANONICAL_DISPATCH entry for 'ask' would be dead code.
-  ['mock', (ctx) => {
+});
+CANONICAL_DISPATCH.set('mock', (ctx) => {
     // Mock AI response in test blocks: mock claude responding: + indented fields
     if (ctx.tokens.length >= 3 &&
         (ctx.tokens[1].value === 'claude' || ctx.tokens[1].value === 'ai') &&
@@ -2029,10 +2030,9 @@ const RAW_DISPATCH = new Map([
       return j;
     }
     return undefined;
-  }],
-]);
+});
 
-// Canonical dispatch for do_parallel
+// do_parallel
 CANONICAL_DISPATCH.set('do_parallel', (ctx) => {
   const assignments = [];
   const parallelIndent = ctx.lines[ctx.i].indent;
@@ -2064,7 +2064,7 @@ CANONICAL_DISPATCH.set('do_parallel', (ctx) => {
 });
 
 // Raw-value handlers for panel actions (toggle/open/close)
-RAW_DISPATCH.set('toggle', (ctx) => {
+CANONICAL_DISPATCH.set('toggle', (ctx) => {
   // "toggle the X panel" — but NOT "toggle" as checkbox (handled by CANONICAL_DISPATCH checkbox handler)
   if (ctx.tokens.length >= 2 && (ctx.tokens[1].value === 'the' || ctx.tokens[1].value === 'this')) {
     const action = ctx.tokens[0].value;
@@ -2078,7 +2078,7 @@ RAW_DISPATCH.set('toggle', (ctx) => {
   }
   return undefined; // fall through to checkbox handler
 });
-RAW_DISPATCH.set('open', (ctx) => {
+CANONICAL_DISPATCH.set('open', (ctx) => {
   if (ctx.tokens.length >= 2) {
     const action = 'open';
     let pPos = 1;
@@ -2092,7 +2092,7 @@ RAW_DISPATCH.set('open', (ctx) => {
   }
   return undefined;
 });
-RAW_DISPATCH.set('close', (ctx) => {
+CANONICAL_DISPATCH.set('close', (ctx) => {
   if (ctx.tokens.length >= 2) {
     const action = 'close';
     let pPos = 1;
@@ -2110,7 +2110,7 @@ RAW_DISPATCH.set('close', (ctx) => {
 // "ask" dispatch — handles multiple forms:
 // 1. ask ai/claude 'prompt' — streams AI response to client (P13)
 // 2. ask user to confirm 'message' — human-in-the-loop confirmation
-RAW_DISPATCH.set('ask', (ctx) => {
+CANONICAL_DISPATCH.set('ask', (ctx) => {
   if (ctx.tokens.length < 2) return undefined;
   const second = ctx.tokens[1].value;
 
@@ -2157,7 +2157,7 @@ RAW_DISPATCH.set('ask', (ctx) => {
 });
 
 // HTTP test call: "call POST /api/users with name is 'Alice', email is 'test'"
-RAW_DISPATCH.set('call', (ctx) => {
+CANONICAL_DISPATCH.set('call', (ctx) => {
   const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
   if (ctx.tokens.length < 3) return undefined;
   const methodToken = ctx.tokens[1];
@@ -2193,33 +2193,13 @@ RAW_DISPATCH.set('call', (ctx) => {
 });
 
 // ── Dispatch table validation (runs once at module load) ──────────────────────
-// Catches two classes of bugs that cause silent failures:
-//   1. CANONICAL_DISPATCH entry for a word with no synonym → dead code (never matches)
-//   2. Same key in both RAW_DISPATCH and CANONICAL_DISPATCH → confusing shadowing
+// Every CANONICAL_DISPATCH key must be reachable: either a canonical value from
+// the synonym table, or a self-synonym. If a key has no way to become a token's
+// .canonical, it's dead code. This check would have caught the old 'ask' and
+// 'respond_with' bugs.
 //
-// This is the "guardrail" that would have caught the 'ask' and 'respond_with' bugs.
-(function _validateDispatchTables() {
-  // Collect all canonical values that the synonym table can produce
-  // (We can't import synonyms.js here, but we CAN check at runtime by
-  // verifying that CANONICAL_DISPATCH keys are plausibly canonical values —
-  // canonical values are always lowercase, underscore-separated, and
-  // don't appear as-is in natural English. Raw identifiers like 'ask',
-  // 'database', 'agent' should be in RAW_DISPATCH, not CANONICAL.)
-  const RAW_WORDS = new Set(RAW_DISPATCH.keys());
-  const warnings = [];
-
-  // Check for overlap: same key in both RAW and CANONICAL
-  for (const key of RAW_WORDS) {
-    if (CANONICAL_DISPATCH.has(key)) {
-      warnings.push(`DISPATCH OVERLAP: '${key}' is in both RAW_DISPATCH and CANONICAL_DISPATCH. ` +
-        `RAW runs first and shadows CANONICAL. Remove the CANONICAL entry or consolidate.`);
-    }
-  }
-
-  if (warnings.length > 0 && typeof process !== 'undefined' && process.env?.CLEAR_DEBUG) {
-    for (const w of warnings) console.warn('[parser]', w);
-  }
-})();
+// Validation happens at tokenize time (tokens always get .canonical now via
+// self-synonyms), so this is just a documentation comment. No runtime check needed.
 
 function parseBlock(lines, startIdx, parentIndent, errors) {
   const body = [];
@@ -2248,40 +2228,15 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       // --- DISPATCH TABLE LOOKUP ---
-      //
-      // Two dispatch maps, checked in order:
-      //
-      //   1. RAW_DISPATCH  — keyed on firstToken.value (raw string before synonym resolution)
-      //      Use for: words that are NOT in the synonym table (identifiers like 'ask',
-      //      'database', 'agent', 'chart'), or words where you need the raw value
-      //      before synonym rewriting.
-      //
-      //   2. CANONICAL_DISPATCH — keyed on firstToken.canonical (after synonym resolution)
-      //      Use for: words that ARE in the synonym table. The tokenizer rewrites
-      //      synonyms (e.g. 'make' → 'set', 'endpoint' → 'when_user_calls'), so
-      //      canonical dispatch handles all spelling variants via one entry.
-      //
-      // RULE: If a word has no synonym (stays as an identifier), it has NO .canonical.
-      //       Putting it in CANONICAL_DISPATCH = dead code. Use RAW_DISPATCH instead.
-      //       The _validateDispatchTables() check below catches this at load time.
-      //
-      // Both maps use return-undefined-to-fall-through: if a handler returns undefined,
-      // the next mechanism gets a chance. This allows RAW handlers to partially match
-      // (e.g. 'ask ai' handled, 'ask user' falls through to the next dispatch).
-      //
-      if (typeof firstToken.value === 'string') {
-        const rawHandler = RAW_DISPATCH.get(firstToken.value);
-        if (rawHandler) {
+      // One unified map: CANONICAL_DISPATCH. Every keyword has a .canonical value
+      // (either from a synonym or a self-synonym like database → database).
+      // Handlers return undefined to fall through to pattern matchers/assignment.
+      {
+        const key = firstToken.canonical || firstToken.value;
+        const handler = typeof key === 'string' ? CANONICAL_DISPATCH.get(key) : null;
+        if (handler) {
           const ctx = { lines, i, indent, tokens, line, errors, body };
-          const newI = rawHandler(ctx);
-          if (newI !== undefined) { i = newI; continue; }
-        }
-      }
-      if (firstToken.canonical) {
-        const canonHandler = CANONICAL_DISPATCH.get(firstToken.canonical);
-        if (canonHandler) {
-          const ctx = { lines, i, indent, tokens, line, errors, body };
-          const newI = canonHandler(ctx);
+          const newI = handler(ctx);
           if (newI !== undefined) {
             if (ctx._targetValue) targetValue = ctx._targetValue;
             i = newI; continue;

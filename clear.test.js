@@ -21,7 +21,7 @@ describe('Synonym Table', () => {
   });
 
   it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.13.0');
+    expect(SYNONYM_VERSION).toBe('0.14.0');
   });
 
   it('maps "create" to canonical "set"', () => {
