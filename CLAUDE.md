@@ -126,15 +126,18 @@ npx esbuild index.js --bundle --format=esm --minify --outfile=playground/clear-c
 ## No External Dependencies
 The compiler is pure ESM JavaScript. Zero npm packages. Runs in Node and browser.
 
-## Playground IDE
+## Clear Studio (IDE)
 Run `node playground/server.js` → opens `http://localhost:3456`.
 Three-panel IDE: CodeMirror editor + preview/terminal + Claude agent chat.
 43 template apps in dropdown. Light/dark theme. Save to Desktop.
-Claude has tools: edit_code, run_command, compile, run_app, stop_app, http_request.
+
+The assistant inside Studio is **Mephistopheles (Meph)**. Meph is an app builder — NOT a compiler developer. Meph writes Clear code, compiles, runs, tests, and fixes errors. Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, and requests.md. Meph can only write .clear files and requests.md.
+
+Meph has tools: edit_code, read_file, run_command, compile, run_app, stop_app, http_request, write_file.
 Tests: `node playground/server.test.js` (85 tests).
 
 `playground/index.html` is the old static playground (compiler bundle only).
-`playground/ide.html` is the new full IDE with server backend.
+`playground/ide.html` is the full Studio IDE with server backend.
 
 ## GAN Design Method (MANDATORY for all UI work)
 Never edit the compiler or playground HTML directly to "make it look better." Always:
