@@ -542,14 +542,25 @@ app.post('/api/chat', async (req, res) => {
           const r = compileProgram(currentSource);
           currentErrors = r.errors;
           lastCompileResult = r;
-          return JSON.stringify({
+          // Always return compiled output alongside errors — Meph needs to
+          // inspect generated code to diagnose bugs, especially when there ARE errors
+          const result = {
             errors: r.errors,
             warnings: r.warnings,
             hasHTML: !!r.html,
             hasServerJS: !!r.serverJS,
             hasJavascript: !!r.javascript,
             hasPython: !!r.python,
-          });
+          };
+          // Include actual compiled code (truncated to avoid blowing context)
+          if (r.serverJS) result.serverJS = r.serverJS.slice(0, 8000);
+          if (r.javascript) result.javascript = r.javascript.slice(0, 8000);
+          if (r.html) result.html = r.html.slice(0, 4000);
+          if (r.python) result.python = r.python.slice(0, 8000);
+          if (r.errors.length > 0 && (r.serverJS || r.javascript || r.html || r.python)) {
+            result.note = 'Compiled output included despite errors — inspect for debugging.';
+          }
+          return JSON.stringify(result);
         } catch (err) {
           return JSON.stringify({ error: err.message });
         }

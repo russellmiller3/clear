@@ -133,6 +133,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .term-json .json-bool { color: #ce93d8; }
 .term-json .json-null { color: var(--tx3); font-style: italic; }
 .term-status { color: var(--tx3); font-size: 11px; display: block; padding: 2px 0 2px 16px; }
+.code-tabs { display: flex; gap: 2px; padding: 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+.code-tab { background: none; border: none; padding: 4px 12px; border-radius: 4px; color: var(--tx3); font-size: 11px; font-family: var(--font); font-weight: 500; cursor: pointer; transition: all .15s; }
+.code-tab:hover { background: var(--bg3); color: var(--tx); }
+.code-tab.active { background: var(--accent); color: #fff; }
 
 /* Data tab */
 #data-panel { height: 100%; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 16px; }
@@ -440,8 +444,9 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 <script type="module">
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection } from './codemirror.bundle.js';
 import { EditorState } from './codemirror.bundle.js';
-import { syntaxHighlighting, StreamLanguage, HighlightStyle } from './codemirror.bundle.js';
+import { syntaxHighlighting, StreamLanguage, HighlightStyle, defaultHighlightStyle } from './codemirror.bundle.js';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from './codemirror.bundle.js';
+import { javascript } from './codemirror.bundle.js';
 import { tags } from './codemirror.bundle.js';
 
 // ==========================================================================
@@ -740,7 +745,23 @@ function showOutput() {
   }
 }
 
+// Python tokenizer for Code tab highlighting
+const pythonTokenizer = StreamLanguage.define({
+  token(stream) {
+    if (stream.match(/#.*/)) return 'lineComment';
+    if (stream.match(/"""/) || stream.match(/'''/)) { stream.skipTo(stream.current().slice(0,3)) || stream.skipToEnd(); return 'string'; }
+    if (stream.match(/"[^"]*"/) || stream.match(/'[^']*'/)) return 'string';
+    if (stream.match(/f"/)) { stream.skipTo('"') || stream.skipToEnd(); stream.next(); return 'string'; }
+    if (stream.match(/\b\d+\.?\d*\b/)) return 'number';
+    if (stream.match(/\b(def|class|import|from|return|if|elif|else|for|in|while|try|except|finally|with|as|async|await|yield|raise|pass|break|continue|not|and|or|is|None|True|False|self)\b/)) return 'keyword';
+    stream.next();
+    return null;
+  },
+});
+
 let compiledView = null;
+let compiledTab = null; // which sub-tab is active
+
 function showCompiled() {
   const el = document.getElementById('preview-content');
   if (!lastCompiled) {
@@ -748,39 +769,66 @@ function showCompiled() {
     compiledView = null;
     return;
   }
-  const parts = [];
-  if (lastCompiled.html) parts.push('<!-- HTML -->\n' + lastCompiled.html);
-  if (lastCompiled.serverJS) parts.push('// Server JS\n' + lastCompiled.serverJS);
-  if (lastCompiled.javascript) parts.push('// JavaScript\n' + lastCompiled.javascript);
-  if (lastCompiled.python) parts.push('# Python\n' + lastCompiled.python);
-  const text = parts.join('\n\n');
 
-  // Reuse or create a read-only CodeMirror for compiled output
-  el.innerHTML = '';
-  if (compiledView) {
-    compiledView.dispatch({ changes: { from: 0, to: compiledView.state.doc.length, insert: text } });
-    el.appendChild(compiledView.dom);
-  } else {
-    compiledView = new EditorView({
-      doc: text,
-      extensions: [
-        lineNumbers(),
-        highlightActiveLine(),
-        drawSelection(),
-        syntaxHighlighting(clearHighlight),
-        EditorState.readOnly.of(true),
-        EditorView.editable.of(false),
-        EditorView.theme({
-          '&': { height: '100%', fontSize: '12px' },
-          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)' },
-          '.cm-gutters': { background: 'var(--bg2)', borderRight: '1px solid var(--bd)' },
-          '.cm-content': { padding: '8px 0' },
-        }),
-      ],
-    });
-    el.appendChild(compiledView.dom);
+  // Build available output tabs
+  const outputs = [];
+  if (lastCompiled.html) outputs.push({ key: 'html', label: 'HTML', code: lastCompiled.html, lang: 'html' });
+  if (lastCompiled.serverJS) outputs.push({ key: 'serverJS', label: 'Server JS', code: lastCompiled.serverJS, lang: 'js' });
+  if (lastCompiled.javascript && !lastCompiled.serverJS) outputs.push({ key: 'javascript', label: 'JavaScript', code: lastCompiled.javascript, lang: 'js' });
+  if (lastCompiled.javascript && lastCompiled.serverJS) outputs.push({ key: 'javascript', label: 'Client JS', code: lastCompiled.javascript, lang: 'js' });
+  if (lastCompiled.python) outputs.push({ key: 'python', label: 'Python', code: lastCompiled.python, lang: 'py' });
+
+  if (outputs.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">&#9654;</div><div class="title">No compiled output</div></div>';
+    return;
   }
+
+  // Default to first tab, or keep current if still valid
+  if (!compiledTab || !outputs.find(o => o.key === compiledTab)) compiledTab = outputs[0].key;
+  const active = outputs.find(o => o.key === compiledTab);
+
+  // Build sub-tab bar
+  const tabBar = outputs.length > 1
+    ? '<div class="code-tabs">' + outputs.map(o =>
+        `<button class="code-tab${o.key === compiledTab ? ' active' : ''}" onclick="switchCodeTab('${o.key}')">${o.label}</button>`
+      ).join('') + '</div>'
+    : '';
+
+  // Render
+  el.innerHTML = tabBar;
+  const viewContainer = document.createElement('div');
+  viewContainer.style.cssText = 'flex:1;overflow:hidden;display:flex;flex-direction:column;';
+  el.appendChild(viewContainer);
+
+  // Language extension
+  const langExt = active.lang === 'py' ? pythonTokenizer : javascript();
+
+  // Create fresh read-only CodeMirror with proper language highlighting
+  compiledView = new EditorView({
+    doc: active.code,
+    extensions: [
+      lineNumbers(),
+      highlightActiveLine(),
+      drawSelection(),
+      langExt,
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      EditorState.readOnly.of(true),
+      EditorView.editable.of(false),
+      EditorView.theme({
+        '&': { height: '100%', fontSize: '12px' },
+        '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)' },
+        '.cm-gutters': { background: 'var(--bg2)', borderRight: '1px solid var(--bd)' },
+        '.cm-content': { padding: '8px 0' },
+      }),
+    ],
+  });
+  viewContainer.appendChild(compiledView.dom);
 }
+
+window.switchCodeTab = function(key) {
+  compiledTab = key;
+  showCompiled();
+};
 
 function showTerminal() {
   const el = document.getElementById('preview-content');
