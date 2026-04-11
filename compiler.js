@@ -3186,19 +3186,25 @@ ${pad}}`;
         return `_err.message?.toLowerCase().includes('${lower}')`;
       }
 
+      // `error` is bound in every handler body so Clear code can write `error's message` etc.
+      function makeHandlerCtx(baseCtx, extraIndent) {
+        const d = new Set(baseCtx.declared);
+        d.add('error');
+        return { ...baseCtx, declared: d, indent: baseCtx.indent + (extraIndent || 0) };
+      }
+
       if (ctx.lang === 'python') {
         const tryCode = compileBody(node.tryBody, ctx);
         const errVar = '_err';
         const hasTyped = _handlers.some(h => h.errorType);
+        // `error = _err` gives handler bodies access to the caught exception
+        const errBind = (bodyPad) => `${bodyPad}error = ${errVar}\n`;
         let catchBody = '';
         _handlers.forEach((h, i) => {
           const cond = errorTypeToCondition(h.errorType, 'python');
-          // untyped-only: body directly in except (compileBody adds +1 → indent+1)
-          // typed: body inside if/elif/else inside except (need +2 → pass ctx with +1 so compileBody gives +2)
-          const bodyCtx = (cond || (hasTyped && i > 0))
-            ? { ...ctx, declared: new Set(ctx.declared), indent: ctx.indent + 1 }
-            : { ...ctx, declared: new Set(ctx.declared) };
-          const bodyCode = compileBody(h.body, bodyCtx);
+          const bodyCtx = makeHandlerCtx(ctx, (cond || (hasTyped && i > 0)) ? 1 : 0);
+          const bodyPad = padFor({ ...bodyCtx, indent: bodyCtx.indent + 1 });
+          const bodyCode = errBind(bodyPad) + compileBody(h.body, bodyCtx);
           if (i === 0 && !cond) {
             catchBody += bodyCode;
           } else if (i === 0 && cond) {
@@ -3216,14 +3222,14 @@ ${pad}}`;
       const tryCode = compileBody(node.tryBody, ctx, { declared: tryDeclared });
       const errVar = '_err';
       const hasTypedJS = _handlers.some(h => h.errorType);
+      // `const error = _err;` gives handler bodies access to the caught exception
+      const errBind = (bodyPad) => `${bodyPad}const error = ${errVar};\n`;
       let catchBody = '';
       _handlers.forEach((h, i) => {
         const cond = errorTypeToCondition(h.errorType, 'js');
-        // typed handlers: body inside if/else block (need +2 → pass ctx with +1 so compileBody gives +2)
-        const bodyCtx = (cond || (hasTypedJS && i > 0))
-          ? { ...ctx, declared: new Set(ctx.declared), indent: ctx.indent + 1 }
-          : { ...ctx, declared: new Set(ctx.declared) };
-        const bodyCode = compileBody(h.body, bodyCtx);
+        const bodyCtx = makeHandlerCtx(ctx, (cond || (hasTypedJS && i > 0)) ? 1 : 0);
+        const bodyPad = padFor({ ...bodyCtx, indent: bodyCtx.indent + 1 });
+        const bodyCode = errBind(bodyPad) + compileBody(h.body, bodyCtx);
         if (i === 0 && !cond) {
           catchBody += bodyCode;
         } else if (i === 0 && cond) {

@@ -18736,4 +18736,23 @@ describe('Typed error handling — typed handlers', () => {
   });
 });
 
+describe('Error variable binding in handlers', () => {
+  it('binds error variable so error\'s message compiles in JS', () => {
+    const r = compileProgram(
+      "build for javascript backend\ntry:\n  set x to 1\nif error:\n  show error's message"
+    );
+    expect(r.javascript).toContain('const error = _err;');
+    expect(r.javascript).toContain('error.message');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('binds error variable in Python handler', () => {
+    const r = compileProgram(
+      "build for python backend\ntry:\n  set x to 1\nif error:\n  show error's message"
+    );
+    expect(r.python).toContain('error = _err');
+    expect(r.python).toContain('error');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
 run();

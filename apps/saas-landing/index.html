@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse Analytics</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>/* Clear design system v2 */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; margin: 0; }
+.font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+.font-mono, code, pre { font-family: 'Geist Mono', monospace; }
+#app { margin: 0 auto; }
+::selection { background: oklch(var(--color-primary) / 0.15); }
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-base-100: oklch(18% 0.03 255);
+  --color-base-200: oklch(23% 0.03 255);
+  --color-base-300: oklch(29% 0.025 255);
+  --color-base-content: oklch(90% 0.02 240);
+  --color-primary: oklch(64% 0.18 252);
+  --color-primary-content: oklch(98% 0.005 252);
+  --color-secondary: oklch(60% 0.14 190);
+  --color-secondary-content: oklch(10% 0.02 190);
+  --color-accent: oklch(76% 0.15 85);
+  --color-accent-content: oklch(12% 0.02 85);
+  --color-neutral: oklch(26% 0.025 255);
+  --color-neutral-content: oklch(82% 0.02 240);
+  --color-info: oklch(66% 0.14 240);
+  --color-info-content: oklch(10% 0.02 240);
+  --color-success: oklch(62% 0.15 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(76% 0.15 82);
+  --color-warning-content: oklch(15% 0.02 82);
+  --color-error: oklch(62% 0.22 22);
+  --color-error-content: oklch(10% 0.02 22);
+  --radius-box: 0.75rem; --radius-field: 0.5rem; --radius-selector: 0.375rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}</style>
+</head>
+<body class="min-h-screen bg-base-100">
+  <main id="app" class="">
+    <nav class="sticky top-0 z-50 bg-base-100/90 backdrop-blur-md border-b border-base-300/40 shrink-0">
+      <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-8">
+          <span class="font-display text-lg font-bold text-base-content tracking-tight">Pulse</span>
+          <div class="hidden md:flex items-center gap-6">
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="#features">Features</a>
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="#pricing">Pricing</a>
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="/docs">Docs</a>
+            <a class="text-sm font-medium text-base-content/60 hover:text-base-content transition-colors" href="/blog">Blog</a>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <label for="nav-drawer" class="btn btn-ghost btn-sm btn-square md:hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></label>
+          <button class="btn btn-primary btn-sm" id="btn_Start_Free">Start Free</button>
+        </div>
+      </div>
+    </nav>
+    <input id="nav-drawer" type="checkbox" class="hidden peer">
+    <div class="fixed inset-0 z-40 bg-base-100 flex flex-col p-6 pt-20 gap-4 peer-checked:flex hidden md:hidden">
+      <label for="nav-drawer" class="absolute top-4 right-4 btn btn-ghost btn-sm btn-square"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></label>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="#features">Features</a>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="#pricing">Pricing</a>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="/docs">Docs</a>
+      <a class="text-lg font-medium text-base-content/70 hover:text-base-content transition-colors" href="/blog">Blog</a>
+    </div>
+    <div class="bg-base-100 py-24 px-6 text-center flex flex-col items-center gap-6 relative overflow-hidden" style="background:radial-gradient(ellipse 70% 50% at 50% 0%, oklch(from var(--color-primary, oklch(0.55 0.2 260)) l c h / 0.1) 0%, transparent 65%), var(--color-base-100, white)">
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase border border-primary/30 text-primary" style="background:oklch(from var(--color-primary) l c h / 0.08)">Now in public beta</span>
+    <h1 class="font-display text-5xl md:text-6xl font-bold tracking-tight leading-[1.05] text-base-content max-w-3xl text-center mx-auto">Analytics that get out of your way.</h1>
+    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl text-center mx-auto">See what your users do, understand why they do it, and ship the right features faster. No data science degree required.</p>
+    <div class="flex gap-4 flex-wrap justify-center mt-2">
+      <a class="btn btn-primary btn-lg" href="/signup">Start for free</a>
+      <a class="btn btn-outline btn-lg" href="/demo">See a demo</a>
+    </div>
+    </div>
+    <div class="bg-base-200 py-14 lg:py-20 px-6">
+      <div class="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-10">
+    <div class="flex flex-col items-center text-center gap-2">
+    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">4.2B</p>
+    <p class="text-sm font-medium text-base-content/50 uppercase tracking-wider">Events tracked</p>
+    </div>
+    <div class="flex flex-col items-center text-center gap-2">
+    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">28k</p>
+    <p class="text-sm font-medium text-base-content/50 uppercase tracking-wider">Teams using Pulse</p>
+    </div>
+    <div class="flex flex-col items-center text-center gap-2">
+    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">99.98%</p>
+    <p class="text-sm font-medium text-base-content/50 uppercase tracking-wider">Uptime SLA</p>
+    </div>
+    <div class="flex flex-col items-center text-center gap-2">
+    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none"><200ms</p>
+    <p class="text-sm font-medium text-base-content/50 uppercase tracking-wider">Query latency</p>
+    </div>
+      </div>
+    </div>
+    <div class="bg-base-100 py-20 px-6">
+      <div class="max-w-5xl mx-auto text-center mb-10">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-base-content tracking-tight mb-4">Everything you need to understand your users</h2>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">From first click to conversion, Pulse tracks every moment that matters.</p>
+      </div>
+      <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        <div class="lg:col-span-2">
+    <div class="bg-primary text-primary-content rounded-2xl p-10 flex flex-col gap-5 shadow-xl min-h-[280px]">
+    <h3 class="text-lg font-bold text-primary-content leading-snug">Funnel Analysis</h3>
+    <p class="text-sm text-primary-content/70 leading-relaxed">See the drop-off. Fix the leak.</p>
+    <p class="text-sm text-primary-content/80 leading-relaxed">See exactly where users drop off in any multi-step flow. Pulse shows you the exact step, the exact percentage, and which user segments are leaving. Fix the leaks before they cost you revenue.</p>
+    </div>
+        </div>
+        <div class="flex flex-col gap-6">
+    <div class="bg-teal-700/80 text-teal-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-teal-400/20">
+    <h3 class="text-lg font-bold text-white leading-snug">Session Replay</h3>
+    <p class="text-sm text-white/80 leading-relaxed">Watch real user sessions to understand confusion, rage clicks, and the paths you never expected.</p>
+    </div>
+    <div class="bg-violet-800/80 text-violet-50 rounded-2xl p-7 flex flex-col gap-3 shadow-lg border border-violet-400/20">
+    <h3 class="text-lg font-bold text-white leading-snug">A/B Testing</h3>
+    <p class="text-sm text-white/80 leading-relaxed">Ship variants to a percentage of traffic. Get statistical significance. Stop guessing.</p>
+    </div>
+        </div>
+      </div>
+    </div>
+    <div class="bg-neutral text-neutral-content py-16 lg:py-24 px-6 border-y border-base-content/8">
+      <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+    <div class="bg-white/5 rounded-2xl p-7 flex flex-col gap-3 border border-white/10 hover:border-primary/40 transition-colors">
+    <h3 class="text-lg font-bold text-white leading-snug">Cohort Analysis</h3>
+    <p class="text-sm text-white/80 leading-relaxed">Group users by behavior, acquisition source, or any property. Track retention over time.</p>
+    </div>
+    <div class="bg-white/5 rounded-2xl p-7 flex flex-col gap-3 border border-white/10 hover:border-primary/40 transition-colors">
+    <h3 class="text-lg font-bold text-white leading-snug">Real-Time Dashboard</h3>
+    <p class="text-sm text-white/80 leading-relaxed">See active users, live events, and conversion rates update as they happen.</p>
+    </div>
+    <div class="bg-white/5 rounded-2xl p-7 flex flex-col gap-3 border border-white/10 hover:border-primary/40 transition-colors">
+    <h3 class="text-lg font-bold text-white leading-snug">Slack Alerts</h3>
+    <p class="text-sm text-white/80 leading-relaxed">Get notified when a key metric spikes or drops. React before your users tweet about it.</p>
+    </div>
+      </div>
+    </div>
+    <div class="bg-neutral text-neutral-content py-16 px-6 border-y border-base-content/8">
+      <div class="max-w-4xl mx-auto">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-neutral-content tracking-tight mb-4">You are flying blind without the right data</h2>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">Your dashboard shows pageviews. Your users are abandoning the checkout at step 3. You have no idea.</p>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">Most analytics tools drown you in numbers but never answer the question that matters: why did that happen?</p>
+    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">Pulse connects the dots. It shows you the full user journey from first visit to churned customer, with session context at every step.</p>
+      </div>
+    </div>
+    <div class="bg-base-200/50 py-16 lg:py-24 px-6">
+      <div class="max-w-5xl mx-auto text-center mb-10">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-base-content tracking-tight mb-4">Loved by product teams at fast-moving companies</h2>
+      </div>
+      <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+    <div class="bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/50 shadow-md hover:shadow-lg transition-shadow relative">
+      <div class="text-4xl leading-none text-base-content/20 font-serif mb-1">“</div>
+      <div class="flex gap-0.5 text-amber-400 text-sm mb-2">★★★★★</div>
+    <p class="text-sm text-base-content/60 leading-relaxed">We cut our checkout abandonment by 34% in 6 weeks. Pulse showed us exactly which form field was killing conversions. We would never have found it otherwise.</p>
+    <p class="text-sm text-base-content/60 leading-relaxed">Sarah Chen</p>
+    <span class="text-sm text-base-content/60 leading-snug">Head of Product, Cartify</span>
+    </div>
+    <div class="bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/50 shadow-md hover:shadow-lg transition-shadow relative">
+      <div class="text-4xl leading-none text-base-content/20 font-serif mb-1">“</div>
+      <div class="flex gap-0.5 text-amber-400 text-sm mb-2">★★★★★</div>
+    <p class="text-sm text-base-content/60 leading-relaxed">Finally an analytics tool where I can get from question to answer in under 5 minutes. Our old tool required a data analyst and a 3-day wait for any custom query.</p>
+    <p class="text-sm text-base-content/60 leading-relaxed">Marcus Webb</p>
+    <span class="text-sm text-base-content/60 leading-snug">Growth Lead, Teamflow</span>
+    </div>
+    <div class="bg-base-100 rounded-2xl p-7 flex flex-col gap-4 border border-base-300/50 shadow-md hover:shadow-lg transition-shadow relative">
+      <div class="text-4xl leading-none text-base-content/20 font-serif mb-1">“</div>
+      <div class="flex gap-0.5 text-amber-400 text-sm mb-2">★★★★★</div>
+    <p class="text-sm text-base-content/60 leading-relaxed">The session replay feature alone was worth it. We watched 20 sessions and rewrote our onboarding. Activation went from 31% to 58% in one sprint.</p>
+    <p class="text-sm text-base-content/60 leading-relaxed">Priya Kapoor</p>
+    <span class="text-sm text-base-content/60 leading-snug">CEO, Docsend Pro</span>
+    </div>
+      </div>
+    </div>
+    <div class="bg-base-200 py-20 px-6">
+      <div class="max-w-5xl mx-auto text-center mb-10">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-base-content tracking-tight mb-4">Simple, predictable pricing</h2>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">All plans include unlimited team members. No per-seat charges.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-start mt-6">
+    <div class="bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200">
+    <h3 class="text-xl font-bold text-base-content">Starter</h3>
+    <p class="font-display text-4xl font-bold tracking-tight text-primary">Free</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>Up to 10k events/month</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>30-day data retention</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>Core funnels and dashboards</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>Community support</p>
+    <a class="btn btn-outline btn-primary btn-sm mt-auto" href="/signup">Get started free</a>
+    </div>
+    <div class="bg-primary text-primary-content rounded-2xl p-8 flex flex-col gap-4 shadow-2xl flex-1 ring-2 ring-primary/20 ring-offset-2 ring-offset-base-200 scale-[1.02]">
+    <h3 class="text-xl font-bold text-primary-content">Growth</h3>
+    <p class="font-display text-4xl font-bold tracking-tight text-primary-content">$49 / month</p>
+    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>5M events/month</p>
+    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>12-month data retention</p>
+    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>Session replay (1k/month)</p>
+    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>A/B testing</p>
+    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>Slack and email alerts</p>
+    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>Priority email support</p>
+    <a class="btn btn-sm bg-white text-primary font-semibold mt-auto" href="/signup">Start free trial</a>
+    </div>
+    <div class="bg-base-100 rounded-2xl p-8 flex flex-col gap-4 border border-base-300/50 flex-1 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200">
+    <h3 class="text-xl font-bold text-base-content">Enterprise</h3>
+    <p class="font-display text-4xl font-bold tracking-tight text-primary">Custom</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>Unlimited events</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>Unlimited data retention</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>SSO and SCIM</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>Custom data pipelines</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>Dedicated SLA</p>
+    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>White-glove onboarding</p>
+    <a class="btn btn-outline btn-primary btn-sm mt-auto" href="/contact">Talk to sales</a>
+    </div>
+      </div>
+    </div>
+    <div class="bg-base-100 py-16 lg:py-24 px-6">
+      <div class="max-w-5xl mx-auto text-center mb-10">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold text-base-content tracking-tight mb-4">Frequently asked questions</h2>
+    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">Everything you need to know about Pulse Analytics.</p>
+      </div>
+      <div class="max-w-3xl mx-auto flex flex-col gap-3">
+        <div class="collapse collapse-arrow bg-base-200/50 border border-base-300/40">
+          <input type="radio" name="faq" checked />
+          <div class="collapse-title font-semibold text-base">Q1</div>
+          <div class="collapse-content text-sm text-base-content/70"><p>How much does Pulse cost? Pulse is free for up to 10k events per month. Our Growth plan is $49/month with 5M events, session replay, and A/B testing. Enterprise plans are custom-priced with unlimited everything. All plans include unlimited team members.</p></div>
+        </div>
+        <div class="collapse collapse-arrow bg-base-200/50 border border-base-300/40">
+          <input type="radio" name="faq" />
+          <div class="collapse-title font-semibold text-base">Q2</div>
+          <div class="collapse-content text-sm text-base-content/70"><p>Is my data secure? All data is encrypted at rest and in transit. We are SOC 2 Type II certified and GDPR compliant. Enterprise customers get SSO, SCIM provisioning, and dedicated infrastructure. We never sell your data to third parties.</p></div>
+        </div>
+        <div class="collapse collapse-arrow bg-base-200/50 border border-base-300/40">
+          <input type="radio" name="faq" />
+          <div class="collapse-title font-semibold text-base">Q3</div>
+          <div class="collapse-content text-sm text-base-content/70"><p>What integrations do you support? Pulse integrates with Slack, Segment, Snowflake, BigQuery, Amplitude, and 40+ other tools. Our REST API and webhooks let you connect to anything. Most integrations take under 5 minutes to set up.</p></div>
+        </div>
+        <div class="collapse collapse-arrow bg-base-200/50 border border-base-300/40">
+          <input type="radio" name="faq" />
+          <div class="collapse-title font-semibold text-base">Q4</div>
+          <div class="collapse-content text-sm text-base-content/70"><p>How long does onboarding take? Most teams are up and running in under 15 minutes. Add our snippet to your site, and events start flowing immediately. Enterprise customers get white-glove onboarding with a dedicated solutions engineer.</p></div>
+        </div>
+        <div class="collapse collapse-arrow bg-base-200/50 border border-base-300/40">
+          <input type="radio" name="faq" />
+          <div class="collapse-title font-semibold text-base">Q5</div>
+          <div class="collapse-content text-sm text-base-content/70"><p>Can I export my data? Yes. You own your data. Export to CSV, JSON, or stream directly to your data warehouse via our Snowflake and BigQuery connectors. There are no lock-in contracts and no export fees.</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="bg-primary text-primary-content py-20 lg:py-28 px-6 text-center flex flex-col items-center gap-6">
+    <h2 class="font-display text-3xl lg:text-4xl font-bold tracking-tight text-primary-content max-w-3xl text-center mx-auto">Stop guessing. Start knowing.</h2>
+    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">Free forever on the starter plan. No credit card required.</p>
+    <a class="btn btn-lg bg-base-100 text-primary hover:bg-base-200" href="/signup">Create free account</a>
+    </div>
+    <div class="bg-base-200 border-t border-base-300/40 py-12 lg:py-16 px-6">
+      <div class="max-w-6xl mx-auto">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+          <div class="col-span-2 md:col-span-1">
+            <p class="text-lg font-bold text-base-content tracking-tight">Pulse</p>
+          </div>
+          <div class="flex flex-col gap-2">
+            <p class="text-sm font-semibold text-base-content/50 uppercase tracking-wider mb-3">Product</p>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="#features">Features</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="#pricing">Pricing</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/integrations">Integrations</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/changelog">Changelog</a>
+          </div>
+          <div class="flex flex-col gap-2">
+            <p class="text-sm font-semibold text-base-content/50 uppercase tracking-wider mb-3">Resources</p>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/docs">Documentation</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/blog">Blog</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/api">API Reference</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/status">Status</a>
+          </div>
+          <div class="flex flex-col gap-2">
+            <p class="text-sm font-semibold text-base-content/50 uppercase tracking-wider mb-3">Company</p>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/about">About</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/careers">Careers</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/contact">Contact</a>
+            <a class="text-sm text-base-content/60 hover:text-base-content transition-colors" href="/privacy">Privacy</a>
+          </div>
+        </div>
+        <div class="border-t border-base-300/40 mt-8 pt-6 text-center">
+          <p class="text-sm text-base-content/40">2026 Pulse Analytics. All rights reserved.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ┌─────────────────────────────────────────────┐
+ │         CLEAR APP — Architecture            │
+ └─────────────────────────────────────────────┘
+
+ PAGES:
+   'Pulse Analytics' at / (line 7) -->
+  <script>
+document.title = "Pulse Analytics";
+
+// --- State ---
+// Reactive model: _state holds all data. _recompute() syncs state to DOM.
+// Input listeners update _state, buttons run actions, both call _recompute().
+let _state = {
+};
+
+// --- Recompute derived values and update displays ---
+function _recompute() {
+}
+
+// --- Input listeners ---
+
+// --- Button handlers ---
+document.getElementById('btn_Start_Free').addEventListener('click', function() {
+  console.log("signup clicked");
+  _recompute();
+});
+
+_recompute();
+
+  </script>
+
+</body>
+</html>

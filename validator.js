@@ -208,7 +208,10 @@ function validateForwardReferences(body, errors) {
         case NodeType.TRY_HANDLE:
           checkNode(node.tryBody, localDefined);
           if (node.handlers) {
-            node.handlers.forEach(h => checkNode(h.body, localDefined));
+            // `error` is always bound in handler bodies
+            const handlerScope = new Set(localDefined);
+            handlerScope.add('error');
+            node.handlers.forEach(h => checkNode(h.body, handlerScope));
           } else {
             if (node.errorVar) localDefined.add(node.errorVar);
             checkNode(node.handleBody, localDefined);
