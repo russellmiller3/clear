@@ -28,6 +28,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 17: Pareto 20 + IDE Chat v2](#session-17-pareto-20--ide-chat-v2-2026-04-10) | Context array checklist is MANDATORY for new presets, historyKeymap extraction for undo, Array.isArray guard for image+text messages, SVG sanitization strips scripts |
 | [Session 18: ECharts Analytics Dashboard + Chart Syntax Upgrade](#session-18-echarts-analytics-dashboard--chart-syntax-upgrade-2026-04-10) | overflow-hidden collapses flex children, flex-col vs space-y-6 for scrollable content, ECharts init needs visible container, chart groupBy for all types, type-first chart syntax, removing `area` synonym from section, metric_card trend detection |
 | [Session 19: Tests, Charts, Blog, Images](#session-19-tests-charts-blog-images-2026-04-10) | Component test fixes (4 distinct bugs), `photo`/`picture` synonym collisions, image element `ui` object shape, seed auto-dedup at compiler level, `db.findAll()` not `db.getAll()`, chart subtitle/stacked modifiers |
+| [Session 19b: Display as Cards](#session-19b-display-as-cards-2026-04-10) | `author` field must match before `name`/`title` in heuristics, `ui.tag = 'cards'` is third option, smart field detection by column name |
 
 ---
 
@@ -539,3 +540,14 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Three new presets:** `blog_grid` (card listing), `blog_card` (post card), `blog_article` (Medium-style single post).
 - **Blog article uses `max-w-3xl mx-auto`** for comfortable reading width.
 - **Blog cards use `hover:-translate-y-0.5 transition-all`** for subtle lift effect.
+
+---
+
+## Session 19b: Display as Cards (2026-04-10)
+
+### `display X as cards` — New Display Format
+- **Field role detection order matters.** `author_name` contains `name` which would match as `title` if checked first. Must check `author`/`date`/`created` BEFORE `title`/`name`/`heading`.
+- **`ui.tag` now has 3 values:** `table`, `cards`, `output`. The parser `displayNode()` sets this from the format string.
+- **Smart heuristics by column name** — image/avatar/url fields → images, category/tag/status → badges, title/name → headings, excerpt/description/body → truncated text, author/date → meta row. Fallback: first unmatched field → title, second → body.
+- **Auto-exclude internal fields** — When no `showing` columns specified, auto-filters out `id` and fields ending with `_at` or `_at_date` (timestamps).
+- **Card HTML uses same classes as `blog_card` preset** — `rounded-2xl`, `border-base-300/40`, `hover:shadow-lg hover:-translate-y-0.5` for visual consistency between static and dynamic cards.

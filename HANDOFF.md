@@ -1,8 +1,8 @@
 # Handoff — 2026-04-10
 
 ## Current State
-- **Branch:** `main` (just merged `feature/tests-charts-blog`)
-- **Tests:** 1511 passing / 0 failing
+- **Branch:** `main` (just merged `feature/fullstack-blog`)
+- **Tests:** 1515 passing / 0 failing
 - **Synonym version:** 0.13.0
 
 ## What Was Done This Session
@@ -48,24 +48,30 @@
 - `overflow-hidden` on card containers can collapse ECharts canvases — removed from chart cards, still on app_table/app_list (fine for those).
 - Blog demo apps have compiled `index.html` checked in — these are build artifacts but useful as references.
 
+### Display as Cards (New)
+- **`display X as cards`** — New display format renders API data as responsive 3-column card grid
+- **Smart field detection** — Auto-detects: `image_url` → hero, `avatar` → circle, `category` → badge, `title` → heading, `excerpt` → body, `author` → meta
+- **Priority: `author` checked before `name/title`** — prevents `author_name` matching as card title
+
+### Full-Stack Blog App
+- `apps/blog-fullstack/main.clear` — CRUD backend + card grid + New Post modal
+
 ## Next Steps (Priority Order)
-1. **Multi-series bar charts** — Currently stacked works with single data source. True multi-series (e.g. opened+closed by week) needs syntax for multiple `showing` clauses or computed series fields.
-2. **Chart time range tabs** — TailAdmin has "12 months / 30 days / 7 days" tabs above charts. Would need new Clear syntax for tab-filtered data.
-3. **Blog grid with real backend** — Current blog apps are static. Full-stack blog would need CRUD for posts + image URLs.
-4. **Component composition edge cases** — Tests pass now but block-form components with complex children (nested sections, charts) untested.
+1. **Multi-series bar charts** — True multi-series (opened+closed by week) needs syntax for multiple `showing` clauses
+2. **Chart time range tabs** — "12 months / 30 days / 7 days" tabs above charts
+3. **Card template customization** — Explicit field role mapping instead of name-based auto-detection
+4. **Component composition edge cases** — Block-form components with complex children untested
 
 ## Files to Read First
 | File | Why |
 |------|-----|
+| `compiler.js` — display cards reactive (~line 4960) | Smart field detection + card HTML generation |
 | `compiler.js` — seed dedup (~line 1664) | Auto-injected findAll guard at top of seed endpoints |
-| `compiler.js` — `isReactiveApp()` (~line 4580) | COMPONENT_USE + uppercase SHOW+CALL detection |
-| `compiler.js` — blog presets in BUILTIN_PRESET_CLASSES (~line 7422) | blog_grid, blog_card, blog_article CSS |
-| `parser.js` — `parseImage()` (~line 3896) | Image element parsing with modifiers |
-| `parser.js` — `parseChartRemainder()` (~line 4711) | Subtitle + stacked parsing |
-| `apps/blog-landing/main.clear` | Blog card grid reference app |
-| `apps/blog-article/main.clear` | Medium-style article reference app |
+| `compiler.js` — blog presets in BUILTIN_PRESET_CLASSES (~line 7450) | blog_grid, blog_card, blog_article CSS |
+| `parser.js` — `displayNode()` (~line 487) | cards tag detection |
+| `apps/blog-fullstack/main.clear` | Full-stack blog with display-as-cards |
 
 ## Resume Prompt
 > Read `HANDOFF.md` and continue from where we left off.
 >
-> Branch: `main`. All 1511 tests passing. New features: image element, chart subtitle/stacked, blog presets, seed auto-dedup, component test fixes. Next priorities: multi-series charts, chart time-range tabs, full-stack blog app.
+> Branch: `main`. All 1515 tests passing. New feature: `display X as cards` renders API data as card grids with smart field detection. Full-stack blog app demonstrates it. Next priorities: multi-series charts, chart time-range tabs, card template customization.

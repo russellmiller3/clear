@@ -1,0 +1,120 @@
+# Blog — full-stack CRUD blog with card grid + article view
+build for web and javascript backend
+
+theme 'ivory'
+
+# ── Database ──────────────────────────────────────────────────────────────────
+
+database is local memory
+
+create a Posts table:
+  title, required
+  excerpt
+  body, required
+  category, default 'Article'
+  author_name, default 'Anonymous'
+  author_avatar
+  image_url
+  created_at_date, auto
+
+# ── Backend ───────────────────────────────────────────────────────────────────
+
+allow cross-origin requests
+log every request
+
+when user calls GET /api/posts:
+  all_posts = get all Posts
+  send back all_posts
+
+when user calls GET /api/posts/:id:
+  post = look up records in Posts table where id is incoming's id
+  if post is nothing then send back 'Post not found' status 404
+  send back post
+
+when user calls POST /api/posts sending post_data:
+  validate post_data:
+    title is text, required, min 1, max 200
+    body is text, required, min 1
+  new_post = save post_data as new Post
+  send back new_post
+
+when user calls DELETE /api/posts/:id:
+  requires auth
+  delete the Post with this id
+  send back 'deleted'
+
+when user calls POST /api/seed:
+  create p1:
+    title is 'Boost your conversion rate'
+    excerpt is 'Learn the best practices for improving your site conversion rates with proven strategies.'
+    body is 'Conversion rate optimization is one of the most impactful things you can do for your business. Start by understanding your funnel — where do users drop off? Use A/B testing to validate hypotheses. Small changes to copy, button placement, and page load speed can yield 20-30% improvements. The key is to measure everything and iterate quickly.'
+    category is 'Article'
+    author_name is 'Lindsay Walton'
+    author_avatar is 'https://randomuser.me/api/portraits/women/44.jpg'
+    image_url is 'https://images.unsplash.com/photo-1496128858413-b36217c2ce36?w=600&h=340&fit=crop'
+  save p1 as new Post
+  create p2:
+    title is 'How to use search engine optimization'
+    excerpt is 'A deep dive into modern SEO techniques that actually work in 2026.'
+    body is 'SEO has evolved dramatically. Gone are the days of keyword stuffing and link farms. Modern SEO focuses on user intent, content quality, and technical performance. Core Web Vitals are now a ranking factor. Structured data helps search engines understand your content. The best SEO strategy is to create genuinely useful content that answers real questions.'
+    category is 'Tutorial'
+    author_name is 'Tom Cook'
+    author_avatar is 'https://randomuser.me/api/portraits/men/32.jpg'
+    image_url is 'https://images.unsplash.com/photo-1547586696-ea22b4d4235d?w=600&h=340&fit=crop'
+  save p2 as new Post
+  create p3:
+    title is 'Improve your customer experience'
+    excerpt is 'Real results from companies that invested in customer experience design.'
+    body is 'Customer experience is the new competitive advantage. Companies that invest in CX see 1.5x higher customer lifetime value. Start with journey mapping — understand every touchpoint from discovery to renewal. Use NPS and CSAT surveys, but more importantly, watch session recordings. The gap between what customers say and what they do is where the real insights live.'
+    category is 'Case Study'
+    author_name is 'Dries Vincent'
+    author_avatar is 'https://randomuser.me/api/portraits/men/64.jpg'
+    image_url is 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?w=600&h=340&fit=crop'
+  save p3 as new Post
+  send back 'seeded'
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+
+page 'Blog' at '/':
+
+  posts = []
+  selected_post = nothing
+
+  on page load:
+    send nothing to '/api/seed'
+    get posts from '/api/posts'
+
+  section 'Nav' with style page_navbar:
+    text 'Acme Blog'
+    text 'Articles'
+    text 'Tutorials'
+    text 'Podcast'
+    button 'New Post':
+      show 'New Post'
+
+  section 'Hero' centered, padded:
+    heading 'From the blog'
+    text 'Learn how to grow your business with our expert advice.'
+
+  section 'Posts' with style blog_grid:
+    display posts as cards showing image_url, category, title, excerpt, author_name, author_avatar
+
+  section 'Footer' with style page_footer:
+    text '© 2026 Acme Blog. All rights reserved.'
+
+  section 'New Post' as modal:
+    section 'Form' with style form:
+      subheading 'Write a new post'
+      'Title' as text input saves to new_title
+      'Category' as dropdown with ['Article', 'Tutorial', 'Case Study', 'Opinion'] saves to new_category
+      'Excerpt' as text area saves to new_excerpt
+      'Body' as text area saves to new_body
+      'Author Name' as text input saves to new_author
+      'Image URL' as text input saves to new_image
+      button 'Publish':
+        new_post_data = collect new_title, new_category, new_excerpt, new_body, new_author, new_image
+        send new_post_data to '/api/posts'
+        get posts from '/api/posts'
+        hide 'New Post'
+      button 'Cancel':
+        hide 'New Post'

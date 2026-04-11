@@ -490,7 +490,7 @@ function displayNode(expression, format, label, line) {
     ? autoLabelFromName(expression.name)
     : 'Output');
   const ui = {
-    tag: format === 'table' ? 'table' : 'output',
+    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : 'output',
     id: `output_${sanitizeForId(displayLabel.replace(/\s+/g, '_'))}`,
     label: displayLabel,
   };

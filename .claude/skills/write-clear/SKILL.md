@@ -298,6 +298,13 @@ area chart 'Growth' showing quarterly_data
 'Revenue' bar chart showing sales
 ```
 
+### Display as Cards (dynamic data)
+```clear
+# Render API data as card grid (instead of table)
+display posts as cards showing image_url, category, title, excerpt, author_name
+```
+Field roles auto-detected by name: `image_url` → hero image, `category` → badge, `title` → heading, `excerpt` → body text, `author` → meta row.
+
 ### Stat cards with trend indicators
 ```clear
 section 'Stats' as 4 columns:

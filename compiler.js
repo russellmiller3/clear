@@ -4952,6 +4952,48 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`      _tableEl.querySelector('tbody').innerHTML = '';`);
       lines.push(`    }`);
       lines.push(`  }`);
+    } else if (disp.format === 'cards') {
+      // Reactive card grid: render array of objects as styled cards
+      lines.push(`  {`);
+      lines.push(`    const _cardsEl = document.getElementById('${outputId}_cards');`);
+      lines.push(`    const _data = ${val};`);
+      const cardColsCode = disp.columns
+        ? JSON.stringify(disp.columns)
+        : 'Object.keys(_data[0]).filter(k => k !== "id" && !k.endsWith("_at") && !k.endsWith("_at_date"))';
+      lines.push(`    if (_cardsEl && Array.isArray(_data) && _data.length > 0) {`);
+      lines.push(`      const _keys = ${cardColsCode};`);
+      // Smart card rendering: detect field roles by name/content
+      lines.push(`      _cardsEl.innerHTML = _data.map(row => {`);
+      lines.push(`        let _img = '', _badge = '', _title = '', _body = '', _meta = '';`);
+      lines.push(`        for (const k of _keys) {`);
+      lines.push(`          const v = row[k] != null ? String(row[k]) : '';`);
+      lines.push(`          if (!v) continue;`);
+      lines.push(`          if ((k.includes('image') || k.includes('avatar') || k.includes('photo') || k.includes('url') || k.includes('img') || k.includes('thumbnail')) && (v.startsWith('http') || v.startsWith('/'))) {`);
+      lines.push(`            if (k.includes('avatar')) { _meta += '<img src="' + _esc(v) + '" alt="" class="w-10 h-10 rounded-full object-cover" />'; }`);
+      lines.push(`            else { _img = '<img src="' + _esc(v) + '" alt="" class="w-full h-48 object-cover" loading="lazy" />'; }`);
+      lines.push(`          } else if (k.includes('category') || k.includes('tag') || k.includes('type') || k.includes('badge') || k.includes('status')) {`);
+      lines.push(`            _badge = '<span class="badge badge-info badge-sm">' + _esc(v) + '</span>';`);
+      lines.push(`          } else if (k.includes('author') || k.includes('date') || k.includes('created')) {`);
+      lines.push(`            _meta += '<span class="text-xs text-base-content/50 uppercase">' + _esc(v) + '</span>';`);
+      lines.push(`          } else if (k.includes('title') || k.includes('name') || k.includes('heading')) {`);
+      lines.push(`            _title = '<h3 class="text-lg font-semibold text-base-content mt-2">' + _esc(v) + '</h3>';`);
+      lines.push(`          } else if (k.includes('excerpt') || k.includes('description') || k.includes('summary') || k.includes('body')) {`);
+      lines.push(`            const _short = v.length > 120 ? v.substring(0, 120) + '...' : v;`);
+      lines.push(`            _body = '<p class="text-sm text-base-content/60 mt-2">' + _esc(_short) + '</p>';`);
+      lines.push(`          } else if (!_title) {`);
+      lines.push(`            _title = '<h3 class="text-lg font-semibold text-base-content mt-2">' + _esc(v) + '</h3>';`);
+      lines.push(`          } else if (!_body) {`);
+      lines.push(`            const _short = v.length > 120 ? v.substring(0, 120) + '...' : v;`);
+      lines.push(`            _body = '<p class="text-sm text-base-content/60 mt-2">' + _esc(_short) + '</p>';`);
+      lines.push(`          }`);
+      lines.push(`        }`);
+      lines.push(`        const _metaRow = _meta ? '<div class="flex items-center gap-3 mt-4">' + _meta + '</div>' : '';`);
+      lines.push(`        return '<div class="bg-base-100 rounded-2xl overflow-hidden border border-base-300/40 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">' + _img + '<div class="p-6 flex flex-col flex-1">' + _badge + _title + _body + _metaRow + '</div></div>';`);
+      lines.push(`      }).join('');`);
+      lines.push(`    } else if (_cardsEl) {`);
+      lines.push(`      _cardsEl.innerHTML = '';`);
+      lines.push(`    }`);
+      lines.push(`  }`);
     } else {
       const formatExpr = disp.format === 'dollars' ? `_clear_format(${val}, 'dollars')`
         : disp.format === 'percent' ? `_clear_format(${val}, 'percent')`
@@ -5947,6 +5989,8 @@ ${options}
         </table>
       </div>
     </div>`);
+          } else if (ui.tag === 'cards') {
+            parts.push(`    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto" id="${displayId}_cards"></div>`);
           } else if (inUserSection) {
             // Inside a styled card (stat_card etc.) — render just the number inline, no extra wrapper
             parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
