@@ -103,6 +103,7 @@ export function validate(ast) {
   validateAgentTools(ast.body, errors);
   validateCallTargets(ast.body, errors);
   validateMemberAccessTypes(ast.body, warnings);
+  validateTypedCallArgs(ast.body, warnings);
   return { errors, warnings };
 }
 
@@ -1476,3 +1477,87 @@ function validateMemberAccessTypes(body, warnings) {
   checkNodes(body);
 }
 
+
+// =============================================================================
+// VALIDATE TYPE ANNOTATIONS: Warn on literal type mismatches at call sites.
+// Only checks literal args (string, number, boolean) against typed params.
+// =============================================================================
+function validateTypedCallArgs(body, warnings) {
+  // Build map of typed function signatures
+  const typedFns = {};
+  function collectDefs(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      if (node.type === NodeType.FUNCTION_DEF && node.params?.some(p => p.type)) {
+        typedFns[node.name] = node.params;
+      }
+      if (Array.isArray(node.body)) collectDefs(node.body);
+      if (Array.isArray(node.thenBranch)) collectDefs(node.thenBranch);
+      if (Array.isArray(node.otherwiseBranch)) collectDefs(node.otherwiseBranch);
+      if (node.handlers) node.handlers.forEach(h => collectDefs(h.body));
+    }
+  }
+  collectDefs(body);
+
+  const literalType = (expr) => {
+    if (!expr) return null;
+    if (expr.type === 'literal_string') return 'text';
+    if (expr.type === 'literal_number') return 'number';
+    if (expr.type === 'literal_boolean') return 'boolean';
+    return null;
+  };
+
+  const compatible = (expected, actual) => {
+    if (!expected || !actual) return true;
+    if (expected === actual) return true;
+    return false;
+  };
+
+  function checkExprs(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      checkNodeExprs(node);
+      if (Array.isArray(node.body)) checkExprs(node.body);
+      if (Array.isArray(node.thenBranch)) checkExprs(node.thenBranch);
+      if (Array.isArray(node.otherwiseBranch)) checkExprs(node.otherwiseBranch);
+      if (node.handlers) node.handlers.forEach(h => checkExprs(h.body));
+    }
+  }
+
+  function checkCall(expr, line) {
+    if (!expr || expr.type !== 'call' || !expr.name) return;
+    const params = typedFns[expr.name];
+    if (!params) return;
+    for (let i = 0; i < Math.min(params.length, (expr.args || []).length); i++) {
+      const expectedType = params[i].type;
+      if (!expectedType) continue;
+      const argType = literalType(expr.args[i]);
+      if (argType && !compatible(expectedType, argType)) {
+        warnings.push({
+          line,
+          message: `Type mismatch: '${params[i].name}' expects ${expectedType} but got ${argType} in call to '${expr.name}()'`
+        });
+      }
+    }
+    for (const arg of expr.args || []) checkExprForCalls(arg, line);
+  }
+
+  function checkExprForCalls(expr, line) {
+    if (!expr) return;
+    if (expr.type === 'call') checkCall(expr, line);
+    if (expr.left) checkExprForCalls(expr.left, line);
+    if (expr.right) checkExprForCalls(expr.right, line);
+    if (expr.object) checkExprForCalls(expr.object, line);
+    if (expr.args) expr.args.forEach(a => checkExprForCalls(a, line));
+  }
+
+  function checkNodeExprs(node) {
+    if (!node) return;
+    const line = node.line;
+    if (node.expression) checkExprForCalls(node.expression, line);
+    if (node.condition) checkExprForCalls(node.condition, line);
+    if (node.value) checkExprForCalls(node.value, line);
+  }
+
+  checkExprs(body);
+}
