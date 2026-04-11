@@ -394,7 +394,7 @@ const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        filename: { type: 'string', description: 'One of: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md' },
+        filename: { type: 'string', description: 'One of: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, meph-memory.md' },
         startLine: { type: 'number', description: 'Start line (1-based). Omit to get full file or TOC.' },
         endLine: { type: 'number', description: 'End line (1-based, inclusive). Omit to get full file or TOC.' },
       },
@@ -441,15 +441,25 @@ const TOOLS = [
     },
   },
   {
-    name: 'write_file',
-    description: 'Write text content to a file in the project root. You can overwrite .clear files and requests.md. You can create new files of any allowed type. You CANNOT overwrite other existing files. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.',
+    name: 'edit_file',
+    description: `Edit a file in the project root. Actions:
+- "append": add content to the end of the file (safest for logs/requests)
+- "insert": add content at a specific line number
+- "replace": find a string and replace it (first occurrence, or all if replace_all is true)
+- "overwrite": replace the entire file content (use sparingly)
+- "read": read the current file content (returns content + line count)
+You can modify .clear files and requests.md. You can create new files of any allowed type. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.`,
     input_schema: {
       type: 'object',
       properties: {
-        filename: { type: 'string', description: 'Filename relative to project root, e.g. "temp-app.clear" or "output.json". Must use an allowed extension.' },
-        content: { type: 'string', description: 'The text content to write.' },
+        filename: { type: 'string', description: 'Filename relative to project root, e.g. "requests.md" or "temp-app.clear".' },
+        action: { type: 'string', enum: ['append', 'insert', 'replace', 'overwrite', 'read'], description: 'The edit action to perform.' },
+        content: { type: 'string', description: 'The content to append/insert/overwrite with. Not needed for "read" action.' },
+        line: { type: 'number', description: 'Line number for "insert" action (1-based). Content is inserted before this line.' },
+        find: { type: 'string', description: 'String to find for "replace" action.' },
+        replace_all: { type: 'boolean', description: 'If true, replace all occurrences. Default: false (first only).' },
       },
-      required: ['filename', 'content'],
+      required: ['filename', 'action'],
     },
   },
   {
@@ -623,7 +633,7 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ stopped: true });
 
       case 'read_file': {
-        const READABLE = ['SYNTAX.md', 'AI-INSTRUCTIONS.md', 'PHILOSOPHY.md', 'USER-GUIDE.md', 'requests.md'];
+        const READABLE = ['SYNTAX.md', 'AI-INSTRUCTIONS.md', 'PHILOSOPHY.md', 'USER-GUIDE.md', 'requests.md', 'meph-memory.md'];
         const fname = input.filename;
         if (!READABLE.includes(fname)) return JSON.stringify({ error: `Can only read: ${READABLE.join(', ')}` });
         const fpath = join(ROOT_DIR, fname);
@@ -660,23 +670,72 @@ app.post('/api/chat', async (req, res) => {
         });
       }
 
-      case 'write_file': {
+      case 'edit_file': {
         // Restrict to safe extensions in project root only — no path traversal
-        if (!input || !input.filename) return JSON.stringify({ error: 'write_file requires a filename parameter. Usage: write_file({ filename: "requests.md", content: "text" })' });
-        if (input.content == null) return JSON.stringify({ error: 'write_file requires a content parameter' });
+        if (!input || !input.filename) return JSON.stringify({ error: 'edit_file requires a filename parameter.' });
+        if (!input.action) return JSON.stringify({ error: 'edit_file requires an action: append, insert, replace, overwrite, or read.' });
         const safeName = String(input.filename).replace(/[^a-zA-Z0-9._-]/g, '-');
         const ALLOWED_EXT = ['.clear', '.md', '.json', '.txt', '.csv', '.html', '.css', '.js', '.py'];
         const ext = safeName.includes('.') ? '.' + safeName.split('.').pop() : '';
         if (!ALLOWED_EXT.includes(ext)) return JSON.stringify({ error: `Extension '${ext}' not allowed. Use: ${ALLOWED_EXT.join(', ')}` });
         const dest = join(ROOT_DIR, safeName);
-        // Safety: only allow overwriting .clear files and requests.md
-        // Other existing files cannot be overwritten — only new files can be created
-        const WRITABLE_EXISTING = ['requests.md'];
-        if (existsSync(dest) && ext !== '.clear' && !WRITABLE_EXISTING.includes(safeName)) {
-          return JSON.stringify({ error: `Cannot overwrite existing file '${safeName}'. You can only modify .clear files and requests.md. New files are fine.` });
+        const fileExists = existsSync(dest);
+        // Safety: only allow modifying .clear files and requests.md
+        const WRITABLE_EXISTING = ['requests.md', 'meph-memory.md'];
+        const canWrite = !fileExists || ext === '.clear' || WRITABLE_EXISTING.includes(safeName);
+        if (!canWrite && input.action !== 'read') {
+          return JSON.stringify({ error: `Cannot modify existing file '${safeName}'. You can only modify .clear files and requests.md.` });
         }
-        writeFileSync(dest, input.content, 'utf8');
-        return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
+
+        switch (input.action) {
+          case 'read': {
+            if (!fileExists) return JSON.stringify({ error: `File '${safeName}' does not exist.` });
+            const text = readFileSync(dest, 'utf8');
+            const lines = text.split('\n');
+            return JSON.stringify({ content: text, lines: lines.length, path: safeName });
+          }
+          case 'append': {
+            if (input.content == null) return JSON.stringify({ error: 'append requires content parameter.' });
+            const existing = fileExists ? readFileSync(dest, 'utf8') : '';
+            const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+            writeFileSync(dest, existing + separator + input.content, 'utf8');
+            return JSON.stringify({ appended: true, path: safeName, bytes: input.content.length });
+          }
+          case 'insert': {
+            if (input.content == null) return JSON.stringify({ error: 'insert requires content parameter.' });
+            if (!input.line || input.line < 1) return JSON.stringify({ error: 'insert requires a line number >= 1.' });
+            const existing = fileExists ? readFileSync(dest, 'utf8') : '';
+            const lines = existing.split('\n');
+            const idx = Math.min(input.line - 1, lines.length);
+            lines.splice(idx, 0, ...input.content.split('\n'));
+            writeFileSync(dest, lines.join('\n'), 'utf8');
+            return JSON.stringify({ inserted: true, path: safeName, at_line: input.line });
+          }
+          case 'replace': {
+            if (!input.find) return JSON.stringify({ error: 'replace requires a find parameter.' });
+            if (input.content == null) return JSON.stringify({ error: 'replace requires content parameter (the replacement text).' });
+            if (!fileExists) return JSON.stringify({ error: `File '${safeName}' does not exist.` });
+            const text = readFileSync(dest, 'utf8');
+            let result;
+            if (input.replace_all) {
+              result = text.split(input.find).join(input.content);
+            } else {
+              const pos = text.indexOf(input.find);
+              if (pos === -1) return JSON.stringify({ error: `String not found in '${safeName}'.`, searched: input.find.slice(0, 80) });
+              result = text.slice(0, pos) + input.content + text.slice(pos + input.find.length);
+            }
+            const count = input.replace_all ? (text.split(input.find).length - 1) : (text.includes(input.find) ? 1 : 0);
+            writeFileSync(dest, result, 'utf8');
+            return JSON.stringify({ replaced: true, path: safeName, occurrences: count });
+          }
+          case 'overwrite': {
+            if (input.content == null) return JSON.stringify({ error: 'overwrite requires content parameter.' });
+            writeFileSync(dest, input.content, 'utf8');
+            return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
+          }
+          default:
+            return JSON.stringify({ error: `Unknown action '${input.action}'. Use: append, insert, replace, overwrite, read.` });
+        }
       }
 
       case 'read_terminal':
