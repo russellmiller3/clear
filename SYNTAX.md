@@ -2010,3 +2010,38 @@ expect response body length is greater than 0  # array/object length check
 - Run alongside auto-generated endpoint tests
 - `call METHOD /path` supports `with field is value` for request body
 - User-written tests appear after auto-generated tests in the test output
+
+---
+
+## Streaming AI Responses
+
+Stream AI responses directly to the client as Server-Sent Events:
+
+```clear
+when user calls POST /api/chat receiving data:
+  stream ask claude 'Help the user' with data's message
+```
+
+- Compiles to SSE endpoint with `Content-Type: text/event-stream`
+- Uses `_askAIStream` async generator — sends each token as it arrives
+- Client receives `data: {"text": "chunk"}` events
+- Works with `ask claude` or `ask ai`
+- Supports `with` context parameter
+
+### Without context
+
+```clear
+when user calls POST /api/generate receiving data:
+  stream ask ai 'Write a haiku about coding'
+```
+
+### Agents auto-stream by default
+
+Agents with text responses (no `returning:` schema) already stream automatically — no `stream` keyword needed:
+
+```clear
+agent 'Chat' receives message:
+  response = ask claude 'Help the user' with message
+  send back response
+# This agent streams token-by-token automatically
+```

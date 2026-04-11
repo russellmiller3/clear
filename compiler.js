@@ -1685,7 +1685,7 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.VALIDATE, NodeType.FIELD_RULE,
   NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK, NodeType.OAUTH_CONFIG,
   NodeType.CHECKOUT, NodeType.USAGE_LIMIT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
-  NodeType.STREAM, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
+  NodeType.STREAM, NodeType.STREAM_AI, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
   NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
 ]);
@@ -3864,6 +3864,30 @@ ${pad}}`;
         return `${pad}expect(_responseBody).toBeTruthy();`;
       }
       return `${pad}expect(_response.ok).toBeTruthy();`;
+    }
+
+    // P13: Native AI streaming in endpoints
+    case NodeType.STREAM_AI: {
+      const prompt = exprToCode(node.prompt, ctx);
+      const context = node.context ? exprToCode(node.context, ctx) : 'null';
+      if (ctx.lang === 'python') {
+        let code = `${pad}from starlette.responses import StreamingResponse\n`;
+        code += `${pad}async def _ai_stream():\n`;
+        code += `${pad}    async for _chunk in _ask_ai_stream(${prompt}, ${context}):\n`;
+        code += `${pad}        yield f"data: {json.dumps({'text': _chunk})}\\n\\n"\n`;
+        code += `${pad}return StreamingResponse(_ai_stream(), media_type="text/event-stream")`;
+        return code;
+      }
+      let code = `${pad}res.writeHead(200, {\n`;
+      code += `${pad}  'Content-Type': 'text/event-stream',\n`;
+      code += `${pad}  'Cache-Control': 'no-cache',\n`;
+      code += `${pad}  'Connection': 'keep-alive',\n`;
+      code += `${pad}});\n`;
+      code += `${pad}for await (const _chunk of _askAIStream(${prompt}, ${context})) {\n`;
+      code += `${pad}  res.write('data: ' + JSON.stringify({ text: _chunk }) + '\\n\\n');\n`;
+      code += `${pad}}\n`;
+      code += `${pad}res.end();`;
+      return code;
     }
 
     // Phase 20: Advanced Features

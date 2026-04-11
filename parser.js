@@ -262,6 +262,7 @@ export const NodeType = Object.freeze({
   MIGRATION: 'migration',
   WAIT: 'wait',
   CRON: 'cron',
+  STREAM_AI: 'stream_ai',
 
   // List operations (Phase 21)
   LIST_PUSH: 'list_push',
@@ -1249,6 +1250,34 @@ const CANONICAL_DISPATCH = new Map([
     return parsed.endIdx;
   }],
   ['stream', (ctx) => {
+    // P13: "stream ask claude 'prompt' with context" — native AI streaming in endpoints
+    if (ctx.tokens.length > 1 && (ctx.tokens[1].value === 'ask' || ctx.tokens[1].canonical === 'ask_ai')) {
+      let pos = 2; // skip 'stream ask'
+      // skip 'ai' / 'claude' if present
+      if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'ai' || ctx.tokens[pos].value === 'claude')) pos++;
+      // Parse prompt
+      let prompt = null;
+      if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.STRING) {
+        prompt = { type: NodeType.STRING_LITERAL, value: ctx.tokens[pos].value, line: ctx.line };
+        pos++;
+      } else if (pos < ctx.tokens.length) {
+        const pExpr = parseExpression(ctx.tokens, pos, ctx.line);
+        if (!pExpr.error) { prompt = pExpr.node; pos = pExpr.pos || pos + 1; }
+      }
+      if (!prompt) {
+        ctx.errors.push({ line: ctx.line, message: "stream ask needs a prompt. Example: stream ask claude 'Help the user' with data" });
+        return ctx.i + 1;
+      }
+      // Parse optional 'with context'
+      let context = null;
+      if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
+        pos++;
+        const cExpr = parseExpression(ctx.tokens, pos, ctx.line);
+        if (!cExpr.error) { context = cExpr.node; pos = cExpr.pos || pos + 1; }
+      }
+      ctx.body.push({ type: NodeType.STREAM_AI, prompt, context, line: ctx.line });
+      return ctx.i + 1;
+    }
     const parsed = parseStream(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
@@ -2096,6 +2125,55 @@ RAW_DISPATCH.set('close', (ctx) => {
     return ctx.i + 1;
   }
   return undefined;
+});
+
+// "ask" dispatch — handles multiple forms:
+// 1. ask ai/claude 'prompt' — streams AI response to client (P13)
+// 2. ask user to confirm 'message' — human-in-the-loop confirmation
+RAW_DISPATCH.set('ask', (ctx) => {
+  if (ctx.tokens.length < 2) return undefined;
+  const second = ctx.tokens[1].value;
+
+  // P13: "ask ai/claude 'prompt' with context" — streams by default in endpoints
+  if (second === 'ai' || second === 'claude') {
+    let pos = 2;
+    let prompt = null;
+    if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.STRING) {
+      prompt = { type: NodeType.STRING_LITERAL, value: ctx.tokens[pos].value, line: ctx.line };
+      pos++;
+    } else if (pos < ctx.tokens.length) {
+      const pExpr = parseExpression(ctx.tokens, pos, ctx.line);
+      if (!pExpr.error) { prompt = pExpr.node; pos = pExpr.pos || pos + 1; }
+    }
+    if (!prompt) return undefined;
+    let context = null;
+    if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
+      pos++;
+      const cExpr = parseExpression(ctx.tokens, pos, ctx.line);
+      if (!cExpr.error) { context = cExpr.node; pos = cExpr.pos || pos + 1; }
+    }
+    ctx.body.push({ type: NodeType.STREAM_AI, prompt, context, line: ctx.line });
+    return ctx.i + 1;
+  }
+
+  // Human-in-the-loop: ask user to confirm 'message'
+  if (ctx.tokens.length >= 4 && second === 'user' &&
+      (ctx.tokens[2].canonical === 'to_connector' || ctx.tokens[2].value === 'to') &&
+      ctx.tokens[3].value === 'confirm') {
+    let messageExpr = null;
+    if (ctx.tokens.length > 4) {
+      const expr = parseExpression(ctx.tokens, 4, ctx.line);
+      if (!expr.error) messageExpr = expr.node;
+    }
+    if (!messageExpr) {
+      ctx.errors.push({ line: ctx.line, message: "ask user to confirm needs a message. Example: ask user to confirm 'Proceed?'" });
+      return ctx.i + 1;
+    }
+    ctx.body.push({ type: NodeType.HUMAN_CONFIRM, message: messageExpr, line: ctx.line });
+    return ctx.i + 1;
+  }
+
+  return undefined; // fall through for other 'ask' forms
 });
 
 // HTTP test call: "call POST /api/users with name is 'Alice', email is 'test'"
