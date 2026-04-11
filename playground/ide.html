@@ -1080,6 +1080,7 @@ let showingKeySetup = false;
 window.newChat = function() {
   if (currentAbort) currentAbort.abort();
   chatMessages = [];
+  localStorage.removeItem('clear_chat_messages');
   showingKeySetup = false;
   document.getElementById('chat-messages').innerHTML = '';
   addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
@@ -1144,12 +1145,12 @@ window.saveKey = function() {
 fetch('/api/config').then(r => r.json()).then(cfg => {
   serverHasKey = cfg.hasServerKey;
   if (serverHasKey || apiKey) {
-    addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+    restoreChatOrWelcome();
   } else {
     showKeySetup();
   }
 }).catch(() => {
-  if (apiKey) addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+  if (apiKey) restoreChatOrWelcome();
   else showKeySetup();
 });
 
@@ -1265,9 +1266,31 @@ function markdownToHtml(text) {
   }).join('');
 }
 
+function restoreChatOrWelcome() {
+  const saved = localStorage.getItem('clear_chat_messages');
+  if (saved) {
+    try {
+      chatMessages = JSON.parse(saved).filter(m => !m.streaming);
+      renderChat();
+      return;
+    } catch (_) {}
+  }
+  addChatMsg('assistant', 'Ready! Ask me to build something. I can write Clear code, compile it, run it, and test the endpoints.');
+}
+
+function saveChatState() {
+  try {
+    const toSave = chatMessages
+      .filter(m => !m.streaming)
+      .map(({ role, content, toolSteps }) => ({ role, content, toolSteps: toolSteps || [] }));
+    localStorage.setItem('clear_chat_messages', JSON.stringify(toSave));
+  } catch (_) {}
+}
+
 function addChatMsg(role, content, toolSteps) {
   chatMessages.push({ role, content, toolSteps: toolSteps || [] });
   renderChat();
+  saveChatState();
 }
 
 function renderMsgInner(m) {
@@ -1568,6 +1591,7 @@ window.sendChat = async function() {
   currentAbort = null;
   chatMessages[aIdx].streaming = false;
   updateLastMsg();
+  saveChatState();
   document.getElementById('chat-send').disabled = false;
   document.getElementById('chat-send').style.display = '';
   document.getElementById('chat-stop').style.display = 'none';
