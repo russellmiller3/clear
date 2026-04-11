@@ -2283,8 +2283,22 @@ test 'pipeline produces quality content':
 
 That's ~30 lines for a durable, retrying content pipeline with quality gates, checkpointing, and tests. The LangGraph equivalent is 200+ lines of Python with framework boilerplate.
 
-**What's been built: 6 days, 65 phases, 1482 tests, 99 node types.**
+**What's been built: 7 days, 70 phases, 1558 tests, 104 node types.**
 **What remains: ~13 days for Tier 8 (hosted platform) + production tiers.**
+
+**Phase 94–98: General-Purpose Language (DONE — 2026-04-10)**
+
+| Phase | Feature | Syntax Example |
+|-------|---------|----------------|
+| 94 | Map iteration | `for each key, value in map:` / `keys of map` / `values of map` / `'k' exists in map` |
+| 95 | String interpolation (expressions) | `'Hello, {user's name}! Total: {price * qty}'` |
+| 96 | First-class functions (HOF) | `apply fn to each in list` → `list.map(fn)` / `filter list using fn` → `list.filter(fn)` |
+| 97 | Type annotations | `define function add(a is number, b is number) returns number:` — JSDoc in JS, type-mismatch warnings |
+| 98 | Typed error handling | `if error 'not found':` / `if error 'forbidden':` — status routing, `error` bound in handler |
+
+New nodes: `MAP_KEYS`, `MAP_VALUES`, `MAP_EXISTS`, `MAP_APPLY`, `FILTER_APPLY` (5 nodes)
+Tokenizer: brace-depth tracking in strings (fixes `'s` inside `{}`)
+Validator: `validateTypedCallArgs` — warns on literal type mismatches at call sites
 
 **Current priority order (hosted platform focus):**
 1. CodeMirror Clear mode (syntax highlighting for hosted editor)
