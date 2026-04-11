@@ -662,7 +662,9 @@ app.post('/api/chat', async (req, res) => {
 
       case 'write_file': {
         // Restrict to safe extensions in project root only — no path traversal
-        const safeName = input.filename.replace(/[^a-zA-Z0-9._-]/g, '-');
+        if (!input || !input.filename) return JSON.stringify({ error: 'write_file requires a filename parameter. Usage: write_file({ filename: "requests.md", content: "text" })' });
+        if (input.content == null) return JSON.stringify({ error: 'write_file requires a content parameter' });
+        const safeName = String(input.filename).replace(/[^a-zA-Z0-9._-]/g, '-');
         const ALLOWED_EXT = ['.clear', '.md', '.json', '.txt', '.csv', '.html', '.css', '.js', '.py'];
         const ext = safeName.includes('.') ? '.' + safeName.split('.').pop() : '';
         if (!ALLOWED_EXT.includes(ext)) return JSON.stringify({ error: `Extension '${ext}' not allowed. Use: ${ALLOWED_EXT.join(', ')}` });
