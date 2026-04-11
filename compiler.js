@@ -4264,6 +4264,10 @@ ${pad}}`;
       return `${pad}window.location.hash = ${url};`;
     }
 
+    case NodeType.REFRESH:
+      if (ctx.lang === 'python') return `${pad}# refresh page (client-side only)`;
+      return `${pad}window.location.reload();`;
+
     case NodeType.LIST_REMOVE: {
       const val = exprToCode(node.value, ctx);
       const list = sanitizeName(node.list);

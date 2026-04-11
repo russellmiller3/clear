@@ -19546,4 +19546,31 @@ when user calls POST /api/chat receiving data:
   });
 });
 
+// ============================================================
+// refresh page — compiles to location.reload()
+// ============================================================
+describe('refresh page', () => {
+  it('compiles refresh page to location.reload()', () => {
+    const src = `build for web
+
+button 'Reload':
+  refresh page
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('location.reload()');
+  });
+
+  it('reload is a synonym for refresh', () => {
+    const src = `build for web
+
+button 'Reload':
+  reload page
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('location.reload()');
+  });
+});
+
 run();

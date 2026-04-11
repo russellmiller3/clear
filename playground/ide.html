@@ -514,8 +514,9 @@ let compileTimer = null;
 let suppressAutoCompile = false;
 let lastCompiled = null;
 
+const _savedEditor = localStorage.getItem('clear_editor_content');
 const editor = new EditorView({
-  doc: `# Welcome to Clear Studio
+  doc: _savedEditor || `# Welcome to Clear Studio
 # Pick a template from the dropdown, or start typing.
 
 show 'Hello, Clear!'
@@ -534,7 +535,11 @@ show 'Hello, Clear!'
         clearTimeout(compileTimer);
         compileTimer = setTimeout(() => autoCompile(), 500);
       }
-      if (update.docChanged) updateEditorTOC(update.state.doc.toString());
+      if (update.docChanged) {
+        updateEditorTOC(update.state.doc.toString());
+        // Persist editor content to survive crashes
+        try { localStorage.setItem('clear_editor_content', update.state.doc.toString()); } catch (_) {}
+      }
       // Show/hide Quote button based on selection
       if (update.selectionSet || update.docChanged) {
         const sel = update.state.selection.main;
@@ -723,10 +728,12 @@ function showOutput() {
   }
 }
 
+let compiledView = null;
 function showCompiled() {
   const el = document.getElementById('preview-content');
   if (!lastCompiled) {
     el.innerHTML = '<div class="empty-state"><div class="icon">&#9654;</div><div class="title">Press Compile to see compiled code</div><div class="hint">Ctrl+S or the Compile button</div></div>';
+    compiledView = null;
     return;
   }
   const parts = [];
@@ -735,10 +742,32 @@ function showCompiled() {
   if (lastCompiled.javascript) parts.push('// JavaScript\n' + lastCompiled.javascript);
   if (lastCompiled.python) parts.push('# Python\n' + lastCompiled.python);
   const text = parts.join('\n\n');
-  const lineHtml = text.split('\n').map(line =>
-    `<span class="cl"><span class="cl-code">${escHtml(line)}</span></span>`
-  ).join('\n');
-  el.innerHTML = '<pre>' + lineHtml + '</pre>';
+
+  // Reuse or create a read-only CodeMirror for compiled output
+  el.innerHTML = '';
+  if (compiledView) {
+    compiledView.dispatch({ changes: { from: 0, to: compiledView.state.doc.length, insert: text } });
+    el.appendChild(compiledView.dom);
+  } else {
+    compiledView = new EditorView({
+      doc: text,
+      extensions: [
+        lineNumbers(),
+        highlightActiveLine(),
+        drawSelection(),
+        syntaxHighlighting(clearHighlight),
+        EditorState.readOnly.of(true),
+        EditorView.editable.of(false),
+        EditorView.theme({
+          '&': { height: '100%', fontSize: '12px' },
+          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)' },
+          '.cm-gutters': { background: 'var(--bg2)', borderRight: '1px solid var(--bd)' },
+          '.cm-content': { padding: '8px 0' },
+        }),
+      ],
+    });
+    el.appendChild(compiledView.dom);
+  }
 }
 
 function showTerminal() {
@@ -746,7 +775,7 @@ function showTerminal() {
   el.innerHTML = '<div id="terminal">' + terminalLog + '</div>';
 }
 
-let terminalLog = '<span class="term-status">Terminal ready. Click Run to start an app.</span>\n';
+let terminalLog = localStorage.getItem('clear_terminal_log') || '<span class="term-status">Terminal ready. Click Run to start an app.</span>\n';
 
 function prettyJson(str) {
   // Try to detect and pretty-print JSON in terminal output
@@ -771,6 +800,7 @@ function prettyJson(str) {
 
 function appendTerminal(html) {
   terminalLog += html;
+  try { localStorage.setItem('clear_terminal_log', terminalLog); } catch (_) {}
   if (activeTab === 'terminal') {
     const el = document.getElementById('terminal');
     if (el) { el.innerHTML = terminalLog; el.scrollTop = el.scrollHeight; }
@@ -1740,6 +1770,9 @@ database is local memory
   });
   document.getElementById('editor-label').textContent = 'main.clear';
   document.getElementById('template-picker').value = '';
+  localStorage.removeItem('clear_editor_content');
+  localStorage.removeItem('clear_terminal_log');
+  terminalLog = '<span class="term-status">Terminal ready. Click Run to start an app.</span>\n';
   autoCompile();
 };
 

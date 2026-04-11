@@ -409,6 +409,7 @@ const SYNONYM_TABLE = Object.freeze({
   toggle: Object.freeze(['toggle']),
   open: Object.freeze(['open']),
   close: Object.freeze(['close']),
+  refresh: Object.freeze(['refresh', 'reload']),
   ask: Object.freeze(['ask']),
   call: Object.freeze(['call']),
 });
