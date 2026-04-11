@@ -571,3 +571,32 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Block-form with image** — `image` element inside component body works.
 - **Same component used twice** — no duplication or ID collision.
 - **Component inside conditional** — `if X then show MyComponent(Y)` compiles correctly.
+
+## Session 20: General-Purpose Language Features (2026-04-10)
+
+### Synonym Canonicals Bite Every New Feature
+- `of` tokenizes to canonical `in` — checking `tok.canonical === 'of'` always fails. Use `=== 'in'`.
+- `using` → canonical `with`. Use `.value === 'using'` for FILTER_APPLY disambiguation.
+- `returns` → canonical `responds_with`. Use `.value === 'returns'` for return type detection.
+- `exists in` is a **compound token** with canonical `key_exists`. Don't check two separate tokens; check `tok.canonical === 'key_exists'` in the infix operator loop of `parseExprPrec`.
+
+### `parsePrimary` Has No `errors` Array
+- `parseStringParts` is called from inside `parsePrimary`; that function doesn't receive an `errors` array. Use silent fallback (return `null`) if tokenizing the interpolation fails — errors bubble up as bad output, not crashes.
+
+### `run()` Calls `process.exit()` in Tests
+- `lib/testUtils.js` `run()` calls `process.exit()`. Any `describe()` block placed **after** `run()` is silently ignored. Always add new test blocks **before** the single `run()` call at the bottom of `clear.test.js`.
+
+### `params` Are Now Objects `{name, type}`, Not Strings
+- `functionDefNode` normalizes all params to `{name, type}` objects. Every call site that was `params.map(sanitizeName)` must be `params.map(p => sanitizeName(p.name))`. Also affects `validator.js` scope building — use `typeof p === 'string' ? p : p.name`.
+
+### TRY_HANDLE: `handlers` Array Replaces `handleBody`/`errorVar`
+- Old API: `{ tryBody, handleBody, errorVar }`. New API: `{ tryBody, handlers: [{errorType, body}] }`.
+- `errorVar` is gone; the compiled catch variable is always `_err`.
+- Validator, compiler, and any test that checked `node.handleBody` or `node.errorVar` must use `node.handlers[0].body` / `node.handlers[0].errorType`.
+
+### Indentation for Typed Error Handlers (Python)
+- When typed handlers (`if error 'X':`) are present, the body goes INSIDE an `if/elif/else` block inside the `except` — needs `indent + 2` total. Pass ctx with `indent + 1` to `compileBody` so the auto-increment gives `indent + 2`.
+- Untyped-only (single `if error:`) body goes directly in `except` at `indent + 1` — use normal ctx.
+
+### Edit Tool Silently Fails on Large Files
+- The Edit tool sometimes silently does nothing on files > 6000 lines when the match string contains template literals with `\n`. Use Python `content[start:end]` slice replacement with exact offsets instead.
