@@ -4313,7 +4313,14 @@ export function exprToCode(expr, ctx) {
         if (ctx.lang === 'python') return `${obj}[${key}]`;
         return `${obj}[${key}]`;
       }
-      if (ctx.lang === 'python') return `${exprToCode(expr.object, ctx)}["${expr.member}"]`;
+      if (ctx.lang === 'python') {
+        const objCode = exprToCode(expr.object, ctx);
+        // Exception objects use attribute access, not dict access.
+        // `error` is the only user-visible exception variable in Clear.
+        const isException = expr.object.type === NodeType.VARIABLE_REF && expr.object.name === 'error';
+        if (isException) return `${objCode}.${sanitizeName(expr.member)}`;
+        return `${objCode}["${expr.member}"]`;
+      }
       return `${exprToCode(expr.object, ctx)}.${sanitizeName(expr.member)}`;
 
     case NodeType.VARIABLE_REF: {
