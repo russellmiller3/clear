@@ -1384,6 +1384,44 @@ page 'My App':
   display items as table showing name with delete
 ```
 
+**String interpolation:**
+```clear
+show 'Hello, {name}! Score: {score * 10}.'
+msg is 'User: {user's email}'     # possessive inside {} works
+```
+
+**Typed functions:**
+```clear
+define function add(a is number, b is number) returns number:
+  return a + b
+```
+
+**Map iteration:**
+```clear
+for each key, value in settings:
+  show '{key} = {value}'
+if 'theme' exists in settings:
+  show keys of settings
+```
+
+**Higher-order functions:**
+```clear
+doubled = apply double to each in numbers
+evens   = filter numbers using is_even
+```
+
+**Typed error handling:**
+```clear
+try:
+  fetch data from '/api/item'
+if error 'not found':
+  show 'Missing'
+if error 'forbidden':
+  show error's message
+if error:
+  show error's message
+```
+
 ---
 
 ## Chapter 19: Workflows (Multi-Step AI Pipelines)
