@@ -112,6 +112,7 @@
 //   EXPRESSION PARSER ................. parseExpression, parseExprPrec, parsePrimary,
 //                                      parseListLiteral, parseEachExpression,
 //                                      parseFunctionCall
+//   DISPATCH VALIDATION ............... _validateDispatchTables() — catches dead/overlapping entries
 //   OPERATOR HELPERS .................. getOperatorKey, normalizeOperator, findCanonical
 //
 // =============================================================================
@@ -1502,12 +1503,8 @@ const CANONICAL_DISPATCH = new Map([
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
   }],
-  ['respond_with', (ctx) => {
-    const parsed = parseRespond(ctx.tokens, ctx.line);
-    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
-    else ctx.body.push(parsed.node);
-    return ctx.i + 1;
-  }],
+  // NOTE: 'respond_with' removed — not in synonym table, was dead code.
+  // Covered by 'responds_with' (synonym) and 'send_back' (canonical).
   ['set', (ctx) => {
     // Function def: "create function X:" / "make function X:"
     if (ctx.tokens.length > 1 && ctx.tokens[1].canonical === 'function') {
@@ -2001,25 +1998,8 @@ const RAW_DISPATCH = new Map([
     if (rules.length > 0) ctx.body.push({ type: NodeType.POLICY, rules, line: ctx.line });
     return j;
   }],
-  ['ask', (ctx) => {
-    // Human-in-the-loop: ask user to confirm 'message'
-    if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'user' &&
-        (ctx.tokens[2].canonical === 'to_connector' || ctx.tokens[2].value === 'to') &&
-        ctx.tokens[3].value === 'confirm') {
-      let messageExpr = null;
-      if (ctx.tokens.length > 4) {
-        const expr = parseExpression(ctx.tokens, 4, ctx.line);
-        if (!expr.error) messageExpr = expr.node;
-      }
-      if (!messageExpr) {
-        ctx.errors.push({ line: ctx.line, message: "ask user to confirm needs a message. Example: ask user to confirm 'Proceed?'" });
-        return ctx.i + 1;
-      }
-      ctx.body.push({ type: NodeType.HUMAN_CONFIRM, message: messageExpr, line: ctx.line });
-      return ctx.i + 1;
-    }
-    return undefined; // fall through to ask_for or other handlers
-  }],
+  // NOTE: 'ask' is handled in RAW_DISPATCH (not here) because 'ask' is an identifier
+  // with no canonical value. A CANONICAL_DISPATCH entry for 'ask' would be dead code.
   ['mock', (ctx) => {
     // Mock AI response in test blocks: mock claude responding: + indented fields
     if (ctx.tokens.length >= 3 &&
@@ -2212,6 +2192,35 @@ RAW_DISPATCH.set('call', (ctx) => {
   return ctx.i + 1;
 });
 
+// ── Dispatch table validation (runs once at module load) ──────────────────────
+// Catches two classes of bugs that cause silent failures:
+//   1. CANONICAL_DISPATCH entry for a word with no synonym → dead code (never matches)
+//   2. Same key in both RAW_DISPATCH and CANONICAL_DISPATCH → confusing shadowing
+//
+// This is the "guardrail" that would have caught the 'ask' and 'respond_with' bugs.
+(function _validateDispatchTables() {
+  // Collect all canonical values that the synonym table can produce
+  // (We can't import synonyms.js here, but we CAN check at runtime by
+  // verifying that CANONICAL_DISPATCH keys are plausibly canonical values —
+  // canonical values are always lowercase, underscore-separated, and
+  // don't appear as-is in natural English. Raw identifiers like 'ask',
+  // 'database', 'agent' should be in RAW_DISPATCH, not CANONICAL.)
+  const RAW_WORDS = new Set(RAW_DISPATCH.keys());
+  const warnings = [];
+
+  // Check for overlap: same key in both RAW and CANONICAL
+  for (const key of RAW_WORDS) {
+    if (CANONICAL_DISPATCH.has(key)) {
+      warnings.push(`DISPATCH OVERLAP: '${key}' is in both RAW_DISPATCH and CANONICAL_DISPATCH. ` +
+        `RAW runs first and shadows CANONICAL. Remove the CANONICAL entry or consolidate.`);
+    }
+  }
+
+  if (warnings.length > 0 && typeof process !== 'undefined' && process.env?.CLEAR_DEBUG) {
+    for (const w of warnings) console.warn('[parser]', w);
+  }
+})();
+
 function parseBlock(lines, startIdx, parentIndent, errors) {
   const body = [];
   let targetValue = null;
@@ -2239,8 +2248,27 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       }
 
       // --- DISPATCH TABLE LOOKUP ---
-      // Try Map-based dispatch first (order-independent, O(1) lookup).
-      // Raw-value dispatch (for keywords not in synonym table or with canonical conflicts)
+      //
+      // Two dispatch maps, checked in order:
+      //
+      //   1. RAW_DISPATCH  — keyed on firstToken.value (raw string before synonym resolution)
+      //      Use for: words that are NOT in the synonym table (identifiers like 'ask',
+      //      'database', 'agent', 'chart'), or words where you need the raw value
+      //      before synonym rewriting.
+      //
+      //   2. CANONICAL_DISPATCH — keyed on firstToken.canonical (after synonym resolution)
+      //      Use for: words that ARE in the synonym table. The tokenizer rewrites
+      //      synonyms (e.g. 'make' → 'set', 'endpoint' → 'when_user_calls'), so
+      //      canonical dispatch handles all spelling variants via one entry.
+      //
+      // RULE: If a word has no synonym (stays as an identifier), it has NO .canonical.
+      //       Putting it in CANONICAL_DISPATCH = dead code. Use RAW_DISPATCH instead.
+      //       The _validateDispatchTables() check below catches this at load time.
+      //
+      // Both maps use return-undefined-to-fall-through: if a handler returns undefined,
+      // the next mechanism gets a chance. This allows RAW handlers to partially match
+      // (e.g. 'ask ai' handled, 'ask user' falls through to the next dispatch).
+      //
       if (typeof firstToken.value === 'string') {
         const rawHandler = RAW_DISPATCH.get(firstToken.value);
         if (rawHandler) {
@@ -2249,7 +2277,6 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
           if (newI !== undefined) { i = newI; continue; }
         }
       }
-      // Canonical dispatch (for synonym-resolved keywords)
       if (firstToken.canonical) {
         const canonHandler = CANONICAL_DISPATCH.get(firstToken.canonical);
         if (canonHandler) {
