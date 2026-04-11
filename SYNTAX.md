@@ -35,8 +35,10 @@ squared = value * value
 ## Strings
 
 ```clear
-# String interpolation with {variable}
+# String interpolation — any expression inside {}
 greeting is 'Hello, {name}! You have {count} items.'
+total_msg is 'Total: {price * quantity}'
+user_msg  is 'User: {user's name}'   # possessive works in interpolation
 
 # Concatenation still works
 greeting = 'Hello, ' + name
@@ -79,6 +81,16 @@ create scope:
 key is 'x'
 result = get key from scope         # scope[key] -> 5
 set key in scope to 100             # scope[key] = 100
+
+# Iterate keys and values together
+for each k, v in scope:
+  show '{k} = {v}'
+
+# Map metadata
+all_keys   = keys of scope          # ['x', 'y']
+all_values = values of scope        # [5, 10]
+if 'x' exists in scope:
+  show 'x is defined'
 ```
 
 ## Lists
@@ -119,6 +131,21 @@ tax(price, rate) = price * rate / 100
 define function greet(name):
   message = 'Hello, ' + name
   return message
+
+# Typed parameters (emits JSDoc, enables type-mismatch warnings)
+define function add(a is number, b is number) returns number:
+  return a + b
+
+define function label(name is text) returns text:
+  return 'Name: {name}'
+
+# Higher-order functions
+define function double(x):
+  return x * 2
+
+numbers is [1, 2, 3, 4]
+doubled = apply double to each in numbers   # list.map(double)
+evens   = filter numbers using is_even      # list.filter(is_even)
 ```
 
 ## Conditionals
@@ -156,9 +183,13 @@ match node's type:
 repeat 5 times:
   show 'hello'
 
-# Each (with "list" keyword for clarity)
-for each item in items list:
+# Each
+for each item in items:
   show item
+
+# Each with key and value (map iteration)
+for each key, value in settings:
+  show '{key} = {value}'
 
 # While
 while count is less than 10:
@@ -168,10 +199,30 @@ while count is less than 10:
 ## Error Handling
 
 ```clear
+# Basic
 try:
   risky_operation()
-if there's an error:
+if error:
   show 'Something went wrong'
+
+# Typed handlers (routes by HTTP status code)
+try:
+  fetch data from '/api/item'
+if error 'not found':
+  show 'Item missing'                   # 404
+if error 'forbidden':
+  show error's message               # 403 — `error` is bound automatically
+if error 'unauthorized':
+  show 'Please log in'                  # 401
+if error 'bad request':
+  show error's message               # 400
+if error 'server error':
+  show 'Try again later'               # 500
+if error:
+  show error's message               # catch-all
+
+# `error` is always available inside handlers:
+# error's message, error's status, error's code
 ```
 
 ## Comparisons
