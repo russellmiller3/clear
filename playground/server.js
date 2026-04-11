@@ -394,7 +394,7 @@ const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        filename: { type: 'string', description: 'One of: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md' },
+        filename: { type: 'string', description: 'One of: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, meph-memory.md' },
         startLine: { type: 'number', description: 'Start line (1-based). Omit to get full file or TOC.' },
         endLine: { type: 'number', description: 'End line (1-based, inclusive). Omit to get full file or TOC.' },
       },
@@ -441,15 +441,25 @@ const TOOLS = [
     },
   },
   {
-    name: 'write_file',
-    description: 'Write text content to a file in the project root. You can overwrite .clear files and requests.md. You can create new files of any allowed type. You CANNOT overwrite other existing files. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.',
+    name: 'edit_file',
+    description: `Edit a file in the project root. Actions:
+- "append": add content to the end of the file (safest for logs/requests)
+- "insert": add content at a specific line number
+- "replace": find a string and replace it (first occurrence, or all if replace_all is true)
+- "overwrite": replace the entire file content (use sparingly)
+- "read": read the current file content (returns content + line count)
+You can modify .clear files and requests.md. You can create new files of any allowed type. Allowed extensions: .clear, .md, .json, .txt, .csv, .html, .css, .js, .py.`,
     input_schema: {
       type: 'object',
       properties: {
-        filename: { type: 'string', description: 'Filename relative to project root, e.g. "temp-app.clear" or "output.json". Must use an allowed extension.' },
-        content: { type: 'string', description: 'The text content to write.' },
+        filename: { type: 'string', description: 'Filename relative to project root, e.g. "requests.md" or "temp-app.clear".' },
+        action: { type: 'string', enum: ['append', 'insert', 'replace', 'overwrite', 'read'], description: 'The edit action to perform.' },
+        content: { type: 'string', description: 'The content to append/insert/overwrite with. Not needed for "read" action.' },
+        line: { type: 'number', description: 'Line number for "insert" action (1-based). Content is inserted before this line.' },
+        find: { type: 'string', description: 'String to find for "replace" action.' },
+        replace_all: { type: 'boolean', description: 'If true, replace all occurrences. Default: false (first only).' },
       },
-      required: ['filename', 'content'],
+      required: ['filename', 'action'],
     },
   },
   {
@@ -485,6 +495,22 @@ const WEB_TOOLS = [
 
 app.get('/api/config', (req, res) => {
   res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
+});
+
+// Memory file endpoints (for UI button — Meph also accesses via edit_file tool)
+app.post('/api/read-file', (req, res) => {
+  const fname = String(req.body.filename || '').replace(/[^a-zA-Z0-9._-]/g, '-');
+  if (fname !== 'meph-memory.md') return res.json({ error: 'Only meph-memory.md is readable from the UI.' });
+  const fpath = join(ROOT_DIR, fname);
+  if (!existsSync(fpath)) return res.json({ content: '' });
+  res.json({ content: readFileSync(fpath, 'utf8') });
+});
+
+app.post('/api/write-file', (req, res) => {
+  const fname = String(req.body.filename || '').replace(/[^a-zA-Z0-9._-]/g, '-');
+  if (fname !== 'meph-memory.md') return res.json({ error: 'Only meph-memory.md is writable from the UI.' });
+  writeFileSync(join(ROOT_DIR, fname), req.body.content || '', 'utf8');
+  res.json({ written: true });
 });
 
 app.post('/api/chat', async (req, res) => {
@@ -623,7 +649,7 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ stopped: true });
 
       case 'read_file': {
-        const READABLE = ['SYNTAX.md', 'AI-INSTRUCTIONS.md', 'PHILOSOPHY.md', 'USER-GUIDE.md', 'requests.md'];
+        const READABLE = ['SYNTAX.md', 'AI-INSTRUCTIONS.md', 'PHILOSOPHY.md', 'USER-GUIDE.md', 'requests.md', 'meph-memory.md'];
         const fname = input.filename;
         if (!READABLE.includes(fname)) return JSON.stringify({ error: `Can only read: ${READABLE.join(', ')}` });
         const fpath = join(ROOT_DIR, fname);
@@ -660,23 +686,72 @@ app.post('/api/chat', async (req, res) => {
         });
       }
 
-      case 'write_file': {
+      case 'edit_file': {
         // Restrict to safe extensions in project root only — no path traversal
-        if (!input || !input.filename) return JSON.stringify({ error: 'write_file requires a filename parameter. Usage: write_file({ filename: "requests.md", content: "text" })' });
-        if (input.content == null) return JSON.stringify({ error: 'write_file requires a content parameter' });
+        if (!input || !input.filename) return JSON.stringify({ error: 'edit_file requires a filename parameter.' });
+        if (!input.action) return JSON.stringify({ error: 'edit_file requires an action: append, insert, replace, overwrite, or read.' });
         const safeName = String(input.filename).replace(/[^a-zA-Z0-9._-]/g, '-');
         const ALLOWED_EXT = ['.clear', '.md', '.json', '.txt', '.csv', '.html', '.css', '.js', '.py'];
         const ext = safeName.includes('.') ? '.' + safeName.split('.').pop() : '';
         if (!ALLOWED_EXT.includes(ext)) return JSON.stringify({ error: `Extension '${ext}' not allowed. Use: ${ALLOWED_EXT.join(', ')}` });
         const dest = join(ROOT_DIR, safeName);
-        // Safety: only allow overwriting .clear files and requests.md
-        // Other existing files cannot be overwritten — only new files can be created
-        const WRITABLE_EXISTING = ['requests.md'];
-        if (existsSync(dest) && ext !== '.clear' && !WRITABLE_EXISTING.includes(safeName)) {
-          return JSON.stringify({ error: `Cannot overwrite existing file '${safeName}'. You can only modify .clear files and requests.md. New files are fine.` });
+        const fileExists = existsSync(dest);
+        // Safety: only allow modifying .clear files and requests.md
+        const WRITABLE_EXISTING = ['requests.md', 'meph-memory.md'];
+        const canWrite = !fileExists || ext === '.clear' || WRITABLE_EXISTING.includes(safeName);
+        if (!canWrite && input.action !== 'read') {
+          return JSON.stringify({ error: `Cannot modify existing file '${safeName}'. You can only modify .clear files and requests.md.` });
         }
-        writeFileSync(dest, input.content, 'utf8');
-        return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
+
+        switch (input.action) {
+          case 'read': {
+            if (!fileExists) return JSON.stringify({ error: `File '${safeName}' does not exist.` });
+            const text = readFileSync(dest, 'utf8');
+            const lines = text.split('\n');
+            return JSON.stringify({ content: text, lines: lines.length, path: safeName });
+          }
+          case 'append': {
+            if (input.content == null) return JSON.stringify({ error: 'append requires content parameter.' });
+            const existing = fileExists ? readFileSync(dest, 'utf8') : '';
+            const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+            writeFileSync(dest, existing + separator + input.content, 'utf8');
+            return JSON.stringify({ appended: true, path: safeName, bytes: input.content.length });
+          }
+          case 'insert': {
+            if (input.content == null) return JSON.stringify({ error: 'insert requires content parameter.' });
+            if (!input.line || input.line < 1) return JSON.stringify({ error: 'insert requires a line number >= 1.' });
+            const existing = fileExists ? readFileSync(dest, 'utf8') : '';
+            const lines = existing.split('\n');
+            const idx = Math.min(input.line - 1, lines.length);
+            lines.splice(idx, 0, ...input.content.split('\n'));
+            writeFileSync(dest, lines.join('\n'), 'utf8');
+            return JSON.stringify({ inserted: true, path: safeName, at_line: input.line });
+          }
+          case 'replace': {
+            if (!input.find) return JSON.stringify({ error: 'replace requires a find parameter.' });
+            if (input.content == null) return JSON.stringify({ error: 'replace requires content parameter (the replacement text).' });
+            if (!fileExists) return JSON.stringify({ error: `File '${safeName}' does not exist.` });
+            const text = readFileSync(dest, 'utf8');
+            let result;
+            if (input.replace_all) {
+              result = text.split(input.find).join(input.content);
+            } else {
+              const pos = text.indexOf(input.find);
+              if (pos === -1) return JSON.stringify({ error: `String not found in '${safeName}'.`, searched: input.find.slice(0, 80) });
+              result = text.slice(0, pos) + input.content + text.slice(pos + input.find.length);
+            }
+            const count = input.replace_all ? (text.split(input.find).length - 1) : (text.includes(input.find) ? 1 : 0);
+            writeFileSync(dest, result, 'utf8');
+            return JSON.stringify({ replaced: true, path: safeName, occurrences: count });
+          }
+          case 'overwrite': {
+            if (input.content == null) return JSON.stringify({ error: 'overwrite requires content parameter.' });
+            writeFileSync(dest, input.content, 'utf8');
+            return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
+          }
+          default:
+            return JSON.stringify({ error: `Unknown action '${input.action}'. Use: append, insert, replace, overwrite, read.` });
+        }
       }
 
       case 'read_terminal':
@@ -743,12 +818,29 @@ app.post('/api/chat', async (req, res) => {
         messages: currentMessages,
       };
 
-      const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
-      if (!r.ok) {
-        const errText = await r.text();
-        send({ type: 'error', message: errText });
-        res.end();
-        return;
+      // Retry with exponential backoff on transient failures
+      let r;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
+          if (r.ok) break;
+          // Retry on 429 (rate limit), 500, 502, 503, 529 (overloaded)
+          const retryable = [429, 500, 502, 503, 529].includes(r.status);
+          if (!retryable || attempt === 2) {
+            const errText = await r.text();
+            send({ type: 'error', message: errText });
+            res.end();
+            return;
+          }
+          const delay = (attempt + 1) * 2000; // 2s, 4s
+          send({ type: 'text', delta: `\n*API hiccup (${r.status}), retrying in ${delay/1000}s...*\n` });
+          await new Promise(ok => setTimeout(ok, delay));
+        } catch (fetchErr) {
+          if (attempt === 2) throw fetchErr;
+          const delay = (attempt + 1) * 2000;
+          send({ type: 'text', delta: `\n*Network error, retrying in ${delay/1000}s...*\n` });
+          await new Promise(ok => setTimeout(ok, delay));
+        }
       }
 
       // Parse SSE stream from Anthropic
@@ -813,6 +905,25 @@ app.post('/api/chat', async (req, res) => {
         let input;
         try { input = JSON.parse(tb.inputJson || '{}'); } catch { input = {}; }
         assistantContent.push({ type: 'tool_use', id: tb.id, name: tb.name, input });
+
+        // Human-readable tool summary for chat UI
+        const toolSummary = (() => {
+          switch (tb.name) {
+            case 'edit_code': return input.action === 'write' ? 'Editing code' : input.action === 'read' ? 'Reading editor' : input.action === 'undo' ? 'Undoing last change' : 'edit_code';
+            case 'read_file': return `Reading ${input.filename || 'file'}`;
+            case 'edit_file': return `${input.action || 'editing'} ${input.filename || 'file'}`;
+            case 'run_command': return `$ ${(input.command || '').slice(0, 60)}`;
+            case 'compile': return 'Compiling...';
+            case 'run_app': return 'Starting app server';
+            case 'stop_app': return 'Stopping app server';
+            case 'http_request': return `${input.method || 'GET'} ${input.path || '/'}`;
+            case 'read_terminal': return 'Checking terminal output';
+            case 'screenshot_output': return 'Taking screenshot';
+            case 'highlight_code': return `Highlighting lines ${input.start_line || ''}–${input.end_line || ''}`;
+            default: return tb.name;
+          }
+        })();
+        send({ type: 'tool_start', name: tb.name, summary: toolSummary });
 
         // Auto-switch IDE tab based on what Claude is doing — before execution
         if (tb.name === 'edit_code' && input.action === 'write') {

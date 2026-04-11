@@ -1823,7 +1823,7 @@ Compiles to: `const [sentiment, topic, language] = await Promise.all([agent_sent
 Agent pauses for human approval on high-stakes actions. Creates an approval request, waits for response, then continues or aborts.
 
 ```clear
-create a Approvals table:
+create an Approvals table:
   action, required
   details, required
   status, default 'pending'
@@ -1855,7 +1855,7 @@ Compiles to: (1) create Approvals record with status='pending', (2) send notific
 Every LLM call, tool use, and decision is logged with input, output, latency, and token count. Queryable via API or viewable in a dashboard.
 
 ```clear
-create a AgentLogs table:
+create an AgentLogs table:
   agent_name, required
   action, required
   input
@@ -1953,7 +1953,7 @@ create a Memories table:
   user_id, required
   fact, required
 
-create a AgentLogs table:
+create an AgentLogs table:
   agent_name, required
   action, required
   latency_ms (number)

@@ -1417,7 +1417,7 @@ create a Memories table:
   created_at (timestamp), auto
 
 # For observability:
-create a AgentLogs table:
+create an AgentLogs table:
   agent_name, required
   action, required
   input
@@ -1426,7 +1426,7 @@ create a AgentLogs table:
   created_at (timestamp), auto
 
 # For human-in-the-loop:
-create a Approvals table:
+create an Approvals table:
   action, required
   details, required
   status, default 'pending'

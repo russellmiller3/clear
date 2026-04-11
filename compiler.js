@@ -419,8 +419,9 @@ const UTILITY_FUNCTIONS = [
 function _getUsedUtilities(compiledCode) {
   const needed = new Set();
   for (const util of UTILITY_FUNCTIONS) {
-    // Check if the function name appears in the compiled code (as a call, not its own definition)
-    if (compiledCode.includes(util.name + '(')) {
+    // Check if the function name appears in the compiled code — either as a direct call
+    // like _revive(...) or as a callback reference like .map(_revive)
+    if (compiledCode.includes(util.name + '(') || compiledCode.includes(util.name + ')') || compiledCode.includes(util.name + ',') || compiledCode.includes(util.name + ';')) {
       needed.add(util.name);
       // Also include dependencies
       for (const dep of util.deps) needed.add(dep);
@@ -3113,6 +3114,16 @@ function _compileNodeInner(node, ctx) {
 
     case NodeType.SHOW:
       if (ctx.lang === 'python') return `${pad}print(${exprToCode(node.expression, ctx)})`;
+      // Web mode inside a page: render to DOM element (matches show_N placeholder from HTML scaffold)
+      if (ctx.insidePage && node.expression) {
+        // Component calls are handled separately (don't use show_N)
+        if (node.expression.type === NodeType.CALL && node.expression.name && /^[A-Z]/.test(node.expression.name)) {
+          return `${pad}console.log(${exprToCode(node.expression, ctx)});`;
+        }
+        if (ctx._showCounter == null) ctx._showCounter = 0;
+        const showId = `show_${ctx._showCounter++}`;
+        return `${pad}{ const _el = document.getElementById('${showId}'); if (_el) _el.textContent = ${exprToCode(node.expression, ctx)}; }`;
+      }
       return `${pad}console.log(${exprToCode(node.expression, ctx)});`;
 
     case NodeType.RETURN:
@@ -3457,14 +3468,16 @@ ${pad}}`;
         if (backendChildren.length === 0) return null;
         return backendChildren.map(n => compileNode(n, ctx)).filter(Boolean).join('\n');
       }
-      const bodyCode = node.body.map(n => compileNode(n, ctx)).filter(Boolean).join('\n');
+      const pageCtx = { ...ctx, insidePage: true };
+      const bodyCode = node.body.map(n => compileNode(n, pageCtx)).filter(Boolean).join('\n');
       if (ctx.lang === 'python') return `${pad}# Page: ${node.title}\n${bodyCode}`;
       return `${pad}// Page: ${node.title}\n${pad}document.title = ${JSON.stringify(node.title)};\n${bodyCode}`;
     }
 
     case NodeType.SECTION: {
       if (ctx.mode === 'backend') return null; // frontend-only
-      const bodyCode = node.body.map(n => compileNode(n, ctx)).filter(Boolean).join('\n');
+      const sectionCtx = { ...ctx, insidePage: true };
+      const bodyCode = node.body.map(n => compileNode(n, sectionCtx)).filter(Boolean).join('\n');
       if (!bodyCode.trim()) return null; // No JS output — skip empty section comment
       if (ctx.lang === 'python') return `${pad}# Section: ${node.title}\n${bodyCode}`;
       return `${pad}// Section: ${node.title}\n${bodyCode}`;
@@ -5041,15 +5054,21 @@ function isReactiveApp(body) {
   function check(nodes) {
     for (const node of nodes) {
       if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE) return true;
+      // Conditional blocks with UI content need reactive path for show/hide toggling
+      if (node.type === NodeType.IF_THEN && node.isBlock) return true;
       // Inline component call: show Card(name) — needs reactive path for DOM injection
       if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL && /^[A-Z]/.test(node.expression.name)) return true;
       if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
-      // A table display requires _recompute() to render rows into the DOM.
-      if (node.type === NodeType.DISPLAY && node.format === 'table') return true;
+      // A table/list display requires _recompute() to render rows into the DOM.
+      if (node.type === NodeType.DISPLAY && (node.format === 'table' || node.format === 'list')) return true;
       // An on-page-load block with API calls requires the async IIFE + _recompute().
       if (node.type === NodeType.ON_PAGE_LOAD) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
+      }
+      if (node.type === NodeType.IF_THEN) {
+        if (Array.isArray(node.thenBranch) && check(node.thenBranch)) return true;
+        if (Array.isArray(node.otherwiseBranch) && check(node.otherwiseBranch)) return true;
       }
     }
     return false;
@@ -5234,7 +5253,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   const stateVarNames = new Set(Object.keys(stateDefaults));
   const recomputeDeclared = new Set(stateVarNames);
   let componentCounter = 0;
-  const reactiveCtx = { lang: 'js', indent: 1, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
+  const reactiveCtx = { lang: 'js', indent: 1, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', insidePage: true, sourceMap };
   for (const node of filteredCompute) {
     // FOR_EACH in reactive mode: render list items to DOM
     if (node.type === NodeType.FOR_EACH) {
@@ -5334,8 +5353,12 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
     for (const node of nodes) {
       if (node.type === NodeType.IF_THEN && node.isBlock && Array.isArray(node.thenBranch)) {
         condBlocks.push({ condition: node.condition, invert: false });
+        // Recurse into thenBranch to find nested conditionals (matches buildHTML walk order)
+        findConditionals(node.thenBranch);
         if (node.otherwiseBranch && Array.isArray(node.otherwiseBranch)) {
           condBlocks.push({ condition: node.condition, invert: true });
+          // Recurse into otherwiseBranch — handles else-if chains (nested IF_THEN)
+          findConditionals(node.otherwiseBranch);
         }
       }
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
@@ -5450,6 +5473,22 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`      }).join('');`);
       lines.push(`    } else if (_cardsEl) {`);
       lines.push(`      _cardsEl.innerHTML = '';`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (disp.format === 'list') {
+      // List rendering: iterate over array and create <li> elements
+      lines.push(`  {`);
+      lines.push(`    const _listEl = document.getElementById('${outputId}_list');`);
+      lines.push(`    const _data = ${val};`);
+      lines.push(`    if (_listEl && Array.isArray(_data)) {`);
+      lines.push(`      _listEl.innerHTML = _data.map(item => {`);
+      lines.push(`        if (typeof item === 'object' && item !== null) {`);
+      lines.push(`          const keys = Object.keys(item).filter(k => k !== 'id' && !k.endsWith('_at'));`);
+      lines.push(`          const label = item[keys[0]] != null ? String(item[keys[0]]) : JSON.stringify(item);`);
+      lines.push(`          return '<li class="text-sm text-base-content">' + _esc(label) + '</li>';`);
+      lines.push(`        }`);
+      lines.push(`        return '<li class="text-sm text-base-content">' + _esc(String(item)) + '</li>';`);
+      lines.push(`      }).join('');`);
       lines.push(`    }`);
       lines.push(`  }`);
     } else {
@@ -6455,6 +6494,8 @@ ${options}
     </div>`);
           } else if (ui.tag === 'cards') {
             parts.push(`    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto" id="${displayId}_cards"></div>`);
+          } else if (ui.tag === 'list') {
+            parts.push(`    <ul class="list-disc pl-6 space-y-1" id="${displayId}_list"></ul>`);
           } else if (inUserSection) {
             // Inside a styled card (stat_card etc.) — render just the number inline, no extra wrapper
             parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
@@ -6777,6 +6818,11 @@ ${options}
           if (node.expression && node.expression.type === NodeType.CALL && node.expression.name && /^[A-Z]/.test(node.expression.name)) {
             const containerId = `comp_${compRenderCounter++}`;
             parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
+          } else if (node.expression) {
+            // Dynamic expression: show total, text 'Price: ' + price → placeholder <p> for JS to fill
+            const showId = `show_${showCounter++}`;
+            node._showId = showId;
+            parts.push(`    <p id="${showId}" class="text-sm font-medium text-base-content/90 leading-snug"></p>`);
           }
           break;
         }
@@ -6813,6 +6859,7 @@ ${options}
 
   let condCounter = 0;
   let compRenderCounter = 0;
+  let showCounter = 0;
   walk(body);
 
   // Wrap multi-page content in routable divs (process in reverse to keep indices valid)

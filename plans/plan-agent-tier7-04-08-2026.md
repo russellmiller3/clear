@@ -188,7 +188,7 @@ async function pipeline_process_inbound(text) {
 **What it does:** Every LLM call, tool use, and decision logged with input, output, latency, token count. One line enables it.
 
 ```clear
-create a AgentLogs table:
+create an AgentLogs table:
   agent_name, required
   action, required
   input
@@ -766,7 +766,7 @@ async function agent_personal_assistant(message, _userId) {
 **What it does:** Agent pauses for human approval on high-stakes actions.
 
 ```clear
-create a Approvals table:
+create an Approvals table:
   action, required
   details, required
   status, default 'pending'

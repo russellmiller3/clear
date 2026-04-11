@@ -513,7 +513,7 @@ function displayNode(expression, format, label, line) {
     ? autoLabelFromName(expression.name)
     : 'Output');
   const ui = {
-    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : 'output',
+    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : format === 'list' ? 'list' : 'output',
     id: `output_${sanitizeForId(displayLabel.replace(/\s+/g, '_'))}`,
     label: displayLabel,
   };
@@ -1360,8 +1360,8 @@ const CANONICAL_DISPATCH = new Map([
   }],
   // --- ROUTER FUNCTIONS (check tokens[1+] for sub-routing) ---
   ['show', (ctx) => {
-    // Toast: show toast 'message' [as warning/error/success]
-    if (ctx.tokens.length >= 3 && ctx.tokens[1].value === 'toast') {
+    // Toast: show toast|alert|notification 'message' [as warning/error/success]
+    if (ctx.tokens.length >= 3 && (ctx.tokens[1].value === 'toast' || ctx.tokens[1].value === 'alert' || ctx.tokens[1].value === 'notification')) {
       let tPos = 2;
       let message = '';
       if (tPos < ctx.tokens.length && ctx.tokens[tPos].type === TokenType.STRING) {
@@ -1735,13 +1735,37 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['content_text', (ctx) => {
-    // Guard: 'text' only acts as content when followed by a STRING literal
-    // 'text is join(words)' is an assignment, not content
-    if (ctx.tokens.length <= 1 || ctx.tokens[1].type !== TokenType.STRING) return undefined;
-    const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
-    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
-    else ctx.body.push(parsed.node);
-    return ctx.i + 1;
+    // Guard: 'text' acts as content when followed by a STRING literal or a variable reference
+    // 'text is join(words)' is an assignment, not content — check for 'is'/'=' to avoid that
+    if (ctx.tokens.length <= 1) return undefined;
+    const nextTok = ctx.tokens[1];
+    const isAssign = nextTok.value === 'is' || nextTok.value === '=' || nextTok.canonical === 'assign';
+    if (isAssign) return undefined;
+    // String with concatenation: text 'Price: ' + price → expression (dynamic content)
+    // Pure string: text 'Hello' → static content via parseContent
+    if (nextTok.type === TokenType.STRING) {
+      // Check if there's an operator after the string (e.g. + price)
+      const hasConcat = ctx.tokens.length > 2 && ctx.tokens[2].type === TokenType.OPERATOR;
+      if (hasConcat) {
+        // Parse as full expression: 'Price: ' + price
+        const expr = parseExpression(ctx.tokens, 1, ctx.line);
+        if (expr.error) ctx.errors.push({ line: ctx.line, message: expr.error });
+        else ctx.body.push(showNode(expr.node, ctx.line));
+        return ctx.i + 1;
+      }
+      const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
+      if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+      else ctx.body.push(parsed.node);
+      return ctx.i + 1;
+    }
+    // Variable/expression: text item → show node with expression (like 'show item')
+    if (nextTok.type === TokenType.IDENTIFIER || nextTok.type === TokenType.KEYWORD) {
+      const expr = parseExpression(ctx.tokens, 1, ctx.line);
+      if (expr.error) ctx.errors.push({ line: ctx.line, message: expr.error });
+      else ctx.body.push(showNode(expr.node, ctx.line));
+      return ctx.i + 1;
+    }
+    return undefined;
   }],
   ['bold_text', (ctx) => {
     const parsed = parseContent(ctx.tokens, ctx.line, ctx.tokens[0].canonical);
@@ -4491,7 +4515,7 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
   }
 
   if (fields.length === 0) {
-    errors.push({ line, message: `The ${name} table is empty -- add fields inside. Example:\n  create a ${name} table:\n    name, required\n    email, required, unique` });
+    errors.push({ line, message: `The ${name} table is empty -- add fields inside. Example:\n  create ${'aeiouAEIOU'.includes(name[0]) ? 'an' : 'a'} ${name} table:\n    name, required\n    email, required, unique` });
   }
 
   const shapeNode = dataShapeNode(name, fields, line, policies);
