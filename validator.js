@@ -41,7 +41,7 @@
 //   │    ├─ validateCallTargets ...... undefined agents etc  │
 //   │    ├─ validateMemberAccessTypes  field on primitive    │
 //   │    ├─ validateTypedCallArgs .... literal vs annotation │
-//   │    └─ validateInferredTypes ... text used in arithmetic│
+//   │    └─ validateInferredTypes ... (error) text in arith  │
 //   │                                                       │
 //   │  Errors block compilation. Warnings are advisory.     │
 //   └──────────────────────────────────────────────────────┘
@@ -106,7 +106,7 @@ export function validate(ast) {
   validateCallTargets(ast.body, errors);
   validateMemberAccessTypes(ast.body, warnings);
   validateTypedCallArgs(ast.body, warnings);
-  validateInferredTypes(ast.body, warnings);
+  validateInferredTypes(ast.body, errors);
   return { errors, warnings };
 }
 
@@ -1569,16 +1569,16 @@ function validateTypedCallArgs(body, warnings) {
 
 /**
  * INFERRED TYPE SYSTEM (Phase P1):
- * Walk assignments to build a type environment, then flag arithmetic on text.
- * Warns (not errors) — inference is best-effort, not guaranteed.
+ * Walk assignments to build a type environment, then error on arithmetic on text.
+ * Only fires when type is known from a literal assignment — never guesses.
  *
  * Catches:
  *   price = 'ten dollars'
- *   total = price * 1.08     ← warn: price is text, used in arithmetic
+ *   total = price * 1.08     ← error: price is text, used in arithmetic
  *
  * Uses typed param annotations (Phase 97) as authoritative type source.
  */
-function validateInferredTypes(body, warnings) {
+function validateInferredTypes(body, errors) {
   // Infer the type of a literal or known expression
   function inferLiteralType(expr) {
     if (!expr) return 'unknown';
@@ -1650,10 +1650,10 @@ function validateInferredTypes(body, warnings) {
         const rt = resolveType(expr.right, env);
         if (lt === 'text') {
           const varName = expr.left?.name || expr.left?.value || '?';
-          warnings.push({ line: expr.line || line, message: `Type warning: '${varName}' is text but used in ${op} arithmetic — did you mean to use a number?` });
+          errors.push({ line: expr.line || line, message: `'${varName}' is text, not a number — can't use it in ${op} arithmetic. Assign a number instead.` });
         } else if (rt === 'text') {
           const varName = expr.right?.name || expr.right?.value || '?';
-          warnings.push({ line: expr.line || line, message: `Type warning: '${varName}' is text but used in ${op} arithmetic — did you mean to use a number?` });
+          errors.push({ line: expr.line || line, message: `'${varName}' is text, not a number — can't use it in ${op} arithmetic. Assign a number instead.` });
         }
       }
       checkExpr(expr.left, env, line);

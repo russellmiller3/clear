@@ -18794,50 +18794,82 @@ describe('npm package imports', () => {
   });
 });
 
+// Phase P2: Structured eval stats
+describe('structured eval stats', () => {
+  it('counts endpoints', () => {
+    const r = compileProgram("build for javascript backend\nwhen user calls GET /api/a:\n  send back 'ok'\nwhen user calls POST /api/b:\n  send back 'ok'");
+    expect(r.stats.endpoints).toBe(2);
+  });
+  it('counts tables from data shapes', () => {
+    const r = compileProgram("build for javascript backend\ncreate data shape User:\n  name is text\ncreate data shape Post:\n  title is text");
+    expect(r.stats.tables).toBe(2);
+    expect(r.stats.has_database).toBe(true);
+  });
+  it('counts test blocks', () => {
+    const r = compileProgram("test 'a':\n  expect 1 is 1\ntest 'b':\n  expect 2 is 2");
+    expect(r.stats.tests.defined).toBe(2);
+  });
+  it('counts npm packages', () => {
+    const r = compileProgram("build for javascript backend\nuse npm 'stripe'\nuse npm 'openai' as OpenAI\nwhen user calls GET /api/test:\n  send back 'ok'");
+    expect(r.stats.npm_packages).toBe(2);
+  });
+  it('detects auth', () => {
+    const r = compileProgram("build for javascript backend\nwhen user calls GET /api/me:\n  requires auth\n  send back 'ok'");
+    expect(r.stats.has_auth).toBe(true);
+  });
+  it('sets ok=false on errors', () => {
+    const r = compileProgram("totally invalid garbage @@@@");
+    expect(r.stats.ok).toBe(false);
+  });
+  it('sets ok=true on clean compile', () => {
+    const r = compileProgram("build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'");
+    expect(r.stats.ok).toBe(true);
+  });
+  it('reflects type errors in ok=false', () => {
+    const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
+    expect(r.stats.ok).toBe(false);
+    expect(r.errors.some(e => e.message.includes('text'))).toBe(true);
+  });
+  it('counts source lines excluding comments', () => {
+    const r = compileProgram("# comment\nprice = 9.99\ntotal = price * 1.08");
+    expect(r.stats.lines).toBe(2); // comment excluded
+  });
+});
+
 // Phase P1: Inferred type system
 describe('inferred type system — arithmetic on text', () => {
-  it('warns when text variable is multiplied', () => {
+  it('errors when text variable is multiplied', () => {
     const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
-    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
-    expect(tw).toHaveLength(1);
-    expect(tw[0].message).toContain('price');
-    expect(tw[0].message).toContain('text');
+    expect(r.errors.some(e => e.message.includes('price') && e.message.includes('text'))).toBe(true);
   });
-  it('warns when text variable is subtracted', () => {
+  it('errors when text variable is subtracted', () => {
     const r = compileProgram("discount = 'twenty'\nfinal = 100 - discount");
-    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
-    expect(tw).toHaveLength(1);
-    expect(tw[0].message).toContain('discount');
+    expect(r.errors.some(e => e.message.includes('discount'))).toBe(true);
   });
-  it('warns on division with text variable', () => {
+  it('errors on division with text variable', () => {
     const r = compileProgram("rate = 'fast'\nresult = 100 / rate");
-    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
-    expect(tw).toHaveLength(1);
+    expect(r.errors.some(e => e.message.includes('rate'))).toBe(true);
   });
-  it('does not warn when number variable used in arithmetic', () => {
+  it('does not error when number variable used in arithmetic', () => {
     const r = compileProgram("price = 9.99\ntotal = price * 1.08");
-    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
-    expect(tw).toHaveLength(0);
-  });
-  it('does not warn when number literal used in arithmetic', () => {
-    const r = compileProgram("total = 100 * 1.08");
-    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
-    expect(tw).toHaveLength(0);
-  });
-  it('does not warn on boolean variables', () => {
-    const r = compileProgram("active = true\nif active then show 'yes'");
-    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
-    expect(tw).toHaveLength(0);
-  });
-  it('does not warn after reassignment to number', () => {
-    const r = compileProgram("x = 'hello'\nx = 42\ntotal = x * 2");
-    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
-    expect(tw).toHaveLength(0);
-  });
-  it('still compiles successfully despite type warning', () => {
-    const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
     expect(r.errors).toHaveLength(0);
-    expect(r.javascript || r.html).toBeTruthy();
+  });
+  it('does not error when number literal used in arithmetic', () => {
+    const r = compileProgram("total = 100 * 1.08");
+    expect(r.errors).toHaveLength(0);
+  });
+  it('does not error on boolean variables', () => {
+    const r = compileProgram("active = true\nif active then show 'yes'");
+    expect(r.errors).toHaveLength(0);
+  });
+  it('does not error after reassignment to number', () => {
+    const r = compileProgram("x = 'hello'\nx = 42\ntotal = x * 2");
+    expect(r.errors).toHaveLength(0);
+  });
+  it('blocks compilation on type mismatch', () => {
+    const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
+    expect(r.errors.length).toBeGreaterThan(0);
+    expect(r.stats.ok).toBe(false);
   });
 });
 

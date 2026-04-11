@@ -39,6 +39,65 @@ import { SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './synonyms.js';
  * @param {string} [options.target] - Override target ("web", "backend", "both")
  * @returns {{ javascript?: string, python?: string, ast: object, errors: Array<{line, message}> }}
  */
+/**
+ * Compute program statistics from AST + warnings for RL reward / observability.
+ * Pure function — no side effects.
+ */
+function computeStats(ast, source, warnings) {
+  let endpoints = 0, tables = 0, pages = 0, tests = 0, functions = 0,
+      agents = 0, workflows = 0, hasAuth = false, hasDatabase = false,
+      npmPackages = 0;
+
+  function walk(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      switch (n.type) {
+        case NodeType.ENDPOINT:   endpoints++; walk(n.body); break;
+        case NodeType.DATA_SHAPE: tables++; hasDatabase = true; break;
+        case NodeType.DATABASE_DECL: hasDatabase = true; break;
+        case NodeType.PAGE:       pages++; walk(n.body); break;
+        case NodeType.TEST_DEF:   tests++; break;
+        case NodeType.FUNCTION_DEF: functions++; walk(n.body); break;
+        case NodeType.AGENT:      agents++; break;
+        case NodeType.WORKFLOW:   workflows++; break;
+        case NodeType.USE:
+          if (n.isNpm) npmPackages++;
+          break;
+        case NodeType.REQUIRES_AUTH:
+        case NodeType.REQUIRES_ROLE:
+          hasAuth = true; break;
+      }
+      if (n.body && n.type !== NodeType.PAGE && n.type !== NodeType.FUNCTION_DEF) walk(n.body);
+      if (n.thenBranch) walk(n.thenBranch);
+      if (n.otherwiseBranch) walk(n.otherwiseBranch);
+    }
+  }
+  walk(ast.body);
+
+  const typeWarnings = warnings.filter(w => w.message?.startsWith('Type warning')).length;
+  // Note: inferred type errors are in errors[], not warnings[] — counted separately if needed
+  const lines = source.split('\n').filter(l => l.trim() && !l.trim().startsWith('#')).length;
+
+  return {
+    ok: true,                 // set to false if errors exist — caller patches this
+    endpoints,
+    tables,
+    pages,
+    tests: { defined: tests },
+    functions,
+    agents,
+    workflows,
+    npm_packages: npmPackages,
+    has_auth: hasAuth,
+    has_database: hasDatabase,
+    lines,
+    warnings: {
+      total: warnings.length,
+      type_warnings: typeWarnings,
+    },
+  };
+}
+
 function compileProgram(source, options = {}) {
   const ast = parse(source);
   // Resolve file-based imports BEFORE validation so imported functions are visible
@@ -48,6 +107,10 @@ function compileProgram(source, options = {}) {
   result.errors = [...moduleErrors, ...validationErrors, ...result.errors];
   result.warnings = [...(result.warnings || []), ...warnings];
   result.ast = ast;
+  // Structured eval stats for RL + observability
+  const stats = computeStats(ast, source, result.warnings);
+  stats.ok = result.errors.length === 0;
+  result.stats = stats;
   return result;
 }
 
