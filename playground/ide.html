@@ -348,8 +348,8 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
   <!-- Preview / Terminal -->
   <div id="preview-pane">
     <div id="preview-tabs">
-      <button class="prev-tab active" onclick="showTab('compiled')">Compiled Code</button>
-      <button class="prev-tab" onclick="showTab('output')">Output</button>
+      <button class="prev-tab active" onclick="showTab('output')">Preview</button>
+      <button class="prev-tab" onclick="showTab('compiled')">Code</button>
       <button class="prev-tab" onclick="showTab('terminal')">Terminal</button>
       <button class="prev-tab" onclick="showTab('data')" id="data-tab-btn" style="display:none">Data</button>
       <button class="prev-tab" onclick="showTab('api')" id="api-tab-btn" style="display:none">API</button>
@@ -585,6 +585,8 @@ function updateEditorTOC(source) {
 
 // Populate TOC on initial load
 updateEditorTOC(editor.state.doc.toString());
+// Render initial empty state for the Preview tab
+showOutput();
 
 // ==========================================================================
 // COMPILE
@@ -643,8 +645,18 @@ async function autoCompile() {
       document.getElementById('api-tab-btn').style.display = srcInfo.endpoints.length > 0 ? '' : 'none';
       document.getElementById('download-btn').style.display = lastCompiled.html ? '' : 'none';
       showMetaChips();
-      if (activeTab === 'output') showOutput();
-      if (activeTab === 'compiled') showCompiled();
+      // Auto-preview: web apps show instantly; JS backends auto-run
+      if (lastCompiled.html && !lastCompiled.serverJS) {
+        // Pure web app — show in iframe immediately, no server needed
+        showTab('output');
+      } else if (lastCompiled.serverJS) {
+        // JS backend — auto-start server (stop previous instance first)
+        if (runningPort) { await fetch('/api/stop', { method: 'POST' }); runningPort = null; }
+        doRun();
+      } else {
+        if (activeTab === 'output') showOutput();
+        else if (activeTab === 'compiled') showCompiled();
+      }
     } else {
       if (dot) dot.className = 'dot err';
       setStatus('err', `${lastCompiled.errors.length} error${lastCompiled.errors.length > 1 ? 's' : ''}`);
@@ -661,11 +673,15 @@ window.doUndo = function() { if (undoCmd) undoCmd(editor); editor.focus(); };
 // ==========================================================================
 // PREVIEW
 // ==========================================================================
-let activeTab = 'compiled';
+let activeTab = 'output';
+let runningPort = null; // port where backend app is running
 
 function showOutput() {
   const el = document.getElementById('preview-content');
-  if (!lastCompiled) return;
+  if (!lastCompiled) {
+    el.innerHTML = '<div class="empty-state"><div class="icon" style="font-size:2.5rem">✦</div><div class="title" style="font-size:1.1rem;margin-top:8px">Start typing Clear code</div><div class="hint">Your app preview appears here automatically.</div></div>';
+    return;
+  }
   if (lastCompiled.html) {
     let html = lastCompiled.html;
     if (lastCompiled.browserServer) {
@@ -688,10 +704,13 @@ function showOutput() {
     html = html.replace('</head>', errorCapture + '</head>');
     el.innerHTML = '<iframe sandbox="allow-scripts allow-same-origin"></iframe>';
     el.querySelector('iframe').srcdoc = html;
-  } else if (lastCompiled.serverJS || lastCompiled.javascript) {
-    el.innerHTML = '<div class="empty-state"><div class="icon">&#9881;</div><div class="title">Backend app</div><div class="hint">Click <kbd>Run</kbd> to start the server, then check the Terminal tab.</div></div>';
-  } else if (lastCompiled.python) {
-    el.innerHTML = '<div class="empty-state"><div class="icon">&#9881;</div><div class="title">Python app</div><div class="hint">Click <kbd>Run</kbd> to start the server, then check the Terminal tab.</div></div>';
+  } else if (lastCompiled.serverJS || lastCompiled.javascript || lastCompiled.python) {
+    if (runningPort) {
+      el.innerHTML = `<iframe src="http://localhost:${runningPort}" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>`;
+    } else {
+      const lang = lastCompiled.python ? 'Python' : 'Node.js';
+      el.innerHTML = '<div class="empty-state"><div class="icon" style="font-size:1.8rem">⚙</div><div class="title">Starting ' + lang + ' server…</div><div class="hint">This happens automatically. Check Terminal for logs.</div></div>';
+    }
   } else {
     el.innerHTML = '<div class="empty-state"><div class="icon">&#9654;</div><div class="title">No output</div><div class="hint">No renderable output.</div></div>';
   }
@@ -993,10 +1012,10 @@ window.doRun = async function() {
       appendTerminal('<span class="term-out">Server running on port ' + data.port + '</span>\n');
       if (data.logs) data.logs.forEach(l => appendTerminal('<span class="term-out">' + escHtml(l) + '</span>'));
       setStatus('ok', 'Running :' + data.port);
-      // If app has tables, show Data tab; if HTML, show output; else terminal
-      if (getTableNames().length > 0) showTab('data');
-      else if (lastCompiled.html) showTab('output');
-      else showTab('terminal');
+      runningPort = data.port;
+      // Always show Output — iframe for backend, data tab if tables exist
+      if (lastCompiled.html && getTableNames().length > 0) showTab('data');
+      else showTab('output');
     }
   } catch (err) {
     appendTerminal('<span class="term-err">' + escHtml(err.message) + '</span>\n');
@@ -1009,6 +1028,8 @@ window.doStop = async function() {
   await fetch('/api/stop', { method: 'POST' });
   appendTerminal('<span class="term-out">Server stopped.</span>\n');
   setStatus('ok', 'Stopped');
+  runningPort = null;
+  if (activeTab === 'output') showOutput();
 };
 
 // ==========================================================================
@@ -1700,9 +1721,10 @@ document.getElementById('template-picker').addEventListener('change', async func
     // Update editor header with template name
     const label = document.getElementById('editor-label');
     if (label) label.textContent = this.value + '/main.clear';
-    // Reset preview to empty state — user must explicitly compile
+    // Auto-compile and preview immediately
     lastCompiled = null;
-    showTab('compiled');
+    showTab('output');
+    autoCompile();
   } catch {}
 });
 
