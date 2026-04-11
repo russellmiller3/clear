@@ -116,7 +116,7 @@
 //
 // =============================================================================
 
-import { tokenize, TokenType } from './tokenizer.js';
+import { tokenize, tokenizeLine, TokenType } from './tokenizer.js';
 
 // =============================================================================
 // AST NODE TYPES
@@ -373,8 +373,14 @@ function ifThenNode(condition, thenBranch, otherwiseBranch, line) {
   return { type: NodeType.IF_THEN, condition, thenBranch, otherwiseBranch, line };
 }
 
-function functionDefNode(name, params, body, line) {
-  return { type: NodeType.FUNCTION_DEF, name, params, body, line };
+function functionDefNode(name, params, body, line, returnType) {
+  // Normalize params: plain strings → {name, type: null}
+  const normalizedParams = params.map(p =>
+    typeof p === 'string' ? { name: p, type: null } : p
+  );
+  const node = { type: NodeType.FUNCTION_DEF, name, params: normalizedParams, body, line };
+  if (returnType) node.returnType = returnType;
+  return node;
 }
 
 function returnNode(expression, line) {
@@ -560,8 +566,8 @@ function memberAccessNode(object, member, line) {
   return { type: NodeType.MEMBER_ACCESS, object, member, line };
 }
 
-function tryHandleNode(tryBody, handleBody, errorVar, line) {
-  return { type: NodeType.TRY_HANDLE, tryBody, handleBody, errorVar, line };
+function tryHandleNode(tryBody, handlers, line) {
+  return { type: NodeType.TRY_HANDLE, tryBody, handlers, line };
 }
 
 function deployNode(platform, line) {
@@ -2347,14 +2353,24 @@ function parseFunctionDef(lines, startIdx, blockIndent, errors) {
   //   ALIAS:     "greet with input a"      → define function greet with input a:
   const params = [];
 
+  const TYPE_KEYWORDS = new Set(['text', 'number', 'list', 'boolean', 'map', 'any']);
+
   if (pos < tokens.length && tokens[pos].type === TokenType.LPAREN) {
-    // Parens-style: greet(a, b)
+    // Parens-style: greet(a, b) or greet(a is text, b is number)
     pos++; // skip (
     while (pos < tokens.length && tokens[pos].type !== TokenType.RPAREN) {
       if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
       if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
-        params.push(tokens[pos].value);
+        const paramName = tokens[pos].value;
         pos++;
+        let paramType = null;
+        // Detect "name is type" — check .canonical === 'is' then type keyword
+        if (pos < tokens.length && tokens[pos].canonical === 'is' &&
+            pos + 1 < tokens.length && TYPE_KEYWORDS.has(tokens[pos + 1].value.toLowerCase())) {
+          paramType = tokens[pos + 1].value.toLowerCase();
+          pos += 2;
+        }
+        params.push({ name: paramName, type: paramType });
       } else {
         break;
       }
@@ -2385,15 +2401,30 @@ function parseFunctionDef(lines, startIdx, blockIndent, errors) {
     }
   }
 
+  // Check for "returns TYPE" after params
+  // CRITICAL: 'returns' canonical is 'responds_with' — must check .value not .canonical
+  let returnType = null;
+  if (pos < tokens.length && tokens[pos].value === 'returns') {
+    pos++;
+    if (pos < tokens.length && TYPE_KEYWORDS.has(tokens[pos].value.toLowerCase())) {
+      returnType = tokens[pos].value.toLowerCase();
+      pos++;
+    }
+  }
+
   // Parse indented body
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
 
   if (body.length === 0) {
-    errors.push({ line, message: `The function "${name}" is empty — it needs code inside. Indent some code below it. Example:\n  define function ${name}:\n    show "hello"` });
+    errors.push({ line, message: `The function "${name}" is empty — it needs code inside. Indent some code below it. Example:
+  define function ${name}:
+    show "hello"` });
   }
 
-  return { node: functionDefNode(name, params, body, line), endIdx };
+  return { node: functionDefNode(name, params, body, line, returnType), endIdx };
 }
+
+// Agent definit}
 
 // Agent definition: agent 'Name' receiving varName: + indented body
 function parseAgent(lines, startIdx, blockIndent, errors) {
@@ -5669,30 +5700,38 @@ function parseTryHandle(lines, startIdx, blockIndent, errors) {
     errors.push({ line, message: 'The try: block is empty — it needs code to attempt. Indent some code below it. Example:\n  try:\n    result is 100 / 0' });
   }
 
-  // Expect error handler line at same indent level:
-  //   CANONICAL: "if there's an error:" (multi-word synonym → if_error)
-  //   Aliases: "if error:", "handle the error", "handle", "catch"
-  let handleBody = [];
-  let errorVar = 'error';
-  if (i < lines.length && lines[i].indent <= blockIndent) {
+    // Collect one or more error handlers:
+  //   "if there's an error:" (catch-all, canonical if_error)
+  //   "if there's a 'not found' error:" (typed, STRING after if_error token)
+  const handlers = [];
+  while (i < lines.length && lines[i].indent <= blockIndent) {
     const handleTokens = lines[i].tokens;
-    if (handleTokens.length > 0 &&
-        (handleTokens[0].canonical === 'if_error' || handleTokens[0].canonical === 'handle')) {
-      const handleResult = parseBlock(lines, i + 1, blockIndent, errors);
-      handleBody = handleResult.body;
-      i = handleResult.endIdx;
+    if (!handleTokens.length) break;
+    if (handleTokens[0].canonical !== 'if_error' && handleTokens[0].canonical !== 'handle') break;
 
-      if (handleBody.length === 0) {
-        errors.push({ line: handleTokens[0].line, message: 'The error handler is empty — it needs code to run when something goes wrong. Indent some code below it. Example:\n  if there\'s an error:\n    show "Something went wrong"' });
-      }
-    } else {
-      errors.push({ line, message: 'Add "if there\'s an error:" after the try block. Example:\n  try:\n    risky_thing()\n  if there\'s an error:\n    show "Something went wrong"' });
+    // Check for typed handler: if there's a 'not found' error:
+    // Token sequence after if_error: optional STRING, then optional 'error'
+    let errorType = null;
+    let tPos = 1;
+    if (tPos < handleTokens.length && handleTokens[tPos].type === TokenType.STRING) {
+      errorType = handleTokens[tPos].value;
+      tPos++;
     }
-  } else {
-    errors.push({ line, message: 'Add "if there\'s an error:" after the try block. Example:\n  try:\n    risky_thing()\n  if there\'s an error:\n    show "Something went wrong"' });
+
+    const handlerResult = parseBlock(lines, i + 1, blockIndent, errors);
+    if (handlerResult.body.length === 0) {
+      errors.push({ line: handleTokens[0].line, message: "The error handler is empty — add code inside it." });
+    }
+    handlers.push({ errorType, body: handlerResult.body });
+    i = handlerResult.endIdx;
   }
 
-  return { node: tryHandleNode(tryBody, handleBody, errorVar, line), endIdx: i };
+  if (handlers.length === 0) {
+    errors.push({ line, message: "Add \"if there's an error:\" after the try block." });
+    handlers.push({ errorType: null, body: [] });
+  }
+
+  return { node: tryHandleNode(tryBody, handlers, line), endIdx: i };
 }
 
 // =============================================================================
@@ -6198,6 +6237,45 @@ function parseAssignment(tokens, line) {
     }
     const listName = tokens[pos].value;
     return { name, expression: { type: NodeType.GROUP_BY, field, list: listName, line } };
+  }
+
+  // Check for "apply fn to each in list" — MAP_APPLY
+  // e.g. doubled = apply double to each in numbers
+  if (pos < tokens.length && tokens[pos].value === 'apply') {
+    pos++; // skip 'apply'
+    if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
+      const fnName = tokens[pos].value;
+      pos++;
+      // expect "to each in listName"
+      const toPos = tokens.findIndex((t, i) => i >= pos && t.canonical === 'to_connector');
+      const eachIdx = toPos >= 0 ? toPos + 1 : -1;
+      const inIdx = eachIdx >= 0 && eachIdx < tokens.length && tokens[eachIdx].value === 'each' ? eachIdx + 1 : -1;
+      if (inIdx >= 0 && inIdx < tokens.length && tokens[inIdx].canonical === 'in') {
+        const listExpr = parseExpression(tokens, inIdx + 1, line);
+        if (!listExpr.error) {
+          return { name, expression: { type: NodeType.MAP_APPLY, fn: fnName, list: listExpr.node, line } };
+        }
+      }
+    }
+  }
+
+  // Check for "filter list using fn" — FILTER_APPLY (must come before filter_where)
+  // e.g. active = filter users using is_active
+  // Disambiguation: "filter X using fn" vs "filter X where field op val"
+  // Key: check for 'using' (value, since canonical is 'with') vs 'where' (canonical)
+  if (pos < tokens.length && tokens[pos].canonical === 'filter_where') {
+    let usingIdx = -1;
+    for (let si = pos + 1; si < tokens.length; si++) {
+      if (tokens[si].value === 'using') { usingIdx = si; break; }
+      if (tokens[si].canonical === 'where') break;
+    }
+    if (usingIdx !== -1) {
+      const listExpr = parseExpression(tokens, pos + 1, line);
+      const fnName = tokens[usingIdx + 1]?.value;
+      if (fnName) {
+        return { name, expression: { type: NodeType.FILTER_APPLY, fn: fnName, list: listExpr.node, line } };
+      }
+    }
   }
 
   // Check for "filter list where field op value" on the right side
@@ -6715,7 +6793,10 @@ function parsePrimary(tokens, pos, line, end) {
   }
 
   if (tok.type === TokenType.STRING) {
-    return { node: literalString(tok.value, line), nextPos: pos + 1 };
+    const strParts = parseStringParts(tok.value, line);
+    const strNode = literalString(tok.value, line);
+    if (strParts) strNode.parts = strParts;
+    return { node: strNode, nextPos: pos + 1 };
   }
 
   // "current user" -> special variable reference to authenticated user

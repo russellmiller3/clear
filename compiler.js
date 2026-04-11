@@ -545,7 +545,7 @@ function compileNamespaceObject(useNode, ctx, pad) {
   const moduleCtx = { ...ctx, declared: new Set(), stateVars: new Set(), indent: 0 };
   for (const mNode of nodes) {
     if (mNode.type === NodeType.FUNCTION_DEF) {
-      const params = mNode.params.map(sanitizeName).join(', ');
+      const params = mNode.params.map(p => sanitizeName(p.name)).join(', ');
       // Single-expression function: body is [returnNode(expr)]
       const isSingleReturn = mNode.body && mNode.body.length === 1 && mNode.body[0].type === NodeType.RETURN;
       if (ctx.lang === 'python') {
@@ -554,7 +554,7 @@ function compileNamespaceObject(useNode, ctx, pad) {
           entries.push(`"${mNode.name}": lambda ${params}: ${bodyExpr}`);
         } else {
           // Multi-line: not yet supported in namespace, fall back to lambda of last return
-          const fnDeclared = new Set(mNode.params.map(sanitizeName));
+          const fnDeclared = new Set(mNode.params.map(p => sanitizeName(p.name)));
           const bodyCode = compileBody(mNode.body, moduleCtx, { declared: fnDeclared });
           entries.push(`"${mNode.name}": lambda ${params}: (${bodyCode.trim()})`);
         }
@@ -563,7 +563,7 @@ function compileNamespaceObject(useNode, ctx, pad) {
           const bodyExpr = exprToCode(mNode.body[0].expression, moduleCtx);
           entries.push(`${sanitizeName(mNode.name)}: function(${params}) { return ${bodyExpr}; }`);
         } else {
-          const fnDeclared = new Set(mNode.params.map(sanitizeName));
+          const fnDeclared = new Set(mNode.params.map(p => sanitizeName(p.name)));
           const bodyCode = compileBody(mNode.body, { ...moduleCtx, indent: 1 }, { declared: fnDeclared });
           entries.push(`${sanitizeName(mNode.name)}: function(${params}) {\n${bodyCode}\n${pad}}`);
         }
@@ -3022,17 +3022,27 @@ function _compileNodeInner(node, ctx) {
     }
 
     case NodeType.FUNCTION_DEF: {
-      const params = node.params.map(sanitizeName).join(', ');
+      const params = node.params.map(p => sanitizeName(p.name)).join(', ');
       if (ctx.lang === 'python') {
         const bodyCode = compileBody(node.body, ctx);
         return `${pad}def ${sanitizeName(node.name)}(${params}):\n${bodyCode}`;
       }
+      // JS: emit JSDoc if any params have types or there's a returnType
+      const _typeMap = { text: 'string', number: 'number', list: 'Array', boolean: 'boolean', map: 'Object', any: '*' };
+      const _typedParams = node.params.filter(p => p.type);
+      const _hasTypes = _typedParams.length > 0 || node.returnType;
+      let _jsdoc = '';
+      if (_hasTypes) {
+        const _pDocs = _typedParams.map(p => `${pad} * @param {${_typeMap[p.type] || p.type}} ${sanitizeName(p.name)}`).join('\n');
+        const _rDoc = node.returnType ? `${pad} * @returns {${_typeMap[node.returnType] || node.returnType}}` : '';
+        _jsdoc = `${pad}/**\n${_pDocs ? _pDocs + '\n' : ''}${_rDoc ? _rDoc + '\n' : ''}${pad} */\n`;
+      }
       // JS: functions get their own scope — params are pre-declared
-      const fnDeclared = new Set(node.params.map(sanitizeName));
+      const fnDeclared = new Set(node.params.map(p => sanitizeName(p.name)));
       const bodyCode = compileBody(node.body, ctx, { declared: fnDeclared });
       // Auto-detect async: if body contains await (CRUD, API calls, agent calls), make function async
       const isAsync = bodyCode.includes('await ');
-      return `${pad}${isAsync ? 'async ' : ''}function ${sanitizeName(node.name)}(${params}) {\n${bodyCode}\n${pad}}`;
+      return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${sanitizeName(node.name)}(${params}) {\n${bodyCode}\n${pad}}`;
     }
 
     case NodeType.AGENT:
@@ -3117,6 +3127,22 @@ function _compileNodeInner(node, ctx) {
     case NodeType.FOR_EACH: {
       const varName = sanitizeName(node.variable);
       const iter = exprToCode(node.iterable, ctx);
+
+      // Two-variable form: "for each key, value in map:" → Object.entries / .items()
+      if (node.variable2) {
+        const var2Name = sanitizeName(node.variable2);
+        if (ctx.lang === 'python') {
+          const bodyCode2 = compileBody(node.body, ctx);
+          return `${pad}for ${varName}, ${var2Name} in ${iter}.items():
+${bodyCode2}`;
+        }
+        const loopDeclared2 = new Set(ctx.declared);
+        const bodyCode2 = compileBody(node.body, ctx, { declared: loopDeclared2 });
+        return `${pad}for (const [${varName}, ${var2Name}] of Object.entries(${iter})) {
+${bodyCode2}
+${pad}}`;
+      }
+
       // Use `for await` when iterating over async generators (streaming AI)
       const isAsync = iter.includes('_askAIStream') || iter.includes('_stream') || ctx.streamMode;
       if (ctx.lang === 'python') {
@@ -3144,16 +3170,71 @@ function _compileNodeInner(node, ctx) {
     }
 
     case NodeType.TRY_HANDLE: {
+      // Normalize: support both new handlers array and legacy errorVar/handleBody
+      const _handlers = node.handlers || [{ errorType: null, body: node.handleBody || [] }];
+
+      function errorTypeToCondition(errorType, lang) {
+        if (!errorType) return null;
+        const lower = errorType.toLowerCase();
+        const statusMap = { 'not found': 404, 'forbidden': 403, 'unauthorized': 401, 'bad request': 400, 'server error': 500 };
+        const status = statusMap[lower];
+        if (status) {
+          if (lang === 'python') return `_err.status == ${status}`;
+          return `_err.status === ${status} || _err.message?.toLowerCase().includes('${lower}')`;
+        }
+        if (lang === 'python') return `str(_err).lower().find('${lower}') >= 0`;
+        return `_err.message?.toLowerCase().includes('${lower}')`;
+      }
+
       if (ctx.lang === 'python') {
         const tryCode = compileBody(node.tryBody, ctx);
-        const handleCode = compileBody(node.handleBody, ctx);
-        return `${pad}try:\n${tryCode}\n${pad}except Exception as ${node.errorVar}:\n${handleCode}`;
+        const errVar = '_err';
+        const hasTyped = _handlers.some(h => h.errorType);
+        let catchBody = '';
+        _handlers.forEach((h, i) => {
+          const cond = errorTypeToCondition(h.errorType, 'python');
+          // untyped-only: body directly in except (compileBody adds +1 → indent+1)
+          // typed: body inside if/elif/else inside except (need +2 → pass ctx with +1 so compileBody gives +2)
+          const bodyCtx = (cond || (hasTyped && i > 0))
+            ? { ...ctx, declared: new Set(ctx.declared), indent: ctx.indent + 1 }
+            : { ...ctx, declared: new Set(ctx.declared) };
+          const bodyCode = compileBody(h.body, bodyCtx);
+          if (i === 0 && !cond) {
+            catchBody += bodyCode;
+          } else if (i === 0 && cond) {
+            catchBody += `${pad}    if ${cond}:\n${bodyCode}`;
+          } else if (cond) {
+            catchBody += `\n${pad}    elif ${cond}:\n${bodyCode}`;
+          } else {
+            catchBody += `\n${pad}    else:\n${bodyCode}`;
+          }
+        });
+        return `${pad}try:\n${tryCode}\n${pad}except Exception as ${errVar}:\n${catchBody}`;
       }
+
       const tryDeclared = new Set(ctx.declared);
       const tryCode = compileBody(node.tryBody, ctx, { declared: tryDeclared });
-      const catchDeclared = new Set(ctx.declared);
-      const handleCode = compileBody(node.handleBody, ctx, { declared: catchDeclared });
-      return `${pad}try {\n${tryCode}\n${pad}} catch (${node.errorVar}) {\n${handleCode}\n${pad}}`;
+      const errVar = '_err';
+      const hasTypedJS = _handlers.some(h => h.errorType);
+      let catchBody = '';
+      _handlers.forEach((h, i) => {
+        const cond = errorTypeToCondition(h.errorType, 'js');
+        // typed handlers: body inside if/else block (need +2 → pass ctx with +1 so compileBody gives +2)
+        const bodyCtx = (cond || (hasTypedJS && i > 0))
+          ? { ...ctx, declared: new Set(ctx.declared), indent: ctx.indent + 1 }
+          : { ...ctx, declared: new Set(ctx.declared) };
+        const bodyCode = compileBody(h.body, bodyCtx);
+        if (i === 0 && !cond) {
+          catchBody += bodyCode;
+        } else if (i === 0 && cond) {
+          catchBody += `${pad}  if (${cond}) {\n${bodyCode}\n${pad}  }`;
+        } else if (cond) {
+          catchBody += ` else if (${cond}) {\n${bodyCode}\n${pad}  }`;
+        } else {
+          catchBody += ` else {\n${bodyCode}\n${pad}  }`;
+        }
+      });
+      return `${pad}try {\n${tryCode}\n${pad}} catch (${errVar}) {\n${catchBody}\n${pad}}`;
     }
 
     case NodeType.RETRY: {
@@ -4112,8 +4193,49 @@ export function exprToCode(expr, ctx) {
       return String(expr.value);
 
     case NodeType.LITERAL_STRING: {
+      // Structured interpolation: {expr} with arbitrary expressions
+      if (expr.parts) {
+        if (ctx.lang === 'python') {
+          // Use f-string when all expressions are simple (var refs, member access, arithmetic)
+          // For complex expressions, use str() concatenation
+          const isSimpleExpr = (e) =>
+            e.type === NodeType.VARIABLE_REF ||
+            e.type === NodeType.MEMBER_ACCESS ||
+            e.type === NodeType.BINARY_OP ||
+            e.type === NodeType.LITERAL_NUMBER;
+          const allSimple = expr.parts.every(p => p.text !== undefined || isSimpleExpr(p.expr));
+          if (allSimple) {
+            // Emit as f-string: f"Hello, {name}!"
+            const fParts = expr.parts.map(p =>
+              p.text !== undefined
+                ? p.text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\{/g, '{{').replace(/\}/g, '}}')
+                : `{${exprToCode(p.expr, ctx)}}`
+            );
+            return `f"${fParts.join('')}"`;
+          }
+          const pyParts = expr.parts.map(p =>
+            p.text !== undefined
+              ? JSON.stringify(p.text)
+              : `str(${exprToCode(p.expr, ctx)})`
+          );
+          return pyParts.length === 1 ? pyParts[0] : pyParts.join(' + ');
+        }
+        const jsParts = expr.parts.map(p => {
+          if (p.text !== undefined) {
+            // Escape backslashes, backticks, and ${ in literal text
+            let t = p.text;
+            t = t.split('\\').join('\\\\');
+            t = t.split('`').join('\\`');
+            t = t.split('${').join('\\${');
+            return t;
+          }
+          return '${' + exprToCode(p.expr, ctx) + '}';
+        });
+        return '`' + jsParts.join('') + '`';
+      }
+
       const val = expr.value;
-      // String interpolation: 'Hello {name}, you have {count} items'
+      // Fallback: simple {var} interpolation (plain identifiers only)
       if (val.includes('{') && val.includes('}')) {
         if (ctx.lang === 'python') {
           return `f"${val.replace(/"/g, '\\"')}"`;
@@ -4126,6 +4248,36 @@ export function exprToCode(expr, ctx) {
         return '`' + tmpl + '`';
       }
       return JSON.stringify(val);
+    }
+
+    case NodeType.MAP_KEYS: {
+      const mapSrc = exprToCode(expr.source, ctx);
+      return ctx.lang === 'python' ? `list(${mapSrc}.keys())` : `Object.keys(${mapSrc})`;
+    }
+
+    case NodeType.MAP_VALUES: {
+      const mapSrc = exprToCode(expr.source, ctx);
+      return ctx.lang === 'python' ? `list(${mapSrc}.values())` : `Object.values(${mapSrc})`;
+    }
+
+    case NodeType.MAP_EXISTS: {
+      const mapKey = exprToCode(expr.key, ctx);
+      const mapObj = exprToCode(expr.map, ctx);
+      return `(${mapKey} in ${mapObj})`;
+    }
+
+    case NodeType.MAP_APPLY: {
+      const applyFn = sanitizeName(expr.fn);
+      const applyList = exprToCode(expr.list, ctx);
+      if (ctx.lang === 'python') return `[${applyFn}(x) for x in ${applyList}]`;
+      return `${applyList}.map(${applyFn})`;
+    }
+
+    case NodeType.FILTER_APPLY: {
+      const filterFn = sanitizeName(expr.fn);
+      const filterList = exprToCode(expr.list, ctx);
+      if (ctx.lang === 'python') return `[x for x in ${filterList} if ${filterFn}(x)]`;
+      return `${filterList}.filter(${filterFn})`;
     }
 
     case NodeType.LITERAL_BOOLEAN:

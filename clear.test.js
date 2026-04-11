@@ -629,7 +629,7 @@ describe('Parser - Function Definitions', () => {
     expect(fn.type).toBe(NodeType.FUNCTION_DEF);
     expect(fn.name).toBe('greet');
     expect(fn.params).toHaveLength(1);
-    expect(fn.params[0]).toBe('name');
+    expect(fn.params[0].name).toBe('name');
     expect(fn.body).toHaveLength(2);
   });
 
@@ -638,8 +638,8 @@ describe('Parser - Function Definitions', () => {
     const ast = parse(source);
     const fn = ast.body[0];
     expect(fn.params).toHaveLength(2);
-    expect(fn.params[0]).toBe('a');
-    expect(fn.params[1]).toBe('b');
+    expect(fn.params[0].name).toBe('a');
+    expect(fn.params[1].name).toBe('b');
   });
 
   it('parses a function with no params (no "with" clause)', () => {
@@ -952,7 +952,7 @@ describe('"to" as function definition', () => {
     expect(ast.errors).toHaveLength(0);
     expect(ast.body[0].type).toBe(NodeType.FUNCTION_DEF);
     expect(ast.body[0].name).toBe('greet');
-    expect(ast.body[0].params[0]).toBe('name');
+    expect(ast.body[0].params[0].name).toBe('name');
   });
 
   it('compiles "to double with x" to JS', () => {
@@ -1482,7 +1482,7 @@ describe('"define function" with input(s)', () => {
     expect(ast.body[0].type).toBe(NodeType.FUNCTION_DEF);
     expect(ast.body[0].name).toBe('greet');
     expect(ast.body[0].params).toHaveLength(1);
-    expect(ast.body[0].params[0]).toBe('name');
+    expect(ast.body[0].params[0].name).toBe('name');
   });
 
   it('parses "define function add with inputs a, b" (plural)', () => {
@@ -1651,8 +1651,8 @@ describe('Parser - Try / If There\'s an Error', () => {
     const node = ast.body[0];
     expect(node.type).toBe('try_handle');
     expect(node.tryBody).toHaveLength(1);
-    expect(node.handleBody).toHaveLength(1);
-    expect(node.errorVar).toBe('error');
+    expect(node.handlers).toHaveLength(1);
+    expect(node.handlers[0].body).toHaveLength(1);
   });
 
   it('parses shorter synonym "if error:"', () => {
@@ -1687,7 +1687,7 @@ describe('Compiler - Try/Error (JS)', () => {
     const source = `try:\n  x is 100 / 0\nif there's an error:\n  show "oops"`;
     const result = compileProgram(source, { target: 'web' });
     expect(result.javascript).toContain('try {');
-    expect(result.javascript).toContain('} catch (error) {');
+    expect(result.javascript).toContain('} catch (_err) {');
     expect(result.javascript).toContain('console.log("oops")');
   });
 });
@@ -1697,7 +1697,7 @@ describe('Compiler - Try/Error (Python)', () => {
     const source = `try:\n  x is 100 / 0\nif there's an error:\n  show "oops"`;
     const result = compileProgram(source, { target: 'backend' });
     expect(result.python).toContain('try:');
-    expect(result.python).toContain('except Exception as error:');
+    expect(result.python).toContain('except Exception as _err:');
     expect(result.python).toContain('print("oops")');
   });
 });
@@ -1746,7 +1746,7 @@ describe('Math-style functions: name(params) = expression', () => {
     expect(ast.body[0].type).toBe(NodeType.FUNCTION_DEF);
     expect(ast.body[0].name).toBe('total_value');
     expect(ast.body[0].params).toHaveLength(1);
-    expect(ast.body[0].params[0]).toBe('item');
+    expect(ast.body[0].params[0].name).toBe('item');
     expect(ast.body[0].body[0].type).toBe(NodeType.RETURN);
   });
 
@@ -1808,7 +1808,7 @@ describe('"of" parameter syntax', () => {
     const ast = parse(source);
     expect(ast.errors).toHaveLength(0);
     expect(ast.body[0].type).toBe(NodeType.FUNCTION_DEF);
-    expect(ast.body[0].params[0]).toBe('name');
+    expect(ast.body[0].params[0].name).toBe('name');
   });
 
   it('parses "define function add of a, b:"', () => {
@@ -18496,5 +18496,244 @@ page 'App':
   });
 });
 
-run();
 
+
+// ============================================================
+// GP Phase 1: Map Iteration
+// ============================================================
+
+describe('Map iteration — two-variable for each', () => {
+  it('parses for each key, value in map', () => {
+    const ast = parse("build for javascript backend\nfor each key, value in scores:\n  show key");
+    const node = ast.body[1];
+    expect(node.type).toBe(NodeType.FOR_EACH);
+    expect(node.variable).toBe('key');
+    expect(node.variable2).toBe('value');
+  });
+  it('compiles to Object.entries in JS', () => {
+    const r = compileProgram("build for javascript backend\nfor each key, value in scores:\n  show key");
+    expect(r.javascript).toContain('Object.entries(scores)');
+    expect(r.javascript).toContain('[key, value]');
+  });
+  it('compiles to .items() in Python', () => {
+    const r = compileProgram("build for python backend\nfor each key, value in scores:\n  show key");
+    expect(r.python).toContain('scores.items()');
+    expect(r.python).toContain('for key, value in');
+  });
+  it('single-variable for each still works', () => {
+    const r = compileProgram("build for javascript backend\nmy_list = [1, 2, 3]\nfor each item in my_list:\n  show item");
+    expect(r.javascript).toContain('for (const item of my_list)');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('Map iteration — keys of / values of', () => {
+  it('compiles keys of X to Object.keys in JS', () => {
+    const r = compileProgram("build for javascript backend\nall_keys = keys of scores\nshow all_keys");
+    expect(r.javascript).toContain('Object.keys(scores)');
+  });
+  it('compiles values of X to Object.values in JS', () => {
+    const r = compileProgram("build for javascript backend\nall_vals = values of scores\nshow all_vals");
+    expect(r.javascript).toContain('Object.values(scores)');
+  });
+  it('compiles keys of X to list(keys()) in Python', () => {
+    const r = compileProgram("build for python backend\nall_keys = keys of scores\nshow all_keys");
+    expect(r.python).toContain('list(scores.keys())');
+  });
+  it('compiles values of X to list(values()) in Python', () => {
+    const r = compileProgram("build for python backend\nall_vals = values of scores\nshow all_vals");
+    expect(r.python).toContain('list(scores.values())');
+  });
+});
+
+describe('Map iteration — exists in', () => {
+  it('compiles exists in to in operator in JS', () => {
+    const r = compileProgram("build for javascript backend\nfound = 'alice' exists in scores\nshow found");
+    expect(r.javascript).toContain('in scores');
+    expect(r.javascript).toContain('alice');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('compiles exists in to in operator in Python', () => {
+    const r = compileProgram("build for python backend\nfound = 'alice' exists in scores\nshow found");
+    expect(r.python).toContain('in scores');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+// ============================================================
+// GP Phase 2: String Interpolation (Expressions)
+// ============================================================
+
+describe('String interpolation — expression in {}', () => {
+  it('compiles {expr} to template literal in JS', () => {
+    const r = compileProgram("build for javascript backend\nprice = 10\nquantity = 3\nsummary is 'Total: {price * quantity}'\nshow summary");
+    expect(r.javascript).toContain('Total:');
+    expect(r.javascript).toContain('price * quantity');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('compiles {expr} to f-string in Python', () => {
+    const r = compileProgram("build for python backend\nprice = 10\nquantity = 3\nsummary is 'Total: {price * quantity}'\nshow summary");
+    expect(r.python).toContain('Total:');
+    expect(r.python).toContain('price * quantity');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('simple {var} still works after change (JS)', () => {
+    const r = compileProgram("build for javascript backend\nname is 'Alice'\ngreeting is 'Hello {name}!'\nshow greeting");
+    expect(r.javascript).toContain('Hello');
+    expect(r.javascript).toContain('name');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('simple {var} still works in Python', () => {
+    const r = compileProgram("build for python backend\nname is 'Alice'\ngreeting is 'Hello {name}!'\nshow greeting");
+    expect(r.python).toContain('Hello');
+    expect(r.python).toContain('name');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+
+// ============================================================
+// GP Phase 3: First-class functions
+// ============================================================
+
+describe('First-class functions — apply fn to each in list', () => {
+  it('compiles to list.map(fn) in JS', () => {
+    const r = compileProgram("build for javascript backend\ndoubled = apply double to each in numbers\nshow doubled");
+    expect(r.javascript).toContain('numbers.map(double)');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('compiles to list comprehension in Python', () => {
+    const r = compileProgram("build for python backend\ndoubled = apply double to each in numbers\nshow doubled");
+    expect(r.python).toContain('[double(x) for x in numbers]');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('First-class functions — filter list using fn', () => {
+  it('compiles to list.filter(fn) in JS', () => {
+    const r = compileProgram("build for javascript backend\nactive = filter users using is_active\nshow active");
+    expect(r.javascript).toContain('users.filter(is_active)');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('compiles to list comprehension in Python', () => {
+    const r = compileProgram("build for python backend\nactive = filter users using is_active\nshow active");
+    expect(r.python).toContain('[x for x in users if is_active(x)]');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('filter where still works (no regression)', () => {
+    const r = compileProgram("build for javascript backend\nbig_sales = filter sales where amount > 1000\nshow big_sales");
+    expect(r.javascript).toContain('big_sales');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+
+// ============================================================
+// GP Phase 4: Type Annotations
+// ============================================================
+
+describe('Type annotations — typed params', () => {
+  it('parses typed param name and type', () => {
+    const ast = parse("define function greet(name is text):\n  show name");
+    const fn = ast.body[0];
+    expect(fn.params[0].name).toBe('name');
+    expect(fn.params[0].type).toBe('text');
+  });
+  it('parses multiple typed params and return type', () => {
+    const ast = parse("define function add(a is number, b is number) returns number:\n  return a + b");
+    const fn = ast.body[0];
+    expect(fn.params[0].type).toBe('number');
+    expect(fn.params[1].type).toBe('number');
+    expect(fn.returnType).toBe('number');
+  });
+  it('untyped params still parsed correctly', () => {
+    const ast = parse("define function double(x):\n  return x * 2");
+    const fn = ast.body[0];
+    expect(fn.params[0].name).toBe('x');
+    expect(fn.params[0].type).toBeNull();
+  });
+});
+
+describe('Type annotations — JSDoc output', () => {
+  it('emits JSDoc for typed function in JS', () => {
+    const r = compileProgram("build for javascript backend\ndefine function add(a is number, b is number) returns number:\n  return a + b");
+    expect(r.javascript).toContain('@param {number} a');
+    expect(r.javascript).toContain('@param {number} b');
+    expect(r.javascript).toContain('@returns {number}');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('no JSDoc for untyped function', () => {
+    const r = compileProgram("build for javascript backend\ndefine function double(x):\n  return x * 2");
+    expect(r.javascript).toContain('function double(x)');
+    expect(r.javascript).not.toContain('/**');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('Python unaffected by type annotations', () => {
+    const r = compileProgram("build for python backend\ndefine function greet(name is text):\n  show name");
+    expect(r.python).toContain('def greet(name):');
+    expect(r.python).not.toContain('/**');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+
+// ============================================================
+// GP Phase 5: Typed Error Handling
+// ============================================================
+
+describe('Typed error handling — basic try/handle', () => {
+  it('compiles basic try/handle in JS', () => {
+    const r = compileProgram(
+      "build for javascript backend\ntry:\n  set x to 1\nif error:\n  show 'failed'"
+    );
+    expect(r.javascript).toContain('try {');
+    expect(r.javascript).toContain('} catch (_err) {');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('compiles basic try/handle in Python', () => {
+    const r = compileProgram(
+      "build for python backend\ntry:\n  set x to 1\nif error:\n  show 'failed'"
+    );
+    expect(r.python).toContain('try:');
+    expect(r.python).toContain('except Exception as _err:');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('Typed error handling — typed handlers', () => {
+  it('emits status check for not found error in JS', () => {
+    const r = compileProgram(
+      "build for javascript backend\ntry:\n  set x to 1\nif error 'not found':\n  show 'missing'"
+    );
+    expect(r.javascript).toContain('_err.status === 404');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('emits status check for forbidden error in JS', () => {
+    const r = compileProgram(
+      "build for javascript backend\ntry:\n  set x to 1\nif error 'forbidden':\n  show 'no access'"
+    );
+    expect(r.javascript).toContain('_err.status === 403');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('emits if/else if chain for multiple typed handlers in JS', () => {
+    const r = compileProgram(
+      "build for javascript backend\ntry:\n  set x to 1\nif error 'not found':\n  show 'missing'\nif error 'forbidden':\n  show 'no access'\nif error:\n  show 'other'"
+    );
+    expect(r.javascript).toContain('_err.status === 404');
+    expect(r.javascript).toContain('else if');
+    expect(r.javascript).toContain('_err.status === 403');
+    expect(r.javascript).toContain('else {');
+    expect(r.errors).toHaveLength(0);
+  });
+  it('emits if/elif chain for typed handlers in Python', () => {
+    const r = compileProgram(
+      "build for python backend\ntry:\n  set x to 1\nif error 'not found':\n  show 'missing'\nif error 'forbidden':\n  show 'no access'\nif error:\n  show 'other'"
+    );
+    expect(r.python).toContain('_err.status == 404');
+    expect(r.python).toContain('elif');
+    expect(r.python).toContain('_err.status == 403');
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+run();
