@@ -187,6 +187,34 @@ define last_item as: last of items
 sort items by price
 ```
 
+### Maps (Key-Value Pairs)
+
+A map stores labeled values — like a tiny spreadsheet with one row.
+
+```clear
+settings is an empty map
+set settings's theme to 'midnight'
+set settings's language to 'english'
+set settings's font_size to 16
+```
+
+Loop over a map's keys and values at the same time:
+
+```clear
+for each key, value in settings:
+  show '{key} = {value}'
+```
+
+Check if a key exists, and get all keys or values:
+
+```clear
+if 'theme' exists in settings:
+  show 'theme is set'
+
+all_keys   = keys of settings
+all_values = values of settings
+```
+
 ---
 
 ## Chapter 4: Functions (Teaching Your Program New Tricks)
@@ -221,6 +249,49 @@ define function calculate_total(price, quantity):
   tax = subtotal * 0.08
   total = subtotal + tax
   return total
+```
+
+### Typed Parameters (Optional, But Useful)
+
+Add types to your params and Clear will catch mistakes early and document your code:
+
+```clear
+define function add(a is number, b is number) returns number:
+  return a + b
+
+define function greet(name is text) returns text:
+  return 'Hello, {name}!'
+```
+
+Types: `text`, `number`, `boolean`, `list`, `map`, `any`.
+
+If you call `add('hello', 5)`, Clear warns you at compile time — before you ever run it.
+
+### String Interpolation (The Easy Way to Build Messages)
+
+Instead of joining strings with `+`, put `{expr}` right inside a string:
+
+```clear
+name is 'Alice'
+score = 42
+show 'Welcome, {name}! Your score is {score}.'
+show 'Next level at {score * 2} points.'
+```
+
+Works with any expression, including possessives: `'Hi, {user's name}!'`
+
+### Higher-Order Functions (Functions That Take Functions)
+
+```clear
+define function double(x):
+  return x * 2
+
+define function is_big(x):
+  return x > 10
+
+numbers is [3, 15, 8, 22, 1]
+doubled  = apply double to each in numbers   # [6, 30, 16, 44, 2]
+big_ones = filter numbers using is_big       # [15, 22]
 ```
 
 ---
@@ -855,9 +926,42 @@ into every field. Clear gives you clean ways to handle all of it.
 try:
   result = call api 'https://api.example.com/data'
   show result
-if there's an error:
+if error:
   show 'Something went wrong'
 ```
+
+### Typed Error Handlers (Route Different Failures Differently)
+
+Not all errors are equal. A 404 (not found) needs a different response than a 403 (permission denied).
+
+```clear
+try:
+  fetch post from '/api/posts/123'
+if error 'not found':
+  show 'That post doesn't exist'
+if error 'forbidden':
+  show 'You don't have permission to view this'
+if error 'unauthorized':
+  redirect to '/login'
+if error:
+  show 'Something unexpected happened'
+```
+
+### Accessing the Error Object
+
+Inside any `if error` block, the variable `error` is automatically available:
+
+```clear
+try:
+  fetch data from '/api/data'
+if error 'not found':
+  show 'Error {error's status}: {error's message}'
+if error:
+  show error's message
+```
+
+Supported typed handlers: `not found` (404), `forbidden` (403), `unauthorized` (401),
+`bad request` (400), `server error` (500).
 
 ### Retry on Failure
 
