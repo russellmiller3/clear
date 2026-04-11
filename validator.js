@@ -39,7 +39,9 @@
 //   │    ├─ validateFieldMismatch ..... form↔schema names    │
 //   │    ├─ validateOWASP ............ SQLi, XSS, CSRF etc  │
 //   │    ├─ validateCallTargets ...... undefined agents etc  │
-//   │    └─ validateMemberAccessTypes  field on primitive    │
+//   │    ├─ validateMemberAccessTypes  field on primitive    │
+//   │    ├─ validateTypedCallArgs .... literal vs annotation │
+//   │    └─ validateInferredTypes ... (error) text in arith  │
 //   │                                                       │
 //   │  Errors block compilation. Warnings are advisory.     │
 //   └──────────────────────────────────────────────────────┘
@@ -104,6 +106,7 @@ export function validate(ast) {
   validateCallTargets(ast.body, errors);
   validateMemberAccessTypes(ast.body, warnings);
   validateTypedCallArgs(ast.body, warnings);
+  validateInferredTypes(ast.body, errors);
   return { errors, warnings };
 }
 
@@ -260,6 +263,8 @@ function validateForwardReferences(body, errors) {
           localDefined.add(node.variable);
           break;
         case NodeType.USE:
+          // npm package imports define the alias as a variable
+          if (node.isNpm && node.npmAlias) localDefined.add(node.npmAlias);
           // Namespaced module imports define the namespace variable
           if (node._namespace) localDefined.add(node._namespace);
           // Selective imports define the imported names directly
@@ -1560,4 +1565,129 @@ function validateTypedCallArgs(body, warnings) {
   }
 
   checkExprs(body);
+}
+
+/**
+ * INFERRED TYPE SYSTEM (Phase P1):
+ * Walk assignments to build a type environment, then error on arithmetic on text.
+ * Only fires when type is known from a literal assignment — never guesses.
+ *
+ * Catches:
+ *   price = 'ten dollars'
+ *   total = price * 1.08     ← error: price is text, used in arithmetic
+ *
+ * Uses typed param annotations (Phase 97) as authoritative type source.
+ */
+function validateInferredTypes(body, errors) {
+  // Infer the type of a literal or known expression
+  function inferLiteralType(expr) {
+    if (!expr) return 'unknown';
+    if (expr.type === NodeType.LITERAL_STRING) return 'text';
+    if (expr.type === NodeType.LITERAL_NUMBER) return 'number';
+    if (expr.type === NodeType.LITERAL_BOOLEAN) return 'boolean';
+    if (expr.type === NodeType.LITERAL_LIST) return 'list';
+    if (expr.type === NodeType.STRING_INTERPOLATION) return 'text';
+    // Arithmetic always produces a number (if both sides are numbers)
+    if (expr.type === NodeType.BINARY_OP) {
+      if (['-', '*', '/', '%', '**'].includes(expr.operator)) return 'number';
+      if (['+'].includes(expr.operator)) {
+        const l = inferLiteralType(expr.left);
+        const r = inferLiteralType(expr.right);
+        if (l === 'number' && r === 'number') return 'number';
+        if (l === 'text' || r === 'text') return 'text';
+      }
+    }
+    return 'unknown';
+  }
+
+  // Build type environment by scanning all assignments in a node list
+  function buildTypeEnv(nodes, env) {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      if (node.type === NodeType.ASSIGN) {
+        const t = inferLiteralType(node.expression);
+        if (t !== 'unknown') env.set(node.name, { type: t, line: node.line });
+      }
+      // Typed function params are authoritative
+      if (node.type === NodeType.FUNCTION_DEF && Array.isArray(node.params)) {
+        for (const p of node.params) {
+          if (p.type) {
+            const mapped = p.type === 'text' ? 'text' : p.type === 'number' ? 'number' : p.type === 'boolean' ? 'boolean' : 'unknown';
+            if (mapped !== 'unknown') env.set(p.name, { type: mapped, line: node.line, isParam: true });
+          }
+        }
+        buildTypeEnv(node.body, env);
+      }
+      if (node.type === NodeType.ENDPOINT) buildTypeEnv(node.body, env);
+      if (node.type === NodeType.FOR_EACH) buildTypeEnv(node.body, env);
+      if (Array.isArray(node.thenBranch)) buildTypeEnv(node.thenBranch, env);
+      if (Array.isArray(node.otherwiseBranch)) buildTypeEnv(node.otherwiseBranch, env);
+    }
+  }
+
+  // Resolve the type of an expression given the current env
+  function resolveType(expr, env) {
+    if (!expr) return 'unknown';
+    if (expr.type === NodeType.LITERAL_STRING) return 'text';
+    if (expr.type === NodeType.LITERAL_NUMBER) return 'number';
+    if (expr.type === NodeType.LITERAL_BOOLEAN) return 'boolean';
+    if (expr.type === NodeType.STRING_INTERPOLATION) return 'text';
+    if (expr.type === NodeType.VARIABLE_REF) return env.get(expr.name)?.type || 'unknown';
+    if (expr.type === NodeType.BINARY_OP) {
+      if (['-', '*', '/', '%', '**'].includes(expr.operator)) return 'number';
+    }
+    return 'unknown';
+  }
+
+  // Check expressions for type mismatches
+  function checkExpr(expr, env, line) {
+    if (!expr) return;
+    if (expr.type === NodeType.BINARY_OP) {
+      const op = expr.operator;
+      // Arithmetic operators expect numbers
+      if (['-', '*', '/', '%', '**'].includes(op)) {
+        const lt = resolveType(expr.left, env);
+        const rt = resolveType(expr.right, env);
+        if (lt === 'text') {
+          const varName = expr.left?.name || expr.left?.value || '?';
+          errors.push({ line: expr.line || line, message: `'${varName}' is text, not a number — can't use it in ${op} arithmetic. Assign a number instead.` });
+        } else if (rt === 'text') {
+          const varName = expr.right?.name || expr.right?.value || '?';
+          errors.push({ line: expr.line || line, message: `'${varName}' is text, not a number — can't use it in ${op} arithmetic. Assign a number instead.` });
+        }
+      }
+      checkExpr(expr.left, env, line);
+      checkExpr(expr.right, env, line);
+    }
+    if (expr.args) expr.args.forEach(a => checkExpr(a, env, line));
+    if (expr.object) checkExpr(expr.object, env, line);
+  }
+
+  function walkNodes(nodes, env) {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      const line = node.line;
+      // Check expressions in assignments, conditions, and values
+      if (node.type === NodeType.ASSIGN) {
+        checkExpr(node.expression, env, line);
+        // Update env with inferred type after checking
+        const t = inferLiteralType(node.expression);
+        if (t !== 'unknown') env.set(node.name, { type: t, line });
+      } else if (node.expression) {
+        checkExpr(node.expression, env, line);
+      }
+      if (node.condition) checkExpr(node.condition, env, line);
+      if (node.value) checkExpr(node.value, env, line);
+      // Recurse
+      if (Array.isArray(node.body)) walkNodes(node.body, new Map(env));
+      if (Array.isArray(node.thenBranch)) walkNodes(node.thenBranch, new Map(env));
+      if (Array.isArray(node.otherwiseBranch)) walkNodes(node.otherwiseBranch, new Map(env));
+      if (node.handlers) node.handlers.forEach(h => walkNodes(h.body, new Map(env)));
+    }
+  }
+
+  // Build global type env, then walk checking for mismatches
+  const globalEnv = new Map();
+  buildTypeEnv(body, globalEnv);
+  walkNodes(body, globalEnv);
 }

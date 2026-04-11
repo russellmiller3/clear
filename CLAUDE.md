@@ -19,13 +19,14 @@ Run ToolSearch for these before doing anything else:
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1525 compiler tests)
+- Run all tests: `node clear.test.js` (1588 compiler tests)
+- Run sandbox tests: `node sandbox.test.js` (9 integration tests — spins up real servers)
 - Run playground tests (each is a separate file):
   - `node playground/server.test.js` (~85 server API tests)
   - `node playground/e2e.test.js` (~60 template compile + endpoint tests)
   - `node playground/ide.test.js` (~46 Playwright IDE UI tests)
   - `node playground/agent.test.js` (~50 Claude agent tool tests, needs ANTHROPIC_API_KEY)
-- Total: 1515 compiler + ~241 playground tests
+- Total: 1588 compiler + 9 sandbox + ~241 playground tests
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -190,5 +191,14 @@ Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
 
 ## Explain Your Thinking Rule
 When making compiler changes, explain decisions in plain English in the chat as you go. Don't just code silently — the human needs to follow the reasoning, not reverse-engineer it from diffs.
+
+## Science Documentary Rule (MANDATORY)
+Narrate your work as you build — not after. Think David Attenborough watching a compiler evolve in the wild. Before touching a file, say what you're about to do and why it matters in the big picture. Not "I'm editing compiler.js" — that's a changelog. The narration explains *significance*: what problem this solves, why it wasn't solved before, what it unlocks.
+
+**The bar:** if someone watched only the chat (not the code), they should understand what was built, why it matters, and feel the forward momentum.
+
+**Format:** one short paragraph per meaningful action. Vivid, specific, not corporate. "The FAQ bug has been sitting in every compiled landing page since we built the preset system — every single template showed 'Q1, Q2, Q3' instead of actual questions. Nobody noticed because we were looking at the compiler, not the output. Now every app gets the fix on recompile." That's the tone.
+
+**Never:** "I'll now update compiler.js to fix the FAQ issue." That's nothing. Say what the FAQ issue IS, why it matters, and what fixing it enables.
 
 That's it. The compiler has no build step, no config files, no framework. `node clear.test.js` runs everything.

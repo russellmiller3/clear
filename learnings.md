@@ -31,6 +31,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 19b: Display as Cards](#session-19b-display-as-cards-2026-04-10) | `author` field must match before `name`/`title` in heuristics, `ui.tag = 'cards'` is third option, smart field detection by column name |
 | [Session 19c: Component Stress Test](#session-19c-component-stress-test-2026-04-10) | Component names collide with content types, reserved name validator in `parseComponentDef()`, 8 edge case patterns all passing |
 | [Session 20: GP Language Features](#session-20-general-purpose-language-features-2026-04-10) | `of`→`in` canonical, `using`→`with`, `returns`→`responds_with`, `exists in` is compound token `key_exists`, `parsePrimary` has no errors array, `run()` exits immediately, params are `{name,type}` objects, TRY_HANDLE uses `handlers` array, typed handler body indent math, Edit tool fails on large files with template literals |
+| [Session 21: RL Foundation + Source Maps + Page Slugs](#session-21-rl-foundation--source-maps--page-slugs-2026-04-11) | npm require double-quotes bug, backend `// clear:N` always-on for source maps, `_clearLineMap` injected as line 2 (shift off-by-one), `pageNode` always sets route now (single-page apps safe because `hasRouting = pages.length > 1`), sandbox symlinkSync needs `'junction'` type on Windows |
 
 ---
 
@@ -601,3 +602,25 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 ### Edit Tool Silently Fails on Large Files
 - The Edit tool sometimes silently does nothing on files > 6000 lines when the match string contains template literals with `\n`. Use Python `content[start:end]` slice replacement with exact offsets instead.
+
+---
+
+## Session 21: RL Foundation + Source Maps + Page Slugs (2026-04-11)
+
+### npm require() used double-quotes
+- `JSON.stringify('stripe')` produces `"stripe"` but the rest of the server.js file uses single quotes. Fix: use template literals `` `const ${alias} = require('${pkg}');` `` instead of JSON.stringify for the require call.
+
+### Backend `// clear:N` source map markers — always on
+- Source map comments in backend mode are always emitted (not gated by `sourceMap: true`). This is intentional — the `_clearLineMap` embedded in every compiled server needs per-statement granularity to translate runtime stack traces. The `ctx.indent > 1` check was relaxed to `ctx.indent > 2` for backend mode, allowing markers inside endpoint bodies (indent=2).
+
+### `_clearLineMap` injection causes off-by-one
+- The `_clearLineMap` is injected as line 2 of the compiled output (after the version comment). This shifts all subsequent line numbers by 1. The map-building code compensates with `lineMap[idx + 2]` (not `idx + 1`): `+1` for 0-to-1 indexing, `+1` more for the injected line. If you change the injection point, update the offset.
+
+### `pageNode` always sets route now
+- `pageNode()` previously set `node.route` only when `at 'path'` was explicit. Now it always sets it (slugified from title if no explicit path). Single-page apps are safe because the compiler's `hasRouting = pages.length > 1` check gates the routing system independently of whether `node.route` is set.
+
+### Sandbox symlinkSync needs 'junction' on Windows
+- `fs.symlinkSync(src, dest)` on Windows requires a third argument for directory symlinks: `'junction'`. Without it, the symlink creation fails silently or throws. Junction points work without admin rights on Windows; regular symlinks may not.
+
+### Sandbox HTTP poll: any status code = server ready
+- The sandbox polls for server readiness by making an HTTP request to `/`. The poll resolves as soon as ANY response comes back (200, 404, 500 — all count). The server is "ready" as soon as it responds, regardless of status. Only ECONNREFUSED means it's not up yet. Don't check `response.status` in the readiness poll.

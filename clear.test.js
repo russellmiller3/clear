@@ -3372,14 +3372,34 @@ page 'About' at '/about':
     expect(result.html).toContain('About');
   });
 
-  it('page without route still works (single-page)', () => {
+  it('page without route auto-slugifies title', () => {
     const ast = parse(`
 page 'My App':
   heading 'Hello'
     `);
     expect(ast.errors).toHaveLength(0);
     const page = ast.body.find(n => n.type === 'page');
-    expect(page.route).toBeUndefined();
+    expect(page.route).toBe('/my-app');
+  });
+
+  it('explicit at path overrides auto-slug', () => {
+    const ast = parse(`
+page 'My App' at '/':
+  heading 'Hello'
+    `);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === 'page');
+    expect(page.route).toBe('/');
+  });
+
+  it('slugifies multi-word title correctly', () => {
+    const ast = parse(`
+page 'HN Daily Digest':
+  heading 'hello'
+    `);
+    expect(ast.errors).toHaveLength(0);
+    const page = ast.body.find(n => n.type === 'page');
+    expect(page.route).toBe('/hn-daily-digest');
   });
 });
 
@@ -8712,10 +8732,11 @@ describe('Source Maps', () => {
     expect(result.python).toContain('# clear:3');
   });
 
-  it('does NOT add source map comments by default', () => {
+  it('always adds source map comments in JS backend mode (for runtime error translation)', () => {
     const result = compileProgram("build for javascript backend\nprice = 100");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).not.toContain('// clear:');
+    // Backend always emits // clear:N markers so _clearLineMap can translate runtime stack traces
+    expect(result.javascript).toContain('// clear:');
   });
 
   it('annotates if-then blocks', () => {
@@ -8748,6 +8769,36 @@ describe('Source Maps', () => {
     expect(result.javascript).toContain('// clear:2');
     expect(result.javascript).toContain('// clear:3');
     expect(result.javascript).toContain('// clear:4');
+  });
+
+  it('embeds _clearLineMap in JS backend output', () => {
+    const result = compileProgram("build for javascript backend\nwhen user calls GET /api/ping:\n  send back 'pong'");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_clearLineMap');
+    expect(result.javascript).toContain('process.env.CLEAR_DEBUG');
+  });
+
+  it('_clearLineMap maps JS lines back to Clear endpoint lines', () => {
+    const src = "build for javascript backend\nwhen user calls GET /api/ping:\n  send back 'pong'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Extract the _clearLineMap JSON from compiled output
+    const m = result.javascript.match(/_clearLineMap = process\.env\.CLEAR_DEBUG \? (\{.*?\}) : null/);
+    expect(m).not.toBeNull();
+    const lineMap = JSON.parse(m[1]);
+    // At least one entry should map to Clear line 2 (the endpoint declaration)
+    const clearLines = Object.values(lineMap);
+    expect(clearLines).toContain(2);
+  });
+
+  it('adds per-statement markers inside endpoint bodies', () => {
+    const src = "build for javascript backend\nwhen user calls GET /api/users:\n  result = look up all Users\n  send back result";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    // Should have markers for both the endpoint AND inner statements
+    expect(result.javascript).toContain('// clear:2'); // endpoint
+    expect(result.javascript).toContain('// clear:3'); // result = look up
+    expect(result.javascript).toContain('// clear:4'); // send back
   });
 });
 
@@ -18752,6 +18803,150 @@ describe('Error variable binding in handlers', () => {
     expect(r.python).toContain('error = _err');
     expect(r.python).toContain('error');
     expect(r.errors).toHaveLength(0);
+  });
+});
+
+// Phase 99: npm package imports
+describe('npm package imports', () => {
+  it('emits require at top of JS backend for simple package', () => {
+    const r = compileProgram(
+      "build for javascript backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const stripe = require('stripe');");
+  });
+  it('uses alias when specified', () => {
+    const r = compileProgram(
+      "build for javascript backend\nuse npm 'openai' as OpenAI\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const OpenAI = require('openai');");
+  });
+  it('handles scoped npm packages', () => {
+    const r = compileProgram(
+      "build for javascript backend\nuse npm '@sendgrid/mail' as sendgrid\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const sendgrid = require('@sendgrid/mail');");
+  });
+  it('does not emit duplicate require', () => {
+    const r = compileProgram(
+      "build for javascript backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    const count = (r.javascript.match(/require\('stripe'\)/g) || []).length;
+    expect(count).toBe(1);
+  });
+  it('emits python import for Python backend', () => {
+    const r = compileProgram(
+      "build for python backend\nuse npm 'stripe'\nwhen user calls GET /api/test:\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('import stripe');
+  });
+});
+
+// Phase P2: Structured eval stats
+describe('structured eval stats', () => {
+  it('counts endpoints', () => {
+    const r = compileProgram("build for javascript backend\nwhen user calls GET /api/a:\n  send back 'ok'\nwhen user calls POST /api/b:\n  send back 'ok'");
+    expect(r.stats.endpoints).toBe(2);
+  });
+  it('counts tables from data shapes', () => {
+    const r = compileProgram("build for javascript backend\ncreate data shape User:\n  name is text\ncreate data shape Post:\n  title is text");
+    expect(r.stats.tables).toBe(2);
+    expect(r.stats.has_database).toBe(true);
+  });
+  it('counts test blocks', () => {
+    const r = compileProgram("test 'a':\n  expect 1 is 1\ntest 'b':\n  expect 2 is 2");
+    expect(r.stats.tests.defined).toBe(2);
+  });
+  it('counts npm packages', () => {
+    const r = compileProgram("build for javascript backend\nuse npm 'stripe'\nuse npm 'openai' as OpenAI\nwhen user calls GET /api/test:\n  send back 'ok'");
+    expect(r.stats.npm_packages).toBe(2);
+  });
+  it('detects auth', () => {
+    const r = compileProgram("build for javascript backend\nwhen user calls GET /api/me:\n  requires auth\n  send back 'ok'");
+    expect(r.stats.has_auth).toBe(true);
+  });
+  it('sets ok=false on errors', () => {
+    const r = compileProgram("totally invalid garbage @@@@");
+    expect(r.stats.ok).toBe(false);
+  });
+  it('sets ok=true on clean compile', () => {
+    const r = compileProgram("build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'");
+    expect(r.stats.ok).toBe(true);
+  });
+  it('reflects type errors in ok=false', () => {
+    const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
+    expect(r.stats.ok).toBe(false);
+    expect(r.errors.some(e => e.message.includes('text'))).toBe(true);
+  });
+  it('counts source lines excluding comments', () => {
+    const r = compileProgram("# comment\nprice = 9.99\ntotal = price * 1.08");
+    expect(r.stats.lines).toBe(2); // comment excluded
+  });
+});
+
+// Phase P1: Inferred type system
+describe('inferred type system — arithmetic on text', () => {
+  it('errors when text variable is multiplied', () => {
+    const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
+    expect(r.errors.some(e => e.message.includes('price') && e.message.includes('text'))).toBe(true);
+  });
+  it('errors when text variable is subtracted', () => {
+    const r = compileProgram("discount = 'twenty'\nfinal = 100 - discount");
+    expect(r.errors.some(e => e.message.includes('discount'))).toBe(true);
+  });
+  it('errors on division with text variable', () => {
+    const r = compileProgram("rate = 'fast'\nresult = 100 / rate");
+    expect(r.errors.some(e => e.message.includes('rate'))).toBe(true);
+  });
+  it('does not error when number variable used in arithmetic', () => {
+    const r = compileProgram("price = 9.99\ntotal = price * 1.08");
+    expect(r.errors).toHaveLength(0);
+  });
+  it('does not error when number literal used in arithmetic', () => {
+    const r = compileProgram("total = 100 * 1.08");
+    expect(r.errors).toHaveLength(0);
+  });
+  it('does not error on boolean variables', () => {
+    const r = compileProgram("active = true\nif active then show 'yes'");
+    expect(r.errors).toHaveLength(0);
+  });
+  it('does not error after reassignment to number', () => {
+    const r = compileProgram("x = 'hello'\nx = 42\ntotal = x * 2");
+    expect(r.errors).toHaveLength(0);
+  });
+  it('blocks compilation on type mismatch', () => {
+    const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
+    expect(r.errors.length).toBeGreaterThan(0);
+    expect(r.stats.ok).toBe(false);
+  });
+});
+
+// Phase 100: Shell command execution
+describe('run command — shell execution', () => {
+  it('emits execSync in JS backend', () => {
+    const r = compileProgram(
+      "build for javascript backend\nwhen user calls POST /api/build:\n  run command 'npm run build'\n  send back 'done'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("const { execSync } = require('child_process');");
+    expect(r.javascript).toContain('execSync("npm run build"');
+  });
+  it('emits subprocess.run in Python backend', () => {
+    const r = compileProgram(
+      "build for python backend\nwhen user calls POST /api/deploy:\n  run command './deploy.sh'\n  send back 'ok'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('import subprocess');
+    expect(r.python).toContain('subprocess.run("./deploy.sh"');
+  });
+  it('does not emit child_process when not used', () => {
+    const r = compileProgram(
+      "build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'"
+    );
+    expect(r.javascript).not.toContain('child_process');
   });
 });
 

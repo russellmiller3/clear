@@ -256,17 +256,40 @@ const UTILITY_FUNCTIONS = [
       }
     }
   }
+  // Translate JS stack trace to a Clear line number using the embedded source map.
+  // _clearLineMap is { jsLine: clearLine } injected at compile time.
+  let clearLineFromStack = null;
+  const lineMapRef = typeof _clearLineMap !== 'undefined' ? _clearLineMap : null;
+  if (err.stack && lineMapRef) {
+    const stackLines = err.stack.split('\\n');
+    for (const sl of stackLines) {
+      const m = sl.match(/\\bserver\\.js:(\\d+)/);
+      if (m) {
+        const jsLine = parseInt(m[1]);
+        const mapKeys = Object.keys(lineMapRef).map(Number).sort((a, b) => a - b);
+        for (let i = mapKeys.length - 1; i >= 0; i--) {
+          if (mapKeys[i] <= jsLine) { clearLineFromStack = lineMapRef[mapKeys[i]]; break; }
+        }
+        break;
+      }
+    }
+  }
+  // Most specific Clear line wins: stack-traced statement > endpoint ctx > null
+  const resolvedClearLine = clearLineFromStack || ctx.line || null;
   const result = {
     status,
     response: {
       error: safeMsg,
-      clear_line: ctx.line || null,
+      clear_line: resolvedClearLine,
       clear_file: ctx.file || null,
       clear_source: ctx.source || null,
       hint: hint,
       technical: msg
     }
   };
+  if (clearLineFromStack && clearLineFromStack !== ctx.line) {
+    result.response.clear_line_endpoint = ctx.line || null;
+  }
   if (suggested_fix) result.response.suggested_fix = suggested_fix;
   if (debug === 'verbose' && ctx) {
     const tableSchema = (map && map.tables && ctx.table) ? map.tables[ctx.table] : null;
@@ -1596,9 +1619,14 @@ function parseFileSize(sizeStr) {
 export function compileNode(node, ctx) {
   const result = _compileNodeInner(node, ctx);
   if (result == null) return null;
-  if (!ctx.sourceMap || !node.line) return result;
-  // Skip source map on comments (commenting a comment is noise) and deep indents
-  if (node.type === NodeType.COMMENT || ctx.indent > 1) return result;
+  if (!node.line) return result;
+  if (node.type === NodeType.COMMENT) return result;
+  // In backend mode, always emit // clear:N markers at indent <= 2 (top-level + endpoint body)
+  // so the JS-line→Clear-line source map has per-statement precision.
+  // In frontend/web mode, only emit when sourceMap=true and indent <= 1.
+  const maxIndent = ctx.mode === 'backend' ? 2 : 1;
+  if (ctx.indent > maxIndent) return result;
+  if (ctx.mode !== 'backend' && !ctx.sourceMap) return result;
   const pad = padFor(ctx);
   const prefix = ctx.lang === 'python' ? '#' : '//';
   return `${pad}${prefix} clear:${node.line}\n${result}`;
@@ -2946,6 +2974,15 @@ function _compileNodeInner(node, ctx) {
       // Raw JavaScript/Python escape hatch — emit code as-is
       return node.code.split('\n').map(l => pad + l).join('\n');
 
+    case NodeType.RUN_COMMAND: {
+      // Shell command execution: run command 'npm install'
+      const cmdStr = JSON.stringify(node.command);
+      if (ctx.lang === 'python') {
+        return `${pad}subprocess.run(${cmdStr}, shell=True, check=True)`;
+      }
+      return `${pad}execSync(${cmdStr}, { stdio: 'inherit' });`;
+    }
+
     case NodeType.STORE: {
       const varRef = ctx.stateVars && ctx.stateVars.has(node.variable) ? `_state.${sanitizeName(node.variable)}` : sanitizeName(node.variable);
       const key = JSON.stringify(node.key);
@@ -3280,6 +3317,17 @@ ${pad}}`;
     }
 
     case NodeType.USE:
+      if (node.isNpm) {
+        // npm package import: use npm 'stripe' as stripe_client
+        if (ctx.lang === 'python') {
+          const pyPkg = node.npmPackage.replace(/[^a-zA-Z0-9_]/g, '_');
+          const pyAlias = node.npmAlias !== pyPkg ? ` as ${node.npmAlias}` : '';
+          return `${pad}import ${pyPkg}${pyAlias}`;
+        }
+        // JS backend: emitted at header — skip here to avoid duplicate
+        if (ctx.mode === 'backend') return null;
+        return `${pad}const ${node.npmAlias} = require('${node.npmPackage}');`;
+      }
       if (node.source) {
         // External JS import: use 'name' from 'path'
         if (ctx.lang === 'python') return `${pad}import ${sanitizeName(node.module)}`;
@@ -5846,16 +5894,22 @@ function buildHTML(body) {
                 // FAQ: child sections become DaisyUI collapse accordion items
                 parts.push(`      <div class="max-w-3xl mx-auto flex flex-col gap-3">`);
                 cardNodes.forEach((card, faqIdx) => {
-                  const qTitle = card.ui?.title || card.title || 'Question';
-                  // Gather body text for the answer
+                  // Extract heading child as the question text; text/subheading children are the answer
+                  let qTitle = '';
                   const answerParts = [];
                   if (card.body) {
                     for (const child of card.body) {
                       if (child.type === NodeType.CONTENT && child.ui) {
-                        answerParts.push(formatInlineText(child.ui.text));
+                        const ct = child.ui.contentType || child.contentType;
+                        if (!qTitle && (ct === 'heading' || ct === 'subheading')) {
+                          qTitle = formatInlineText(child.ui.text);
+                        } else {
+                          answerParts.push(formatInlineText(child.ui.text));
+                        }
                       }
                     }
                   }
+                  if (!qTitle) qTitle = card.ui?.title || card.title || 'Question';
                   const answer = answerParts.join(' ') || 'Answer';
                   const checkedAttr = faqIdx === 0 ? ' checked' : '';
                   parts.push(`        <div class="collapse collapse-arrow bg-base-200/50 border border-base-300/40">`);
@@ -6339,9 +6393,9 @@ ${options}
                 const tc = inDarkCard ? 'text-white/70' : inLargeCard ? 'text-primary-content/70' : 'text-base-content/60';
                 parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
               } else if (inDarkSection) {
-                parts.push(`    <h2 class="text-xl font-semibold text-neutral-content tracking-tight mt-6 mb-3">${formatted}</h2>`);
+                parts.push(`    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               } else {
-                parts.push(`    <h2 class="text-xl font-semibold text-base-content tracking-tight mt-6 mb-3">${formatted}</h2>`);
+                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               }
               break;
             case 'label':
@@ -6881,6 +6935,20 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   if (usesRateLimit) {
     lines.push("const rateLimit = require('./clear-runtime/rateLimit');");
   }
+  // npm package imports — emit require() calls at the top alongside built-in requires
+  for (const n of body) {
+    if (n.type === NodeType.USE && n.isNpm && n.npmPackage) {
+      lines.push(`const ${n.npmAlias} = require('${n.npmPackage}');`);
+    }
+  }
+  // child_process — emit if any RUN_COMMAND nodes exist
+  const usesRunCommand = body.some(n =>
+    n.type === NodeType.RUN_COMMAND ||
+    (n.type === NodeType.ENDPOINT && n.body && n.body.some(b => b.type === NodeType.RUN_COMMAND))
+  );
+  if (usesRunCommand) {
+    lines.push("const { execSync } = require('child_process');");
+  }
   lines.push('const app = express();');
   lines.push('app.use(express.json());');
   // Catch malformed JSON bodies -- return clean 400 instead of Express HTML stack trace
@@ -7003,7 +7071,24 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   lines.push('  server.close(() => process.exit(0));');
   lines.push('});');
 
-  return lines.join('\n');
+  // Build JS-line → Clear-line source map from // clear:N markers.
+  // This lets _clearError translate runtime stack traces back to Clear line numbers.
+  const rawOutput = lines.join('\n');
+  const rawLines = rawOutput.split('\n');
+  const lineMap = {};
+  rawLines.forEach((ln, idx) => {
+    const m = ln.match(/\/\/ clear:(\d+)/);
+    if (m) {
+      // idx is 0-based; +1 for line numbers, +1 more for the injected _clearLineMap line
+      lineMap[idx + 2] = parseInt(m[1]);
+    }
+  });
+  const mapJson = JSON.stringify(lineMap);
+  // Inject _clearLineMap as line 2 (after the "Generated by Clear" version comment).
+  // Only populated when CLEAR_DEBUG is set — zero cost in production.
+  const mapLine = `const _clearLineMap = process.env.CLEAR_DEBUG ? ${mapJson} : null;`;
+  const firstNl = rawOutput.indexOf('\n');
+  return rawOutput.slice(0, firstNl + 1) + mapLine + '\n' + rawOutput.slice(firstNl + 1);
 }
 
 /**
@@ -7206,6 +7291,12 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('import json');
   lines.push('import re');
   lines.push('import datetime');
+  // subprocess — emit if any RUN_COMMAND nodes exist
+  const pyUsesRunCommand = body.some(n =>
+    n.type === NodeType.RUN_COMMAND ||
+    (n.type === NodeType.ENDPOINT && n.body && n.body.some(b => b.type === NodeType.RUN_COMMAND))
+  );
+  if (pyUsesRunCommand) lines.push('import subprocess');
   lines.push('from fastapi import FastAPI, Request, HTTPException');
   lines.push('from fastapi.responses import JSONResponse');
   lines.push('');

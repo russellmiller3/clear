@@ -1,0 +1,22 @@
+build for javascript backend
+
+# Stripe Payment API — demonstrates npm package imports
+# use npm imports the package; script: blocks let you call its JS API
+
+use npm 'stripe' as stripe_sdk
+use npm 'nodemailer' as mailer
+
+when user calls POST /api/charge sending params:
+  amount  = params's amount
+  email   = params's email
+  script:
+    const stripe = stripe_sdk(process.env.STRIPE_SECRET_KEY);
+    const intent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100),
+      currency: 'usd',
+      receipt_email: email,
+    });
+    return res.json({ client_secret: intent.client_secret, id: intent.id });
+
+when user calls GET /api/health:
+  send back 'Stripe API running'

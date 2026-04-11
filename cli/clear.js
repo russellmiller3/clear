@@ -860,7 +860,19 @@ async function packageCommand(args) {
   }
   files.push('clear-runtime/');
 
-  // package.json
+  // package.json — collect npm packages from USE nodes
+  const npmDeps = {};
+  const collectNpm = (nodes) => {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      if (n && n.type === 'use' && n.isNpm && n.npmPackage) {
+        npmDeps[n.npmPackage] = '*'; // latest; user can pin in their own package.json
+      }
+      if (n && n.body) collectNpm(n.body);
+      if (n && n.pages) collectNpm(n.pages);
+    }
+  };
+  collectNpm(result.ast?.body || []);
   const appName = basename(file, extname(file)).replace(/[^a-z0-9-]/g, '-');
   const pkg = {
     name: `clear-${appName}`,
@@ -868,7 +880,7 @@ async function packageCommand(args) {
     description: 'Built with Clear language',
     main: 'server.js',
     scripts: { start: 'node server.js', test: 'node test.js' },
-    dependencies: { express: '^4.18.0', 'better-sqlite3': '^12.8.0' },
+    dependencies: { express: '^4.18.0', 'better-sqlite3': '^12.8.0', ...npmDeps },
   };
   writeFileSync(resolve(outDir, 'package.json'), JSON.stringify(pkg, null, 2));
   files.push('package.json');

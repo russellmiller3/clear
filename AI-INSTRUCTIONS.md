@@ -1804,3 +1804,56 @@ if error:
 ```
 Status mappings: `not found`=404, `forbidden`=403, `unauthorized`=401, `bad request`=400, `server error`=500.
 `error` is automatically bound in every handler body.
+
+## npm Package Imports (Phase 99)
+
+Import any npm package into a JS backend app with `use npm`:
+
+```
+use npm 'stripe'                           # alias = stripe
+use npm 'openai' as OpenAI                 # alias = OpenAI
+use npm '@sendgrid/mail' as sendgrid       # scoped packages work too
+```
+
+The `as` alias is optional — defaults to the package name (minus scope prefix).
+Compiles to `const alias = require('package')` at the top of server.js, alongside `require('express')`.
+
+`clear package` auto-includes all npm packages in the generated `package.json`.
+
+**Example — Stripe payment endpoint:**
+```
+build for javascript backend
+
+use npm 'stripe' as stripe_pkg
+
+when user calls POST /api/charge sending params:
+  amount = params's amount
+  script:
+    const stripe = stripe_pkg(process.env.STRIPE_SECRET_KEY);
+    const charge = await stripe.paymentIntents.create({ amount: amount, currency: 'usd' });
+    return res.json({ id: charge.id, status: charge.status });
+```
+
+## Shell Command Execution (Phase 100)
+
+Run any shell command from a JS or Python backend:
+
+```
+run command 'npm run build'
+run command './deploy.sh'
+run command 'git pull origin main'
+```
+
+Compiles to:
+- **JS backend**: `execSync('cmd', { stdio: 'inherit' })` — output goes to stdout
+- **Python backend**: `subprocess.run('cmd', shell=True, check=True)`
+
+`child_process` / `subprocess` is auto-imported only when `run command` is used — no manual imports needed.
+
+Use inside endpoints:
+```
+when user calls POST /api/deploy:
+  run command 'git pull'
+  run command 'npm run build'
+  send back 'Deployed successfully'
+```
