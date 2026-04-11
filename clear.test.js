@@ -18794,6 +18794,53 @@ describe('npm package imports', () => {
   });
 });
 
+// Phase P1: Inferred type system
+describe('inferred type system — arithmetic on text', () => {
+  it('warns when text variable is multiplied', () => {
+    const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
+    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
+    expect(tw).toHaveLength(1);
+    expect(tw[0].message).toContain('price');
+    expect(tw[0].message).toContain('text');
+  });
+  it('warns when text variable is subtracted', () => {
+    const r = compileProgram("discount = 'twenty'\nfinal = 100 - discount");
+    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
+    expect(tw).toHaveLength(1);
+    expect(tw[0].message).toContain('discount');
+  });
+  it('warns on division with text variable', () => {
+    const r = compileProgram("rate = 'fast'\nresult = 100 / rate");
+    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
+    expect(tw).toHaveLength(1);
+  });
+  it('does not warn when number variable used in arithmetic', () => {
+    const r = compileProgram("price = 9.99\ntotal = price * 1.08");
+    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
+    expect(tw).toHaveLength(0);
+  });
+  it('does not warn when number literal used in arithmetic', () => {
+    const r = compileProgram("total = 100 * 1.08");
+    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
+    expect(tw).toHaveLength(0);
+  });
+  it('does not warn on boolean variables', () => {
+    const r = compileProgram("active = true\nif active then show 'yes'");
+    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
+    expect(tw).toHaveLength(0);
+  });
+  it('does not warn after reassignment to number', () => {
+    const r = compileProgram("x = 'hello'\nx = 42\ntotal = x * 2");
+    const tw = r.warnings.filter(w => w.message.includes('Type warning'));
+    expect(tw).toHaveLength(0);
+  });
+  it('still compiles successfully despite type warning', () => {
+    const r = compileProgram("price = 'ten dollars'\ntotal = price * 1.08");
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript || r.html).toBeTruthy();
+  });
+});
+
 // Phase 100: Shell command execution
 describe('run command — shell execution', () => {
   it('emits execSync in JS backend', () => {
