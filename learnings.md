@@ -30,6 +30,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 19: Tests, Charts, Blog, Images](#session-19-tests-charts-blog-images-2026-04-10) | Component test fixes (4 distinct bugs), `photo`/`picture` synonym collisions, image element `ui` object shape, seed auto-dedup at compiler level, `db.findAll()` not `db.getAll()`, chart subtitle/stacked modifiers |
 | [Session 19b: Display as Cards](#session-19b-display-as-cards-2026-04-10) | `author` field must match before `name`/`title` in heuristics, `ui.tag = 'cards'` is third option, smart field detection by column name |
 | [Session 19c: Component Stress Test](#session-19c-component-stress-test-2026-04-10) | Component names collide with content types, reserved name validator in `parseComponentDef()`, 8 edge case patterns all passing |
+| [Session 20: GP Language Features](#session-20-general-purpose-language-features-2026-04-10) | `of`→`in` canonical, `using`→`with`, `returns`→`responds_with`, `exists in` is compound token `key_exists`, `parsePrimary` has no errors array, `run()` exits immediately, params are `{name,type}` objects, TRY_HANDLE uses `handlers` array, typed handler body indent math, Edit tool fails on large files with template literals |
 
 ---
 
