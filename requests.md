@@ -8,10 +8,9 @@ Filed by Meph (the Studio agent) or by the user. Read by the compiler team.
 - **Newest requests go at the top**, below this section
 - **Order by priority:** CRITICAL → MAJOR → MINOR
 - **Always include the compiled JS output** — that's the smoking gun, not just the error message
-- **Include steps to reproduce** if the bug depends on a sequence of actions
+- **Include steps to reproduce** if the bug depends on a sequence of action
 
 ### Request Template
-```
 ## Request: [short name]
 **Priority:** CRITICAL | MAJOR | MINOR
 **What I was building:** [one sentence]
@@ -29,6 +28,180 @@ Filed by Meph (the Studio agent) or by the user. Read by the compiler team.
 **Workaround used:** [what I did instead, or "blocked"]
 **Impact:** [one sentence on what this blocks]
 ```
+
+---
+
+## Request: Inspect compiled code ✅ FIXED
+**Priority:** MAJOR (FIXED — compile tool now always returns compiled output alongside errors)
+**What I was building:** Any app that hits a compile error — specifically trying to debug a broken button handler
+**What I wrote in Clear:**
+```clear
+button 'Add Task':
+  post to '/api/tasks' with form data
+  refresh page
+```
+**What I expected:** The `compile` tool (used by the Studio agent) returns both the error messages AND the partial or full compiled JS — even when the build fails — so the agent can see exactly what broken code was generated.
+
+**What actually happened:** When compilation fails (e.g. due to auth warnings treated as errors, or syntax issues), the `compile` tool returns errors only. No compiled output is returned. The agent is flying blind — it can see that something is wrong but cannot inspect the generated JS to understand *why*.
+
+The only way to see compiled JS is:
+1. Satisfy every compiler warning (e.g. add `requires auth` everywhere)
+2. Build successfully
+3. Read the output file
+
+This means the agent **cannot inspect compiled output for broken code** — which is exactly the scenario where inspection is most needed.
+
+---
+
+### What "perfect" looks like
+
+The `compile` tool should always return compiled output, even on failure. Two options:
+
+**Option A — Return partial output with errors:**
+```json
+{
+  "errors": ["line 4: auth required on POST endpoint"],
+  "warnings": [],
+  "compiledJS": "// PARTIAL OUTPUT — build failed\n...(whatever was generated before the error)..."
+}
+```
+
+**Option B — Return full output with a --force flag:**
+Add a `force` option that compiles past errors and returns the full JS anyway, flagged as unsafe:
+```json
+{
+  "errors": ["line 4: auth required on POST endpoint"],
+  "warnings": [],
+  "forcedOutput": true,
+  "compiledJS": "// WARNING: compiled with errors\n...(full output)..."
+}
+```
+
+**Option B is better.** Partial output is ambiguous — was the rest missing due to the error, or just not generated yet? A forced full compile gives the agent a complete picture.
+
+---
+
+### Why this matters for the agent loop
+
+The agent's debugging loop is:
+```
+write code → compile → see error → inspect compiled JS → fix → repeat
+```
+
+Without compiled output on failure, step 3 stalls. The agent has to:
+- Guess what the compiler generated
+- Add workarounds (like `requires auth`) just to get a build
+- Then remove them again after inspecting
+
+That's 2-3 extra round trips per bug. For a runtime bug like `refresh page → console.log(refresh)`, the agent would never have found it without a successful build first.
+
+---
+
+**Steps to reproduce:**
+1. Write any Clear code with a known compiler warning (e.g. POST endpoint without `requires auth`)
+2. Call `compile` from the Studio agent
+3. Observe: errors returned, compiled JS field is empty or absent
+4. Agent cannot see what JS was generated for the broken lines
+
+**Workaround used:** Add `requires auth` to all endpoints to force a clean build, inspect the JS, then remove it. Costs 2-3 extra round trips per debugging session.
+
+**Impact:** MAJOR. Slows down every debugging session. The agent is most useful when things are broken — but that's exactly when it's most blind. Returning compiled output unconditionally (or with a force flag) would cut debugging time in half.
+
+---
+
+## Request: Runtime errors are a black box — no structured error surface
+**Priority:** MAJOR
+**What I was building:** A task CRUD app. GET /api/tasks returned a 500 with no message when the table was empty.
+**What I wrote in Clear:**
+```clear
+when user calls GET /api/tasks:
+  tasks = get all Tasks
+  send back tasks
+```
+**What I expected:** Either the data, or a structured error like `{ error: "No records found", hint: "The Tasks table is empty" }` — something a human can read and act on.
+
+**What actually happened:** Silent HTTP 500. No body. No message. No hint. The terminal showed nothing useful. The frontend showed a blank screen. A non-developer has zero signal about what went wrong or how to fix it.
+
+---
+
+### What "perfect" looks like
+
+**In the API response (JSON):**
+```json
+{
+  "error": "Database read failed",
+  "context": "GET /api/tasks",
+  "hint": "The Tasks table may be empty or not yet created. Try adding a record first.",
+  "code": "DB_READ_ERROR"
+}
+```
+
+**In the terminal (structured, not a raw stack trace):**
+```
+[Runtime Error] GET /api/tasks → DB_READ_ERROR
+  Cause: Tasks table returned null
+  Hint:  Table may be empty. Seed some data or check your table definition.
+  Line:  tasks = get all Tasks
+```
+
+**In the preview panel (inline toast — most important for non-devs):**
+```
+┌─────────────────────────────────────────────────────┐
+│ ⚠️  GET /api/tasks failed                           │
+│  The Tasks table appears to be empty.               │
+│  Add a record first, then reload.                   │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+### Where should runtime errors surface?
+
+Three surfaces, each serving a different audience:
+
+```
+┌──────────────────┬──────────────────────────────────────────────┐
+│ Surface          │ Audience + Content                           │
+├──────────────────┼──────────────────────────────────────────────┤
+│ Preview panel    │ Non-dev user. Friendly toast with plain       │
+│ (inline toast)   │ English. "Something broke and here's why."   │
+├──────────────────┼──────────────────────────────────────────────┤
+│ Terminal         │ Developer. Full structured log with cause,   │
+│                  │ hint, and the Clear line that triggered it.  │
+├──────────────────┼──────────────────────────────────────────────┤
+│ API response     │ HTTP client / Meph testing with http_request │
+│ (JSON body)      │ Structured JSON with error + hint fields.    │
+└──────────────────┴──────────────────────────────────────────────┘
+```
+
+**Do NOT add a separate "Runtime Errors" panel.** That's more UI complexity for no gain. The preview toast + terminal combo covers both audiences cleanly.
+
+---
+
+### Known cases that should produce structured errors (not silent 500s)
+
+| Scenario | Current behavior | Should say |
+|----------|-----------------|------------|
+| `get all X` on empty table | 500, no body | "X table is empty. Add a record first." |
+| `get all X` on undefined table | 500, no body | "X table doesn't exist. Check your table definition." |
+| `save data to X` with missing required field | 500, no body | "Missing required field: [fieldname]" |
+| `remove from X with this id` — id not found | 500, no body | "No record found with that id in X." |
+| `ask claude` with no API key | 500, no body | "ANTHROPIC_API_KEY is not set. Add it in Studio settings." |
+| Auth fails on protected endpoint | 401 (works) | Already good ✅ |
+| Compiler error caught at runtime | 500, no body | Should never reach runtime — catch at compile time |
+
+---
+
+**Steps to reproduce (empty table case):**
+1. Create any table (e.g. Tasks)
+2. Write `GET /api/tasks` that does `get all Tasks`
+3. Don't insert any data
+4. Call GET /api/tasks
+5. Observe: HTTP 500, empty body, no terminal message
+
+**Workaround used:** None — the error is invisible. User has no debugging signal.
+
+**Impact:** HIGH. This is the #1 reason a non-developer gives up. The compiler errors are genuinely excellent (plain English, inline hints, patchable fixes). The runtime errors are a completely different — and much worse — experience. Fixing this makes Clear feel consistent end-to-end.
 
 ---
 
