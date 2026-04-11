@@ -1,300 +1,325 @@
-# Requests
+# Compiler & Runtime Requests
 
-Bug reports and feature gaps discovered while building apps in Clear Studio.
-Filed by Meph (the Studio agent) or by the user. Read by the compiler team.
-
-## How to File a Request
-
-- **Newest requests go at the top**, below this section
-- **Order by priority:** CRITICAL → MAJOR → MINOR
-- **Always include the compiled JS output** — that's the smoking gun, not just the error message
-- **Include steps to reproduce** if the bug depends on a sequence of action
-
-### Request Template
+## Request Template
+```
 ## Request: [short name]
-**Priority:** CRITICAL | MAJOR | MINOR
-**What I was building:** [one sentence]
-**What I wrote in Clear:**
-```clear
-[the exact line(s)]
-```
-**What I expected:** [one sentence]
-**What actually happened:** [exact error message]
-**Compiled output (if applicable):**
-```javascript
-[paste the mangled JS — this is the most useful artifact]
-```
-**Steps to reproduce:** [numbered list if it's a multi-step issue]
-**Workaround used:** [what I did instead, or "blocked"]
-**Impact:** [one sentence on what this blocks]
+**App:** [description]
+**What I needed:** [one sentence]
+**Proposed syntax:**
+\`\`\`clear
+[Clear lines you wish existed]
+\`\`\`
+**Workaround used:** [what you did instead, or "none"]
+**Error hit:** [exact error, or "no error but feature missing"]
+**Impact:** [low / medium / high]
 ```
 
 ---
 
-## Request: Inspect compiled code ✅ FIXED
-**Priority:** MAJOR (FIXED — compile tool now always returns compiled output alongside errors)
-**What I was building:** Any app that hits a compile error — specifically trying to debug a broken button handler
-**What I wrote in Clear:**
-```clear
-button 'Add Task':
-  post to '/api/tasks' with form data
-  refresh page
-```
-**What I expected:** The `compile` tool (used by the Studio agent) returns both the error messages AND the partial or full compiled JS — even when the build fails — so the agent can see exactly what broken code was generated.
-
-**What actually happened:** When compilation fails (e.g. due to auth warnings treated as errors, or syntax issues), the `compile` tool returns errors only. No compiled output is returned. The agent is flying blind — it can see that something is wrong but cannot inspect the generated JS to understand *why*.
-
-The only way to see compiled JS is:
-1. Satisfy every compiler warning (e.g. add `requires auth` everywhere)
-2. Build successfully
-3. Read the output file
-
-This means the agent **cannot inspect compiled output for broken code** — which is exactly the scenario where inspection is most needed.
-
----
-
-### What "perfect" looks like
-
-The `compile` tool should always return compiled output, even on failure. Two options:
-
-**Option A — Return partial output with errors:**
-```json
-{
-  "errors": ["line 4: auth required on POST endpoint"],
-  "warnings": [],
-  "compiledJS": "// PARTIAL OUTPUT — build failed\n...(whatever was generated before the error)..."
-}
-```
-
-**Option B — Return full output with a --force flag:**
-Add a `force` option that compiles past errors and returns the full JS anyway, flagged as unsafe:
-```json
-{
-  "errors": ["line 4: auth required on POST endpoint"],
-  "warnings": [],
-  "forcedOutput": true,
-  "compiledJS": "// WARNING: compiled with errors\n...(full output)..."
-}
-```
-
-**Option B is better.** Partial output is ambiguous — was the rest missing due to the error, or just not generated yet? A forced full compile gives the agent a complete picture.
-
----
-
-### Why this matters for the agent loop
-
-The agent's debugging loop is:
-```
-write code → compile → see error → inspect compiled JS → fix → repeat
-```
-
-Without compiled output on failure, step 3 stalls. The agent has to:
-- Guess what the compiler generated
-- Add workarounds (like `requires auth`) just to get a build
-- Then remove them again after inspecting
-
-That's 2-3 extra round trips per bug. For a runtime bug like `refresh page → console.log(refresh)`, the agent would never have found it without a successful build first.
-
----
-
-**Steps to reproduce:**
-1. Write any Clear code with a known compiler warning (e.g. POST endpoint without `requires auth`)
-2. Call `compile` from the Studio agent
-3. Observe: errors returned, compiled JS field is empty or absent
-4. Agent cannot see what JS was generated for the broken lines
-
-**Workaround used:** Add `requires auth` to all endpoints to force a clean build, inspect the JS, then remove it. Costs 2-3 extra round trips per debugging session.
-
-**Impact:** MAJOR. Slows down every debugging session. The agent is most useful when things are broken — but that's exactly when it's most blind. Returning compiled output unconditionally (or with a force flag) would cut debugging time in half.
-
----
-
-## Request: Runtime errors are a black box — no structured error surface ✅ FIXED
-**Priority:** MAJOR (FIXED — _clearError now always returns structured { error, hint, clear_line } even in production)
-**What I was building:** A task CRUD app. GET /api/tasks returned a 500 with no message when the table was empty.
-**What I wrote in Clear:**
+## Request: `_revive is not defined` runtime crash on GET endpoint with table
+**Priority:** CRITICAL
+**App:** Basic full-stack CRUD app (Tasks table, GET /api/tasks)
+**What I needed:** `get all Tasks` to return the records as JSON without crashing
+**Proposed syntax:**
 ```clear
 when user calls GET /api/tasks:
   tasks = get all Tasks
   send back tasks
 ```
-**What I expected:** Either the data, or a structured error like `{ error: "No records found", hint: "The Tasks table is empty" }` — something a human can read and act on.
+**Workaround used:** None found — endpoint is completely broken
+**Error hit:** `500 { error: 'Something went wrong', hint: '_revive is not defined' }`
+**Steps to reproduce:**
+```clear
+build for web and javascript backend
+database is local memory
 
-**What actually happened:** Silent HTTP 500. No body. No message. No hint. The terminal showed nothing useful. The frontend showed a blank screen. A non-developer has zero signal about what went wrong or how to fix it.
+create a Tasks table:
+  title, required
+  done, default false
+
+when user calls GET /api/tasks:
+  tasks = get all Tasks
+  send back tasks
+```
+Run app → GET /api/tasks → 500 `_revive is not defined`
+The compiled serverJS calls `(await db.findAll('tasks')).map(_revive)` but `_revive` is never defined anywhere in the compiled output. This is a compiler codegen bug — it emits a reference to a function that doesn't exist.
+**Impact:** CRITICAL — every GET endpoint using `get all [Table]` crashes at runtime. This breaks the most fundamental CRUD pattern in Clear.
 
 ---
 
-### What "perfect" looks like
+## Request: `_revive is not defined` also crashes login endpoint
+**Priority:** CRITICAL
+**App:** Any app using built-in auth (login endpoint)
+**What I needed:** `POST /auth/login` to look up the user and return a token
+**Proposed syntax:**
+```clear
+build for web and javascript backend
+database is local memory
 
-**In the API response (JSON):**
-```json
-{
-  "error": "Database read failed",
-  "context": "GET /api/tasks",
-  "hint": "The Tasks table may be empty or not yet created. Try adding a record first.",
-  "code": "DB_READ_ERROR"
+allow sign up and login
+```
+**Workaround used:** None — login is completely broken
+**Error hit:** `500 { error: 'Something went wrong', hint: '_revive is not defined' }`
+**Steps to reproduce:**
+```clear
+build for web and javascript backend
+database is local memory
+
+allow sign up and login
+
+when user calls GET /api/profile:
+  requires auth
+  send back current user
+```
+Run app → POST /auth/register (succeeds) → POST /auth/login → 500 `_revive is not defined`
+Same root cause as the GET endpoint crash — the login handler queries the Users table and calls `.map(_revive)` on the result, but `_revive` is never defined.
+**Impact:** CRITICAL — auth is completely broken. No app can log users in. This is a showstopper for any app using `allow sign up and login`.
+
+---
+
+## Request: `display [var] as list` compiles to a static card, not a list
+**Priority:** HIGH
+**App:** Any app displaying query results as a list
+**What I needed:** `display tasks as list` to render each item in an `<ul><li>` or similar list structure
+**Proposed syntax:**
+```clear
+display tasks as list
+```
+**Workaround used:** None found
+**Error hit:** No error. Compiles to a static card div with a `<p>` tag that calls `String(tasks)` — renders `[object Object],[object Object]` or similar stringified output instead of a real list.
+**Steps to reproduce:**
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Tasks table:
+  title, required
+
+when user calls GET /api/tasks:
+  tasks = get all Tasks
+  send back tasks
+
+page 'Tasks' at '/':
+  on page load get tasks from '/api/tasks'
+  display tasks as list
+```
+Compile → inspect HTML → see static card div, not a list. No `<ul>`, no `<li>`, no loop over items.
+**Impact:** HIGH — `display as list` is a documented feature. Every app that tries to show query results as a list gets a broken static widget instead.
+
+---
+
+## Request: Preview panel renders blank even for valid HTML builds
+**Priority:** CRITICAL
+**App:** Any web build
+**What I needed:** The preview panel to show rendered HTML output
+**Proposed syntax:** N/A — this is a runtime/tooling bug, not a language gap
+**Workaround used:** None — preview is completely unusable
+**Error hit:** No error thrown. HTML compiles correctly with valid tags (h1, p, div etc) but preview panel renders blank white. Confirmed via screenshot_output tool.
+**Steps to reproduce:**
+```clear
+build for web
+page 'Test' at '/':
+  heading 'Hello World'
+  text 'This is a paragraph'
+```
+Compile → Run → screenshot_output shows blank white panel.
+**Impact:** CRITICAL — the primary feedback loop for UI development is broken. Every web build appears to produce nothing.
+
+---
+
+## Request: String concatenation with variables drops the variable
+**Priority:** HIGH
+**App:** Any web build using dynamic text
+**What I needed:** `text 'Price is: ' + price` to render the value of price inline
+**Proposed syntax:**
+```clear
+price = 42
+text 'Price is: ' + price
+```
+**Workaround used:** None found
+**Error hit:** No error thrown. Compiles silently. But rendered HTML contains only the static string "Price is: " — the variable value is dropped entirely.
+**Steps to reproduce:**
+```clear
+build for web
+page 'Test' at '/':
+  price = 42
+  text 'Price is: ' + price
+```
+Expected: "Price is: 42" in the DOM. Actual: "Price is: " only.
+**Impact:** HIGH — dynamic text rendering is broken for all string+variable concatenation.
+
+---
+
+## Request: Conditional blocks compile with empty JS bodies
+**Priority:** CRITICAL
+**App:** Any app using if/else logic on the frontend
+**What I needed:** if/else blocks to actually toggle DOM element visibility
+**Proposed syntax:**
+```clear
+score = 75
+if score is greater than 90:
+  text 'Excellent'
+else if score is greater than 70:
+  text 'Good'
+else:
+  text 'Keep trying'
+```
+**Workaround used:** None — conditionals are completely broken
+**Error hit:** No error thrown. Compiles to JS with empty if/else bodies:
+```javascript
+if (score > 90) {
+  // EMPTY
+} else {
+  if (score > 70) {
+    // EMPTY
+  }
 }
 ```
-
-**In the terminal (structured, not a raw stack trace):**
-```
-[Runtime Error] GET /api/tasks → DB_READ_ERROR
-  Cause: Tasks table returned null
-  Hint:  Table may be empty. Seed some data or check your table definition.
-  Line:  tasks = get all Tasks
-```
-
-**In the preview panel (inline toast — most important for non-devs):**
-```
-┌─────────────────────────────────────────────────────┐
-│ ⚠️  GET /api/tasks failed                           │
-│  The Tasks table appears to be empty.               │
-│  Add a record first, then reload.                   │
-└─────────────────────────────────────────────────────┘
-```
+The HTML has divs pre-rendered with display:none but the JS never calls .style.display = 'block'. Conditionals are dead code.
+**Steps to reproduce:** Write any page with an if/else block. Compile. Inspect compiled JS — bodies are empty.
+**Impact:** CRITICAL — every app using conditional display logic is broken.
 
 ---
 
-### Where should runtime errors surface?
-
-Three surfaces, each serving a different audience:
-
-```
-┌──────────────────┬──────────────────────────────────────────────┐
-│ Surface          │ Audience + Content                           │
-├──────────────────┼──────────────────────────────────────────────┤
-│ Preview panel    │ Non-dev user. Friendly toast with plain       │
-│ (inline toast)   │ English. "Something broke and here's why."   │
-├──────────────────┼──────────────────────────────────────────────┤
-│ Terminal         │ Developer. Full structured log with cause,   │
-│                  │ hint, and the Clear line that triggered it.  │
-├──────────────────┼──────────────────────────────────────────────┤
-│ API response     │ HTTP client / Meph testing with http_request │
-│ (JSON body)      │ Structured JSON with error + hint fields.    │
-└──────────────────┴──────────────────────────────────────────────┘
-```
-
-**Do NOT add a separate "Runtime Errors" panel.** That's more UI complexity for no gain. The preview toast + terminal combo covers both audiences cleanly.
-
----
-
-### Known cases that should produce structured errors (not silent 500s)
-
-| Scenario | Current behavior | Should say |
-|----------|-----------------|------------|
-| `get all X` on empty table | 500, no body | "X table is empty. Add a record first." |
-| `get all X` on undefined table | 500, no body | "X table doesn't exist. Check your table definition." |
-| `save data to X` with missing required field | 500, no body | "Missing required field: [fieldname]" |
-| `remove from X with this id` — id not found | 500, no body | "No record found with that id in X." |
-| `ask claude` with no API key | 500, no body | "ANTHROPIC_API_KEY is not set. Add it in Studio settings." |
-| Auth fails on protected endpoint | 401 (works) | Already good ✅ |
-| Compiler error caught at runtime | 500, no body | Should never reach runtime — catch at compile time |
-
----
-
-**Steps to reproduce (empty table case):**
-1. Create any table (e.g. Tasks)
-2. Write `GET /api/tasks` that does `get all Tasks`
-3. Don't insert any data
-4. Call GET /api/tasks
-5. Observe: HTTP 500, empty body, no terminal message
-
-**Workaround used:** None — the error is invisible. User has no debugging signal.
-
-**Impact:** HIGH. This is the #1 reason a non-developer gives up. The compiler errors are genuinely excellent (plain English, inline hints, patchable fixes). The runtime errors are a completely different — and much worse — experience. Fixing this makes Clear feel consistent end-to-end.
-
----
-
-## Request: `refresh page` compiles to `console.log(refresh)` — crashes frontend ✅ FIXED
-**Priority:** CRITICAL (FIXED — compiles to `location.reload()` now)
-**What I was building:** A task CRUD app with a button that posts a form and refreshes the page
-**What I wrote in Clear:**
+## Request: `show alert` compiles to console.log(alert) instead of alert()
+**Priority:** HIGH
+**App:** Any app using form submission feedback
+**What I needed:** `show alert 'Form submitted'` to trigger a browser alert dialog
+**Proposed syntax:**
 ```clear
-button 'Add Task':
-  post to '/api/tasks' with form data
-  refresh page
+show alert 'Form submitted'
 ```
-**What I expected:** After the POST succeeds, the page reloads (or the task list re-fetches)
-**What actually happened:** Frontend JS crashes silently. The button click handler throws a ReferenceError because `refresh` is undefined.
-**Compiled output (if applicable):**
-```javascript
-document.getElementById('btn_Add_Task').addEventListener('click', async function() {
-  try {
-    { const _r = await fetch("/api/tasks", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_state) });
-      if (!_r.ok) { const _e = await _r.json().catch(() => ({})); throw new Error(_e.error || _e.message || 'POST failed'); } }
-    console.log(refresh);  // <-- BUG: should be location.reload() or re-fetch
-  } catch(_err) { _toast(_err.message || 'Something went wrong', 'error'); }
-});
-```
+**Workaround used:** None found
+**Error hit:** No error thrown. Compiles to `console.log(alert)` — logs the native alert function object to console instead of calling it. Nothing visible happens.
 **Steps to reproduce:**
-1. Write any button block with `refresh page` as the last action
-2. Compile and run
-3. Click the button — frontend throws `ReferenceError: refresh is not defined`
-**Workaround used:** Blocked. No way to trigger a page refresh or data re-fetch from a button.
-**Impact:** Kills every CRUD form. After a POST, the user has no way to see the updated data. Affects all interactive apps.
+```clear
+build for web
+page 'Test' at '/':
+  button 'Submit':
+    show alert 'Done'
+```
+Compile → inspect JS → see `console.log(alert)` instead of `alert('Done')`.
+**Impact:** HIGH — user feedback on actions is broken.
 
 ---
 
-## Request: `post to` with form data sends entire `_state` instead of form fields only ✅ FIXED
-**Priority:** MAJOR (FIXED — `with form data` sends only input fields, `with name, email` sends specific fields)
-**What I was building:** A task CRUD app — button POSTs form inputs to an API
-**What I wrote in Clear:**
+## Request: `text` keyword inside `for each` loop not recognized as display keyword
+**Priority:** HIGH
+**App:** Any app rendering lists dynamically
+**What I needed:** `text` to work as a display keyword inside loop bodies
+**Proposed syntax:**
 ```clear
-button 'Add Task':
-  post to '/api/tasks' with form data
+for each item in items:
+  text item
 ```
-**What I expected:** POST body contains only the form fields defined in that section (title, description, priority)
-**What actually happened:** POST body is `JSON.stringify(_state)` — the entire app state object, including unrelated fields. This sends garbage to the API and breaks validation.
-**Compiled output (if applicable):**
-```javascript
-body: JSON.stringify(_state)  // sends ALL state, not just form fields
+**Workaround used:** None found
+**Error hit:** Compiler error — treats `text` as an undefined variable inside the loop body. Says "Define it on an earlier line" which is a nonsensical error for a built-in display keyword.
+**Steps to reproduce:**
+```clear
+build for web
+page 'Test' at '/':
+  items = ['apple', 'banana', 'cherry']
+  for each item in items:
+    text item
 ```
-**Workaround used:** None — no syntax to specify a subset of state fields in a POST
-**Impact:** Any app with multiple inputs or sections will send polluted data to the API.
+**Impact:** HIGH — dynamic list rendering is broken.
 
 ---
 
-## Request: Studio should inject ANTHROPIC_API_KEY at runtime ✅ FIXED
-**Priority:** CRITICAL (FIXED — API key from chat settings now passed to child processes)
-**What I was building:** Any app with an `agent` block using `ask claude`
-**What I wrote in Clear:**
-```clear
-agent 'Helper' receives question:
-  response = ask claude 'You are helpful' with question
-  send back response
+## Request: Expose compiled JS output in compile tool response even on error
+**Priority:** HIGH  
+**App:** All apps — this is an agent tooling gap
+**What I needed:** The compile tool to return the compiled JS/HTML source alongside errors, even when the build fails
+**Proposed syntax:** N/A — tooling request
+**Workaround used:** Add fake `requires auth` to force a clean build path, then strip after. Wastes 2-3 round trips per bug.
+**Error hit:** compile tool returns errors + metadata flags but zero compiled source. To see compiled output I need a clean build. But broken code is exactly when I most need to inspect the output.
+**The catch-22:**
 ```
-**What I expected:** The agent calls Claude and returns a response during studio testing
-**What actually happened:** Runtime error — no API key available. The compiled server has no `ANTHROPIC_API_KEY` injected, so every agent call fails in the sandbox.
-**Workaround used:** Blocked. Can't test agents at all without a key.
-**Impact:** Agents are a flagship feature. Nobody can test them in the studio. This needs to be an env var injected automatically when running inside Clear Studio — users shouldn't have to wire this up themselves.
+Code is broken
+→ need compiled output to diagnose
+→ build refuses to emit on errors  
+→ can't see what went wrong
+→ debugging blind
+```
+**Proposed fix options:**
+- A: compile tool returns partial compiled source alongside errors (best — output already exists in pipeline, just not exposed)
+- B: --force CLI flag emits full output regardless of errors, flagged as unsafe/partial
+- C: compile({ partial: true }) option
+**Impact:** HIGH — every debugging session is longer than it needs to be. I'm flying blind on broken code.
 
 ---
 
-## Request: `post to` in button handler generates broken JS ✅ FIXED
-**Priority:** CRITICAL (FIXED — dispatch unification resolved the post_to canonicalization, parser now handles `with` clause)
-**What I was building:** A digest generator app with a submit button that POSTs form data to an API endpoint
-**What I wrote in Clear:**
+## Request: `refresh page` compiles to broken JS
+**Priority:** HIGH
+**App:** Any app using page refresh after action
+**What I needed:** `refresh page` to call `window.location.reload()`
+**Proposed syntax:**
 ```clear
-button 'Generate':
-  post to '/api/digest/generate' with event_text
+refresh page
 ```
-**What I expected:** Button click triggers a fetch POST to the endpoint with the variable as the body
-**What actually happened:** Parser crashes at parser.js line 2033. Compiled output produces `let result = post_to;` — the entire async fetch is dropped. Server throws a syntax error at runtime.
-**Workaround used:** Blocked. No way to POST from a button without this working.
-**Impact:** Blocks all form-based frontends. Every CRUD app needs this.
+**Workaround used:** None
+**Error hit:** Compiles to mangled JS — `refresh` treated as undefined variable. `window.location.reload()` never called.
+**Impact:** HIGH
 
 ---
 
-## Request: `ask agent 'X'` from inside an endpoint ✅ FIXED
-**Priority:** MAJOR (FIXED — parser now skips optional 'agent' keyword: `ask agent 'Helper' with data` works)
-**What I was building:** A digest generator where an endpoint orchestrates an agent call
-**What I wrote in Clear:**
-```clear
-when user calls POST /api/digest/generate sending data:
-  result = ask agent 'DigestAgent' with data
-  send back result
+## Request: Agent affordance — `init --template NAME` for scaffolding
+**Priority:** MEDIUM
+**App:** All new apps
+**What I needed:** `node cli/clear.js init --template todos` or `--template auth-app` to scaffold real starter apps
+**Proposed syntax:** CLI flag, not Clear syntax
+**Workaround used:** Copy examples from USER-GUIDE.md manually
+**Error hit:** `init` only produces a bare hello-world scaffold. No template library.
+**Impact:** MEDIUM — slows down app creation, especially for common patterns like CRUD apps, auth flows, dashboards.
+
+---
+
+## Request: Agent affordance — compile tool should return compiled source on success
+**Priority:** MEDIUM
+**App:** All apps
+**What I needed:** When compile succeeds, return the full compiled JS/HTML so I can inspect it without needing a separate build step
+**Proposed syntax:** N/A — tooling request
+**Workaround used:** run_app then read_terminal to infer behavior
+**Error hit:** No error — feature just missing. compile() returns errors, warnings, flags (hasHTML, hasServerJS) but never the actual compiled text.
+**Impact:** MEDIUM — adds round trips to every debugging session.
+
+---
+
+## Request: `write_file` needs append/insert/replace modes — replace with `edit_file`
+**Priority:** HIGH
+**App:** All apps — this is an agent tooling gap
+**What I needed:** The ability to append to an existing file without reading and rewriting the whole thing
+**Proposed syntax:** N/A — tooling request
+
+**The problem:**
+`write_file` is a full overwrite. Always. There is no append mode. This means every time the agent needs to log a new bug to requests.md, it must:
+1. Read the entire file
+2. Hold the full content in context
+3. Construct old content + new content
+4. Write the whole thing back
+
+This is fragile as hell. During this testing session it wiped requests.md twice — once during a network error (write started, didn't finish), once when the content parameter got mangled mid-write. All previously filed bugs were lost both times.
+
+**The analogy:** Right now the agent has a Sharpie and a blank piece of paper. It needs a notebook with pages.
+
+**Proposed replacement — `edit_file` tool with action modes:**
 ```
-**What I expected:** The endpoint calls the named agent and returns its response
-**What actually happened:** Compiler error — treats `agent` as a literal variable name, not a reference to a defined agent block
-**Workaround used:** Inlined the `ask claude` call directly inside the endpoint instead of using a named agent
-**Impact:** Agents can't be reused across endpoints. Kills composability.
+edit_file(filename, action='append', content='...')   → add to end (most common for logs)
+edit_file(filename, action='insert', line=42, content='...')  → add at line N
+edit_file(filename, action='replace', find='...', replace='...')  → find/replace
+edit_file(filename, action='overwrite', content='...')  → current behavior, now explicit
+edit_file(filename, action='read')  → read current content
+```
+
+**The `append` action alone would have prevented every accidental wipe in this session.**
+
+**Workaround used:** Read full file → reconstruct → write entire file back. Fragile. Caused two data loss incidents in one session.
+
+**Steps to reproduce the data loss:**
+1. Start a long testing session filing bugs to requests.md
+2. Hit a network error mid-write
+3. Retry the write — but now content param is constructed from stale memory
+4. Old entries are silently overwritten with incomplete content
+5. Data gone, no warning, no diff, no undo
+
+**Impact:** HIGH — this is the primary mechanism for the agent to communicate findings to the compiler team. Data loss here means bugs go unreported. The append-mode gap is a systemic reliability issue, not a one-off mistake.
