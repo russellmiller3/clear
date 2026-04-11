@@ -109,8 +109,8 @@ That's 2-3 extra round trips per bug. For a runtime bug like `refresh page → c
 
 ---
 
-## Request: Runtime errors are a black box — no structured error surface
-**Priority:** MAJOR
+## Request: Runtime errors are a black box — no structured error surface ✅ FIXED
+**Priority:** MAJOR (FIXED — _clearError now always returns structured { error, hint, clear_line } even in production)
 **What I was building:** A task CRUD app. GET /api/tasks returned a 500 with no message when the table was empty.
 **What I wrote in Clear:**
 ```clear
@@ -235,8 +235,8 @@ document.getElementById('btn_Add_Task').addEventListener('click', async function
 
 ---
 
-## Request: `post to` with form data sends entire `_state` instead of form fields only
-**Priority:** MAJOR
+## Request: `post to` with form data sends entire `_state` instead of form fields only ✅ FIXED
+**Priority:** MAJOR (FIXED — `with form data` sends only input fields, `with name, email` sends specific fields)
 **What I was building:** A task CRUD app — button POSTs form inputs to an API
 **What I wrote in Clear:**
 ```clear
@@ -270,8 +270,8 @@ agent 'Helper' receives question:
 
 ---
 
-## Request: `post to` in button handler generates broken JS
-**Priority:** CRITICAL
+## Request: `post to` in button handler generates broken JS ✅ FIXED
+**Priority:** CRITICAL (FIXED — dispatch unification resolved the post_to canonicalization, parser now handles `with` clause)
 **What I was building:** A digest generator app with a submit button that POSTs form data to an API endpoint
 **What I wrote in Clear:**
 ```clear
@@ -285,8 +285,8 @@ button 'Generate':
 
 ---
 
-## Request: `ask agent 'X'` from inside an endpoint
-**Priority:** MAJOR
+## Request: `ask agent 'X'` from inside an endpoint ✅ FIXED
+**Priority:** MAJOR (FIXED — parser now skips optional 'agent' keyword: `ask agent 'Helper' with data` works)
 **What I was building:** A digest generator where an endpoint orchestrates an agent call
 **What I wrote in Clear:**
 ```clear
