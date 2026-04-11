@@ -150,13 +150,16 @@ export function tokenizeLine(line, lineNumber = 1) {
       const start = pos;
       pos++; // skip opening quote
       let str = '';
-      while (pos < line.length && line[pos] !== quote) {
+      let braceDepth = 0; // track {..} so 's inside interpolation doesn't end the string
+      while (pos < line.length && (line[pos] !== quote || braceDepth > 0)) {
         if (line[pos] === '\\' && pos + 1 < line.length) {
           pos++; // skip escape character
           if (line[pos] === 'n') str += '\n';
           else if (line[pos] === 't') str += '\t';
           else str += line[pos];
         } else {
+          if (line[pos] === '{') braceDepth++;
+          else if (line[pos] === '}') braceDepth = Math.max(0, braceDepth - 1);
           str += line[pos];
         }
         pos++;
