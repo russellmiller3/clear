@@ -1,0 +1,19 @@
+{
+  "id": "greeting",
+  "level": 1,
+  "title": "Personal Greeting",
+  "description": "Write a GET /api/greet/:name endpoint that returns { greeting: 'Hello, {name}!' } using the name from the URL.",
+  "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "tests": [
+    {
+      "method": "GET",
+      "path": "/api/greet/Alice",
+      "expect": { "status": 200, "bodyHas": ["greeting"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/greet/Bob",
+      "expect": { "status": 200, "bodyHas": ["greeting"] }
+    }
+  ]
+}

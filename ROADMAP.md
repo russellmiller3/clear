@@ -23,7 +23,17 @@ npm imports, shell commands. **P1** inferred type system (compile errors on text
 **P2** structured eval stats (`compileProgram()` returns `stats{}`). **P3** source maps
 (`_clearLineMap` + per-statement `// clear:N` markers + stack trace translation in
 `_clearError`). **P4** sandbox runner (`sandbox.js` — isolated child process, HTTP test
-assertions, parallel RL episodes). 1586 compiler tests + 9 sandbox tests.
+assertions, parallel RL episodes). **P5** HTTP test assertions in Clear (`call POST /path`,
+`expect response status/body`). User-written test blocks compile into E2E test file.
+**P6** curriculum task library — 20 benchmark tasks across 10 difficulty levels (63 tests).
+**P7** program diff/patch API (`patch.js`) — 11 structured operations for RL action space.
+**P10** cron/scheduled tasks (`every N minutes:`, `every day at 9am:`).
+**P14** output capture from commands (`result = run command 'cmd'`).
+Also: optional chaining (`?.`) for null-safe property access, `_pick` auto-serializes
+nested JSON for SQLite, `_revive` auto-parses JSON strings, keyword guard for better
+error messages, chain depth + expression complexity warnings, `write_file` supports
+non-`.clear` extensions, multiline `run command:` blocks.
+1633 compiler tests + 9 sandbox tests.
 
 ---
 
@@ -141,7 +151,7 @@ const result = await sandbox.run(clearSource, {
 
 ---
 
-### P5 — HTTP Test Assertions in Clear
+### P5 — HTTP Test Assertions in Clear ✅ DONE
 
 **What:** Test blocks that make real HTTP calls against the running app.
 
@@ -170,7 +180,7 @@ test 'list users':
 
 ---
 
-### P6 — Curriculum Task Library
+### P6 — Curriculum Task Library ✅ DONE
 
 **What:** A standard set of benchmark tasks with ground-truth acceptance criteria. Each task
 is: a description, a starting skeleton, and a set of tests that define "done."
@@ -214,7 +224,7 @@ Level 8 — Multi-tenant workspace
 
 ---
 
-### P7 — Program Diff / Patch API
+### P7 — Program Diff / Patch API ✅ DONE
 
 **What:** Structured edits to a Clear program. Instead of AI rewriting the whole file,
 it can say "add endpoint POST /api/users" or "change field 'name' to required."
@@ -284,7 +294,7 @@ when user calls POST /api/upload sending file:
 
 ---
 
-### P10 — Cron / Scheduled Tasks
+### P10 — Cron / Scheduled Tasks ✅ DONE
 
 **What:** `every day at 9am:` / `every 5 minutes:` blocks that run on a schedule.
 
@@ -308,7 +318,7 @@ every 5 minutes:
 
 ---
 
-### P11 — Built-in Email
+### P11 — Built-in Email ✅ DONE (already implemented)
 
 **What:** `send email to 'x@y.com' with subject 'Hi' and body '...'` — first-class,
 not via npm.
@@ -386,7 +396,7 @@ when user calls POST /api/chat sending params:
 
 ---
 
-### P14 — Output Capture from Commands
+### P14 — Output Capture from Commands ✅ DONE
 
 **What:** `result = run command 'git log --oneline'` — capture stdout as a string.
 
@@ -443,19 +453,19 @@ expression → `{ encoding: 'utf-8' }` with variable binding.
 
 ## Order Summary
 
-| # | Feature | Effort | RL Value | AI Speed |
-|---|---------|--------|----------|----------|
-| P1 | Inferred type system | 3d | ★★★★★ | ★★★★★ |
-| P2 | Structured eval API | 1d | ★★★★★ | ★★★★ |
-| P3 | Source maps | 1d | ★★★★ | ★★★★★ |
-| P4 | Sandbox runner | 2d | ★★★★★ | ★★★ |
-| P5 | HTTP test assertions | 2d | ★★★★★ | ★★★★ |
-| P6 | Curriculum task library | 2d | ★★★★★ | ★★★ |
-| P7 | Program diff/patch API | 3d | ★★★★ | ★★★★ |
-| P8 | WebSocket / real-time | 2d | ★★★ | ★★★★ |
-| P9 | File upload/download | 2d | ★★★ | ★★★★ |
-| P10 | Cron / scheduled tasks | 2d | ★★★ | ★★★★ |
-| P11 | Built-in email | 1d | ★★★ | ★★★★★ |
-| P12 | OAuth / social login | 3d | ★★ | ★★★★ |
-| P13 | Streaming responses | 1d | ★★★ | ★★★★ |
-| P14 | Output capture | 0.5d | ★★ | ★★★ |
+| # | Feature | Effort | RL Value | AI Speed | Status |
+|---|---------|--------|----------|----------|--------|
+| P1 | Inferred type system | 3d | ★★★★★ | ★★★★★ | ✅ Done |
+| P2 | Structured eval API | 1d | ★★★★★ | ★★★★ | ✅ Done |
+| P3 | Source maps | 1d | ★★★★ | ★★★★★ | ✅ Done |
+| P4 | Sandbox runner | 2d | ★★★★★ | ★★★ | ✅ Done |
+| P5 | HTTP test assertions | 2d | ★★★★★ | ★★★★ | ✅ Done |
+| P6 | Curriculum task library | 2d | ★★★★★ | ★★★ | ✅ Done |
+| P7 | Program diff/patch API | 3d | ★★★★ | ★★★★ | ✅ Done |
+| P8 | WebSocket / real-time | 2d | ★★★ | ★★★★ | ✅ Done (pre-existing) |
+| P9 | File upload/download | 2d | ★★★ | ★★★★ | ✅ Done (pre-existing) |
+| P10 | Cron / scheduled tasks | 2d | ★★★ | ★★★★ | ✅ Done |
+| P11 | Built-in email | 1d | ★★★ | ★★★★★ | ✅ Done (pre-existing) |
+| P12 | OAuth / social login | 3d | ★★ | ★★★★ | |
+| P13 | Streaming responses | 1d | ★★★ | ★★★★ | Partial (STREAM node exists) |
+| P14 | Output capture | 0.5d | ★★ | ★★★ | ✅ Done |

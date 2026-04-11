@@ -1,0 +1,33 @@
+{
+  "id": "auth-todo",
+  "level": 5,
+  "title": "Authenticated Todo API",
+  "description": "Build a Todo API that requires JWT authentication. POST /api/register creates a user (email, password). POST /api/login returns a token. All /api/todos endpoints require auth. Users can only see their own todos.",
+  "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n\ncreate a Todos table:\n  title, required\n  done\n  user_id, required\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "body": { "email": "test@example.com", "password": "secret123" },
+      "expect": { "status": 201 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/login",
+      "body": { "email": "test@example.com", "password": "secret123" },
+      "expect": { "status": 200, "bodyHas": ["token"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/todos",
+      "expect": { "status": 401 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/todos",
+      "body": { "title": "Authed todo" },
+      "headers": { "Authorization": "Bearer {{token}}" },
+      "expect": { "status": 201, "bodyHas": ["id", "title"] }
+    }
+  ]
+}

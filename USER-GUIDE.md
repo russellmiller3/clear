@@ -2219,4 +2219,79 @@ That's the whole deal. AI is the writer. You're the editor.
 And if you ever read a Clear program and can't understand what it does?
 That's a bug in the language — not in you. Seriously. File an issue. We'll fix it.
 
+---
+
+## Chapter 22: Scheduled Tasks (Set It and Forget It)
+
+Sometimes you want your app to do things automatically — clean up old data every hour,
+send a daily report, check for updates every few minutes. That's what scheduled tasks are for.
+
+### Running Something Every Few Minutes
+
+```clear
+every 5 minutes:
+  old_sessions = look up all Sessions where age is greater than 24
+  delete old_sessions from Sessions
+```
+
+That runs the cleanup code every 5 minutes, forever. You can use `minutes` or `hours`.
+
+### Running Something at a Specific Time
+
+```clear
+every day at 9am:
+  users = look up all Users
+  for each user in users:
+    send email to user's email with subject 'Good morning!'
+```
+
+Supports times like `9am`, `2:30pm`, `12:00am` (midnight).
+
+### When to Use Scheduled Tasks
+
+- Daily email digests
+- Cleaning up expired data
+- Polling external APIs for updates
+- Generating daily reports
+
+---
+
+## Chapter 23: Writing Tests (Proving Your API Works)
+
+You can write tests right in your Clear file that make real HTTP calls to your app:
+
+```clear
+test 'create a todo':
+  call POST /api/todos with title is 'Buy milk'
+  expect response status is 201
+  expect response body has id
+
+test 'list all todos':
+  call GET /api/todos
+  expect response status is 200
+```
+
+These tests run alongside the auto-generated tests when you use `clear test`.
+
+### What You Can Check
+
+```clear
+expect response status is 200          # check the status code
+expect response body has name          # check a field exists
+expect response body length is greater than 0  # check there's data
+```
+
+### Capturing Command Output
+
+You can run shell commands and capture their output:
+
+```clear
+when user calls GET /api/version:
+  version = run command 'node --version'
+  send back version
+```
+
+The `= run command` form captures stdout as a string. Without the `=`, the command
+just runs without capturing anything.
+
 Happy building!

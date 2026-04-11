@@ -107,6 +107,8 @@ export function validate(ast) {
   validateMemberAccessTypes(ast.body, warnings);
   validateTypedCallArgs(ast.body, warnings);
   validateInferredTypes(ast.body, errors);
+  validateChainDepth(ast.body, warnings);
+  validateExprComplexity(ast.body, warnings);
   return { errors, warnings };
 }
 
@@ -1690,4 +1692,98 @@ function validateInferredTypes(body, errors) {
   const globalEnv = new Map();
   buildTypeEnv(body, globalEnv);
   walkNodes(body, globalEnv);
+}
+
+// CHAIN DEPTH: warn when possessive chains go deeper than 4 levels.
+// "user's profile's avatar's url's host" is 4 deep and already pushing it.
+// Deep chains are a symptom of missing intermediate variables — exactly what
+// Clear's one-operation-per-line rule is designed to prevent.
+function validateChainDepth(body, warnings) {
+  const MAX_DEPTH = 4;
+
+  function chainDepth(expr) {
+    if (!expr || expr.type !== NodeType.MEMBER_ACCESS) return 0;
+    return 1 + chainDepth(expr.object);
+  }
+
+  function checkExpr(expr, line) {
+    if (!expr) return;
+    const depth = chainDepth(expr);
+    if (depth >= MAX_DEPTH) {
+      warnings.push({
+        line: expr.line || line,
+        message: `Possessive chain is ${depth} levels deep — break it into named steps. Example:\n  profile = user's profile\n  avatar = profile's avatar\n  url = avatar's url`,
+      });
+    }
+    // Still recurse to catch chains nested inside other expressions
+    if (expr.object) checkExpr(expr.object, line);
+    if (expr.left) checkExpr(expr.left, line);
+    if (expr.right) checkExpr(expr.right, line);
+    if (expr.args) expr.args.forEach(a => checkExpr(a, line));
+    if (expr.condition) checkExpr(expr.condition, line);
+    if (expr.expression) checkExpr(expr.expression, line);
+  }
+
+  function walk(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      const line = node.line;
+      if (node.expression) checkExpr(node.expression, line);
+      if (node.condition) checkExpr(node.condition, line);
+      if (node.value) checkExpr(node.value, line);
+      if (Array.isArray(node.body)) walk(node.body);
+      if (Array.isArray(node.thenBranch)) walk(node.thenBranch);
+      if (Array.isArray(node.otherwiseBranch)) walk(node.otherwiseBranch);
+      if (node.handlers) node.handlers.forEach(h => walk(h.body));
+    }
+  }
+
+  walk(body);
+}
+
+// EXPRESSION COMPLEXITY: warn when a single expression uses 3+ binary operators.
+// That's a sign the line is doing too much — Clear's design says name intermediates.
+// Example: a = b plus c times d minus e   → warn, suggest breaking up
+function validateExprComplexity(body, warnings) {
+  const MAX_OPS = 2;
+
+  function countOps(expr) {
+    if (!expr) return 0;
+    if (expr.type !== NodeType.BINARY_OP) return 0;
+    return 1 + countOps(expr.left) + countOps(expr.right);
+  }
+
+  function checkExpr(expr, line) {
+    if (!expr) return;
+    if (expr.type === NodeType.BINARY_OP) {
+      const ops = countOps(expr);
+      if (ops > MAX_OPS) {
+        warnings.push({
+          line: expr.line || line,
+          message: `This expression has ${ops} operations on one line. Break it into named steps:\n  step1 = ...\n  step2 = step1 ...`,
+        });
+        return; // Don't recurse — one warning per top-level expression
+      }
+    }
+    if (expr.left) checkExpr(expr.left, line);
+    if (expr.right) checkExpr(expr.right, line);
+    if (expr.args) expr.args.forEach(a => checkExpr(a, line));
+    if (expr.object) checkExpr(expr.object, line);
+    if (expr.expression) checkExpr(expr.expression, line);
+  }
+
+  function walk(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      const line = node.line;
+      if (node.expression) checkExpr(node.expression, line);
+      if (node.condition) checkExpr(node.condition, line);
+      if (Array.isArray(node.body)) walk(node.body);
+      if (Array.isArray(node.thenBranch)) walk(node.thenBranch);
+      if (Array.isArray(node.otherwiseBranch)) walk(node.otherwiseBranch);
+      if (node.handlers) node.handlers.forEach(h => walk(h.body));
+    }
+  }
+
+  walk(body);
 }

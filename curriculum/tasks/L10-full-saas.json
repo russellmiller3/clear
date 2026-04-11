@@ -1,0 +1,39 @@
+{
+  "id": "full-saas",
+  "level": 10,
+  "title": "Full SaaS: Project Tracker",
+  "description": "Build a project management API. Users register/login. Projects have name, description, status (active/archived). Tasks belong to projects with title, description, status (todo/in_progress/done), assignee_id. Auth required. Users can only see projects they own. Full CRUD on both resources.",
+  "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required\n  name, required\n\ncreate a Projects table:\n  name, required\n  description\n  status\n  owner_id, required\n\ncreate a Tasks table:\n  title, required\n  description\n  status\n  project_id, required\n  assignee_id\n\n# Registration, login, CRUD for projects and tasks\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "body": { "email": "pm@test.com", "password": "pass1234", "name": "PM User" },
+      "expect": { "status": 201 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/login",
+      "body": { "email": "pm@test.com", "password": "pass1234" },
+      "expect": { "status": 200, "bodyHas": ["token"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects",
+      "body": { "name": "Clear v2" },
+      "headers": { "Authorization": "Bearer {{token}}" },
+      "expect": { "status": 201, "bodyHas": ["id", "name"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects",
+      "headers": { "Authorization": "Bearer {{token}}" },
+      "expect": { "status": 200, "bodyLength": ">0" }
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects",
+      "expect": { "status": 401 }
+    }
+  ]
+}

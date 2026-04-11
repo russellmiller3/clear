@@ -1,0 +1,27 @@
+{
+  "id": "calculator",
+  "level": 2,
+  "title": "Math Calculator",
+  "description": "Write a POST /api/calculate endpoint that receives 'a', 'b', and 'operation' (add/subtract/multiply/divide) and returns { result: <number> }. Return 400 for division by zero.",
+  "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/calculate",
+      "body": { "a": 10, "b": 3, "operation": "add" },
+      "expect": { "status": 200, "bodyHas": ["result"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/calculate",
+      "body": { "a": 10, "b": 3, "operation": "subtract" },
+      "expect": { "status": 200, "bodyHas": ["result"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/calculate",
+      "body": { "a": 10, "b": 0, "operation": "divide" },
+      "expect": { "status": 400 }
+    }
+  ]
+}

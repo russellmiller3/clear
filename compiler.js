@@ -85,7 +85,7 @@
 //
 // TABLE OF CONTENTS:
 //   PUBLIC API ........................ compileProgram(), compile(), resolveModules()
-//   E2E TEST GENERATION .............. generateE2ETests()
+//   E2E TEST GENERATION .............. generateE2ETests() — includes user-written test blocks
 //   DEPLOY CONFIG .................... generateDeployConfig()
 //   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
 //     Node compilers ................. compileEndpoint, compileCrud, compileRespond,
@@ -178,7 +178,8 @@ const UTILITY_FUNCTIONS = [
   setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
 }`, deps: [] },
   { name: '_esc', code: "function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }", deps: [] },
-  { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema)); }', deps: [] },
+  { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v])); }', deps: [] },
+  { name: '_revive', code: 'function _revive(record) { if (!record) return record; const out = {}; for (const [k, v] of Object.entries(record)) { if (typeof v === "string" && (v[0] === "{" || v[0] === "[")) { try { out[k] = JSON.parse(v); } catch(_) { out[k] = v; } } else { out[k] = v; } } return out; }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
   for (const r of rules) {
     let v = body[r.field];
@@ -1167,11 +1168,56 @@ function generateE2ETests(body) {
     }
   }
 
+  // === USER-WRITTEN TEST BLOCKS ===
+  // Collect TEST_DEF nodes from the AST and compile them into the test harness
+  const testDefs = body.filter(n => n.type === NodeType.TEST_DEF);
+  if (testDefs.length > 0) {
+    lines.push('  // --- User-Written Tests (from test blocks in .clear source) ---');
+    lines.push('  const _baseUrl = BASE;');
+    lines.push('  let _response, _responseBody;');
+    lines.push('');
+
+    const testCtx = {
+      lang: 'js', indent: 2, declared: new Set(), stateVars: null,
+      mode: 'backend', sourceMap: new Map(), schemaNames: new Set(),
+      _astBody: body
+    };
+
+    for (const td of testDefs) {
+      const bodyNodes = td.body.filter(n => n.type !== NodeType.MOCK_AI);
+      const bodyLines = bodyNodes.map(n => compileNode(n, { ...testCtx, indent: 2 })).filter(Boolean);
+      lines.push(`  await test(${JSON.stringify(td.name)}, async () => {`);
+      for (const bl of bodyLines) {
+        // Each compiled line may be multi-line; indent each line inside the test
+        for (const subLine of bl.split('\n')) {
+          lines.push('  ' + subLine);
+        }
+      }
+      lines.push('  });');
+      lines.push('');
+    }
+  }
+
   lines.push('  console.log("");');
   lines.push('  console.log("Results:", passed, "passed,", failed, "failed");');
   lines.push('  process.exit(failed > 0 ? 1 : 0);');
   lines.push('}');
   lines.push('');
+
+  // Shim expect/toBe/toHaveProperty for user-written test blocks
+  if (testDefs.length > 0) {
+    lines.push('// Expect shim for user-written test assertions');
+    lines.push('function expect(val) {');
+    lines.push('  return {');
+    lines.push('    toBe(expected) { if (val !== expected) throw new Error("Expected " + expected + ", got " + val); },');
+    lines.push('    toBeTruthy() { if (!val) throw new Error("Expected truthy, got " + val); },');
+    lines.push('    toHaveProperty(key) { if (!(key in (val || {}))) throw new Error("Expected property " + key); },');
+    lines.push('    toBeGreaterThan(n) { if (!(val > n)) throw new Error("Expected > " + n + ", got " + val); }');
+    lines.push('  };');
+    lines.push('}');
+    lines.push('');
+  }
+
   lines.push('run();');
 
   return lines.join('\n');
@@ -1639,7 +1685,7 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.VALIDATE, NodeType.FIELD_RULE,
   NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK, NodeType.OAUTH_CONFIG,
   NodeType.CHECKOUT, NodeType.USAGE_LIMIT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
-  NodeType.STREAM, NodeType.BACKGROUND, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
+  NodeType.STREAM, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
   NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
 ]);
@@ -1860,7 +1906,9 @@ function compileCrud(node, ctx, pad) {
   if (node.operation === 'lookup') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
-    let lookupCode = `${pad}const ${sanitizeName(node.variable)} = await db.${isSingleLookup ? 'findOne' : 'findAll'}('${table}'${where});`;
+    let lookupCode = isSingleLookup
+      ? `${pad}const ${sanitizeName(node.variable)} = _revive(await db.findOne('${table}'${where}));`
+      : `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}'${where})).map(_revive);`;
     // Pagination: slice the result array
     if (node.page && node.perPage && !isSingleLookup) {
       const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
@@ -2295,7 +2343,9 @@ function compileWorkflow(node, ctx, pad) {
   // Helper: rewrite state var references in expressions to _state
   function rewriteStateRef(code) {
     if (stateVarName === '_state') return code;
-    // Replace stateVar.field with _state.field (JS dot notation)
+    // Replace stateVar?.field or stateVar.field with _state.field (JS dot notation)
+    // Using `?.` optional chaining because Clear now generates ?. for possessive access
+    code = code.replace(new RegExp('\\b' + stateVarName + '\\?\\.', 'g'), '_state.');
     code = code.replace(new RegExp('\\b' + stateVarName + '\\.', 'g'), '_state.');
     // Replace stateVar["field"] with _state["field"] (Python bracket notation)
     code = code.replace(new RegExp('\\b' + stateVarName + '\\[', 'g'), '_state[');
@@ -2976,7 +3026,16 @@ function _compileNodeInner(node, ctx) {
 
     case NodeType.RUN_COMMAND: {
       // Shell command execution: run command 'npm install'
+      // If capture=true, this is used as an expression (result = run command 'cmd')
+      // and will be wrapped in an ASSIGN node — handled by exprToCode
       const cmdStr = JSON.stringify(node.command);
+      if (node.capture) {
+        // Expression form: returns stdout as string
+        if (ctx.lang === 'python') {
+          return `${pad}subprocess.run(${cmdStr}, shell=True, capture_output=True, text=True, check=True).stdout.strip()`;
+        }
+        return `${pad}execSync(${cmdStr}, { encoding: 'utf-8' }).trim()`;
+      }
       if (ctx.lang === 'python') {
         return `${pad}subprocess.run(${cmdStr}, shell=True, check=True)`;
       }
@@ -3001,6 +3060,42 @@ function _compileNodeInner(node, ctx) {
     case NodeType.ASSIGN: {
       const rawName = sanitizeName(node.name);
       const name = ctx.lang === 'python' ? sanitizeNamePython(node.name) : rawName;
+
+      // EXTERNAL_FETCH as RHS: generates multi-statement try/catch, bind result to name
+      if (node.expression && node.expression.type === NodeType.EXTERNAL_FETCH) {
+        const fetchNode = node.expression;
+        const timeoutMs = fetchNode.config?.timeout
+          ? fetchNode.config.timeout.value * (fetchNode.config.timeout.unit === 'minutes' ? 60000 : 1000)
+          : 10000;
+        const urlCode = typeof fetchNode.url === 'string' ? `'${fetchNode.url}'` : exprToCode(fetchNode.url, ctx);
+        if (!ctx.declared.has(rawName)) ctx.declared.add(rawName);
+        if (ctx.lang === 'python') {
+          return `${pad}async with httpx.AsyncClient(timeout=${timeoutMs / 1000}) as _client:\n` +
+                 `${pad}    _r = await _client.get(${urlCode})\n` +
+                 `${pad}    ${name} = _r.json()`;
+        }
+        return `${pad}let ${name};\n` +
+               `${pad}try {\n` +
+               `${pad}  const _ctrl = new AbortController();\n` +
+               `${pad}  const _tmt = setTimeout(() => _ctrl.abort(), ${timeoutMs});\n` +
+               `${pad}  const _res = await fetch(${urlCode}, { signal: _ctrl.signal });\n` +
+               `${pad}  clearTimeout(_tmt);\n` +
+               `${pad}  ${name} = await _res.json();\n` +
+               `${pad}} catch (_err) {\n` +
+               `${pad}  throw new Error(\`fetch from ${typeof fetchNode.url === 'string' ? fetchNode.url : 'url'} failed: \${_err.message}\`);\n` +
+               `${pad}}`;
+      }
+
+      // RUN_COMMAND with capture: result = run command 'cmd'
+      if (node.expression && node.expression.type === NodeType.RUN_COMMAND && node.expression.capture) {
+        const cmdStr = JSON.stringify(node.expression.command);
+        if (!ctx.declared.has(rawName)) ctx.declared.add(rawName);
+        if (ctx.lang === 'python') {
+          return `${pad}${name} = subprocess.run(${cmdStr}, shell=True, capture_output=True, text=True, check=True).stdout.strip()`;
+        }
+        return `${pad}const ${name} = execSync(${cmdStr}, { encoding: 'utf-8' }).trim();`;
+      }
+
       const expr = exprToCode(node.expression, ctx);
       if (ctx.lang === 'js') {
         // Property access (order.status) never gets "let"
@@ -3736,6 +3831,41 @@ ${pad}}`;
       return `${pad}expect(${exprToCode(node.expression, ctx)}).toBeTruthy();`;
     }
 
+    case NodeType.HTTP_TEST_CALL: {
+      // Compiles to: _response = await fetch(baseUrl + path, { method, body })
+      const method = JSON.stringify(node.method);
+      const path = JSON.stringify(node.path);
+      if (node.bodyFields && node.bodyFields.length > 0) {
+        const bodyObj = node.bodyFields.map(f => `${JSON.stringify(f.name)}: ${exprToCode(f.value, ctx)}`).join(', ');
+        let code = `${pad}_response = await fetch(_baseUrl + ${path}, {\n`;
+        code += `${pad}  method: ${method},\n`;
+        code += `${pad}  headers: { 'Content-Type': 'application/json' },\n`;
+        code += `${pad}  body: JSON.stringify({ ${bodyObj} })\n`;
+        code += `${pad}});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);`;
+        return code;
+      }
+      let code = `${pad}_response = await fetch(_baseUrl + ${path}, { method: ${method} });\n`;
+      code += `${pad}_responseBody = await _response.json().catch(() => null);`;
+      return code;
+    }
+
+    case NodeType.EXPECT_RESPONSE: {
+      if (node.property === 'status' && node.check === 'equals') {
+        return `${pad}expect(_response.status).toBe(${node.value});`;
+      }
+      if (node.property === 'body' && node.check === 'has_field') {
+        return `${pad}expect(_responseBody).toHaveProperty(${JSON.stringify(node.field)});`;
+      }
+      if (node.property === 'body' && node.check === 'length') {
+        if (node.value != null) {
+          return `${pad}expect(Array.isArray(_responseBody) ? _responseBody.length : Object.keys(_responseBody || {}).length).toBeGreaterThan(${node.value});`;
+        }
+        return `${pad}expect(_responseBody).toBeTruthy();`;
+      }
+      return `${pad}expect(_response.ok).toBeTruthy();`;
+    }
+
     // Phase 20: Advanced Features
     case NodeType.STREAM: {
       if (ctx.lang === 'python') {
@@ -3793,6 +3923,74 @@ ${pad}}`;
       code += bodyCode + '\n';
       code += `${pad}}, ${scheduleMs});`;
       return code;
+    }
+
+    case NodeType.CRON: {
+      if (ctx.lang === 'python') {
+        const bodyCode = compileBody(node.body, ctx);
+        const indented = bodyCode.split('\n').map(l => `        ${l}`).join('\n');
+        if (node.mode === 'interval') {
+          const secMap = { second: 1, minute: 60, hour: 3600 };
+          const secs = node.value * (secMap[node.unit] || 60);
+          let code = `${pad}# Scheduled: every ${node.value} ${node.unit}(s)\n`;
+          code += `${pad}import asyncio\n`;
+          code += `${pad}async def _cron_interval_${node.value}_${node.unit}():\n`;
+          code += `${pad}    while True:\n`;
+          code += `${pad}        await asyncio.sleep(${secs})\n`;
+          code += indented + '\n';
+          code += `${pad}@app.on_event("startup")\n`;
+          code += `${pad}async def _start_cron_${node.value}_${node.unit}():\n`;
+          code += `${pad}    asyncio.create_task(_cron_interval_${node.value}_${node.unit}())`;
+          return code;
+        } else {
+          const h = node.hour, m = node.minute;
+          let code = `${pad}# Scheduled: every day at ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}\n`;
+          code += `${pad}import asyncio, datetime\n`;
+          code += `${pad}async def _cron_daily_${h}_${m}():\n`;
+          code += `${pad}    while True:\n`;
+          code += `${pad}        now = datetime.datetime.now()\n`;
+          code += `${pad}        target = now.replace(hour=${h}, minute=${m}, second=0, microsecond=0)\n`;
+          code += `${pad}        if target <= now:\n`;
+          code += `${pad}            target += datetime.timedelta(days=1)\n`;
+          code += `${pad}        await asyncio.sleep((target - now).total_seconds())\n`;
+          code += indented + '\n';
+          code += `${pad}@app.on_event("startup")\n`;
+          code += `${pad}async def _start_cron_${h}_${m}():\n`;
+          code += `${pad}    asyncio.create_task(_cron_daily_${h}_${m}())`;
+          return code;
+        }
+      }
+      // JS
+      const bodyCode = compileBody(node.body, ctx, { declared: new Set() });
+      if (node.mode === 'interval') {
+        const msMap = { second: 1000, minute: 60000, hour: 3600000 };
+        const ms = node.value * (msMap[node.unit] || 60000);
+        let code = `${pad}// Scheduled: every ${node.value} ${node.unit}(s)\n`;
+        code += `${pad}setInterval(async () => {\n`;
+        code += bodyCode + '\n';
+        code += `${pad}}, ${ms});`;
+        return code;
+      } else {
+        // mode === 'at': every day at HH:MM
+        const h = node.hour;
+        const m = node.minute;
+        let code = `${pad}// Scheduled: every day at ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}\n`;
+        code += `${pad}(function _scheduleDailyAt${h}_${m}() {\n`;
+        code += `${pad}  const _runAt = async () => {\n`;
+        code += bodyCode.split('\n').map(l => `  ${l}`).join('\n') + '\n';
+        code += `${pad}  };\n`;
+        code += `${pad}  const _nextMs = () => {\n`;
+        code += `${pad}    const now = new Date();\n`;
+        code += `${pad}    const next = new Date(now);\n`;
+        code += `${pad}    next.setHours(${h}, ${m}, 0, 0);\n`;
+        code += `${pad}    if (next <= now) next.setDate(next.getDate() + 1);\n`;
+        code += `${pad}    return next - now;\n`;
+        code += `${pad}  };\n`;
+        code += `${pad}  const _tick = () => { _runAt(); setTimeout(_tick, 86400000); };\n`;
+        code += `${pad}  setTimeout(_tick, _nextMs());\n`;
+        code += `${pad}})();`;
+        return code;
+      }
     }
 
     case NodeType.SUBSCRIBE: {
@@ -4369,7 +4567,16 @@ export function exprToCode(expr, ctx) {
         if (isException) return `${objCode}.${sanitizeName(expr.member)}`;
         return `${objCode}["${expr.member}"]`;
       }
-      return `${exprToCode(expr.object, ctx)}.${sanitizeName(expr.member)}`;
+      // Use optional chaining (?.) for possessive read access.
+      // This prevents the classic "Cannot read properties of null" crash —
+      // if any object in the chain is null/undefined, the whole expression
+      // returns undefined instead of crashing. Clear's one-op-per-line rule
+      // means the null will surface at the next usage, loudly and specifically.
+      // Exception: `error` is a known JS Error object — use hard `.` for `.message`
+      // since optional chaining on Error properties is unnecessary noise.
+      const isErrorObj = expr.object.type === NodeType.VARIABLE_REF && expr.object.name === 'error';
+      if (isErrorObj) return `${exprToCode(expr.object, ctx)}.${sanitizeName(expr.member)}`;
+      return `${exprToCode(expr.object, ctx)}?.${sanitizeName(expr.member)}`;
 
     case NodeType.VARIABLE_REF: {
       const name = sanitizeName(expr.name);
@@ -6941,12 +7148,16 @@ function compileToJSBackend(body, errors, sourceMap = false) {
       lines.push(`const ${n.npmAlias} = require('${n.npmPackage}');`);
     }
   }
-  // child_process — emit if any RUN_COMMAND nodes exist
-  const usesRunCommand = body.some(n =>
-    n.type === NodeType.RUN_COMMAND ||
-    (n.type === NodeType.ENDPOINT && n.body && n.body.some(b => b.type === NodeType.RUN_COMMAND))
-  );
-  if (usesRunCommand) {
+  // child_process — emit if any RUN_COMMAND nodes exist (including inside ASSIGN expressions)
+  function hasRunCommand(nodes) {
+    return nodes.some(n =>
+      n.type === NodeType.RUN_COMMAND ||
+      (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_COMMAND) ||
+      (n.type === NodeType.ENDPOINT && n.body && hasRunCommand(n.body)) ||
+      (n.type === NodeType.CRON && n.body && hasRunCommand(n.body))
+    );
+  }
+  if (hasRunCommand(body)) {
     lines.push("const { execSync } = require('child_process');");
   }
   lines.push('const app = express();');
@@ -7291,11 +7502,16 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('import json');
   lines.push('import re');
   lines.push('import datetime');
-  // subprocess — emit if any RUN_COMMAND nodes exist
-  const pyUsesRunCommand = body.some(n =>
-    n.type === NodeType.RUN_COMMAND ||
-    (n.type === NodeType.ENDPOINT && n.body && n.body.some(b => b.type === NodeType.RUN_COMMAND))
-  );
+  // subprocess — emit if any RUN_COMMAND nodes exist (including inside ASSIGN expressions)
+  function pyHasRunCommand(nodes) {
+    return nodes.some(n =>
+      n.type === NodeType.RUN_COMMAND ||
+      (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_COMMAND) ||
+      (n.type === NodeType.ENDPOINT && n.body && pyHasRunCommand(n.body)) ||
+      (n.type === NodeType.CRON && n.body && pyHasRunCommand(n.body))
+    );
+  }
+  const pyUsesRunCommand = pyHasRunCommand(body);
   if (pyUsesRunCommand) lines.push('import subprocess');
   lines.push('from fastapi import FastAPI, Request, HTTPException');
   lines.push('from fastapi.responses import JSONResponse');

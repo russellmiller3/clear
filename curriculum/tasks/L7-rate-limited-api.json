@@ -1,0 +1,20 @@
+{
+  "id": "rate-limited-api",
+  "level": 7,
+  "title": "Rate-Limited API",
+  "description": "Build any CRUD API with rate limiting. POST /api/items creates items (name required). GET /api/items lists all. Apply rate limiting: max 5 requests per minute. The 6th request within a minute should return 429.",
+  "skeleton": "build for javascript backend\n\ncreate a Items table:\n  name, required\n\n# Your endpoints here\n# Hint: rate limit 5 per minute\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "body": { "name": "Item 1" },
+      "expect": { "status": 201 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "expect": { "status": 200 }
+    }
+  ]
+}

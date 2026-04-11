@@ -1,0 +1,32 @@
+{
+  "id": "dashboard-api",
+  "level": 10,
+  "title": "Analytics Dashboard API",
+  "description": "Build an analytics dashboard backend. Events table tracks page_url, event_type (pageview/click/signup), user_id, timestamp. POST /api/events logs events. GET /api/stats returns aggregated stats: total events, unique users, events per type. GET /api/stats/daily returns counts grouped by day. Auth required for stats endpoints.",
+  "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required\n\ncreate a Events table:\n  page_url, required\n  event_type, required\n  user_id\n  timestamp\n\n# POST /api/events (public)\n# GET /api/stats (auth required)\n# GET /api/stats/daily (auth required)\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/events",
+      "body": { "page_url": "/home", "event_type": "pageview" },
+      "expect": { "status": 201 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/events",
+      "body": { "page_url": "/signup", "event_type": "click" },
+      "expect": { "status": 201 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/events",
+      "body": {},
+      "expect": { "status": 400 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/stats",
+      "expect": { "status": 401 }
+    }
+  ]
+}

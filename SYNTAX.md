@@ -1521,6 +1521,33 @@ when user calls POST /api/deploy:
 - Compiles to `execSync(cmd, { stdio: 'inherit' })` in JS, `subprocess.run()` in Python
 - `child_process` / `subprocess` auto-imported only when used — no manual imports needed
 
+### Capture Output
+
+Assign a run command to a variable to capture stdout as a string:
+
+```clear
+when user calls GET /api/version:
+  version = run command 'node --version'
+  send back version
+```
+
+- Compiles to `execSync(cmd, { encoding: 'utf-8' }).trim()` in JS
+- Compiles to `subprocess.run(cmd, capture_output=True, text=True).stdout.strip()` in Python
+
+### Multiline Commands
+
+Use `run command:` with an indented block for complex shell operations:
+
+```clear
+when user calls POST /api/deploy:
+  run command:
+    git pull origin main
+    npm run build
+    pm2 restart app
+```
+
+- Indented lines are joined with ` && ` and run as a single shell command
+
 ## External API Calls
 
 Call any REST API with custom headers, body, and timeout:
@@ -1922,3 +1949,64 @@ when user calls POST /api/support sending data:
   result = run workflow 'Support' with data
   send back result
 ```
+
+---
+
+## Scheduled Tasks (Cron)
+
+Run code on a schedule — intervals or specific times:
+
+### Interval
+
+```clear
+every 5 minutes:
+  stale = look up all Sessions where created_at is less than 24 hours ago
+  delete stale from Sessions
+```
+
+- Compiles to `setInterval(async () => { ... }, 300000)` in JS
+- Supports: `minutes`, `hours`
+
+### Daily Schedule
+
+```clear
+every day at 9am:
+  users = look up all Users
+  for each user in users:
+    send email to user's email with subject 'Daily digest'
+```
+
+- Compiles to a daily scheduler using `setTimeout` that fires at the specified time
+- Supports: `8am`, `2:30pm`, `9:00am` etc.
+- Time parsing handles `hour:minute am/pm` format
+
+---
+
+## HTTP Test Assertions
+
+Write integration tests that make real HTTP calls against your app:
+
+```clear
+test 'create a user':
+  call POST /api/users with name is 'Alice' and email is 'alice@test.com'
+  expect response status is 201
+  expect response body has id
+
+test 'list users':
+  call GET /api/users
+  expect response status is 200
+  expect response body length is greater than 0
+```
+
+### Available Assertions
+
+```clear
+expect response status is 200          # exact status code match
+expect response body has 'field_name'  # field exists in response body
+expect response body length is greater than 0  # array/object length check
+```
+
+- Test blocks compile into the auto-generated E2E test file
+- Run alongside auto-generated endpoint tests
+- `call METHOD /path` supports `with field is value` for request body
+- User-written tests appear after auto-generated tests in the test output

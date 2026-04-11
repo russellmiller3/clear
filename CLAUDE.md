@@ -19,14 +19,14 @@ Run ToolSearch for these before doing anything else:
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1588 compiler tests)
+- Run all tests: `node clear.test.js` (1633 compiler tests)
 - Run sandbox tests: `node sandbox.test.js` (9 integration tests — spins up real servers)
 - Run playground tests (each is a separate file):
   - `node playground/server.test.js` (~85 server API tests)
   - `node playground/e2e.test.js` (~60 template compile + endpoint tests)
   - `node playground/ide.test.js` (~46 Playwright IDE UI tests)
   - `node playground/agent.test.js` (~50 Claude agent tool tests, needs ANTHROPIC_API_KEY)
-- Total: 1588 compiler + 9 sandbox + ~241 playground tests
+- Total: 1633 compiler + 9 sandbox + ~241 playground tests
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -38,6 +38,8 @@ Run ToolSearch for these before doing anything else:
 - `intent.md` -- authoritative spec for all 99 node types
 - `PHILOSOPHY.md` -- design rules (14-year-old test, one op per line, no jargon)
 - `learnings.md` -- scan TOC before starting any work
+- `patch.js` -- program diff/patch API (11 structured edit operations for RL)
+- `curriculum/` -- 20 benchmark tasks for RL training (L1-L10 difficulty)
 
 ## CLI (for AI agents)
 The CLI is designed for machines first. Every command supports `--json`.

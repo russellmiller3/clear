@@ -1,0 +1,33 @@
+{
+  "id": "validated-forms",
+  "level": 7,
+  "title": "Validated Registration Form",
+  "description": "Build a registration endpoint POST /api/register with strict validation: email (required, valid email format), password (required, min 8 chars), name (required, max 100 chars), age (number, min 13). Return detailed error messages on 400.",
+  "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required, min 8\n  name, required, max 100\n  age, number\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "body": { "email": "valid@test.com", "password": "longpassword", "name": "Alice", "age": 25 },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "body": { "email": "bad", "password": "longpassword", "name": "Bob" },
+      "expect": { "status": 400 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "body": { "email": "x@test.com", "password": "short", "name": "Carol" },
+      "expect": { "status": 400 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "body": {},
+      "expect": { "status": 400 }
+    }
+  ]
+}
