@@ -1689,6 +1689,8 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.STREAM, NodeType.STREAM_AI, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
   NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
+  NodeType.AGENT, NodeType.WORKFLOW, NodeType.SKILL, NodeType.PIPELINE, NodeType.PARALLEL_AGENTS,
+  NodeType.POLICY,
 ]);
 
 // Helper: compile a list of AST nodes into joined code lines.
@@ -2044,7 +2046,7 @@ function compileAgent(node, ctx, pad) {
   //   `do not stream`     → never stream (for pipeline steps)
   //   `stream response`   → force stream (redundant for text, documents intent)
   //   Structured output   → never stream (JSON must be complete)
-  let shouldStream = node.streamResponse !== false; // false only if explicit `do not stream`
+  let shouldStream = node.streamResponse === true; // only stream when explicitly requested
   if (shouldStream) {
     // Auto-disable for structured output — can't stream partial JSON
     let hasStructuredOutput = false;
@@ -3085,6 +3087,28 @@ function _compileNodeInner(node, ctx) {
                `${pad}} catch (_err) {\n` +
                `${pad}  throw new Error(\`fetch from ${typeof fetchNode.url === 'string' ? fetchNode.url : 'url'} failed: \${_err.message}\`);\n` +
                `${pad}}`;
+      }
+
+      // API_CALL as RHS: result = post to '/api/ask' with question
+      if (node.expression && node.expression.type === NodeType.API_CALL) {
+        const apiNode = node.expression;
+        const url = JSON.stringify(apiNode.url);
+        if (!ctx.declared.has(rawName)) ctx.declared.add(rawName);
+        if (apiNode.method === 'GET') {
+          return `${pad}let ${name} = await fetch(${url}).then(r => r.json());`;
+        }
+        // POST/PUT/DELETE with fields
+        let bodyExpr;
+        if (apiNode.fields && apiNode.fields.length > 0) {
+          const fieldObj = apiNode.fields.map(f => {
+            const sn = sanitizeName(f);
+            return `${sn}: ${ctx.stateVars && ctx.stateVars.has(sn) ? '_state.' + sn : sn}`;
+          }).join(', ');
+          bodyExpr = `{ ${fieldObj} }`;
+        } else {
+          bodyExpr = ctx.stateVars ? '_state' : '{}';
+        }
+        return `${pad}let ${name} = await fetch(${url}, { method: '${apiNode.method}', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${bodyExpr}) }).then(r => r.json());`;
       }
 
       // RUN_COMMAND with capture: result = run command 'cmd'
@@ -5599,11 +5623,14 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       const btnDeclared = new Set(recomputeDeclared);
       const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
-      const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL);
+      const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL || (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.API_CALL));
       const asyncKw = hasApiCall ? 'async ' : '';
 
       // Find POST/PUT API calls to determine which fields need validation
-      const postCalls = btn.body.filter(n => n.type === NodeType.API_CALL && (n.method === 'POST' || n.method === 'PUT'));
+      const postCalls = [
+        ...btn.body.filter(n => n.type === NodeType.API_CALL && (n.method === 'POST' || n.method === 'PUT')),
+        ...btn.body.filter(n => n.type === NodeType.ASSIGN && n.expression?.type === NodeType.API_CALL && (n.expression.method === 'POST' || n.expression.method === 'PUT')).map(n => n.expression),
+      ];
       const fieldsToValidate = new Set();
       for (const call of postCalls) {
         if (call.fields) call.fields.forEach(f => fieldsToValidate.add(sanitizeName(f)));
@@ -7605,6 +7632,16 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   }
   const pyUsesRunCommand = pyHasRunCommand(body);
   if (pyUsesRunCommand) lines.push('import subprocess');
+  // httpx — emit if any EXTERNAL_FETCH nodes exist (including inside ASSIGN expressions or endpoint bodies)
+  function pyHasExternalFetch(nodes) {
+    return nodes.some(n =>
+      n.type === NodeType.EXTERNAL_FETCH ||
+      (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.EXTERNAL_FETCH) ||
+      (n.type === NodeType.ENDPOINT && n.body && pyHasExternalFetch(n.body)) ||
+      (n.type === NodeType.CRON && n.body && pyHasExternalFetch(n.body))
+    );
+  }
+  if (pyHasExternalFetch(body)) lines.push('import httpx');
   lines.push('from fastapi import FastAPI, Request, HTTPException');
   lines.push('from fastapi.responses import JSONResponse');
   lines.push('');
@@ -7680,6 +7717,8 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('    if not m: raise Exception("AI did not return valid JSON")');
     lines.push('    return json.loads(m.group())');
     lines.push('');
+    const hasStreamingAgent = body.some(n => n.type === NodeType.AGENT && n.streamResponse === true);
+    if (hasStreamingAgent) {
     lines.push('async def _ask_ai_stream(prompt, context=None, model=None):');
     lines.push('    """Async generator — yields text chunks from Anthropic streaming API."""');
     lines.push('    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLEAR_AI_KEY")');
@@ -7706,6 +7745,7 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('                            yield evt["delta"]["text"]');
     lines.push('                    except json.JSONDecodeError: pass');
     lines.push('');
+    } // end hasStreamingAgent
   }
 
   // Add asyncio import if parallel agents or workflows are used

@@ -2425,6 +2425,25 @@ page "Counter":
     expect(result.javascript).toContain('addEventListener');
     expect(result.javascript).toContain('click');
   });
+
+  it('post to in button handler compiles to async fetch POST', () => {
+    const source = `build for web and javascript backend
+page 'Test' at '/':
+  'Question' as text input
+  button 'Ask':
+    result = post to '/api/ask' with question`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript;
+    // Handler must be async
+    expect(js).toContain('async function()');
+    // Proper fetch with POST method
+    expect(js).toContain('fetch("/api/ask"');
+    expect(js).toContain("method: 'POST'");
+    expect(js).toContain('JSON.stringify');
+    // Field sent from state
+    expect(js).toContain('question: _state.question');
+  });
 });
 
 // =============================================================================
@@ -9858,16 +9877,16 @@ describe('Agent primitives - compiler', () => {
     expect(result.javascript).toContain('return data');
   });
 
-  it('compiles ask ai to _askAIStream call (streaming default)', () => {
+  it('compiles ask ai to _askAI call (non-streaming default)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai 'Summarize' with d\n  send back answer");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream("Summarize"');
+    expect(result.javascript).toContain('_askAI("Summarize"');
   });
 
-  it('compiles ask ai without context (streaming default)', () => {
+  it('compiles ask ai without context (non-streaming default)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai 'Hello'\n  send back answer");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream("Hello"');
+    expect(result.javascript).toContain('_askAI("Hello"');
   });
 
   it('compiles call agent to function call', () => {
@@ -9876,9 +9895,9 @@ describe('Agent primitives - compiler', () => {
     expect(result.javascript).toContain('agent_lead_scorer(');
   });
 
-  it('includes _askAIStream utility when ask ai is used (streaming default)', () => {
+  it('includes _askAI utility when ask ai is used (non-streaming default)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai 'Hi' with d\n  send back answer");
-    expect(result.javascript).toContain('async function* _askAIStream(');
+    expect(result.javascript).toContain('async function _askAI(');
     expect(result.javascript).toContain('CLEAR_AI_KEY');
   });
 
@@ -9904,6 +9923,32 @@ describe('Agent primitives - compiler', () => {
     expect(agentBody).toContain('throw new Error("Name required")');
     expect(agentBody).not.toContain('res.status');
   });
+
+  it('agent is regular async function, not generator (ask agent returns result, not {})', () => {
+    const result = compileProgram("build for javascript backend\nagent 'Helper' receives question:\n  response = ask claude 'You are helpful.' with question\n  send back response\nwhen user calls POST /api/ask sending data:\n  result = ask agent 'Helper' with data's question\n  send back result");
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript;
+    // Agent must be regular async function (not generator) so await works
+    expect(js).toContain('async function agent_helper(question)');
+    expect(js).not.toContain('async function* agent_helper');
+    // send back compiles to return (not yield)
+    expect(js).toContain('return response;');
+    // ask agent compiles to await (which works on async function, not on generator)
+    expect(js).toContain('await agent_helper(');
+  });
+
+  it('agent code does not leak to frontend (server-only)', () => {
+    const result = compileProgram("build for web and javascript backend\ndatabase is local memory\nagent 'Helper' receives question:\n  response = ask claude 'You are helpful.' with question\n  send back response\nwhen user calls POST /api/ask sending data:\n  result = ask agent 'Helper' with data's question\n  send back result\npage 'Test' at '/':\n  heading 'Agent Test'\n  'Question' as text input\n  button 'Ask':\n    show 'asking'");
+    expect(result.errors).toHaveLength(0);
+    // Frontend must have zero agent code
+    expect(result.javascript).not.toContain('agent_helper');
+    expect(result.javascript).not.toContain('_askAI');
+    expect(result.javascript).not.toContain('_askAIStream');
+    expect(result.javascript).not.toContain('You are helpful');
+    // Server must have the agent
+    expect(result.serverJS).toContain('async function agent_helper');
+    expect(result.serverJS).toContain('return response;');
+  });
 });
 
 // =============================================================================
@@ -9919,7 +9964,7 @@ describe('Agent primitives - validator', () => {
   it('allows variable as ask ai prompt (for text blocks)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai d\n  send back answer");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream(d');
+    expect(result.javascript).toContain('_askAI(d');
   });
 
   it('errors when agent has no name', () => {
@@ -10181,27 +10226,27 @@ when user calls GET /api/leads:
 
   it('agent compiles to async function with guard', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function* agent_lead_scorer(lead)');
+    expect(js).toContain('async function agent_lead_scorer(lead)');
     expect(js).toContain('throw new Error("Company is required")');
   });
 
-  it('ask ai compiles to _askAIStream (streaming default)', () => {
+  it('ask ai compiles to _askAI (non-streaming default)', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('_askAIStream("Rate this company');
+    expect(js).toContain('_askAI("Rate this company');
     expect(js).toContain('lead?.company');
   });
 
-  it('includes _askAIStream utility with BYOK (streaming default)', () => {
+  it('includes _askAI utility with BYOK (non-streaming default)', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function* _askAIStream(');
+    expect(js).toContain('async function _askAI(');
     expect(js).toContain('ANTHROPIC_API_KEY');
     expect(js).toContain('anthropic');
   });
 
-  it('_askAIStream utility has error handling', () => {
+  it('_askAI utility has error handling', () => {
     const js = compileProgram(src).javascript;
     expect(js).toContain('if (!key) throw new Error');
-    expect(js).toContain('AI stream failed');
+    expect(js).toContain('AI request failed');
   });
 
   it('endpoint validates both required fields', () => {
@@ -10242,8 +10287,8 @@ when user calls POST /api/pipeline sending incoming:
   it('creates 3 separate async agent functions', () => {
     const js = compileProgram(src).javascript;
     expect(js).toContain('async function agent_validator(data)');
-    expect(js).toContain('async function* agent_enricher(data)');
-    expect(js).toContain('async function* agent_scorer(data)');
+    expect(js).toContain('async function agent_enricher(data)');
+    expect(js).toContain('async function agent_scorer(data)');
   });
 
   it('pipeline chains agents in order', () => {
@@ -10264,20 +10309,20 @@ when user calls POST /api/pipeline sending incoming:
     expect(valBody).toContain('throw new Error');
     expect(valBody).not.toContain('_askAI');
 
-    const enrStart = js.indexOf('async function* agent_enricher');
+    const enrStart = js.indexOf('async function agent_enricher');
     const enrEnd = js.indexOf('\n}', enrStart);
     const enrBody = js.substring(enrStart, enrEnd);
-    expect(enrBody).toContain('_askAIStream');
+    expect(enrBody).toContain('_askAI(');
 
-    const scrStart = js.indexOf('async function* agent_scorer');
+    const scrStart = js.indexOf('async function agent_scorer');
     const scrEnd = js.indexOf('\n}', scrStart);
     const scrBody = js.substring(scrStart, scrEnd);
-    expect(scrBody).toContain('_askAIStream');
+    expect(scrBody).toContain('_askAI(');
   });
 
-  it('includes _askAIStream utility exactly once', () => {
+  it('includes _askAI utility exactly once', () => {
     const js = compileProgram(src).javascript;
-    const matches = js.match(/async function\* _askAIStream\(/g);
+    const matches = js.match(/async function _askAI\(/g);
     expect(matches).toHaveLength(1);
   });
 });
@@ -10430,10 +10475,10 @@ when user calls GET /api/tickets:
 
   it('agent has conditional logic after ask ai', () => {
     const js = compileProgram(src).javascript;
-    const agentStart = js.indexOf('async function* agent_classifier');
+    const agentStart = js.indexOf('async function agent_classifier');
     const agentEnd = js.indexOf('\n}', agentStart);
     const agentBody = js.substring(agentStart, agentEnd);
-    expect(agentBody).toContain('_askAIStream(');
+    expect(agentBody).toContain('_askAI(');
     expect(agentBody).toContain('ticket.category');
     expect(agentBody).toContain('"billing"');
     expect(agentBody).toContain('"high"');
@@ -10473,7 +10518,7 @@ when user calls POST /api/moderate sending post_data:
 
   it('agent and endpoint are both async', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function* agent_moderator(post)');
+    expect(js).toContain('async function agent_moderator(post)');
     expect(js).toContain('await agent_moderator(post_data)');
   });
 
@@ -10537,18 +10582,18 @@ when user calls GET /api/candidates:
 
   it('creates 3 agent functions', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function* agent_screener(candidate)');
-    expect(js).toContain('async function* agent_scorer(candidate)');
-    expect(js).toContain('async function* agent_summarizer(candidate)');
+    expect(js).toContain('async function agent_screener(candidate)');
+    expect(js).toContain('async function agent_scorer(candidate)');
+    expect(js).toContain('async function agent_summarizer(candidate)');
   });
 
   it('screener has guard + ask ai', () => {
     const js = compileProgram(src).javascript;
-    const start = js.indexOf('async function* agent_screener');
+    const start = js.indexOf('async function agent_screener');
     const end = js.indexOf('\n}', start);
     const body = js.substring(start, end);
     expect(body).toContain('throw new Error("Name is required")');
-    expect(body).toContain('_askAIStream(');
+    expect(body).toContain('_askAI(');
     expect(body).toContain('candidate.screening_pass');
   });
 
@@ -10568,9 +10613,9 @@ when user calls GET /api/candidates:
     expect(js).toContain('_pick(summarized');
   });
 
-  it('includes _askAIStream utility exactly once', () => {
+  it('includes _askAI utility exactly once', () => {
     const js = compileProgram(src).javascript;
-    const matches = js.match(/async function\* _askAIStream\(/g);
+    const matches = js.match(/async function _askAI\(/g);
     expect(matches).toHaveLength(1);
   });
 });
@@ -10662,7 +10707,7 @@ describe('Explicit syntax: set X to ask ai', () => {
   it('compiles set X to ask ai', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  set answer to ask ai 'Summarize' with d\n  send back answer");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream("Summarize"');
+    expect(result.javascript).toContain('_askAI("Summarize"');
   });
 });
 
@@ -10927,8 +10972,8 @@ agent 'T' receiving d:
   send back answer`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    // Streams by default (no schema = text response)
-    expect(result.javascript).toContain('_askAIStream("Summarize", d');
+    // Non-streaming by default
+    expect(result.javascript).toContain('_askAI("Summarize", d');
   });
 });
 
@@ -10958,9 +11003,9 @@ when user calls POST /api/score sending lead_data:
   send back saved with success message`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('async function* agent_lead_scorer(lead)');
+    expect(result.javascript).toContain('async function agent_lead_scorer(lead)');
     expect(result.javascript).toContain('throw new Error("Company is required")');
-    expect(result.javascript).toContain('_askAIStream("Rate 1-10"');
+    expect(result.javascript).toContain('_askAI("Rate 1-10"');
     expect(result.javascript).toContain('agent_lead_scorer(lead_data)');
   });
 });
@@ -14704,7 +14749,7 @@ agent 'Helper' receiving data:
   send back answer`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.javascript).toContain('_askAIStream("Summarize this"');
+    expect(r.javascript).toContain('_askAI("Summarize this"');
   });
 
   it('ask ai still works as alias', () => {
@@ -14714,7 +14759,7 @@ agent 'Helper' receiving data:
   send back answer`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.javascript).toContain('_askAIStream("Summarize this"');
+    expect(r.javascript).toContain('_askAI("Summarize this"');
   });
 
   it('ask claude with model selection passes model to _askAI', () => {
@@ -16922,7 +16967,7 @@ agent 'Bot' receiving message:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('You are a helpful assistant');
-    expect(result.javascript).toContain('_askAIStream(prompt');
+    expect(result.javascript).toContain('_askAI(prompt');
   });
 
   it('text block with interpolation compiles', () => {
@@ -17203,15 +17248,15 @@ agent 'Streamer' receiving msg:
     expect(result.javascript).toContain('async function* _askAIStream');
   });
 
-  it('text agent defaults to streaming (_askAIStream)', () => {
+  it('text agent defaults to non-streaming (_askAI)', () => {
     const src = `build for javascript backend
 agent 'Bot' receiving msg:
   response = ask claude 'Help' with msg
   send back response`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream');
-    expect(result.javascript).toContain('async function*');
+    expect(result.javascript).toContain('_askAI(');
+    expect(result.javascript).not.toContain('async function*');
   });
 
   it('streaming agent compiles to async generator', () => {
@@ -17257,15 +17302,16 @@ agent 'Summarizer' receiving text:
     expect(result.javascript).not.toContain('async function*');
   });
 
-  it('default (no directive) is streaming for text agents', () => {
+  it('default (no directive) is non-streaming for agents', () => {
     const src = `build for javascript backend
 agent 'Bot' receiving msg:
   response = ask claude 'Help' with msg
   send back response`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream');
-    expect(result.javascript).toContain('async function*');
+    expect(result.javascript).not.toContain('_askAIStream');
+    expect(result.javascript).not.toContain('async function*');
+    expect(result.javascript).toContain('_askAI(');
   });
 });
 
@@ -17824,16 +17870,16 @@ workflow 'Router' with state:
 // =============================================================================
 
 describe('Python streaming agents', () => {
-  it('Python text agent uses _ask_ai_stream', () => {
+  it('Python text agent defaults to non-streaming (_ask_ai)', () => {
     const src = `build for python backend
 agent 'Chat' receiving msg:
   response = ask claude 'Help' with msg
   send back response`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.python).toContain('_ask_ai_stream(');
-    expect(result.python).toContain('async for _chunk in response');
-    expect(result.python).toContain('yield _chunk');
+    expect(result.python).toContain('_ask_ai(');
+    expect(result.python).not.toContain('_ask_ai_stream(');
+    expect(result.python).toContain('return response');
   });
 
   it('Python structured output agent does NOT stream', () => {
@@ -17851,7 +17897,7 @@ agent 'Classifier' receiving text:
     expect(agentFn).not.toContain('_ask_ai_stream(');
   });
 
-  it('Python agent with model uses _ask_ai_stream with model param', () => {
+  it('Python agent with model uses _ask_ai with model param', () => {
     const src = `build for python backend
 agent 'Bot' receiving msg:
   using 'claude-sonnet-4-6'
@@ -17859,11 +17905,11 @@ agent 'Bot' receiving msg:
   send back response`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.python).toContain('_ask_ai_stream(');
+    expect(result.python).toContain('_ask_ai(');
     expect(result.python).toContain('claude-sonnet-4-6');
   });
 
-  it('Python backend includes _ask_ai and _ask_ai_stream utility functions', () => {
+  it('Python backend includes _ask_ai utility function (non-streaming default)', () => {
     const src = `build for python backend
 agent 'Bot' receiving msg:
   response = ask claude 'Help' with msg
@@ -17871,7 +17917,7 @@ agent 'Bot' receiving msg:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('async def _ask_ai(');
-    expect(result.python).toContain('async def _ask_ai_stream(');
+    expect(result.python).not.toContain('async def _ask_ai_stream(');
     expect(result.python).toContain('import httpx');
   });
 });

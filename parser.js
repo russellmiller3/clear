@@ -6430,15 +6430,25 @@ function parseAssignment(tokens, line) {
     if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
       return { error: "fetch from needs a URL in quotes. Example: data = fetch from 'https://api.example.com'" };
     }
-    const url = tokens[pos].value;
+    const baseUrl = tokens[pos].value;
     pos++;
     // SSRF guard — same check as parseExternalFetch
-    const lowerUrl = url.toLowerCase();
+    const lowerUrl = baseUrl.toLowerCase();
     if (lowerUrl.includes('localhost') || lowerUrl.includes('127.0.0.1') || lowerUrl.includes('0.0.0.0')
-        || lowerUrl.match(/192\.168\.|10\.\d+\.|172\.(1[6-9]|2\d|3[01])\./)) {
-      return { error: `"${url}" is a private address — fetch from only allows public URLs.` };
+        || lowerUrl.match(/192\.168\.|10\.\d+\.|172\/(1[6-9]|2\d|3[01])\./)) {
+      return { error: `"${baseUrl}" is a private address — fetch from only allows public URLs.` };
     }
-    return { name, expression: { type: NodeType.EXTERNAL_FETCH, url, config: { timeout: null, cache: null, errorFallback: null }, line } };
+    // Handle URL concatenation: fetch from 'url' + variable
+    let urlExpr = null;
+    if (pos < tokens.length && tokens[pos].type === TokenType.OPERATOR && tokens[pos].value === '+') {
+      // Build a concat expression: 'baseUrl' + rest
+      const restExpr = parseExpression(tokens, pos + 1, line);
+      if (!restExpr.error && restExpr.node) {
+        urlExpr = { type: NodeType.BINARY_OP, operator: '+', left: { type: NodeType.LITERAL_STRING, value: baseUrl, line }, right: restExpr.node, line };
+      }
+    }
+    const fetchUrl = urlExpr || baseUrl;
+    return { name, expression: { type: NodeType.EXTERNAL_FETCH, url: fetchUrl, config: { timeout: null, cache: null, errorFallback: null }, line } };
   }
 
   // Check for "ask AgentName with input" on the right side of assignment
@@ -6990,6 +7000,31 @@ function parseAssignment(tokens, line) {
       if (fromIdx > 0 && fromIdx + 1 < tokens.length && tokens[fromIdx + 1].type === TokenType.STRING) {
         return { name, expression: { type: NodeType.API_CALL, method: 'GET', url: tokens[fromIdx + 1].value, targetVar: name, line } };
       }
+    }
+  }
+
+  // Shorthand: "post to '/api/url' with data" -> POST fetch
+  // e.g. result = post to '/api/ask' with question
+  if (pos < tokens.length && tokens[pos].canonical === 'post_to') {
+    pos++; // skip 'post to'
+    if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+      const url = tokens[pos].value;
+      pos++;
+      // Parse optional "with field1, field2" or "with data"
+      const fields = [];
+      if (pos < tokens.length && tokens[pos].canonical === 'with') {
+        pos++;
+        while (pos < tokens.length) {
+          if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
+            fields.push(tokens[pos].value);
+          }
+          pos++;
+          if (pos < tokens.length && (tokens[pos].type === TokenType.COMMA || tokens[pos].canonical === 'and')) {
+            pos++;
+          }
+        }
+      }
+      return { name, expression: { type: NodeType.API_CALL, method: 'POST', url, targetVar: name, fields, line } };
     }
   }
 

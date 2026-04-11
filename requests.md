@@ -40,14 +40,14 @@
 
 ---
 
-## 🔴 TIER 1 — BLOCKERS (App cannot function without fixing these)
+## 🔴 TIER 1 — BLOCKERS (21 bugs — App cannot function without fixing these)
 
 | # | Bug | Target | Filed |
 |---|-----|--------|-------|
 | 1 | `_revive is not defined` crashes ALL GET endpoints | JS | ✅ |
 | 2 | `_revive is not defined` crashes login/auth | JS | ✅ |
-| 3 | Agent returns empty `{}` — response completely lost | JS | ✅ |
-| 4 | Agent + workflow code leaks into frontend `_recompute()` | JS | ✅ |
+| 3 | Agent returns empty `{}` — response completely lost ✅ RESOLVED | JS | ✅ |
+| 4 | Agent + workflow code leaks into frontend `_recompute()` ✅ RESOLVED | JS | ✅ |
 | 5 | Workflow returns no output — black box | JS | ✅ |
 | 6 | Conditionals compile with empty JS bodies | JS | ✅ |
 | 7 | Workflow step agents never defined — `ReferenceError` at runtime | Both | ✅ |
@@ -63,6 +63,8 @@
 | 17 | [PYTHON] Scheduled task IndentationError — app won't start | Python | ✅ |
 | 18 | File input not rendered — compiles to `console.log` | JS | ✅ |
 | 19 | `upload X to '/endpoint'` → `console.log(upload)` — undefined | JS | ✅ |
+| 20 | `login with email and password` — compile error, not recognized as built-in | Both | ✅ |
+| 21 | `needs login` on page compiles to nothing — zero frontend auth guard | JS | ✅ |
 
 ---
 
@@ -70,16 +72,16 @@
 
 | # | Bug | Target | Filed |
 |---|-----|--------|-------|
-| 1 | `post to` in button handler → `post_to` undefined | JS | ✅ |
+| 1 | `post to` in button handler → `post_to` undefined ✅ RESOLVED | JS | ✅ |
 | 2 | `show alert` → `console.log(alert)` instead of dialog | JS | ✅ |
 | 3 | `text` keyword broken inside `for each` loops | JS | ✅ |
 | 4 | `display as list` → stringified `[object Object]` | JS | ✅ |
 | 5 | String concat drops variable value | JS | ✅ |
-| 6 | Policy guards leak into frontend + never hit server | JS | ✅ |
-| 7 | Policy guards re-register on every `_recompute()` call | JS | ✅ |
+| 6 | Policy guards leak into frontend + never hit server ✅ RESOLVED | JS | ✅ |
+| 7 | Policy guards re-register on every `_recompute()` call ✅ RESOLVED | JS | ✅ |
 | 8 | Charts — no library imported, compiles to empty `<canvas>` | Both | ✅ |
 | 9 | DB relationships — `belongs to` ignored, no JOIN implemented | Both | ✅ |
-| 10 | External APIs — `fetch from` compiles to `undefined` | Both | ✅ |
+| 10 | External APIs — `fetch from` compiles to `undefined` ✅ RESOLVED | Both | ✅ |
 | 11 | Agent streaming display not expressible in Clear | Both | ✅ |
 | 12 | Compile tool returns no source on error (debug blind) | Tooling | ✅ |
 | 13 | JS scheduled task — no error handling, can't cancel | JS | ✅ |
@@ -109,7 +111,7 @@
 
 ---
 
-## Request: Agent endpoint returns empty `{}` — response not sent back
+## Request: Agent endpoint returns empty `{}` — response not sent back [RESOLVED ✅]
 **Priority:** CRITICAL
 **App:** Any app using an AI agent called from an endpoint
 **What I needed:** `result = ask agent 'Helper' with data's question` → `send back result` to return the agent's response as JSON
@@ -180,7 +182,7 @@ app.post("/api/ask", async (req, res) => {
 
 ---
 
-## Request: Agent function body leaks into frontend `_recompute()` — should be server-only
+## Request: Agent function body leaks into frontend `_recompute()` — should be server-only [RESOLVED ✅]
 **Priority:** CRITICAL
 **App:** Any app with an agent
 **What I needed:** Agent definitions to compile ONLY to serverJS — they are backend functions, not frontend logic
@@ -237,7 +239,7 @@ Also in the frontend bundle — the full `_askAIStream` streaming function inclu
 
 ---
 
-## Request: `post to '/api/ask' with question` compiles to broken JS in button handler
+## Request: `post to '/api/ask' with question` compiles to broken JS in button handler [RESOLVED ✅]
 **Priority:** HIGH
 **Target:** JS
 **App:** Any app making API calls from a button click
@@ -963,7 +965,7 @@ display workflow status
 **Error hit:** No error — feature missing
 **Impact:** MEDIUM — workflows feel like black boxes to users. Multi-step pipelines need progress indicators.
 
-## Request: Policy guards leak into frontend _recompute()
+## Request: Policy guards leak into frontend _recompute() [RESOLVED ✅]
 **Priority:** HIGH
 **Target:** JS
 **App:** Policy test app with `block schema changes`, `protect tables`, `block prompt injection`
@@ -1027,7 +1029,7 @@ This is in the **browser bundle** — `db` does not exist client-side. The guard
 **Workaround used:** None — security issue, guards can be bypassed by anyone with browser devtools
 **Impact:** HIGH — security vulnerability. Policy guards are ineffective and expose enforcement logic to end users.
 
-## Request: Policy guards re-registered on every _recompute() call
+## Request: Policy guards re-registered on every _recompute() call [RESOLVED ✅]
 **Priority:** HIGH
 **Target:** JS
 **App:** Policy test app
@@ -1929,3 +1931,211 @@ with smtplib.SMTP(os.environ['SMTP_HOST']) as s:
 # Actual: 201 OK returned but zero email activity — silently dropped
 ```
 **Impact:** High — Python email is a silent failure. Worse than JS (which at least throws). Any notification system, contact form, or alert built on Python backend silently does nothing.
+
+---
+
+## Request: [PYTHON] External API — `httpx` not imported, query param dropped
+
+**App:** Any Python backend that calls an external API
+**What I needed:** `fetch from 'https://...' + variable` to compile to a working httpx call with the full URL
+**Priority:** 🔴 TIER 1
+
+**Steps to reproduce:**
+```clear
+build for python backend
+
+when user calls POST /api/search sending data:
+  response = fetch from 'https://api.example.com/search?q=' + data's query
+  send back response
+```
+
+**Real compiled output (verbatim):**
+```python
+async with httpx.AsyncClient(timeout=10) as _client:
+    _r = await _client.get('https://api.example.com/search?q=')  # ← query param DROPPED
+    response = _r.json()
+```
+
+Note: `import httpx` is **never emitted** anywhere in the compiled file.
+
+**Expected:** `import httpx` at top, full URL with concatenated param
+**Actual:** `NameError: name 'httpx' is not defined` on first request. Also the `+ data's query` concatenation is silently dropped — URL is always just the base string.
+
+**Failing test:**
+```python
+# paste compiled output, run with: uvicorn main:app
+# POST /api/search with {"query": "hello"}
+# Expected: external API called with ?q=hello, result returned
+# Actual: NameError: name 'httpx' is not defined
+```
+
+**Workaround used:** None — Python external API calls are completely broken
+**Error hit:** `NameError: name 'httpx' is not defined` at runtime
+**Impact:** High — any Python app needing external data is blocked
+
+---
+
+## Request: [PYTHON] Charts — `as bar chart` directive silently dropped
+
+**App:** Any Python app with data visualization
+**What I needed:** `send back data as bar chart` to return a chart (image, SVG, or Chart.js config)
+**Priority:** 🟠 TIER 2
+
+**Steps to reproduce:**
+```clear
+build for python backend
+
+when user calls GET /api/stats:
+  data = [10, 20, 30, 40, 50]
+  send back data as bar chart
+```
+
+**Real compiled output (verbatim):**
+```python
+# clear:4
+data = [10, 20, 30, 40, 50]
+# clear:5
+return data
+```
+
+`as bar chart` is completely silently dropped. Returns raw JSON array.
+No matplotlib, no plotly, no base64 image, no Chart.js config.
+
+**Expected:** Some chart representation — even a Chart.js config JSON would work
+**Actual:** Raw array `[10, 20, 30, 40, 50]` returned. No chart whatsoever.
+
+**Failing test:**
+```python
+# GET /api/stats
+# Expected: chart data structure (image bytes, SVG, or Chart.js config)
+# Actual: [10, 20, 30, 40, 50] — just the raw array, no chart
+```
+
+**Workaround used:** None
+**Error hit:** No error — silently wrong
+**Impact:** Medium — charts completely missing from Python backend
+
+---
+
+## Request: [PYTHON] DB relationships — `belongs to` and `with Table` JOIN ignored
+
+**App:** Any Python app with related tables
+**What I needed:** `customer belongs to Customers` to create a foreign key, `get all Orders with Customers` to JOIN
+**Priority:** 🟠 TIER 2
+
+**Steps to reproduce:**
+```clear
+build for python backend
+database is local memory
+
+create a Customers table:
+  name, required
+  email, required
+
+create an Orders table:
+  item, required
+  amount, required
+  customer belongs to Customers
+
+when user calls GET /api/orders:
+  orders = get all Orders with Customers
+  send back orders
+```
+
+**Real compiled output (verbatim):**
+```python
+# Schema — belongs to becomes plain TEXT, no REFERENCES:
+db.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, item TEXT NOT NULL, amount TEXT NOT NULL, customer TEXT)")
+
+# Endpoint — WITH clause completely ignored:
+orders = db.query("orders")   # ← no JOIN, no customer data
+return orders
+```
+
+**Expected:**
+```python
+db.execute("CREATE TABLE IF NOT EXISTS orders (..., customer_id INTEGER REFERENCES customers(id))")
+# JOIN:
+orders = db.query_join("orders", "customers", on="customer_id")
+```
+
+**Actual:** `belongs to` → plain `TEXT` column. `with Customers` → silently dropped. Returns flat orders with no customer data.
+
+**Failing test:**
+```python
+# POST /api/customers with {"name": "Alice", "email": "a@b.com"} → id: 1
+# POST /api/orders with {"item": "Widget", "amount": 10, "customer_id": 1}
+# GET /api/orders
+# Expected: [{"item": "Widget", "amount": 10, "customer": {"name": "Alice", "email": "a@b.com"}}]
+# Actual: [{"item": "Widget", "amount": 10, "customer": null}]
+```
+
+**Workaround used:** None — relationships completely non-functional in Python
+**Error hit:** No error — silently wrong
+**Impact:** High — any relational data model is broken
+
+## Request: Auth login command not recognized as built-in
+**Priority:** Tier 1 — Blocker
+**App:** Any app with user authentication
+**What I needed:** `login with data's email and data's password` to compile as a built-in auth command
+**Proposed syntax:**
+```clear
+when user calls POST /api/login sending data:
+  login with data's email and data's password
+  send back token
+```
+**Workaround used:** None — feature is blocked. Cannot build login flow.
+**Real compiled output:**
+```
+ERROR line 9: You used 'login' on line 9 but it hasn't been created yet.
+ERROR line 10: You used 'token' on line 10 but it hasn't been created yet.
+```
+**Expected:** Compiler recognizes `login` as a built-in auth command, compiles to bcrypt password check + JWT token generation
+**Actual:** Compiler treats `login` as an undefined variable. Throws two errors. App does not compile at all.
+**Failing test:**
+```clear
+when user calls POST /api/login sending data:
+  login with data's email and data's password
+  send back token
+```
+Expected: compiles to JWT auth flow
+Got: compile errors — `login` and `token` not defined
+**Impact:** High — every app requiring user login is completely blocked
+
+## Request: `needs login` on page does nothing — no auth guard
+**Priority:** Tier 1 — Blocker
+**App:** Any multi-page app with protected routes
+**What I needed:** `needs login` on a page to redirect unauthenticated users to login page
+**Proposed syntax:**
+```clear
+page 'Dashboard' at '/dashboard':
+  needs login
+  heading 'Welcome'
+```
+**Workaround used:** None — feature is completely missing
+**Real compiled output:**
+```javascript
+// Page: Protected
+document.title = "Protected";
+
+// Page: Login
+document.title = "Login";
+```
+`needs login` compiles to nothing. No token check. No redirect. No guard of any kind.
+
+**Additional bugs found:**
+1. Hash routing used (`location.hash`) — `/protected` is actually `/#/protected`, trivially bypassed
+2. Protected page content (`Secret Page`, `You are logged in`) is visible in HTML source even when "hidden" — `display:none` is not security
+3. Both pages rendered in same HTML file — all content accessible via DevTools
+
+**Expected:** JS checks for auth token in localStorage/cookie, redirects to login page if missing
+**Actual:** Zero auth enforcement on frontend pages
+**Failing test:**
+```clear
+page 'Protected' at '/protected':
+  needs login
+  heading 'Secret Page'
+```
+Expected: compiles to token check + redirect if not authenticated
+Got: `document.title = "Protected"` — nothing else
+**Impact:** High — any app with user accounts has zero frontend security

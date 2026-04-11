@@ -1,82 +1,51 @@
 # Handoff — 2026-04-11
 
 ## Current State
-- **Branch:** `main`
-- **Tests:** 1640 passing / 0 failing (compiler) + 9 sandbox integration tests
-- **Synonym version:** 0.14.0
-- **Model:** claude-sonnet-4-6 (1M context) for Meph in Studio
+- **Branch:** `fix/agent-bugs` (on top of `main`)
+- **Last commit:** `8b02135` (not yet committed — changes staged)
+- **Tests:** 1643 compiler (3 new regression tests added)
 
 ## What Was Done This Session
+### CRITICAL: Agent system completely broken → fixed end-to-end
+1. **T1 #3 — Agent returns empty `{}`** — Root cause: agents defaulted to streaming (`async function*` generators). `await generator()` returns the generator object, which serializes as `{}`. Fix: agents now default to non-streaming (`async function`), only stream when explicitly requested with `stream response`. `send back` compiles to `return`, `ask agent` compiles to `await fn()`.
+2. **T1 #4 — Agent code leaks to frontend** — Root cause: AGENT, WORKFLOW, SKILL, PIPELINE, PARALLEL_AGENTS, and POLICY nodes were not in `BACKEND_ONLY_NODES` set. Fix: added all server-only node types. Frontend output now has zero agent code, zero system prompts, zero `_askAI` references.
+3. **T2 #1 — `post to` in button handler** — Root cause: `post to '/url' with data` was parsed as a variable reference `post_to`. Fix: added `post_to` handling in assignment expression parser, produces API_CALL node. Compiler generates proper `fetch()` POST with field serialization, async handler, validation, loading spinner.
+4. **T2 #6-7 — Policy guards leak to frontend** — Root cause: POLICY node type missing from BACKEND_ONLY_NODES. Fix: same as #2 — added to the set.
+5. **T2 #10 — `fetch from` URL concat dropped + Python missing `import httpx`** — Two bugs: parser only captured string literal URL (dropped `+ variable` concat), and Python backend never imported httpx for assignment-form fetch. Fix: parser now handles `fetch from 'url' + expr` as BINARY_OP concat, Python backend detects EXTERNAL_FETCH in AST and emits `import httpx`.
+6. **Python `_ask_ai_stream` tree-shaking** — `_ask_ai_stream` utility was always emitted when agents existed, even non-streaming. Fix: only emit when at least one agent has `streamResponse === true`.
 
-### Compiler Features (P5-P14 complete)
-- **P5** HTTP test assertions — `call POST /path`, `expect response status/body`
-- **P6** Curriculum task library — 20 benchmark tasks across 10 difficulty levels
-- **P7** Patch API — 11 structured edit operations for RL action space
-- **P10** Cron scheduling — `every 5 minutes:`, `every day at 9am:`
-- **P13** AI streaming in endpoints — bare `ask claude 'prompt'` streams via SSE
-- **P14** Output capture — `result = run command 'cmd'` captures stdout
+## What's In Progress
+Nothing — session ready to commit. Next: more bugs from requests.md.
 
-### Compiler Bug Fixes (all requests.md items fixed)
-- `refresh page` → `location.reload()` (was `console.log(refresh)`)
-- `post to` with form data → sends only input fields, not entire `_state`
-- `post to` in button handler → parser crash fixed by dispatch unification
-- `ask agent 'Helper'` from endpoint → parser skips optional `agent` keyword
-- Runtime errors → `_clearError` always returns `{ error, hint, clear_line }`
+## Key Decisions Made
+- **Agents default to non-streaming.** This is the correct behavior — `await fn()` works with regular async functions but not generators. Streaming is opt-in via `stream response` directive.
+- **Server-only node types expanded.** AGENT, WORKFLOW, SKILL, PIPELINE, PARALLEL_AGENTS, POLICY all added to BACKEND_ONLY_NODES. This is a blanket fix — any future server-only code in pages won't leak.
 
-### Structural Safety
-- Optional chaining `?.` for null-safe possessive access
-- Chain depth + expression complexity warnings
-- Keyword guard for better unrecognized syntax errors
-- `_pick` auto-serializes nested JSON for SQLite, `_revive` auto-parses
+## Known Issues / Bugs
+Remaining backlog in `requests.md`:
 
-### Architecture: Unified Dispatch
-- Eliminated RAW_DISPATCH / CANONICAL_DISPATCH split
-- Every keyword now has a self-synonym (e.g. `database → database`)
-- One dispatch map, one lookup line: `DISPATCH.get(token.canonical || token.value)`
-- Validation guard catches dead entries at module load time
-- Removed `toggle → checkbox` synonym (different concepts)
+### TIER 1 — Blockers (13 remaining)
+1. T1 #5 — Workflow returns no output
+2. T1 #7 — Workflow step agents undefined
+3. T1 #8-15 — Python bugs (send back scalar, DELETE, PUT, auth, agents, workflow)
+4. T1 #16-17 — Scheduled task crashes
+5. T1 #18-21 — File input/upload, login auth
 
-### Studio (IDE) Improvements
-- Renamed from "Playground" to "Clear Studio"
-- Agent renamed to **Mephistopheles (Meph)**
-- Chat state, editor content, terminal log persist to localStorage
-- Personality prompt moved to top of system prompt with CRITICAL framing
-- Ctrl+K toggles chat panel open/closed
-- Compile stats badge in toolbar with pop animation
-- Code tab: JS/Python syntax highlighting via CodeMirror + sub-tabs
-- Terminal: JSON pretty-printing with syntax highlighting
-- `read_file` tool: Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md (TOC + line-range for large files)
-- `write_file` guarded against undefined params
-- Compile tool returns compiled output even on errors
-- API key injection: `.env` ANTHROPIC_API_KEY passed to child processes
-- Context meter: shows token usage estimate after each response
-- Model: claude-sonnet-4-6 with 1M context, 50-message history
+### TIER 2 — Major Gaps (6 remaining)
+1. T2 #8 — Charts: no library imported
+2. T2 #9 — DB relationships: `belongs to` ignored
+3. T2 #11-15 — Agent streaming display, compile tool, scheduled task errors, Python deprecated API, file upload middleware
 
-### Skills & Process
-- `/pres` skill (Plan → Red-team → Execute → Ship)
-- Tech debt rules added to write-plan and red-team-plan skills
-- `.gitattributes` for consistent LF line endings
+### TIER 3 — Quality of Life (9 remaining)
+- Same as before
 
-## What's Next
-
-Priority order for next session:
-
-1. **SVG rendering in chat** — Meph's SVG diagrams show as raw markup instead of rendered visuals
-2. **Compiler animation** — line-by-line visual mapping from Clear source → compiled output using `// clear:N` markers
-3. **New requests from Meph** — check requests.md for bugs filed during this session's testing
-4. **Full directory rename** — `playground/` → `studio/` (80+ references, mechanical but big diff)
-
-Plan exists: `plans/plan-studio-visual-features-04-11-2026.md`
+## Files Changed
+| File | What |
+|------|------|
+| `compiler.js` | BACKEND_ONLY_NODES expanded, agent streaming default flipped, API_CALL assignment handling, Python httpx import, Python _ask_ai_stream tree-shaking |
+| `parser.js` | `post to` assignment parsing, `fetch from` URL concatenation |
+| `clear.test.js` | 25 tests updated for non-streaming default, 3 new regression tests |
+| `requests.md` | 6 bugs marked RESOLVED |
 
 ## Resume Prompt
-
-"Continue Clear language development. Run tests first (`node clear.test.js` — expect 1640). Check requests.md for new bugs Meph filed. The plan at `plans/plan-studio-visual-features-04-11-2026.md` covers SVG chat rendering, compiler animation, and remaining visual features. Also do the full playground→studio directory rename. Narrate as you go (Science Documentary Rule)."
-
-## Known Issues / Caveats
-
-- Sandbox symlink requires Windows junction type on some setups
-- `_clearLineMap` off-by-one: if injection point changes, update the offset
-- Source map granularity: markers only at indent ≤ 2 in backend mode
-- Curriculum tasks with `{{token}}` placeholders need auth flow in test runner
-- `patch.js` table detection uses lowercase string matching
-- Meph's `write_file` was silently failing (now guarded with error messages)
+> Read HANDOFF.md and continue from where we left off. The task is fixing compiler bugs from requests.md. Next priorities: T1 #5 (workflow returns no output), T1 #7 (workflow step agents undefined), and the Python bug cluster (T1 #8-15). Read requests.md for full reproduction steps. Run tests first: `node clear.test.js` (expect 1643 passing).
