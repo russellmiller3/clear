@@ -1,64 +1,49 @@
-# Handoff -- 2026-04-11
+# Handoff -- 2026-04-12
 
 ## Current State
-- **Branch:** `fix/agent-bugs`
-- **Last commit:** `66a0542` + uncommitted changes (docs update)
-- **Tests:** 1675 compiler (all passing), 0 failures
+- **Branch:** `main` (merged from `feature/roadmap-1-4`)
+- **Tests:** 1699 compiler (all passing), 0 failures
 
 ## What Was Done This Session
 
-### T2 Bug Fixes (35+ bugs resolved across two sessions)
-1. **Agent system fixed end-to-end** (session 1) -- agents defaulted to streaming generators, `await` returned `{}`. Flipped to non-streaming default. Server-only nodes (AGENT, WORKFLOW, SKILL, PIPELINE, PARALLEL_AGENTS, POLICY) added to BACKEND_ONLY_NODES. `post to` in button handlers, `fetch from` URL concatenation, Python httpx import.
-2. **New node types** -- HIDE_ELEMENT, CLIPBOARD_COPY, DOWNLOAD_FILE, LOADING_ACTION, UPLOAD_TO, LOGIN_ACTION. All with parser + compiler + tests.
-3. **Display format overhaul** -- `toLocaleString` replaces `toFixed(2)` for currency. Added percent, date, json formats. `as json` synonym collision fixed in 3 parser locations.
-4. **Video/audio media** -- `show video`/`show audio` with parser `parseMedia()` and compiler content types.
-5. **Gallery/map/calendar/QR** -- display tag mapping in parser, reactive `_recompute` and `buildHTML` support.
-6. **CRUD fixes** -- auto-inject `:id` for PUT/DELETE endpoints, multer require at module scope.
-7. **Python fixes** -- workflow state dict quoted keys, `_ask_ai` recursive detection, httpx module-scope import, cron lifespan context manager, proper None/True/False coercion.
-8. **Cron/background** -- try/catch wrapping for fault tolerance.
+### Roadmap Items 1-4 Implemented
 
-### Extended Thinking for Meph (Studio IDE)
-- Anthropic API calls now include `thinking` with `budget_tokens: 8000`
-- SSE parser handles thinking events with collapsible `<details>` blocks in chat UI
-- Thinking signature stored and replayed for multi-turn conversations
-- 5-retry exponential backoff with 60s timeout for network resilience
+1. **Auth scaffolding** — `allow signup and login` one-liner that scaffolds `/auth/signup`, `/auth/login`, `/auth/me` endpoints with bcrypt password hashing, JWT tokens, and JWT middleware. Works for both JS (Express) and Python (FastAPI) backends. Uses `bcryptjs` + `jsonwebtoken` (JS) or `passlib` + `PyJWT` (Python). Auto-generates in-memory `_users` table. Existing `needs login` frontend guard still works.
 
-### SVG Click-to-Expand
-- SVG diagrams in chat get a clickable overlay that opens a full-screen modal
-- Uses `cloneNode(true)` instead of `innerHTML` to preserve SVG namespace
+2. **DB relationships** — `belongs to Users` in table declarations. Parses as FK field, compiles to `REFERENCES users(id)` in SQL. CRUD lookups auto-stitch related records via post-query `findOne` calls. `has many` deferred — syntactic sugar, FK on child table already expresses the relationship.
 
-### ROADMAP.md Rewrite
-- Complete rewrite with current priorities, Surface Area Rule, RL as speculative
+3. **Validation fix** — `_validate()` utility rewritten to collect ALL errors as `[{ field, message }]` array instead of returning first error as string. `compileValidate` emits `_vErrs` (plural) and `{ errors: _vErrs }` response. Python path also collects into `_errors` list before raising once.
 
-### Documentation Update
-- learnings.md, SYNTAX.md, CLAUDE.md, USER-GUIDE.md, AI-INSTRUCTIONS.md, HANDOFF.md all updated
+4. **Aggregate fix** — `sum of amount in orders` now correctly compiles to `_clear_sum_field(orders, "amount")`. Parser's collection ops handler detects `in` token after operand, creates `callNode('_sum_field', [list, fieldString])`. New utilities: `_clear_sum_field`, `_clear_avg_field`, `_clear_max_field`, `_clear_min_field`. Flat array path (`sum of prices`) unchanged.
+
+### Also Fixed
+- Non-reactive web JS now tree-shakes utility functions (was missing, utilities were referenced but never defined)
+- `_sum_field` etc. added to validator BUILTINS set
 
 ## Key Decisions
-- **Surface Area Rule** -- prioritize features that increase the range of apps Clear can build, not depth of existing features.
-- **RL is speculative** -- curriculum and patch API are built but RL training is a research bet, not a shipping priority. Don't invest more until validated.
-- **DOM cloning for SVG** -- `innerHTML` destroys SVG namespace. Always use `cloneNode(true)` for SVG manipulation.
-- **Display format via `toLocaleString`** -- proper i18n-ready formatting instead of string concatenation hacks.
+- **`has many` deferred** — No clear compilation target. The FK on the child table already expresses the relationship. Auto-JOIN from parent works without it.
+- **Auth uses in-memory `_users` array** — No DB dependency for auth. Works with any storage backend. Production apps can swap to DB-backed storage.
+- **Validation returns array, not string** — Breaking change from `{ error: string }` to `{ errors: array }`. No backward compat shim — no users yet.
+- **FK stitching overwrites field** — `author` field (integer ID) gets replaced with the full related object after lookup. Simpler than maintaining both `author` and `author_id`.
 
 ## Known Issues
-- `server.test.js` has 2 pre-existing failures: template count assertion (expects old count), chat validation (message format check)
-- `as json` synonym collision is fixed but fragile -- any new synonym touching `as` or `json` needs careful testing
-- Python workflow endpoint auto-generation is new and lightly tested
+- `has many` not implemented — only `belongs to` works
+- Auth scaffold uses in-memory storage — resets on restart
+- FK stitching does N+1 queries (one per FK field per row) — fine for small datasets, will need optimization for large tables
+- Python backend doesn't do FK stitching yet (only SQL REFERENCES)
 
 ## Files Changed
 | File | What |
 |------|------|
-| `compiler.js` | Video/audio, display formats, CRUD `:id` injection, Python workflow/cron fixes, new node compilation (hide/clipboard/download/loading), multer scope, gallery/map/calendar/QR |
-| `parser.js` | 6 new NodeTypes, `parseMedia()`, display format fixes, loading/hide parsing, `isReactiveApp` triggers |
-| `synonyms.js` | Video/audio synonyms, version bump to 0.15.0 |
-| `playground/ide.html` | Extended thinking UI, SVG expand overlay |
-| `playground/server.js` | Retry logic, extended thinking API, thinking SSE, signature tracking |
-| `clear.test.js` | ~35 new tests for all new features |
-| `ROADMAP.md` | Complete rewrite |
-| `learnings.md` | Session 23 added |
-| `SYNTAX.md` | 7 new feature sections |
-| `CLAUDE.md` | Test count updated to 1675 |
-| `USER-GUIDE.md` | Display formats section added |
-| `HANDOFF.md` | This file |
+| `parser.js` | AUTH_SCAFFOLD node type, `belongs to` in field modifiers, `in` detection in collection ops |
+| `compiler.js` | `_field` utility functions, `_validate` rewrite, `compileAuthScaffold` (JS+Python), schema tracking + FK stitching in CRUD, non-reactive JS tree-shaking |
+| `synonyms.js` | `auth_scaffold` synonym, version bump to 0.16.0 |
+| `validator.js` | `_sum_field` etc. added to BUILTINS |
+| `clear.test.js` | 24 new tests (7 aggregate + 4 validation + 8 auth + 5 relationships) |
+| `ROADMAP.md` | Items 1-4 marked complete, stats updated |
+| `SYNTAX.md` | New sections: auth scaffolding, DB relationships, field extraction, validation errors |
+| `CLAUDE.md` | Test count updated to 1699 |
 
 ## Resume Prompt
-> Read HANDOFF.md and requests.md. The `fix/agent-bugs` branch has 35+ bug fixes and new features ready to merge. Run `node clear.test.js` (expect 1675 passing). Check `server.test.js` for the 2 known failures. Next priorities: remaining T1 bugs in requests.md (workflow output, Python agent cluster), then merge to main.
+
+> Continue work on the Clear language compiler. Last session implemented roadmap items 1-4: auth scaffolding, DB relationships, validation improvements, and aggregate field extraction. Next priorities from ROADMAP.md: full text search (#5), WebSocket lifecycle events (#6), agent memory/RAG (#7), agent tool use (#8). Read ROADMAP.md for details.

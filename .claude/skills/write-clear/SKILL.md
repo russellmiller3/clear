@@ -139,9 +139,32 @@ section 'Top' with style app_header:           # sticky, shadow
 ```
 Override any preset by defining `style page_hero:` with your values.
 
+### Auth Scaffolding
+```
+allow signup and login    # scaffolds /auth/signup, /auth/login, /auth/me with bcrypt + JWT
+
+page 'Dashboard':
+  needs login             # redirects to /login if no JWT token
+  heading 'Welcome back'
+```
+
+### DB Relationships
+```
+create a Posts table:
+  title
+  author belongs to Users    # FK → INTEGER REFERENCES users(id), auto-stitches on lookup
+```
+
+### Aggregate Field Extraction
+```
+total_revenue = sum of amount in orders       # extracts 'amount' from each record, sums
+avg_price = average of price in products      # same for average
+highest = max of score in results             # and max/min
+```
+
 ### Security Rules (compiler-enforced)
 - DELETE/PUT without `requires auth` = compiler error, won't compile
-- Always validate POST/PUT data with `validate X:` blocks
+- Always validate POST/PUT data with `validate X:` blocks — returns ALL errors as `{ errors: [{ field, message }] }`
 - Use `env('KEY')` for secrets, never hardcode them
 - Use `guard` for business logic checks: `guard stock is greater than 0 or 'Out of stock'`
 

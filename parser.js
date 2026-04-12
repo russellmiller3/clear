@@ -238,6 +238,9 @@ export const NodeType = Object.freeze({
   DEFINE_ROLE: 'define_role',
   GUARD: 'guard',
 
+  // Auth scaffolding
+  AUTH_SCAFFOLD: 'auth_scaffold',
+
   // Input validation (Phase 16)
   VALIDATE: 'validate',
   FIELD_RULE: 'field_rule',
@@ -824,6 +827,7 @@ const CANONICAL_DISPATCH = new Map([
   // --- Simple single-line nodes ---
   ['log_requests', (ctx) => { ctx.body.push({ type: NodeType.LOG_REQUESTS, line: ctx.line }); return ctx.i + 1; }],
   ['allow_cors', (ctx) => { ctx.body.push({ type: NodeType.ALLOW_CORS, line: ctx.line }); return ctx.i + 1; }],
+  ['auth_scaffold', (ctx) => { ctx.body.push({ type: NodeType.AUTH_SCAFFOLD, line: ctx.line }); return ctx.i + 1; }],
   ['break', (ctx) => { ctx.body.push(breakNode(ctx.line)); return ctx.i + 1; }],
   ['continue', (ctx) => { ctx.body.push(continueNode(ctx.line)); return ctx.i + 1; }],
   ['requires_auth', (ctx) => { ctx.body.push(requiresAuthNode(ctx.line)); return ctx.i + 1; }],
@@ -4620,6 +4624,15 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
           else defaultValue = defTok.value;
           fPos++;
         }
+      } else if (mod === 'belongs' && fPos + 1 < fieldTokens.length &&
+                 typeof fieldTokens[fPos + 1].value === 'string' && fieldTokens[fPos + 1].value.toLowerCase() === 'to') {
+        fPos += 2; // skip 'belongs to'
+        if (fPos < fieldTokens.length) {
+          fk = fieldTokens[fPos].value;
+          fieldType = 'fk';
+          explicitType = true;
+          fPos++;
+        }
       } else {
         fPos++;
       }
@@ -7519,6 +7532,18 @@ function parsePrimary(tokens, pos, line, end) {
     const fnName = collectionOps[tok.canonical];
     const operand = parsePrimary(tokens, pos + 1, line, maxPos);
     if (operand.error) return operand;
+    // Check for "field in list" pattern: sum of amount in orders
+    if (operand.nextPos < maxPos && tokens[operand.nextPos].canonical === 'in') {
+      const fieldName = operand.node.name; // extract field name from variable ref
+      const listPos = operand.nextPos + 1; // skip 'in'
+      if (listPos < maxPos) {
+        const listOperand = parsePrimary(tokens, listPos, line, maxPos);
+        if (!listOperand.error) {
+          const fieldFnName = fnName === 'count' ? 'count' : '_' + fnName + '_field';
+          return { node: callNode(fieldFnName, [listOperand.node, literalString(fieldName, line)], line), nextPos: listOperand.nextPos };
+        }
+      }
+    }
     return { node: callNode(fnName, [operand.node], line), nextPos: operand.nextPos };
   }
 

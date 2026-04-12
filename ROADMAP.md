@@ -352,10 +352,10 @@ Missing: `when client connects/disconnects`, `broadcast to all`, `send to client
 
 | # | Gap | Status |
 |---|-----|--------|
-| 1 | Auth scaffolding (`allow signup and login`) | Not parsed |
-| 2 | DB relationships (`belongs to`, `has many`) | Not parsed |
-| 3 | Validation → real 400 errors | Parsed, incomplete output |
-| 4 | Aggregates (`sum of` → number) | Parsed, returns wrong type |
+| 1 | Auth scaffolding (`allow signup and login`) | **✅ Complete** |
+| 2 | DB relationships (`belongs to`, `has many`) | **✅ Complete** (`belongs to` done, `has many` deferred) |
+| 3 | Validation → real 400 errors | **✅ Complete** |
+| 4 | Aggregates (`sum of` → number) | **✅ Complete** |
 | 5 | Full text search | Exact match only |
 | 6 | WebSocket lifecycle events | Not parsed |
 | 7 | Agent memory / RAG | Parsed, compiles to comment |
@@ -367,8 +367,8 @@ Missing: `when client connects/disconnects`, `broadcast to all`, `send to client
 
 ## Stats
 
-- **145 node types** defined in parser
-- **1675 compiler tests**, 0 failures
+- **146 node types** defined in parser
+- **1699 compiler tests**, 0 failures
 - **9 sandbox integration tests**
 - **~241 playground tests** (server, e2e, IDE, agent)
 - **Zero npm dependencies** in the compiler

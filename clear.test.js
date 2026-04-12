@@ -21,7 +21,7 @@ describe('Synonym Table', () => {
   });
 
   it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.15.0');
+    expect(SYNONYM_VERSION).toBe('0.16.0');
   });
 
   it('maps "create" to canonical "set"', () => {
@@ -5384,6 +5384,176 @@ build for web
 last_item = last of items
     `);
     expect(result.javascript).toContain('items[items.length - 1]');
+  });
+});
+
+// =============================================================================
+// AGGREGATE FIELD EXTRACTION (sum of field in list)
+// =============================================================================
+
+describe('Aggregate field extraction', () => {
+  it('sum of field in list compiles to _clear_sum_field', () => {
+    const r = compileProgram("total = sum of amount in orders\nshow total");
+    expect(r.javascript).toContain('_clear_sum_field(orders');
+    expect(r.javascript).toContain('"amount"');
+  });
+
+  it('average of field in list compiles to _clear_avg_field', () => {
+    const r = compileProgram("avg_price = average of price in products\nshow avg_price");
+    expect(r.javascript).toContain('_clear_avg_field(products');
+    expect(r.javascript).toContain('"price"');
+  });
+
+  it('max of field in list compiles to _clear_max_field', () => {
+    const r = compileProgram("highest = max of score in results\nshow highest");
+    expect(r.javascript).toContain('_clear_max_field(results');
+    expect(r.javascript).toContain('"score"');
+  });
+
+  it('min of field in list compiles to _clear_min_field', () => {
+    const r = compileProgram("lowest = min of score in results\nshow lowest");
+    expect(r.javascript).toContain('_clear_min_field(results');
+    expect(r.javascript).toContain('"score"');
+  });
+
+  it('sum of flat array (no in) still uses _clear_sum', () => {
+    const r = compileProgram("total = sum of amounts\nshow total");
+    expect(r.javascript).toContain('_clear_sum(amounts)');
+    expect(r.javascript).not.toContain('_clear_sum_field');
+  });
+
+  it('count of list (no field) still uses _clear_len', () => {
+    const r = compileProgram("n = count of users\nshow n");
+    expect(r.javascript).toContain('_clear_len(users)');
+  });
+
+  it('sum_field utility returns correct value', () => {
+    const r = compileProgram("total = sum of amount in orders\nshow total");
+    expect(r.javascript).toContain('function _clear_sum_field');
+    expect(r.javascript).toContain('.reduce(');
+  });
+});
+
+// =============================================================================
+// AUTH SCAFFOLDING (allow signup and login)
+// =============================================================================
+
+describe('Auth scaffolding', () => {
+  it('parses allow signup and login as AUTH_SCAFFOLD', () => {
+    const r = compileProgram("target: backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('/auth/signup');
+  });
+
+  it('emits POST /auth/signup with bcrypt', () => {
+    const r = compileProgram("target: backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.javascript).toContain('/auth/signup');
+    expect(r.javascript).toContain('bcrypt');
+    expect(r.javascript).toContain('hash');
+  });
+
+  it('emits POST /auth/login with JWT', () => {
+    const r = compileProgram("target: backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.javascript).toContain('/auth/login');
+    expect(r.javascript).toContain('jwt.sign');
+  });
+
+  it('emits GET /auth/me', () => {
+    const r = compileProgram("target: backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.javascript).toContain('/auth/me');
+    expect(r.javascript).toContain('req.user');
+  });
+
+  it('emits JWT middleware', () => {
+    const r = compileProgram("target: backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.javascript).toContain('JWT_SECRET');
+    expect(r.javascript).toContain('Bearer');
+  });
+
+  it('requires bcryptjs and jsonwebtoken', () => {
+    const r = compileProgram("target: backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.javascript).toContain("require('bcryptjs')");
+    expect(r.javascript).toContain("require('jsonwebtoken')");
+  });
+
+  it('Python emits auth endpoints with passlib', () => {
+    const r = compileProgram("target: python backend\nallow signup and login\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('/auth/signup');
+    expect(r.python).toContain('passlib');
+  });
+
+  it('needs login still works (existing REQUIRES_AUTH)', () => {
+    const r = compileProgram("build for web and javascript backend\nallow signup and login\npage 'Home':\n  needs login\n  heading 'Welcome'");
+    expect(r.html).toContain("localStorage.getItem('token')");
+  });
+});
+
+// =============================================================================
+// DB RELATIONSHIPS (belongs to)
+// =============================================================================
+
+describe('DB relationships', () => {
+  it('parses belongs to as FK', () => {
+    const r = compileProgram("target: backend\ncreate a Posts table:\n  title\n  author belongs to Users\non GET '/test':\n  send back 'ok'");
+    expect(r.javascript).toContain('ref: "Users"');
+  });
+
+  it('belongs to sets field type to fk', () => {
+    const r = compileProgram("target: backend\ncreate a Posts table:\n  title\n  author belongs to Users\non GET '/test':\n  send back 'ok'");
+    expect(r.javascript).toContain('type: "fk"');
+  });
+
+  it('GET all with belongs_to emits join stitching', () => {
+    const r = compileProgram(`target: backend
+create a Users table:
+  name
+create a Posts table:
+  title
+  author belongs to Users
+when user calls GET /api/posts:
+  all_posts = get all Posts
+  send back all_posts`);
+    expect(r.javascript).toContain('findOne');
+    expect(r.javascript).toContain('author');
+  });
+
+  it('Python belongs to emits REFERENCES', () => {
+    const r = compileProgram("target: python backend\ncreate a Posts table:\n  title\n  author belongs to Users\non GET '/test':\n  send back 'ok'");
+    expect(r.python).toContain('REFERENCES');
+  });
+
+  it('belongs to field collision — field named belongs without to', () => {
+    const r = compileProgram("target: backend\ncreate a Items table:\n  belongs, required\non GET '/test':\n  send back 'ok'");
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).not.toContain('ref:');
+  });
+});
+
+// =============================================================================
+// VALIDATION — COLLECT ALL ERRORS
+// =============================================================================
+
+describe('Validation collects all errors', () => {
+  it('emits _vErrs (plural) variable name', () => {
+    const r = compileProgram("target: backend\non POST '/users':\n  validate incoming:\n    name is text, required\n    email is text, required\n  send back 'ok'");
+    expect(r.javascript).toContain('_vErrs');
+  });
+
+  it('returns errors array not single string', () => {
+    const r = compileProgram("target: backend\non POST '/users':\n  validate incoming:\n    name is text, required\n  send back 'ok'");
+    expect(r.javascript).toContain('{ errors: _vErrs }');
+  });
+
+  it('_validate utility collects multiple errors', () => {
+    const r = compileProgram("target: backend\non POST '/users':\n  validate incoming:\n    name is text, required\n    age is number\n  send back 'ok'");
+    expect(r.javascript).toContain('_errs.push(');
+    expect(r.javascript).toContain('_errs.length');
+  });
+
+  it('Python validation collects all errors before raising', () => {
+    const r = compileProgram("target: python backend\non POST '/users':\n  validate incoming:\n    name is text, required\n    email is text, required\n  send back 'ok'");
+    expect(r.python).toContain('_errors');
+    expect(r.python).toContain('append');
   });
 });
 

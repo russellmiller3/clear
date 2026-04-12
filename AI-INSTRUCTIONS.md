@@ -598,6 +598,10 @@ when user calls DELETE /api/users/:id:
 **`with success message`** adds a `message` field and returns 201.
 **`delete the X with this id`** removes the record matching the URL param.
 **`requires auth`** is canonical (the `this endpoint` prefix is optional).
+**`allow signup and login`** scaffolds full auth system (signup/login/me endpoints + JWT middleware).
+**`needs login`** on a page redirects to /login if no JWT token is present.
+**`belongs to Users`** in a table field declaration creates a foreign key relationship.
+**`sum of amount in orders`** extracts a field from each record and aggregates it.
 
 ## Guards
 
