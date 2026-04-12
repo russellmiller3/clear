@@ -485,6 +485,22 @@ try {
     assert(output && output.includes('// clear:'), 'compiled backend has source map markers');
   }
 
+  {
+    // Verify HTML compile has data-clear-line attributes
+    const { data } = await post('/api/compile', {
+      source: "build for web\n\npage 'Test' at '/':\n  section 'Hero':\n    heading 'Hello'\n  button 'Click':\n    show 'hi'"
+    });
+    assert(data.html && data.html.includes('data-clear-line='), 'compiled HTML has data-clear-line markers');
+    assert(data.html.includes('data-clear-line="4"'), 'section on line 4 is marked');
+  }
+
+  {
+    // Verify IDE has preview→source message listener
+    const { text } = await get('/ide');
+    assert(text.includes('clear-source-line'), 'ide.html handles clear-source-line messages from preview');
+    assert(text.includes('Compiler boilerplate'), 'ide.html shows boilerplate toast for unmapped compiled lines');
+  }
+
   // =========================================================================
   // BROWSE TEMPLATES — Meph can read template library
   // =========================================================================

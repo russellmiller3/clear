@@ -1112,7 +1112,22 @@ function showOutput() {
   window.onunhandledrejection = function(e){ _post('unhandledrejection', [e.reason]); };
 })();
 <\/script>`;
-    html = html.replace('</head>', errorCapture + '</head>');
+    // Source map: click element in preview → jump to Clear source line
+    const sourceMapCapture = `<script>
+document.addEventListener('click', function(e) {
+  var el = e.target;
+  while (el && el !== document.body) {
+    if (el.dataset && el.dataset.clearLine) {
+      window.parent.postMessage({ type: 'clear-source-line', line: parseInt(el.dataset.clearLine) }, '*');
+      el.style.outline = '2px solid #6c8cff';
+      setTimeout(function() { el.style.outline = ''; }, 800);
+      return;
+    }
+    el = el.parentElement;
+  }
+});
+<\/script>`;
+    html = html.replace('</head>', errorCapture + sourceMapCapture + '</head>');
     el.innerHTML = '<iframe sandbox="allow-scripts allow-same-origin"></iframe>';
     el.querySelector('iframe').srcdoc = html;
   } else if (lastCompiled.serverJS || lastCompiled.javascript || lastCompiled.python) {
@@ -1210,27 +1225,38 @@ function showCompiled() {
 }
 
 function handleCompiledClick(e) {
-  if (!sourceMapData || !compiledView) return;
+  if (!compiledView) return;
   const pos = compiledView.posAtCoords({ x: e.clientX, y: e.clientY });
   if (pos == null) return;
   const line = compiledView.state.doc.lineAt(pos).number;
-  const clearLine = sourceMapData.reverse[line - 1]; // reverse is 0-indexed
-  if (clearLine == null) return;
 
-  // Jump to source line and flash it
-  jumpToLine(clearLine);
-
-  // Highlight the clicked compiled line briefly
+  // Highlight the clicked compiled line
   const lineObj = compiledView.state.doc.line(line);
   const domPos = compiledView.domAtPos(lineObj.from);
   let el = domPos?.node;
   if (!(el instanceof Element)) el = el?.parentElement;
   while (el && !el.classList.contains('cm-line')) el = el.parentElement;
-  if (el) {
-    el.classList.add('cm-source-map-active');
-    setTimeout(() => el.classList.remove('cm-source-map-active'), 1500);
+
+  const clearLine = sourceMapData?.reverse?.[line - 1];
+  if (clearLine != null) {
+    // Mapped line — jump to source
+    jumpToLine(clearLine);
+    if (el) { el.classList.add('cm-source-map-active'); setTimeout(() => el.classList.remove('cm-source-map-active'), 1500); }
+  } else {
+    // Boilerplate — no Clear source wrote this line
+    if (el) { el.classList.add('cm-source-map-active'); setTimeout(() => el.classList.remove('cm-source-map-active'), 1500); }
+    showToast('Compiler boilerplate — no Clear source line');
   }
 }
+
+// Preview iframe click → jump to source line
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'clear-source-line' && typeof e.data.line === 'number') {
+    jumpToLine(e.data.line);
+    // Switch to editor panel if needed
+    if (activeTab !== 'output') showTab('output');
+  }
+});
 
 window.switchCodeTab = function(key) {
   compiledTab = key;
