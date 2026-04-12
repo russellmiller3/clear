@@ -410,24 +410,39 @@ No switching to Postman or curl — test endpoints where you write them.
 
 ---
 
-### N2 — Playwright Template Tests
+### N2 — Playwright Template Tests (Core 7)
 
-Every template app should actually work — CRUD creates/reads/updates/deletes,
-forms submit, pages navigate, buttons do things. No dummy tabs, no dead buttons.
+56 templates exist. Most are redundant (8 landing pages, 5 dashboards, 3 CRMs,
+3 todos, 4 blogs). Focus on 7 core archetypes — one per category, each
+showcasing different features. Every button works, every endpoint responds,
+every CRUD flow completes.
 
-Write a Playwright test per template that verifies:
-- Page loads without errors
+**Core 7 templates:**
+
+| # | Template | Archetype | Features Showcased |
+|---|----------|-----------|-------------------|
+| 1 | `todo-fullstack` | CRUD basics | Tables, endpoints, auth, validation, pages |
+| 2 | `crm-pro` | Data dashboard | Charts, filters, search, aggregates, `has many` |
+| 3 | `blog-fullstack` | Content app | `belongs to`, rich display, public + admin pages |
+| 4 | `live-chat` | Real-time | WebSocket, `subscribe to`, `broadcast to all`, auth |
+| 5 | `helpdesk-agent` | AI agent | `ask claude`, `can use:`, `knows about:`, `remember`, guardrails |
+| 6 | `booking` | Workflow | Multi-step logic, validation, email, scheduling |
+| 7 | `expense-tracker` | Personal app | CRUD, aggregates, charts, CSV export, categories |
+
+**Per template, Playwright verifies:**
+- Page loads without console errors
 - CRUD happy path (create → appears in list → update → verify → delete → gone)
 - Forms validate required fields
-- Auth flow works (signup → login → protected page)
-- API endpoints return expected status codes
+- Auth flow (signup → login → protected page loads)
+- API endpoints return expected status codes (via ClearMan / fetch)
+- No dummy tabs, no dead buttons, no display-only data
+
+**Update templates first** to use all new features (search, has many, broadcast,
+guardrails) before writing tests. Tests become the acceptance criteria.
 
 Run with: `node playground/e2e.test.js`
 
-**Why:** Templates are the first thing new users see. A broken delete button on the
-Todo app kills confidence. This is the quality floor.
-
-**Effort:** 3-5 days (43 templates × ~5 tests each)
+**Effort:** 3-5 days (update 7 templates + write tests)
 
 ---
 
@@ -504,20 +519,7 @@ These block new test coverage from running in CI.
 ### N7 — Batteries-Included Integrations
 
 Standard outside packages with first-class Clear syntax. Like how `ask claude`
-is the default LLM — give every common integration a keyword:
-
-| Integration | Syntax | Package |
-|-------------|--------|---------|
-| **Texting** | `send text to '+1234' saying 'Hello'` | Twilio |
-| **Email** | `send email via sendgrid` (already exists for SMTP) | SendGrid |
-| **Rich text** | `rich text editor` in page | Tiptap |
-| **Billing** | `create checkout for product` | Stripe |
-| **File storage** | `upload file to bucket` | S3/Supabase Storage |
-| **Auth (OAuth)** | `allow login with google` | Passport.js |
-
-Per the Surface Area Rule: only add integrations that show up in >30% of apps.
-Texting, email, billing, and file storage probably clear that bar. Rich text
-editor is borderline. OAuth is worth it when someone needs Google login.
+is the default LLM — give every common integration a keyword.
 
 Each integration follows the same pattern:
 1. One-line Clear syntax
@@ -525,7 +527,62 @@ Each integration follows the same pattern:
 3. Requires an env var for the API key
 4. `script:` escape hatch for advanced usage
 
-**Effort:** 1-2 days per integration
+#### N7a — Stripe Checkout
+
+```clear
+create checkout for 'Pro Plan' at 29.99 monthly:
+  success page '/thank-you'
+  cancel page '/pricing'
+```
+
+Compiles to: Stripe Checkout Session creation + success/cancel redirects.
+Env: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`.
+
+**Why:** The integration that makes Clear apps monetizable. A todo app is a demo.
+A todo app with billing is a product.
+
+**Effort:** 2 days
+
+#### N7b — SendGrid Email
+
+```clear
+send email via sendgrid:
+  to 'user@example.com'
+  subject 'Welcome!'
+  body 'Thanks for signing up.'
+```
+
+Already have SMTP email. SendGrid is the production-grade transport (higher
+deliverability, templates, analytics). Env: `SENDGRID_API_KEY`.
+
+**Effort:** 1 day
+
+#### N7c — Supabase File Storage
+
+```clear
+upload file to 'avatars' bucket
+download file from 'avatars' bucket
+```
+
+Compiles to: Supabase Storage API (upload, download, list, delete).
+Env: `SUPABASE_URL`, `SUPABASE_KEY` (already used for DB).
+
+**Effort:** 1 day
+
+#### N7d — Supabase Auth (password + magic link)
+
+```clear
+allow login with email          # password-based (already have JWT version)
+allow login with magic link     # passwordless email link
+```
+
+Uses Supabase Auth instead of our hand-rolled JWT system. Benefits: magic links,
+email verification, password reset, session management. Supabase also supports
+Google OAuth via the same API — can add `allow login with google` later.
+
+Env: `SUPABASE_URL`, `SUPABASE_KEY`.
+
+**Effort:** 2 days
 
 ---
 
