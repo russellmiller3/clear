@@ -688,69 +688,86 @@ app.post('/api/chat', async (req, res) => {
 
       case 'edit_file': {
         // Restrict to safe extensions in project root only — no path traversal
-        if (!input || !input.filename) return JSON.stringify({ error: 'edit_file requires a filename parameter.' });
-        if (!input.action) return JSON.stringify({ error: 'edit_file requires an action: append, insert, replace, overwrite, or read.' });
+        if (!input || !input.filename) return JSON.stringify({ error: 'Missing required parameter "filename". You called edit_file without specifying which file. Example: edit_file({ filename: "requests.md", action: "append", content: "..." })' });
+        if (!input.action) return JSON.stringify({ error: `Missing required parameter "action" for file "${input.filename}". Must be one of: append, insert, replace, overwrite, read. For adding content to the end of a file, use action="append".` });
         const safeName = String(input.filename).replace(/[^a-zA-Z0-9._-]/g, '-');
         const ALLOWED_EXT = ['.clear', '.md', '.json', '.txt', '.csv', '.html', '.css', '.js', '.py'];
         const ext = safeName.includes('.') ? '.' + safeName.split('.').pop() : '';
-        if (!ALLOWED_EXT.includes(ext)) return JSON.stringify({ error: `Extension '${ext}' not allowed. Use: ${ALLOWED_EXT.join(', ')}` });
+        if (!ALLOWED_EXT.includes(ext)) return JSON.stringify({ error: `File extension "${ext}" is not allowed. Allowed: ${ALLOWED_EXT.join(', ')}. You tried to access "${safeName}" — check the filename.` });
         const dest = join(ROOT_DIR, safeName);
         const fileExists = existsSync(dest);
-        // Safety: only allow modifying .clear files and requests.md
+        // Safety: only allow modifying .clear files and requests.md/meph-memory.md
         const WRITABLE_EXISTING = ['requests.md', 'meph-memory.md'];
         const canWrite = !fileExists || ext === '.clear' || WRITABLE_EXISTING.includes(safeName);
         if (!canWrite && input.action !== 'read') {
-          return JSON.stringify({ error: `Cannot modify existing file '${safeName}'. You can only modify .clear files and requests.md.` });
+          return JSON.stringify({ error: `Permission denied: "${safeName}" is read-only. You can only modify .clear files, requests.md, and meph-memory.md. To read this file instead, use action="read". To create a new file, pick a name that doesn't already exist.` });
         }
 
         switch (input.action) {
           case 'read': {
-            if (!fileExists) return JSON.stringify({ error: `File '${safeName}' does not exist.` });
+            if (!fileExists) return JSON.stringify({ error: `File "${safeName}" does not exist in the project root. Check the filename. Available writable files: requests.md, meph-memory.md, and any .clear files.` });
             const text = readFileSync(dest, 'utf8');
             const lines = text.split('\n');
             return JSON.stringify({ content: text, lines: lines.length, path: safeName });
           }
           case 'append': {
-            if (input.content == null) return JSON.stringify({ error: 'append requires content parameter.' });
+            if (input.content == null) return JSON.stringify({ error: `Missing "content" parameter for append action on "${safeName}". You need to provide the text to add. Example: edit_file({ filename: "${safeName}", action: "append", content: "new text here" })` });
             const existing = fileExists ? readFileSync(dest, 'utf8') : '';
             const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
             writeFileSync(dest, existing + separator + input.content, 'utf8');
-            return JSON.stringify({ appended: true, path: safeName, bytes: input.content.length });
+            const newLines = (existing + separator + input.content).split('\n').length;
+            return JSON.stringify({ ok: true, appended: true, path: safeName, bytes_added: input.content.length, total_lines: newLines });
           }
           case 'insert': {
-            if (input.content == null) return JSON.stringify({ error: 'insert requires content parameter.' });
-            if (!input.line || input.line < 1) return JSON.stringify({ error: 'insert requires a line number >= 1.' });
+            if (input.content == null) return JSON.stringify({ error: `Missing "content" parameter for insert action on "${safeName}". Provide the text to insert. Example: edit_file({ filename: "${safeName}", action: "insert", line: 10, content: "new line" })` });
+            if (!input.line || input.line < 1) return JSON.stringify({ error: `Missing or invalid "line" parameter for insert action on "${safeName}". Provide a line number >= 1 where content should be inserted. Example: edit_file({ filename: "${safeName}", action: "insert", line: 5, content: "..." })` });
             const existing = fileExists ? readFileSync(dest, 'utf8') : '';
             const lines = existing.split('\n');
+            if (input.line > lines.length + 1) {
+              return JSON.stringify({ error: `Line ${input.line} is past the end of "${safeName}" (file has ${lines.length} lines). Use line=${lines.length + 1} to insert at the end, or use action="append" instead.` });
+            }
             const idx = Math.min(input.line - 1, lines.length);
             lines.splice(idx, 0, ...input.content.split('\n'));
             writeFileSync(dest, lines.join('\n'), 'utf8');
-            return JSON.stringify({ inserted: true, path: safeName, at_line: input.line });
+            return JSON.stringify({ ok: true, inserted: true, path: safeName, at_line: input.line, total_lines: lines.length });
           }
           case 'replace': {
-            if (!input.find) return JSON.stringify({ error: 'replace requires a find parameter.' });
-            if (input.content == null) return JSON.stringify({ error: 'replace requires content parameter (the replacement text).' });
-            if (!fileExists) return JSON.stringify({ error: `File '${safeName}' does not exist.` });
+            if (!input.find) return JSON.stringify({ error: `Missing "find" parameter for replace action on "${safeName}". Provide the exact string to search for. Example: edit_file({ filename: "${safeName}", action: "replace", find: "old text", content: "new text" })` });
+            if (input.content == null) return JSON.stringify({ error: `Missing "content" parameter for replace action on "${safeName}". Provide the replacement text. Example: edit_file({ filename: "${safeName}", action: "replace", find: "${(input.find || '').slice(0, 30)}", content: "replacement" })` });
+            if (!fileExists) return JSON.stringify({ error: `Cannot replace in "${safeName}" — file does not exist. Use action="overwrite" or action="append" to create it.` });
             const text = readFileSync(dest, 'utf8');
             let result;
             if (input.replace_all) {
+              const count = text.split(input.find).length - 1;
+              if (count === 0) return JSON.stringify({ error: `String not found anywhere in "${safeName}" (${text.split('\n').length} lines). Your find string was: "${input.find.slice(0, 120)}". Try action="read" first to see the actual file content, then use the exact text from the file. Common causes: extra whitespace, wrong line endings, or the text was already changed by a previous edit.` });
               result = text.split(input.find).join(input.content);
+              writeFileSync(dest, result, 'utf8');
+              return JSON.stringify({ ok: true, replaced: true, path: safeName, occurrences: count });
             } else {
               const pos = text.indexOf(input.find);
-              if (pos === -1) return JSON.stringify({ error: `String not found in '${safeName}'.`, searched: input.find.slice(0, 80) });
+              if (pos === -1) {
+                // Help the AI debug: show nearby content
+                const findLower = input.find.toLowerCase().slice(0, 40);
+                const lowerText = text.toLowerCase();
+                const nearIdx = lowerText.indexOf(findLower.slice(0, 20));
+                const hint = nearIdx >= 0
+                  ? `Partial match found near character ${nearIdx}. The actual text there is: "${text.slice(Math.max(0, nearIdx - 10), nearIdx + 60).replace(/\n/g, '\\n')}"`
+                  : `No partial match found either. The file has ${text.split('\n').length} lines.`;
+                return JSON.stringify({ error: `Exact string not found in "${safeName}". Your find string (first 120 chars): "${input.find.slice(0, 120)}". ${hint} Suggestion: use action="read" to see the current file content, then copy the exact text you want to replace. Common issues: extra/missing whitespace, the text was already changed, or line endings differ.` });
+              }
               result = text.slice(0, pos) + input.content + text.slice(pos + input.find.length);
+              writeFileSync(dest, result, 'utf8');
+              return JSON.stringify({ ok: true, replaced: true, path: safeName, occurrences: 1 });
             }
-            const count = input.replace_all ? (text.split(input.find).length - 1) : (text.includes(input.find) ? 1 : 0);
-            writeFileSync(dest, result, 'utf8');
-            return JSON.stringify({ replaced: true, path: safeName, occurrences: count });
           }
           case 'overwrite': {
-            if (input.content == null) return JSON.stringify({ error: 'overwrite requires content parameter.' });
+            if (input.content == null) return JSON.stringify({ error: `Missing "content" parameter for overwrite action on "${safeName}". Provide the full file content. Warning: this replaces the entire file. If you only need to add content, use action="append" instead.` });
             writeFileSync(dest, input.content, 'utf8');
-            return JSON.stringify({ written: true, path: safeName, bytes: input.content.length });
+            const newLines = input.content.split('\n').length;
+            return JSON.stringify({ ok: true, written: true, path: safeName, bytes: input.content.length, total_lines: newLines });
           }
           default:
-            return JSON.stringify({ error: `Unknown action '${input.action}'. Use: append, insert, replace, overwrite, read.` });
+            return JSON.stringify({ error: `Unknown action "${input.action}" for file "${safeName}". Valid actions: append (add to end), insert (add at line N), replace (find and replace text), overwrite (replace entire file), read (view content). You probably want "append" for adding new content or "replace" for modifying existing text.` });
         }
       }
 
@@ -809,7 +826,8 @@ app.post('/api/chat', async (req, res) => {
     for (let iter = 0; iter < 15; iter++) {
       const payload = {
         model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        max_tokens: 16000,
+        thinking: { type: 'enabled', budget_tokens: 8000 },
         system: personality
           ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n' + systemPrompt
           : systemPrompt,
@@ -820,25 +838,40 @@ app.post('/api/chat', async (req, res) => {
 
       // Retry with exponential backoff on transient failures
       let r;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      const MAX_RETRIES = 5;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
-          r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
+          r = await fetch(endpoint, {
+            method: 'POST', headers, body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(60000), // 60s timeout — Anthropic can be slow on first token
+          });
           if (r.ok) break;
           // Retry on 429 (rate limit), 500, 502, 503, 529 (overloaded)
           const retryable = [429, 500, 502, 503, 529].includes(r.status);
-          if (!retryable || attempt === 2) {
+          if (!retryable || attempt === MAX_RETRIES - 1) {
             const errText = await r.text();
-            send({ type: 'error', message: errText });
+            console.error(`[chat] Anthropic API error ${r.status}:`, errText.slice(0, 200));
+            send({ type: 'error', message: `API error ${r.status}: ${errText.slice(0, 300)}` });
             res.end();
             return;
           }
-          const delay = (attempt + 1) * 2000; // 2s, 4s
-          send({ type: 'text', delta: `\n*API hiccup (${r.status}), retrying in ${delay/1000}s...*\n` });
+          const delay = Math.min((attempt + 1) * 3000, 15000); // 3s, 6s, 9s, 12s, 15s
+          console.warn(`[chat] API ${r.status}, retry ${attempt + 1}/${MAX_RETRIES} in ${delay/1000}s`);
+          send({ type: 'text', delta: `\n*API returned ${r.status}, retrying (${attempt + 1}/${MAX_RETRIES})...*\n` });
           await new Promise(ok => setTimeout(ok, delay));
         } catch (fetchErr) {
-          if (attempt === 2) throw fetchErr;
-          const delay = (attempt + 1) * 2000;
-          send({ type: 'text', delta: `\n*Network error, retrying in ${delay/1000}s...*\n` });
+          const errMsg = fetchErr.name === 'TimeoutError' ? 'Request timed out (60s)' :
+                         fetchErr.code === 'ECONNREFUSED' ? 'Connection refused — is Anthropic API reachable?' :
+                         fetchErr.code === 'ENOTFOUND' ? 'DNS lookup failed — check internet connection' :
+                         fetchErr.message || String(fetchErr);
+          console.error(`[chat] Network error (attempt ${attempt + 1}/${MAX_RETRIES}):`, errMsg);
+          if (attempt === MAX_RETRIES - 1) {
+            send({ type: 'error', message: `Network error after ${MAX_RETRIES} retries: ${errMsg}` });
+            res.end();
+            return;
+          }
+          const delay = Math.min((attempt + 1) * 3000, 15000);
+          send({ type: 'text', delta: `\n*${errMsg} — retrying (${attempt + 1}/${MAX_RETRIES})...*\n` });
           await new Promise(ok => setTimeout(ok, delay));
         }
       }
@@ -848,6 +881,8 @@ app.post('/api/chat', async (req, res) => {
       const decoder = new TextDecoder();
       let buf = '';
       let accText = '';
+      let accThinking = ''; // accumulated thinking text for multi-turn
+      let accThinkingSignature = ''; // signature for thinking block verification
       let toolUseBlocks = []; // { id, name, inputJson }
       let stopReason = '';
 
@@ -866,7 +901,9 @@ app.post('/api/chat', async (req, res) => {
           try { ev = JSON.parse(raw); } catch { continue; }
 
           if (ev.type === 'content_block_start') {
-            if (ev.content_block.type === 'tool_use') {
+            if (ev.content_block.type === 'thinking') {
+              send({ type: 'thinking_start' });
+            } else if (ev.content_block.type === 'tool_use') {
               toolUseBlocks.push({ id: ev.content_block.id, name: ev.content_block.name, inputJson: '' });
               send({ type: 'tool_start', name: ev.content_block.name });
             } else if (ev.content_block.type === 'server_tool_use') {
@@ -875,8 +912,15 @@ app.post('/api/chat', async (req, res) => {
             } else if (ev.content_block.type === 'web_search_tool_result' || ev.content_block.type === 'web_fetch_tool_result') {
               send({ type: 'tool_done', name: 'web' });
             }
+          } else if (ev.type === 'content_block_stop') {
+            // nothing needed — content_block_stop fires for all block types
           } else if (ev.type === 'content_block_delta') {
-            if (ev.delta.type === 'text_delta') {
+            if (ev.delta.type === 'thinking_delta') {
+              accThinking += ev.delta.thinking;
+              send({ type: 'thinking', delta: ev.delta.thinking });
+            } else if (ev.delta.type === 'signature_delta') {
+              accThinkingSignature += ev.delta.signature;
+            } else if (ev.delta.type === 'text_delta') {
               accText += ev.delta.text;
               send({ type: 'text', delta: ev.delta.text });
             } else if (ev.delta.type === 'input_json_delta') {
@@ -890,7 +934,9 @@ app.post('/api/chat', async (req, res) => {
       }
 
       // Build assistant content block for next iteration
+      // Thinking blocks must come first in the assistant content for multi-turn
       const assistantContent = [];
+      if (accThinking) assistantContent.push({ type: 'thinking', thinking: accThinking, signature: accThinkingSignature });
       if (accText) assistantContent.push({ type: 'text', text: accText });
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
@@ -971,6 +1017,55 @@ app.post('/api/chat', async (req, res) => {
         } else {
           result = executeTool(tb.name, input);
         }
+
+        // Log every tool call to terminal so the user can see what's happening
+        const toolLog = (() => {
+          const res = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return {}; } })() : {};
+          const ok = res.ok || res.appended || res.inserted || res.replaced || res.written || res.compiled;
+          const err = res.error;
+          switch (tb.name) {
+            case 'edit_code':
+              if (input.action === 'read') return '[tool] edit_code read — ' + (input.code ? `${input.code.split('\n').length} lines` : 'read editor');
+              if (input.action === 'write') return `[tool] edit_code write — ${(input.code || '').split('\n').length} lines`;
+              if (input.action === 'undo') return '[tool] edit_code undo';
+              return `[tool] edit_code ${input.action || ''}`;
+            case 'edit_file':
+              if (err) return `[tool] ❌ edit_file ${input.action} "${input.filename}" — ${err.slice(0, 150)}`;
+              if (input.action === 'read') return `[tool] edit_file read "${input.filename}" — ${res.lines || '?'} lines`;
+              if (input.action === 'append') return `[tool] ✓ edit_file append "${input.filename}" — +${res.bytes_added || res.bytes || '?'} bytes, ${res.total_lines || '?'} total lines`;
+              if (input.action === 'insert') return `[tool] ✓ edit_file insert "${input.filename}" at line ${res.at_line || input.line} — ${res.total_lines || '?'} total lines`;
+              if (input.action === 'replace') return `[tool] ✓ edit_file replace "${input.filename}" — ${res.occurrences || 0} occurrence(s)`;
+              if (input.action === 'overwrite') return `[tool] ✓ edit_file overwrite "${input.filename}" — ${res.bytes || '?'} bytes, ${res.total_lines || '?'} lines`;
+              return `[tool] edit_file ${input.action} "${input.filename}"`;
+            case 'read_file':
+              if (err) return `[tool] ❌ read_file "${input.filename}" — ${err.slice(0, 150)}`;
+              return `[tool] read_file "${input.filename}" — ${res.lines || '?'} lines`;
+            case 'compile': {
+              if (res.compileError) return `[tool] ❌ compile — ${res.compileError.slice(0, 150)}`;
+              const errs = res.errors?.length || 0;
+              const targets = [res.hasHTML && 'HTML', res.hasServerJS && 'Server JS', res.hasJavascript && 'JS', res.hasPython && 'Python'].filter(Boolean).join(', ');
+              if (errs > 0) return `[tool] ⚠ compile — ${errs} error(s), targets: ${targets || 'none'}`;
+              return `[tool] ✓ compile — targets: ${targets || 'none'}`;
+            }
+            case 'run_app':
+              if (err) return `[tool] ❌ run_app — ${err.slice(0, 150)}`;
+              return `[tool] ✓ run_app — port ${res.port || '?'}`;
+            case 'stop_app':
+              return `[tool] ✓ stop_app`;
+            case 'http_request':
+              if (err) return `[tool] ❌ ${input.method} ${input.path} — ${err.slice(0, 150)}`;
+              return `[tool] ${input.method} ${input.path} → ${res.status || '?'}`;
+            case 'read_terminal':
+              return `[tool] read_terminal — ${(res.terminal || '').split('\n').length} lines`;
+            case 'screenshot_output':
+              return `[tool] screenshot — ${Array.isArray(result) ? 'captured' : 'failed'}`;
+            case 'highlight_code':
+              return `[tool] highlight lines ${input.start_line}–${input.end_line || input.start_line}${input.message ? ': ' + input.message : ''}`;
+            default:
+              return `[tool] ${tb.name}`;
+          }
+        })();
+        send({ type: 'terminal_append', text: toolLog });
 
         // Post-execution events
         if (tb.name === 'edit_code' && input.action === 'write') {

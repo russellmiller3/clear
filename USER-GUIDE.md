@@ -738,8 +738,31 @@ image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
 ```clear
 price = 29.99
 rate = 0.15
-display price as dollars
-display rate as percent
+created = current time
+config is an empty map
+
+display price as dollars              # $29.99 (formatted currency)
+display price as dollars called 'Total'  # with a label
+display rate as percent               # 15% (percentage)
+display created as date               # Apr 11, 2026 (localized date)
+display config as json                # formatted JSON in a code block
+display count called 'Items'          # plain number (default)
+```
+
+Formats use `toLocaleString` under the hood, so they handle thousands separators
+and locale differences automatically. `as json` renders in a `<pre>` block for readability.
+
+### Loading and Notifications
+
+```clear
+# Show a spinner during a slow operation
+show loading
+response = ask claude 'Analyze this' with data
+hide loading
+
+# Flash a temporary message
+show toast 'Settings saved!'
+show alert 'Something went wrong'
 ```
 
 ---

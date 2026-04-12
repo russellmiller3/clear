@@ -1,82 +1,64 @@
-# Handoff — 2026-04-11
+# Handoff -- 2026-04-11
 
 ## Current State
-- **Branch:** `main`
-- **Tests:** 1640 passing / 0 failing (compiler) + 9 sandbox integration tests
-- **Synonym version:** 0.14.0
-- **Model:** claude-sonnet-4-6 (1M context) for Meph in Studio
+- **Branch:** `fix/agent-bugs`
+- **Last commit:** `66a0542` + uncommitted changes (docs update)
+- **Tests:** 1675 compiler (all passing), 0 failures
 
 ## What Was Done This Session
 
-### Compiler Features (P5-P14 complete)
-- **P5** HTTP test assertions — `call POST /path`, `expect response status/body`
-- **P6** Curriculum task library — 20 benchmark tasks across 10 difficulty levels
-- **P7** Patch API — 11 structured edit operations for RL action space
-- **P10** Cron scheduling — `every 5 minutes:`, `every day at 9am:`
-- **P13** AI streaming in endpoints — bare `ask claude 'prompt'` streams via SSE
-- **P14** Output capture — `result = run command 'cmd'` captures stdout
+### T2 Bug Fixes (35+ bugs resolved across two sessions)
+1. **Agent system fixed end-to-end** (session 1) -- agents defaulted to streaming generators, `await` returned `{}`. Flipped to non-streaming default. Server-only nodes (AGENT, WORKFLOW, SKILL, PIPELINE, PARALLEL_AGENTS, POLICY) added to BACKEND_ONLY_NODES. `post to` in button handlers, `fetch from` URL concatenation, Python httpx import.
+2. **New node types** -- HIDE_ELEMENT, CLIPBOARD_COPY, DOWNLOAD_FILE, LOADING_ACTION, UPLOAD_TO, LOGIN_ACTION. All with parser + compiler + tests.
+3. **Display format overhaul** -- `toLocaleString` replaces `toFixed(2)` for currency. Added percent, date, json formats. `as json` synonym collision fixed in 3 parser locations.
+4. **Video/audio media** -- `show video`/`show audio` with parser `parseMedia()` and compiler content types.
+5. **Gallery/map/calendar/QR** -- display tag mapping in parser, reactive `_recompute` and `buildHTML` support.
+6. **CRUD fixes** -- auto-inject `:id` for PUT/DELETE endpoints, multer require at module scope.
+7. **Python fixes** -- workflow state dict quoted keys, `_ask_ai` recursive detection, httpx module-scope import, cron lifespan context manager, proper None/True/False coercion.
+8. **Cron/background** -- try/catch wrapping for fault tolerance.
 
-### Compiler Bug Fixes (all requests.md items fixed)
-- `refresh page` → `location.reload()` (was `console.log(refresh)`)
-- `post to` with form data → sends only input fields, not entire `_state`
-- `post to` in button handler → parser crash fixed by dispatch unification
-- `ask agent 'Helper'` from endpoint → parser skips optional `agent` keyword
-- Runtime errors → `_clearError` always returns `{ error, hint, clear_line }`
+### Extended Thinking for Meph (Studio IDE)
+- Anthropic API calls now include `thinking` with `budget_tokens: 8000`
+- SSE parser handles thinking events with collapsible `<details>` blocks in chat UI
+- Thinking signature stored and replayed for multi-turn conversations
+- 5-retry exponential backoff with 60s timeout for network resilience
 
-### Structural Safety
-- Optional chaining `?.` for null-safe possessive access
-- Chain depth + expression complexity warnings
-- Keyword guard for better unrecognized syntax errors
-- `_pick` auto-serializes nested JSON for SQLite, `_revive` auto-parses
+### SVG Click-to-Expand
+- SVG diagrams in chat get a clickable overlay that opens a full-screen modal
+- Uses `cloneNode(true)` instead of `innerHTML` to preserve SVG namespace
 
-### Architecture: Unified Dispatch
-- Eliminated RAW_DISPATCH / CANONICAL_DISPATCH split
-- Every keyword now has a self-synonym (e.g. `database → database`)
-- One dispatch map, one lookup line: `DISPATCH.get(token.canonical || token.value)`
-- Validation guard catches dead entries at module load time
-- Removed `toggle → checkbox` synonym (different concepts)
+### ROADMAP.md Rewrite
+- Complete rewrite with current priorities, Surface Area Rule, RL as speculative
 
-### Studio (IDE) Improvements
-- Renamed from "Playground" to "Clear Studio"
-- Agent renamed to **Mephistopheles (Meph)**
-- Chat state, editor content, terminal log persist to localStorage
-- Personality prompt moved to top of system prompt with CRITICAL framing
-- Ctrl+K toggles chat panel open/closed
-- Compile stats badge in toolbar with pop animation
-- Code tab: JS/Python syntax highlighting via CodeMirror + sub-tabs
-- Terminal: JSON pretty-printing with syntax highlighting
-- `read_file` tool: Meph can read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md (TOC + line-range for large files)
-- `write_file` guarded against undefined params
-- Compile tool returns compiled output even on errors
-- API key injection: `.env` ANTHROPIC_API_KEY passed to child processes
-- Context meter: shows token usage estimate after each response
-- Model: claude-sonnet-4-6 with 1M context, 50-message history
+### Documentation Update
+- learnings.md, SYNTAX.md, CLAUDE.md, USER-GUIDE.md, AI-INSTRUCTIONS.md, HANDOFF.md all updated
 
-### Skills & Process
-- `/pres` skill (Plan → Red-team → Execute → Ship)
-- Tech debt rules added to write-plan and red-team-plan skills
-- `.gitattributes` for consistent LF line endings
+## Key Decisions
+- **Surface Area Rule** -- prioritize features that increase the range of apps Clear can build, not depth of existing features.
+- **RL is speculative** -- curriculum and patch API are built but RL training is a research bet, not a shipping priority. Don't invest more until validated.
+- **DOM cloning for SVG** -- `innerHTML` destroys SVG namespace. Always use `cloneNode(true)` for SVG manipulation.
+- **Display format via `toLocaleString`** -- proper i18n-ready formatting instead of string concatenation hacks.
 
-## What's Next
+## Known Issues
+- `server.test.js` has 2 pre-existing failures: template count assertion (expects old count), chat validation (message format check)
+- `as json` synonym collision is fixed but fragile -- any new synonym touching `as` or `json` needs careful testing
+- Python workflow endpoint auto-generation is new and lightly tested
 
-Priority order for next session:
-
-1. **SVG rendering in chat** — Meph's SVG diagrams show as raw markup instead of rendered visuals
-2. **Compiler animation** — line-by-line visual mapping from Clear source → compiled output using `// clear:N` markers
-3. **New requests from Meph** — check requests.md for bugs filed during this session's testing
-4. **Full directory rename** — `playground/` → `studio/` (80+ references, mechanical but big diff)
-
-Plan exists: `plans/plan-studio-visual-features-04-11-2026.md`
+## Files Changed
+| File | What |
+|------|------|
+| `compiler.js` | Video/audio, display formats, CRUD `:id` injection, Python workflow/cron fixes, new node compilation (hide/clipboard/download/loading), multer scope, gallery/map/calendar/QR |
+| `parser.js` | 6 new NodeTypes, `parseMedia()`, display format fixes, loading/hide parsing, `isReactiveApp` triggers |
+| `synonyms.js` | Video/audio synonyms, version bump to 0.15.0 |
+| `playground/ide.html` | Extended thinking UI, SVG expand overlay |
+| `playground/server.js` | Retry logic, extended thinking API, thinking SSE, signature tracking |
+| `clear.test.js` | ~35 new tests for all new features |
+| `ROADMAP.md` | Complete rewrite |
+| `learnings.md` | Session 23 added |
+| `SYNTAX.md` | 7 new feature sections |
+| `CLAUDE.md` | Test count updated to 1675 |
+| `USER-GUIDE.md` | Display formats section added |
+| `HANDOFF.md` | This file |
 
 ## Resume Prompt
-
-"Continue Clear language development. Run tests first (`node clear.test.js` — expect 1640). Check requests.md for new bugs Meph filed. The plan at `plans/plan-studio-visual-features-04-11-2026.md` covers SVG chat rendering, compiler animation, and remaining visual features. Also do the full playground→studio directory rename. Narrate as you go (Science Documentary Rule)."
-
-## Known Issues / Caveats
-
-- Sandbox symlink requires Windows junction type on some setups
-- `_clearLineMap` off-by-one: if injection point changes, update the offset
-- Source map granularity: markers only at indent ≤ 2 in backend mode
-- Curriculum tasks with `{{token}}` placeholders need auth flow in test runner
-- `patch.js` table detection uses lowercase string matching
-- Meph's `write_file` was silently failing (now guarded with error messages)
+> Read HANDOFF.md and requests.md. The `fix/agent-bugs` branch has 35+ bug fixes and new features ready to merge. Run `node clear.test.js` (expect 1675 passing). Check `server.test.js` for the 2 known failures. Next priorities: remaining T1 bugs in requests.md (workflow output, Python agent cluster), then merge to main.

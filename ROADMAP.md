@@ -1,266 +1,162 @@
 # Clear Language — Roadmap
 
-## The Two Goals
+## Goals
 
 **1. AI builds things fast.**
-Clear is the language AI writes. Short programs, readable output, deterministic compiler,
-rich standard library. The faster the write→compile→run→fix loop, the more AI can do.
+Clear is the language AI writes. Short programs, readable output, deterministic compiler.
+The faster Meph's write->compile->run->fix loop, the more it ships.
 
-**2. Exciting RL environment.**
-Clear is a natural code RL gym. The compiler is the simulator — deterministic, fast, zero
-noise. The test system is the reward function. The error messages are the observation.
-The templates are starting states. The action space is constrained (English keywords, not
-arbitrary text), which makes exploration tractable. No other language has all four.
+**2. The language is hostile to bugs.**
+Catch mistakes at compile time, not runtime. Inferred types, structured errors, source maps,
+deterministic output. If the compiler accepts it, it should work. Every bug class the
+compiler eliminates is a class no one wastes time debugging again.
 
----
+**3. Russell builds faster with fewer bugs.**
+Clear should let Russell describe what he wants and get working software. Not a toy —
+real apps with auth, data, AI agents, dashboards. The bar: faster than writing JS by hand,
+with fewer bugs and less cognitive load.
 
-## What's Done (Phases 1–100)
-
-Full-stack CRUD, agents, workflows, streaming, SQLite, auth, rate limits, policies,
-WebSockets, ECharts charts, DaisyUI landing pages, CodeMirror IDE, playground server,
-Claude agent chat, general-purpose language (types, HOFs, maps, interpolation),
-npm imports, shell commands. **P1** inferred type system (compile errors on text-in-math).
-**P2** structured eval stats (`compileProgram()` returns `stats{}`). **P3** source maps
-(`_clearLineMap` + per-statement `// clear:N` markers + stack trace translation in
-`_clearError`). **P4** sandbox runner (`sandbox.js` — isolated child process, HTTP test
-assertions, parallel RL episodes). **P5** HTTP test assertions in Clear (`call POST /path`,
-`expect response status/body`). User-written test blocks compile into E2E test file.
-**P6** curriculum task library — 20 benchmark tasks across 10 difficulty levels (63 tests).
-**P7** program diff/patch API (`patch.js`) — 11 structured operations for RL action space.
-**P10** cron/scheduled tasks (`every N minutes:`, `every day at 9am:`).
-**P14** output capture from commands (`result = run command 'cmd'`).
-Also: optional chaining (`?.`) for null-safe property access, `_pick` auto-serializes
-nested JSON for SQLite, `_revive` auto-parses JSON strings, keyword guard for better
-error messages, chain depth + expression complexity warnings, `write_file` supports
-non-`.clear` extensions, multiline `run command:` blocks.
-Tree-shaker detects callback references (`.map(_revive)`), conditional UI blocks trigger reactive path with DOM visibility toggles, `show alert`/`notification` compile to toast, `text variable` works in loops, string concatenation in `text` renders to DOM, `display as list` renders `<ul>` iteration. Studio SVG diagrams render inline in chat.
-1640 compiler tests + 9 sandbox tests.
+**Future:** Other people might benefit. If Clear is good enough for Russell and Meph, it
+might be good enough for others.
 
 ---
 
-## Priority Queue
+## Surface Area Rule
 
-Ordered by: (RL value × AI speed value). Things that serve both goals score highest.
+Not every browser API needs a Clear keyword. The language covers the primitives that show
+up in most apps. The rest — geolocation, camera, microphone, speech-to-text, text-to-speech,
+push notifications, service workers, drag-and-drop — are one-line `script:` calls.
 
----
+Adding a keyword for each one bloats the parser, grows the test surface quadratically
+(every new node type x every context it can appear in), and violates the 1:1 mapping rule
+(PHILOSOPHY.md rule 11b). The bar for a new keyword: "does Meph need this in >30% of apps?"
 
-### P1 — Inferred Type System
-
-**What:** `price = 'hello'` then `price * 1.08` = compile error. 100% inferred, zero annotations.
-
-**Why AI:** AI makes type mistakes constantly. Catching them at compile time instead of
-runtime saves a full round-trip. Right now a type bug in Clear silently produces NaN or
-crashes at runtime — AI has to re-run to discover it.
-
-**Why RL:** Clean reward shaping. The type checker is a partial evaluator — it tells the
-agent "this is wrong" before execution. Tighter feedback loop = faster learning. Also
-makes the observation space richer: warnings are structured signals, not just pass/fail.
-
-**Shape:**
-```
-price = 'ten dollars'
-total = price * 1.08      # compile warning: price looks like text, not a number
-```
-
-**Effort:** 3 days. Track inferred types per variable, propagate through assignments,
-flag arithmetic on strings and string operations on numbers.
+Per PHILOSOPHY.md rule 12b: every `script:` block in a Clear app is a signal that the
+language has a gap. But not every gap is worth closing with a keyword. Some gaps are narrow
+enough that `script:` is the right answer permanently.
 
 ---
 
-### P2 — Structured Test Evaluation API
+## What's Next
 
-**What:** A machine-readable eval protocol. `compileProgram()` already returns errors/warnings.
-Extend it to return: test results, coverage (which endpoints have tests), type warnings
-with locations, complexity score (lines, nodes, endpoints).
+Ordered by: what unblocks the most apps, fastest.
 
-**Why AI:** AI agents need a fast "did I succeed?" signal without parsing text.
-Right now they read stdout. Give them a JSON score instead.
-
-**Why RL:** This IS the reward function. Episode ends → call eval API → get score.
-Reward = tests_passed / tests_total + (1 if no errors else 0) + type_coverage_bonus.
-No eval API = no RL.
-
-**Shape (return value from compileProgram):**
-```js
-{
-  ok: true,
-  errors: [],
-  warnings: [{ line: 4, message: 'price looks like text used as number' }],
-  stats: {
-    endpoints: 3,
-    tables: 2,
-    tests: { total: 5, defined: 5 },
-    lines: 47,
-    nodes: 83
-  }
-}
-```
-
-**Effort:** 1 day. Most data already computed — just surface it.
+Scored on **Speed** (how much faster does this make building?) and **Safety** (how many
+bugs does this prevent?).
 
 ---
 
-### P3 — Source Maps
+### 1 — Auth Scaffolding
 
-**What:** Runtime JS errors map back to Clear line numbers. `clear:LINE` comments already
-exist in compiled output. Need to catch runtime errors and translate stack traces.
+`allow signup and login` — one line scaffolds /auth/signup, /auth/login, /auth/me endpoints
+with password hashing, JWT tokens, and a `needs login` frontend guard.
 
-**Why AI:** Right now when a Clear app crashes at runtime, the error says line 142 of
-server.js. AI has to mentally map that back to Clear. Source maps make errors actionable
-without the mental translation step.
+Every real app needs auth. Right now Meph manually writes 3+ endpoints, password hashing,
+JWT signing, token storage, and a frontend guard. That's the #1 source of boilerplate and
+the #1 thing that breaks — too many moving parts for something that should be one line.
 
-**Why RL:** The observation after a failed episode includes "error at Clear line 7" instead
-of "error at compiled JS line 142". That's a dramatically better signal for the agent —
-it knows exactly where to focus the next edit.
-
-**Shape:**
 ```
-ClearRuntimeError: Cannot read property 'id' of undefined
-  at Clear line 12: result = db's first User where id is user_id
+allow signup and login
+
+page 'Dashboard' at '/':
+  needs login
+  heading 'Welcome back'
 ```
 
-**Effort:** 1 day. Parse `// clear:N` comments from stack frames.
+This honors the "fixes compound" principle (PHILOSOPHY.md): fix auth once in the compiler,
+every app gets correct auth forever. No more Meph reinventing bcrypt + JWT per project.
+
+**Speed:** ★★★★★  **Safety:** ★★★★★  **Effort:** 2 days
 
 ---
 
-### P4 — Sandbox Runner
+### 2 — DB Relationships
 
-**What:** Isolated execution environment for compiled Clear apps. Runs in a child process
-with timeout, memory limit, captures stdout/stderr/exit code, returns structured result.
+`belongs to`, `has many` — declare relationships between tables. CRUD operations auto-JOIN.
 
-**Why AI:** Claude agents in the playground already run apps, but it's the main Node
-process. For parallel evaluation, you need isolated sandboxes that can't crash each other.
+Every app with 2+ tables needs this. Without it, Meph writes raw queries or makes multiple
+API calls and stitches data client-side. Multi-table apps are the norm, not the exception.
 
-**Why RL:** The core environment primitive. An RL episode is:
-1. Agent writes Clear code
-2. Sandbox compiles + runs it
-3. Sandbox runs tests against it
-4. Returns structured reward
+```
+create a Posts table:
+  title
+  body
+  author belongs to Users
 
-Without sandbox isolation you can't run N parallel episodes. With it, you can run 100.
-
-**Shape:**
-```js
-const result = await sandbox.run(clearSource, {
-  timeout: 5000,
-  tests: [{ method: 'GET', path: '/api/health', expect: { status: 200 } }]
-});
-// result: { ok, exitCode, stdout, stderr, testResults: [{passed, actual, expected}] }
+create a Comments table:
+  text
+  post belongs to Posts
 ```
 
-**Effort:** 2 days. child_process.fork + timeout + structured test runner.
+Automatic: GET /api/posts returns posts with author name embedded.
+Automatic: GET /api/posts/1/comments returns nested comments.
+Each relationship is one line in Clear, one JOIN in compiled output. 1:1 mapping preserved.
+
+**Speed:** ★★★★★  **Safety:** ★★★★  **Effort:** 3 days
 
 ---
 
-### P5 — HTTP Test Assertions in Clear ✅ DONE
+### 3 — Server-side Validation (fix existing)
 
-**What:** Test blocks that make real HTTP calls against the running app.
+The VALIDATE node exists but doesn't compile to real 400 responses with field-level errors.
+Fix it to emit proper validation middleware that rejects bad data before it hits the DB.
 
-**Why AI:** AI can write tests that verify the app actually works, not just that it compiles.
-A test that hits `/api/users` and checks the response is 10x more valuable than a test
-that checks a pure function.
-
-**Why RL:** Higher-fidelity reward. "Endpoint returns 200 with correct shape" is a much
-better reward signal than "program compiled." Agents learn to build working APIs, not
-just syntactically valid ones.
-
-**Shape:**
 ```
-test 'create user':
-  call POST /api/users with name is 'Alice', email is 'alice@test.com'
-  expect response status is 201
-  expect response body has 'id'
-
-test 'list users':
-  call GET /api/users
-  expect response status is 200
-  expect response body length is greater than 0
+when user calls POST /api/users sending data:
+  validate data:
+    name is text, required, min 1, max 100
+    email is text, required
+    age is number, min 0, max 150
+  save data as User
+  send back data status 201
 ```
 
-**Effort:** 2 days. Parser + compiler for `call METHOD /path with body`, `expect response`.
+Compiles to: check each field, collect errors, return `{ errors: [...] }` with 400 status.
+Currently compiles to incomplete checks. Invalid data is the most common runtime bug in
+web apps. This is "hostile to bugs" in action — make it impossible to save garbage.
+
+**Speed:** ★★★★  **Safety:** ★★★★★  **Effort:** 1 day
 
 ---
 
-### P6 — Curriculum Task Library ✅ DONE
+### 4 — Aggregate Functions (fix existing)
 
-**What:** A standard set of benchmark tasks with ground-truth acceptance criteria. Each task
-is: a description, a starting skeleton, and a set of tests that define "done."
+`sum of`, `average of`, `count of` — should return a number, not the raw array.
+Currently returns the unmodified array. Silent wrong values are worse than crashes.
 
-**Why AI:** Gives Claude concrete tasks to work on in the playground without Russell having
-to come up with them. "Build a todo API" → agent writes Clear → tests run → score.
-
-**Why RL:** This is the training set. Tasks ordered by difficulty = curriculum learning.
-Without a task library, RL is just free exploration — agents don't get better at anything
-in particular.
-
-**Sample tasks (ordered by difficulty):**
 ```
-Level 1 — Hello World
-  Write a GET /api/hello endpoint that returns { message: 'hello world' }
-
-Level 2 — Echo
-  Write a POST /api/echo that returns whatever body was sent
-
-Level 3 — Counter
-  GET /api/count returns current count
-  POST /api/increment increases it by 1
-
-Level 4 — Todo CRUD
-  Full create/read/update/delete for a Todo table
-
-Level 5 — Authenticated Todo
-  Same, but requires login. Only your own todos visible.
-
-Level 6 — Blog with search
-  Posts table, full-text search endpoint, pagination
-
-Level 7 — Rate-limited API
-  Any endpoint, but max 10 requests/minute per IP
-
-Level 8 — Multi-tenant workspace
-  Users belong to workspaces. Data scoped to workspace.
+total_revenue = sum of amount in Orders
+average_price = average of price in Products
+user_count = count of Users
 ```
 
-**Effort:** 2 days. Write 20 tasks + test suites. No new compiler work.
+These are already in PHILOSOPHY.md's canonical vocabulary (rule 14). They parse but
+compile wrong. Quick fix, high value — every dashboard needs aggregates.
+
+**Speed:** ★★★  **Safety:** ★★★★★  **Effort:** 0.5 days
 
 ---
 
-### P7 — Program Diff / Patch API ✅ DONE
+### 5 — Full Text Search
 
-**What:** Structured edits to a Clear program. Instead of AI rewriting the whole file,
-it can say "add endpoint POST /api/users" or "change field 'name' to required."
+`search Posts for query` should compile to LIKE '%query%' (in-memory/SQLite) or full-text
+search (Supabase). Currently does exact match only — useless for real search.
 
-**Why AI:** Faster iteration. Smaller context window usage. AI doesn't have to regenerate
-unchanged code on every turn.
-
-**Why RL:** Defines the action space cleanly. Episode = sequence of patch actions.
-`add_endpoint`, `add_field`, `change_response`, `add_test`, `fix_line N`. Much more
-tractable than "generate the whole program from scratch."
-
-**Shape:**
-```js
-patch(source, [
-  { op: 'add_endpoint', method: 'POST', path: '/api/users', body: '...' },
-  { op: 'add_field', table: 'User', field: 'email', type: 'text', required: true },
-  { op: 'fix_line', line: 7, replacement: "  send back user" }
-])
+```
+when user calls GET /api/search sending params:
+  results = search Posts for params's query
+  send back results
 ```
 
-**Effort:** 3 days. AST-level patch operations on the parsed program.
+**Speed:** ★★★  **Safety:** ★★★  **Effort:** 1 day
 
 ---
 
-### P8 — WebSocket / Real-Time
+### 6 — WebSocket Events
 
-**What:** `when client connects:` / `broadcast to all:` / `send to client:` primitives.
+`when client connects`, `broadcast to all`, `send to client` — full socket.io lifecycle.
+`subscribe to` exists but the event model isn't wired up.
 
-**Why AI:** Chat apps, live dashboards, multiplayer — all blocked without this.
-Currently AI can only build request/response APIs.
-
-**Why RL:** Adds a new category of tasks (real-time apps) to the curriculum.
-Richer task space = more interesting RL problem.
-
-**Shape:**
 ```
 when client connects:
   send to client 'welcome'
@@ -272,201 +168,208 @@ when client disconnects:
   log 'user left'
 ```
 
-**Effort:** 2 days. socket.io on the backend, event listener syntax in parser.
+Unlocks chat apps, live dashboards, multiplayer — a whole app category.
+
+**Speed:** ★★★★  **Safety:** ★★★  **Effort:** 2 days
 
 ---
 
-### P9 — File Upload / Download
+### 7 — Agent Memory + RAG
 
-**What:** `receive file from request`, `save file to 'uploads/'`, `send back file at path`.
+`remember conversation context` persists chat history per user in the DB.
+`knows about: Posts, Users` does keyword search before prompting (poor man's RAG).
 
-**Why AI:** Image uploads, CSV processing, PDF generation — all blocked without this.
-
-**Why RL:** New task category: file processing pipelines.
-
-**Shape:**
 ```
-when user calls POST /api/upload sending file:
-  save file to 'uploads/'
-  send back file's name
+agent 'Assistant' receives question:
+  remember conversation context
+  knows about: Products, FAQs
+  response = ask claude 'Help the customer' with question
+  send back response
 ```
 
-**Effort:** 2 days. multer integration, file path handling.
+Without memory, AI agents are novelty demos. With memory + RAG, they become products.
+
+**Speed:** ★★★★  **Safety:** ★★★  **Effort:** 2 days
 
 ---
 
-### P10 — Cron / Scheduled Tasks ✅ DONE
+### 8 — Agent Tool Use
 
-**What:** `every day at 9am:` / `every 5 minutes:` blocks that run on a schedule.
+`can use: lookup_user, create_ticket` binds Clear functions as Anthropic tool_use API tools.
+Currently compiles to a comment. Tool use is what makes agents capable of actions, not just text.
 
-**Why AI:** Digest emails, cleanup jobs, daily reports — all blocked without this.
-Common in every real app.
-
-**Why RL:** Tasks with temporal reasoning ("send a report every morning") become possible.
-
-**Shape:**
 ```
-every day at 9am:
-  all_users = look up all Users
-  for each user in all_users:
-    send email to user's email with subject 'Daily digest'
+define function lookup_user(email):
+  set user to get first User where email is email
+  return user
 
-every 5 minutes:
-  clean up Sessions where created_at is less than 24 hours ago
+agent 'Support' receives question:
+  can use: lookup_user
+  response = ask claude 'Help the user' with question
+  send back response
 ```
 
-**Effort:** 2 days. node-cron integration, cron expression parser.
+**Speed:** ★★★★  **Safety:** ★★★  **Effort:** 2 days
 
 ---
 
-### P11 — Built-in Email ✅ DONE (already implemented)
+### 9 — String Concat Bug Fix
 
-**What:** `send email to 'x@y.com' with subject 'Hi' and body '...'` — first-class,
-not via npm.
+`message = 'Hello, ' + name + '!'` drops the variable value in some contexts.
+Interpolation (`'Hello, {name}!'`) works fine, but `+` concatenation sometimes produces
+`undefined`. Basic correctness — silent data loss.
 
-**Why AI:** Email is in almost every real app. Requiring `use npm 'nodemailer'` + script:
-blocks is too much friction.
-
-**Why RL:** Tasks like "send confirmation on signup" become testable without npm ceremony.
-
-**Shape:**
-```
-send email to user's email with subject 'Welcome!' and body 'Thanks for signing up.'
-```
-Compiles to nodemailer with SMTP_URL from env. `clear package` includes nodemailer.
-
-**Effort:** 1 day. New node type + compiler case + env var convention.
+**Speed:** ★★★  **Safety:** ★★★★★  **Effort:** 0.5 days
 
 ---
 
-### P12 — OAuth / Social Login
+### 10 — Python Frontend Serving
 
-**What:** `allow login with Google`, `allow login with GitHub` — one line, full OAuth flow.
+Python backends don't serve static files. The compiled HTML exists but FastAPI has no
+route for `/` or static assets. Full-stack Python apps are broken in the browser.
 
-**Why AI:** Auth is the #1 thing people actually need in real apps.
-JWT auth exists, but social login is what users expect.
-
-**Why RL:** Adds an auth-layer task category to the curriculum.
-
-**Shape:**
-```
-allow login with Google
-allow login with GitHub
-
-when user calls GET /api/me:
-  require login
-  send back current user
-```
-
-**Effort:** 3 days. passport.js + callback routes + session management.
+**Speed:** ★★★  **Safety:** ★★★  **Effort:** 0.5 days
 
 ---
 
-### P13 — Streaming Responses (AI output)
+## Not Now
 
-**What:** `stream back text` for server-sent events. Lets Clear apps stream OpenAI
-responses to the browser in real time.
+Real features, but they have workarounds. Per the Surface Area Rule, `script:` is the
+right answer for niche browser APIs. Other items have existing patterns that work fine.
 
-**Why AI:** Every AI integration needs streaming. Without it, users wait for the full
-response before seeing anything.
-
-**Why RL:** Enables AI-assistant tasks in the curriculum ("build a streaming chat endpoint").
-
-**Shape:**
-```
-use npm 'openai' as OpenAI
-
-when user calls POST /api/chat sending params:
-  client = OpenAI(env('OPENAI_KEY'))
-  script:
-    const stream = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: params.message }],
-      stream: true,
-    });
-    res.setHeader('Content-Type', 'text/event-stream');
-    for await (const chunk of stream) {
-      const text = chunk.choices[0]?.delta?.content || '';
-      res.write(`data: ${JSON.stringify({ text })}\n\n`);
-    }
-    res.end();
-```
-(This works today via `script:`. Native syntax would be `stream back from openai`.)
-
-**Effort:** 1 day for native syntax sugar on top of existing script: support.
+| Feature | Why not now |
+|---------|-----------|
+| **OAuth / social login** | `allow signup and login` covers 80%. OAuth is complex (passport.js, callback URLs, sessions). Do it when someone needs Google login. |
+| **Agent guardrails** | System prompts already constrain agents. `must not` is nice-to-have. |
+| **Cookies** | Use JWT tokens (already built) or `script:` for cookie-parser. |
+| **DB transactions** | In-memory doesn't need them. SQLite has implicit transactions. |
+| **Upsert** | `save` + `get first where` is a fine workaround. |
+| **Soft delete** | `deleted_at` field + filter is 2 lines. Not worth a keyword. |
+| **Transform data** | `filter` + `for each` covers this. |
+| **Text in for-each** | Architectural — loop rendering needs a rethink. `script:` works. |
+| **Geolocation** | `script: navigator.geolocation.getCurrentPosition(...)` |
+| **Camera / microphone** | `script: navigator.mediaDevices.getUserMedia(...)` |
+| **Speech to text** | `script: new SpeechRecognition()` — niche browser API. |
+| **Text to speech** | `script: speechSynthesis.speak(...)` — niche browser API. |
+| **Push notifications** | Requires service worker, VAPID keys, server infra. Too much plumbing for a keyword. |
+| **Service worker / PWA** | Deployment concern, not language feature. |
+| **Drag and drop** | `script:` with HTML5 drag events. Niche interaction pattern. |
+| **Tooltip / popover** | DaisyUI CSS classes. Not a compiler concern. |
+| **Infinite / virtual scroll** | `script:` with IntersectionObserver. Performance optimization. |
+| **Skeleton loading** | DaisyUI `skeleton` class. CSS, not language. |
+| **Lazy load images** | One-line compiler tweak (`loading="lazy"`), not a feature. |
 
 ---
 
-### P14 — Output Capture from Commands ✅ DONE
+## Speculative: RL Training Environment
 
-**What:** `result = run command 'git log --oneline'` — capture stdout as a string.
+Clear's deterministic compiler, structured errors, constrained action space, and built-in
+test syntax make it a natural RL gym. The infrastructure is built.
 
-**Why AI:** Shell pipelines that feed data into the app. Run a scoring script, capture
-the result, make a decision based on it.
+**The blocker:** Without access to fine-tune or train a model, RL is academic. You can build
+the gym, but if you can't train athletes in it, it's a demo.
 
-**Why RL:** Enables tasks that involve external tools as part of the pipeline.
+**What's built (all serve goal #1 directly — none wasted):**
+- Sandbox runner — isolated child process, timeout, memory limit, structured results
+- Curriculum tasks — 20 benchmark tasks across 10 difficulty levels (63 tests)
+- Structured eval API — `compileProgram()` returns JSON scores, stats, warnings
+- Patch API — 11 structured edit operations = constrained action space
+- Source maps — runtime errors map to Clear line numbers = rich observations
+- HTTP test assertions — `call POST /path`, `expect response status` = reward function
 
-**Shape:**
-```
-log = run command 'git log --oneline -10'
-send back log
-```
+**What would be needed:**
+- Fine-tuning access to a capable model (Anthropic partnership, open-weight model, etc.)
+- Reward shaping beyond pass/fail (partial credit for correct endpoints, types, etc.)
+- Episode parallelism at scale (sandbox supports it, need orchestration layer)
 
-**Effort:** Half a day. Two codepaths in the compiler: statement → `stdio: inherit`,
-expression → `{ encoding: 'utf-8' }` with variable binding.
-
----
-
-## The RL Architecture (when ready)
-
-```
-┌─────────────────────────────────────────────────────┐
-│                   RL Training Loop                   │
-│                                                       │
-│  Task from curriculum  ──▶  Agent (LLM)              │
-│         ▲                        │                   │
-│         │                        ▼                   │
-│    Reward signal          Clear program              │
-│         ▲                        │                   │
-│         │                        ▼                   │
-│   Eval API score  ◀──  Sandbox runner                │
-│  (tests pass/fail,       (compile + run +             │
-│   warnings, complexity)   HTTP tests)                │
-└─────────────────────────────────────────────────────┘
-```
-
-**Episode:**
-1. Agent receives task description + optional skeleton
-2. Agent writes (or patches) a Clear program
-3. Sandbox compiles, runs, fires HTTP tests
-4. Eval API returns structured score
-5. Reward = tests_passed / total + type_clean_bonus - warning_penalty
-6. Agent sees score + error messages → next action
-
-**Why Clear beats Python/JS for RL:**
-- Deterministic compiler = no reward noise from different-but-equivalent programs
-- Constrained vocabulary = tractable action space
-- Built-in test syntax = reward function is IN the language
-- Short programs = small state/action space
-- Error messages are structured = rich observation
+If fine-tuning becomes accessible, Clear is uniquely positioned. Until then: prepared
+position, not a product.
 
 ---
 
-## Order Summary
+## Primitive Audit
 
-| # | Feature | Effort | RL Value | AI Speed | Status |
-|---|---------|--------|----------|----------|--------|
-| P1 | Inferred type system | 3d | ★★★★★ | ★★★★★ | ✅ Done |
-| P2 | Structured eval API | 1d | ★★★★★ | ★★★★ | ✅ Done |
-| P3 | Source maps | 1d | ★★★★ | ★★★★★ | ✅ Done |
-| P4 | Sandbox runner | 2d | ★★★★★ | ★★★ | ✅ Done |
-| P5 | HTTP test assertions | 2d | ★★★★★ | ★★★★ | ✅ Done |
-| P6 | Curriculum task library | 2d | ★★★★★ | ★★★ | ✅ Done |
-| P7 | Program diff/patch API | 3d | ★★★★ | ★★★★ | ✅ Done |
-| P8 | WebSocket / real-time | 2d | ★★★ | ★★★★ | ✅ Done (pre-existing) |
-| P9 | File upload/download | 2d | ★★★ | ★★★★ | ✅ Done (pre-existing) |
-| P10 | Cron / scheduled tasks | 2d | ★★★ | ★★★★ | ✅ Done |
-| P11 | Built-in email | 1d | ★★★ | ★★★★★ | ✅ Done (pre-existing) |
-| P12 | OAuth / social login | 3d | ★★ | ★★★★ | |
-| P13 | Streaming responses | 1d | ★★★ | ★★★★ | Partial (STREAM node exists) |
-| P14 | Output capture | 0.5d | ★★ | ★★★ | ✅ Done |
+### Complete (compiles + works)
+
+**CORE LANGUAGE** ✅
+Variables, functions (typed params, returns), loops (for-each, while, repeat),
+conditionals (if/else, match/when), try/catch, break/continue, comments,
+modules/imports, `script:` escape hatch.
+
+**EXPRESSIONS** ✅
+Math, comparisons, boolean logic, string interpolation, lists, records,
+possessive access (`user's name`), map get/set, higher-order functions
+(map/filter/apply), optional chaining (`?.`).
+
+**WEB FRONTEND** ✅
+Pages with hash routing, reactive state, text/number/choice/checkbox/textarea
+inputs, buttons, sections, tabs, components, conditional UI blocks, on-change
+with debounce. Display formats: table, cards, list, count, currency, percentage,
+date, JSON, gallery (image grid), map (Leaflet), calendar (month grid), QR code.
+Charts: line, bar, pie, area (ECharts). Toasts/alerts/notifications, show/hide
+elements, loading overlays, clipboard copy, file download, video/audio players.
+
+**BACKEND (JS + Python)** ✅
+REST endpoints (GET/POST/PUT/DELETE), CRUD (in-memory/SQLite/Supabase),
+JWT auth middleware, role guards, field validation, rate limiting, CORS,
+request logging, webhooks, multer file uploads, external API fetch
+(timeout/cache/fallback), email (nodemailer/SMTP), PDF generation, shell
+command capture, server-sent events.
+
+**DATA** ✅
+Tables with types/constraints/defaults, CSV load/save, filter, group by,
+count by, unique values, JSON parse/stringify, regex find/match/replace,
+date/time operations.
+
+**AI / AGENTS** ✅
+Agent definitions, `ask claude` with streaming, structured JSON output
+(schema enforcement), agent pipelines, parallel agents, skills, human
+confirmation gates, mock AI for testing, model selection.
+
+**WORKFLOWS** ✅
+Multi-step workflows, state management, conditional steps, repeat-until,
+parallel steps, auto-generated endpoints, progress tracking.
+
+**FILE I/O** ✅
+Read/write/append/exists, JSON parse/stringify, regex find/match/replace,
+date/time operations, file upload (multer).
+
+**SCHEDULING** ✅
+`every N minutes`, `every day at 9am`, error handling (try/catch wrapping),
+Python lifespan context manager.
+
+**TESTING** ✅
+Test blocks, HTTP assertions (`call POST /path`, `expect response`),
+mock AI, sandbox runner, structured eval API.
+
+### Partial
+
+**REAL-TIME** ⚠️
+SSE streaming ✅, background jobs ✅, wait/sleep ✅, subscribe to channel ✅.
+Missing: `when client connects/disconnects`, `broadcast to all`, `send to client`.
+
+### Gaps (prioritized — see What's Next above)
+
+| # | Gap | Status |
+|---|-----|--------|
+| 1 | Auth scaffolding (`allow signup and login`) | Not parsed |
+| 2 | DB relationships (`belongs to`, `has many`) | Not parsed |
+| 3 | Validation → real 400 errors | Parsed, incomplete output |
+| 4 | Aggregates (`sum of` → number) | Parsed, returns wrong type |
+| 5 | Full text search | Exact match only |
+| 6 | WebSocket lifecycle events | Not parsed |
+| 7 | Agent memory / RAG | Parsed, compiles to comment |
+| 8 | Agent tool use (`can use:`) | Parsed, compiles to comment |
+| 9 | String `+` concat bug | Parsed, drops values |
+| 10 | Python frontend serving | No static routes |
+
+---
+
+## Stats
+
+- **145 node types** defined in parser
+- **1675 compiler tests**, 0 failures
+- **9 sandbox integration tests**
+- **~241 playground tests** (server, e2e, IDE, agent)
+- **Zero npm dependencies** in the compiler
+- **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI + Tailwind v4)

@@ -40,14 +40,138 @@
 
 ---
 
-## 🔴 TIER 1 — BLOCKERS (App cannot function without fixing these)
+## 🗺️ JS vs Python Feature Matrix
+
+| Feature | JS Backend | Python Backend |
+|---------|-----------|----------------|
+| GET all records | 💀 `_revive` crash | ✅ works |
+| POST create | ✅ works | ✅ works |
+| PUT update | ✅ works | 💀 `:id` undefined |
+| DELETE by id | ✅ works | 💀 nukes whole table |
+| `requires auth` | 💀 login broken | 💀 always 401 |
+| `allow sign up and login` | 💀 `_revive` crash | 💀 always 401 |
+| `needs login` on page | 💀 compiles to nothing | N/A |
+| Agents (AI) | 💀 returns `{}` [RESOLVED ✅] | 💀 await on generator |
+| Agent streaming | ❌ directive ignored | 💀 wrong call pattern |
+| Agent multi-turn memory | 💀 history wiped per request | untested |
+| Agent RAG (`knows about`) | 💀 compiles to comment | untested |
+| Agent tool use (`can use`) | 💀 compiles to comment | untested |
+| Agent guardrails (`must not`) | 💀 compiles to comment | untested |
+| Agent model selection | ✅ works | untested |
+| Agent structured output | ✅ works | 💀 `_ask_ai` undefined |
+| Workflows | 💀 no endpoint, agents undefined | 💀 NameError + wrong args |
+| Workflow frontend leak | 💀 leaks to browser [RESOLVED ✅] | N/A |
+| Scheduled tasks | 💀 `_revive` crash | 💀 IndentationError |
+| File uploads (input) | 💀 `console.log` | N/A |
+| File uploads (send) | 💀 `console.log(upload)` | N/A |
+| File upload middleware | ❌ no multer | ❌ no multipart |
+| Email sending | 💀 fetch to email address | 💀 silent drop |
+| External API calls | ✅ works | 💀 `httpx` not imported |
+| DB relationships/JOIN | ❌ ignored | ❌ ignored |
+| Charts | ❌ empty canvas | ❌ silently dropped |
+| Conditional display | 💀 empty JS bodies | N/A |
+| `display as list` | ❌ stat card instead | N/A |
+| `display as table` | ✅ works | N/A |
+| `show alert` | ❌ `console.log` | N/A |
+| `show loading` | ❌ `console.log` | N/A |
+| `show X` / `hide X` | ❌ `console.log` | N/A |
+| `open modal` | ❌ `console.log` | N/A |
+| `toast` notifications | ❌ `console.log` | N/A |
+| `copy to clipboard` | ❌ `console.log` | N/A |
+| `download as file` | ❌ `console.log` | N/A |
+| `dark mode toggle` | ❌ comment | N/A |
+| `local storage` | ❌ comment | N/A |
+| `clear form` | ❌ comment | N/A |
+| `disable/enable button` | ❌ comment | N/A |
+| `debounce` | ❌ no debounce emitted | N/A |
+| `throttle` | ❌ no throttle emitted | N/A |
+| `infinite scroll` | ❌ comment | N/A |
+| `skeleton loading` | ❌ comment | N/A |
+| `lazy load images` | ❌ no `loading=lazy` | N/A |
+| `virtual scroll` | ❌ comment | N/A |
+| `tabs` (`_switchTab`) | 💀 function never defined | N/A |
+| `stepper` | ❌ static HTML only | N/A |
+| `drag and drop` | ❌ no drag events | N/A |
+| `tooltip` | ❌ text dropped | N/A |
+| `popover` | ❌ comment | N/A |
+| `geolocation` | ❌ comment | N/A |
+| `camera access` | ❌ comment | N/A |
+| `microphone` | ❌ comment | N/A |
+| `speech to text` | ❌ comment | N/A |
+| `text to speech` | ❌ comment | N/A |
+| `push notifications` | ❌ comment | N/A |
+| `service worker/PWA` | ❌ comment | N/A |
+| `offline mode` | ❌ comment | N/A |
+| `display as currency` | ❌ raw number | N/A |
+| `display as percentage` | ❌ raw number | N/A |
+| `display as date` | ❌ raw string | N/A |
+| `display as json` | ❌ `[object Object]` | N/A |
+| `display as gallery` | ❌ stat card | N/A |
+| `display as calendar` | ❌ stat card | N/A |
+| `display as map` | ❌ empty div | N/A |
+| `display as QR code` | ❌ stat card | N/A |
+| Video player | ❌ stat card | N/A |
+| Audio player | ❌ stat card | N/A |
+| `export to PDF` | ❌ comment | N/A |
+| `import from CSV` | ❌ comment | N/A |
+| `share link` | ❌ comment | N/A |
+| `export as CSV` (endpoint) | ❌ sends JSON | ❌ sends raw data |
+| `rate limit` | ❌ comment | ❌ comment |
+| `cache response` | ❌ comment | ❌ comment |
+| CORS headers | ❌ not emitted | ✅ CORSMiddleware |
+| Cookies | ❌ no cookie-parser | 💀 no Response import |
+| Environment variables | ⚠️ works but no .env | ⚠️ works but no dotenv |
+| `background job` | ❌ comment | N/A |
+| Server sent events | ❌ comment | N/A |
+| Websockets | 💀 compile error | N/A |
+| DB migrations | ❌ comment | N/A |
+| DB transactions | ❌ comment | N/A |
+| Full text search | ❌ exact match only | N/A |
+| Aggregate (sum/avg) | ❌ returns array | N/A |
+| `group by` | ❌ comment | N/A |
+| `distinct` | ❌ comment | N/A |
+| `upsert` | ❌ same as save | N/A |
+| `soft delete` | ❌ comment | N/A |
+| `data validation` (server) | ❌ comment | N/A |
+| `transform data` | ❌ comment | N/A |
+| Backend pagination | ✅ works (no total count) | N/A |
+| Frontend pagination | ✅ logic works, no UI | N/A |
+| Filter / sort / search | ✅ all work | N/A |
+| Multi-page routing | ✅ works | N/A |
+| `redirect to` | ✅ works | ✅ works |
+| `on page load` fetch | ✅ works | N/A |
+| Form inputs (text/number/checkbox/textarea/dropdown) | ✅ all work | N/A |
+| `display as table` | ✅ works | N/A |
+| `display as count` | ✅ works | N/A |
+| `print page` | ✅ works | N/A |
+| `go back` | ✅ works | N/A |
+| `scroll to top` | ✅ works | N/A |
+| `focus on` | ✅ works | N/A |
+| `log X` | ✅ works | N/A |
+| `accordion` | ✅ works | N/A |
+| `progress bar` | ✅ works | N/A |
+| Health check endpoint | ✅ works | N/A |
+| Webhooks (POST endpoint) | ✅ works | N/A |
+| API versioning (URL) | ✅ works | N/A |
+| `send back X with status` | ✅ works | N/A |
+| Bulk insert | ✅ works | N/A |
+| Filtered DB queries | ✅ works | N/A |
+| Filtered delete | ✅ works (JS only) | 💀 nukes table |
+| `count X in database` | ✅ works | N/A |
+| Python frontend serving | N/A | 💀 no static routes |
+
+**Key:** ✅ works · ❌ broken/missing · 💀 crashes app · ⚠️ partial · N/A not applicable
+
+---
+
+## 🔴 TIER 1 — BLOCKERS (22 bugs — App cannot function without fixing these)
 
 | # | Bug | Target | Filed |
 |---|-----|--------|-------|
 | 1 | `_revive is not defined` crashes ALL GET endpoints | JS | ✅ |
 | 2 | `_revive is not defined` crashes login/auth | JS | ✅ |
-| 3 | Agent returns empty `{}` — response completely lost | JS | ✅ |
-| 4 | Agent + workflow code leaks into frontend `_recompute()` | JS | ✅ |
+| 3 | Agent returns empty `{}` — response completely lost ✅ RESOLVED | JS | ✅ |
+| 4 | Agent + workflow code leaks into frontend `_recompute()` ✅ RESOLVED | JS | ✅ |
 | 5 | Workflow returns no output — black box | JS | ✅ |
 | 6 | Conditionals compile with empty JS bodies | JS | ✅ |
 | 7 | Workflow step agents never defined — `ReferenceError` at runtime | Both | ✅ |
@@ -63,6 +187,9 @@
 | 17 | [PYTHON] Scheduled task IndentationError — app won't start | Python | ✅ |
 | 18 | File input not rendered — compiles to `console.log` | JS | ✅ |
 | 19 | `upload X to '/endpoint'` → `console.log(upload)` — undefined | JS | ✅ |
+| 20 | `login with email and password` — compile error, not recognized as built-in | Both | ✅ |
+| 21 | `needs login` on page compiles to nothing — zero frontend auth guard | JS | ✅ |
+| 22 | Email sending → `fetch('admin@example.com')` — broken URL | Both | ✅ |
 
 ---
 
@@ -70,21 +197,54 @@
 
 | # | Bug | Target | Filed |
 |---|-----|--------|-------|
-| 1 | `post to` in button handler → `post_to` undefined | JS | ✅ |
+| 1 | `post to` in button handler → `post_to` undefined ✅ RESOLVED | JS | ✅ |
 | 2 | `show alert` → `console.log(alert)` instead of dialog | JS | ✅ |
 | 3 | `text` keyword broken inside `for each` loops | JS | ✅ |
 | 4 | `display as list` → stringified `[object Object]` | JS | ✅ |
 | 5 | String concat drops variable value | JS | ✅ |
-| 6 | Policy guards leak into frontend + never hit server | JS | ✅ |
-| 7 | Policy guards re-register on every `_recompute()` call | JS | ✅ |
+| 6 | Policy guards leak into frontend + never hit server ✅ RESOLVED | JS | ✅ |
+| 7 | Policy guards re-register on every `_recompute()` call ✅ RESOLVED | JS | ✅ |
 | 8 | Charts — no library imported, compiles to empty `<canvas>` | Both | ✅ |
 | 9 | DB relationships — `belongs to` ignored, no JOIN implemented | Both | ✅ |
-| 10 | External APIs — `fetch from` compiles to `undefined` | Both | ✅ |
+| 10 | External APIs — `fetch from` compiles to `undefined` ✅ RESOLVED | Both | ✅ |
 | 11 | Agent streaming display not expressible in Clear | Both | ✅ |
 | 12 | Compile tool returns no source on error (debug blind) | Tooling | ✅ |
 | 13 | JS scheduled task — no error handling, can't cancel | JS | ✅ |
 | 14 | [PYTHON] Scheduled task uses deprecated `@app.on_event` | Python | ✅ |
 | 15 | Server has no multipart/file upload middleware | JS | ✅ |
+| 16 | `tabs` — `_switchTab()` never defined → `ReferenceError` on click | JS | ✅ |
+| 17 | `show X` / `hide X` → `console.log(undefined)` — no DOM toggle | JS | ✅ |
+| 18 | `open modal` → `console.log(modal)` — undefined, no dialog | JS | ✅ |
+| 19 | `toast` notifications → `console.log(toast)` — undefined | JS | ✅ |
+| 20 | `copy to clipboard` → `console.log(undefined)` — no clipboard API | JS | ✅ |
+| 21 | `download as file` → `console.log(undefined)` — no Blob/anchor | JS | ✅ |
+| 22 | `display as currency` → raw number, no `toLocaleString` | JS | ✅ |
+| 23 | `display as percentage` → raw number, no `%` suffix | JS | ✅ |
+| 24 | `display as date` → raw string, no `Date` formatting | JS | ✅ |
+| 25 | `display as json` → `[object Object]`, no `JSON.stringify` | JS | ✅ |
+| 26 | `display as gallery` → stat card, no image grid | JS | ✅ |
+| 27 | `display as map` → empty div, no map library | JS | ✅ |
+| 28 | `display as calendar` → stat card, no calendar UI | JS | ✅ |
+| 29 | `display as QR code` → stat card, no QR library | JS | ✅ |
+| 30 | `video player` / `audio player` → stat card, no media element | JS | ✅ |
+| 31 | `show loading` / `hide loading` → `console.log(undefined)` | JS | ✅ |
+| 32 | `debounce` on input → no debounce, fires every keystroke | JS | ✅ |
+| 33 | `throttle` on scroll → no throttle, fires every event | JS | ✅ |
+| 34 | Agent multi-turn memory wiped on every request — `_history = []` inside handler | JS | ✅ |
+| 35 | Agent RAG (`knows about`) → compiles to comment, no retrieval | JS | ✅ |
+| 36 | Agent tool use (`can use`) → compiles to comment, no tool binding | JS | ✅ |
+| 37 | Agent guardrails (`must not`) → compiles to comment, not enforced | JS | ✅ |
+| 38 | [PYTHON] Agent structured output — `_ask_ai` never defined | Python | ✅ |
+| 39 | [PYTHON] External API — `httpx` not imported, `await` missing | Python | ✅ |
+| 40 | [PYTHON] Python frontend serving — no static routes generated | Python | ✅ |
+| 41 | CORS headers missing in JS backend | JS | ✅ |
+| 42 | Cookies broken — no `cookie-parser` in JS, no `Response` import in Python | Both | ✅ |
+| 43 | `data validation` server-side → comment, no 400 response | Both | ✅ |
+| 44 | `transform data` → comment, no field selection | Both | ✅ |
+| 45 | Aggregate functions (`sum of`, `avg of`) → returns array unmodified | JS | ✅ |
+| 46 | Full text search → exact match only, no `LIKE` or FTS | JS | ✅ |
+| 47 | `upsert` → same as regular save, no conflict detection | JS | ✅ |
+| 48 | DB transactions (`begin transaction`) → comment | Both | ✅ |
 
 ---
 
@@ -109,7 +269,7 @@
 
 ---
 
-## Request: Agent endpoint returns empty `{}` — response not sent back
+## Request: Agent endpoint returns empty `{}` — response not sent back [RESOLVED ✅]
 **Priority:** CRITICAL
 **App:** Any app using an AI agent called from an endpoint
 **What I needed:** `result = ask agent 'Helper' with data's question` → `send back result` to return the agent's response as JSON
@@ -180,7 +340,7 @@ app.post("/api/ask", async (req, res) => {
 
 ---
 
-## Request: Agent function body leaks into frontend `_recompute()` — should be server-only
+## Request: Agent function body leaks into frontend `_recompute()` — should be server-only [RESOLVED ✅]
 **Priority:** CRITICAL
 **App:** Any app with an agent
 **What I needed:** Agent definitions to compile ONLY to serverJS — they are backend functions, not frontend logic
@@ -237,7 +397,7 @@ Also in the frontend bundle — the full `_askAIStream` streaming function inclu
 
 ---
 
-## Request: `post to '/api/ask' with question` compiles to broken JS in button handler
+## Request: `post to '/api/ask' with question` compiles to broken JS in button handler [RESOLVED ✅]
 **Priority:** HIGH
 **Target:** JS
 **App:** Any app making API calls from a button click
@@ -838,8 +998,6 @@ edit_file(filename, action='read')  → read current content
 **Workaround used:** Read full file → reconstruct → write entire file back. Caused two data loss incidents.
 **Impact:** HIGH — primary mechanism for agent to communicate findings to compiler team. Data loss here means bugs go unreported.
 
-## Request: edit_file tool confirmed working ✅
-
 ---
 
 ## Request: Workflow returns no output — `run workflow` result is lost
@@ -963,7 +1121,7 @@ display workflow status
 **Error hit:** No error — feature missing
 **Impact:** MEDIUM — workflows feel like black boxes to users. Multi-step pipelines need progress indicators.
 
-## Request: Policy guards leak into frontend _recompute()
+## Request: Policy guards leak into frontend _recompute() [RESOLVED ✅]
 **Priority:** HIGH
 **Target:** JS
 **App:** Policy test app with `block schema changes`, `protect tables`, `block prompt injection`
@@ -1027,7 +1185,7 @@ This is in the **browser bundle** — `db` does not exist client-side. The guard
 **Workaround used:** None — security issue, guards can be bypassed by anyone with browser devtools
 **Impact:** HIGH — security vulnerability. Policy guards are ineffective and expose enforcement logic to end users.
 
-## Request: Policy guards re-registered on every _recompute() call
+## Request: Policy guards re-registered on every _recompute() call [RESOLVED ✅]
 **Priority:** HIGH
 **Target:** JS
 **App:** Policy test app
@@ -1929,3 +2087,799 @@ with smtplib.SMTP(os.environ['SMTP_HOST']) as s:
 # Actual: 201 OK returned but zero email activity — silently dropped
 ```
 **Impact:** High — Python email is a silent failure. Worse than JS (which at least throws). Any notification system, contact form, or alert built on Python backend silently does nothing.
+
+---
+
+## Request: [PYTHON] External API — `httpx` not imported, query param dropped
+
+**App:** Any Python backend that calls an external API
+**What I needed:** `fetch from 'https://...' + variable` to compile to a working httpx call with the full URL
+**Priority:** 🔴 TIER 1
+
+**Steps to reproduce:**
+```clear
+build for python backend
+
+when user calls POST /api/search sending data:
+  response = fetch from 'https://api.example.com/search?q=' + data's query
+  send back response
+```
+
+**Real compiled output (verbatim):**
+```python
+async with httpx.AsyncClient(timeout=10) as _client:
+    _r = await _client.get('https://api.example.com/search?q=')  # ← query param DROPPED
+    response = _r.json()
+```
+
+Note: `import httpx` is **never emitted** anywhere in the compiled file.
+
+**Expected:** `import httpx` at top, full URL with concatenated param
+**Actual:** `NameError: name 'httpx' is not defined` on first request. Also the `+ data's query` concatenation is silently dropped — URL is always just the base string.
+
+**Failing test:**
+```python
+# paste compiled output, run with: uvicorn main:app
+# POST /api/search with {"query": "hello"}
+# Expected: external API called with ?q=hello, result returned
+# Actual: NameError: name 'httpx' is not defined
+```
+
+**Workaround used:** None — Python external API calls are completely broken
+**Error hit:** `NameError: name 'httpx' is not defined` at runtime
+**Impact:** High — any Python app needing external data is blocked
+
+---
+
+## Request: [PYTHON] Charts — `as bar chart` directive silently dropped
+
+**App:** Any Python app with data visualization
+**What I needed:** `send back data as bar chart` to return a chart (image, SVG, or Chart.js config)
+**Priority:** 🟠 TIER 2
+
+**Steps to reproduce:**
+```clear
+build for python backend
+
+when user calls GET /api/stats:
+  data = [10, 20, 30, 40, 50]
+  send back data as bar chart
+```
+
+**Real compiled output (verbatim):**
+```python
+# clear:4
+data = [10, 20, 30, 40, 50]
+# clear:5
+return data
+```
+
+`as bar chart` is completely silently dropped. Returns raw JSON array.
+No matplotlib, no plotly, no base64 image, no Chart.js config.
+
+**Expected:** Some chart representation — even a Chart.js config JSON would work
+**Actual:** Raw array `[10, 20, 30, 40, 50]` returned. No chart whatsoever.
+
+**Failing test:**
+```python
+# GET /api/stats
+# Expected: chart data structure (image bytes, SVG, or Chart.js config)
+# Actual: [10, 20, 30, 40, 50] — just the raw array, no chart
+```
+
+**Workaround used:** None
+**Error hit:** No error — silently wrong
+**Impact:** Medium — charts completely missing from Python backend
+
+---
+
+## Request: [PYTHON] DB relationships — `belongs to` and `with Table` JOIN ignored
+
+**App:** Any Python app with related tables
+**What I needed:** `customer belongs to Customers` to create a foreign key, `get all Orders with Customers` to JOIN
+**Priority:** 🟠 TIER 2
+
+**Steps to reproduce:**
+```clear
+build for python backend
+database is local memory
+
+create a Customers table:
+  name, required
+  email, required
+
+create an Orders table:
+  item, required
+  amount, required
+  customer belongs to Customers
+
+when user calls GET /api/orders:
+  orders = get all Orders with Customers
+  send back orders
+```
+
+**Real compiled output (verbatim):**
+```python
+# Schema — belongs to becomes plain TEXT, no REFERENCES:
+db.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, item TEXT NOT NULL, amount TEXT NOT NULL, customer TEXT)")
+
+# Endpoint — WITH clause completely ignored:
+orders = db.query("orders")   # ← no JOIN, no customer data
+return orders
+```
+
+**Expected:**
+```python
+db.execute("CREATE TABLE IF NOT EXISTS orders (..., customer_id INTEGER REFERENCES customers(id))")
+# JOIN:
+orders = db.query_join("orders", "customers", on="customer_id")
+```
+
+**Actual:** `belongs to` → plain `TEXT` column. `with Customers` → silently dropped. Returns flat orders with no customer data.
+
+**Failing test:**
+```python
+# POST /api/customers with {"name": "Alice", "email": "a@b.com"} → id: 1
+# POST /api/orders with {"item": "Widget", "amount": 10, "customer_id": 1}
+# GET /api/orders
+# Expected: [{"item": "Widget", "amount": 10, "customer": {"name": "Alice", "email": "a@b.com"}}]
+# Actual: [{"item": "Widget", "amount": 10, "customer": null}]
+```
+
+**Workaround used:** None — relationships completely non-functional in Python
+**Error hit:** No error — silently wrong
+**Impact:** High — any relational data model is broken
+
+## Request: Auth login command not recognized as built-in
+**Priority:** Tier 1 — Blocker
+**App:** Any app with user authentication
+**What I needed:** `login with data's email and data's password` to compile as a built-in auth command
+**Proposed syntax:**
+```clear
+when user calls POST /api/login sending data:
+  login with data's email and data's password
+  send back token
+```
+**Workaround used:** None — feature is blocked. Cannot build login flow.
+**Real compiled output:**
+```
+ERROR line 9: You used 'login' on line 9 but it hasn't been created yet.
+ERROR line 10: You used 'token' on line 10 but it hasn't been created yet.
+```
+**Expected:** Compiler recognizes `login` as a built-in auth command, compiles to bcrypt password check + JWT token generation
+**Actual:** Compiler treats `login` as an undefined variable. Throws two errors. App does not compile at all.
+**Failing test:**
+```clear
+when user calls POST /api/login sending data:
+  login with data's email and data's password
+  send back token
+```
+Expected: compiles to JWT auth flow
+Got: compile errors — `login` and `token` not defined
+**Impact:** High — every app requiring user login is completely blocked
+
+## Request: `needs login` on page does nothing — no auth guard
+**Priority:** Tier 1 — Blocker
+**App:** Any multi-page app with protected routes
+**What I needed:** `needs login` on a page to redirect unauthenticated users to login page
+**Proposed syntax:**
+```clear
+page 'Dashboard' at '/dashboard':
+  needs login
+  heading 'Welcome'
+```
+**Workaround used:** None — feature is completely missing
+**Real compiled output:**
+```javascript
+// Page: Protected
+document.title = "Protected";
+
+// Page: Login
+document.title = "Login";
+```
+`needs login` compiles to nothing. No token check. No redirect. No guard of any kind.
+
+**Additional bugs found:**
+1. Hash routing used (`location.hash`) — `/protected` is actually `/#/protected`, trivially bypassed
+2. Protected page content (`Secret Page`, `You are logged in`) is visible in HTML source even when "hidden" — `display:none` is not security
+3. Both pages rendered in same HTML file — all content accessible via DevTools
+
+**Expected:** JS checks for auth token in localStorage/cookie, redirects to login page if missing
+**Actual:** Zero auth enforcement on frontend pages
+**Failing test:**
+```clear
+page 'Protected' at '/protected':
+  needs login
+  heading 'Secret Page'
+```
+Expected: compiles to token check + redirect if not authenticated
+Got: `document.title = "Protected"` — nothing else
+**Impact:** High — any app with user accounts has zero frontend security
+
+
+
+
+
+## Bug: Tabs — _switchTab not defined
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+page 'App' at '/':
+  tabs 'Main':
+    tab 'Profile':
+      text 'Profile content'
+    tab 'Settings':
+      text 'Settings content'
+```
+**Compiled output:**
+```html
+<div class="tabs tabs-bordered" id="tabs_Main">
+  <button class="tab" onclick="_switchTab('Main', 'Profile')">Profile</button>
+  <button class="tab" onclick="_switchTab('Main', 'Settings')">Settings</button>
+</div>
+```
+**Bug:** `_switchTab` is never defined anywhere in the compiled JS. Clicking any tab throws `ReferenceError: _switchTab is not defined`.
+**Failing test:** Click any tab → `ReferenceError: _switchTab is not defined`
+**Expected:** Active tab content shows, inactive tab content hides. `_switchTab` defined in runtime.
+
+## Bug: show/hide X — compiles to comment
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+button 'Toggle':
+  show panel
+  hide warning
+```
+**Compiled output:**
+```javascript
+// show panel
+// hide warning
+```
+**Bug:** Both compile to comments. No `document.getElementById('panel').style.display`, no CSS class toggle, no DOM manipulation whatsoever.
+**Failing test:** Click Toggle button → nothing happens visually
+**Expected:** `panel` element becomes visible, `warning` element becomes hidden.
+
+## Bug: open modal / close modal — compiles to comment
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+button 'Delete':
+  open modal 'Confirm'
+modal 'Confirm':
+  text 'Are you sure?'
+  button 'Yes':
+    close modal 'Confirm'
+```
+**Compiled output:**
+```javascript
+// open modal 'Confirm'
+// close modal 'Confirm'
+```
+**Bug:** Both compile to comments. No `document.getElementById('modal_Confirm').showModal()`, no DaisyUI modal trigger.
+**Failing test:** Click Delete → nothing happens. Modal never opens.
+**Expected:** DaisyUI dialog opens/closes correctly.
+
+## Bug: toast notifications — compiles to comment
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+button 'Save':
+  post to '/api/items'
+  toast 'Saved successfully'
+```
+**Compiled output:**
+```javascript
+// toast 'Saved successfully'
+```
+**Bug:** Compiles to comment. No DaisyUI toast element created, no notification shown.
+**Failing test:** Click Save → no toast appears
+**Expected:** DaisyUI toast notification appears briefly then disappears.
+
+## Bug: copy to clipboard — compiles to undefined console.log
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+button 'Copy':
+  copy link to clipboard
+```
+**Compiled output:**
+```javascript
+console.log(clipboard)
+```
+**Bug:** `clipboard` is undefined. No `navigator.clipboard.writeText()`. Throws `ReferenceError` in strict mode.
+**Failing test:** Click Copy → `ReferenceError: clipboard is not defined`
+**Expected:** `navigator.clipboard.writeText(_state.link)` called, text copied.
+
+## Bug: download as file — compiles to undefined console.log
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+button 'Export':
+  download items as file
+```
+**Compiled output:**
+```javascript
+console.log(download)
+```
+**Bug:** `download` is undefined. No `Blob`, no `URL.createObjectURL`, no `<a>` click trigger.
+**Failing test:** Click Export → `ReferenceError: download is not defined`
+**Expected:** File download triggered via Blob URL.
+
+## Bug: display as currency — no formatting
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display price as currency
+```
+**Compiled output:**
+```javascript
+document.getElementById('output_price_value').textContent = String(_state.price);
+```
+**Bug:** Raw number. No `toLocaleString('en-US', { style: 'currency', currency: 'USD' })`. `9.99` displays as `9.99` not `$9.99`.
+**Failing test:** `price = 9.99` → displays `9.99` not `$9.99`
+**Expected:** `$9.99` with proper locale formatting.
+
+## Bug: display as percentage — no formatting
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display score as percentage
+```
+**Compiled output:**
+```javascript
+document.getElementById('output_score_value').textContent = String(_state.score);
+```
+**Bug:** Raw number. No `%` suffix, no `* 100` if decimal. `0.85` displays as `0.85` not `85%`.
+**Failing test:** `score = 0.85` → displays `0.85` not `85%`
+**Expected:** `85%` with proper formatting.
+
+## Bug: display as date — no formatting
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display created_at as date
+```
+**Compiled output:**
+```javascript
+document.getElementById('output_created_at_value').textContent = String(_state.created_at);
+```
+**Bug:** Raw string. No `new Date()`, no `.toLocaleDateString()`. ISO string `2024-01-15T10:30:00Z` displays as-is.
+**Failing test:** `created_at = '2024-01-15T10:30:00Z'` → displays raw ISO string not `January 15, 2024`
+**Expected:** Human readable date via `toLocaleDateString()`.
+
+## Bug: display as json — shows [object Object]
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display data as json
+```
+**Compiled output:**
+```javascript
+document.getElementById('output_data_value').textContent = String(_state.data);
+```
+**Bug:** `String()` on object = `[object Object]`. Should be `JSON.stringify(_state.data, null, 2)`.
+**Failing test:** `data = { name: 'test' }` → displays `[object Object]`
+**Expected:** Pretty-printed JSON in a `<pre>` block.
+
+## Bug: display as gallery — stat card instead of image grid
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display photos as gallery
+```
+**Compiled output:**
+```javascript
+document.getElementById('output_photos_value').textContent = String(_state.photos);
+```
+**Bug:** Stat card widget. `String()` on array of objects = `[object Object],[object Object]`. No image grid, no `<img>` tags.
+**Expected:** CSS grid of `<img>` elements, one per item in the array.
+
+## Bug: display as map — empty div, no map library
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display location as map
+```
+**Compiled output:**
+```html
+<div class="bg-base-200 rounded-xl" id="map_location"></div>
+```
+**Bug:** Empty div. No Leaflet, no Google Maps, no MapBox import. Nothing rendered inside.
+**Expected:** Map rendered via a library (Leaflet is free/open). At minimum a placeholder with instructions to add API key.
+
+## Bug: display as calendar — stat card instead of calendar UI
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display events as calendar
+```
+**Compiled output:**
+```javascript
+document.getElementById('output_events_value').textContent = String(_state.events);
+```
+**Bug:** Same stat card pattern. No FullCalendar, no date grid. Raw `[object Object]` string.
+**Expected:** Calendar grid UI, events mapped to dates.
+
+## Bug: display as QR code — stat card instead of QR image
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display url as QR code
+```
+**Compiled output:**
+```javascript
+document.getElementById('output_url_value').textContent = String(_state.url);
+```
+**Bug:** Stat card showing raw URL string. No QR library (qrcode.js etc), no canvas rendering.
+**Expected:** QR code image generated from the URL value.
+
+## Bug: video/audio player — stat card instead of media element
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+display video as player
+display audio as player
+```
+**Compiled output:**
+```javascript
+document.getElementById('output_video_value').textContent = String(_state.video);
+document.getElementById('output_audio_value').textContent = String(_state.audio);
+```
+**Bug:** Both compile to stat cards showing the raw URL string. No `<video>` or `<audio>` element generated.
+**Expected:**
+```html
+<video src="" controls class="w-full rounded-xl" id="player_video"></video>
+<audio src="" controls class="w-full" id="player_audio"></audio>
+```
+
+## Bug: show loading / hide loading — compiles to console.log(undefined)
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+show loading
+hide loading
+```
+**Compiled output:**
+```javascript
+console.log(loading)
+console.log(loading)
+```
+**Bug:** `loading` is undefined. No spinner element, no CSS class toggle, no DOM manipulation.
+**Failing test:** `ReferenceError: loading is not defined`
+**Expected:** DaisyUI loading spinner shown/hidden via display toggle.
+
+## Bug: debounce on input — fires every keystroke
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+on input search with debounce 300ms
+```
+**Compiled output:**
+```javascript
+document.getElementById('input_Query').addEventListener('input', async (e) => {
+  _state.query = e.target.value;
+  _recompute();
+});
+```
+**Bug:** No debounce wrapper. Every single keystroke fires the handler immediately. On a search endpoint this means an API call per character typed.
+**Expected:**
+```javascript
+let _debounce_timer;
+document.getElementById('input_Query').addEventListener('input', async (e) => {
+  _state.query = e.target.value;
+  clearTimeout(_debounce_timer);
+  _debounce_timer = setTimeout(async () => {
+    // handler body
+  }, 300);
+});
+```
+
+## Bug: throttle on scroll — fires every event
+**Target:** JS frontend
+**Tier:** 2
+**Clear source:**
+```
+on scroll save position with throttle 100ms
+```
+**Compiled output:**
+```javascript
+window.addEventListener('scroll', async () => {
+  _state.position = window.scrollY;
+  _recompute();
+});
+```
+**Bug:** No throttle. Every scroll pixel fires handler. Same root cause as debounce — timing wrapper not emitted.
+**Expected:** Throttle wrapper limiting handler to max once per 100ms.
+
+## Bug: Agent multi-turn memory wiped on every request
+**Target:** JS backend
+**Tier:** 2
+**Clear source:**
+```
+agent 'Chat' receives question:
+  remember conversation context
+  response = ask claude 'You are a helpful assistant.' with question
+  send back response
+```
+**Compiled output:**
+```javascript
+async function agent_chat(question) {
+  const _history = [];   // ← declared INSIDE function — wiped on every call
+  _history.push({ role: 'user', content: question });
+  const response = await _askAI('You are a helpful assistant.', _history);
+  _history.push({ role: 'assistant', content: response });
+  return response;
+}
+```
+**Bug:** `_history` is declared inside the function body. Every API call reinitializes it to `[]`. Multi-turn context is completely lost between requests.
+**Expected:** `_history` stored outside the handler — in a Map keyed by session ID, or in the DB.
+
+## Bug: Agent RAG (knows about) — compiles to comment
+**Target:** JS backend
+**Tier:** 2
+**Clear source:**
+```
+agent 'Support' receives question:
+  knows about: Products, FAQ
+  response = ask claude 'You are support.' with question
+  send back response
+```
+**Compiled output:**
+```javascript
+async function agent_support(question) {
+  // knows about: Products, FAQ
+  const response = await _askAI('You are support.', question);
+  return response;
+}
+```
+**Bug:** `knows about` compiles to a comment. No vector search, no embedding lookup, no DB query injected into the prompt. RAG is completely non-functional.
+**Expected:** Before calling Claude, query relevant records from Products and FAQ tables, inject as context into the system prompt.
+
+## Bug: Agent tool use (can use) — compiles to comment
+**Target:** JS backend
+**Tier:** 2
+**Clear source:**
+```
+agent 'Analyst' receives question:
+  can use: calculate_price, check_inventory
+  response = ask claude 'You are an analyst.' with question
+  send back response
+```
+**Compiled output:**
+```javascript
+async function agent_analyst(question) {
+  // can use: calculate_price, check_inventory
+  const response = await _askAI('You are an analyst.', question);
+  return response;
+}
+```
+**Bug:** `can use` compiles to a comment. No Anthropic tool_use format, no function binding, no tool schema passed to Claude.
+**Expected:** Tools passed as `tools` array in Anthropic API call. Claude can call them and results fed back.
+
+## Bug: Agent guardrails (must not) — compiles to comment
+**Target:** JS backend
+**Tier:** 2
+**Clear source:**
+```
+agent 'Assistant' receives question:
+  must not: delete records, access users
+  response = ask claude 'You are helpful.' with question
+  send back response
+```
+**Compiled output:**
+```javascript
+async function agent_assistant(question) {
+  // must not: delete records, access users
+  const response = await _askAI('You are helpful.', question);
+  return response;
+}
+```
+**Bug:** Guardrails compile to a comment. No enforcement in prompt, no output validation, nothing.
+**Expected:** Guardrails injected into system prompt as constraints, and/or output checked against forbidden patterns.
+
+## Bug: Python agent structured output — _ask_ai never defined
+**Target:** Python backend
+**Tier:** 2
+**Clear source:**
+```
+agent 'Classifier' receives text:
+  result = ask claude 'Classify this' with text returning JSON text:
+    category
+    confidence (number)
+  send back result
+```
+**Compiled output:**
+```python
+async def agent_classifier(text):
+  _schema = {'category': {'type': 'string'}, 'confidence': {'type': 'number'}}
+  response = await _ask_ai('Classify this', messages, schema=_schema)
+  return response
+```
+**Bug:** `_ask_ai` is never defined in the compiled Python output. Only `_ask_ai_stream` exists. Throws `NameError: name '_ask_ai' is not defined` at runtime.
+**Expected:** `_ask_ai` helper defined for non-streaming calls with schema support.
+
+## Bug: Python full-stack — no static file serving
+**Target:** Python backend
+**Tier:** 1
+**Clear source:**
+```
+build for web and python backend
+
+page 'App' at '/':
+  heading 'Hello'
+```
+**Compiled output:**
+```python
+from fastapi import FastAPI
+app = FastAPI()
+# API endpoints only — NO static file routes
+# NO app.mount("/", StaticFiles(...))
+# NO route for "/"
+```
+**Bug:** Python full-stack compiles API endpoints but generates no HTML and no static file serving. Frontend is completely unreachable. `GET /` returns 404.
+**Expected:**
+```python
+from fastapi.staticfiles import StaticFiles
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+```
+Plus compiled HTML written to `static/index.html`.
+
+## Bug: CORS headers missing in JS backend
+**Target:** JS backend
+**Tier:** 2
+**Clear source:**
+```
+build for web and javascript backend
+```
+**Compiled output:**
+```javascript
+const express = require('express');
+app.use(express.json());
+// NO cors() middleware
+// NO Access-Control-Allow-Origin header
+```
+**Bug:** Zero CORS headers. Any frontend on a different origin (localhost:5173 calling localhost:3000, or any deployed frontend) gets blocked by browser CORS policy.
+**Expected:** `const cors = require('cors'); app.use(cors());` emitted by default, or at minimum when `build for web and javascript backend` is used.
+
+## Bug: Cookies broken — no cookie-parser (JS) / no Response import (Python)
+**Target:** Both
+**Tier:** 2
+**Clear source:**
+```
+set cookie 'session' to token
+get cookie 'session'
+```
+**JS compiled output:**
+```javascript
+res.cookie('session', _state.token);
+const token = req.cookies['session'];
+// NO require('cookie-parser')
+// NO app.use(cookieParser())
+```
+**Python compiled output:**
+```python
+response.set_cookie('session', _state['token'])
+# 'response' object doesn't exist — FastAPI returns values, not mutates response
+# NO from fastapi import Response
+```
+**Bug:** JS: `req.cookies` is always `undefined` without `cookie-parser` middleware. Python: `response` variable doesn't exist in FastAPI route handlers.
+**Expected:** JS adds `cookie-parser`, Python uses `Response` object properly.
+
+## Bug: Server-side data validation compiles to comment
+**Target:** Both
+**Tier:** 2
+**Clear source:**
+```
+when user calls POST /api/items sending data:
+  validate data has email, name
+  saved = save data to Items
+  send back saved
+```
+**Compiled output:**
+```javascript
+// validate data has email, name
+```
+**Bug:** Validation compiles to a comment. No `if (!data.email) return res.status(400).json({error: 'email required'})`. Malformed requests silently accepted.
+**Expected:** Each required field checked, 400 returned if missing.
+
+## Bug: transform data compiles to comment
+**Target:** Both
+**Tier:** 2
+**Clear source:**
+```
+when user calls GET /api/items:
+  items = get all Items
+  transform items to include only name, price
+  send back items
+```
+**Compiled output:**
+```javascript
+// transform items to include only name, price
+```
+**Bug:** Comment. No `.map(item => ({ name: item.name, price: item.price }))`. All fields returned.
+**Expected:** Field projection applied before send.
+
+## Bug: Aggregate functions return raw array
+**Target:** JS backend
+**Tier:** 2
+**Clear source:**
+```
+total = sum of prices in Products
+average = avg of prices in Products
+```
+**Compiled output:**
+```javascript
+total = _state.prices;       // ← just assigns the array
+average = _state.prices;     // ← same
+```
+**Bug:** No `.reduce()`, no sum or average calculation. Both variables get the raw array assigned.
+**Expected:**
+```javascript
+total = (_state.prices || []).reduce((a, b) => a + b, 0);
+average = total / (_state.prices || []).length;
+```
+
+## Bug: Full text search uses exact match instead of LIKE/FTS
+**Target:** JS backend
+**Tier:** 2
+**Clear source:**
+```
+results = search Todos for query
+```
+**Compiled output:**
+```javascript
+results = db.query('todos', { query: _state.query });
+```
+**Bug:** Passes `query` as an exact match filter field. Only returns records where a column literally named `query` equals the search term. Not a text search at all.
+**Expected:** Search across all text fields using LIKE or full-text search index.
+
+## Bug: upsert compiles same as regular save — no conflict detection
+**Target:** JS backend
+**Tier:** 2
+**Clear source:**
+```
+upsert data to Products
+```
+**Compiled output:**
+```javascript
+db.save('products', data);
+```
+**Bug:** Identical to regular `save`. No conflict detection, no update-if-exists logic. Always inserts a new record.
+**Expected:** Check if record with same id (or unique key) exists — update if yes, insert if no.
+
+## Bug: DB transactions compile to comments
+**Target:** Both
+**Tier:** 2
+**Clear source:**
+```
+begin transaction
+  save data to Orders
+  save data to Inventory
+commit transaction
+```
+**Compiled output:**
+```javascript
+// begin transaction
+db.save('orders', data);
+db.save('inventory', data);
+// commit transaction
+```
+**Bug:** Transaction markers compile to comments. No `db.transaction()`, no rollback if second save fails. Two saves can partially succeed.
+**Expected:** Atomic transaction — both succeed or both rolled back.

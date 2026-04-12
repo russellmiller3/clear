@@ -21,7 +21,7 @@ describe('Synonym Table', () => {
   });
 
   it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.14.0');
+    expect(SYNONYM_VERSION).toBe('0.15.0');
   });
 
   it('maps "create" to canonical "set"', () => {
@@ -1958,8 +1958,8 @@ describe('display', () => {
   it('compiles to JS with dollar formatting', () => {
     const source = 'display total as dollars called "Total"';
     const result = compileProgram(source, { target: 'web' });
-    expect(result.javascript).toContain('toFixed(2)');
-    expect(result.javascript).toContain("'$'");
+    expect(result.javascript).toContain('toLocaleString');
+    expect(result.javascript).toContain('currency');
   });
 });
 
@@ -2425,6 +2425,25 @@ page "Counter":
     expect(result.javascript).toContain('addEventListener');
     expect(result.javascript).toContain('click');
   });
+
+  it('post to in button handler compiles to async fetch POST', () => {
+    const source = `build for web and javascript backend
+page 'Test' at '/':
+  'Question' as text input
+  button 'Ask':
+    result = post to '/api/ask' with question`;
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript;
+    // Handler must be async
+    expect(js).toContain('async function()');
+    // Proper fetch with POST method
+    expect(js).toContain('fetch("/api/ask"');
+    expect(js).toContain("method: 'POST'");
+    expect(js).toContain('JSON.stringify');
+    // Field sent from state
+    expect(js).toContain('question: _state.question');
+  });
 });
 
 // =============================================================================
@@ -2706,7 +2725,8 @@ page "Invoice Calculator":
     // Script with reactive code
     expect(result.html).toContain('<script>');
     expect(result.html).toContain('_recompute');
-    expect(result.html).toContain('_clear_format');
+    // Dollar formatting uses toLocaleString for proper currency display
+    expect(result.javascript).toContain('toLocaleString');
 
     // JS checks
     expect(result.javascript).toContain('function _recompute');
@@ -4078,7 +4098,8 @@ describe('Compiler - requires auth', () => {
 
   it('compiles to Python auth guard', () => {
     const result = compileProgram("target: python backend\non GET '/users':\n  requires auth\n  send back 'ok'");
-    expect(result.python).toContain('request.user');
+    expect(result.python).toContain('_JWT_SECRET');
+    expect(result.python).toContain('Bearer');
     expect(result.python).toContain('401');
   });
 });
@@ -4874,7 +4895,7 @@ describe('Compiler - background', () => {
     const result = compileProgram("target: python backend\nbackground 'send-emails':\n  runs every 1 hour\n  show 'sending'");
     expect(result.python).toContain('asyncio');
     expect(result.python).toContain('job_send_emails');
-    expect(result.python).toContain('on_event("startup")');
+    expect(result.python).toContain('lifespan');
   });
 });
 
@@ -9858,16 +9879,16 @@ describe('Agent primitives - compiler', () => {
     expect(result.javascript).toContain('return data');
   });
 
-  it('compiles ask ai to _askAIStream call (streaming default)', () => {
+  it('compiles ask ai to _askAI call (non-streaming default)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai 'Summarize' with d\n  send back answer");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream("Summarize"');
+    expect(result.javascript).toContain('_askAI("Summarize"');
   });
 
-  it('compiles ask ai without context (streaming default)', () => {
+  it('compiles ask ai without context (non-streaming default)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai 'Hello'\n  send back answer");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream("Hello"');
+    expect(result.javascript).toContain('_askAI("Hello"');
   });
 
   it('compiles call agent to function call', () => {
@@ -9876,9 +9897,9 @@ describe('Agent primitives - compiler', () => {
     expect(result.javascript).toContain('agent_lead_scorer(');
   });
 
-  it('includes _askAIStream utility when ask ai is used (streaming default)', () => {
+  it('includes _askAI utility when ask ai is used (non-streaming default)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai 'Hi' with d\n  send back answer");
-    expect(result.javascript).toContain('async function* _askAIStream(');
+    expect(result.javascript).toContain('async function _askAI(');
     expect(result.javascript).toContain('CLEAR_AI_KEY');
   });
 
@@ -9904,6 +9925,32 @@ describe('Agent primitives - compiler', () => {
     expect(agentBody).toContain('throw new Error("Name required")');
     expect(agentBody).not.toContain('res.status');
   });
+
+  it('agent is regular async function, not generator (ask agent returns result, not {})', () => {
+    const result = compileProgram("build for javascript backend\nagent 'Helper' receives question:\n  response = ask claude 'You are helpful.' with question\n  send back response\nwhen user calls POST /api/ask sending data:\n  result = ask agent 'Helper' with data's question\n  send back result");
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript;
+    // Agent must be regular async function (not generator) so await works
+    expect(js).toContain('async function agent_helper(question)');
+    expect(js).not.toContain('async function* agent_helper');
+    // send back compiles to return (not yield)
+    expect(js).toContain('return response;');
+    // ask agent compiles to await (which works on async function, not on generator)
+    expect(js).toContain('await agent_helper(');
+  });
+
+  it('agent code does not leak to frontend (server-only)', () => {
+    const result = compileProgram("build for web and javascript backend\ndatabase is local memory\nagent 'Helper' receives question:\n  response = ask claude 'You are helpful.' with question\n  send back response\nwhen user calls POST /api/ask sending data:\n  result = ask agent 'Helper' with data's question\n  send back result\npage 'Test' at '/':\n  heading 'Agent Test'\n  'Question' as text input\n  button 'Ask':\n    show 'asking'");
+    expect(result.errors).toHaveLength(0);
+    // Frontend must have zero agent code
+    expect(result.javascript).not.toContain('agent_helper');
+    expect(result.javascript).not.toContain('_askAI');
+    expect(result.javascript).not.toContain('_askAIStream');
+    expect(result.javascript).not.toContain('You are helpful');
+    // Server must have the agent
+    expect(result.serverJS).toContain('async function agent_helper');
+    expect(result.serverJS).toContain('return response;');
+  });
 });
 
 // =============================================================================
@@ -9919,7 +9966,7 @@ describe('Agent primitives - validator', () => {
   it('allows variable as ask ai prompt (for text blocks)', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  answer = ask ai d\n  send back answer");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream(d');
+    expect(result.javascript).toContain('_askAI(d');
   });
 
   it('errors when agent has no name', () => {
@@ -10181,27 +10228,27 @@ when user calls GET /api/leads:
 
   it('agent compiles to async function with guard', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function* agent_lead_scorer(lead)');
+    expect(js).toContain('async function agent_lead_scorer(lead)');
     expect(js).toContain('throw new Error("Company is required")');
   });
 
-  it('ask ai compiles to _askAIStream (streaming default)', () => {
+  it('ask ai compiles to _askAI (non-streaming default)', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('_askAIStream("Rate this company');
+    expect(js).toContain('_askAI("Rate this company');
     expect(js).toContain('lead?.company');
   });
 
-  it('includes _askAIStream utility with BYOK (streaming default)', () => {
+  it('includes _askAI utility with BYOK (non-streaming default)', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function* _askAIStream(');
+    expect(js).toContain('async function _askAI(');
     expect(js).toContain('ANTHROPIC_API_KEY');
     expect(js).toContain('anthropic');
   });
 
-  it('_askAIStream utility has error handling', () => {
+  it('_askAI utility has error handling', () => {
     const js = compileProgram(src).javascript;
     expect(js).toContain('if (!key) throw new Error');
-    expect(js).toContain('AI stream failed');
+    expect(js).toContain('AI request failed');
   });
 
   it('endpoint validates both required fields', () => {
@@ -10242,8 +10289,8 @@ when user calls POST /api/pipeline sending incoming:
   it('creates 3 separate async agent functions', () => {
     const js = compileProgram(src).javascript;
     expect(js).toContain('async function agent_validator(data)');
-    expect(js).toContain('async function* agent_enricher(data)');
-    expect(js).toContain('async function* agent_scorer(data)');
+    expect(js).toContain('async function agent_enricher(data)');
+    expect(js).toContain('async function agent_scorer(data)');
   });
 
   it('pipeline chains agents in order', () => {
@@ -10264,20 +10311,20 @@ when user calls POST /api/pipeline sending incoming:
     expect(valBody).toContain('throw new Error');
     expect(valBody).not.toContain('_askAI');
 
-    const enrStart = js.indexOf('async function* agent_enricher');
+    const enrStart = js.indexOf('async function agent_enricher');
     const enrEnd = js.indexOf('\n}', enrStart);
     const enrBody = js.substring(enrStart, enrEnd);
-    expect(enrBody).toContain('_askAIStream');
+    expect(enrBody).toContain('_askAI(');
 
-    const scrStart = js.indexOf('async function* agent_scorer');
+    const scrStart = js.indexOf('async function agent_scorer');
     const scrEnd = js.indexOf('\n}', scrStart);
     const scrBody = js.substring(scrStart, scrEnd);
-    expect(scrBody).toContain('_askAIStream');
+    expect(scrBody).toContain('_askAI(');
   });
 
-  it('includes _askAIStream utility exactly once', () => {
+  it('includes _askAI utility exactly once', () => {
     const js = compileProgram(src).javascript;
-    const matches = js.match(/async function\* _askAIStream\(/g);
+    const matches = js.match(/async function _askAI\(/g);
     expect(matches).toHaveLength(1);
   });
 });
@@ -10430,10 +10477,10 @@ when user calls GET /api/tickets:
 
   it('agent has conditional logic after ask ai', () => {
     const js = compileProgram(src).javascript;
-    const agentStart = js.indexOf('async function* agent_classifier');
+    const agentStart = js.indexOf('async function agent_classifier');
     const agentEnd = js.indexOf('\n}', agentStart);
     const agentBody = js.substring(agentStart, agentEnd);
-    expect(agentBody).toContain('_askAIStream(');
+    expect(agentBody).toContain('_askAI(');
     expect(agentBody).toContain('ticket.category');
     expect(agentBody).toContain('"billing"');
     expect(agentBody).toContain('"high"');
@@ -10473,7 +10520,7 @@ when user calls POST /api/moderate sending post_data:
 
   it('agent and endpoint are both async', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function* agent_moderator(post)');
+    expect(js).toContain('async function agent_moderator(post)');
     expect(js).toContain('await agent_moderator(post_data)');
   });
 
@@ -10537,18 +10584,18 @@ when user calls GET /api/candidates:
 
   it('creates 3 agent functions', () => {
     const js = compileProgram(src).javascript;
-    expect(js).toContain('async function* agent_screener(candidate)');
-    expect(js).toContain('async function* agent_scorer(candidate)');
-    expect(js).toContain('async function* agent_summarizer(candidate)');
+    expect(js).toContain('async function agent_screener(candidate)');
+    expect(js).toContain('async function agent_scorer(candidate)');
+    expect(js).toContain('async function agent_summarizer(candidate)');
   });
 
   it('screener has guard + ask ai', () => {
     const js = compileProgram(src).javascript;
-    const start = js.indexOf('async function* agent_screener');
+    const start = js.indexOf('async function agent_screener');
     const end = js.indexOf('\n}', start);
     const body = js.substring(start, end);
     expect(body).toContain('throw new Error("Name is required")');
-    expect(body).toContain('_askAIStream(');
+    expect(body).toContain('_askAI(');
     expect(body).toContain('candidate.screening_pass');
   });
 
@@ -10568,9 +10615,9 @@ when user calls GET /api/candidates:
     expect(js).toContain('_pick(summarized');
   });
 
-  it('includes _askAIStream utility exactly once', () => {
+  it('includes _askAI utility exactly once', () => {
     const js = compileProgram(src).javascript;
-    const matches = js.match(/async function\* _askAIStream\(/g);
+    const matches = js.match(/async function _askAI\(/g);
     expect(matches).toHaveLength(1);
   });
 });
@@ -10662,7 +10709,7 @@ describe('Explicit syntax: set X to ask ai', () => {
   it('compiles set X to ask ai', () => {
     const result = compileProgram("build for javascript backend\nagent 'T' receiving d:\n  set answer to ask ai 'Summarize' with d\n  send back answer");
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream("Summarize"');
+    expect(result.javascript).toContain('_askAI("Summarize"');
   });
 });
 
@@ -10927,8 +10974,8 @@ agent 'T' receiving d:
   send back answer`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    // Streams by default (no schema = text response)
-    expect(result.javascript).toContain('_askAIStream("Summarize", d');
+    // Non-streaming by default
+    expect(result.javascript).toContain('_askAI("Summarize", d');
   });
 });
 
@@ -10958,9 +11005,9 @@ when user calls POST /api/score sending lead_data:
   send back saved with success message`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('async function* agent_lead_scorer(lead)');
+    expect(result.javascript).toContain('async function agent_lead_scorer(lead)');
     expect(result.javascript).toContain('throw new Error("Company is required")');
-    expect(result.javascript).toContain('_askAIStream("Rate 1-10"');
+    expect(result.javascript).toContain('_askAI("Rate 1-10"');
     expect(result.javascript).toContain('agent_lead_scorer(lead_data)');
   });
 });
@@ -14704,7 +14751,7 @@ agent 'Helper' receiving data:
   send back answer`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.javascript).toContain('_askAIStream("Summarize this"');
+    expect(r.javascript).toContain('_askAI("Summarize this"');
   });
 
   it('ask ai still works as alias', () => {
@@ -14714,7 +14761,7 @@ agent 'Helper' receiving data:
   send back answer`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.javascript).toContain('_askAIStream("Summarize this"');
+    expect(r.javascript).toContain('_askAI("Summarize this"');
   });
 
   it('ask claude with model selection passes model to _askAI', () => {
@@ -16922,7 +16969,7 @@ agent 'Bot' receiving message:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).toContain('You are a helpful assistant');
-    expect(result.javascript).toContain('_askAIStream(prompt');
+    expect(result.javascript).toContain('_askAI(prompt');
   });
 
   it('text block with interpolation compiles', () => {
@@ -17203,15 +17250,15 @@ agent 'Streamer' receiving msg:
     expect(result.javascript).toContain('async function* _askAIStream');
   });
 
-  it('text agent defaults to streaming (_askAIStream)', () => {
+  it('text agent defaults to non-streaming (_askAI)', () => {
     const src = `build for javascript backend
 agent 'Bot' receiving msg:
   response = ask claude 'Help' with msg
   send back response`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream');
-    expect(result.javascript).toContain('async function*');
+    expect(result.javascript).toContain('_askAI(');
+    expect(result.javascript).not.toContain('async function*');
   });
 
   it('streaming agent compiles to async generator', () => {
@@ -17257,15 +17304,16 @@ agent 'Summarizer' receiving text:
     expect(result.javascript).not.toContain('async function*');
   });
 
-  it('default (no directive) is streaming for text agents', () => {
+  it('default (no directive) is non-streaming for agents', () => {
     const src = `build for javascript backend
 agent 'Bot' receiving msg:
   response = ask claude 'Help' with msg
   send back response`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('_askAIStream');
-    expect(result.javascript).toContain('async function*');
+    expect(result.javascript).not.toContain('_askAIStream');
+    expect(result.javascript).not.toContain('async function*');
+    expect(result.javascript).toContain('_askAI(');
   });
 });
 
@@ -17824,16 +17872,16 @@ workflow 'Router' with state:
 // =============================================================================
 
 describe('Python streaming agents', () => {
-  it('Python text agent uses _ask_ai_stream', () => {
+  it('Python text agent defaults to non-streaming (_ask_ai)', () => {
     const src = `build for python backend
 agent 'Chat' receiving msg:
   response = ask claude 'Help' with msg
   send back response`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.python).toContain('_ask_ai_stream(');
-    expect(result.python).toContain('async for _chunk in response');
-    expect(result.python).toContain('yield _chunk');
+    expect(result.python).toContain('_ask_ai(');
+    expect(result.python).not.toContain('_ask_ai_stream(');
+    expect(result.python).toContain('return response');
   });
 
   it('Python structured output agent does NOT stream', () => {
@@ -17851,7 +17899,7 @@ agent 'Classifier' receiving text:
     expect(agentFn).not.toContain('_ask_ai_stream(');
   });
 
-  it('Python agent with model uses _ask_ai_stream with model param', () => {
+  it('Python agent with model uses _ask_ai with model param', () => {
     const src = `build for python backend
 agent 'Bot' receiving msg:
   using 'claude-sonnet-4-6'
@@ -17859,11 +17907,11 @@ agent 'Bot' receiving msg:
   send back response`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.python).toContain('_ask_ai_stream(');
+    expect(result.python).toContain('_ask_ai(');
     expect(result.python).toContain('claude-sonnet-4-6');
   });
 
-  it('Python backend includes _ask_ai and _ask_ai_stream utility functions', () => {
+  it('Python backend includes _ask_ai utility function (non-streaming default)', () => {
     const src = `build for python backend
 agent 'Bot' receiving msg:
   response = ask claude 'Help' with msg
@@ -17871,7 +17919,7 @@ agent 'Bot' receiving msg:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('async def _ask_ai(');
-    expect(result.python).toContain('async def _ask_ai_stream(');
+    expect(result.python).not.toContain('async def _ask_ai_stream(');
     expect(result.python).toContain('import httpx');
   });
 });
@@ -17890,7 +17938,7 @@ workflow 'Support' with state:
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('async def workflow_support(state):');
     expect(result.python).toContain('_state = {');
-    expect(result.python).toContain("status: \"new\"");
+    expect(result.python).toContain('"status": "new"');
     expect(result.python).toContain('_state = await agent_triage_agent(_state)');
     expect(result.python).toContain('_state = await agent_resolution_agent(_state)');
     expect(result.python).toContain('return _state');
@@ -19142,7 +19190,7 @@ describe('cron — scheduled task blocks', () => {
     );
     expect(r.errors).toHaveLength(0);
     expect(r.python).toContain('asyncio.sleep(600)');
-    expect(r.python).toContain('@app.on_event("startup")');
+    expect(r.python).toContain('lifespan');
   });
 
   it('compiles every day at time to Python asyncio', () => {
@@ -19570,6 +19618,512 @@ button 'Reload':
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('location.reload()');
+  });
+});
+
+// ============================================================
+// T2 Bug Fixes — Batch 1
+// ============================================================
+
+describe('T2: hide element', () => {
+  it('hide X compiles to display:none', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Hide':
+    hide sidebar
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("style.display = 'none'");
+  });
+
+  it('hide loading compiles to loading overlay hide', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Done':
+    hide loading
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_loading_overlay');
+    expect(r.javascript).toContain("display = 'none'");
+  });
+});
+
+describe('T2: copy to clipboard', () => {
+  it('copy X to clipboard compiles to navigator.clipboard', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  'Code' as text input
+  button 'Copy':
+    copy code to clipboard
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('navigator.clipboard.writeText');
+  });
+});
+
+describe('T2: download as file', () => {
+  it('download X as filename compiles to Blob download', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Export':
+    download results as 'data.json'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('Blob');
+    expect(r.javascript).toContain('download');
+    expect(r.javascript).toContain('data.json');
+  });
+});
+
+describe('T2: show/hide loading', () => {
+  it('show loading compiles to loading overlay', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Load':
+    show loading
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_loading_overlay');
+    expect(r.javascript).toContain('loading-spinner');
+  });
+
+  it('show loading with custom message', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Load':
+    show loading 'Processing...'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('Processing...');
+  });
+});
+
+describe('T2: show alert/toast', () => {
+  it('show alert compiles to _toast not console.log', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Warn':
+    show alert 'Something happened'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_toast');
+    expect(r.javascript).not.toContain('console.log(alert)');
+  });
+
+  it('show toast with variant', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Err':
+    show toast 'Failed!' as error
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_toast');
+    expect(r.javascript).toContain('alert-error');
+  });
+
+  it('show notification compiles to _toast', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Notify':
+    show notification 'Saved!' as success
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_toast');
+  });
+});
+
+describe('T2: display as currency', () => {
+  it('display as currency uses toLocaleString', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  total = 42.5
+  display total as currency called 'Total'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('toLocaleString');
+    expect(r.javascript).toContain('currency');
+  });
+});
+
+describe('T2: display as percentage', () => {
+  it('display as percentage adds % suffix', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  rate = 0.85
+  display rate as percentage called 'Rate'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("toFixed");
+    expect(r.javascript).toContain("%");
+  });
+});
+
+describe('T2: display as date', () => {
+  it('display as date uses Date formatting', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  created = '2024-01-15'
+  display created as date called 'Created'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('toLocaleDateString');
+  });
+});
+
+describe('T2: display as json', () => {
+  it('display as json uses JSON.stringify', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  data = 'test'
+  display data as json called 'Debug'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('JSON.stringify');
+  });
+});
+
+describe('T2: display as list', () => {
+  it('display as list renders li elements not [object Object]', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  items = ['apple', 'banana']
+  display items as list called 'Fruits'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Should have list rendering logic in _recompute, not just textContent
+    const js = r.javascript;
+    expect(js).toContain('_list') ;
+  });
+});
+
+// T2 #26: display as gallery
+describe('Display as gallery', () => {
+  it('should render gallery grid with images', () => {
+    const src = `
+page 'Gallery' at '/':
+  photos = []
+  display photos as gallery called 'Photos'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_gallery');
+    expect(r.javascript).toContain('object-cover');
+    expect(r.html).toContain('_gallery');
+    expect(r.html).toContain('grid');
+  });
+});
+
+// T2 #27: display as map
+describe('Display as map', () => {
+  it('should render Leaflet map with markers', () => {
+    const src = `
+page 'Map' at '/':
+  locations = []
+  display locations as map called 'Locations'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_map');
+    expect(r.javascript).toContain('L.map');
+    expect(r.javascript).toContain('L.marker');
+    expect(r.html).toContain('_map');
+    expect(r.html).toContain('leaflet');
+  });
+});
+
+// T2 #28: display as calendar
+describe('Display as calendar', () => {
+  it('should render month calendar grid', () => {
+    const src = `
+page 'Calendar' at '/':
+  events = []
+  display events as calendar called 'Events'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_calendar');
+    expect(r.javascript).toContain('_daysInMonth');
+    expect(r.javascript).toContain('Sun');
+    expect(r.html).toContain('_calendar');
+  });
+});
+
+// T2 #29: display as qr
+describe('Display as QR code', () => {
+  it('should render QR code canvas', () => {
+    const src = `
+page 'QR' at '/':
+  url is 'https://example.com'
+  display url as qr called 'Link'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_qr');
+    expect(r.javascript).toContain('QRCode.toCanvas');
+    expect(r.html).toContain('_qr');
+    expect(r.html).toContain('qrcode');
+  });
+});
+
+// T2 #16: tab group inline onclick (no undefined _switchTab)
+describe('T2: tab group inline onclick', () => {
+  it('tab group HTML has inline onclick that switches tabs', () => {
+    const src = `
+page 'Tabs Test' at '/':
+  section 'Settings' as tabs:
+    tab 'General':
+      heading 'General Settings'
+    tab 'Advanced':
+      heading 'Advanced Settings'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Should have tab buttons with inline onclick — NOT a reference to _switchTab
+    expect(r.html).toContain('tab-active');
+    expect(r.html).toContain('tab-panel');
+    expect(r.html).toContain('onclick=');
+    expect(r.html).not.toContain('_switchTab');
+    // Both tab panels should exist
+    expect(r.html).toContain('tabpanel-general');
+    expect(r.html).toContain('tabpanel-advanced');
+    // Second tab panel should be hidden by default
+    expect(r.html).toContain("display:none");
+  });
+});
+
+// T2 #13: CRON/scheduled task error handling
+describe('T2: CRON scheduled task error handling', () => {
+  it('interval CRON wraps body in try/catch', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery 5 minutes:\n  show 'running cleanup'"
+    );
+    expect(r.errors).toHaveLength(0);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('try {');
+    expect(js).toContain('catch (_err)');
+    expect(js).toContain("console.error('Scheduled task error:'");
+  });
+
+  it('daily-at CRON wraps body in try/catch', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery day at 9am:\n  show 'morning report'"
+    );
+    expect(r.errors).toHaveLength(0);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('try {');
+    expect(js).toContain('catch (_err)');
+    expect(js).toContain("console.error('Scheduled task error:'");
+  });
+});
+
+// T2 #32-33: debounce on input change
+describe('T2: debounce on input change', () => {
+  it('when X changes after 300ms uses setTimeout/clearTimeout', () => {
+    const src = `
+page 'Search' at '/':
+  ask for search
+  results is 'none'
+  when search changes after 300ms:
+    results is 'searching...'
+  display results called 'Results'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('clearTimeout');
+    expect(r.javascript).toContain('setTimeout');
+    expect(r.javascript).toContain('300');
+    expect(r.javascript).toContain('_debounce_search');
+  });
+
+  it('when X changes without debounce does NOT use setTimeout', () => {
+    const src = `
+page 'Search' at '/':
+  ask for search
+  results is 'none'
+  when search changes:
+    results is 'updated'
+  display results called 'Results'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).not.toContain('clearTimeout');
+    expect(r.javascript).not.toContain('_debounce_search');
+  });
+});
+
+// T2 #30: video and audio player
+describe('T2: video and audio player', () => {
+  it('video compiles to <video> element with controls', () => {
+    const src = `
+page 'Media' at '/':
+  video 'https://example.com/video.mp4'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('<video');
+    expect(r.html).toContain('controls');
+    expect(r.html).toContain('https://example.com/video.mp4');
+  });
+
+  it('audio compiles to <audio> element with controls', () => {
+    const src = `
+page 'Music' at '/':
+  audio 'https://example.com/song.mp3'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('<audio');
+    expect(r.html).toContain('controls');
+    expect(r.html).toContain('https://example.com/song.mp3');
+  });
+
+  it('video player synonym also works', () => {
+    const src = `
+page 'Watch' at '/':
+  video player 'https://example.com/clip.mp4'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('<video');
+    expect(r.html).toContain('controls');
+  });
+
+  it('audio player synonym also works', () => {
+    const src = `
+page 'Listen' at '/':
+  audio player 'https://example.com/track.mp3'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('<audio');
+    expect(r.html).toContain('controls');
+  });
+});
+
+// T2 #15: multer at module scope
+describe('T2: multer at module scope', () => {
+  it('emits multer require at module scope not inside handler', () => {
+    const src = `target: backend
+
+on POST '/upload':
+  accept file:
+    max size is 5mb
+    allowed types are 'image/png', 'image/jpeg'
+  send back 'uploaded'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.serverJS || r.javascript;
+    // multer require should be at the top (module scope), not inside the handler
+    const multerRequireIdx = js.indexOf("require('multer')");
+    const appExpressIdx = js.indexOf("const app = express()");
+    expect(multerRequireIdx).toBeGreaterThan(-1);
+    expect(multerRequireIdx).toBeLessThan(appExpressIdx);
+    // The handler should NOT have its own require('multer')
+    const lines = js.split('\n');
+    const multerRequireCount = lines.filter(l => l.includes("require('multer')")).length;
+    expect(multerRequireCount).toBe(1);
+  });
+});
+
+// T2 #38: Python _ask_ai defined for standalone ask ai in endpoints
+describe('T2: Python _ask_ai for standalone ask ai', () => {
+  it('emits _ask_ai helper when ask ai is used in an endpoint', () => {
+    const src = `target: python backend
+
+on POST '/analyze':
+  result = ask ai 'Analyze this text'
+  send back result
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('async def _ask_ai(');
+    expect(r.python).toContain('ANTHROPIC_API_KEY');
+  });
+});
+
+// T2 #39: Python httpx import at module scope for external fetch
+describe('T2: Python httpx at module scope', () => {
+  it('emits import httpx at module scope for external fetch', () => {
+    const src = `target: python backend
+
+on GET '/weather':
+  data = fetch from 'https://api.weather.gov/points/37.7749,-122.4194'
+  send back data
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python;
+    // httpx should be imported at module scope (before app = FastAPI)
+    expect(py).toContain('import httpx');
+    const httpxIdx = py.indexOf('import httpx');
+    const appIdx = py.indexOf('app = FastAPI');
+    expect(httpxIdx).toBeLessThan(appIdx);
+    // No inline import httpx inside handler
+    const lines = py.split('\n');
+    const httpxImports = lines.filter(l => l.trim() === 'import httpx');
+    expect(httpxImports.length).toBe(1);
+  });
+});
+
+// T2 #14: Python cron uses lifespan, not deprecated @app.on_event
+describe('T2: Python cron uses lifespan', () => {
+  it('uses lifespan context manager instead of @app.on_event', () => {
+    const src = `build for python backend
+
+every 5 minutes:
+  show 'tick'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python;
+    // Should NOT use deprecated @app.on_event
+    expect(py).not.toContain('@app.on_event');
+    // Should use lifespan pattern
+    expect(py).toContain('_lifespan');
+    expect(py).toContain('asynccontextmanager');
+    expect(py).toContain('app = FastAPI(lifespan=_lifespan)');
+    expect(py).toContain('import asyncio');
+  });
+
+  it('daily cron also uses lifespan', () => {
+    const src = `build for python backend
+
+every day at 9am:
+  show 'morning'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).not.toContain('@app.on_event');
+    expect(r.python).toContain('_lifespan');
   });
 });
 
