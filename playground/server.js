@@ -1,5 +1,6 @@
 import express from 'express';
 import { compileProgram } from '../index.js';
+import { patch } from '../patch.js';
 import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -523,6 +524,32 @@ You can modify .clear files and requests.md. You can create new files of any all
       },
     },
   },
+  {
+    name: 'patch_code',
+    description: `Apply surgical edits to the Clear source without rewriting the whole file. Much better than edit_code write for small changes. Operations:
+- fix_line: replace a specific line. { op: 'fix_line', line: 7, replacement: "  send back user" }
+- insert_line: insert at position. { op: 'insert_line', line: 5, content: "  validate data:" }
+- remove_line: delete a line. { op: 'remove_line', line: 10 }
+- add_endpoint: append endpoint. { op: 'add_endpoint', method: 'GET', path: '/api/health', body: "send back 'OK'" }
+- add_field: add field to table. { op: 'add_field', table: 'Users', field: 'email', constraints: 'required, unique' }
+- remove_field: remove field. { op: 'remove_field', table: 'Users', field: 'email' }
+- add_test: append test block. { op: 'add_test', name: 'health check', body: "call GET /api/health\\nexpect response status 200" }
+- add_validation: add rules. { op: 'add_validation', endpoint: 'POST /api/users', rules: "name is text, required" }
+- add_table: add table. { op: 'add_table', name: 'Todos', fields: "title, required\\ncompleted, default false" }
+- add_agent: add agent. { op: 'add_agent', name: 'Helper', param: 'question', body: "response = ask claude 'Help' with question\\nsend back response" }
+Prefer this over edit_code write for changes that touch < 5 lines.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        operations: {
+          type: 'array',
+          description: 'Array of patch operations to apply in order',
+          items: { type: 'object' },
+        },
+      },
+      required: ['operations'],
+    },
+  },
 ];
 
 // Anthropic server tools — executed by Anthropic's API, no client-side handling needed
@@ -865,6 +892,24 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ result: summary });
       }
 
+      case 'patch_code': {
+        if (!currentSource) return JSON.stringify({ error: 'No code in editor. Write code first.' });
+        const ops = input.operations;
+        if (!Array.isArray(ops) || ops.length === 0) return JSON.stringify({ error: 'Need an operations array. Example: [{ op: "fix_line", line: 5, replacement: "  send back user" }]' });
+        const result = patch(currentSource, ops);
+        if (result.applied > 0) {
+          currentSource = result.source;
+          // Push updated source to editor via SSE
+          send({ type: 'code_update', code: result.source });
+        }
+        return JSON.stringify({
+          applied: result.applied,
+          skipped: result.skipped,
+          errors: result.errors,
+          totalLines: result.source.split('\n').length,
+        });
+      }
+
       case 'browse_templates': {
         const TEMPLATE_DIR = join(ROOT_DIR, 'apps');
         if (input.action === 'list') {
@@ -1074,6 +1119,7 @@ app.post('/api/chat', async (req, res) => {
             case 'screenshot_output': return 'Taking screenshot';
             case 'highlight_code': return `Highlighting lines ${input.start_line || ''}–${input.end_line || ''}`;
             case 'source_map': return input.clear_line ? `Looking up Clear line ${input.clear_line}` : 'Getting full source map';
+            case 'patch_code': return `Patching ${input.operations?.length || 0} operations`;
             case 'browse_templates': return input.action === 'read' ? `Reading template: ${input.name}` : 'Browsing templates';
             default: return tb.name;
           }
@@ -1172,6 +1218,8 @@ app.post('/api/chat', async (req, res) => {
               return `[tool] highlight lines ${input.start_line}–${input.end_line || input.start_line}${input.message ? ': ' + input.message : ''}`;
             case 'source_map':
               return `[tool] ✓ source_map`;
+            case 'patch_code':
+              return `[tool] ✓ patch — ${JSON.parse(res).applied || 0} applied, ${JSON.parse(res).skipped || 0} skipped`;
             case 'browse_templates':
               return `[tool] ✓ browse_templates — ${input.action} ${input.name || ''}`.trim();
             default:
