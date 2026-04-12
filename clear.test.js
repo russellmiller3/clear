@@ -10509,7 +10509,7 @@ describe('Scheduled agents (runs every)', () => {
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const agent = result.ast.body.find(n => n.type === 'agent');
-    expect(agent.schedule).toEqual({ value: 1, unit: 'hour' });
+    expect(agent.schedule).toEqual({ value: 1, unit: 'hour', at: null });
     expect(agent.receivingVar).toBe(null);
   });
 
@@ -10550,6 +10550,74 @@ describe('Scheduled agents (runs every)', () => {
     const result = compileProgram(src);
     expect(result.javascript).toContain('Scheduled agent');
     expect(result.javascript).toContain('every 1 day');
+  });
+});
+
+describe('Scheduled agents with at time', () => {
+  it('parses at time into schedule.at', () => {
+    const src = "build for javascript backend\nagent 'Report' runs every 1 day at '9:00 AM':\n  send back 'done'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.schedule.at).toBe('9:00 AM');
+  });
+
+  it('compiles at 9:00 AM to cron 0 9 * * *', () => {
+    const src = "build for javascript backend\nagent 'Report' runs every 1 day at '9:00 AM':\n  send back 'done'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('0 9 * * *');
+    expect(result.javascript).toContain('node-cron');
+  });
+
+  it('compiles at 2:30 PM to cron 30 14 * * *', () => {
+    const src = "build for javascript backend\nagent 'Afternoon' runs every 1 day at '2:30 PM':\n  send back 'done'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('30 14 * * *');
+  });
+
+  it('without at still uses setInterval', () => {
+    const src = "build for javascript backend\nagent 'Check' runs every 6 hour:\n  send back 'ok'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('setInterval');
+    expect(result.javascript).not.toContain('node-cron');
+  });
+});
+
+describe('Send email with inline recipient', () => {
+  it('parses send email to expression with config block', () => {
+    const src = `build for javascript backend
+configure email:
+  service is 'gmail'
+  user is 'test@test.com'
+  password is 'pass'
+when user calls POST /api/notify sending data:
+  send email to data's email:
+    subject is 'Hello'
+    body is 'Welcome!'
+  send back 'sent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('sendMail');
+    expect(result.javascript).toContain('email');
+  });
+
+  it('parses send email to string literal', () => {
+    const src = `build for javascript backend
+configure email:
+  service is 'gmail'
+  user is 'test@test.com'
+  password is 'pass'
+when user calls POST /api/test:
+  send email to 'admin@example.com':
+    subject is 'Test'
+    body is 'Testing'
+  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('admin@example.com');
   });
 });
 

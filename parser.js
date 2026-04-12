@@ -1525,7 +1525,25 @@ const CANONICAL_DISPATCH = new Map([
       ctx.body.push({ type: NodeType.SERVICE_CALL, service: 'sendgrid', config, line: ctx.line });
       return endIdx;
     }
-    // 2. SMTP email: send email: + config block
+    // 2. Email with inline recipient: send email to <expr>: + subject/body block
+    if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'email' &&
+        ctx.tokens[2].canonical === 'to_connector' &&
+        ctx.i + 1 < ctx.lines.length && ctx.lines[ctx.i + 1].indent > ctx.indent) {
+      // Parse the recipient expression (everything between "to" and end of line)
+      const recipientTokens = ctx.tokens.slice(3);
+      let recipientExpr;
+      if (recipientTokens.length === 1 && recipientTokens[0].type === TokenType.STRING) {
+        recipientExpr = literalString(recipientTokens[0].value, ctx.line);
+      } else {
+        const expr = parseExpression(recipientTokens, 0, ctx.line);
+        recipientExpr = expr.error ? literalString(recipientTokens.map(t => t.value).join(''), ctx.line) : expr.node;
+      }
+      const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+      config._inlineRecipient = recipientExpr;
+      ctx.body.push({ type: NodeType.SEND_EMAIL, config, line: ctx.line });
+      return endIdx;
+    }
+    // 3. SMTP email: send email: + config block (no inline recipient)
     if (ctx.tokens.length >= 2 && ctx.tokens[1].value === 'email' &&
         ctx.i + 1 < ctx.lines.length && ctx.lines[ctx.i + 1].indent > ctx.indent) {
       const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
@@ -2871,12 +2889,20 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     }
     if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
       scheduleUnit = tokens[pos].value.toLowerCase().replace(/s$/, '');
+      pos++;
+    }
+    // Optional: "at '9:00 AM'" — time-of-day for cron scheduling
+    let scheduleAt = null;
+    if (pos < tokens.length && tokens[pos].canonical === 'at' && pos + 1 < tokens.length && tokens[pos + 1].type === TokenType.STRING) {
+      pos++; // skip 'at'
+      scheduleAt = tokens[pos].value;
+      pos++;
     }
     const result = parseBlock(lines, startIdx + 1, blockIndent, errors);
     if (result.body.length === 0) {
       errors.push({ line, message: `agent '${name}' is empty — add code inside the scheduled agent` });
     }
-    const schedule = { value: scheduleValue, unit: scheduleUnit };
+    const schedule = { value: scheduleValue, unit: scheduleUnit, at: scheduleAt };
     return {
       node: { type: NodeType.AGENT, name, receivingVar: null, schedule, body: result.body, line },
       endIdx: result.endIdx,

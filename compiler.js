@@ -2122,18 +2122,24 @@ function compileAgent(node, ctx, pad) {
     }
   }
 
-  // Scheduled agent: runs on interval, no input parameter
+  // Scheduled agent: runs on interval or cron, no input parameter
   if (node.schedule) {
-    const { value, unit } = node.schedule;
+    const { value, unit, at } = node.schedule;
+    if (ctx.lang === 'python') {
+      return `${startupCode}${pad}async def ${fnName}():\n${bodyCode}\n${pad}# Schedule: runs every ${value} ${unit}(s)${at ? ' at ' + at : ''}`;
+    }
+    // If "at" time specified, use cron-style scheduling
+    if (at) {
+      const cronExpr = _timeToCron(at, value, unit);
+      return `${startupCode}${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}const _cron_${fnName} = require('node-cron');\n${pad}_cron_${fnName}.schedule('${cronExpr}', ${fnName});\n${pad}console.log("Scheduled agent '${node.name}' running ${cronExpr}");`;
+    }
+    // Otherwise use setInterval
     const ms = unit === 'second' ? value * 1000
       : unit === 'minute' ? value * 60000
       : unit === 'hour' ? value * 3600000
       : unit === 'day' ? value * 86400000
       : value * 3600000; // default hour
-    if (ctx.lang === 'python') {
-      return `${pad}async def ${fnName}():\n${bodyCode}\n${pad}# Schedule: runs every ${value} ${unit}(s)`;
-    }
-    return `${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}setInterval(${fnName}, ${ms});\n${pad}console.log("Scheduled agent '${node.name}' running every ${value} ${unit}(s)");`;
+    return `${startupCode}${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}setInterval(${fnName}, ${ms});\n${pad}console.log("Scheduled agent '${node.name}' running every ${value} ${unit}(s)");`;
   }
 
   const param = node.receivingVar ? sanitizeName(node.receivingVar) : '';
@@ -3976,10 +3982,14 @@ ${pad}}`;
         if (!v) return '""';
         return exprToCode(v, ctx);
       };
+      // Inline recipient from "send email to X:" takes precedence over config block "to"
+      const toCode = node.config._inlineRecipient
+        ? exprToCode(node.config._inlineRecipient, ctx)
+        : exprVal('to');
       if (ctx.lang === 'python') {
-        return `${pad}_msg = MIMEText(str(${exprVal('body')}))\n${pad}_msg["Subject"] = str(${exprVal('subject')})\n${pad}_msg["To"] = str(${exprVal('to')})\n${pad}_msg["From"] = _email_config["user"]\n${pad}with smtplib.SMTP_SSL("smtp.gmail.com", 465) as _server:\n${pad}    _server.login(_email_config["user"], _email_config["password"])\n${pad}    _server.send_message(_msg)`;
+        return `${pad}_msg = MIMEText(str(${exprVal('body')}))\n${pad}_msg["Subject"] = str(${exprVal('subject')})\n${pad}_msg["To"] = str(${toCode})\n${pad}_msg["From"] = _email_config["user"]\n${pad}with smtplib.SMTP_SSL("smtp.gmail.com", 465) as _server:\n${pad}    _server.login(_email_config["user"], _email_config["password"])\n${pad}    _server.send_message(_msg)`;
       }
-      return `${pad}await _emailTransport.sendMail({ to: ${exprVal('to')}, subject: ${exprVal('subject')}, text: String(${exprVal('body')}) });`;
+      return `${pad}await _emailTransport.sendMail({ to: ${toCode}, subject: ${exprVal('subject')}, text: String(${exprVal('body')}) });`;
     }
 
     // Phase 45: External API calls
@@ -9213,6 +9223,19 @@ function _clear_env(name) {
 // =============================================================================
 // NAME & OPERATOR MAPPING
 // =============================================================================
+
+// Convert time string like '9:00 AM' to cron expression
+function _timeToCron(timeStr, intervalValue, intervalUnit) {
+  const match = timeStr.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)?$/);
+  if (!match) return '0 9 * * *'; // fallback: 9 AM daily
+  let hour = parseInt(match[1]);
+  const minute = match[2] ? parseInt(match[2]) : 0;
+  const ampm = (match[3] || '').toUpperCase();
+  if (ampm === 'PM' && hour < 12) hour += 12;
+  if (ampm === 'AM' && hour === 12) hour = 0;
+  // For daily schedules, use * * * for day/month/dow
+  return `${minute} ${hour} * * *`;
+}
 
 function sanitizeName(name) {
   if (name == null) return '_unnamed';
