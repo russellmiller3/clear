@@ -35,6 +35,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 22: Compiler Requests + RL Infrastructure](#session-22-compiler-requests--rl-infrastructure-2026-04-11) | Optional chaining `?.` only for user-written possessive access (not compiler-generated `req.body`), `error.message` needs hard `.` (exception to `?.` rule), keyword guard must whitelist content-type words (`text`, `heading` etc.), `_pick` JSON.stringify for nested objects, `_revive` JSON.parse on retrieval, user-written TEST_DEF bodies go through `generateE2ETests` not `compileNode`, cron tokenizer splits `2:30pm` into multi-token sequence, patch API body indentation must always add 2-space prefix (not skip if already indented), `run command` capture mode via ASSIGN special-case (not exprToCode) |
 | [Session 20: Compiler Bug Fixes + SVG Rendering](#session-20-compiler-bug-fixes--svg-rendering-2026-04-11) | Tree-shaker callback blind spot, conditional DOM needs reactive path, `text` guard too strict, SHOW needs DOM targets, bare SVG streaming |
 | [Session 23: Agent Bug Fixes + Extended Thinking](#session-23-agent-bug-fixes--extended-thinking-2026-04-11) | SVG innerHTML namespace loss, `to_json` synonym collision in 3 places, Python dict keys must be quoted, Anthropic thinking signature for multi-turn, `toLocaleString` for display formats, CRUD auto-inject `:id`, multer module-scope, Python cron lifespan |
+| [Session 25: Roadmap 5-12 + Click-to-Highlight](#session-25-roadmap-5-12--click-to-highlight-2026-04-12) | CM6 virtual rendering, param format normalization, postamble injection order, compile animation timing, `sourceMap: true` for frontend markers |
 
 ---
 
@@ -749,3 +750,40 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 ### Python Cron: Lifespan Context Manager
 - **Python (FastAPI) cron jobs need the `lifespan` context manager pattern**, not `@app.on_event("startup")` (deprecated in modern FastAPI). The lifespan function yields once, running startup code before the yield and cleanup after.
 - **Cron body wrapped in try/catch** to prevent one failed tick from killing the schedule.
+
+---
+
+## Session 25: Roadmap 5-12 + Click-to-Highlight (2026-04-12)
+
+### CM6 Virtual Rendering Breaks DOM Manipulation
+- **CodeMirror 6 only renders lines in the visible viewport.** `domAtPos()` returns null or throws for offscreen lines. The click-to-highlight feature tried to add CSS classes to offscreen DOM elements that didn't exist.
+- **Fix:** Scroll to the target line first (`EditorView.scrollIntoView`), then wait 100ms for CM6 to render the viewport, then walk the DOM. Double `requestAnimationFrame` wasn't reliable enough — `setTimeout(100)` works.
+- **Lesson:** Any CM6 feature that needs to manipulate specific line DOM elements must scroll-then-wait. Selection-based highlighting doesn't work either because `EditorView.editable.of(false)` suppresses selection display.
+
+### Postamble After Return = Dead Code
+- **The agent compiler emitted `return response;` in bodyCode, then appended postamble (conversation history save) after it.** The save was dead code — memory loaded but never persisted.
+- **Fix:** Before final assembly, find the last `return` in bodyCode and inject postamble before it.
+- **Lesson:** Any time compiler sections are assembled by string concatenation (preamble + bodyCode + postamble), check that bodyCode doesn't contain early returns that skip the postamble.
+
+### Mixed Param Formats Cause Silent Bugs
+- **`fnDef.params` was sometimes `[{name, type}]` (typed params) and sometimes `['name']` (untyped params).** Every consumer had to do `typeof p === 'string' ? p : p.name`. The tool schema bug (`[object Object]`) was caused by using the object as a key.
+- **Fix:** Normalized parser to always push `{name, type: null}` for untyped params. Removed all `typeof` guards downstream.
+- **Lesson:** Mixed data formats in the same array are a bug factory. Normalize at the source (parser), not at every consumer.
+
+### Compile Animation Blocks User Interaction
+- **The compile animation sets `compileAnimRunning = true` for 20+ seconds.** Any feature gated on `!compileAnimRunning` is unusable during that time. Click-to-highlight was silently ignored.
+- **Fix:** Clicking a source line cancels the animation and switches to the compiled view immediately. Also capped animation speed at ~5 seconds total.
+- **Lesson:** Never gate user interactions on long-running animations. Let the user's action interrupt the animation.
+
+### `/api/compile` Needs `sourceMap: true`
+- **The IDE's compile endpoint didn't pass `sourceMap: true` to `compileProgram()`.** Frontend JS had no `// clear:N` markers, so the source map was always null for web-only apps.
+- **Fix:** Pass `sourceMap: true` in the `/api/compile` handler. Markers are just comments — zero runtime cost.
+- **Lesson:** When adding a feature that depends on compiler options, check that the API endpoint passes those options.
+
+### Source Map Must Match Compiled Sub-Tab
+- **The source map was built from `serverJS`, but the compiled view defaulted to the HTML tab.** Line ranges from serverJS don't correspond to HTML content — highlights hit wrong lines or out-of-bounds.
+- **Fix:** Track which sub-tab the source map was built from (`sourceMapTab`). When clicking a source line, switch to that tab before highlighting.
+
+### CSS `display` Duplication Bug
+- **`style="display:none; ... display:flex;"` — the last property wins in CSS.** The context meter was always visible (empty) instead of hidden until data arrives.
+- **Lesson:** Inline styles with duplicate properties are silent bugs. Only one `display` per style attribute.

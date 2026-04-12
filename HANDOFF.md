@@ -1,49 +1,54 @@
 # Handoff -- 2026-04-12
 
 ## Current State
-- **Branch:** `main` (merged from `feature/roadmap-1-4`)
-- **Tests:** 1699 compiler (all passing), 0 failures
+- **Branch:** `main`
+- **Tests:** 1725 compiler (all passing), 0 failures
+- **Roadmap:** All 12 gaps closed. Refactoring backlog (R1-R3) identified.
 
 ## What Was Done This Session
 
-### Roadmap Items 1-4 Implemented
+### Roadmap Items 1-4 (from previous session, already on main)
+1. Auth scaffolding (`allow signup and login`)
+2. DB relationships (`belongs to`)
+3. Validation fix (collect all errors as array)
+4. Aggregate fix (`sum of amount in orders`)
 
-1. **Auth scaffolding** — `allow signup and login` one-liner that scaffolds `/auth/signup`, `/auth/login`, `/auth/me` endpoints with bcrypt password hashing, JWT tokens, and JWT middleware. Works for both JS (Express) and Python (FastAPI) backends. Uses `bcryptjs` + `jsonwebtoken` (JS) or `passlib` + `PyJWT` (Python). Auto-generates in-memory `_users` table. Existing `needs login` frontend guard still works.
+### Roadmap Items 5-12 (this session)
+5. **Full text search** — `search Posts for query` compiles to case-insensitive filter across all fields
+6. **Broadcast** — `broadcast to all message` new BROADCAST node type, compiles to `wss.clients.forEach`
+7. **Agent memory fix** — postamble (conversation save) injected before return, was dead code
+8. **Agent tool schema fix** — params serialize as proper names, was `[object Object]`
+9. **String concat** — verified working in all modes, regression tests added
+10. **Python frontend serving** — FastAPI serves `index.html` + static files via `StaticFiles`
+11. **`has many`** — nested endpoints auto-generated (GET /api/parent/:id/children)
+12. **Agent guardrails** — `block arguments matching 'pattern'` adds regex filter on tool inputs
 
-2. **DB relationships** — `belongs to Users` in table declarations. Parses as FK field, compiles to `REFERENCES users(id)` in SQL. CRUD lookups auto-stitch related records via post-query `findOne` calls. `has many` deferred — syntactic sugar, FK on child table already expresses the relationship.
+### Click-to-Highlight Source Mapping
+- Click a Clear source line → switches to Code tab, scrolls to and highlights corresponding compiled output
+- Click a compiled line → jumps back to the Clear source line with flash animation
+- Meph `source_map` tool — query what any Clear line compiles to
+- Only works for JS/Python output (not HTML — frontend pages have no markers)
 
-3. **Validation fix** — `_validate()` utility rewritten to collect ALL errors as `[{ field, message }]` array instead of returning first error as string. `compileValidate` emits `_vErrs` (plural) and `{ errors: _vErrs }` response. Python path also collects into `_errors` list before raising once.
+### IDE Fixes
+- Context meter CSS bug fixed (duplicate `display` property)
+- Warning text color darkened for readability
+- Data view field names stripped of trailing commas
+- Compile animation capped at ~5 seconds
 
-4. **Aggregate fix** — `sum of amount in orders` now correctly compiles to `_clear_sum_field(orders, "amount")`. Parser's collection ops handler detects `in` token after operand, creates `callNode('_sum_field', [list, fieldString])`. New utilities: `_clear_sum_field`, `_clear_avg_field`, `_clear_max_field`, `_clear_min_field`. Flat array path (`sum of prices`) unchanged.
-
-### Also Fixed
-- Non-reactive web JS now tree-shakes utility functions (was missing, utilities were referenced but never defined)
-- `_sum_field` etc. added to validator BUILTINS set
-
-## Key Decisions
-- **`has many` deferred** — No clear compilation target. The FK on the child table already expresses the relationship. Auto-JOIN from parent works without it.
-- **Auth uses in-memory `_users` array** — No DB dependency for auth. Works with any storage backend. Production apps can swap to DB-backed storage.
-- **Validation returns array, not string** — Breaking change from `{ error: string }` to `{ errors: array }`. No backward compat shim — no users yet.
-- **FK stitching overwrites field** — `author` field (integer ID) gets replaced with the full related object after lookup. Simpler than maintaining both `author` and `author_id`.
+### Refactoring
+- Function params normalized to always `{name, type}` objects (was mixed strings/objects)
+- SYNONYM_VERSION test checks semver format, not hardcoded value
+- `requires login` preferred over `requires auth` in all docs + 33 template apps
 
 ## Known Issues
-- `has many` not implemented — only `belongs to` works
-- Auth scaffold uses in-memory storage — resets on restart
-- FK stitching does N+1 queries (one per FK field per row) — fine for small datasets, will need optimization for large tables
-- Python backend doesn't do FK stitching yet (only SQL REFERENCES)
-
-## Files Changed
-| File | What |
-|------|------|
-| `parser.js` | AUTH_SCAFFOLD node type, `belongs to` in field modifiers, `in` detection in collection ops |
-| `compiler.js` | `_field` utility functions, `_validate` rewrite, `compileAuthScaffold` (JS+Python), schema tracking + FK stitching in CRUD, non-reactive JS tree-shaking |
-| `synonyms.js` | `auth_scaffold` synonym, version bump to 0.16.0 |
-| `validator.js` | `_sum_field` etc. added to BUILTINS |
-| `clear.test.js` | 24 new tests (7 aggregate + 4 validation + 8 auth + 5 relationships) |
-| `ROADMAP.md` | Items 1-4 marked complete, stats updated |
-| `SYNTAX.md` | New sections: auth scaffolding, DB relationships, field extraction, validation errors |
-| `CLAUDE.md` | Test count updated to 1699 |
+- Click-to-highlight only works for compiled JS/Python, not HTML output
+- Server test suite has 2 pre-existing failures (stale template count, SSE JSON parse crash)
+- Compile animation still plays even when user just wants to see the code
 
 ## Resume Prompt
 
-> Continue work on the Clear language compiler. Last session implemented roadmap items 1-4: auth scaffolding, DB relationships, validation improvements, and aggregate field extraction. Next priorities from ROADMAP.md: full text search (#5), WebSocket lifecycle events (#6), agent memory/RAG (#7), agent tool use (#8). Read ROADMAP.md for details.
+> All 12 roadmap gaps are closed. 1725 tests pass. Next priorities:
+> 1. GAN loop test — spin up Studio, have Meph build an app, grade it, iterate
+> 2. Refactoring backlog (R1: decompose compileAgent, R2: dedup JS/Python CRUD, R3: frontend source maps)
+> 3. Real app stress test — build something complex end-to-end, find what breaks
+> 4. Fix server.test.js pre-existing failures (template count, SSE parsing)

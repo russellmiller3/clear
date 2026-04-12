@@ -137,10 +137,9 @@ compile wrong. Quick fix, high value — every dashboard needs aggregates.
 
 ---
 
-### 5 — Full Text Search
+### 5 — Full Text Search ✅
 
-`search Posts for query` should compile to LIKE '%query%' (in-memory/SQLite) or full-text
-search (Supabase). Currently does exact match only — useless for real search.
+`search Posts for query` compiles to case-insensitive filter across all fields.
 
 ```
 when user calls GET /api/search sending params:
@@ -148,41 +147,29 @@ when user calls GET /api/search sending params:
   send back results
 ```
 
-**Speed:** ★★★  **Safety:** ★★★  **Effort:** 1 day
+Compiles to: `db.findAll().filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(query.toLowerCase())))`
 
 ---
 
-### 6 — WebSocket Events ✅ (mostly)
+### 6 — WebSocket Events ✅
 
-`subscribe to 'channel':` compiles to a full WebSocket server with native `ws` module,
-connection tracking, heartbeat/ping-pong, and automatic cleanup on close. Works for both
-JS (Express) and Python (FastAPI).
+`subscribe to 'channel':` + `broadcast to all message` both work. Full WebSocket
+server with connection tracking, heartbeat, and cleanup.
 
 ```
 subscribe to 'chat':
-  log message
+  broadcast to all message
 ```
 
-**Remaining gap:** `broadcast to all message` inside a handler doesn't parse as a
-statement — the validator flags `broadcast` as an undefined variable. The WebSocket
-infrastructure is there, just needs `broadcast` wired up as a statement type.
-
-The roadmap's proposed `when client connects/disconnects` syntax is a different approach
-than `subscribe to`. Both work. `subscribe to` is simpler and already shipped.
-
-**Speed:** ★★★★  **Safety:** ★★★  **Effort:** ✅ Done (broadcast fix: 0.5 days)
+`broadcast` compiles to `wss.clients.forEach(c => c.send(...))`.
 
 ---
 
-### 7 — Agent Memory + Keyword Search ⚠️ (memory save bug)
+### 7 — Agent Memory + Keyword Search ✅
 
-`knows about: Products` does keyword matching — splits the query into words, scans all
-records, scores by word overlap, injects top 5 into the prompt. Not RAG (no vectors),
-but works for structured tables with <10k rows.
-
-`remember conversation context` has a bug: the compiled code does `return response;`
-BEFORE the conversation history save. The save line is dead code — memory loads but
-never persists. One-line fix in compiler.js (move return after save).
+`knows about: Products` does keyword matching across tables. `remember conversation context`
+loads and saves conversation history. Memory save bug fixed — postamble injected before
+return statement.
 
 ```
 agent 'Assistant' receives question:
@@ -193,103 +180,73 @@ agent 'Assistant' receives question:
 ```
 
 **Future:** Real RAG with pgvector on Supabase for semantic search over large
-unstructured text. Keyword matching is correct for structured tables, wrong for
-"find documents similar to X" queries.
-
-**Speed:** ★★★★  **Safety:** ★★★  **Effort:** Bug fix: 10 min
+unstructured text.
 
 ---
 
-### 8 — Agent Tool Use ⚠️ (schema generation bug)
+### 8 — Agent Tool Use ✅
 
-The `_askAIWithTools()` runtime function is correct — proper Anthropic tool_use loop
-with multi-turn, tool dispatch, error handling, 10-turn max. But the compiler generates
-broken tool schemas: function parameters serialize as `[object Object]` instead of
-proper JSON schema properties. Claude would get a malformed tool definition.
+`can use: fn1, fn2` compiles to proper Anthropic tool schemas with correct parameter
+names and types. Tool dispatch loop with 10-turn max, error handling.
 
 ```
-define function lookup_user(email):
-  set user to get first User where email is email
-  return user
-
 agent 'Support' receives question:
   can use: lookup_user
   response = ask claude 'Help the user' with question
   send back response
 ```
 
-**Speed:** ★★★★  **Safety:** ★★★  **Effort:** Bug fix: 30 min
+---
+
+### 9 — String Concat ✅
+
+`'Hello, ' + name + '!'` works correctly in all modes (script, web, backend).
+Regression tests added. Interpolation (`'Hello, {name}!'`) also works.
 
 ---
 
-### 9 — String Concat Bug Fix
+### 10 — Python Frontend Serving ✅
 
-`message = 'Hello, ' + name + '!'` drops the variable value in some contexts.
-Interpolation (`'Hello, {name}!'`) works fine, but `+` concatenation sometimes produces
-`undefined`. Basic correctness — silent data loss.
+FastAPI serves `index.html` at root + static files via `StaticFiles` mount.
+Full-stack Python apps work in the browser.
 
-**Speed:** ★★★  **Safety:** ★★★★★  **Effort:** 0.5 days
-
----
-
-### 10 — Python Frontend Serving
-
-Python backends don't serve static files. The compiled HTML exists but FastAPI has no
-route for `/` or static assets. Full-stack Python apps are broken in the browser.
-
-**Speed:** ★★★  **Safety:** ★★★  **Effort:** 0.5 days
+Compiles to: `FileResponse("index.html")` + `app.mount("/", StaticFiles(...))`
 
 ---
 
-### 11 — `has many` Relationships
+### 11 — `has many` Relationships ✅
 
-`belongs to` shipped in item 2, but `has many` was deferred. Without it, you can say
-"this comment belongs to a post" but you can't say "a post has many comments" and get
-automatic nested endpoints (GET /api/posts/1/comments). That's the natural pair.
+`has many Posts` in a table field generates nested GET endpoints automatically.
 
 ```
-create a Posts table:
-  title
-  body
-  author belongs to Users
-
-create a Comments table:
-  text
-  post belongs to Posts
-
 create a Users table:
   name
-  email
   posts has many Posts
+
+create a Posts table:
+  title
+  author belongs to Users
 ```
 
-**Speed:** ★★★★  **Safety:** ★★★  **Effort:** 1 day
+Generates: `GET /api/users/:id/posts` — returns all posts where author matches the user ID.
 
 ---
 
-### 12 — Agent Argument Guardrails
+### 12 — Agent Argument Guardrails ✅
 
-`can use:` already whitelists which tools an agent can call (deterministic, code-level).
-But there's no constraint on tool **arguments**. If an agent can call `run_command`, it
-can pass `rm -rf /` and nothing stops it except the system prompt.
-
-`block arguments matching` would add regex-based input filtering that runs BEFORE tool
-execution. No amount of prompt injection bypasses compiled code.
+`block arguments matching 'pattern1', 'pattern2'` adds regex-based input filtering
+that runs BEFORE tool execution. Compiled code — no prompt injection can bypass it.
 
 ```
 agent 'Builder' receives task:
-  can use: run_command, read_file, create_file
-  block arguments matching 'merge.*main', 'push.*force', 'rm -rf', 'drop table'
-  response = ask claude 'Build this feature' with task
+  can use: run_command
+  block arguments matching 'rm -rf', 'drop table'
+  response = ask claude 'Build' with task
   send back response
 ```
 
-Compiles to: `if (_args.match(/merge.*main|push.*force|rm -rf|drop table/i)) throw new Error('Blocked by guardrail');` before every tool dispatch.
-
-This is a real differentiator. Most agent frameworks do guardrails via prompt. Clear
-could do them via compiled code — deterministic, auditable, unbypassable.
-
-**Speed:** ★★★  **Safety:** ★★★★★  **Effort:** 1 day
+Compiles to: each tool function wrapped with regex guard. If arguments match,
+throws `'Blocked by guardrail'` before execution.
 
 ---
 
