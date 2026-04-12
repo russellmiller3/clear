@@ -108,8 +108,9 @@ when user calls DELETE /api/bookings/:id:
   delete the Booking with this id
   send back 'deleted' with success message
 
-when user calls GET /api/bookings/search sending query:
-  results = search Bookings for query
+when user calls GET /api/bookings/search sending params:
+  search_term = params's q
+  results = search Bookings for search_term
   send back results
 
 # Frontend
