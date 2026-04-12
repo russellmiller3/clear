@@ -19,17 +19,26 @@ Run ToolSearch for these before doing anything else:
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1730 compiler tests)
+- Run all tests: `node clear.test.js` (1762 compiler tests)
 - Run sandbox tests: `node sandbox.test.js` (9 integration tests — spins up real servers)
 - Run playground tests (each is a separate file):
   - `node playground/server.test.js` (~85 server API tests)
   - `node playground/e2e.test.js` (~80 template compile + endpoint + CRUD + curriculum tests)
   - `node playground/ide.test.js` (~46 Playwright IDE UI tests)
   - `node playground/agent.test.js` (~50 Claude agent tool tests, needs ANTHROPIC_API_KEY)
-- Total: 1730 compiler + 9 sandbox + ~257 playground tests
+- Total: 1762 compiler + 9 sandbox + ~257 playground tests
 - **Husky hooks:** pre-commit runs compiler tests, pre-push runs full suite (compiler + e2e + curriculum)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
+
+## App-Level Testing Rule (MANDATORY)
+**Compiler tests passing does NOT mean the app works.** When building or modifying a .clear app:
+1. Run compiler tests: `node clear.test.js` — verifies the compiler itself
+2. Run the app's own tests: `node cli/clear.js test <file>` — runs `test` blocks embedded in the .clear file
+3. Syntax-check the compiled output: `node --check <compiled-output>.js` — catches malformed JS the compiler emitted
+4. If the app has a frontend, compile + run it and verify the preview loads
+
+Never declare an app "done" or "compiles clean" based only on step 1. Steps 2-3 catch bugs in the COMPILED OUTPUT that the compiler tests don't cover (e.g. parentheses in skill instructions breaking generated JS, missing closing braces, malformed string concatenation).
 
 ## Key Files
 - `index.js` -- public API, `compileProgram(source)` is the entry point

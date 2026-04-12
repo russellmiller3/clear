@@ -3152,8 +3152,9 @@ function parseSkill(lines, startIdx, blockIndent, errors) {
       j++;
       const instrIndent = lines[j - 1].indent;
       while (j < lines.length && lines[j].indent > instrIndent) {
-        const iTokens = lines[j].tokens;
-        if (iTokens.length > 0) instructions.push(iTokens.map(t => t.value).join(' '));
+        // Use raw text to preserve original formatting (parens, punctuation, spacing)
+        const rawText = lines[j].raw || lines[j].tokens.map(t => t.value).join(' ');
+        if (rawText.trim()) instructions.push(rawText.trim());
         j++;
       }
       continue;

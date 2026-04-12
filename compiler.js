@@ -2317,10 +2317,25 @@ function compileAgent(node, ctx, pad) {
       preamble += `${innerPad}const _tools = ${toolsJson};\n`;
       preamble += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
       // Replace _askAI calls with _askAIWithTools in bodyCode
-      bodyCode = bodyCode.replace(
-        /await _askAI\(([^)]*)\)/g,
-        'await _askAIWithTools($1, _tools, _toolFns)'
-      );
+      // Can't use simple regex [^)]* because prompts may contain literal parentheses
+      // e.g. "explain the refund timeline (5-7 business days)"
+      // Instead: iteratively find each _askAI( call, count parens to find the matching ), splice
+      const marker = 'await _askAI(';
+      let searchFrom = 0;
+      while (true) {
+        const idx = bodyCode.indexOf(marker, searchFrom);
+        if (idx < 0) break;
+        let depth = 1, i = idx + marker.length;
+        while (i < bodyCode.length && depth > 0) {
+          if (bodyCode[i] === '(') depth++;
+          else if (bodyCode[i] === ')') depth--;
+          i++;
+        }
+        const args = bodyCode.substring(idx + marker.length, i - 1);
+        const replacement = `await _askAIWithTools(${args}, _tools, _toolFns)`;
+        bodyCode = bodyCode.substring(0, idx) + replacement + bodyCode.substring(i);
+        searchFrom = idx + replacement.length;
+      }
     }
   }
 
@@ -2364,11 +2379,27 @@ function compileAgent(node, ctx, pad) {
       preamble += `${innerPad}};\n`;
     }
     // Wrap _askAI and _askAIWithTools calls with logging
+    // Can't use [^)]* — prompts may contain literal parentheses e.g. "(5-7 business days)"
     if (ctx.lang !== 'python') {
-      bodyCode = bodyCode.replace(
-        /await (_askAI(?:WithTools)?)\(([^)]*)\)/g,
-        (m, fn, args) => `await _agentLog("ask_ai", ${param}, () => ${fn}(${args}))`
-    );
+      const logMarkers = ['await _askAIWithTools(', 'await _askAI('];
+      for (const logMarker of logMarkers) {
+        let logSearch = 0;
+        while (true) {
+          const logIdx = bodyCode.indexOf(logMarker, logSearch);
+          if (logIdx < 0) break;
+          let logDepth = 1, logI = logIdx + logMarker.length;
+          while (logI < bodyCode.length && logDepth > 0) {
+            if (bodyCode[logI] === '(') logDepth++;
+            else if (bodyCode[logI] === ')') logDepth--;
+            logI++;
+          }
+          const fnName = logMarker.replace('await ', '').replace('(', '');
+          const logArgs = bodyCode.substring(logIdx + logMarker.length, logI - 1);
+          const replacement = `await _agentLog("ask_ai", ${param}, () => ${fnName}(${logArgs}))`;
+          bodyCode = bodyCode.substring(0, logIdx) + replacement + bodyCode.substring(logI);
+          logSearch = logIdx + replacement.length;
+        }
+      }
     }
   }
 
@@ -4171,7 +4202,7 @@ ${pad}}`;
         code += `${pad}});`;
         return code;
       }
-      return `${pad}test(${JSON.stringify(node.name)}, () => {\n${bodyCode}\n${pad}});`;
+      return `${pad}test(${JSON.stringify(node.name)}, async () => {\n${bodyCode}\n${pad}});`;
     }
 
     case NodeType.EXPECT: {
