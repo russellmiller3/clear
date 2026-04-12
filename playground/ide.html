@@ -320,8 +320,8 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 .cm-jump-line { animation: lineFlash .9s ease; }
 
 /* Source map highlight — steady glow on mapped compiled lines */
-.cm-source-map-highlight { background: rgba(108,140,255,.15); transition: background .2s; }
-.cm-source-map-active { background: rgba(251,191,36,.18); }
+.cm-source-map-highlight { background: rgba(108,140,255,.25); transition: background .15s; border-left: 3px solid var(--accent); }
+.cm-source-map-active { background: rgba(251,191,36,.25); border-left: 3px solid var(--amber); }
 
 /* Compile animation — split view */
 .compile-anim { display: flex; height: 100%; gap: 0; }
@@ -579,6 +579,7 @@ let suppressAutoCompile = false;
 let lastCompiled = null;
 // Persistent source map: { clearLine -> { start, end, code } } built after each compile
 let sourceMapData = null; // { forward: { clearLine: [{ start, end }] }, reverse: { compiledLine: clearLine }, compiledLines: [] }
+let sourceMapTab = null; // which compiled sub-tab key the source map was built from ('serverJS', 'javascript', 'python')
 
 function buildSourceMap(compiledCode) {
   if (!compiledCode) return null;
@@ -666,46 +667,70 @@ show 'Hello, Clear!'
 editor.dom.addEventListener('click', handleEditorClick);
 
 function handleEditorClick(e) {
-  if (!sourceMapData || compileAnimRunning) return;
+  if (!sourceMapData) return;
   const pos = editor.posAtCoords({ x: e.clientX, y: e.clientY });
   if (pos == null) return;
   const line = editor.state.doc.lineAt(pos).number;
   const ranges = sourceMapData.forward[line];
   if (!ranges || ranges.length === 0) return;
 
-  // Switch to compiled tab — showCompiled() creates compiledView synchronously
-  if (activeTab !== 'compiled') showTab('compiled');
+  // Cancel any running compile animation — user wants to see a specific mapping
+  if (compileAnimRunning) {
+    compileAnimCancel = true;
+    compileAnimRunning = false;
+  }
+
+  // Switch to compiled tab and the sub-tab with source map markers
+  activeTab = 'compiled';
+  document.querySelectorAll('.prev-tab').forEach(t => t.classList.remove('active'));
+  const compiledBtn = document.querySelector('.prev-tab[onclick*="compiled"]');
+  if (compiledBtn) compiledBtn.classList.add('active');
+
+  // Force compiledTab to the source map tab and rebuild the view
+  compiledTab = sourceMapTab;
+  showCompiled();
+
+  // Apply highlight
   highlightCompiledLines(ranges);
 }
 
 function highlightCompiledLines(ranges) {
   if (!compiledView) return;
-  // Clear previous highlights
-  compiledView.dom.querySelectorAll('.cm-source-map-highlight')
-    .forEach(el => el.classList.remove('cm-source-map-highlight'));
 
-  for (const { start, end } of ranges) {
-    for (let i = start + 1; i <= end + 1; i++) {
-      if (i < 1 || i > compiledView.state.doc.lines) continue;
-      const lineObj = compiledView.state.doc.line(i);
-      const domPos = compiledView.domAtPos(lineObj.from);
-      let el = domPos?.node;
-      if (!(el instanceof Element)) el = el?.parentElement;
-      while (el && !el.classList.contains('cm-line')) el = el.parentElement;
-      if (el) el.classList.add('cm-source-map-highlight');
-    }
-  }
-
-  // Scroll first highlighted line into view
+  // Step 1: Scroll to target area so CM6 renders those lines in the DOM
   const firstLine = ranges[0].start + 1;
   if (firstLine >= 1 && firstLine <= compiledView.state.doc.lines) {
     const lineObj = compiledView.state.doc.line(firstLine);
     compiledView.dispatch({ effects: EditorView.scrollIntoView(lineObj.from, { y: 'center' }) });
   }
+
+  // Step 2: Wait for CM6 to process scroll and render the target viewport
+  setTimeout(() => {
+    if (!compiledView) return;
+    // Clear old highlights
+    compiledView.dom.querySelectorAll('.cm-source-map-highlight')
+      .forEach(el => el.classList.remove('cm-source-map-highlight'));
+
+    for (const { start, end } of ranges) {
+      for (let i = start + 1; i <= end + 1; i++) {
+        if (i < 1 || i > compiledView.state.doc.lines) continue;
+        try {
+          const lineObj = compiledView.state.doc.line(i);
+          const domPos = compiledView.domAtPos(lineObj.from);
+          let el = domPos?.node;
+          if (!(el instanceof Element)) el = el?.parentElement;
+          while (el && !el.classList.contains('cm-line')) el = el.parentElement;
+          if (el) el.classList.add('cm-source-map-highlight');
+        } catch (_) { /* line not yet rendered */ }
+      }
+    }
+  }, 100);
 }
 
 window._editor = editor;      // For chat apply
 window._editorView = editor;  // For tests
+window._sourceMapData = () => sourceMapData; // For debugging/tests
+window._debug = () => ({ compileAnimRunning, sourceMapTab, compiledTab, hasCompiledView: !!compiledView, hasSourceMap: !!sourceMapData, activeTab });
 
 // ==========================================================================
 // EDITOR TOC
@@ -944,9 +969,11 @@ async function autoCompile() {
     });
     const elapsed = Math.round(performance.now() - t0);
     lastCompiled = await r.json();
-    // Build persistent source map from compiled output
-    const mapTarget = lastCompiled.serverJS || lastCompiled.javascript;
-    sourceMapData = buildSourceMap(mapTarget);
+    // Build persistent source map from compiled output — pick the target with markers
+    if (lastCompiled.serverJS) { sourceMapData = buildSourceMap(lastCompiled.serverJS); sourceMapTab = 'serverJS'; }
+    else if (lastCompiled.javascript) { sourceMapData = buildSourceMap(lastCompiled.javascript); sourceMapTab = 'javascript'; }
+    else if (lastCompiled.python) { sourceMapData = buildSourceMap(lastCompiled.python); sourceMapTab = 'python'; }
+    else { sourceMapData = null; sourceMapTab = null; }
     showErrors(lastCompiled.errors, lastCompiled.warnings);
     // Update compile dot
     const dot = document.getElementById('compile-dot');

@@ -38,7 +38,7 @@ app.post('/api/compile', (req, res) => {
     const { source } = req.body;
     if (!source && source !== '') return res.status(400).json({ error: 'Missing source' });
     if (!source.trim()) return res.json({ errors: [], warnings: [], html: null, javascript: null, serverJS: null, python: null, browserServer: null, css: null });
-    const result = compileProgram(source);
+    const result = compileProgram(source, { sourceMap: true });
     res.json({
       errors: result.errors || [],
       warnings: result.warnings || [],
