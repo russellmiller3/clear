@@ -1152,6 +1152,21 @@ background 'cleanup':
   runs every 1 hour
 ```
 
+## WebSockets (Real-Time)
+
+```clear
+# Subscribe to a named channel — creates a WebSocket server
+subscribe to 'chat':
+  log message
+```
+
+Compiles to a native `ws` WebSocket server (JS) or FastAPI WebSocket (Python) with:
+- Connection tracking per channel
+- Heartbeat/ping-pong every 30s to detect dead connections
+- Automatic cleanup on disconnect
+
+**Known gap:** `broadcast to all message` inside a handler doesn't parse as a statement yet. The WebSocket infrastructure is there but broadcasting needs to be wired up as a statement type.
+
 ## Database Migrations
 
 ```clear

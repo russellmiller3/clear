@@ -20297,4 +20297,48 @@ every day at 9am:
   });
 });
 
+// =============================================================================
+// SOURCE MAP MARKERS
+// =============================================================================
+describe('Source map markers', () => {
+  it('emits // clear:N markers when sourceMap option is true', () => {
+    const result = compileProgram("x = 5\nshow x", { sourceMap: true });
+    expect(result.javascript).toContain('// clear:');
+  });
+
+  it('does NOT emit markers without sourceMap option', () => {
+    const result = compileProgram("x = 5\nshow x");
+    if (result.javascript) {
+      expect(result.javascript).not.toContain('// clear:');
+    }
+  });
+
+  it('backend serverJS always has markers regardless of option', () => {
+    const src = "build for javascript backend\n\nwhen user calls GET /test:\n  send back 'ok'";
+    const result = compileProgram(src);
+    // Backend might compile to serverJS or javascript depending on target detection
+    const output = result.serverJS || result.javascript;
+    expect(output).toContain('// clear:');
+  });
+
+  it('markers reference valid line numbers', () => {
+    const src = "build for javascript backend\n\nwhen user calls GET /test:\n  send back 'ok'";
+    const result = compileProgram(src);
+    const output = result.serverJS || result.javascript;
+    const markers = [...output.matchAll(/\/\/ clear:(\d+)/g)];
+    expect(markers.length).toBeGreaterThan(0);
+    for (const m of markers) {
+      const lineNum = parseInt(m[1]);
+      expect(lineNum).toBeGreaterThan(0);
+      expect(lineNum <= src.split('\n').length).toBe(true);
+    }
+  });
+
+  it('Python backend uses # clear:N markers', () => {
+    const src = "build for python backend\nwhen user calls GET /test:\n  send back 'ok'";
+    const result = compileProgram(src);
+    expect(result.python).toContain('# clear:');
+  });
+});
+
 run();

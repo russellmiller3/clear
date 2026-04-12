@@ -420,6 +420,71 @@ try {
     assert(status === 200, 'serves system prompt');
   }
 
+  // =========================================================================
+  // CONTEXT METER — must not vanish
+  // =========================================================================
+  console.log('\n🔋 Context meter');
+
+  {
+    // Frontend: ide.html must have the context-meter element + JS function
+    const { text } = await get('/ide');
+    assert(text.includes('id="context-meter"'), 'ide.html has context-meter element');
+    assert(text.includes('id="context-bar"'), 'ide.html has context-bar progress bar');
+    assert(text.includes('id="context-label"'), 'ide.html has context-label span');
+    assert(text.includes('updateContextMeter'), 'ide.html has updateContextMeter function');
+    assert(text.includes("'context_usage'"), 'ide.html handles context_usage event');
+
+    // Verify the CSS bug fix: context-meter should NOT have duplicate display properties
+    const meterMatch = text.match(/id="context-meter"[^>]*style="([^"]*)"/);
+    if (meterMatch) {
+      const styleStr = meterMatch[1];
+      const displayCount = (styleStr.match(/display\s*:/g) || []).length;
+      assert(displayCount === 1, 'context-meter has exactly one display property (no duplicate)');
+    }
+  }
+
+  {
+    // Backend: server.js must have estimateContextUsage function
+    const fs = await import('fs');
+    const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
+    assert(serverSrc.includes('estimateContextUsage'), 'server.js has estimateContextUsage function');
+    assert(serverSrc.includes("type: 'context_usage'"), 'server.js sends context_usage event');
+  }
+
+  // =========================================================================
+  // SOURCE MAP — click-to-highlight infrastructure
+  // =========================================================================
+  console.log('\n🗺️  Source map');
+
+  {
+    const { text } = await get('/ide');
+    assert(text.includes('function buildSourceMap'), 'ide.html has buildSourceMap function');
+    assert(text.includes('sourceMapData'), 'ide.html has sourceMapData variable');
+    assert(text.includes('sourceMapData = buildSourceMap'), 'autoCompile wires buildSourceMap');
+    assert(text.includes('handleEditorClick'), 'ide.html has editor click handler');
+    assert(text.includes('highlightCompiledLines'), 'ide.html has highlightCompiledLines function');
+    assert(text.includes('handleCompiledClick'), 'ide.html has compiled view click handler');
+    assert(text.includes('cm-source-map-highlight'), 'ide.html has source map highlight CSS');
+    assert(text.includes('cm-source-map-active'), 'ide.html has source map active CSS');
+  }
+
+  {
+    const fs = await import('fs');
+    const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
+    assert(serverSrc.includes("name: 'source_map'"), 'server.js has source_map tool definition');
+    assert(serverSrc.includes('sourceMap: true'), 'server.js passes sourceMap option to compiler');
+    assert(serverSrc.includes("case 'source_map'"), 'server.js has source_map dispatch handler');
+  }
+
+  {
+    // Verify backend compile has markers
+    const { data } = await post('/api/compile', {
+      source: "build for javascript backend\n\nwhen user calls GET /test:\n  send back 'ok'"
+    });
+    const output = data.serverJS || data.javascript;
+    assert(output && output.includes('// clear:'), 'compiled backend has source map markers');
+  }
+
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);
   failed++;

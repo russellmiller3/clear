@@ -485,6 +485,16 @@ You can modify .clear files and requests.md. You can create new files of any all
       required: ['start_line'],
     },
   },
+  {
+    name: 'source_map',
+    description: 'Get the source map for the current compiled code. Shows which compiled output lines correspond to which Clear source lines. Use to understand how Clear compiles, debug compilation issues, or trace a bug in compiled output back to the Clear source.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clear_line: { type: 'number', description: 'Optional: specific Clear line number to look up. Returns the compiled lines for that source line. Omit to get the full map.' },
+      },
+    },
+  },
 ];
 
 // Anthropic server tools — executed by Anthropic's API, no client-side handling needed
@@ -786,6 +796,38 @@ app.post('/api/chat', async (req, res) => {
         return '__ASYNC_HTTP__';
       }
 
+      case 'source_map': {
+        if (!currentSource) return JSON.stringify({ error: 'No code in editor. Write code first.' });
+        const compiled = compileProgram(currentSource, { sourceMap: true });
+        const target = compiled.serverJS || compiled.javascript || compiled.python;
+        if (!target) return JSON.stringify({ error: 'No compiled output.' });
+
+        const targetLines = target.split('\n');
+        const map = {};
+        let current = null;
+        for (let i = 0; i < targetLines.length; i++) {
+          const m = targetLines[i].match(/(?:\/\/|#) clear:(\d+)/);
+          if (m) current = parseInt(m[1]);
+          if (current != null) {
+            (map[current] = map[current] || []).push(i + 1);
+          }
+        }
+
+        if (input.clear_line) {
+          const cl = input.clear_line;
+          const compiledLines = map[cl];
+          if (!compiledLines) return JSON.stringify({ result: `No compiled output maps to Clear line ${cl}.` });
+          const snippet = compiledLines.map(n => `${n}: ${targetLines[n-1]}`).join('\n');
+          return JSON.stringify({ result: `Clear line ${cl} compiles to:\n${snippet}` });
+        }
+
+        const summary = Object.entries(map)
+          .sort(([a],[b]) => a - b)
+          .map(([cl, cls]) => `Clear ${cl} → compiled lines ${cls[0]}-${cls[cls.length-1]}`)
+          .join('\n');
+        return JSON.stringify({ result: summary });
+      }
+
       default:
         return JSON.stringify({ error: 'Unknown tool: ' + name });
     }
@@ -966,6 +1008,7 @@ app.post('/api/chat', async (req, res) => {
             case 'read_terminal': return 'Checking terminal output';
             case 'screenshot_output': return 'Taking screenshot';
             case 'highlight_code': return `Highlighting lines ${input.start_line || ''}–${input.end_line || ''}`;
+            case 'source_map': return input.clear_line ? `Looking up Clear line ${input.clear_line}` : 'Getting full source map';
             default: return tb.name;
           }
         })();
@@ -1061,6 +1104,8 @@ app.post('/api/chat', async (req, res) => {
               return `[tool] screenshot — ${Array.isArray(result) ? 'captured' : 'failed'}`;
             case 'highlight_code':
               return `[tool] highlight lines ${input.start_line}–${input.end_line || input.start_line}${input.message ? ': ' + input.message : ''}`;
+            case 'source_map':
+              return `[tool] ✓ source_map`;
             default:
               return `[tool] ${tb.name}`;
           }

@@ -152,32 +152,37 @@ when user calls GET /api/search sending params:
 
 ---
 
-### 6 — WebSocket Events
+### 6 — WebSocket Events ✅ (mostly)
 
-`when client connects`, `broadcast to all`, `send to client` — full socket.io lifecycle.
-`subscribe to` exists but the event model isn't wired up.
+`subscribe to 'channel':` compiles to a full WebSocket server with native `ws` module,
+connection tracking, heartbeat/ping-pong, and automatic cleanup on close. Works for both
+JS (Express) and Python (FastAPI).
 
 ```
-when client connects:
-  send to client 'welcome'
-
-when client sends message:
-  broadcast to all message
-
-when client disconnects:
-  log 'user left'
+subscribe to 'chat':
+  log message
 ```
 
-Unlocks chat apps, live dashboards, multiplayer — a whole app category.
+**Remaining gap:** `broadcast to all message` inside a handler doesn't parse as a
+statement — the validator flags `broadcast` as an undefined variable. The WebSocket
+infrastructure is there, just needs `broadcast` wired up as a statement type.
 
-**Speed:** ★★★★  **Safety:** ★★★  **Effort:** 2 days
+The roadmap's proposed `when client connects/disconnects` syntax is a different approach
+than `subscribe to`. Both work. `subscribe to` is simpler and already shipped.
+
+**Speed:** ★★★★  **Safety:** ★★★  **Effort:** ✅ Done (broadcast fix: 0.5 days)
 
 ---
 
-### 7 — Agent Memory + RAG
+### 7 — Agent Memory + Keyword Search ⚠️ (memory save bug)
 
-`remember conversation context` persists chat history per user in the DB.
-`knows about: Posts, Users` does keyword search before prompting (poor man's RAG).
+`knows about: Products` does keyword matching — splits the query into words, scans all
+records, scores by word overlap, injects top 5 into the prompt. Not RAG (no vectors),
+but works for structured tables with <10k rows.
+
+`remember conversation context` has a bug: the compiled code does `return response;`
+BEFORE the conversation history save. The save line is dead code — memory loads but
+never persists. One-line fix in compiler.js (move return after save).
 
 ```
 agent 'Assistant' receives question:
@@ -187,16 +192,20 @@ agent 'Assistant' receives question:
   send back response
 ```
 
-Without memory, AI agents are novelty demos. With memory + RAG, they become products.
+**Future:** Real RAG with pgvector on Supabase for semantic search over large
+unstructured text. Keyword matching is correct for structured tables, wrong for
+"find documents similar to X" queries.
 
-**Speed:** ★★★★  **Safety:** ★★★  **Effort:** 2 days
+**Speed:** ★★★★  **Safety:** ★★★  **Effort:** Bug fix: 10 min
 
 ---
 
-### 8 — Agent Tool Use
+### 8 — Agent Tool Use ⚠️ (schema generation bug)
 
-`can use: lookup_user, create_ticket` binds Clear functions as Anthropic tool_use API tools.
-Currently compiles to a comment. Tool use is what makes agents capable of actions, not just text.
+The `_askAIWithTools()` runtime function is correct — proper Anthropic tool_use loop
+with multi-turn, tool dispatch, error handling, 10-turn max. But the compiler generates
+broken tool schemas: function parameters serialize as `[object Object]` instead of
+proper JSON schema properties. Claude would get a malformed tool definition.
 
 ```
 define function lookup_user(email):
@@ -209,7 +218,7 @@ agent 'Support' receives question:
   send back response
 ```
 
-**Speed:** ★★★★  **Safety:** ★★★  **Effort:** 2 days
+**Speed:** ★★★★  **Safety:** ★★★  **Effort:** Bug fix: 30 min
 
 ---
 
@@ -232,32 +241,157 @@ route for `/` or static assets. Full-stack Python apps are broken in the browser
 
 ---
 
+### 11 — `has many` Relationships
+
+`belongs to` shipped in item 2, but `has many` was deferred. Without it, you can say
+"this comment belongs to a post" but you can't say "a post has many comments" and get
+automatic nested endpoints (GET /api/posts/1/comments). That's the natural pair.
+
+```
+create a Posts table:
+  title
+  body
+  author belongs to Users
+
+create a Comments table:
+  text
+  post belongs to Posts
+
+create a Users table:
+  name
+  email
+  posts has many Posts
+```
+
+**Speed:** ★★★★  **Safety:** ★★★  **Effort:** 1 day
+
+---
+
+### 12 — Agent Argument Guardrails
+
+`can use:` already whitelists which tools an agent can call (deterministic, code-level).
+But there's no constraint on tool **arguments**. If an agent can call `run_command`, it
+can pass `rm -rf /` and nothing stops it except the system prompt.
+
+`block arguments matching` would add regex-based input filtering that runs BEFORE tool
+execution. No amount of prompt injection bypasses compiled code.
+
+```
+agent 'Builder' receives task:
+  can use: run_command, read_file, create_file
+  block arguments matching 'merge.*main', 'push.*force', 'rm -rf', 'drop table'
+  response = ask claude 'Build this feature' with task
+  send back response
+```
+
+Compiles to: `if (_args.match(/merge.*main|push.*force|rm -rf|drop table/i)) throw new Error('Blocked by guardrail');` before every tool dispatch.
+
+This is a real differentiator. Most agent frameworks do guardrails via prompt. Clear
+could do them via compiled code — deterministic, auditable, unbypassable.
+
+**Speed:** ★★★  **Safety:** ★★★★★  **Effort:** 1 day
+
+---
+
+## What You Can Build (as of 2026-04-11)
+
+After items 1–10 + `has many`, Clear covers variables, functions, loops, conditionals,
+web UI (pages, routing, reactive state, inputs, charts, tables, cards), full REST backends,
+CRUD (in-memory/SQLite/Supabase), auth, DB relationships, AI agents (RAG, tool use,
+memory, pipelines), WebSockets, scheduling, file I/O, email, PDF generation, testing,
+and workflows.
+
+### Tier 1 — No compromises, ship in an hour
+
+These apps use only first-class Clear keywords. No `script:` needed.
+
+**Internal tools / admin dashboards**
+- User management with roles, search, CRUD
+- Order tracking with charts, filters, aggregate stats
+- Inventory system with categories (`has many`), low-stock alerts (scheduled job), CSV export
+- Support ticket tracker with assignment, status workflow, email notifications
+
+**AI-powered apps**
+- Customer support bot with RAG over product catalog + conversation memory
+- Content generator with structured JSON output, human approval gate, save to DB
+- Internal Q&A agent that searches across company tables
+- Multi-agent pipeline: intake → classifier → specialist → response
+
+**Simple SaaS MVPs**
+- Waitlist page + admin dashboard with count/growth chart
+- Feedback collector: public form → validated → stored → admin dashboard with filters
+- Booking system: available slots, user picks one, confirmation email, admin view
+- Survey builder: create questions, public survey page, results with charts
+
+**Data apps**
+- CSV upload → clean → display as table/charts → export
+- API aggregator: fetch from 3 external APIs, combine, display dashboard
+- Scheduled report: every morning, query DB, generate PDF, email it
+
+### Tier 2 — 90%+ Clear, minor `script:` assists
+
+**Project management (Linear-lite)** — tasks, statuses, belongs-to-project, has-many
+comments, dashboard with charts, search. `script:` for drag-and-drop kanban only.
+
+**Blog / CMS** — posts, authors, comments, tags, auth, search, all native.
+`script:` for rich text editing (markdown preview textarea).
+
+**Chat apps** — WebSocket broadcast, conversation memory, auth, all native.
+`script:` for scroll-to-bottom and typing indicators.
+
+**E-commerce storefront** — products, reviews, categories, cart, order creation, email.
+`script:` for Stripe checkout (payment APIs are inevitably complex).
+
+**Monitoring / alerting** — scheduled health checks, store results, chart uptime,
+email on status change. `script:` for Slack/PagerDuty webhook format.
+
+### Tier 3 — Real walls, wrong tool for the job
+
+| App type | Why it doesn't fit |
+|----------|-------------------|
+| **Collaborative editing** (Google Docs) | Operational transforms, cursor sync, conflict resolution — far beyond WebSocket broadcast |
+| **Video / audio calling** | WebRTC, media streams, STUN/TURN servers |
+| **Mobile apps** | Clear targets web only |
+| **Games** | Canvas/WebGL rendering loop, physics, sprites |
+| **IDE / code editor** | CodeMirror/Monaco integration, syntax highlighting, LSP |
+| **Social media with feeds** | Algorithmic ranking, infinite scroll, complex caching, image pipelines |
+| **Marketplace with payments** | OAuth for sellers, escrow, disputes, Stripe Connect — too many moving parts |
+
+### Bottom line
+
+Clear after items 1–10 is a **full-stack framework for internal tools, AI apps,
+dashboards, and SaaS MVPs**. That's ~60–70% of what people actually build. The things
+it can't do are niche (video, games) or enterprise-scale (collaborative editing,
+marketplaces). Meph builds Tier 1 apps in minutes. The same app in Express + React
+is 2000+ lines across 20 files.
+
+---
+
 ## Not Now
 
-Real features, but they have workarounds. Per the Surface Area Rule, `script:` is the
-right answer for niche browser APIs. Other items have existing patterns that work fine.
+Real features, but they have workarounds or don't clear the Surface Area Rule bar.
 
-| Feature | Why not now |
-|---------|-----------|
-| **OAuth / social login** | `allow signup and login` covers 80%. OAuth is complex (passport.js, callback URLs, sessions). Do it when someone needs Google login. |
-| **Agent guardrails** | System prompts already constrain agents. `must not` is nice-to-have. |
-| **Cookies** | Use JWT tokens (already built) or `script:` for cookie-parser. |
-| **DB transactions** | In-memory doesn't need them. SQLite has implicit transactions. |
-| **Upsert** | `save` + `get first where` is a fine workaround. |
-| **Soft delete** | `deleted_at` field + filter is 2 lines. Not worth a keyword. |
-| **Transform data** | `filter` + `for each` covers this. |
-| **Text in for-each** | Architectural — loop rendering needs a rethink. `script:` works. |
-| **Geolocation** | `script: navigator.geolocation.getCurrentPosition(...)` |
-| **Camera / microphone** | `script: navigator.mediaDevices.getUserMedia(...)` |
-| **Speech to text** | `script: new SpeechRecognition()` — niche browser API. |
-| **Text to speech** | `script: speechSynthesis.speak(...)` — niche browser API. |
-| **Push notifications** | Requires service worker, VAPID keys, server infra. Too much plumbing for a keyword. |
-| **Service worker / PWA** | Deployment concern, not language feature. |
-| **Drag and drop** | `script:` with HTML5 drag events. Niche interaction pattern. |
-| **Tooltip / popover** | DaisyUI CSS classes. Not a compiler concern. |
-| **Infinite / virtual scroll** | `script:` with IntersectionObserver. Performance optimization. |
-| **Skeleton loading** | DaisyUI `skeleton` class. CSS, not language. |
-| **Lazy load images** | One-line compiler tweak (`loading="lazy"`), not a feature. |
+| Feature | Verdict | Reasoning |
+|---------|---------|-----------|
+| **OAuth / social login** | Correct deferral | `allow signup and login` covers MVP apps. OAuth is a rat's nest (passport.js, callback URLs, provider-specific quirks). Add when a specific app needs Google login. |
+| **Agent guardrails** | **Reconsider** — see item 11 | `can use:` is already a deterministic tool whitelist. Adding `block arguments matching` (regex on tool inputs) would make agents genuinely secure, not just prompt-constrained. Worth doing. |
+| **Cookies** | Skip permanently | JWT is the right auth pattern for Clear apps. Cookies are a different paradigm with no upside here. |
+| **DB transactions** | Skip for now | In-memory and SQLite handle this implicitly. Only needed for Supabase multi-table writes. Rare enough to defer. |
+| **Upsert** | Skip permanently | `save` + `get first where` is 2 lines. Not worth a keyword. |
+| **Soft delete** | Skip permanently | `deleted_at` field + filter. Two lines, not a keyword. |
+| **Transform data** | Skip permanently | `filter` + `for each` covers it. |
+| **Text in for-each** | Skip (architectural) | Loop rendering needs a rethink. `script:` works. Not a quick fix. |
+| **Geolocation** | `script:` permanently | One-liner: `navigator.geolocation.getCurrentPosition(...)`. Niche browser API. |
+| **Camera / microphone** | `script:` permanently | One-liner: `navigator.mediaDevices.getUserMedia(...)`. Niche. |
+| **Speech to text** | `script:` permanently | `new SpeechRecognition()`. Niche. |
+| **Text to speech** | `script:` permanently | `speechSynthesis.speak(...)`. Niche. |
+| **Push notifications** | Skip indefinitely | Service workers, VAPID keys, server infra. Way too much plumbing for a keyword. |
+| **Service worker / PWA** | Skip indefinitely | Deployment concern, not language feature. |
+| **Drag and drop** | `script:` permanently | HTML5 drag events. Niche interaction pattern. |
+| **Tooltip / popover** | Not a compiler concern | DaisyUI CSS classes handle this. |
+| **Infinite / virtual scroll** | `script:` permanently | IntersectionObserver. Performance optimization, not language feature. |
+| **Skeleton loading** | Not a compiler concern | DaisyUI `skeleton` class. CSS. |
+| **Lazy load images** | Just do it | One-line compiler tweak (`loading="lazy"` on every `<img>`). So trivial it should be default behavior, not a feature. |
 
 ---
 
@@ -353,15 +487,17 @@ Missing: `when client connects/disconnects`, `broadcast to all`, `send to client
 | # | Gap | Status |
 |---|-----|--------|
 | 1 | Auth scaffolding (`allow signup and login`) | **✅ Complete** |
-| 2 | DB relationships (`belongs to`, `has many`) | **✅ Complete** (`belongs to` done, `has many` deferred) |
+| 2 | DB relationships (`belongs to`) | **✅ Complete** |
 | 3 | Validation → real 400 errors | **✅ Complete** |
 | 4 | Aggregates (`sum of` → number) | **✅ Complete** |
 | 5 | Full text search | Exact match only |
-| 6 | WebSocket lifecycle events | Not parsed |
-| 7 | Agent memory / RAG | Parsed, compiles to comment |
-| 8 | Agent tool use (`can use:`) | Parsed, compiles to comment |
+| 6 | WebSocket `broadcast` | `subscribe to` works, `broadcast` needs statement parsing |
+| 7 | Agent memory + keyword search | ⚠️ Memory save is dead code (return before save) |
+| 8 | Agent tool use (`can use:`) | ⚠️ Tool schema serializes as `[object Object]` |
 | 9 | String `+` concat bug | Parsed, drops values |
 | 10 | Python frontend serving | No static routes |
+| 11 | `has many` relationships | Not started — `belongs to` done, `has many` deferred |
+| 12 | Agent argument guardrails | Not started — tool whitelist exists, argument regex doesn't |
 
 ---
 

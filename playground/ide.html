@@ -24,7 +24,7 @@ html[data-theme="dark"] {
   --accent: #6c8cff; --accent2: #3b5bdb; --accent-glow: rgba(108,140,255,.12);
   --green: #34d399; --green-bg: rgba(52,211,153,.08);
   --red: #fb7185; --red-bg: rgba(251,113,133,.08);
-  --amber: #fbbf24; --amber-bg: rgba(251,191,36,.08);
+  --amber: #b45309; --amber-bg: rgba(180,83,9,.08);
   --shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.2);
   --kw-color: #7aa2f7; --str-color: #9ece6a; --num-color: #ff9e64;
   --cmt-color: #565f89; --op-color: #89ddff; --var-color: #c0caf5; --type-color: #bb9af7;
@@ -109,7 +109,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .error-line { color: var(--red); padding: 3px 0; cursor: pointer; transition: opacity .1s; display: flex; align-items: baseline; gap: 6px; }
 .error-line::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--red); flex-shrink: 0; margin-top: 5px; }
 .error-line:hover { opacity: .8; }
-.warning-line { color: var(--amber); padding: 3px 0; opacity: .8; display: flex; align-items: baseline; gap: 6px; }
+.warning-line { color: var(--amber); padding: 3px 0; display: flex; align-items: baseline; gap: 6px; }
 .warning-line::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--amber); flex-shrink: 0; margin-top: 5px; }
 
 /* Preview */
@@ -319,6 +319,10 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 @keyframes lineFlash { 0%,100% { background: transparent; } 20%,60% { background: rgba(251,191,36,.25); } }
 .cm-jump-line { animation: lineFlash .9s ease; }
 
+/* Source map highlight — steady glow on mapped compiled lines */
+.cm-source-map-highlight { background: rgba(108,140,255,.15); transition: background .2s; }
+.cm-source-map-active { background: rgba(251,191,36,.18); }
+
 /* Compile animation — split view */
 .compile-anim { display: flex; height: 100%; gap: 0; }
 .compile-anim-left, .compile-anim-right { flex: 1; overflow: auto; padding: 8px; scrollbar-width: thin; }
@@ -405,10 +409,10 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <div id="preview-tabs">
       <button class="prev-tab active" onclick="showTab('output')">Preview</button>
       <button class="prev-tab" onclick="showTab('compiled')">Code</button>
-      <button class="prev-tab" onclick="showTab('terminal')">Terminal</button>
-      <button class="prev-tab" onclick="clearTerminal()" title="Clear terminal" style="font-size:10px;padding:2px 6px;opacity:0.5;">Clear</button>
       <button class="prev-tab" onclick="showTab('data')" id="data-tab-btn" style="display:none">Data</button>
       <button class="prev-tab" onclick="showTab('api')" id="api-tab-btn" style="display:none">API</button>
+      <button class="prev-tab" onclick="showTab('terminal')">Terminal</button>
+      <button class="prev-tab" onclick="clearTerminal()" title="Clear terminal output" style="font-size:10px;padding:2px 6px;opacity:0.6;">Clear Terminal</button>
     </div>
     <div id="meta-chips"></div>
     <div id="preview-content">
@@ -437,7 +441,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
         <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
       </div>
     </div>
-    <div id="context-meter" style="display:none;padding:2px 16px;font-size:10px;font-family:var(--mono);color:var(--tx3);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:6px;">
+    <div id="context-meter" style="display:none;padding:2px 16px;font-size:10px;font-family:var(--mono);color:var(--tx3);border-bottom:1px solid var(--bd);align-items:center;gap:6px;">
       <div style="flex:1;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;">
         <div id="context-bar" style="height:100%;background:var(--accent);border-radius:2px;transition:width .3s;width:0%"></div>
       </div>
@@ -573,6 +577,38 @@ let clearHighlight = makeHighlightStyle();
 let compileTimer = null;
 let suppressAutoCompile = false;
 let lastCompiled = null;
+// Persistent source map: { clearLine -> { start, end, code } } built after each compile
+let sourceMapData = null; // { forward: { clearLine: [{ start, end }] }, reverse: { compiledLine: clearLine }, compiledLines: [] }
+
+function buildSourceMap(compiledCode) {
+  if (!compiledCode) return null;
+  const lines = compiledCode.split('\n');
+  const forward = {};  // clearLine → [{ start, end }]
+  const reverse = {};  // compiledLine (0-indexed) → clearLine
+  let currentClear = null, blockStart = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/(?:\/\/|#) clear:(\d+)/);
+    if (m) {
+      if (currentClear !== null && blockStart >= 0) {
+        const range = { start: blockStart, end: i - 1 };
+        (forward[currentClear] = forward[currentClear] || []).push(range);
+        for (let j = blockStart; j < i; j++) reverse[j] = currentClear;
+      }
+      currentClear = parseInt(m[1]);
+      blockStart = i;
+    }
+  }
+  if (currentClear !== null && blockStart >= 0) {
+    const range = { start: blockStart, end: lines.length - 1 };
+    (forward[currentClear] = forward[currentClear] || []).push(range);
+    for (let j = blockStart; j <= lines.length - 1; j++) reverse[j] = currentClear;
+  }
+
+  return Object.keys(forward).length > 0
+    ? { forward, reverse, compiledLines: lines }
+    : null;
+}
 
 const _savedEditor = localStorage.getItem('clear_editor_content');
 const editor = new EditorView({
@@ -625,6 +661,48 @@ show 'Hello, Clear!'
   ],
   parent: document.getElementById('editor-mount'),
 });
+
+// Source map: click Clear line → show compiled lines
+editor.dom.addEventListener('click', handleEditorClick);
+
+function handleEditorClick(e) {
+  if (!sourceMapData || compileAnimRunning) return;
+  const pos = editor.posAtCoords({ x: e.clientX, y: e.clientY });
+  if (pos == null) return;
+  const line = editor.state.doc.lineAt(pos).number;
+  const ranges = sourceMapData.forward[line];
+  if (!ranges || ranges.length === 0) return;
+
+  // Switch to compiled tab — showCompiled() creates compiledView synchronously
+  if (activeTab !== 'compiled') showTab('compiled');
+  highlightCompiledLines(ranges);
+}
+
+function highlightCompiledLines(ranges) {
+  if (!compiledView) return;
+  // Clear previous highlights
+  compiledView.dom.querySelectorAll('.cm-source-map-highlight')
+    .forEach(el => el.classList.remove('cm-source-map-highlight'));
+
+  for (const { start, end } of ranges) {
+    for (let i = start + 1; i <= end + 1; i++) {
+      if (i < 1 || i > compiledView.state.doc.lines) continue;
+      const lineObj = compiledView.state.doc.line(i);
+      const domPos = compiledView.domAtPos(lineObj.from);
+      let el = domPos?.node;
+      if (!(el instanceof Element)) el = el?.parentElement;
+      while (el && !el.classList.contains('cm-line')) el = el.parentElement;
+      if (el) el.classList.add('cm-source-map-highlight');
+    }
+  }
+
+  // Scroll first highlighted line into view
+  const firstLine = ranges[0].start + 1;
+  if (firstLine >= 1 && firstLine <= compiledView.state.doc.lines) {
+    const lineObj = compiledView.state.doc.line(firstLine);
+    compiledView.dispatch({ effects: EditorView.scrollIntoView(lineObj.from, { y: 'center' }) });
+  }
+}
 
 window._editor = editor;      // For chat apply
 window._editorView = editor;  // For tests
@@ -866,6 +944,9 @@ async function autoCompile() {
     });
     const elapsed = Math.round(performance.now() - t0);
     lastCompiled = await r.json();
+    // Build persistent source map from compiled output
+    const mapTarget = lastCompiled.serverJS || lastCompiled.javascript;
+    sourceMapData = buildSourceMap(mapTarget);
     showErrors(lastCompiled.errors, lastCompiled.warnings);
     // Update compile dot
     const dot = document.getElementById('compile-dot');
@@ -1061,10 +1142,44 @@ function showCompiled() {
     ],
   });
   viewContainer.appendChild(compiledView.dom);
+  compiledView.dom.addEventListener('click', handleCompiledClick);
+}
+
+function handleCompiledClick(e) {
+  if (!sourceMapData || !compiledView) return;
+  const pos = compiledView.posAtCoords({ x: e.clientX, y: e.clientY });
+  if (pos == null) return;
+  const line = compiledView.state.doc.lineAt(pos).number;
+  const clearLine = sourceMapData.reverse[line - 1]; // reverse is 0-indexed
+  if (clearLine == null) return;
+
+  // Jump to source line and flash it
+  jumpToLine(clearLine);
+
+  // Highlight the clicked compiled line briefly
+  const lineObj = compiledView.state.doc.line(line);
+  const domPos = compiledView.domAtPos(lineObj.from);
+  let el = domPos?.node;
+  if (!(el instanceof Element)) el = el?.parentElement;
+  while (el && !el.classList.contains('cm-line')) el = el.parentElement;
+  if (el) {
+    el.classList.add('cm-source-map-active');
+    setTimeout(() => el.classList.remove('cm-source-map-active'), 1500);
+  }
 }
 
 window.switchCodeTab = function(key) {
   compiledTab = key;
+  // Rebuild source map for the new sub-tab's code
+  if (lastCompiled) {
+    const outputs = [];
+    if (lastCompiled.html) outputs.push({ key: 'html', code: lastCompiled.html });
+    if (lastCompiled.serverJS) outputs.push({ key: 'serverJS', code: lastCompiled.serverJS });
+    if (lastCompiled.javascript) outputs.push({ key: 'javascript', code: lastCompiled.javascript });
+    if (lastCompiled.python) outputs.push({ key: 'python', code: lastCompiled.python });
+    const tabCode = outputs.find(o => o.key === key);
+    sourceMapData = tabCode ? buildSourceMap(tabCode.code) : null;
+  }
   showCompiled();
 };
 
@@ -1151,10 +1266,29 @@ window.showTab = function(tab) {
 function parseSourceInfo(source) {
   const lines = (source || editor.state.doc.toString()).split('\n');
   const tables = [], endpoints = [], agents = [];
+  const tableColumns = {}; // tableName → ['col1', 'col2', ...]
   let hasAuth = false;
-  for (const line of lines) {
+  let currentTable = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const tbl = line.match(/^create\s+(?:a\s+)?(\w+)\s+table/i);
-    if (tbl) tables.push(tbl[1]);
+    if (tbl) {
+      currentTable = tbl[1];
+      tables.push(currentTable);
+      tableColumns[currentTable] = [];
+      continue;
+    }
+    // Parse indented fields under a table definition
+    if (currentTable && /^\s+\S/.test(line) && !/^create\s/i.test(line.trim()) && !/^when\s/i.test(line.trim()) && !/^page\s/i.test(line.trim()) && !/^agent\s/i.test(line.trim()) && !/^build\s/i.test(line.trim())) {
+      const fieldName = line.trim().split(/[\s,]+/)[0].replace(/,$/,'');
+      if (fieldName && !fieldName.startsWith('#') && !fieldName.startsWith('//')) {
+        tableColumns[currentTable].push(fieldName);
+      }
+      continue;
+    }
+    // Non-indented line = end of table block
+    if (currentTable && /^\S/.test(line)) currentTable = null;
+
     const ep = line.match(/^when\s+user\s+calls\s+(GET|POST|PUT|DELETE)\s+(\S+)/i);
     if (ep) {
       const hasBody = /sending\s+\w+/.test(line);
@@ -1165,7 +1299,7 @@ function parseSourceInfo(source) {
     if (ag) agents.push(ag[1]);
     if (/requires\s+auth/i.test(line)) hasAuth = true;
   }
-  return { tables, endpoints, agents, hasAuth };
+  return { tables, endpoints, agents, hasAuth, tableColumns };
 }
 
 // ==========================================================================
@@ -1192,6 +1326,32 @@ function showMetaChips() {
 function getTableNames() {
   return parseSourceInfo().tables;
 }
+
+window.toggleAddRow = function(tableName) {
+  const el = document.getElementById('add-row-' + tableName);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+};
+
+window.submitAddRow = async function(tableName) {
+  const { tableColumns } = parseSourceInfo();
+  const cols = (tableColumns[tableName] || []).filter(c => c !== 'id' && c !== '_id');
+  const body = {};
+  for (const c of cols) {
+    const input = document.getElementById('add-' + tableName + '-' + c);
+    if (input && input.value.trim()) {
+      // Try to parse as number if it looks numeric
+      const val = input.value.trim();
+      body[c] = /^\d+\.?\d*$/.test(val) ? parseFloat(val) : val;
+    }
+  }
+  if (Object.keys(body).length === 0) return;
+  await fetch('/api/fetch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method: 'POST', path: '/api/' + tableName.toLowerCase(), body }),
+  });
+  showData();
+};
 
 async function fetchTableData(tableName) {
   const r = await fetch('/api/fetch', {
@@ -1239,6 +1399,8 @@ async function showData() {
   const panel = document.getElementById('data-panel');
   panel.innerHTML = '';
 
+  const { tableColumns } = parseSourceInfo();
+
   for (const tableName of tables) {
     const block = document.createElement('div');
     block.className = 'data-table-block';
@@ -1248,22 +1410,38 @@ async function showData() {
     try { rows = await fetchTableData(tableName); }
     catch (e) { err = e.message; }
 
-    const cols = rows.length > 0 ? Object.keys(rows[0]).filter(k => k !== '__v') : [];
+    // Use columns from source schema first, fall back to data keys
+    const schemaCols = tableColumns[tableName] || [];
+    const dataCols = rows.length > 0 ? Object.keys(rows[0]).filter(k => k !== '__v') : [];
+    // Merge: schema cols + any extra cols from data (like 'id') that aren't in schema
+    const cols = [...new Set(['id', ...schemaCols, ...dataCols])];
     const hasId = cols.includes('id') || cols.includes('_id');
+    const editableCols = cols.filter(c => c !== 'id' && c !== '_id');
 
     block.innerHTML = `
       <div class="data-table-header">
         <span class="data-table-name">${escHtml(tableName)}</span>
         <span style="display:flex;align-items:center;gap:8px;">
-          <span class="data-table-count">${rows.length} row${rows.length !== 1 ? 's' : ''}</span>
+          <span class="data-table-count">${rows.length} row${rows.length !== 1 ? 's' : ''} · ${cols.length} col${cols.length !== 1 ? 's' : ''}</span>
+          <button class="data-refresh-btn" onclick="toggleAddRow('${escHtml(tableName)}')" title="Add a new row">+ Add Row</button>
           <button class="data-refresh-btn" onclick="refreshTable('${escHtml(tableName)}')">↻ Refresh</button>
         </span>
       </div>
+      <div id="add-row-${escHtml(tableName)}" style="display:none;padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--bd);">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:end;">
+          ${editableCols.map(c => `<div style="display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:10px;color:var(--tx3)">${escHtml(c)}</label>
+            <input type="text" id="add-${escHtml(tableName)}-${escHtml(c)}" style="font-size:12px;padding:3px 6px;border:1px solid var(--bd);border-radius:4px;background:var(--bg);color:var(--tx);width:120px;" placeholder="${escHtml(c)}">
+          </div>`).join('')}
+          <button class="data-refresh-btn" onclick="submitAddRow('${escHtml(tableName)}')" style="background:var(--accent);color:white;border:none;padding:4px 12px;">Save</button>
+        </div>
+      </div>
       ${err ? `<div class="data-empty" style="color:var(--red)">${escHtml(err)}</div>` :
-        rows.length === 0 ? '<div class="data-empty">No records yet</div>' :
         `<table class="data-grid">
           <thead><tr>${cols.map(c => `<th>${escHtml(c)}</th>`).join('')}<th></th></tr></thead>
-          <tbody>${rows.map(row => {
+          <tbody>${rows.length === 0
+            ? `<tr><td colspan="${cols.length + 1}" style="text-align:center;color:var(--tx3);padding:12px;">No records yet — click + Add Row</td></tr>`
+            : rows.map(row => {
             const rowId = row.id || row._id || '';
             return `<tr>${cols.map(c => `<td title="${escHtml(String(row[c] ?? ''))}">${escHtml(String(row[c] ?? ''))}</td>`).join('')}
               <td>${rowId ? `<button class="data-del-btn" onclick="deleteDataRow('${escHtml(tableName)}','${escHtml(String(rowId))}')" title="Delete">✕</button>` : ''}</td></tr>`;
