@@ -12145,7 +12145,7 @@ describe('Security - open CORS without auth', () => {
   it('warns when CORS enabled but no auth on any endpoint', () => {
     const src = `build for javascript backend\nallow cross-origin requests\nwhen user calls GET /api/data:\n  send back 'ok'`;
     const result = compileProgram(src);
-    expect(result.warnings.some(w => w.includes('CORS') && w.includes('auth'))).toBe(true);
+    expect(result.warnings.some(w => w.includes('CORS') && (w.includes('auth') || w.includes('login')))).toBe(true);
   });
 
   it('no warning when CORS + auth exist', () => {

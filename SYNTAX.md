@@ -1165,7 +1165,57 @@ Compiles to a native `ws` WebSocket server (JS) or FastAPI WebSocket (Python) wi
 - Heartbeat/ping-pong every 30s to detect dead connections
 - Automatic cleanup on disconnect
 
-**Known gap:** `broadcast to all message` inside a handler doesn't parse as a statement yet. The WebSocket infrastructure is there but broadcasting needs to be wired up as a statement type.
+### Broadcasting
+
+Send a message to all connected WebSocket clients:
+
+```clear
+subscribe to 'chat':
+  log message
+  broadcast to all message
+```
+
+`broadcast to all X` compiles to `wss.clients.forEach(c => c.send(...))` — sends the value to every connected client on that channel.
+
+## Full Text Search
+
+```clear
+# Search across all fields (case-insensitive)
+results = search Posts for query
+```
+
+`search X for Y` filters records where ANY field contains the search term (case-insensitive). Compiles to a `.filter()` that checks every string field with `.toLowerCase().includes()`. Works with any table.
+
+## Has Many Relationships
+
+```clear
+create a Users table:
+  name
+  email, unique
+
+create a Users table:
+  name
+  email, unique
+  posts has many Posts
+
+create a Posts table:
+  title
+  body
+  author belongs to Users
+```
+
+`has many` is a field modifier inside the parent table definition (like `belongs to` is a field modifier in the child table). It auto-generates nested REST endpoints (e.g., `GET /api/users/:id/posts`) that return all child records belonging to that parent.
+
+## Agent Argument Guardrails
+
+```clear
+agent 'Support' receives message:
+  block arguments matching 'password|secret|ssn'
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
+`block arguments matching 'pattern'` adds a regex guard on all tool inputs. If any argument matches the pattern, the tool call is rejected before execution. Compiles to a runtime check on every tool invocation.
 
 ## Database Migrations
 

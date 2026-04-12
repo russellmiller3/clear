@@ -357,19 +357,23 @@ function validateForwardReferences(body, errors) {
 
   function suggestKeyword(name, scope) {
     const lower = name.toLowerCase();
+    // Skip reserved words — 'a', 'an', 'the' etc. are never typos
+    const RESERVED = new Set(['a', 'an', 'the', 'in', 'on', 'to', 'by', 'as', 'at', 'of', 'or', 'is', 'it', 'do', 'no']);
+    if (RESERVED.has(lower)) return null;
     let best = null, bestDist = 3; // max distance 2
     // Check keywords
     for (const kw of KEYWORDS) {
       if (lower === kw) return null;
       const d = editDistance(lower, kw);
-      if (d < bestDist) { bestDist = d; best = kw; }
+      // Require suggestion to be similar length (no 'a' → 'if' spurious matches)
+      if (d < bestDist && Math.abs(lower.length - kw.length) <= 1) { bestDist = d; best = kw; }
     }
     // Check user-defined variables (catches typos like 'emial' -> 'email')
     if (scope) {
       for (const v of scope) {
         if (lower === v.toLowerCase()) return null;
         const d = editDistance(lower, v.toLowerCase());
-        if (d < bestDist) { bestDist = d; best = v; }
+        if (d < bestDist && Math.abs(lower.length - v.length) <= 1) { bestDist = d; best = v; }
       }
     }
     return best;
@@ -688,7 +692,7 @@ function validateEndpointURLs(body, errors, warnings) {
     for (const node of nodes) {
       if (node.type === NodeType.API_CALL && node.url) {
         const method = (node.method || 'GET').toUpperCase();
-        const url = node.url;
+        const url = node.url.split('?')[0]; // Strip query params — Express handles them automatically
         // Check if this method+URL matches any endpoint
         const matches = endpoints.some(ep => ep.method === method && ep.pattern.test(url));
         if (!matches) {
@@ -766,7 +770,7 @@ function validateSecurity(body, errors, warnings) {
 
       // Check 1: Destructive endpoints without auth -- this is an error, not a warning
       if ((method === 'DELETE' || method === 'PUT') && !hasAuth) {
-        const fixLine = `  requires auth`;
+        const fixLine = `  requires login`;
         errors.push({
           line: node.line,
           patchable: true,
@@ -792,7 +796,7 @@ function validateSecurity(body, errors, warnings) {
             if (schemasWithOwner.has(tableName)) {
               const ownerField = allSchemaFields.get(tableName)?.has('user_id') ? 'user_id' : 'owner_id';
               const fixLines = [
-                `  this endpoint requires auth`,
+                `  this endpoint requires login`,
                 `  all_${tableName} = get all ${crudNode.target || 'Records'}`,
               ];
               errors.push({
@@ -876,8 +880,8 @@ function validateSecurity(body, errors, warnings) {
   const hasEndpoints = body.some(n => n.type === NodeType.ENDPOINT);
   if (hasCORS && hasEndpoints && !hasAnyAuth) {
     warnings.push(
-      `CORS is enabled but no endpoint requires auth. Any website can call your API and read the responses. ` +
-      `Add 'requires auth' to sensitive endpoints, or remove 'allow cross-origin requests' if this is an internal API.`
+      `CORS is enabled but no endpoint requires login. Any website can call your API and read the responses. ` +
+      `Add 'requires login' to sensitive endpoints, or remove 'allow cross-origin requests' if this is an internal API.`
     );
   }
 }
@@ -1237,9 +1241,9 @@ function validateOWASP(body, errors, warnings) {
           errors.push({
             line: n.line,
             patchable: true,
-            fix: ['  requires auth'],
+            fix: ['  requires login'],
             insertAfter: n.line,
-            message: `PATCH ${n.path} has no auth guard — anyone can modify data. Add: requires auth`
+            message: `PATCH ${n.path} has no auth guard — anyone can modify data. Add: requires login`
           });
         }
       }
@@ -1268,7 +1272,7 @@ function validateOWASP(body, errors, warnings) {
         warnings.push(
           `Line ${n.line}: POST ${n.path} modifies data without auth — CSRF vulnerable. ` +
           `A malicious site could trick a user's browser into submitting data. ` +
-          `Fix: add 'requires auth' inside the endpoint.`
+          `Fix: add 'requires login' inside the endpoint.`
         );
       }
     }
@@ -1283,7 +1287,7 @@ function validateOWASP(body, errors, warnings) {
   const hasLogging = body.some(n => n.type === NodeType.LOG_REQUESTS);
   if (hasAuth && !hasLogging) {
     warnings.push(
-      `Your app requires auth but doesn't log requests. Without logging, you can't detect ` +
+      `Your app requires login but doesn't log requests. Without logging, you can't detect ` +
       `unauthorized access attempts or debug auth issues. Add: log every request`
     );
   }
