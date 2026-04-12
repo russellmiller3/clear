@@ -36,6 +36,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 20: Compiler Bug Fixes + SVG Rendering](#session-20-compiler-bug-fixes--svg-rendering-2026-04-11) | Tree-shaker callback blind spot, conditional DOM needs reactive path, `text` guard too strict, SHOW needs DOM targets, bare SVG streaming |
 | [Session 23: Agent Bug Fixes + Extended Thinking](#session-23-agent-bug-fixes--extended-thinking-2026-04-11) | SVG innerHTML namespace loss, `to_json` synonym collision in 3 places, Python dict keys must be quoted, Anthropic thinking signature for multi-turn, `toLocaleString` for display formats, CRUD auto-inject `:id`, multer module-scope, Python cron lifespan |
 | [Session 25: Roadmap 5-12 + Click-to-Highlight](#session-25-roadmap-5-12--click-to-highlight-2026-04-12) | CM6 virtual rendering, param format normalization, postamble injection order, compile animation timing, `sourceMap: true` for frontend markers |
+| [Session 25b: Core 7 Templates + E2E Testing](#session-25b-core-7-templates--e2e-testing-2026-04-12) | GET req.query vs req.body, one-op-per-line enforcement, npm dep auto-install, synonym propagation, typo suggestion guards, Playwright selector scoping |
 
 ---
 
@@ -787,3 +788,37 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 ### CSS `display` Duplication Bug
 - **`style="display:none; ... display:flex;"` — the last property wins in CSS.** The context meter was always visible (empty) instead of hidden until data arrives.
 - **Lesson:** Inline styles with duplicate properties are silent bugs. Only one `display` per style attribute.
+
+---
+
+## Session 25b: Core 7 Templates + E2E Testing (2026-04-12)
+
+### GET Endpoints Must Use req.query, Not req.body
+- **`sending params` on a GET endpoint compiled to `req.body` — which is always empty on GET requests.** Every search endpoint returned 400 ("Request body is required").
+- **Fix:** Compiler now checks `node.method === 'GET'` and uses `req.query` instead of `req.body`.
+- **Lesson:** HTTP semantics matter in compiled output. GET has no body. POST/PUT have bodies. The compiler must respect this, not treat all `sending X` the same.
+
+### `send back get all X` Is Not One Line
+- **`send back get all Companies` compiled to `res.json(get)` — treating `get` as an undefined variable.** The parser can't handle an inline query inside `send back`.
+- **Fix:** Split into two lines: `all_companies = get all Companies` then `send back all_companies`. Updated all 3 CRM-Pro endpoints.
+- **Lesson:** Clear's one-op-per-line philosophy exists for a reason. Combining two operations in one line creates ambiguity the parser can't resolve. When in doubt, use a named intermediate.
+
+### Compiled Apps Need npm Dependencies Installed
+- **The playground's build directory only had `ws` in package.json.** Apps using `allow signup and login` need `bcryptjs` + `jsonwebtoken`, but those weren't installed. CRM-Pro crashed on startup.
+- **Fix:** Server.js now scans compiled code for `require('bcryptjs')` etc. and adds deps to package.json, then runs `npm install` if any are missing.
+- **Lesson:** When the compiler emits `require()` for external packages, the runtime environment must have them. Auto-detect from compiled output is more reliable than maintaining a manual list.
+
+### Synonym Changes Propagate to All Templates
+- **Global `sed` replacing `requires auth` → `requires login` across 33 template files broke `this endpoint requires auth` (a multi-word synonym).** The synonym table had `this endpoint requires auth` but not `this endpoint requires login`.
+- **Fix:** Added `this endpoint requires login` to the `needs_login` synonym list.
+- **Lesson:** When changing canonical forms via global search-replace, check the synonym table for multi-word phrases that include the old form. Each synonym entry is a fragile string match.
+
+### Typo Suggestions Need Length Guards
+- **Edit distance of 2 between `a` and `if` made the validator suggest "Did you mean 'if'?" for the word `a`.** One-character words will always fuzzy-match some short keyword.
+- **Fix:** Skip reserved words (`a`, `an`, `the`, `in`, etc.) entirely. Require suggestion and target to be within 1 character of each other's length.
+- **Lesson:** Fuzzy matching on very short strings produces false positives. Set a minimum length or require proportional similarity, not just absolute edit distance.
+
+### Playwright Selectors Must Be Specific
+- **`.cm-content` matched both the editor and the compiled view (two CodeMirror instances).** Playwright crashed with "strict mode violation: resolved to 2 elements."
+- **Fix:** Use `#editor-mount .cm-content` to scope to the editor's CodeMirror.
+- **Lesson:** In multi-pane IDEs with multiple CodeMirror instances, always scope selectors to the specific pane container. Never use bare `.cm-*` selectors.
