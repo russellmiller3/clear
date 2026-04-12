@@ -381,7 +381,7 @@ page 'Support Chat' at '/':
       section 'Content' with style app_content:
         on page load get messages from '/api/messages'
 
-        display messages as cards showing role, content
+        display messages as list showing role, content
 
         'Type your message...' is a text input saved as user_message
 

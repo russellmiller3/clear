@@ -6012,9 +6012,17 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   }
 
   // Display updates
+  // Dedup IDs to match buildHTML's dedup (buildHTML runs after this, so _resolvedId isn't set yet)
+  const _dispUsedIds = new Set();
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
   for (const disp of displayNodes) {
-    const outputId = disp.ui._resolvedId || disp.ui.id;
+    let outputId = disp.ui._resolvedId || disp.ui.id;
+    if (_dispUsedIds.has(outputId)) {
+      let counter = 2;
+      while (_dispUsedIds.has(outputId + '_' + counter)) counter++;
+      outputId = outputId + '_' + counter;
+    }
+    _dispUsedIds.add(outputId);
     const val = exprToCode(disp.expression, displayCtx);
     if (disp.format === 'table') {
       // Check if user explicitly requested action buttons via "with delete" / "with edit"
@@ -6781,7 +6789,7 @@ function buildHTML(body) {
               : '';
             // Only full-width landing page sections get the max-w-5xl inner wrapper.
             // App presets (flex layout) and card-type presets (already constrained) skip it.
-            const isAppPreset = node.styleName && node.styleName.startsWith('app_');
+            const isAppPreset = node.styleName && (node.styleName.startsWith('app_') || node.styleName.startsWith('split'));
             const isCardPreset = [
               'metric_card', 'card', 'card_bordered', 'form', 'code_box',
               'feature_card', 'feature_card_dark', 'feature_card_large',
@@ -7256,8 +7264,9 @@ ${options}
             hasQR = true;
           } else if (inUserSection) {
             // Inside a styled card (stat_card etc.) — render just the number inline, no extra wrapper
-            parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
-            if (ui.label) parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">${ui.label}</p>`);
+            parts.push(`    <p class="font-display text-2xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
+            // Only show label if it's meaningful (not the generic "Output" default)
+            if (ui.label && ui.label !== 'Output') parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">${ui.label}</p>`);
           } else {
             parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 p-6 flex flex-col gap-2" id="${displayId}"${_cl}>
       <p class="text-sm font-medium text-base-content/50">${ui.label}</p>
@@ -7341,7 +7350,7 @@ ${options}
           const inSidebar = sectionStack.includes('app_sidebar');
           const inHeader = parentPreset === 'app_header';
           const inMetricCard = parentPreset === 'metric_card';
-          const inCard = ['card', 'card_bordered'].includes(parentPreset);
+          const inCard = ['card', 'card_bordered', 'app_card'].includes(parentPreset);
           const inForm = parentPreset === 'form';
           const inModal = parentPreset === 'app_modal';
           const inEmptyState = parentPreset === 'empty_state';
@@ -9089,6 +9098,11 @@ const BUILTIN_PRESET_CLASSES = {
   app_header:        'sticky top-0 z-20 flex items-center justify-between h-16 px-6 bg-base-100 border-b border-base-300/50 shrink-0',
   app_card:          'bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-5',
   app_table:         'bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden',
+
+  // --- Layout presets ---
+  split:             'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4',
+  split_2:           'grid grid-cols-1 sm:grid-cols-2 gap-4',
+  split_3:           'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4',
 
   // --- Generic section styles ---
   hero:              'bg-base-100 py-24 px-6 flex flex-col items-center text-center gap-5',
