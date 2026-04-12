@@ -19193,6 +19193,46 @@ describe('First-class functions — apply fn to each in list', () => {
   });
 });
 
+describe('First-class functions — pass fn as argument', () => {
+  it('passes a function reference as an argument', () => {
+    const source = [
+      "build for javascript backend",
+      "define function double(x):",
+      "  return x * 2",
+      "",
+      "define function map_list(items, fn):",
+      "  result is an empty list",
+      "  for each item in items:",
+      "    mapped = fn(item)",
+      "    add mapped to result",
+      "  return result",
+      "",
+      "when user calls GET /api/test:",
+      "  nums is [1, 2, 3]",
+      "  doubled = map_list(nums, double)",
+      "  send back doubled"
+    ].join('\n');
+    const r = compileProgram(source);
+    const js = r.serverJS || r.javascript;
+    expect(r.errors).toHaveLength(0);
+    // Function is passed by reference, not called
+    expect(js).toContain('map_list(nums, double)');
+    // Inside map_list, fn(item) calls the passed function
+    expect(js).toContain('fn(item)');
+  });
+
+  it('calls a function parameter inside a function body', () => {
+    const source = [
+      "define function run_callback(fn):",
+      "  result = fn(42)",
+      "  return result",
+    ].join('\n');
+    const r = compileProgram(source);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('fn(42)');
+  });
+});
+
 describe('First-class functions — filter list using fn', () => {
   it('compiles to list.filter(fn) in JS', () => {
     const r = compileProgram("build for javascript backend\nactive = filter users using is_active\nshow active");
