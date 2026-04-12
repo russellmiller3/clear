@@ -8,7 +8,7 @@ Run ToolSearch for these before doing anything else:
 `mcp__computer-use__screenshot`, `mcp__computer-use__zoom`, `mcp__Claude_in_Chrome__computer`, `mcp__Claude_in_Chrome__tabs_context_mcp`, `mcp__Claude_in_Chrome__navigate`, `mcp__Claude_in_Chrome__get_page_text`
 
 ## On Startup -- Read These First
-1. **`intent.md`** -- the authoritative spec. All 96 node types, build targets, compiler passes, synonym collisions, validation rules. If it's not in intent.md, it doesn't exist.
+1. **`intent.md`** -- the authoritative spec. All 99+ node types, build targets, compiler passes, synonym collisions, validation rules. If it's not in intent.md, it doesn't exist.
 2. **`learnings.md`** -- scan the TOC before any work. Engineering gotchas: synonym traps, tokenizer quirks, CRUD parse shapes, parser ordering, runtime coercion. Every section is a bug someone already hit.
 3. **`PHILOSOPHY.md`** -- the 14 design rules. 14-year-old test, one op per line, no jargon, source-of-truth rule (Clear is source code, compiled output is build artifact), 1:1 mapping (every output line traces to one Clear line), explicit over terse, possessive access, colons signal blocks, deterministic compilation.
 4. **`AI-INSTRUCTIONS.md`** -- how to WRITE Clear code and use the CLI. `=` for numbers, `is` for strings. Single quotes canonical. Numbers get px in styles. Use built-in presets before custom styles. `sending` not `receiving`. File structure: Database > Backend > Frontend sections.
@@ -19,14 +19,14 @@ Run ToolSearch for these before doing anything else:
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1640 compiler tests)
+- Run all tests: `node clear.test.js` (1675 compiler tests)
 - Run sandbox tests: `node sandbox.test.js` (9 integration tests — spins up real servers)
 - Run playground tests (each is a separate file):
   - `node playground/server.test.js` (~85 server API tests)
   - `node playground/e2e.test.js` (~60 template compile + endpoint tests)
   - `node playground/ide.test.js` (~46 Playwright IDE UI tests)
   - `node playground/agent.test.js` (~50 Claude agent tool tests, needs ANTHROPIC_API_KEY)
-- Total: 1640 compiler + 9 sandbox + ~241 playground tests
+- Total: 1675 compiler + 9 sandbox + ~241 playground tests
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -35,7 +35,7 @@ Run ToolSearch for these before doing anything else:
 - `tokenizer.js` -> `parser.js` -> `validator.js` -> `compiler.js` (the pipeline)
 - `synonyms.js` -- keyword synonym table (check before adding new keywords)
 - `cli/clear.js` -- CLI for AI agents: build, check, info, fix, lint, serve, test
-- `intent.md` -- authoritative spec for all 99 node types
+- `intent.md` -- authoritative spec for all node types (100+)
 - `PHILOSOPHY.md` -- design rules (14-year-old test, one op per line, no jargon)
 - `learnings.md` -- scan TOC before starting any work
 - `patch.js` -- program diff/patch API (11 structured edit operations for RL)

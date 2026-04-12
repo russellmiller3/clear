@@ -182,6 +182,8 @@ const SYNONYM_TABLE = Object.freeze({
   link: Object.freeze(['link', 'hyperlink']),
   divider: Object.freeze(['divider', 'separator', 'horizontal rule']),
   image: Object.freeze(['image']),
+  video: Object.freeze(['video', 'video player']),
+  audio: Object.freeze(['audio', 'audio player']),
   code_block: Object.freeze(['code block', 'code example']),
   // NOTE: "display" is shared between show (synonym) and Phase 4 display.
   // The parser checks context: "display X as Y called Z" → Phase 4 DISPLAY node.
@@ -435,6 +437,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.14.0';
+const SYNONYM_VERSION = '0.15.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

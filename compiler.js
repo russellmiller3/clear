@@ -1629,6 +1629,16 @@ function compileContentToHTML(node, ctx) {
     return `${pad}_html += '<img src="${src}" alt="" class="w-full rounded-lg" loading="lazy" />';`;
   }
 
+  if (node.contentType === 'video') {
+    const src = (node.text || '').replace(/'/g, "\\'");
+    return `${pad}_html += '<video src="${src}" controls class="w-full rounded-lg"></video>';`;
+  }
+
+  if (node.contentType === 'audio') {
+    const src = (node.text || '').replace(/'/g, "\\'");
+    return `${pad}_html += '<audio src="${src}" controls class="w-full"></audio>';`;
+  }
+
   if (node.contentType === 'divider') {
     return `${pad}_html += '<hr class="divider clear-divider">';`;
   }
@@ -1682,7 +1692,7 @@ export function compileNode(node, ctx) {
 // Backend-only node types: skip these when compiling for web/reactive frontend
 const BACKEND_ONLY_NODES = new Set([
   NodeType.ENDPOINT, NodeType.RESPOND, NodeType.DATA_SHAPE, NodeType.CRUD,
-  NodeType.REQUIRES_AUTH, NodeType.REQUIRES_ROLE, NodeType.DEFINE_ROLE, NodeType.GUARD,
+  NodeType.REQUIRES_ROLE, NodeType.DEFINE_ROLE, NodeType.GUARD,
   NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.VALIDATE, NodeType.FIELD_RULE,
   NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK, NodeType.OAUTH_CONFIG,
   NodeType.CHECKOUT, NodeType.USAGE_LIMIT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
@@ -1856,9 +1866,18 @@ function compileCrud(node, ctx, pad) {
     }
     if (node.operation === 'save') {
       if (node.resultVar) return `${pad}${sanitizeName(node.resultVar)} = db.save("${table}", ${sanitizeName(node.variable)})`;
+      // In PUT endpoints with :id, inject the URL param so db.update finds the right record
+      if (ctx.endpointHasId) {
+        const varCode = sanitizeName(node.variable);
+        return `${pad}${varCode}["id"] = request.path_params["id"]\n${pad}db.update("${table}", ${varCode})`;
+      }
       return `${pad}db.update("${table}", ${sanitizeName(node.variable)})`;
     }
     if (node.operation === 'remove') {
+      // When inside a DELETE endpoint with :id and no explicit condition, auto-inject id filter
+      if (ctx.endpointHasId && !node.condition) {
+        return `${pad}id = request.path_params["id"]\n${pad}db.remove("${table}", {"id": id})`;
+      }
       const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
       return `${pad}db.remove("${table}"${where})`;
     }
@@ -1970,8 +1989,12 @@ function compileCrud(node, ctx, pad) {
     return `${pad}await _clearTry(() => db.update('${table}', _pick(${varCode}, ${schemaName})), ${updateCtx});${lineComment}`;
   }
   if (node.operation === 'remove') {
-    const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     const removeCtx = `{ op: 'remove', table: '${table}', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    // When inside a DELETE endpoint with :id and no explicit condition, auto-inject id filter
+    if (ctx.endpointHasId && !node.condition) {
+      return `${pad}await _clearTry(() => db.remove('${table}', { id: req.params.id }), ${removeCtx});${lineComment}`;
+    }
+    const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     return `${pad}await _clearTry(() => db.remove('${table}'${where}), ${removeCtx});${lineComment}`;
   }
   return `${pad}// CRUD: ${node.operation}`;
@@ -2471,11 +2494,17 @@ function compileWorkflow(node, ctx, pad) {
     const pyPad = pad;
     const pyInner = pad + '    ';
 
-    // State initialization (Python dict)
-    let pyStateInit = `${pyInner}_state = {${defaults.map(d => {
-      // Convert JS syntax to Python
-      return d.replace(': null', ': None').replace(': true', ': True').replace(': false', ': False');
-    }).join(', ')}}\n`;
+    // State initialization (Python dict — keys must be quoted strings)
+    const pyDefaults = node.stateFields.map(f => {
+      let val = 'None';
+      if (f.default !== null && f.default !== undefined) {
+        if (typeof f.default === 'string') val = JSON.stringify(f.default);
+        else if (typeof f.default === 'boolean') val = f.default ? 'True' : 'False';
+        else val = String(f.default);
+      }
+      return `"${sanitizeName(f.name)}": ${val}`;
+    });
+    let pyStateInit = `${pyInner}_state = {${pyDefaults.join(', ')}}\n`;
     pyStateInit += `${pyInner}_state.update(${stateVarName})\n`;
 
     if (node.trackProgress) {
@@ -2560,7 +2589,51 @@ function compileWorkflow(node, ctx, pad) {
     code += pyStateInit;
     code += pyBody;
     code += pyTrack;
-    code += `${pyInner}return _state`;
+    code += `${pyInner}return _state\n`;
+
+    // T1 #5 fix: Auto-generate endpoint for Python workflow
+    const pySlug = sanitizeName(node.name.toLowerCase().replace(/\s+/g, '-'));
+    if (ctx.mode === 'backend') {
+      code += `\n${pyPad}# Auto-generated endpoint for workflow '${node.name}'\n`;
+      code += `${pyPad}@app.post("/api/run-${pySlug}")\n`;
+      code += `${pyPad}async def run_${sanitizeName(node.name.toLowerCase().replace(/\s+/g, '_'))}(request: Request):\n`;
+      code += `${pyInner}data = await request.json()\n`;
+      code += `${pyInner}result = await ${fnName}(data)\n`;
+      code += `${pyInner}return JSONResponse(result)\n`;
+    }
+
+    // T1 #7 fix: Generate stub agents for Python
+    const pyReferencedAgents = new Set();
+    function pyCollectAgentRefs(steps) {
+      for (const s of steps) {
+        if (s.kind === 'step' && s.agentName) pyReferencedAgents.add(s.agentName);
+        if (s.kind === 'conditional') { pyCollectAgentRefs(s.thenSteps); pyCollectAgentRefs(s.elseSteps || []); }
+        if (s.kind === 'repeat') pyCollectAgentRefs(s.steps);
+        if (s.kind === 'parallel') pyCollectAgentRefs(s.steps);
+      }
+    }
+    pyCollectAgentRefs(node.steps);
+
+    const pyDefinedAgents = new Set();
+    if (ctx._allNodes) {
+      for (const n of ctx._allNodes) {
+        if (n.type === NodeType.AGENT && n.name) {
+          pyDefinedAgents.add(n.name.toLowerCase().replace(/\s+/g, '_'));
+        }
+      }
+    }
+
+    for (const agentName of pyReferencedAgents) {
+      const agentFnName = 'agent_' + sanitizeName(agentName.toLowerCase().replace(/\s+/g, '_'));
+      const agentKey = agentName.toLowerCase().replace(/\s+/g, '_');
+      if (!pyDefinedAgents.has(agentKey)) {
+        code += `\n${pyPad}# Stub agent '${agentName}' — referenced by workflow but not defined\n`;
+        code += `${pyPad}# TODO: Define 'agent ${agentName}' in your Clear code to replace this stub\n`;
+        code += `${pyPad}async def ${agentFnName}(state):\n`;
+        code += `${pyInner}return state\n`;
+      }
+    }
+
     return code;
   }
 
@@ -2570,7 +2643,55 @@ function compileWorkflow(node, ctx, pad) {
   code += bodyCode;
   code += trackCode;
   code += `${innerPad}return _state;\n`;
-  code += `${pad}}`;
+  code += `${pad}}\n`;
+
+  // T1 #5 fix: Auto-generate endpoint to trigger the workflow
+  const slug = sanitizeName(node.name.toLowerCase().replace(/\s+/g, '-'));
+  if (ctx.mode === 'backend') {
+    code += `\n${pad}// Auto-generated endpoint for workflow '${node.name}'\n`;
+    code += `${pad}app.post('/api/run-${slug}', async (req, res) => {\n`;
+    code += `${innerPad}try {\n`;
+    code += `${innerPad}  const result = await ${fnName}(req.body || {});\n`;
+    code += `${innerPad}  res.json(result);\n`;
+    code += `${innerPad}} catch (err) {\n`;
+    code += `${innerPad}  res.status(500).json({ error: err.message });\n`;
+    code += `${innerPad}}\n`;
+    code += `${pad}});`;
+  }
+
+  // T1 #7 fix: Generate stub functions for any agents referenced in workflow steps
+  // that aren't defined elsewhere in the program
+  const referencedAgents = new Set();
+  function collectAgentRefs(steps) {
+    for (const s of steps) {
+      if (s.kind === 'step' && s.agentName) referencedAgents.add(s.agentName);
+      if (s.kind === 'conditional') { collectAgentRefs(s.thenSteps); collectAgentRefs(s.elseSteps || []); }
+      if (s.kind === 'repeat') collectAgentRefs(s.steps);
+      if (s.kind === 'parallel') collectAgentRefs(s.steps);
+    }
+  }
+  collectAgentRefs(node.steps);
+
+  // Check which agents are already defined in the program
+  const definedAgents = new Set();
+  if (ctx._allNodes) {
+    for (const n of ctx._allNodes) {
+      if (n.type === NodeType.AGENT && n.name) {
+        definedAgents.add(n.name.toLowerCase().replace(/\s+/g, '_'));
+      }
+    }
+  }
+
+  for (const agentName of referencedAgents) {
+    const agentFnName = 'agent_' + sanitizeName(agentName.toLowerCase().replace(/\s+/g, '_'));
+    const agentKey = agentName.toLowerCase().replace(/\s+/g, '_');
+    if (!definedAgents.has(agentKey)) {
+      code += `\n\n${pad}// Stub agent '${agentName}' — referenced by workflow but not defined\n`;
+      code += `${pad}// TODO: Define 'agent ${agentName}' in your Clear code to replace this stub\n`;
+      code += `${pad}async function ${agentFnName}(state) { return state; }`;
+    }
+  }
+
   return code;
 }
 
@@ -2863,7 +2984,6 @@ function compileExternalFetch(node, ctx, pad) {
 
   if (ctx.lang === 'python') {
     let code = `${pad}# Fetch: ${node.url}\n`;
-    code += `${pad}import httpx\n`;
     code += `${pad}try:\n`;
     code += `${pad}    async with httpx.AsyncClient(timeout=${timeoutMs / 1000}) as _client:\n`;
     code += `${pad}        _response = await _client.get("${node.url}")\n`;
@@ -3523,8 +3643,13 @@ ${pad}}`;
       }
       const outputId = `output_${node.label ? sanitizeName(node.label.replace(/\s+/g, '_')) : 'value'}`;
       const val = exprToCode(node.expression, ctx);
-      const formatFn = node.format === 'dollars' ? `'$' + (${val}).toFixed(2)` : node.format === 'percent' ? `(${val} * 100).toFixed(1) + '%'` : val;
-      return `${pad}document.getElementById('${outputId}').textContent = ${formatFn};`;
+      const formatFn = node.format === 'dollars' || node.format === 'currency' ? `Number(${val}).toLocaleString('en-US', { style: 'currency', currency: 'USD' })`
+        : node.format === 'percent' || node.format === 'percentage' ? `(Number(${val}) * 100).toFixed(1) + '%'`
+        : node.format === 'date' ? `new Date(${val}).toLocaleDateString()`
+        : node.format === 'json' ? `JSON.stringify(${val}, null, 2)`
+        : val;
+      const propName = node.format === 'json' ? 'innerText' : 'textContent';
+      return `${pad}document.getElementById('${outputId}').${propName} = ${formatFn};`;
     }
 
     case NodeType.BUTTON: {
@@ -3548,7 +3673,12 @@ ${pad}}`;
 
     case NodeType.REQUIRES_AUTH: {
       if (ctx.lang === 'python') {
-        return `${pad}if not hasattr(request, 'user') or not request.user:\n${pad}    raise HTTPException(status_code=401, detail="Authentication required")`;
+        // Extract JWT from Authorization header and verify
+        return `${pad}_auth_header = request.headers.get("authorization", "")\n${pad}if not _auth_header.startswith("Bearer "):\n${pad}    raise HTTPException(status_code=401, detail="Authentication required")\n${pad}try:\n${pad}    import jwt as _jwt\n${pad}    _token = _auth_header[7:]\n${pad}    request.state.user = _jwt.decode(_token, _JWT_SECRET, algorithms=["HS256"])\n${pad}except Exception:\n${pad}    raise HTTPException(status_code=401, detail="Invalid or expired token")`;
+      }
+      // Client-side auth guard: check localStorage token, redirect to /login if missing
+      if (ctx.mode === 'web') {
+        return `${pad}if (!localStorage.getItem('token')) { window.location.href = '/login'; return; }`;
       }
       return `${pad}if (!req.user) { return res.status(401).json({ error: "Authentication required" }); }`;
     }
@@ -3973,7 +4103,7 @@ ${pad}}`;
         code += `${pad}    while True:\n`;
         code += bodyCode.split('\n').map(l => `    ${l}`).join('\n') + '\n';
         code += `${pad}        await asyncio.sleep(${scheduleMs / 1000})\n`;
-        code += `\n${pad}@app.on_event("startup")\n`;
+        code += `\n${pad}# _startup_task_: start_${sanitizeName(node.name)}\n`;
         code += `${pad}async def start_${sanitizeName(node.name)}():\n`;
         code += `${pad}    asyncio.create_task(job_${sanitizeName(node.name)}())`;
         return code;
@@ -3981,15 +4111,20 @@ ${pad}}`;
       const bodyCode = compileBody(node.body, ctx, { declared: new Set() });
       let code = `${pad}// Background job: ${node.name}\n`;
       code += `${pad}setInterval(async () => {\n`;
-      code += bodyCode + '\n';
+      code += `${pad}  try {\n`;
+      code += bodyCode.split('\n').map(l => `  ${l}`).join('\n') + '\n';
+      code += `${pad}  } catch (_err) {\n`;
+      code += `${pad}    console.error('Background job error:', _err);\n`;
+      code += `${pad}  }\n`;
       code += `${pad}}, ${scheduleMs});`;
       return code;
     }
 
     case NodeType.CRON: {
       if (ctx.lang === 'python') {
-        const bodyCode = compileBody(node.body, ctx);
-        const indented = bodyCode.split('\n').map(l => `        ${l}`).join('\n');
+        // Compile body at indent 1 — compileBody adds +1, making it indent 2 = 8 spaces
+        const cronCtx = { ...ctx, indent: 1 };
+        const bodyCode = compileBody(node.body, cronCtx);
         if (node.mode === 'interval') {
           const secMap = { second: 1, minute: 60, hour: 3600 };
           const secs = node.value * (secMap[node.unit] || 60);
@@ -3998,8 +4133,8 @@ ${pad}}`;
           code += `${pad}async def _cron_interval_${node.value}_${node.unit}():\n`;
           code += `${pad}    while True:\n`;
           code += `${pad}        await asyncio.sleep(${secs})\n`;
-          code += indented + '\n';
-          code += `${pad}@app.on_event("startup")\n`;
+          code += bodyCode + '\n';
+          code += `${pad}# _startup_task_: _start_cron_${node.value}_${node.unit}\n`;
           code += `${pad}async def _start_cron_${node.value}_${node.unit}():\n`;
           code += `${pad}    asyncio.create_task(_cron_interval_${node.value}_${node.unit}())`;
           return code;
@@ -4014,8 +4149,8 @@ ${pad}}`;
           code += `${pad}        if target <= now:\n`;
           code += `${pad}            target += datetime.timedelta(days=1)\n`;
           code += `${pad}        await asyncio.sleep((target - now).total_seconds())\n`;
-          code += indented + '\n';
-          code += `${pad}@app.on_event("startup")\n`;
+          code += bodyCode + '\n';
+          code += `${pad}# _startup_task_: _start_cron_${h}_${m}\n`;
           code += `${pad}async def _start_cron_${h}_${m}():\n`;
           code += `${pad}    asyncio.create_task(_cron_daily_${h}_${m}())`;
           return code;
@@ -4028,7 +4163,11 @@ ${pad}}`;
         const ms = node.value * (msMap[node.unit] || 60000);
         let code = `${pad}// Scheduled: every ${node.value} ${node.unit}(s)\n`;
         code += `${pad}setInterval(async () => {\n`;
-        code += bodyCode + '\n';
+        code += `${pad}  try {\n`;
+        code += bodyCode.split('\n').map(l => `  ${l}`).join('\n') + '\n';
+        code += `${pad}  } catch (_err) {\n`;
+        code += `${pad}    console.error('Scheduled task error:', _err);\n`;
+        code += `${pad}  }\n`;
         code += `${pad}}, ${ms});`;
         return code;
       } else {
@@ -4038,7 +4177,11 @@ ${pad}}`;
         let code = `${pad}// Scheduled: every day at ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}\n`;
         code += `${pad}(function _scheduleDailyAt${h}_${m}() {\n`;
         code += `${pad}  const _runAt = async () => {\n`;
-        code += bodyCode.split('\n').map(l => `  ${l}`).join('\n') + '\n';
+        code += `${pad}    try {\n`;
+        code += bodyCode.split('\n').map(l => `    ${l}`).join('\n') + '\n';
+        code += `${pad}    } catch (_err) {\n`;
+        code += `${pad}      console.error('Scheduled task error:', _err);\n`;
+        code += `${pad}    }\n`;
         code += `${pad}  };\n`;
         code += `${pad}  const _nextMs = () => {\n`;
         code += `${pad}    const now = new Date();\n`;
@@ -4159,7 +4302,6 @@ ${pad}}`;
         return code;
       }
       let code = `${pad}// File upload\n`;
-      code += `${pad}const multer = require('multer');\n`;
       code += `${pad}const upload = multer({\n`;
       code += `${pad}  limits: { fileSize: ${maxBytes} },\n`;
       if (types.length > 0) {
@@ -4315,6 +4457,41 @@ ${pad}}`;
       return `${pad}${list} = ${list}.filter(_item => _item !== ${val});`;
     }
 
+    case NodeType.LOGIN_ACTION: {
+      // login with email and password → POST to /auth/login, store JWT, redirect
+      if (ctx.lang === 'python') return `${pad}# Login action — frontend only`;
+      if (ctx.mode === 'backend') return null; // frontend-only node
+      const loginFields = node.fields.map(f => `${sanitizeName(f)}: _state.${sanitizeName(f)}`).join(', ');
+      const lines = [];
+      lines.push(`${pad}{ const _loginData = { ${loginFields} };`);
+      lines.push(`${pad}  const _r = await fetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_loginData) });`);
+      lines.push(`${pad}  const _d = await _r.json();`);
+      lines.push(`${pad}  if (_d.token) { localStorage.setItem('token', _d.token); window.location.href = '/'; }`);
+      lines.push(`${pad}  else { alert(_d.error || 'Login failed'); } }`);
+      return lines.join('\n');
+    }
+
+    case NodeType.UPLOAD_TO: {
+      // File upload: upload <var> to '<url>'
+      // Compiles to FormData + fetch POST with multipart/form-data
+      const uploadUrl = JSON.stringify(node.url);
+      if (ctx.lang === 'python') return `${pad}# File upload to ${node.url}`;
+      if (ctx.mode === 'backend') {
+        // Backend: accept multipart upload — already handled by ACCEPT_FILE
+        return `${pad}// File upload to ${node.url} — use 'accept file:' on the endpoint`;
+      }
+      // Frontend web mode: build FormData from file input(s)
+      const lines = [];
+      lines.push(`${pad}{ const _fd = new FormData();`);
+      for (const v of node.variables) {
+        const inputId = 'input_' + sanitizeName(v);
+        lines.push(`${pad}  const _fileEl = document.getElementById('${inputId}');`);
+        lines.push(`${pad}  if (_fileEl && _fileEl.files[0]) _fd.append('${sanitizeName(v)}', _fileEl.files[0]);`);
+      }
+      lines.push(`${pad}  await fetch(${uploadUrl}, { method: 'POST', body: _fd }); }`);
+      return lines.join('\n');
+    }
+
     case NodeType.API_CALL: {
       const url = JSON.stringify(node.url);
       if (ctx.lang === 'python') return `${pad}# API call: ${node.method} ${node.url}`;
@@ -4446,6 +4623,37 @@ ${pad}}`;
 
     case NodeType.TAB:
       return null; // Tabs are compiled as part of their parent TAB_GROUP section
+
+    case NodeType.HIDE_ELEMENT: {
+      // hide <element> → set display:none on the target element
+      const hideSlug = sanitizeName(node.target.replace(/\s+/g, '_').toLowerCase());
+      return `${pad}{ const _el = document.getElementById('${hideSlug}') || document.querySelector('[data-name="${hideSlug}"]'); if (_el) _el.style.display = 'none'; }`;
+    }
+
+    case NodeType.CLIPBOARD_COPY: {
+      // copy X to clipboard → navigator.clipboard.writeText
+      const clipVar = sanitizeName(node.variable);
+      const clipVal = ctx.stateVars && ctx.stateVars.has(clipVar) ? `_state.${clipVar}` : clipVar;
+      return `${pad}navigator.clipboard.writeText(String(${clipVal})).then(() => _toast('Copied to clipboard', 'success')).catch(() => _toast('Copy failed', 'error'));`;
+    }
+
+    case NodeType.DOWNLOAD_FILE: {
+      // download X as 'filename' → Blob + anchor click
+      const dlVar = sanitizeName(node.variable);
+      const dlVal = ctx.stateVars && ctx.stateVars.has(dlVar) ? `_state.${dlVar}` : dlVar;
+      const dlFilename = JSON.stringify(node.filename || 'download.txt');
+      return `${pad}{ const _blob = new Blob([typeof ${dlVal} === 'object' ? JSON.stringify(${dlVal}, null, 2) : String(${dlVal})], { type: 'text/plain' }); const _a = document.createElement('a'); _a.href = URL.createObjectURL(_blob); _a.download = ${dlFilename}; _a.click(); URL.revokeObjectURL(_a.href); }`;
+    }
+
+    case NodeType.LOADING_ACTION: {
+      // show loading / hide loading → overlay spinner
+      if (node.action === 'show') {
+        const loadMsg = node.message ? JSON.stringify(node.message) : "'Loading...'";
+        return `${pad}{ let _lo = document.getElementById('_loading_overlay'); if (!_lo) { _lo = document.createElement('div'); _lo.id = '_loading_overlay'; _lo.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:9999;'; _lo.innerHTML = '<div class="flex flex-col items-center gap-3"><span class="loading loading-spinner loading-lg text-primary"></span><p class="text-base-content font-medium">' + ${loadMsg} + '</p></div>'; document.body.appendChild(_lo); } else { _lo.style.display = 'flex'; } }`;
+      }
+      // hide loading
+      return `${pad}{ const _lo = document.getElementById('_loading_overlay'); if (_lo) _lo.style.display = 'none'; }`;
+    }
 
     case NodeType.MATCH: {
       const matchVal = exprToCode(node.expression, ctx);
@@ -5083,8 +5291,8 @@ function isReactiveApp(body) {
       // Inline component call: show Card(name) — needs reactive path for DOM injection
       if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL && /^[A-Z]/.test(node.expression.name)) return true;
       if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
-      // A table/list display requires _recompute() to render rows into the DOM.
-      if (node.type === NodeType.DISPLAY && (node.format === 'table' || node.format === 'list')) return true;
+      // A table/list/cards/gallery/map/calendar/qr display requires _recompute() to render into the DOM.
+      if (node.type === NodeType.DISPLAY && (node.format === 'table' || node.format === 'list' || node.format === 'cards' || node.format === 'gallery' || node.format === 'map' || node.format === 'calendar' || node.format === 'qr' || node.format === 'qrcode')) return true;
       // An on-page-load block with API calls requires the async IIFE + _recompute().
       if (node.type === NodeType.ON_PAGE_LOAD) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
@@ -5515,11 +5723,110 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`      }).join('');`);
       lines.push(`    }`);
       lines.push(`  }`);
+    } else if (disp.format === 'gallery') {
+      // Gallery rendering: iterate over array and create image grid
+      lines.push(`  {`);
+      lines.push(`    const _galEl = document.getElementById('${outputId}_gallery');`);
+      lines.push(`    const _data = ${val};`);
+      lines.push(`    if (_galEl && Array.isArray(_data) && _data.length > 0) {`);
+      lines.push(`      _galEl.innerHTML = _data.map(item => {`);
+      lines.push(`        if (typeof item === 'string') return '<div class="aspect-square overflow-hidden rounded-lg"><img src="' + _esc(item) + '" alt="" class="w-full h-full object-cover" loading="lazy" /></div>';`);
+      lines.push(`        if (typeof item === 'object' && item !== null) {`);
+      lines.push(`          const _url = item.url || item.src || item.image || item.photo || item.thumbnail || '';`);
+      lines.push(`          const _alt = item.alt || item.title || item.caption || item.name || '';`);
+      lines.push(`          const _cap = item.caption || item.title || item.name || '';`);
+      lines.push(`          return '<div class="overflow-hidden rounded-lg"><img src="' + _esc(_url) + '" alt="' + _esc(_alt) + '" class="w-full aspect-square object-cover" loading="lazy" />' + (_cap ? '<p class="text-xs text-base-content/60 mt-1 truncate">' + _esc(_cap) + '</p>' : '') + '</div>';`);
+      lines.push(`        }`);
+      lines.push(`        return '';`);
+      lines.push(`      }).join('');`);
+      lines.push(`    } else if (_galEl) {`);
+      lines.push(`      _galEl.innerHTML = '';`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (disp.format === 'map') {
+      // Map rendering: Leaflet.js map with markers
+      lines.push(`  {`);
+      lines.push(`    const _mapEl = document.getElementById('${outputId}_map');`);
+      lines.push(`    const _data = ${val};`);
+      lines.push(`    if (_mapEl && typeof L !== 'undefined') {`);
+      lines.push(`      if (!_mapEl._leaflet_id) {`);
+      lines.push(`        _mapEl._map = L.map(_mapEl).setView([0, 0], 2);`);
+      lines.push(`        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(_mapEl._map);`);
+      lines.push(`        _mapEl._markers = L.layerGroup().addTo(_mapEl._map);`);
+      lines.push(`      }`);
+      lines.push(`      _mapEl._markers.clearLayers();`);
+      lines.push(`      if (Array.isArray(_data) && _data.length > 0) {`);
+      lines.push(`        const _bounds = [];`);
+      lines.push(`        _data.forEach(item => {`);
+      lines.push(`          const _lat = item.lat || item.latitude;`);
+      lines.push(`          const _lng = item.lng || item.lon || item.longitude;`);
+      lines.push(`          if (_lat != null && _lng != null) {`);
+      lines.push(`            const _ll = [Number(_lat), Number(_lng)];`);
+      lines.push(`            L.marker(_ll).addTo(_mapEl._markers).bindPopup(_esc(item.name || item.title || item.label || ''));`);
+      lines.push(`            _bounds.push(_ll);`);
+      lines.push(`          }`);
+      lines.push(`        });`);
+      lines.push(`        if (_bounds.length > 0) _mapEl._map.fitBounds(_bounds, { padding: [30, 30] });`);
+      lines.push(`      }`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (disp.format === 'calendar') {
+      // Calendar rendering: simple month grid with events
+      lines.push(`  {`);
+      lines.push(`    const _calEl = document.getElementById('${outputId}_calendar');`);
+      lines.push(`    const _data = ${val};`);
+      lines.push(`    if (_calEl) {`);
+      lines.push(`      const _now = new Date();`);
+      lines.push(`      const _year = _now.getFullYear(), _month = _now.getMonth();`);
+      lines.push(`      const _firstDay = new Date(_year, _month, 1).getDay();`);
+      lines.push(`      const _daysInMonth = new Date(_year, _month + 1, 0).getDate();`);
+      lines.push(`      const _monthName = _now.toLocaleString('default', { month: 'long', year: 'numeric' });`);
+      lines.push(`      const _events = {};`);
+      lines.push(`      if (Array.isArray(_data)) {`);
+      lines.push(`        _data.forEach(ev => {`);
+      lines.push(`          const d = ev.date ? new Date(ev.date) : null;`);
+      lines.push(`          if (d && d.getMonth() === _month && d.getFullYear() === _year) {`);
+      lines.push(`            const day = d.getDate();`);
+      lines.push(`            if (!_events[day]) _events[day] = [];`);
+      lines.push(`            _events[day].push(ev.title || ev.name || ev.event || 'Event');`);
+      lines.push(`          }`);
+      lines.push(`        });`);
+      lines.push(`      }`);
+      lines.push(`      let _html = '<h4 class="text-base font-semibold text-base-content mb-3">' + _esc(_monthName) + '</h4>';`);
+      lines.push(`      _html += '<table class="table table-sm w-full"><thead><tr>';`);
+      lines.push(`      ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => _html += '<th class="text-xs text-center text-base-content/50">' + d + '</th>');`);
+      lines.push(`      _html += '</tr></thead><tbody><tr>';`);
+      lines.push(`      for (let i = 0; i < _firstDay; i++) _html += '<td></td>';`);
+      lines.push(`      for (let d = 1; d <= _daysInMonth; d++) {`);
+      lines.push(`        const _dayEvents = _events[d] || [];`);
+      lines.push(`        const _evHtml = _dayEvents.map(e => '<div class="text-xs bg-primary/20 text-primary rounded px-1 mt-0.5 truncate">' + _esc(e) + '</div>').join('');`);
+      lines.push(`        _html += '<td class="align-top p-1 h-16 border border-base-300/20"><span class="text-xs font-medium">' + d + '</span>' + _evHtml + '</td>';`);
+      lines.push(`        if ((_firstDay + d) % 7 === 0 && d < _daysInMonth) _html += '</tr><tr>';`);
+      lines.push(`      }`);
+      lines.push(`      const _remaining = (7 - (_firstDay + _daysInMonth) % 7) % 7;`);
+      lines.push(`      for (let i = 0; i < _remaining; i++) _html += '<td></td>';`);
+      lines.push(`      _html += '</tr></tbody></table>';`);
+      lines.push(`      _calEl.innerHTML = _html;`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (disp.format === 'qr' || disp.format === 'qrcode') {
+      // QR code rendering
+      lines.push(`  {`);
+      lines.push(`    const _qrCanvas = document.getElementById('${outputId}_qr');`);
+      lines.push(`    const _qrVal = ${val};`);
+      lines.push(`    if (_qrCanvas && typeof QRCode !== 'undefined' && _qrVal) {`);
+      lines.push(`      QRCode.toCanvas(_qrCanvas, String(_qrVal), { width: 200, margin: 2 }, function() {});`);
+      lines.push(`    }`);
+      lines.push(`  }`);
     } else {
-      const formatExpr = disp.format === 'dollars' ? `_clear_format(${val}, 'dollars')`
-        : disp.format === 'percent' ? `_clear_format(${val}, 'percent')`
+      const formatExpr = disp.format === 'dollars' || disp.format === 'currency' ? `Number(${val}).toLocaleString('en-US', { style: 'currency', currency: 'USD' })`
+        : disp.format === 'percent' || disp.format === 'percentage' ? `(Number(${val}) * 100).toFixed(1) + '%'`
+        : disp.format === 'date' ? `new Date(${val}).toLocaleDateString()`
+        : disp.format === 'json' ? `JSON.stringify(${val}, null, 2)`
+        : disp.format === 'count' ? `String(Array.isArray(${val}) ? ${val}.length : ${val})`
         : `String(${val})`;
-      lines.push(`  document.getElementById('${outputId}_value').textContent = ${formatExpr};`);
+      const dispProp = disp.format === 'json' ? 'innerText' : 'textContent';
+      lines.push(`  document.getElementById('${outputId}_value').${dispProp} = ${formatExpr};`);
     }
   }
 
@@ -5858,6 +6165,8 @@ function buildHTML(body) {
   const usedIds = new Set(); // Track element IDs to prevent duplicates
   let pageTitle = 'Clear App';
   let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
+  let hasMap = false;   // Track if any map display nodes exist (for Leaflet CDN)
+  let hasQR = false;    // Track if any QR display nodes exist (for QRCode CDN)
   const pages = [];
   const sectionStack = []; // Track parent section presets for context-aware rendering
 
@@ -6523,6 +6832,29 @@ ${options}
             parts.push(`    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto" id="${displayId}_cards"></div>`);
           } else if (ui.tag === 'list') {
             parts.push(`    <ul class="list-disc pl-6 space-y-1" id="${displayId}_list"></ul>`);
+          } else if (ui.tag === 'gallery') {
+            parts.push(`    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="${displayId}_gallery"></div>`);
+          } else if (ui.tag === 'map') {
+            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}">
+      <div class="px-6 py-4 border-b border-base-300/40">
+        <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
+      </div>
+      <div id="${displayId}_map" style="width:100%;height:400px;"></div>
+    </div>`);
+            hasMap = true;
+          } else if (ui.tag === 'calendar') {
+            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}">
+      <div class="px-6 py-4 border-b border-base-300/40">
+        <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
+      </div>
+      <div class="p-4" id="${displayId}_calendar"></div>
+    </div>`);
+          } else if (ui.tag === 'qr') {
+            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-6 flex flex-col items-center gap-4" id="${displayId}">
+      <p class="text-sm font-medium text-base-content/50">${ui.label}</p>
+      <canvas id="${displayId}_qr" width="200" height="200"></canvas>
+    </div>`);
+            hasQR = true;
           } else if (inUserSection) {
             // Inside a styled card (stat_card etc.) — render just the number inline, no extra wrapper
             parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
@@ -6835,6 +7167,16 @@ ${options}
               parts.push(`    <img src="${src}" alt=""${widthStyle}${heightStyle} class="${sizeClass}${roundedClass}" loading="lazy" />`);
               break;
             }
+            case 'video': {
+              const src = node.text || '';
+              parts.push(`    <video src="${src}" controls class="w-full rounded-lg"></video>`);
+              break;
+            }
+            case 'audio': {
+              const src = node.text || '';
+              parts.push(`    <audio src="${src}" controls class="w-full"></audio>`);
+              break;
+            }
           }
           break;
         }
@@ -6900,7 +7242,7 @@ ${options}
     }
   }
 
-  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks, hasChart };
+  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks, hasChart, hasMap, hasQR };
 }
 
 /**
@@ -6919,7 +7261,7 @@ function formatInlineText(text) {
  * Compile a Clear AST + compiled JS into a complete, runnable index.html.
  */
 function compileToHTML(body, compiledJS) {
-  const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart } = buildHTML(body);
+  const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart, hasMap, hasQR } = buildHTML(body);
   const styles = extractStyles(body);
   // Collect top-level variables for style resolution (e.g. primary_color is '#2563eb')
   const styleVars = {};
@@ -6995,6 +7337,8 @@ _router();`;
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
 ${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>' : ''}
+${hasMap ? '  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />\n  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"><\/script>' : ''}
+${hasQR ? '  <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"><\/script>' : ''}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
@@ -7272,6 +7616,16 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   if (hasRunCommand(body)) {
     lines.push("const { execSync } = require('child_process');");
   }
+  // multer — emit if any endpoint has an ACCEPT_FILE node
+  function hasFileUpload(nodes) {
+    return nodes.some(n =>
+      n.type === NodeType.ACCEPT_FILE ||
+      (n.type === NodeType.ENDPOINT && n.body && hasFileUpload(n.body))
+    );
+  }
+  if (hasFileUpload(body)) {
+    lines.push("const multer = require('multer');");
+  }
   lines.push('const app = express();');
   lines.push('app.use(express.json());');
   // Catch malformed JSON bodies -- return clean 400 instead of Express HTML stack trace
@@ -7318,7 +7672,7 @@ function compileToJSBackend(body, errors, sourceMap = false) {
 
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, dbBackend, _astBody: body };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, dbBackend, _astBody: body, _allNodes: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
@@ -7446,7 +7800,7 @@ function compileToBrowserServer(body, errors) {
   }
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames, _astBody: body };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames, _astBody: body, _allNodes: body };
 
   // Collect schemas and route handlers
   for (const node of body) {
@@ -7638,15 +7992,29 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
       n.type === NodeType.EXTERNAL_FETCH ||
       (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.EXTERNAL_FETCH) ||
       (n.type === NodeType.ENDPOINT && n.body && pyHasExternalFetch(n.body)) ||
-      (n.type === NodeType.CRON && n.body && pyHasExternalFetch(n.body))
+      (n.type === NodeType.CRON && n.body && pyHasExternalFetch(n.body)) ||
+      (n.type === NodeType.AGENT && n.body && pyHasExternalFetch(n.body)) ||
+      (n.type === NodeType.BACKGROUND && n.body && pyHasExternalFetch(n.body))
     );
   }
   if (pyHasExternalFetch(body)) lines.push('import httpx');
+  // Detect cron/background nodes for asyncio + lifespan
+  const pyHasCronOrBg = body.some(n => n.type === NodeType.CRON || n.type === NodeType.BACKGROUND);
+  if (pyHasCronOrBg) {
+    lines.push('import asyncio');
+    lines.push('from contextlib import asynccontextmanager');
+  }
   lines.push('from fastapi import FastAPI, Request, HTTPException');
   lines.push('from fastapi.responses import JSONResponse');
   lines.push('');
   lines.push('app = FastAPI()');
   lines.push('');
+  // JWT secret for auth — emit when any endpoint uses requires auth
+  const pyHasAuth = body.some(n => n.type === NodeType.ENDPOINT && n.body && n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE));
+  if (pyHasAuth) {
+    lines.push('_JWT_SECRET = os.environ.get("JWT_SECRET", "clear-dev-secret-change-in-production")');
+    lines.push('');
+  }
   // In-memory db stub for Python
   lines.push('# In-memory database');
   lines.push('class _DB:');
@@ -7691,7 +8059,17 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
   lines.push('');
 
   // Python _ask_ai utility (Anthropic API call)
-  const hasAgents = body.some(n => n.type === NodeType.AGENT || n.type === NodeType.WORKFLOW);
+  // Detect if _ask_ai is needed: AGENT, WORKFLOW, or ASK_AI nodes (including inside endpoints)
+  function pyNeedsAskAI(nodes) {
+    return nodes.some(n =>
+      n.type === NodeType.AGENT || n.type === NodeType.WORKFLOW ||
+      n.type === NodeType.ASK_AI ||
+      (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI) ||
+      (n.type === NodeType.ENDPOINT && n.body && pyNeedsAskAI(n.body)) ||
+      (n.type === NodeType.CRON && n.body && pyNeedsAskAI(n.body))
+    );
+  }
+  const hasAgents = pyNeedsAskAI(body);
   if (hasAgents) {
     lines.push('# AI utility — calls Anthropic API');
     lines.push('import httpx');
@@ -7776,11 +8154,44 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
 
   const pySchemaNames = new Set();
   for (const node of body) { if (node.type === NodeType.DATA_SHAPE) pySchemaNames.add(node.name); }
-  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, dbBackend: pyDbBackend };
+  const ctx = { lang: 'python', indent: 0, declared: new Set(), stateVars: null, mode: 'backend', sourceMap, schemaNames: pySchemaNames, dbBackend: pyDbBackend, _allNodes: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
       lines.push(result);
+    }
+  }
+
+  // Post-process: replace deprecated @app.on_event("startup") with lifespan context manager
+  // Scan for # _startup_task_: markers left by CRON and BACKGROUND compilation
+  if (pyHasCronOrBg) {
+    const startupFns = [];
+    for (const line of lines) {
+      // Each line element can be multi-line, so scan with regex globally
+      const matches = line.matchAll(/# _startup_task_: (\S+)/g);
+      for (const m of matches) startupFns.push(m[1]);
+    }
+    if (startupFns.length > 0) {
+      // Build lifespan context manager
+      const lifespanLines = [];
+      lifespanLines.push('@asynccontextmanager');
+      lifespanLines.push('async def _lifespan(app):');
+      for (const fn of startupFns) {
+        lifespanLines.push(`    asyncio.create_task(${fn}())`);
+      }
+      lifespanLines.push('    yield');
+      lifespanLines.push('');
+      // Replace app = FastAPI() with app = FastAPI(lifespan=_lifespan)
+      const appIdx = lines.findIndex(l => l === 'app = FastAPI()');
+      if (appIdx >= 0) {
+        lines.splice(appIdx, 1, ...lifespanLines, 'app = FastAPI(lifespan=_lifespan)');
+      }
+      // Remove the # _startup_task_ marker comments from the multi-line body strings
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes('# _startup_task_:')) {
+          lines[i] = lines[i].split('\n').filter(l => !l.includes('# _startup_task_:')).join('\n');
+        }
+      }
     }
   }
 

@@ -546,10 +546,26 @@ display subtotal as dollars              # auto-labels as "Subtotal"
 display tax as dollars called 'Sales Tax'  # explicit label
 display count called 'Items'
 display response as table called 'Results'
+display rate as percent called 'Growth'
+display created as date called 'Created'
+display config as json called 'Config'
 ```
+
+Format types: `dollars`/`currency` (toLocaleString USD), `percent`, `date`, `json` (formatted `<pre>`), `number` (default).
 
 The label auto-generates from the variable name: `subtotal` -> "Subtotal",
 `total_due` -> "Total Due". Only use `called` when the label differs.
+
+## UI Actions
+
+```
+show loading                    # full-page spinner overlay
+hide loading                    # remove spinner
+show toast 'Saved!'             # temporary notification (also: alert, notification)
+hide the sidebar                # set display:none on element
+copy invite_link to clipboard   # navigator.clipboard.writeText
+download report as 'data.csv'  # trigger browser file download
+```
 
 ## Endpoints
 

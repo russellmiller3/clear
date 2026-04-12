@@ -21,7 +21,7 @@ describe('Synonym Table', () => {
   });
 
   it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.14.0');
+    expect(SYNONYM_VERSION).toBe('0.15.0');
   });
 
   it('maps "create" to canonical "set"', () => {
@@ -1958,8 +1958,8 @@ describe('display', () => {
   it('compiles to JS with dollar formatting', () => {
     const source = 'display total as dollars called "Total"';
     const result = compileProgram(source, { target: 'web' });
-    expect(result.javascript).toContain('toFixed(2)');
-    expect(result.javascript).toContain("'$'");
+    expect(result.javascript).toContain('toLocaleString');
+    expect(result.javascript).toContain('currency');
   });
 });
 
@@ -2725,7 +2725,8 @@ page "Invoice Calculator":
     // Script with reactive code
     expect(result.html).toContain('<script>');
     expect(result.html).toContain('_recompute');
-    expect(result.html).toContain('_clear_format');
+    // Dollar formatting uses toLocaleString for proper currency display
+    expect(result.javascript).toContain('toLocaleString');
 
     // JS checks
     expect(result.javascript).toContain('function _recompute');
@@ -4097,7 +4098,8 @@ describe('Compiler - requires auth', () => {
 
   it('compiles to Python auth guard', () => {
     const result = compileProgram("target: python backend\non GET '/users':\n  requires auth\n  send back 'ok'");
-    expect(result.python).toContain('request.user');
+    expect(result.python).toContain('_JWT_SECRET');
+    expect(result.python).toContain('Bearer');
     expect(result.python).toContain('401');
   });
 });
@@ -4893,7 +4895,7 @@ describe('Compiler - background', () => {
     const result = compileProgram("target: python backend\nbackground 'send-emails':\n  runs every 1 hour\n  show 'sending'");
     expect(result.python).toContain('asyncio');
     expect(result.python).toContain('job_send_emails');
-    expect(result.python).toContain('on_event("startup")');
+    expect(result.python).toContain('lifespan');
   });
 });
 
@@ -17936,7 +17938,7 @@ workflow 'Support' with state:
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('async def workflow_support(state):');
     expect(result.python).toContain('_state = {');
-    expect(result.python).toContain("status: \"new\"");
+    expect(result.python).toContain('"status": "new"');
     expect(result.python).toContain('_state = await agent_triage_agent(_state)');
     expect(result.python).toContain('_state = await agent_resolution_agent(_state)');
     expect(result.python).toContain('return _state');
@@ -19188,7 +19190,7 @@ describe('cron — scheduled task blocks', () => {
     );
     expect(r.errors).toHaveLength(0);
     expect(r.python).toContain('asyncio.sleep(600)');
-    expect(r.python).toContain('@app.on_event("startup")');
+    expect(r.python).toContain('lifespan');
   });
 
   it('compiles every day at time to Python asyncio', () => {
@@ -19616,6 +19618,512 @@ button 'Reload':
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('location.reload()');
+  });
+});
+
+// ============================================================
+// T2 Bug Fixes — Batch 1
+// ============================================================
+
+describe('T2: hide element', () => {
+  it('hide X compiles to display:none', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Hide':
+    hide sidebar
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("style.display = 'none'");
+  });
+
+  it('hide loading compiles to loading overlay hide', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Done':
+    hide loading
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_loading_overlay');
+    expect(r.javascript).toContain("display = 'none'");
+  });
+});
+
+describe('T2: copy to clipboard', () => {
+  it('copy X to clipboard compiles to navigator.clipboard', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  'Code' as text input
+  button 'Copy':
+    copy code to clipboard
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('navigator.clipboard.writeText');
+  });
+});
+
+describe('T2: download as file', () => {
+  it('download X as filename compiles to Blob download', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Export':
+    download results as 'data.json'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('Blob');
+    expect(r.javascript).toContain('download');
+    expect(r.javascript).toContain('data.json');
+  });
+});
+
+describe('T2: show/hide loading', () => {
+  it('show loading compiles to loading overlay', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Load':
+    show loading
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_loading_overlay');
+    expect(r.javascript).toContain('loading-spinner');
+  });
+
+  it('show loading with custom message', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Load':
+    show loading 'Processing...'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('Processing...');
+  });
+});
+
+describe('T2: show alert/toast', () => {
+  it('show alert compiles to _toast not console.log', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Warn':
+    show alert 'Something happened'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_toast');
+    expect(r.javascript).not.toContain('console.log(alert)');
+  });
+
+  it('show toast with variant', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Err':
+    show toast 'Failed!' as error
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_toast');
+    expect(r.javascript).toContain('alert-error');
+  });
+
+  it('show notification compiles to _toast', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  button 'Notify':
+    show notification 'Saved!' as success
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_toast');
+  });
+});
+
+describe('T2: display as currency', () => {
+  it('display as currency uses toLocaleString', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  total = 42.5
+  display total as currency called 'Total'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('toLocaleString');
+    expect(r.javascript).toContain('currency');
+  });
+});
+
+describe('T2: display as percentage', () => {
+  it('display as percentage adds % suffix', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  rate = 0.85
+  display rate as percentage called 'Rate'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("toFixed");
+    expect(r.javascript).toContain("%");
+  });
+});
+
+describe('T2: display as date', () => {
+  it('display as date uses Date formatting', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  created = '2024-01-15'
+  display created as date called 'Created'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('toLocaleDateString');
+  });
+});
+
+describe('T2: display as json', () => {
+  it('display as json uses JSON.stringify', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  data = 'test'
+  display data as json called 'Debug'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('JSON.stringify');
+  });
+});
+
+describe('T2: display as list', () => {
+  it('display as list renders li elements not [object Object]', () => {
+    const src = `build for web
+
+page 'Test' at '/':
+  items = ['apple', 'banana']
+  display items as list called 'Fruits'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Should have list rendering logic in _recompute, not just textContent
+    const js = r.javascript;
+    expect(js).toContain('_list') ;
+  });
+});
+
+// T2 #26: display as gallery
+describe('Display as gallery', () => {
+  it('should render gallery grid with images', () => {
+    const src = `
+page 'Gallery' at '/':
+  photos = []
+  display photos as gallery called 'Photos'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_gallery');
+    expect(r.javascript).toContain('object-cover');
+    expect(r.html).toContain('_gallery');
+    expect(r.html).toContain('grid');
+  });
+});
+
+// T2 #27: display as map
+describe('Display as map', () => {
+  it('should render Leaflet map with markers', () => {
+    const src = `
+page 'Map' at '/':
+  locations = []
+  display locations as map called 'Locations'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_map');
+    expect(r.javascript).toContain('L.map');
+    expect(r.javascript).toContain('L.marker');
+    expect(r.html).toContain('_map');
+    expect(r.html).toContain('leaflet');
+  });
+});
+
+// T2 #28: display as calendar
+describe('Display as calendar', () => {
+  it('should render month calendar grid', () => {
+    const src = `
+page 'Calendar' at '/':
+  events = []
+  display events as calendar called 'Events'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_calendar');
+    expect(r.javascript).toContain('_daysInMonth');
+    expect(r.javascript).toContain('Sun');
+    expect(r.html).toContain('_calendar');
+  });
+});
+
+// T2 #29: display as qr
+describe('Display as QR code', () => {
+  it('should render QR code canvas', () => {
+    const src = `
+page 'QR' at '/':
+  url is 'https://example.com'
+  display url as qr called 'Link'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_qr');
+    expect(r.javascript).toContain('QRCode.toCanvas');
+    expect(r.html).toContain('_qr');
+    expect(r.html).toContain('qrcode');
+  });
+});
+
+// T2 #16: tab group inline onclick (no undefined _switchTab)
+describe('T2: tab group inline onclick', () => {
+  it('tab group HTML has inline onclick that switches tabs', () => {
+    const src = `
+page 'Tabs Test' at '/':
+  section 'Settings' as tabs:
+    tab 'General':
+      heading 'General Settings'
+    tab 'Advanced':
+      heading 'Advanced Settings'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Should have tab buttons with inline onclick — NOT a reference to _switchTab
+    expect(r.html).toContain('tab-active');
+    expect(r.html).toContain('tab-panel');
+    expect(r.html).toContain('onclick=');
+    expect(r.html).not.toContain('_switchTab');
+    // Both tab panels should exist
+    expect(r.html).toContain('tabpanel-general');
+    expect(r.html).toContain('tabpanel-advanced');
+    // Second tab panel should be hidden by default
+    expect(r.html).toContain("display:none");
+  });
+});
+
+// T2 #13: CRON/scheduled task error handling
+describe('T2: CRON scheduled task error handling', () => {
+  it('interval CRON wraps body in try/catch', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery 5 minutes:\n  show 'running cleanup'"
+    );
+    expect(r.errors).toHaveLength(0);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('try {');
+    expect(js).toContain('catch (_err)');
+    expect(js).toContain("console.error('Scheduled task error:'");
+  });
+
+  it('daily-at CRON wraps body in try/catch', () => {
+    const r = compileProgram(
+      "build for javascript backend\n\nevery day at 9am:\n  show 'morning report'"
+    );
+    expect(r.errors).toHaveLength(0);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('try {');
+    expect(js).toContain('catch (_err)');
+    expect(js).toContain("console.error('Scheduled task error:'");
+  });
+});
+
+// T2 #32-33: debounce on input change
+describe('T2: debounce on input change', () => {
+  it('when X changes after 300ms uses setTimeout/clearTimeout', () => {
+    const src = `
+page 'Search' at '/':
+  ask for search
+  results is 'none'
+  when search changes after 300ms:
+    results is 'searching...'
+  display results called 'Results'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('clearTimeout');
+    expect(r.javascript).toContain('setTimeout');
+    expect(r.javascript).toContain('300');
+    expect(r.javascript).toContain('_debounce_search');
+  });
+
+  it('when X changes without debounce does NOT use setTimeout', () => {
+    const src = `
+page 'Search' at '/':
+  ask for search
+  results is 'none'
+  when search changes:
+    results is 'updated'
+  display results called 'Results'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).not.toContain('clearTimeout');
+    expect(r.javascript).not.toContain('_debounce_search');
+  });
+});
+
+// T2 #30: video and audio player
+describe('T2: video and audio player', () => {
+  it('video compiles to <video> element with controls', () => {
+    const src = `
+page 'Media' at '/':
+  video 'https://example.com/video.mp4'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('<video');
+    expect(r.html).toContain('controls');
+    expect(r.html).toContain('https://example.com/video.mp4');
+  });
+
+  it('audio compiles to <audio> element with controls', () => {
+    const src = `
+page 'Music' at '/':
+  audio 'https://example.com/song.mp3'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('<audio');
+    expect(r.html).toContain('controls');
+    expect(r.html).toContain('https://example.com/song.mp3');
+  });
+
+  it('video player synonym also works', () => {
+    const src = `
+page 'Watch' at '/':
+  video player 'https://example.com/clip.mp4'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('<video');
+    expect(r.html).toContain('controls');
+  });
+
+  it('audio player synonym also works', () => {
+    const src = `
+page 'Listen' at '/':
+  audio player 'https://example.com/track.mp3'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.html).toContain('<audio');
+    expect(r.html).toContain('controls');
+  });
+});
+
+// T2 #15: multer at module scope
+describe('T2: multer at module scope', () => {
+  it('emits multer require at module scope not inside handler', () => {
+    const src = `target: backend
+
+on POST '/upload':
+  accept file:
+    max size is 5mb
+    allowed types are 'image/png', 'image/jpeg'
+  send back 'uploaded'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.serverJS || r.javascript;
+    // multer require should be at the top (module scope), not inside the handler
+    const multerRequireIdx = js.indexOf("require('multer')");
+    const appExpressIdx = js.indexOf("const app = express()");
+    expect(multerRequireIdx).toBeGreaterThan(-1);
+    expect(multerRequireIdx).toBeLessThan(appExpressIdx);
+    // The handler should NOT have its own require('multer')
+    const lines = js.split('\n');
+    const multerRequireCount = lines.filter(l => l.includes("require('multer')")).length;
+    expect(multerRequireCount).toBe(1);
+  });
+});
+
+// T2 #38: Python _ask_ai defined for standalone ask ai in endpoints
+describe('T2: Python _ask_ai for standalone ask ai', () => {
+  it('emits _ask_ai helper when ask ai is used in an endpoint', () => {
+    const src = `target: python backend
+
+on POST '/analyze':
+  result = ask ai 'Analyze this text'
+  send back result
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('async def _ask_ai(');
+    expect(r.python).toContain('ANTHROPIC_API_KEY');
+  });
+});
+
+// T2 #39: Python httpx import at module scope for external fetch
+describe('T2: Python httpx at module scope', () => {
+  it('emits import httpx at module scope for external fetch', () => {
+    const src = `target: python backend
+
+on GET '/weather':
+  data = fetch from 'https://api.weather.gov/points/37.7749,-122.4194'
+  send back data
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python;
+    // httpx should be imported at module scope (before app = FastAPI)
+    expect(py).toContain('import httpx');
+    const httpxIdx = py.indexOf('import httpx');
+    const appIdx = py.indexOf('app = FastAPI');
+    expect(httpxIdx).toBeLessThan(appIdx);
+    // No inline import httpx inside handler
+    const lines = py.split('\n');
+    const httpxImports = lines.filter(l => l.trim() === 'import httpx');
+    expect(httpxImports.length).toBe(1);
+  });
+});
+
+// T2 #14: Python cron uses lifespan, not deprecated @app.on_event
+describe('T2: Python cron uses lifespan', () => {
+  it('uses lifespan context manager instead of @app.on_event', () => {
+    const src = `build for python backend
+
+every 5 minutes:
+  show 'tick'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const py = r.python;
+    // Should NOT use deprecated @app.on_event
+    expect(py).not.toContain('@app.on_event');
+    // Should use lifespan pattern
+    expect(py).toContain('_lifespan');
+    expect(py).toContain('asynccontextmanager');
+    expect(py).toContain('app = FastAPI(lifespan=_lifespan)');
+    expect(py).toContain('import asyncio');
+  });
+
+  it('daily cron also uses lifespan', () => {
+    const src = `build for python backend
+
+every day at 9am:
+  show 'morning'
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).not.toContain('@app.on_event');
+    expect(r.python).toContain('_lifespan');
   });
 });
 

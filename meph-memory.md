@@ -60,3 +60,4 @@ Categories: [pref] [quirk] [pattern] [fix] [gap] [context]
 [rule] Ross Perot rule: just fix it, tell Russell what I did, don't ask permission.
 [rule] Every bug entry needs: priority, failing test (compilable Clear), REAL compiled output (not from memory), expected output, exact error, workaround, impact.
 [rule] After every new bug entry, update the tier table at top of requests.md.
+[test] edit_file append works — confirmed in session after tool failure

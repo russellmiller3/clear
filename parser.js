@@ -84,7 +84,7 @@
 //   SECTION ........................... parseSection()
 //   STYLE DEF ......................... parseStyleDef()
 //   ASK FOR (INPUT) ................... parseLabelIsInput, parseLabelFirstInput, parseNewInput
-//   STATIC CONTENT ELEMENTS ........... parseContent()
+//   STATIC CONTENT ELEMENTS ........... parseContent(), parseImage(), parseMedia()
 //   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
 //   CRUD OPERATIONS ................... parseSave, parseRemoveFrom, parseDefineAs,
 //                                      parseLookUpAssignment, parseSaveAssignment
@@ -199,6 +199,10 @@ export const NodeType = Object.freeze({
   TAB_GROUP: 'tab_group',
   TAB: 'tab',
   PANEL_ACTION: 'panel_action',  // toggle/open/close a panel or modal
+  HIDE_ELEMENT: 'hide_element',  // hide X — toggle element visibility
+  CLIPBOARD_COPY: 'clipboard_copy',  // copy X to clipboard
+  DOWNLOAD_FILE: 'download_file',  // download X as file
+  LOADING_ACTION: 'loading_action',  // show loading / hide loading
 
   // Web app features (Phase 4)
   PAGE: 'page',
@@ -251,6 +255,8 @@ export const NodeType = Object.freeze({
   // File Uploads & External APIs (Phase 19)
   ACCEPT_FILE: 'accept_file',
   EXTERNAL_FETCH: 'external_fetch',
+  UPLOAD_TO: 'upload_to',
+  LOGIN_ACTION: 'login_action',
 
   // External API Calls (Phase 45)
   HTTP_REQUEST: 'http_request',
@@ -513,7 +519,7 @@ function displayNode(expression, format, label, line) {
     ? autoLabelFromName(expression.name)
     : 'Output');
   const ui = {
-    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : format === 'list' ? 'list' : 'output',
+    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : format === 'list' ? 'list' : format === 'gallery' ? 'gallery' : format === 'map' ? 'map' : format === 'calendar' ? 'calendar' : (format === 'qr' || format === 'qrcode') ? 'qr' : 'output',
     id: `output_${sanitizeForId(displayLabel.replace(/\s+/g, '_'))}`,
     label: displayLabel,
   };
@@ -1360,6 +1366,15 @@ const CANONICAL_DISPATCH = new Map([
   }],
   // --- ROUTER FUNCTIONS (check tokens[1+] for sub-routing) ---
   ['show', (ctx) => {
+    // Show loading: show loading [message]
+    if (ctx.tokens.length >= 2 && ctx.tokens[1].value === 'loading') {
+      let message = '';
+      if (ctx.tokens.length >= 3 && ctx.tokens[2].type === TokenType.STRING) {
+        message = ctx.tokens[2].value;
+      }
+      ctx.body.push({ type: NodeType.LOADING_ACTION, action: 'show', message, line: ctx.line });
+      return ctx.i + 1;
+    }
     // Toast: show toast|alert|notification 'message' [as warning/error/success]
     if (ctx.tokens.length >= 3 && (ctx.tokens[1].value === 'toast' || ctx.tokens[1].value === 'alert' || ctx.tokens[1].value === 'notification')) {
       let tPos = 2;
@@ -1388,10 +1403,17 @@ const CANONICAL_DISPATCH = new Map([
       return ctx.i + 1;
     }
     // Content keyword after show: show heading 'Welcome'
-    const contentCanonicals = ['heading', 'subheading', 'content_text', 'bold_text', 'italic_text', 'small_text', 'label_text', 'badge_text', 'link', 'divider', 'code_block', 'image'];
+    const contentCanonicals = ['heading', 'subheading', 'content_text', 'bold_text', 'italic_text', 'small_text', 'label_text', 'badge_text', 'link', 'divider', 'code_block', 'image', 'video', 'audio'];
     if (contentCanonicals.includes(ctx.tokens[1].canonical)) {
       const contentTokens = ctx.tokens.slice(1);
-      const parsed = parseContent(contentTokens, ctx.line, ctx.tokens[1].canonical);
+      let parsed;
+      if (ctx.tokens[1].canonical === 'image') {
+        parsed = parseImage(contentTokens, ctx.line);
+      } else if (ctx.tokens[1].canonical === 'video' || ctx.tokens[1].canonical === 'audio') {
+        parsed = parseMedia(contentTokens, ctx.line, ctx.tokens[1].canonical);
+      } else {
+        parsed = parseContent(contentTokens, ctx.line, ctx.tokens[1].canonical);
+      }
       if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
       else ctx.body.push(parsed.node);
       return ctx.i + 1;
@@ -1811,6 +1833,18 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['image', (ctx) => {
     const parsed = parseImage(ctx.tokens, ctx.line);
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['video', (ctx) => {
+    const parsed = parseMedia(ctx.tokens, ctx.line, 'video');
+    if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
+    else ctx.body.push(parsed.node);
+    return ctx.i + 1;
+  }],
+  ['audio', (ctx) => {
+    const parsed = parseMedia(ctx.tokens, ctx.line, 'audio');
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
     return ctx.i + 1;
@@ -2489,6 +2523,95 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
         body.push(assignNode(parsed.name, parsed.expression, line));
         i++;
         continue;
+      }
+
+      // Hide element: hide <element>
+      if (firstToken.type === TokenType.IDENTIFIER && firstToken.value.toLowerCase() === 'hide' && tokens.length >= 2) {
+        // "hide loading" → special loading action
+        if (tokens[1].value?.toLowerCase() === 'loading') {
+          body.push({ type: NodeType.LOADING_ACTION, action: 'hide', line });
+          i++; continue;
+        }
+        // "hide X" → toggle element visibility
+        const target = tokens.slice(1).map(t => t.value).join(' ');
+        body.push({ type: NodeType.HIDE_ELEMENT, target, line });
+        i++; continue;
+      }
+
+      // Copy to clipboard: copy <var> to clipboard
+      if (firstToken.type === TokenType.IDENTIFIER && firstToken.value.toLowerCase() === 'copy' && tokens.length >= 3) {
+        // Find "to clipboard"
+        let toPos = -1;
+        for (let k = 1; k < tokens.length - 1; k++) {
+          if ((tokens[k].canonical === 'to_connector' || tokens[k].value?.toLowerCase() === 'to') &&
+              tokens[k + 1].value?.toLowerCase() === 'clipboard') {
+            toPos = k; break;
+          }
+        }
+        if (toPos > 0) {
+          const variable = tokens.slice(1, toPos).map(t => t.value).join('_');
+          body.push({ type: NodeType.CLIPBOARD_COPY, variable, line });
+          i++; continue;
+        }
+      }
+
+      // Download as file: download <var> as <filename>
+      if (firstToken.type === TokenType.IDENTIFIER && firstToken.value.toLowerCase() === 'download' && tokens.length >= 3) {
+        let asPos = -1;
+        for (let k = 1; k < tokens.length; k++) {
+          if (tokens[k].canonical === 'as_format' || tokens[k].value?.toLowerCase() === 'as') { asPos = k; break; }
+        }
+        const variable = tokens.slice(1, asPos > 0 ? asPos : tokens.length).map(t => t.value).join('_');
+        let filename = 'download.txt';
+        if (asPos > 0 && asPos + 1 < tokens.length) {
+          filename = tokens[asPos + 1].type === TokenType.STRING ? tokens[asPos + 1].value : tokens.slice(asPos + 1).map(t => t.value).join(' ');
+        }
+        body.push({ type: NodeType.DOWNLOAD_FILE, variable, filename, line });
+        i++; continue;
+      }
+
+      // Login action: login with <field1> and <field2>
+      if (firstToken.type === TokenType.IDENTIFIER && firstToken.value.toLowerCase() === 'login' && tokens.length >= 3) {
+        let pos = 1;
+        // Skip 'with' if present
+        if (pos < tokens.length && (tokens[pos].value?.toLowerCase() === 'with' || tokens[pos].canonical === 'with')) pos++;
+        // Collect field names (separated by 'and' or commas)
+        const fields = [];
+        while (pos < tokens.length) {
+          if (tokens[pos].type === TokenType.COMMA || tokens[pos].canonical === 'and' || tokens[pos].value?.toLowerCase() === 'and') { pos++; continue; }
+          if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
+            fields.push(tokens[pos].value);
+          }
+          pos++;
+        }
+        if (fields.length > 0) {
+          body.push({ type: NodeType.LOGIN_ACTION, fields, line });
+          i++; continue;
+        }
+      }
+
+      // Upload file to endpoint: upload <var> to '<url>'
+      if (firstToken.type === TokenType.IDENTIFIER && firstToken.value.toLowerCase() === 'upload' && tokens.length >= 4) {
+        let toPos = -1;
+        for (let k = 2; k < tokens.length; k++) {
+          if ((tokens[k].canonical === 'to_connector' || tokens[k].value?.toLowerCase() === 'to') &&
+              k + 1 < tokens.length && tokens[k + 1].type === TokenType.STRING) {
+            toPos = k; break;
+          }
+        }
+        if (toPos > 0) {
+          // Collect variable names between 'upload' and 'to'
+          const variables = [];
+          for (let k = 1; k < toPos; k++) {
+            if (tokens[k].type === TokenType.COMMA || tokens[k].canonical === 'and') continue;
+            if (tokens[k].type === TokenType.IDENTIFIER || tokens[k].type === TokenType.KEYWORD) {
+              variables.push(tokens[k].value);
+            }
+          }
+          const url = tokens[toPos + 1].value;
+          body.push({ type: NodeType.UPLOAD_TO, variables, url, line });
+          i++; continue;
+        }
       }
 
       // Guard: if the line starts with a KEYWORD (recognized Clear word) but no
@@ -3609,7 +3732,7 @@ function parseWhileLoop(lines, startIdx, blockIndent, errors) {
 // Detects whether a "display" line has Phase 4 modifiers (as/called)
 function hasDisplayModifiers(tokens) {
   for (let i = 1; i < tokens.length; i++) {
-    if (tokens[i].canonical === 'as_format' || tokens[i].canonical === 'called') return true;
+    if (tokens[i].canonical === 'as_format' || tokens[i].canonical === 'called' || tokens[i].canonical === 'to_json') return true;
   }
   return false;
 }
@@ -4049,6 +4172,9 @@ function parseLabelFirstInput(tokens, line) {
   } else if (typeToken.canonical === 'text_area') {
     inputType = 'long text';
     pos++;
+  } else if (typeToken.canonical === 'file_input') {
+    inputType = 'file';
+    pos++;
   } else {
     // Not an input type after 'as' — this isn't a label-first input
     return null;
@@ -4263,6 +4389,21 @@ function parseImage(tokens, line) {
   if (rounded) node.rounded = true;
   if (width) node.width = width;
   if (height) node.height = height;
+  return { node };
+}
+
+// =============================================================================
+// VIDEO / AUDIO (content elements)
+// =============================================================================
+// video 'url'
+// audio 'url'
+function parseMedia(tokens, line, mediaType) {
+  if (tokens.length < 2 || tokens[1].type !== TokenType.STRING) {
+    return { error: `${mediaType} needs a URL in quotes. Example: ${mediaType} 'https://example.com/file.mp4'` };
+  }
+  const url = tokens[1].value;
+  const ui = { contentType: mediaType, text: url };
+  const node = { type: NodeType.CONTENT, contentType: mediaType, text: url, line, ui };
   return { node };
 }
 
@@ -4934,9 +5075,10 @@ function parseDisplay(tokens, line) {
   }
 
   // Find where "as" or "called" starts (to know where expression ends)
+  // Also check for "to_json" (synonym collision: "as json" tokenizes as single to_json keyword)
   let exprEnd = tokens.length;
   for (let i = pos; i < tokens.length; i++) {
-    if (tokens[i].canonical === 'as_format' || tokens[i].canonical === 'called') {
+    if (tokens[i].canonical === 'as_format' || tokens[i].canonical === 'called' || tokens[i].canonical === 'to_json') {
       exprEnd = i;
       break;
     }
@@ -4954,6 +5096,11 @@ function parseDisplay(tokens, line) {
       format = tokens[pos].value.toLowerCase();
       pos++;
     }
+  }
+  // Handle "as json" synonym collision: tokenizer eats "as json" as single to_json keyword
+  if (pos < tokens.length && tokens[pos].canonical === 'to_json') {
+    format = 'json';
+    pos++;
   }
 
   // Optional: called <label>

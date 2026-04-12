@@ -2045,3 +2045,97 @@ agent 'Chat' receives message:
   send back response
 # This agent streams token-by-token automatically
 ```
+
+---
+
+## Loading Overlay
+
+```clear
+# Show a full-page loading spinner
+show loading
+
+# Hide it when done
+hide loading
+```
+
+Compiles to a centered overlay with a DaisyUI spinner. Useful for long-running operations like AI calls or file uploads.
+
+## Toast / Alert / Notification
+
+```clear
+show toast 'Settings saved'
+show alert 'Something went wrong'
+show notification 'New message received'
+```
+
+All three are synonyms — they display a temporary notification message. Compiles to a DaisyUI toast that auto-dismisses after 3 seconds.
+
+## Hide Element
+
+```clear
+# Hide a section or element by name
+hide the sidebar
+hide the details panel
+```
+
+Compiles to setting `display: none` on the target element.
+
+## Clipboard Copy
+
+```clear
+# Copy a value to the clipboard
+copy invite_link to clipboard
+copy user's email to clipboard
+```
+
+Compiles to `navigator.clipboard.writeText(value)`.
+
+## Download File
+
+```clear
+# Trigger a file download
+download report as 'report.csv'
+download data as 'export.json'
+```
+
+Compiles to creating a Blob URL and programmatically clicking a hidden `<a>` element.
+
+## Display Formats
+
+```clear
+price = 29.99
+rate = 0.15
+count = 42
+created = current time
+data is an empty map
+
+# Currency — uses toLocaleString with USD style
+display price as dollars called 'Total'
+display price as currency called 'Price'
+
+# Percentage
+display rate as percent called 'Growth'
+
+# Date — uses toLocaleDateString
+display created as date called 'Created'
+
+# JSON — renders formatted JSON in a <pre> block
+display data as json called 'Raw Data'
+
+# Plain number (default)
+display count called 'Items'
+```
+
+Format types: `dollars`/`currency`, `percent`, `date`, `json`, `number` (default).
+
+## Video and Audio
+
+```clear
+# Embed a video player
+show video 'https://example.com/demo.mp4'
+
+# Embed an audio player
+show audio 'https://example.com/podcast.mp3'
+```
+
+Video compiles to `<video controls>` with source. Audio compiles to `<audio controls>` with source. Both support standard web media formats.

@@ -34,6 +34,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 21: RL Foundation + Source Maps + Page Slugs](#session-21-rl-foundation--source-maps--page-slugs-2026-04-11) | npm require double-quotes bug, backend `// clear:N` always-on for source maps, `_clearLineMap` injected as line 2 (shift off-by-one), `pageNode` always sets route now (single-page apps safe because `hasRouting = pages.length > 1`), sandbox symlinkSync needs `'junction'` type on Windows |
 | [Session 22: Compiler Requests + RL Infrastructure](#session-22-compiler-requests--rl-infrastructure-2026-04-11) | Optional chaining `?.` only for user-written possessive access (not compiler-generated `req.body`), `error.message` needs hard `.` (exception to `?.` rule), keyword guard must whitelist content-type words (`text`, `heading` etc.), `_pick` JSON.stringify for nested objects, `_revive` JSON.parse on retrieval, user-written TEST_DEF bodies go through `generateE2ETests` not `compileNode`, cron tokenizer splits `2:30pm` into multi-token sequence, patch API body indentation must always add 2-space prefix (not skip if already indented), `run command` capture mode via ASSIGN special-case (not exprToCode) |
 | [Session 20: Compiler Bug Fixes + SVG Rendering](#session-20-compiler-bug-fixes--svg-rendering-2026-04-11) | Tree-shaker callback blind spot, conditional DOM needs reactive path, `text` guard too strict, SHOW needs DOM targets, bare SVG streaming |
+| [Session 23: Agent Bug Fixes + Extended Thinking](#session-23-agent-bug-fixes--extended-thinking-2026-04-11) | SVG innerHTML namespace loss, `to_json` synonym collision in 3 places, Python dict keys must be quoted, Anthropic thinking signature for multi-turn, `toLocaleString` for display formats, CRUD auto-inject `:id`, multer module-scope, Python cron lifespan |
 
 ---
 
@@ -687,3 +688,43 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 ### Bare SVG in chat — streaming UX
 - Claude models emit raw `<svg>` without code fences. `markdownToHtml` only detected fenced SVG. Fix: Phase 2 regex extracts bare `<svg>...</svg>` from text parts. Phase 3 detects incomplete SVG during streaming (`<svg` without `</svg>`) and shows "*Rendering diagram...*" placeholder.
+
+---
+
+## Session 23: Agent Bug Fixes + Extended Thinking (2026-04-11)
+
+### SVG Namespace Loss: innerHTML vs cloneNode
+- **SVG elements lose their namespace when extracted via `innerHTML` and re-inserted.** `innerHTML` on SVG elements returns plain text without namespace declarations. Reinserting that text creates HTML elements (`<rect>`, `<circle>`) instead of SVG elements — they render as invisible.
+- **Fix:** Use `cloneNode(true)` to clone the SVG DOM node, preserving the SVG namespace. For overlay/expand use cases, clone the original `<svg>` element from the DOM rather than serializing to string and parsing back.
+- **Rule:** Never use `innerHTML` to extract and re-insert SVG content. Always use DOM cloning APIs.
+
+### `as json` / `to_json` Synonym Collision with Display Formats
+- **`to_json` is the canonical form of `as json`.** The tokenizer rewrites `as json` → `to_json`. This collides with the display format parser which needs to detect `as json` (e.g., `display data as json`).
+- **Three places need fixing:** (1) `hasDisplayModifiers()` must check for `to_json` canonical in the expression scan, (2) the expression-end scan in `parseDisplay()` must stop at `to_json`, and (3) the format detection must recognize `to_json` as the `json` format.
+- **Pattern:** Whenever a synonym rewrites a word that's also used positionally in another parser path, you must audit every parser that touches that word. Grep for both the raw value and the canonical.
+
+### Python State Dict Keys Must Be Quoted Strings
+- **Python workflow state initialization used bare identifiers as dict keys:** `{field: None}`. Python interprets bare identifiers as variable references, not string keys, causing `NameError` at runtime.
+- **Fix:** Quote all state field keys: `{"field": None}`. Also convert `null` → `None`, `true` → `True`, `false` → `False` in default values.
+
+### Anthropic Thinking API: Signature for Multi-Turn
+- **Extended thinking in the Anthropic API requires a `thinking` field with `budget_tokens` in the request.** But for multi-turn conversations, subsequent messages that include thinking blocks must also include a `signature` field on each thinking content block.
+- **The signature is returned by the API** in the response's thinking content blocks. Store it in the message history and replay it exactly on subsequent turns.
+- **Without the signature, the API rejects the request** with a 400 error on any multi-turn thinking conversation.
+
+### Display Format: `toLocaleString` Replaces `toFixed(2)` for Currency
+- **Old currency display used `'$' + value.toFixed(2)`.** This doesn't handle thousands separators, locale differences, or non-USD currencies.
+- **Fix:** Use `toLocaleString('en-US', { style: 'currency', currency: 'USD' })` for currency, `toLocaleString('en-US', { style: 'percent' })` for percent, and `new Date().toLocaleDateString()` for dates.
+- **`as json` format** uses `JSON.stringify(value, null, 2)` wrapped in `<pre>` for readable display.
+
+### CRUD Auto-Inject `:id` for PUT/DELETE Endpoints
+- **PUT and DELETE endpoints without `:id` in the path silently failed** — the compiled code referenced `req.params.id` but the Express route had no `:id` parameter, so `req.params.id` was `undefined`.
+- **Fix:** Compiler auto-appends `/:id` to PUT/DELETE endpoint paths if not already present. This matches REST convention and prevents silent data loss.
+
+### Multer `require` Must Be Module-Scope
+- **`const multer = require('multer')` was emitted inside endpoint handler functions.** Each request re-required multer, and the upload middleware wasn't available at route registration time.
+- **Fix:** Detect file upload nodes in the AST during the pre-scan phase and emit the multer require at module scope, before any route definitions.
+
+### Python Cron: Lifespan Context Manager
+- **Python (FastAPI) cron jobs need the `lifespan` context manager pattern**, not `@app.on_event("startup")` (deprecated in modern FastAPI). The lifespan function yields once, running startup code before the yield and cleanup after.
+- **Cron body wrapped in try/catch** to prevent one failed tick from killing the schedule.

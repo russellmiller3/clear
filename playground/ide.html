@@ -135,6 +135,9 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .term-json .json-bool { color: #ce93d8; }
 .term-json .json-null { color: var(--tx3); font-style: italic; }
 .term-status { color: var(--tx3); font-size: 11px; display: block; padding: 2px 0 2px 16px; }
+.term-tool { color: var(--tx2); font-size: 11px; display: block; padding: 2px 0 2px 12px; border-left: 2px solid var(--accent); margin: 2px 0 2px 4px; }
+.term-tool-err { color: var(--red); font-size: 11px; display: block; padding: 2px 8px; margin: 2px 0 2px 4px; background: color-mix(in oklch, var(--red) 6%, transparent); border-left: 2px solid var(--red); }
+.term-tool-ok { color: var(--green); font-size: 11px; display: block; padding: 2px 0 2px 12px; border-left: 2px solid var(--green); margin: 2px 0 2px 4px; }
 .code-tabs { display: flex; gap: 2px; padding: 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
 .code-tab { background: none; border: none; padding: 4px 12px; border-radius: 4px; color: var(--tx3); font-size: 11px; font-family: var(--font); font-weight: 500; cursor: pointer; transition: all .15s; }
 .code-tab:hover { background: var(--bg3); color: var(--tx); }
@@ -210,8 +213,23 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .msg .code-btn:hover { background: var(--accent2); color: #fff; border-color: var(--accent2); }
 .msg .apply-btn { position: absolute; top: 6px; right: 6px; background: var(--accent2); color: #dde4ff; border: none; border-radius: 4px; padding: 3px 10px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all .15s; }
 .msg .apply-btn:hover { background: var(--accent); transform: translateY(-1px); }
-.msg .svg-diagram { margin: 8px 0; padding: 12px; background: var(--bg); border: 1px solid var(--bd); border-radius: 6px; overflow-x: auto; text-align: center; }
+.msg .svg-diagram { margin: 8px 0; padding: 12px; background: var(--bg); border: 1px solid var(--bd); border-radius: 6px; overflow-x: auto; text-align: center; cursor: pointer; position: relative; }
+.msg .svg-diagram:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }
+.msg .svg-diagram::after { content: '⤢ Click to expand'; position: absolute; bottom: 4px; right: 8px; font-size: 9px; color: var(--tx3); opacity: 0; transition: opacity .15s; pointer-events: none; }
+.msg .svg-diagram:hover::after { opacity: 1; }
 .msg .svg-diagram svg { max-width: 100%; height: auto; }
+.svg-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; cursor: pointer; animation: fadeIn .15s ease; }
+.svg-overlay-inner { background: var(--bg); color: var(--tx); border: 1px solid var(--bd2); border-radius: 12px; padding: 24px; min-width: 50vw; max-width: 90vw; max-height: 90vh; overflow: auto; box-shadow: 0 8px 32px rgba(0,0,0,.4); cursor: default; }
+.svg-overlay-inner svg { width: 100%; height: auto; }
+.svg-overlay-close { position: absolute; top: 16px; right: 24px; background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; z-index: 10000; }
+.svg-overlay-close:hover { background: var(--red); color: #fff; border-color: var(--red); }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.thinking-block { margin: 4px 0 8px 0; }
+.thinking-block summary { font-size: 12px; color: var(--tx3); cursor: pointer; padding: 3px 8px; border-left: 2px solid var(--accent2); font-family: var(--mono); user-select: none; display: flex; align-items: center; gap: 6px; }
+.thinking-block summary:hover { color: var(--accent); }
+.thinking-block summary .think-icon { font-size: 10px; transition: transform .2s; }
+.thinking-block[open] summary .think-icon { transform: rotate(90deg); }
+.thinking-block .think-content { font-size: 12px; color: var(--tx3); padding: 6px 10px 6px 18px; border-left: 2px solid var(--bd); margin-left: 0; font-family: var(--mono); line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; }
 .tool-step { font-size: 12px; color: var(--tx3); padding: 3px 10px; border-left: 2px solid var(--accent2); margin: 4px 0; font-family: var(--mono); display: flex; align-items: center; gap: 6px; }
 .tool-step .tool-icon { font-size: 11px; flex-shrink: 0; }
 .tool-step.active { color: var(--accent); }
@@ -295,6 +313,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 /* Compile animation — scan lines */
 @keyframes scanPulse { 0% { background: rgba(108,140,255,.18); } 100% { background: transparent; } }
 .cm-scan-line { animation: scanPulse .35s ease forwards; }
+.cm-compile-highlight { background: rgba(108,140,255,.18); transition: background .2s; }
 
 /* Jump-to highlight — flash a line in the editor */
 @keyframes lineFlash { 0%,100% { background: transparent; } 20%,60% { background: rgba(251,191,36,.25); } }
@@ -454,6 +473,8 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <span>Clear v1.0</span>
     <span class="sb-sep"></span>
     <span id="sb-shortcuts">Ctrl+S compile &middot; Ctrl+Enter run &middot; Ctrl+K chat</span>
+    <span class="sb-sep"></span>
+    <span style="color:rgba(255,255,255,.5);font-size:10px;">Proudly made in America 🇺🇸 fuck you commies</span>
   </div>
 </div>
 
@@ -644,28 +665,34 @@ showOutput();
 // ==========================================================================
 let compileAnimCancel = false;
 let compileAnimRunning = false;
+let compileAnimGeneration = 0; // monotonic counter to detect stale animations
+
+function clearEditorHighlights() {
+  document.querySelectorAll('.cm-scan-line').forEach(el => el.classList.remove('cm-scan-line'));
+}
 
 async function runScanAnimation(source) {
-  // Lightweight pre-compile scan — just shows Clear lines being "read"
+  // Lightweight pre-compile scan — highlights lines in the editor as they're "read"
   const lines = source.split('\n');
   if (lines.length > 150) return; // skip for large files
-  const msPerLine = Math.max(30, Math.min(60, 1800 / Math.max(lines.length, 1)));
-  showTab('compiled');
-  const el = document.getElementById('preview-content');
-  el.innerHTML = '<pre>' + lines.map((l, i) =>
-    `<span class="cl" id="scan-${i}"><span class="cl-code">${escHtml(l)}</span></span>`
-  ).join('\n') + '</pre>';
+  clearEditorHighlights(); // clear any leftover highlights from previous compile
+  const msPerLine = Math.max(20, Math.min(50, 1500 / Math.max(lines.length, 1)));
+  const gen = ++compileAnimGeneration;
   compileAnimCancel = false;
   for (let i = 0; i < lines.length; i++) {
-    if (compileAnimCancel) return;
-    const span = document.getElementById('scan-' + i);
-    if (span) span.classList.add('cm-scan-line');
+    if (compileAnimCancel || gen !== compileAnimGeneration) return;
+    if (i + 1 > editor.state.doc.lines) break;
+    const lineObj = editor.state.doc.line(i + 1);
+    const domPos = editor.domAtPos(lineObj.from);
+    let el = domPos?.node instanceof Element ? domPos.node : domPos?.node?.parentElement;
+    while (el && !el.classList.contains('cm-line')) el = el.parentElement;
+    if (el) { el.classList.add('cm-scan-line'); }
     await new Promise(r => setTimeout(r, msPerLine));
   }
 }
 
-// Post-compile animation: split view — Clear source (left) → compiled output (right)
-// Maps lines using // clear:N markers in compiled output
+// Post-compile animation: highlight source lines in editor (left) while building
+// compiled output in the real CodeMirror editor (right). Uses // clear:N markers.
 async function runCompileAnimation(clearSource, compiledCode) {
   if (!compiledCode) return;
   const clearLines = clearSource.split('\n');
@@ -673,7 +700,7 @@ async function runCompileAnimation(clearSource, compiledCode) {
   if (clearLines.length > 150) return; // too big, skip
 
   // Parse // clear:N markers to build mapping
-  const mapping = []; // [{ clearLine, compiledStart, compiledEnd }]
+  const mapping = []; // [{ clearLine, start, end }]
   let currentClear = null;
   let blockStart = -1;
   for (let i = 0; i < compiledLines.length; i++) {
@@ -692,56 +719,138 @@ async function runCompileAnimation(clearSource, compiledCode) {
 
   if (mapping.length === 0) return; // no markers, skip
 
-  showTab('compiled');
-  const el = document.getElementById('preview-content');
-  const msPerBlock = Math.max(300, Math.min(800, 12000 / Math.max(mapping.length, 1)));
-
-  // Build split view HTML
-  el.innerHTML = `
-    <div class="compile-anim">
-      <div class="compile-anim-left">
-        <div class="compile-anim-header">Clear Source</div>
-        <pre>${clearLines.map((l, i) =>
-          `<span class="ca-line" id="ca-src-${i+1}">${escHtml(l)}</span>`
-        ).join('\n')}</pre>
-      </div>
-      <div class="compile-anim-arrow">→</div>
-      <div class="compile-anim-right">
-        <div class="compile-anim-header">Compiled Output</div>
-        <pre id="ca-output"></pre>
-      </div>
-    </div>
-    <div style="text-align:center;padding:6px">
-      <button class="toolbar-btn" onclick="compileAnimCancel=true" style="font-size:11px;padding:2px 10px;">Skip</button>
-    </div>`;
-
+  // Cancel any previous animation and reset state
   compileAnimCancel = false;
   compileAnimRunning = true;
-  const outEl = document.getElementById('ca-output');
+  const gen = ++compileAnimGeneration;
+  clearEditorHighlights();
 
-  for (const block of mapping) {
-    if (compileAnimCancel) break;
+  // Switch to Code tab visually (without calling showCompiled which would conflict)
+  activeTab = 'compiled';
+  document.querySelectorAll('.prev-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.prev-tab[onclick*="compiled"]').classList.add('active');
+  const el = document.getElementById('preview-content');
 
-    // Highlight Clear source line
-    const srcSpan = document.getElementById('ca-src-' + block.clearLine);
-    if (srcSpan) { srcSpan.classList.add('ca-active'); srcSpan.scrollIntoView({ block: 'nearest' }); }
+  // Determine language for syntax highlighting
+  const isPython = lastCompiled?.python && compiledCode === lastCompiled.python;
+  const langExt = isPython ? pythonTokenizer : javascript();
 
-    // Reveal compiled lines for this block
-    const chunk = compiledLines.slice(block.start, block.end + 1);
-    const chunkHtml = chunk.map(l => `<span class="ca-line ca-reveal">${escHtml(l)}</span>`).join('\n');
-    outEl.innerHTML += (outEl.innerHTML ? '\n' : '') + chunkHtml;
-    outEl.scrollTop = outEl.scrollHeight;
+  // Build the Code tab with skip button + empty CodeMirror
+  const tabBar = document.createElement('div');
+  tabBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--bd);';
+  tabBar.innerHTML = `<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);">Compiling...</span>
+    <button class="toolbar-btn" onclick="compileAnimCancel=true" style="font-size:11px;padding:2px 10px;">Skip</button>`;
 
-    await new Promise(r => setTimeout(r, msPerBlock));
+  const viewContainer = document.createElement('div');
+  viewContainer.style.cssText = 'flex:1;overflow:hidden;display:flex;flex-direction:column;';
 
-    // Dim the source line after revealing
-    if (srcSpan) { srcSpan.classList.remove('ca-active'); srcSpan.classList.add('ca-done'); }
+  el.innerHTML = '';
+  el.appendChild(tabBar);
+  el.appendChild(viewContainer);
+
+  // Create a fresh read-only CodeMirror starting with empty content
+  if (compiledView) { compiledView.destroy(); compiledView = null; }
+  compiledView = new EditorView({
+    doc: '',
+    extensions: [
+      lineNumbers(),
+      highlightActiveLine(),
+      drawSelection(),
+      langExt,
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      EditorState.readOnly.of(true),
+      EditorView.editable.of(false),
+      EditorView.theme({
+        '&': { height: '100%', fontSize: '12px' },
+        '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)' },
+        '.cm-gutters': { background: 'var(--bg2)', borderRight: '1px solid var(--bd)' },
+        '.cm-content': { padding: '8px 0' },
+      }),
+    ],
+  });
+  viewContainer.appendChild(compiledView.dom);
+
+  const msPerBlock = Math.max(180, Math.min(500, 8000 / Math.max(mapping.length, 1)));
+  let prevLeftHighlight = null;
+  let prevRightHighlights = [];
+
+  // Helper: highlight a source line in the left editor
+  function highlightSourceLine(lineNum) {
+    if (prevLeftHighlight) prevLeftHighlight.classList.remove('cm-scan-line');
+    if (lineNum < 1 || lineNum > editor.state.doc.lines) return;
+    const lineObj = editor.state.doc.line(lineNum);
+    const domPos = editor.domAtPos(lineObj.from);
+    let lineEl = domPos?.node instanceof Element ? domPos.node : domPos?.node?.parentElement;
+    while (lineEl && !lineEl.classList.contains('cm-line')) lineEl = lineEl.parentElement;
+    if (lineEl) {
+      lineEl.classList.remove('cm-scan-line');
+      void lineEl.offsetWidth;
+      lineEl.classList.add('cm-scan-line');
+      lineEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      prevLeftHighlight = lineEl;
+    }
   }
 
-  // Brief pause, then show normal code tab
-  if (!compileAnimCancel) await new Promise(r => setTimeout(r, 600));
-  compileAnimRunning = false;
-  showCompiled();
+  // Helper: highlight lines in the right compiled CodeMirror
+  function highlightCompiledLines(startLine, endLine) {
+    // Remove previous highlights
+    prevRightHighlights.forEach(el => el.classList.remove('cm-compile-highlight'));
+    prevRightHighlights = [];
+    if (!compiledView) return;
+    for (let i = startLine; i <= endLine; i++) {
+      if (i < 1 || i > compiledView.state.doc.lines) continue;
+      const lineObj = compiledView.state.doc.line(i);
+      const domPos = compiledView.domAtPos(lineObj.from);
+      let lineEl = domPos?.node instanceof Element ? domPos.node : domPos?.node?.parentElement;
+      while (lineEl && !lineEl.classList.contains('cm-line')) lineEl = lineEl.parentElement;
+      if (lineEl) {
+        lineEl.classList.add('cm-compile-highlight');
+        prevRightHighlights.push(lineEl);
+      }
+    }
+    // Scroll last highlighted line into view
+    if (prevRightHighlights.length > 0) {
+      prevRightHighlights[prevRightHighlights.length - 1].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  let totalInserted = 0; // track how many lines we've inserted so far
+
+  for (const block of mapping) {
+    if (compileAnimCancel || gen !== compileAnimGeneration) break;
+
+    // LEFT: highlight the source line
+    highlightSourceLine(block.clearLine);
+
+    // RIGHT: append this block's compiled lines to the CodeMirror editor
+    const chunk = compiledLines.slice(block.start, block.end + 1).join('\n');
+    const insertText = totalInserted === 0 ? chunk : '\n' + chunk;
+    const docLen = compiledView.state.doc.length;
+
+    compiledView.dispatch({
+      changes: { from: docLen, insert: insertText },
+      effects: EditorView.scrollIntoView(docLen + insertText.length, { y: 'end' }),
+    });
+
+    const newStartLine = totalInserted + 1;
+    const linesAdded = block.end - block.start + 1;
+    totalInserted += linesAdded;
+
+    // Wait for CodeMirror to render the new lines in the DOM before highlighting
+    await new Promise(r => requestAnimationFrame(r));
+    highlightCompiledLines(newStartLine, totalInserted);
+
+    await new Promise(r => setTimeout(r, msPerBlock));
+  }
+
+  // Clean up if this is still the active animation
+  if (gen === compileAnimGeneration) {
+    clearEditorHighlights();
+    prevRightHighlights.forEach(el => el.classList.remove('cm-compile-highlight'));
+    if (!compileAnimCancel) await new Promise(r => setTimeout(r, 400));
+    compileAnimRunning = false;
+    // Don't call showCompiled() — the CodeMirror already has all the code
+  }
 }
 
 async function autoCompile() {
@@ -891,6 +1000,7 @@ let compiledView = null;
 let compiledTab = null; // which sub-tab is active
 
 function showCompiled() {
+  if (compileAnimRunning) return; // don't clobber active animation
   const el = document.getElementById('preview-content');
   if (!lastCompiled) {
     el.innerHTML = '<div class="empty-state"><div class="icon">&#9654;</div><div class="title">Press Compile to see compiled code</div><div class="hint">Ctrl+S or the Compile button</div></div>';
@@ -1604,7 +1714,7 @@ function markdownToHtml(text) {
           .replace(/<script[\s\S]*?<\/script>/gi, '')
           .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '')
           .replace(/javascript:/gi, '');
-        return `<div class="svg-diagram">${sanitized}</div>`;
+        return `<div class="svg-diagram" onclick="expandSvg(this)">${sanitized}</div>`;
       }
       // HTML: render preview + source
       if (lang === 'html' && p.s.includes('<')) {
@@ -1685,7 +1795,11 @@ function renderMsgInner(m, isLast) {
       let textBuf = '';
       for (let i = 0; i < m.timeline.length; i++) {
         const ev = m.timeline[i];
-        if (ev.type === 'text') {
+        if (ev.type === 'thinking') {
+          // Flush text before thinking block
+          if (textBuf) { html += markdownToHtml(textBuf); textBuf = ''; }
+          html += `<details class="thinking-block"><summary><span class="think-icon">▶</span>Thinking</summary><div class="think-content">${escHtml(ev.text)}</div></details>`;
+        } else if (ev.type === 'text') {
           textBuf += ev.text;
         } else if (ev.type === 'tool') {
           // Flush any accumulated text before the tool step
@@ -1826,6 +1940,32 @@ window.toggleHtmlPreview = function(btn) {
   const showing = preview.style.display !== 'none';
   preview.style.display = showing ? 'none' : '';
   btn.textContent = showing ? 'Preview' : 'Source';
+};
+
+window.expandSvg = function(el) {
+  const svg = el.querySelector('svg');
+  if (!svg) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'svg-overlay';
+  const inner = document.createElement('div');
+  inner.className = 'svg-overlay-inner';
+  const cloned = svg.cloneNode(true);
+  cloned.removeAttribute('width');
+  cloned.removeAttribute('height');
+  cloned.style.width = '100%';
+  cloned.style.height = 'auto';
+  cloned.style.maxHeight = '80vh';
+  inner.appendChild(cloned);
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'svg-overlay-close';
+  closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); overlay.remove(); });
+  overlay.appendChild(closeBtn);
+  overlay.appendChild(inner);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  const esc = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); } };
+  document.addEventListener('keydown', esc);
 };
 
 // ==========================================================================
@@ -1993,7 +2133,16 @@ window.sendChat = async function() {
         try { ev = JSON.parse(line.slice(6)); } catch { continue; }
 
         const am = chatMessages[aIdx];
-        if (ev.type === 'text') {
+        if (ev.type === 'thinking_start') {
+          am.timeline.push({ type: 'thinking', text: '' });
+          updateLastMsg();
+        } else if (ev.type === 'thinking') {
+          // Append to the current thinking block
+          const last = am.timeline[am.timeline.length - 1];
+          if (last && last.type === 'thinking') { last.text += ev.delta; }
+          else { am.timeline.push({ type: 'thinking', text: ev.delta }); }
+          updateLastMsg();
+        } else if (ev.type === 'text') {
           am.content += ev.delta;
           // Append to timeline: merge with last text entry or create new one
           const last = am.timeline[am.timeline.length - 1];
@@ -2023,7 +2172,13 @@ window.sendChat = async function() {
         } else if (ev.type === 'switch_tab') {
           showTab(ev.tab);
         } else if (ev.type === 'terminal_append') {
-          appendTerminal(`<span class="term-cmd">${escHtml(ev.text)}</span>\n`);
+          const isTool = ev.text.startsWith('[tool]');
+          if (isTool) {
+            const cls = ev.text.includes('❌') ? 'term-tool-err' : ev.text.includes('✓') ? 'term-tool-ok' : 'term-tool';
+            appendTerminal(`<span class="${cls}">${escHtml(ev.text)}</span>\n`);
+          } else {
+            appendTerminal(`<span class="term-cmd">${escHtml(ev.text)}</span>\n`);
+          }
           if (activeTab !== 'terminal') showToast(ev.text.slice(0, 60));
         } else if (ev.type === 'undo') {
           if (undoCmd) undoCmd(editor);
