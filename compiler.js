@@ -6128,29 +6128,28 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`    }`);
       lines.push(`  }`);
     } else if (disp.format === 'chat') {
-      // Chat rendering: DaisyUI chat bubbles with role-based alignment
+      // Chat rendering: Studio-style message bubbles
       const chatCols = disp.columns || ['role', 'content'];
       const roleField = JSON.stringify(chatCols[0] || 'role');
       const contentField = JSON.stringify(chatCols[1] || 'content');
       lines.push(`  {`);
       lines.push(`    const _chatEl = document.getElementById('${outputId}_chat');`);
       lines.push(`    const _data = ${val};`);
-      lines.push(`    if (_chatEl && Array.isArray(_data)) {`);
+      lines.push(`    if (_chatEl && Array.isArray(_data) && _data.length > 0) {`);
       lines.push(`      _chatEl.innerHTML = _data.map(msg => {`);
       lines.push(`        const role = String(msg[${roleField}] || 'user').toLowerCase();`);
       lines.push(`        const content = String(msg[${contentField}] || '');`);
       lines.push(`        const isUser = role === 'user';`);
-      lines.push(`        const align = isUser ? 'chat-end' : 'chat-start';`);
-      lines.push(`        const bubbleClass = isUser ? 'chat-bubble-primary' : '';`);
-      lines.push(`        const label = isUser ? 'You' : role.charAt(0).toUpperCase() + role.slice(1);`);
-      lines.push(`        return '<div class="chat ' + align + '">' +`);
-      lines.push(`          '<div class="chat-header text-xs opacity-60">' + _esc(label) + '</div>' +`);
-      lines.push(`          '<div class="chat-bubble ' + bubbleClass + ' whitespace-pre-wrap">' + _esc(content) + '</div>' +`);
+      lines.push(`        const label = isUser ? 'You' : 'Assistant';`);
+      lines.push(`        const cls = isUser ? 'user' : 'assistant';`);
+      lines.push(`        return '<div class="clear-msg ' + cls + '">' +`);
+      lines.push(`          '<div class="clear-msg-label">' + _esc(label) + '</div>' +`);
+      lines.push(`          _esc(content) +`);
       lines.push(`        '</div>';`);
       lines.push(`      }).join('');`);
       lines.push(`      _chatEl.scrollTop = _chatEl.scrollHeight;`);
       lines.push(`    } else if (_chatEl) {`);
-      lines.push(`      _chatEl.innerHTML = '<p class="text-sm text-base-content/40 text-center py-8">No messages yet</p>';`);
+      lines.push(`      _chatEl.innerHTML = '<p style="text-align:center;opacity:0.4;padding:2rem 0;font-size:14px">No messages yet</p>';`);
       lines.push(`    }`);
       lines.push(`  }`);
     } else if (disp.format === 'gallery') {
@@ -7266,7 +7265,16 @@ ${options}
           } else if (ui.tag === 'list') {
             parts.push(`    <ul class="list-disc pl-6 space-y-1" id="${displayId}_list"></ul>`);
           } else if (ui.tag === 'chat') {
-            parts.push(`    <div class="flex flex-col gap-1 max-h-[60vh] overflow-y-auto p-4" id="${displayId}_chat"></div>`);
+            parts.push(`    <style>
+      .clear-chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; max-height: 60vh; }
+      .clear-msg { padding: 10px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.6; max-width: 50ch; white-space: pre-wrap; word-wrap: break-word; }
+      .clear-msg.user { background: oklch(0.5 0.15 264); color: #dde4ff; align-self: flex-end; border-bottom-right-radius: 4px; }
+      .clear-msg.assistant { background: oklch(0.93 0.005 264); color: oklch(0.25 0.01 264); align-self: flex-start; border: 1px solid oklch(0.88 0.01 264); border-bottom-left-radius: 4px; font-family: Georgia, serif; }
+      .clear-msg-label { font-size: 11px; opacity: 0.5; margin-bottom: 2px; }
+      .clear-msg.user .clear-msg-label { text-align: right; color: oklch(0.7 0.05 264); }
+      .clear-msg.assistant .clear-msg-label { color: oklch(0.5 0.02 264); }
+    </style>
+    <div class="clear-chat" id="${displayId}_chat"></div>`);
           } else if (ui.tag === 'gallery') {
             parts.push(`    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="${displayId}_gallery"></div>`);
           } else if (ui.tag === 'map') {
