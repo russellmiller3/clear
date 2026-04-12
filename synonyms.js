@@ -384,7 +384,7 @@ const SYNONYM_TABLE = Object.freeze({
   send_sms_via_twilio: Object.freeze(['send sms via twilio']),
   // NOTE: 'send email via sendgrid' is NOT a synonym — collides with 'send email:' (SMTP).
   // Parser checks for 'via' token after 'send email' to disambiguate.
-  needs_login: Object.freeze(['needs login', 'need login', 'requires login']),
+  needs_login: Object.freeze(['needs login', 'need login', 'requires login', 'this endpoint requires login']),
   broadcast_to_all: Object.freeze(['broadcast to all', 'broadcast to everyone']),
 
   // Self-synonyms — words with no alternate spellings that still need a canonical
