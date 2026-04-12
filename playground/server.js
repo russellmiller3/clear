@@ -194,7 +194,18 @@ app.post('/api/run', (req, res) => {
   const rtDir = join(BUILD_DIR, 'clear-runtime');
   mkdirSync(rtDir, { recursive: true });
   writeFileSync(join(BUILD_DIR, 'server.js'), serverJS);
-  writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: { ws: '*' } })); // CJS mode, include ws for chat apps
+  // Build deps based on what the compiled code needs
+  const deps = { ws: '*' };
+  if (serverJS.includes("require('bcryptjs')")) deps.bcryptjs = '*';
+  if (serverJS.includes("require('jsonwebtoken')")) deps.jsonwebtoken = '*';
+  if (serverJS.includes("require('nodemailer')")) deps.nodemailer = '*';
+  if (serverJS.includes("require('multer')")) deps.multer = '*';
+  writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: deps }));
+  // Install deps if any are missing
+  const depsNeeded = Object.keys(deps).filter(d => !existsSync(join(BUILD_DIR, 'node_modules', d)));
+  if (depsNeeded.length > 0) {
+    try { execSync('npm install --production --silent', { cwd: BUILD_DIR, timeout: 15000, stdio: 'pipe' }); } catch {}
+  }
   if (html) writeFileSync(join(BUILD_DIR, 'index.html'), html);
   writeFileSync(join(BUILD_DIR, 'style.css'), css || '');
 
@@ -639,7 +650,16 @@ app.post('/api/chat', async (req, res) => {
         const rtDir = join(BUILD_DIR, 'clear-runtime');
         mkdirSync(rtDir, { recursive: true });
         writeFileSync(join(BUILD_DIR, 'server.js'), agentBackendCode);
-        writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: { ws: '*' } }));
+        const agentDeps = { ws: '*' };
+        if (agentBackendCode.includes("require('bcryptjs')")) agentDeps.bcryptjs = '*';
+        if (agentBackendCode.includes("require('jsonwebtoken')")) agentDeps.jsonwebtoken = '*';
+        if (agentBackendCode.includes("require('nodemailer')")) agentDeps.nodemailer = '*';
+        if (agentBackendCode.includes("require('multer')")) agentDeps.multer = '*';
+        writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: agentDeps }));
+        const agentDepsNeeded = Object.keys(agentDeps).filter(d => !existsSync(join(BUILD_DIR, 'node_modules', d)));
+        if (agentDepsNeeded.length > 0) {
+          try { execSync('npm install --production --silent', { cwd: BUILD_DIR, timeout: 15000, stdio: 'pipe' }); } catch {}
+        }
         if (lastCompileResult.html) writeFileSync(join(BUILD_DIR, 'index.html'), lastCompileResult.html);
         writeFileSync(join(BUILD_DIR, 'style.css'), lastCompileResult.css || '');
         const runtimeDir = join(ROOT_DIR, 'runtime');

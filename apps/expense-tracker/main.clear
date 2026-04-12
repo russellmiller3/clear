@@ -43,9 +43,12 @@ when user calls DELETE /api/expenses/:id:
   delete the Expense with this id
   send back 'deleted' with success message
 
+when user calls GET /api/categories:
+  all_categories = get all Categories
+  send back all_categories
+
 when user calls GET /api/search sending params:
-  query = incoming's q
-  results = search Expenses for query
+  results = search Expenses for params's q
   send back results
 
 when user calls GET /api/expenses/total:

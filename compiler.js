@@ -1772,8 +1772,14 @@ function compileEndpoint(node, ctx, pad) {
   }
   if (needsBinding) {
     if (node.receivingVar) {
-      epCode += `${pad}    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });\n`;
-      epCode += `${pad}    const ${sanitizeName(dataVar)} = req.body;\n`;
+      const isGet = (node.method || '').toUpperCase() === 'GET';
+      if (isGet) {
+        // GET endpoints use query params, not body
+        epCode += `${pad}    const ${sanitizeName(dataVar)} = req.query;\n`;
+      } else {
+        epCode += `${pad}    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Request body is required (send JSON with Content-Type: application/json)' });\n`;
+        epCode += `${pad}    const ${sanitizeName(dataVar)} = req.body;\n`;
+      }
       // If body also references 'incoming' for URL params, bind that too
       if (bodyUsesIncoming) {
         epCode += `${pad}    const incoming = req.params;\n`;

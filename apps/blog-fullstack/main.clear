@@ -32,6 +32,14 @@ create a Posts table:
 allow cross-origin requests
 log every request
 
+when user calls GET /api/authors:
+  all_authors = get all Authors
+  send back all_authors
+
+when user calls GET /api/categories:
+  all_categories = get all Categories
+  send back all_categories
+
 when user calls GET /api/posts:
   all_posts = get all Posts
   send back all_posts

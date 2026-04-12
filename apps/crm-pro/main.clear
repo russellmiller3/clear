@@ -112,7 +112,8 @@ when user calls POST /api/seed:
 
 # Companies CRUD
 when user calls GET /api/companies:
-  send back get all Companies
+  all_companies = get all Companies
+  send back all_companies
 
 when user calls POST /api/companies sending data:
   requires login
@@ -130,7 +131,8 @@ when user calls DELETE /api/companies/:id:
 
 # Contacts CRUD
 when user calls GET /api/contacts:
-  send back get all Contacts
+  all_contacts = get all Contacts
+  send back all_contacts
 
 when user calls POST /api/contacts sending data:
   requires login
@@ -149,7 +151,8 @@ when user calls DELETE /api/contacts/:id:
 
 # Deals CRUD
 when user calls GET /api/deals:
-  send back get all Deals
+  all_deals = get all Deals
+  send back all_deals
 
 when user calls POST /api/deals sending data:
   requires login
