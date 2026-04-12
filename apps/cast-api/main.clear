@@ -42,12 +42,12 @@ when user calls GET /api/health:
 # --- Models ---
 
 when user calls GET /api/models:
-  this endpoint requires auth
+  this endpoint requires login
   define all_models as: look up all records in Model table
   send back all_models
 
 when user calls POST /api/models receiving model_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate model_data:
     name is text, required
     type is text, required
@@ -55,14 +55,14 @@ when user calls POST /api/models receiving model_data:
   send back new_model status 201
 
 when user calls GET /api/models/:id:
-  this endpoint requires auth
+  this endpoint requires login
   define model as: look up records in Model table where id is incoming's id
   send back model
 
 # --- Predictions ---
 
 when user calls POST /api/predict receiving predict_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate predict_data:
     model_id is text, required
     input_data is text, required
@@ -72,7 +72,7 @@ when user calls POST /api/predict receiving predict_data:
 # --- Chat ---
 
 when user calls POST /api/chat receiving chat_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate chat_data:
     role is text, required
     content is text, required, min 1
@@ -81,14 +81,14 @@ when user calls POST /api/chat receiving chat_data:
   send back message status 201
 
 when user calls GET /api/chat/:session_id:
-  this endpoint requires auth
+  this endpoint requires login
   define messages as: look up all records in ChatMessage table
   send back messages
 
 # --- Share ---
 
 when user calls POST /api/share receiving share_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate share_data:
     sheet_id is text, required
     code is text, required
@@ -102,7 +102,7 @@ when user calls GET /api/share/:sheet_id:
 # --- Export ---
 
 when user calls POST /api/export receiving export_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate export_data:
     format is text, required
   send back 'export started'

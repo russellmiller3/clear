@@ -380,7 +380,7 @@ when user calls POST /api/todos sending todo_data:
   send back new_todo with success message
 
 when user calls DELETE /api/todos/:id:
-  requires auth
+  requires login
   delete the Todo with this id
   send back 'deleted' with success message
 
@@ -457,7 +457,7 @@ This creates a POST endpoint that:
 
 ```clear
 when user calls DELETE /api/todos/:id:
-  requires auth
+  requires login
   delete the Todo with this id
   send back 'deleted' with success message
 ```
@@ -529,7 +529,7 @@ when user calls POST /api/expenses sending expense_data:
   send back new_expense with success message
 
 when user calls DELETE /api/expenses/:id:
-  requires auth
+  requires login
   delete the Expense with this id
   send back 'deleted' with success message
 
@@ -796,7 +796,7 @@ build for javascript backend
 allow signup and login
 
 when user calls GET /api/dashboard:
-  requires auth
+  requires login
   send back 'Welcome!'
 ```
 
@@ -818,7 +818,7 @@ page 'Dashboard':
 
 ```clear
 when user calls DELETE /api/posts/:id:
-  requires auth
+  requires login
   delete the Post with this id
   send back 'deleted' with success message
 ```
@@ -836,7 +836,7 @@ when user calls PUT /api/settings/:id sending data:
 
 ```clear
 when user calls POST /api/orders sending order_data:
-  requires auth
+  requires login
   guard stock is greater than 0 or 'Out of stock'
   new_order = save order_data as new Order
   send back new_order with success message
@@ -866,12 +866,12 @@ when user calls GET /api/users:
   send back all_users
 
 when user calls PUT /api/users/:id sending update_data:
-  requires auth
+  requires login
   save update_data to Users
   send back update_data with success message
 
 when user calls DELETE /api/users/:id:
-  requires auth
+  requires login
   delete the User with this id
   send back 'deleted' with success message
 ```
@@ -1445,13 +1445,13 @@ when user calls GET /api/items:
 
 # Update
 when user calls PUT /api/items/:id sending update_data:
-  requires auth
+  requires login
   save update_data to Items
   send back update_data with success message
 
 # Delete
 when user calls DELETE /api/items/:id:
-  requires auth
+  requires login
   delete the Item with this id
   send back 'deleted' with success message
 ```
@@ -2141,7 +2141,7 @@ when user calls POST /api/projects sending project_data:
   send back new_project with success message
 
 when user calls DELETE /api/projects/:id:
-  requires auth
+  requires login
   delete the Project with this id
   send back 'deleted' with success message
 

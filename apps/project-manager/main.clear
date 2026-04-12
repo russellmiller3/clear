@@ -70,7 +70,7 @@ when user calls GET /api/teams:
   send back all_teams
 
 when user calls POST /api/teams sending team_data:
-  requires auth
+  requires login
   validate team_data:
     name is text, required, min 1, max 100
   new_team = save team_data as new Team
@@ -87,7 +87,7 @@ when user calls GET /api/members:
   send back all_members
 
 when user calls POST /api/members sending member_data:
-  requires auth
+  requires login
   validate member_data:
     team_id is text, required
     user_name is text, required, min 1, max 100
@@ -103,7 +103,7 @@ when user calls GET /api/projects:
   send back all_projects
 
 when user calls POST /api/projects sending project_data:
-  requires auth
+  requires login
   validate project_data:
     team_id is text, required
     name is text, required, min 1, max 200
@@ -114,7 +114,7 @@ when user calls POST /api/projects sending project_data:
   send back new_project with success message
 
 when user calls PUT /api/projects/:id sending update_data:
-  requires auth
+  requires login
   validate update_data:
     team_id is text
     status is text
@@ -125,7 +125,7 @@ when user calls PUT /api/projects/:id sending update_data:
   send back 'updated' with success message
 
 when user calls DELETE /api/projects/:id:
-  requires auth
+  requires login
   requires role 'admin'
   delete the Project with this id
   send back 'deleted' with success message
@@ -137,7 +137,7 @@ when user calls GET /api/tasks:
   send back all_tasks
 
 when user calls POST /api/tasks sending task_data:
-  requires auth
+  requires login
   validate task_data:
     project_id is text, required
     title is text, required, min 1, max 300
@@ -149,7 +149,7 @@ when user calls POST /api/tasks sending task_data:
   send back new_task with success message
 
 when user calls PUT /api/tasks/:id sending update_data:
-  requires auth
+  requires login
   validate update_data:
     project_id is text
     status is text
@@ -161,7 +161,7 @@ when user calls PUT /api/tasks/:id sending update_data:
   send back 'updated' with success message
 
 when user calls DELETE /api/tasks/:id:
-  requires auth
+  requires login
   delete the Task with this id
   send back 'deleted' with success message
 
@@ -172,7 +172,7 @@ when user calls GET /api/comments:
   send back all_comments
 
 when user calls POST /api/comments sending comment_data:
-  requires auth
+  requires login
   validate comment_data:
     task_id is text, required
     author is text, required, min 1, max 100
@@ -183,7 +183,7 @@ when user calls POST /api/comments sending comment_data:
 # --- Activity Log ---
 
 when user calls GET /api/activity:
-  requires auth
+  requires login
   all_activity = get all ActivityLog
   send back all_activity
 

@@ -1075,7 +1075,7 @@ when user calls GET /api/users/:id:
   send back user
 
 when user calls POST /api/users sending user_data:
-  requires auth
+  requires login
   validate user_data:
     name is text, required, min 1, max 100
     email is text, required, matches email
@@ -1086,12 +1086,12 @@ when user calls POST /api/users sending user_data:
   send back new_user with success message
 
 when user calls PUT /api/users/:id sending update_data:
-  requires auth
+  requires login
   save update_data to Users
   send back 'updated'
 
 when user calls DELETE /api/users/:id:
-  requires auth
+  requires login
   requires role 'admin'
   delete the User with this id
   send back 'deleted' with success message
@@ -1113,7 +1113,7 @@ Requires `bcryptjs` and `jsonwebtoken` npm packages. Auto-generates an in-memory
 ## Auth & Guards
 
 ```clear
-requires auth
+requires login
 requires role 'admin'
 guard product's stock is greater than 0 or 'Out of stock'
 
@@ -1696,7 +1696,7 @@ webhook '/stripe/events' signed with env('STRIPE_SECRET'):
 ```clear
 # Both work — needs login is the natural form
 needs login
-requires auth
+requires login
 ```
 
 ---

@@ -19,7 +19,7 @@ when user calls POST /api/todos sending post_data:
   send back new_todo with success message
 
 when user calls DELETE /api/todos/:id:
-  requires auth
+  requires login
   delete the Todo with this id
   send back 'deleted' with success message
 

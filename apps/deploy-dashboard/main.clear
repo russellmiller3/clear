@@ -35,12 +35,12 @@ when user calls POST /api/deploys sending deploy_data:
   send back new_deploy with success message
 
 when user calls PUT /api/deploys/:id sending update_data:
-  requires auth
+  requires login
   save update_data to Deploys
   send back update_data with success message
 
 when user calls DELETE /api/deploys/:id:
-  requires auth
+  requires login
   delete the Deploy with this id
   send back 'deleted' with success message
 

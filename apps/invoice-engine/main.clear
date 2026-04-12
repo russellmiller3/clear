@@ -72,7 +72,7 @@ when user calls GET /api/clients/:id:
   send back client
 
 when user calls POST /api/clients sending client_data:
-  requires auth
+  requires login
   validate client_data:
     name is text, required, min 1, max 200
     email is text, required, matches email
@@ -82,7 +82,7 @@ when user calls POST /api/clients sending client_data:
   send back new_client with success message
 
 when user calls PUT /api/clients/:id sending update_data:
-  requires auth
+  requires login
   validate update_data:
     name is text
     email is text
@@ -92,7 +92,7 @@ when user calls PUT /api/clients/:id sending update_data:
   send back 'updated' with success message
 
 when user calls DELETE /api/clients/:id:
-  requires auth
+  requires login
   requires role 'admin'
   delete the Client with this id
   send back 'deleted' with success message
@@ -111,7 +111,7 @@ when user calls GET /api/invoices/:id:
   send back invoice
 
 when user calls POST /api/invoices sending invoice_data:
-  requires auth
+  requires login
   validate invoice_data:
     client_id is text, required
     invoice_number is text, required, min 1, max 50
@@ -125,7 +125,7 @@ when user calls POST /api/invoices sending invoice_data:
 # Valid transitions: draft->sent, sent->paid, sent->overdue, draft->cancelled, sent->cancelled
 
 when user calls PUT /api/invoices/:id/send:
-  requires auth
+  requires login
   define invoice as: look up records in Invoices table where id is incoming's id
   guard invoice is not nothing or 'Invoice not found'
   guard invoice's status is 'draft' or 'Only draft invoices can be sent'
@@ -134,7 +134,7 @@ when user calls PUT /api/invoices/:id/send:
   send back 'sent' with success message
 
 when user calls PUT /api/invoices/:id/pay sending payment_data:
-  requires auth
+  requires login
   validate payment_data:
     amount is number, required
     method is text, required
@@ -149,7 +149,7 @@ when user calls PUT /api/invoices/:id/pay sending payment_data:
   send back 'paid' with success message
 
 when user calls PUT /api/invoices/:id/cancel:
-  requires auth
+  requires login
   define invoice as: look up records in Invoices table where id is incoming's id
   guard invoice is not nothing or 'Invoice not found'
   guard invoice's status is not 'paid' or 'Paid invoices cannot be cancelled'
@@ -158,7 +158,7 @@ when user calls PUT /api/invoices/:id/cancel:
   send back 'cancelled' with success message
 
 when user calls DELETE /api/invoices/:id:
-  requires auth
+  requires login
   requires role 'admin'
   define invoice as: look up records in Invoices table where id is incoming's id
   guard invoice is not nothing or 'Invoice not found'
@@ -175,7 +175,7 @@ when user calls GET /api/line-items:
   send back all_items
 
 when user calls POST /api/line-items sending item_data:
-  requires auth
+  requires login
   validate item_data:
     invoice_id is text, required
     description is text, required, min 1, max 500
@@ -185,7 +185,7 @@ when user calls POST /api/line-items sending item_data:
   send back new_item with success message
 
 when user calls DELETE /api/line-items/:id:
-  requires auth
+  requires login
   delete the LineItem with this id
   send back 'deleted' with success message
 
@@ -194,7 +194,7 @@ when user calls DELETE /api/line-items/:id:
 # ============================================================
 
 when user calls GET /api/payments:
-  requires auth
+  requires login
   all_payments = get all Payments
   send back all_payments
 
@@ -203,7 +203,7 @@ when user calls GET /api/payments:
 # ============================================================
 
 when user calls GET /api/audit:
-  requires auth
+  requires login
   requires role 'admin'
   all_logs = get all AuditLog
   send back all_logs
@@ -213,7 +213,7 @@ when user calls GET /api/audit:
 # ============================================================
 
 when user calls GET /api/reports/summary:
-  requires auth
+  requires login
   all_invoices = get all Invoices
   all_payments = get all Payments
   send back all_invoices

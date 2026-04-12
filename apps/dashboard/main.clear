@@ -36,12 +36,12 @@ when user calls POST /api/models sending model_data:
   send back new_model with success message
 
 when user calls PUT /api/models/:id sending update_data:
-  requires auth
+  requires login
   save update_data to Models
   send back update_data with success message
 
 when user calls DELETE /api/models/:id:
-  requires auth
+  requires login
   delete the Model with this id
   send back 'deleted' with success message
 

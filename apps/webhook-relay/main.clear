@@ -31,12 +31,12 @@ webhook '/webhooks/github' signed with env('GITHUB_SECRET'):
 # --- Management Endpoints ---
 
 when user calls GET /api/destinations:
-  this endpoint requires auth
+  this endpoint requires login
   define all_destinations as: look up all records in Destination table
   send back all_destinations
 
 when user calls POST /api/destinations receiving dest_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate dest_data:
     name is text, required
     url is text, required
@@ -44,7 +44,7 @@ when user calls POST /api/destinations receiving dest_data:
   send back new_dest status 201
 
 when user calls DELETE /api/destinations/:id:
-  this endpoint requires auth
+  this endpoint requires login
   this endpoint requires role 'admin'
   remove from Destinations where id is incoming's id
   send back 'deleted'
@@ -52,7 +52,7 @@ when user calls DELETE /api/destinations/:id:
 # --- Delivery Status ---
 
 when user calls GET /api/deliveries:
-  this endpoint requires auth
+  this endpoint requires login
   define all_deliveries as: look up all records in Delivery table
   send back all_deliveries
 

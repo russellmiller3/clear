@@ -16,7 +16,7 @@ agent 'Lead Scorer' receives lead:
   send back lead
 
 when user calls POST /api/score sending lead_data:
-  requires auth
+  requires login
   validate lead_data:
     company is text, required
     email is text, required

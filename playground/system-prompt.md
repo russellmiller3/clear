@@ -112,7 +112,7 @@ when user calls GET /api/todos:
   send back todos
 
 when user calls POST /api/todos sending data:
-  requires auth
+  requires login
   saved = save data to Todos
   send back saved
 
@@ -155,19 +155,19 @@ when user calls GET /api/items:
 
 # POST creates — receives new data in the body
 when user calls POST /api/items sending data:
-  requires auth
+  requires login
   saved = save data to Items
   send back saved
 
 # PUT updates — receives changed fields, targets a record by :id
 when user calls PUT /api/items/:id sending update_data:
-  requires auth
+  requires login
   save update_data to Items
   send back 'updated' with success message
 
 # DELETE removes — targets a record by :id, no body
 when user calls DELETE /api/items/:id:
-  requires auth
+  requires login
   remove from Items with this id
   send back 'deleted'
 ```
@@ -432,7 +432,7 @@ The `edit_code` tool supports `action='undo'` to revert the last editor change. 
 - DON'T use double quotes (use single quotes)
 - DON'T chain operations (one per line)
 - DON'T use dot notation (use possessive: person's name)
-- DON'T forget `requires auth` on POST/PUT/DELETE endpoints
+- DON'T forget `requires login` on POST/PUT/DELETE endpoints
 - DON'T forget `database is local memory` for apps with tables
 - DON'T use `receiving` (use `receives`)
 - DON'T use `returning:` alone (use `returning JSON text:`)

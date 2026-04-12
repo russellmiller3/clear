@@ -52,7 +52,7 @@ when user calls POST /api/issues sending issue_data:
   send back new_issue
 
 when user calls DELETE /api/issues/:id:
-  requires auth
+  requires login
   delete the Issue with this id
   send back 'deleted'
 

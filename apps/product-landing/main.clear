@@ -76,7 +76,7 @@ page 'Clear' at '/':
     heading 'You Can Read Every Line'
     text 'This is what your invoice app actually looks like under the hood:'
     divider
-    code block 'when user calls PUT /api/invoices/:id/send:\n  requires auth\n  define invoice as: look up the Invoice with this id\n  guard invoice is not nothing or "Invoice not found"\n  guard invoice`s status is "draft" or "Only drafts can be sent"\n  invoice`s status is "sent"\n  save invoice to Invoices\n  send back "sent" with success message'
+    code block 'when user calls PUT /api/invoices/:id/send:\n  requires login\n  define invoice as: look up the Invoice with this id\n  guard invoice is not nothing or "Invoice not found"\n  guard invoice`s status is "draft" or "Only drafts can be sent"\n  invoice`s status is "sent"\n  save invoice to Invoices\n  send back "sent" with success message'
     divider
     text 'Eight lines. You can read every one. "Require login, find the invoice, check it is a draft, change the status, save it." No React hooks. No middleware chains. No mysteries.'
     text 'You will probably never need to read this. But knowing you can is the difference between renting your software and owning it.'

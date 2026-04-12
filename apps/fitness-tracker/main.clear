@@ -35,7 +35,7 @@ when user calls POST /api/workouts sending workout_data:
   send back new_workout with success message
 
 when user calls DELETE /api/workouts/:id:
-  requires auth
+  requires login
   delete the Workout with this id
   send back 'deleted' with success message
 

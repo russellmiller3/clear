@@ -29,7 +29,7 @@ when user calls POST /api/recipes sending recipe_data:
   send back new_recipe with success message
 
 when user calls DELETE /api/recipes/:id:
-  requires auth
+  requires login
   delete the Recipe with this id
   send back 'deleted' with success message
 

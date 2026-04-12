@@ -28,7 +28,7 @@ when user calls GET /api/rooms:
   send back all_rooms
 
 when user calls POST /api/rooms receiving room_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate room_data:
     name is text, required, min 1, max 100
   define new_room as: save room_data as Room
@@ -39,7 +39,7 @@ when user calls GET /api/rooms/:id/messages:
   send back room_messages
 
 when user calls POST /api/messages receiving msg_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate msg_data:
     room is text, required
     sender is text, required

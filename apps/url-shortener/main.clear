@@ -29,6 +29,6 @@ when user calls GET /api/links/:code:
   send back found
 
 when user calls DELETE /api/links/:code:
-  this endpoint requires auth
+  this endpoint requires login
   remove from Links where code is incoming's code
   send back 'deleted'

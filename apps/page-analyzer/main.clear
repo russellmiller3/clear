@@ -15,7 +15,7 @@ agent 'Page Analyzer' receives page_data:
   send back page_data
 
 when user calls POST /api/analyze sending page_data:
-  requires auth
+  requires login
   validate page_data:
     url is text, required
   analyzed = call 'Page Analyzer' with page_data

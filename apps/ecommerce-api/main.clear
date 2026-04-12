@@ -46,7 +46,7 @@ when user calls GET /api/products/:id:
 # --- Protected: Orders ---
 
 when user calls POST /api/orders receiving order_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate order_data:
     product_id is text, required
     quantity is number, required, min 1
@@ -59,12 +59,12 @@ when user calls POST /api/orders receiving order_data:
   send back new_order status 201
 
 when user calls GET /api/orders:
-  this endpoint requires auth
+  this endpoint requires login
   define all_orders as: look up all records in Orders table
   send back all_orders
 
 when user calls GET /api/orders/:id:
-  this endpoint requires auth
+  this endpoint requires login
   define order as: look up records in Orders table where id is incoming's id
   if order is nothing then send back 'Order not found' status 404
   send back order
@@ -72,7 +72,7 @@ when user calls GET /api/orders/:id:
 # --- Admin: Product Management ---
 
 when user calls POST /api/products receiving product_data:
-  this endpoint requires auth
+  this endpoint requires login
   this endpoint requires role 'admin'
   validate product_data:
     name is text, required, min 1, max 200
@@ -81,7 +81,7 @@ when user calls POST /api/products receiving product_data:
   send back new_product status 201
 
 when user calls DELETE /api/products/:id:
-  this endpoint requires auth
+  this endpoint requires login
   this endpoint requires role 'admin'
   remove from Products where id is incoming's id
   send back 'deleted'

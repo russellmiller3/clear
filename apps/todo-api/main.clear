@@ -33,13 +33,13 @@ when user calls POST /api/todos receiving post_data:
   send back new_todo status 201
 
 when user calls PUT /api/todos/:id receiving update_data:
-  requires auth
+  requires login
   validate update_data:
     title is text, min 1, max 500
   save update_data to Todos
   send back 'updated'
 
 when user calls DELETE /api/todos/:id:
-  this endpoint requires auth
+  this endpoint requires login
   remove from Todos where id is incoming's id
   send back 'deleted'

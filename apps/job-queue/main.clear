@@ -21,24 +21,24 @@ log every request
 # --- Endpoints ---
 
 when user calls POST /api/jobs receiving job_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate job_data:
     type is text, required
   define new_job as: save job_data as Job
   send back new_job status 201
 
 when user calls GET /api/jobs:
-  this endpoint requires auth
+  this endpoint requires login
   define all_jobs as: look up all records in Job table
   send back all_jobs
 
 when user calls GET /api/jobs/:id:
-  this endpoint requires auth
+  this endpoint requires login
   define job as: look up records in Job table where id is incoming's id
   send back job
 
 when user calls DELETE /api/jobs/:id:
-  this endpoint requires auth
+  this endpoint requires login
   this endpoint requires role 'admin'
   remove from Jobs where id is incoming's id
   send back 'deleted'

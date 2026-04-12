@@ -62,7 +62,7 @@ when user calls POST /api/books sending book_data:
   send back new_book with success message
 
 when user calls PUT /api/books/:id sending book_data:
-  requires auth
+  requires login
   validate book_data:
     title is text, min 1, max 200
     author is text, min 1, max 200
@@ -73,7 +73,7 @@ when user calls PUT /api/books/:id sending book_data:
   send back 'updated' with success message
 
 when user calls DELETE /api/books/:id:
-  requires auth
+  requires login
   delete the Book with this id
   send back 'deleted' with success message
 

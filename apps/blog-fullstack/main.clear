@@ -39,7 +39,7 @@ when user calls POST /api/posts sending post_data:
   send back new_post
 
 when user calls DELETE /api/posts/:id:
-  requires auth
+  requires login
   delete the Post with this id
   send back 'deleted'
 

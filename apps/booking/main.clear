@@ -84,7 +84,7 @@ when user calls GET /api/services:
   send back all_services
 
 when user calls POST /api/services sending service_data:
-  requires auth
+  requires login
   validate service_data:
     name is text, required
     duration is number
@@ -93,7 +93,7 @@ when user calls POST /api/services sending service_data:
   send back new_service with success message
 
 when user calls DELETE /api/services/:id:
-  requires auth
+  requires login
   delete the Service with this id
   send back 'deleted' with success message
 
@@ -103,7 +103,7 @@ when user calls GET /api/clients:
   send back all_clients
 
 when user calls POST /api/clients sending client_data:
-  requires auth
+  requires login
   validate client_data:
     name is text, required
     email is text, required, matches email
@@ -117,7 +117,7 @@ when user calls GET /api/bookings:
   send back all_bookings
 
 when user calls POST /api/bookings sending booking_data:
-  requires auth
+  requires login
   validate booking_data:
     client_name is text, required
     service_name is text, required
@@ -128,7 +128,7 @@ when user calls POST /api/bookings sending booking_data:
   send back new_booking with success message
 
 when user calls DELETE /api/bookings/:id:
-  requires auth
+  requires login
   delete the Booking with this id
   send back 'deleted' with success message
 

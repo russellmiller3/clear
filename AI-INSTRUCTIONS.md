@@ -576,7 +576,7 @@ when user calls GET /api/users:
   send back all_users
 
 when user calls POST /api/users sending user_data:
-  requires auth
+  requires login
   validate user_data:
     name is text, required
     email is text, required, matches email
@@ -589,7 +589,7 @@ Use `sending` (not `receiving`) -- from the user's perspective, they send data.
 **Auth goes at the top. Check before doing work:**
 ```
 when user calls DELETE /api/users/:id:
-  requires auth
+  requires login
   requires role 'admin'
   delete the User with this id
   send back 'deleted' with success message
@@ -597,7 +597,7 @@ when user calls DELETE /api/users/:id:
 
 **`with success message`** adds a `message` field and returns 201.
 **`delete the X with this id`** removes the record matching the URL param.
-**`requires auth`** is canonical (the `this endpoint` prefix is optional).
+**`requires login`** is the preferred style for protecting endpoints (also accepts `requires auth`).
 **`allow signup and login`** scaffolds full auth system (signup/login/me endpoints + JWT middleware).
 **`needs login`** on a page redirects to /login if no JWT token is present.
 **`belongs to Users`** in a table field declaration creates a foreign key relationship.
@@ -1201,13 +1201,13 @@ api_key is env('API_KEY')
 ### Always require auth on write endpoints
 ```
 when user calls DELETE /api/users/:id:
-  requires auth
+  requires login
   requires role 'admin'
   delete the User with this id
   send back 'deleted' with success message
 ```
 
-The compiler will **refuse to compile** DELETE or PUT endpoints without `requires auth`.
+The compiler will **refuse to compile** DELETE or PUT endpoints without `requires login`.
 It will also error if a table with `user_id` has a GET endpoint that returns all records
 without filtering by user.
 
@@ -1657,7 +1657,7 @@ or all fail.** E-commerce checkouts, bank transfers, inventory updates:
 
 ```
 when user calls POST /api/checkout sending order:
-  requires auth
+  requires login
   as one operation:
     decrease product's stock by order's quantity
     save order as new Order

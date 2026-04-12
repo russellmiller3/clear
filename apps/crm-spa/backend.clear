@@ -136,7 +136,7 @@ when user calls GET /api/contacts:
   send back all_contacts
 
 when user calls POST /api/contacts sending contact_data:
-  requires auth
+  requires login
   validate contact_data:
     name is text, required, min 1, max 100
     email is text, required, matches email
@@ -149,7 +149,7 @@ when user calls POST /api/contacts sending contact_data:
   send back new_contact with success message
 
 when user calls PUT /api/contacts/:id sending update_data:
-  requires auth
+  requires login
   validate update_data:
     name is text
     email is text
@@ -161,7 +161,7 @@ when user calls PUT /api/contacts/:id sending update_data:
   send back 'updated' with success message
 
 when user calls DELETE /api/contacts/:id:
-  requires auth
+  requires login
   delete the Contact with this id
   send back 'deleted' with success message
 
@@ -171,7 +171,7 @@ when user calls GET /api/deals:
   send back all_deals
 
 when user calls POST /api/deals sending deal_data:
-  requires auth
+  requires login
   validate deal_data:
     contact_id is text, required
     title is text, required, min 1, max 200
@@ -183,7 +183,7 @@ when user calls POST /api/deals sending deal_data:
   send back new_deal with success message
 
 when user calls PUT /api/deals/:id sending update_data:
-  requires auth
+  requires login
   validate update_data:
     title is text
     value is number
@@ -194,7 +194,7 @@ when user calls PUT /api/deals/:id sending update_data:
   send back 'updated' with success message
 
 when user calls DELETE /api/deals/:id:
-  requires auth
+  requires login
   delete the Deal with this id
   send back 'deleted' with success message
 
@@ -204,7 +204,7 @@ when user calls GET /api/activities:
   send back all_activities
 
 when user calls POST /api/activities sending activity_data:
-  requires auth
+  requires login
   validate activity_data:
     contact_id is text
     deal_id is text
@@ -225,7 +225,7 @@ when user calls GET /api/tags:
   send back all_tags
 
 when user calls POST /api/tags sending tag_data:
-  requires auth
+  requires login
   validate tag_data:
     name is text, required
     color is text

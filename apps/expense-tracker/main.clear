@@ -25,7 +25,7 @@ when user calls POST /api/expenses sending expense_data:
   send back new_expense with success message
 
 when user calls DELETE /api/expenses/:id:
-  requires auth
+  requires login
   delete the Expense with this id
   send back 'deleted' with success message
 

@@ -43,7 +43,7 @@ when user calls POST /api/messages sending message_data:
   send back new_message with success message
 
 when user calls DELETE /api/messages/:id:
-  requires auth
+  requires login
   delete the Message with this id
   send back 'deleted' with success message
 

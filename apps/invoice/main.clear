@@ -98,7 +98,7 @@ when user calls GET /api/clients:
   send back all_clients
 
 when user calls POST /api/clients sending client_data:
-  requires auth
+  requires login
   validate client_data:
     name is text, required, min 1, max 100
     email is text, required, matches email
@@ -108,7 +108,7 @@ when user calls POST /api/clients sending client_data:
   send back new_client with success message
 
 when user calls DELETE /api/clients/:id:
-  requires auth
+  requires login
   delete the Client with this id
   send back 'deleted' with success message
 
@@ -118,7 +118,7 @@ when user calls GET /api/invoices:
   send back all_invoices
 
 when user calls POST /api/invoices sending invoice_data:
-  requires auth
+  requires login
   validate invoice_data:
     client_name is text, required
     description is text, required
@@ -130,7 +130,7 @@ when user calls POST /api/invoices sending invoice_data:
   send back new_invoice with success message
 
 when user calls PUT /api/invoices/:id sending update_data:
-  requires auth
+  requires login
   validate update_data:
     client_name is text
     due_date is text
@@ -142,7 +142,7 @@ when user calls PUT /api/invoices/:id sending update_data:
   send back 'updated' with success message
 
 when user calls DELETE /api/invoices/:id:
-  requires auth
+  requires login
   delete the Invoice with this id
   send back 'deleted' with success message
 
@@ -152,7 +152,7 @@ when user calls GET /api/line-items:
   send back all_items
 
 when user calls POST /api/line-items sending item_data:
-  requires auth
+  requires login
   validate item_data:
     invoice_id is text, required
     description is text, required

@@ -85,7 +85,7 @@ when user calls GET /api/users:
   send back all_users
 
 when user calls POST /api/users sending user_data:
-  requires auth
+  requires login
   validate user_data:
     name is text, required, min 1, max 100
     email is text, required, matches email
@@ -93,7 +93,7 @@ when user calls POST /api/users sending user_data:
   send back new_user with success message
 
 when user calls DELETE /api/users/:id:
-  requires auth
+  requires login
   requires role 'admin'
   delete the User with this id
   send back 'deleted' with success message
@@ -163,7 +163,7 @@ highest = max of score in results             # and max/min
 ```
 
 ### Security Rules (compiler-enforced)
-- DELETE/PUT without `requires auth` = compiler error, won't compile
+- DELETE/PUT without `requires login` = compiler error, won't compile
 - Always validate POST/PUT data with `validate X:` blocks — returns ALL errors as `{ errors: [{ field, message }] }`
 - Use `env('KEY')` for secrets, never hardcode them
 - Use `guard` for business logic checks: `guard stock is greater than 0 or 'Out of stock'`
@@ -236,7 +236,7 @@ when user calls POST /api/todos sending post_data:
   send back new_todo with success message
 
 when user calls DELETE /api/todos/:id:
-  requires auth
+  requires login
   delete the Todo with this id
   send back 'deleted' with success message
 
@@ -259,7 +259,7 @@ page 'Todo App':
 ### Status machine with guards
 ```clear
 when user calls PUT /api/invoices/:id/send:
-  requires auth
+  requires login
   define invoice as: look up records in Invoices table where id is incoming's id
   guard invoice is not nothing or 'Invoice not found'
   guard invoice's status is 'draft' or 'Only draft invoices can be sent'

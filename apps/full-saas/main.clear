@@ -98,26 +98,26 @@ when user calls POST /api/auth/login receiving login_data:
 # --- Backend: Projects ---
 
 when user calls GET /api/projects:
-  this endpoint requires auth
+  this endpoint requires login
   define all_projects as: look up all records in Project table
   send back all_projects
 
 when user calls POST /api/projects receiving project_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate project_data:
     name is text, required, min 1, max 100
   define new_project as: save project_data as Project
   send back new_project status 201
 
 when user calls DELETE /api/projects/:id:
-  this endpoint requires auth
+  this endpoint requires login
   remove from Projects where id is incoming's id
   send back 'deleted'
 
 # --- Backend: API Keys ---
 
 when user calls POST /api/keys receiving key_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate key_data:
     project_id is text, required
   define new_key as: save key_data as ApiKey

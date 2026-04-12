@@ -47,7 +47,7 @@ when user calls GET /api/posts/:id:
 # --- Protected Endpoints ---
 
 when user calls POST /api/posts receiving post_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate post_data:
     title is text, required, min 1, max 200
     body is text, required, min 1
@@ -55,14 +55,14 @@ when user calls POST /api/posts receiving post_data:
   send back new_post status 201
 
 when user calls PUT /api/posts/:id receiving update_data:
-  this endpoint requires auth
+  this endpoint requires login
   validate update_data:
     title is text, min 1, max 200
   save update_data to Posts
   send back 'updated'
 
 when user calls DELETE /api/posts/:id:
-  this endpoint requires auth
+  this endpoint requires login
   this endpoint requires role 'admin'
   remove from Posts where id is incoming's id
   send back 'deleted'
@@ -70,13 +70,13 @@ when user calls DELETE /api/posts/:id:
 # --- User Management (admin only) ---
 
 when user calls GET /api/users:
-  this endpoint requires auth
+  this endpoint requires login
   this endpoint requires role 'admin'
   define all_users as: look up all records in Users table
   send back all_users
 
 when user calls POST /api/users receiving user_data:
-  this endpoint requires auth
+  this endpoint requires login
   this endpoint requires role 'admin'
   validate user_data:
     name is text, required
