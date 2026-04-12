@@ -162,6 +162,32 @@ avg_price = average of price in products      # same for average
 highest = max of score in results             # and max/min
 ```
 
+### Has Many Relationships
+```
+Users has many Posts    # auto-generates GET /api/users/:id/posts
+```
+
+### Full Text Search
+```
+results = search Posts for query     # case-insensitive filter across all fields
+```
+
+### WebSocket Broadcasting
+```
+subscribe to 'chat':
+  log message
+  broadcast to all message           # sends to all connected clients
+```
+
+### Agent Argument Guardrails
+```
+agent 'Support' receives message:
+  block arguments matching 'password|secret|ssn'
+  can use: look_up_orders
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
 ### Security Rules (compiler-enforced)
 - DELETE/PUT without `requires login` = compiler error, won't compile
 - Always validate POST/PUT data with `validate X:` blocks — returns ALL errors as `{ errors: [{ field, message }] }`
@@ -197,7 +223,7 @@ node test.js
 
 **Frontend:** pages, inputs (text/number/checkbox/dropdown/textarea), buttons, sections with inline layout, components, conditional UI, on-page-load, reactive tables with column whitelist, tabs, collapsible, slide-out panels, modals, toast notifications, ECharts (bar/line/pie/area with subtitle/stacked), images
 
-**Backend:** REST endpoints, validation, auth guards, role-based access, rate limiting, CORS, logging, webhooks (HMAC), OAuth, Stripe checkout, background jobs, SSE streaming, WebSocket
+**Backend:** REST endpoints, validation, auth guards, role-based access, rate limiting, CORS, logging, webhooks (HMAC), OAuth, Stripe checkout, background jobs, SSE streaming, WebSocket, broadcast, full text search, has many relationships
 
 **Policies (Enact Guards):** `policy:` block with 30+ runtime guards — database safety (block DDL, protect tables, filter-required deletes), prompt injection detection, access control (require role, block sensitive reads), code freeze, email (no mass emails), Slack (channel allowlist, block DMs), filesystem (restrict paths, block extensions), git safety (block push to main), CRM (no duplicate contacts), cloud storage (require human approval for deletes)
 

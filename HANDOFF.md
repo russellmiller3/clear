@@ -1,56 +1,61 @@
-# Handoff -- 2026-04-12 (Session 2, Final)
+# Handoff — 2026-04-12 (Final)
 
 ## Current State
 - **Branch:** `main`
-- **Compiler tests:** 1725 (all passing)
-- **E2e tests:** 60/67 passing (7 failures are pre-existing IDE UI timing issues, not core 7)
-- **Core 7 templates:** All compile clean, all CRUD endpoints work
+- **Compiler tests:** 1730 (0 failures)
+- **E2e tests:** 80/80 (0 failures)
+- **Husky:** pre-commit runs compiler tests, pre-push runs full suite
+- **Roadmap:** All 12 gaps closed. R3 (frontend source maps) done. R1, R2 remain.
 
 ## What Was Done This Session
 
-### Roadmap Items 1-12 — ALL Gaps Closed
-Items 1-4 (previous session): auth scaffolding, belongs to, validation, aggregates.
-Items 5-12 (this session): search, broadcast, agent memory fix, tool schema fix, string concat, Python serving, has many, guardrails.
+### Roadmap Items 1–12: All Gaps Closed
+Auth scaffolding, belongs to, validation, aggregates, search, broadcast, agent memory fix,
+tool schema fix, string concat verified, Python serving, has many, agent guardrails.
 
-### Core 7 Templates Rewritten + Playwright-Tested
-Every template uses new features. Every CRUD endpoint tested end-to-end:
-1. todo-fullstack (95 lines) — 13/13 tests pass
-2. crm-pro (218 lines) — 8/8 tests pass
-3. blog-fullstack (125 lines) — 7/7 tests pass
-4. live-chat (55 lines) — 5/5 tests pass
-5. helpdesk-agent (145 lines) — 5/5 tests pass (compiled code checks)
-6. booking (142 lines) — 7/7 tests pass
-7. expense-tracker (135 lines) — 7/7 tests pass
+### Three-Way Bidirectional Source Mapping
+Click any direction — source, compiled output, or live preview — and trace to the others:
+- **Clear → JS/Python:** `// clear:N` / `# clear:N` comments, click highlights compiled block
+- **Clear → HTML:** `data-clear-line="N"` attributes on every visible element
+- **JS/Python → Clear:** click compiled line → jumps to source (or "boilerplate" toast)
+- **HTML → Clear:** click element in Code tab → jumps to source
+- **Live Preview → Clear:** click element in running app → editor jumps to source line
+- Meph `source_map` tool for programmatic lookup
 
-### Compiler Bugs Fixed During Template Testing
-- GET endpoints with `sending params` used req.body instead of req.query (400 errors)
-- `send back get all X` compiled to undefined variable (one-liner anti-pattern)
+### Core 7 Templates — Rewritten + Playwright-Tested
+All templates use new features. 80 e2e tests verify CRUD, auth, search, relationships:
+1. todo-fullstack (95 lines) — categories, belongs to, has many, search
+2. crm-pro (218 lines) — 3 tables, relationships, search, aggregates
+3. blog-fullstack (125 lines) — authors/categories, belongs to, has many, search
+4. live-chat (55 lines) — WebSocket, subscribe, broadcast
+5. helpdesk-agent (145 lines) — all 5 agent features + keyword search
+6. booking (142 lines) — rooms has many bookings, search
+7. expense-tracker (135 lines) — categories, aggregates, search
+
+### Compiler Fixes Found During Template Testing
+- GET endpoints with `sending params` → `req.query` not `req.body`
+- `send back get all X` one-liner → undefined variable (must be two lines)
 - Server auto-installs bcryptjs/jsonwebtoken when compiled code needs them
-- Query param false positive in validator (stripped ? before matching)
-- "Did you mean 'if'?" for word 'a' (skip reserved words, require similar length)
-- Validator auth warnings now say 'requires login'
+- Query param false positive stripped from validator
+- "Did you mean 'if'?" for word 'a' → skip reserved words
+- `this endpoint requires login` synonym added
+- `has many` docs corrected (field modifier, not standalone)
 
-### Other Shipped
-- Click-to-highlight source mapping (bidirectional Clear ↔ compiled)
-- Meph browse_templates + source_map tools
+### Other
+- Husky git hooks (pre-commit: 1730 tests, pre-push: full suite)
+- Meph tools: browse_templates, source_map, patch_code, highlight_code
 - Philosophy rules 15 (Meph access) + 16 (error messages first-class)
 - Rotating quotes in status bar
-- Font size + line number color matching between editors
-- Context meter CSS fix
-- SYNONYM_VERSION test stabilized
-
-## Remaining E2e Failures (7 — all pre-existing)
-1. `ecommerce-api` template uses `this` keyword — compile error
-2-5. IDE UI timing: compile animation state, tab names ("Code" vs "Output")
-6. Old expense-tracker shallow test: POST response format mismatch
-7. "New" button: Playwright finds 2 elements with text "New"
+- Compiled view font/line-number matching
+- Ross Perot Rule in personal CLAUDE.md
 
 ## Resume Prompt
 
-> On main. 1725 compiler tests pass. 60/67 e2e tests pass (core 7 all green).
+> On main. 1730 compiler + 80 e2e tests, all green. Husky enforces.
 > Next priorities:
-> 1. Fix 7 remaining pre-existing e2e failures (ecommerce-api template, IDE timing, "New" button selector)
-> 2. Wire curriculum tasks into e2e test suite
-> 3. Add patch_code Meph tool (surgical edits via patch API)
-> 4. Add Meph capabilities section to USER-GUIDE.md
-> 5. Batteries: Stripe checkout, SendGrid, Supabase storage/auth
+> 1. GAN loop — spin up Studio, Meph builds app, Claude Code grades + iterates
+> 2. ClearMan (N1) — built-in API tester, "Try it" button per endpoint
+> 3. Compiler-generated tests (N3) — auto-emit happy path tests from AST
+> 4. Multi-file download (N4) — zip with server.js + index.html + package.json
+> 5. Batteries — Stripe checkout (N7a), SendGrid (N7b), Supabase storage (N7c)
+> 6. Refactoring — R1 (decompose compileAgent), R2 (dedup JS/Python CRUD)

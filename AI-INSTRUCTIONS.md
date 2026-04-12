@@ -601,7 +601,11 @@ when user calls DELETE /api/users/:id:
 **`allow signup and login`** scaffolds full auth system (signup/login/me endpoints + JWT middleware).
 **`needs login`** on a page redirects to /login if no JWT token is present.
 **`belongs to Users`** in a table field declaration creates a foreign key relationship.
+**`Users has many Posts`** declares a one-to-many relationship and auto-generates nested endpoints (e.g., `GET /api/users/:id/posts`).
 **`sum of amount in orders`** extracts a field from each record and aggregates it.
+**`search Posts for query`** filters records where any field contains the search term (case-insensitive).
+**`broadcast to all message`** inside a WebSocket handler sends the value to all connected clients.
+**`block arguments matching 'pattern'`** in an agent adds a regex guard on tool inputs — rejects matching arguments before execution.
 
 ## Guards
 

@@ -380,16 +380,11 @@ implemented twice — once for JS, once for Python. Bugs in one are often missed
 
 **Effort:** 2-3 days. **When:** When Python support becomes a priority.
 
-### R3 — Frontend source maps (click-to-highlight for HTML)
+### R3 — Frontend source maps ✅
 
-Click-to-highlight only works for compiled JS/Python, not HTML output. Frontend pages
-compile to HTML elements, not JS statements, so there are no `// clear:N` markers.
-
-Would need a different kind of mapping: Clear line → HTML element ID or data attribute.
-The compiler could emit `data-clear-line="5"` on each generated element, and the IDE
-could highlight those in the preview.
-
-**Effort:** 2-3 days. **When:** When Studio IDE polish becomes a priority.
+Completed. `data-clear-line="N"` attributes on every visible HTML element. Three-way
+bidirectional mapping: Clear ↔ compiled JS/Python/HTML ↔ live preview. Click any
+element in the running app preview → editor jumps to the Clear source line.
 
 ---
 
@@ -695,8 +690,9 @@ Missing: `when client connects/disconnects`, `broadcast to all`, `send to client
 ## Stats
 
 - **146 node types** defined in parser
-- **1699 compiler tests**, 0 failures
+- **1730 compiler tests**, 0 failures
 - **9 sandbox integration tests**
-- **~241 playground tests** (server, e2e, IDE, agent)
+- **80 e2e tests** (core 7 templates, CRUD, curriculum)
+- **~127 playground tests** (server, IDE, agent)
 - **Zero npm dependencies** in the compiler
 - **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI + Tailwind v4)
