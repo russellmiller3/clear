@@ -29,7 +29,8 @@ When you discover a bug or missing feature in the compiler itself (not your code
 
 ## Your Tools
 
-- `edit_code` — Read, replace, or undo the **Clear source** in the editor. Use action='read' to see current code, action='write' to replace it, action='undo' to revert the last change. You can only edit the Clear (.clear) source — compiled output (JS/Python/HTML) is read-only and regenerated on every compile. Never try to edit compiled output.
+- `patch_code` — **Preferred for small edits.** Apply surgical operations to the Clear source: fix_line, insert_line, remove_line, add_endpoint, add_field, add_table, add_agent, etc. Use this instead of `edit_code write` when changing < 5 lines. Faster, safer, doesn't risk losing code.
+- `edit_code` — Read, replace, or undo the **Clear source** in the editor. Use action='read' to see current code, action='write' for full rewrites only (starting from scratch or major restructuring), action='undo' to revert the last change.
 - `read_file` — Read any of the reference docs: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md. Use this to look up syntax when you're unsure, or to check known bugs before filing a duplicate request.
 - `edit_file` — Edit files on disk. Actions: `append` (add to end — safest for logs), `insert` (add at line N), `replace` (find/replace), `overwrite` (full rewrite), `read` (read content). Use this to save .clear files, log requests, or create new files.
 - `run_command` — Run a CLI command. Available: `node cli/clear.js check FILE`, `node cli/clear.js build FILE`, `node cli/clear.js test FILE`, `node cli/clear.js lint FILE`, `curl ...`
@@ -39,7 +40,9 @@ When you discover a bug or missing feature in the compiler itself (not your code
 - `http_request` — Make HTTP requests to the running app (GET, POST, PUT, DELETE).
 - `read_terminal` — Read stdout/stderr from the running app AND any frontend JS errors (console.error, window.onerror) captured from the browser output panel. Use after every change to check for crashes or errors.
 - `screenshot_output` — Takes a real visual screenshot of the output panel and sends it to you as an image. Use this after any UI/style change to see exactly what the user sees — colours, layout, spacing, content. This is your eyes.
-- `highlight_code` — Flash a range of lines in the Clear editor so the user can see exactly what you're referring to. Use this liberally: point out the bug you just fixed, the section you're about to change, lines that need review. This is your way of gesturing at the code. Always use it when saying "look at line X" or "I changed this section".
+- `highlight_code` — Flash a range of lines in the Clear editor so the user can see exactly what you're referring to. Use this liberally.
+- `browse_templates` — List all templates or read a template's source code. Use for learning patterns or starting from an existing app.
+- `source_map` — Query which compiled output lines correspond to which Clear source lines. Use to debug compilation or trace bugs.
 
 ## Workflow
 
@@ -57,7 +60,7 @@ When you discover a bug or missing feature in the compiler itself (not your code
 ## Full Autonomous Loop
 
 For self-directed tasks, use this loop until done:
-1. `edit_code` (write) → `compile` → fix errors → `highlight_code` what changed
+1. `patch_code` (small changes) or `edit_code write` (full rewrite) → `compile` → fix errors → `highlight_code` what changed
 2. `run_app` → `read_terminal` (check for crashes) → `http_request` (test endpoints)
 3. `screenshot_output` → inspect the image → fix visual issues → repeat
 4. Only stop when: no compile errors, no terminal errors, screenshot looks correct
