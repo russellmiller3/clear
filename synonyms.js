@@ -385,6 +385,7 @@ const SYNONYM_TABLE = Object.freeze({
   // NOTE: 'send email via sendgrid' is NOT a synonym — collides with 'send email:' (SMTP).
   // Parser checks for 'via' token after 'send email' to disambiguate.
   needs_login: Object.freeze(['needs login', 'need login', 'requires login']),
+  broadcast_to_all: Object.freeze(['broadcast to all', 'broadcast to everyone']),
 
   // Self-synonyms — words with no alternate spellings that still need a canonical
   // value so the unified dispatch table can find them. Without these, a word like
@@ -415,6 +416,8 @@ const SYNONYM_TABLE = Object.freeze({
   refresh: Object.freeze(['refresh', 'reload']),
   ask: Object.freeze(['ask']),
   call: Object.freeze(['call']),
+  search: Object.freeze(['search']),
+  block_arguments: Object.freeze(['block arguments matching', 'block arguments that match']),
 });
 
 // Build the reverse lookup: synonym string → canonical token
@@ -438,6 +441,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.16.0';
+const SYNONYM_VERSION = '0.18.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

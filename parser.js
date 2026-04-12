@@ -241,6 +241,9 @@ export const NodeType = Object.freeze({
   // Auth scaffolding
   AUTH_SCAFFOLD: 'auth_scaffold',
 
+  // WebSocket broadcast
+  BROADCAST: 'broadcast',
+
   // Input validation (Phase 16)
   VALIDATE: 'validate',
   FIELD_RULE: 'field_rule',
@@ -346,6 +349,9 @@ export const NodeType = Object.freeze({
   // ML adapter (Phase 27)
   TRAIN_MODEL: 'train_model',
   PREDICT: 'predict_with',
+
+  // Full text search (Phase 46)
+  SEARCH: 'search',
 
   // Advanced features (Phase 28)
   TEXT_BLOCK: 'text_block',
@@ -1317,6 +1323,15 @@ const CANONICAL_DISPATCH = new Map([
     const parsed = parseSubscribe(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
+  }],
+  ['broadcast_to_all', (ctx) => {
+    // broadcast to all <message> — inside a subscribe/websocket handler
+    const tokens = ctx.lines[ctx.i].tokens;
+    let pos = 1; // skip 'broadcast_to_all'
+    while (pos < tokens.length && (tokens[pos].type === TokenType.RESERVED || tokens[pos].value === 'to' || tokens[pos].value === 'all')) pos++;
+    const msgExpr = pos < tokens.length ? parsePrimary(tokens, pos, tokens[0].line, tokens.length) : null;
+    ctx.body.push({ type: NodeType.BROADCAST, value: msgExpr?.node || null, line: tokens[0].line });
+    return ctx.i + 1;
   }],
   ['update_database', (ctx) => {
     const parsed = parseUpdateDatabase(ctx.lines, ctx.i, ctx.indent, ctx.errors);
@@ -2795,7 +2810,7 @@ function parseFunctionDef(lines, startIdx, blockIndent, errors) {
         // Stop at "as inputs" / "as arguments" tail
         if (tokens[pos].canonical === 'as_format') break;
         if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
-          params.push(tokens[pos].value);
+          params.push({ name: tokens[pos].value, type: null });
           pos++;
         } else {
           break;
@@ -3012,6 +3027,17 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
           while (t + 1 < dTokens.length && dTokens[t + 1].type !== TokenType.COMMA && dTokens[t + 1].type === TokenType.IDENTIFIER) { t++; sn += ' ' + dTokens[t].value; }
           directives.skills.push(sn);
         }
+      }
+      bodyStartIdx++; continue;
+    }
+    // block arguments matching 'pattern1', 'pattern2'
+    if (dTokens[0].canonical === 'block_arguments' || (dTokens[0].value === 'block' && dTokens.length >= 3 && dTokens[1].value === 'arguments')) {
+      directives.argumentGuardrails = [];
+      // Skip past the canonical token(s) to the string literals
+      let startPos = (dTokens[0].canonical === 'block_arguments') ? 1 : 3; // after 'block arguments matching'
+      for (let t = startPos; t < dTokens.length; t++) {
+        if (dTokens[t].type === TokenType.COMMA) continue;
+        if (dTokens[t].type === TokenType.STRING) directives.argumentGuardrails.push(dTokens[t].value);
       }
       bodyStartIdx++; continue;
     }
@@ -4599,11 +4625,12 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
       if (fPos < fieldTokens.length && fieldTokens[fPos].type === TokenType.RPAREN) fPos++;
     }
 
-    // Parse modifiers: required, unique, default 'x', auto
+    // Parse modifiers: required, unique, default 'x', auto, has many
     let required = false;
     let unique = false;
     let auto = false;
     let defaultValue = null;
+    let hasMany = null;
 
     while (fPos < fieldTokens.length) {
       if (fieldTokens[fPos].type === TokenType.COMMA) { fPos++; continue; }
@@ -4631,6 +4658,13 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
           fk = fieldTokens[fPos].value;
           fieldType = 'fk';
           explicitType = true;
+          fPos++;
+        }
+      } else if (mod === 'has' && fPos + 1 < fieldTokens.length &&
+                 typeof fieldTokens[fPos + 1].value === 'string' && fieldTokens[fPos + 1].value.toLowerCase() === 'many') {
+        fPos += 2; // skip 'has many'
+        if (fPos < fieldTokens.length) {
+          hasMany = fieldTokens[fPos].value; // e.g. 'Posts'
           fPos++;
         }
       } else {
@@ -4661,10 +4695,12 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
       }
     }
 
-    fields.push({
+    const fieldObj = {
       name: fieldName, fieldType, line: fieldLine,
       required, unique, auto, defaultValue, fk,
-    });
+    };
+    if (hasMany) fieldObj.hasMany = hasMany;
+    fields.push(fieldObj);
     j++;
   }
 
@@ -6211,7 +6247,7 @@ function parseMathStyleFunction(tokens, line) {
   while (pos < tokens.length && tokens[pos].type !== TokenType.RPAREN) {
     if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
     if (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD) {
-      params.push(tokens[pos].value);
+      params.push({ name: tokens[pos].value, type: null });
       pos++;
     } else {
       return { error: `The parameter list for ${name}() has something unexpected — use just names separated by commas. Example: ${name}(a, b) = a + b` };
@@ -6797,6 +6833,26 @@ function parseAssignment(tokens, line) {
       if (!expr.error) params = expr.node;
     }
     return { name, expression: { type: NodeType.RAW_QUERY, sql, params, variable: name, operation: 'query', line } };
+  }
+
+  // Check for "search Table for expr" on the right side
+  // e.g. results = search Posts for query
+  // Full text search: case-insensitive filter across all fields
+  if (pos < tokens.length && tokens[pos].canonical === 'search') {
+    pos++; // skip 'search'
+    if (pos >= tokens.length) {
+      return { error: "search needs a table name and a query. Example: results = search Posts for query" };
+    }
+    const tableName = tokens[pos].value;
+    pos++;
+    // Skip 'for'
+    if (pos < tokens.length && (tokens[pos].value === 'for' || tokens[pos].canonical === 'for_target')) pos++;
+    if (pos >= tokens.length) {
+      return { error: "search needs 'for' and a search term. Example: results = search Posts for query" };
+    }
+    const queryExpr = parseExpression(tokens, pos, line);
+    if (queryExpr.error) return { error: queryExpr.error };
+    return { name, expression: { type: NodeType.SEARCH, table: tableName, query: queryExpr.node, resultVar: name, line } };
   }
 
   // Check for "count by field in list" on the right side

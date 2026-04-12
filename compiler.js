@@ -2232,14 +2232,15 @@ function compileAgent(node, ctx, pad) {
       for (const tool of refTools) {
         const fnDef = astBody.find(n => n.type === NodeType.FUNCTION_DEF && n.name === tool.name);
         const params = fnDef ? fnDef.params : [];
+        const paramNames = params.map(p => p.name);
         const properties = {};
-        for (const p of params) {
-          properties[p] = { type: 'string' };
+        for (const name of paramNames) {
+          properties[name] = { type: 'string' };
         }
-        const required = params.length > 0 ? params : undefined;
+        const required = paramNames.length > 0 ? paramNames : undefined;
         toolDefs.push({
           name: tool.name,
-          description: `${tool.name}(${params.join(', ')})`,
+          description: `${tool.name}(${paramNames.join(', ')})`,
           input_schema: { type: 'object', properties, ...(required ? { required } : {}) },
         });
         toolFnNames.push(sanitizeName(tool.name));
@@ -2254,6 +2255,21 @@ function compileAgent(node, ctx, pad) {
         'await _askAIWithTools($1, _tools, _toolFns)'
       );
     }
+  }
+
+  // 2b. Argument guardrails: block arguments matching 'pattern1', 'pattern2'
+  if (node.argumentGuardrails && node.argumentGuardrails.length > 0 && ctx.lang !== 'python') {
+    const escaped = node.argumentGuardrails.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    preamble += `${innerPad}const _guardrailRx = /${escaped}/i;\n`;
+    // Wrap each tool function with guardrail check (tool fns are in preamble)
+    preamble = preamble.replace(
+      /const _toolFns = \{([^}]+)\}/,
+      (match, fns) => {
+        const fnNames = fns.split(',').map(s => s.trim()).filter(Boolean);
+        const wrapped = fnNames.map(n => `${n}: (...args) => { if (_guardrailRx.test(JSON.stringify(args))) throw new Error('Blocked by guardrail'); return ${n}(...args); }`);
+        return `const _toolFns = { ${wrapped.join(', ')} }`;
+      }
+    );
   }
 
   // 3. Observability: track agent decisions — wrap _askAI/_askAIWithTools calls with logging
@@ -2348,6 +2364,15 @@ function compileAgent(node, ctx, pad) {
       /(_askAIStream)\(([a-zA-Z_]\w+),/g,
       (m, fn, varName) => `${fn}(${varName} + _ragStr,`
     );
+  }
+
+  // Inject postamble BEFORE the last return — otherwise it's dead code
+  if (postamble) {
+    const lastReturn = bodyCode.lastIndexOf('return ');
+    if (lastReturn !== -1) {
+      bodyCode = bodyCode.slice(0, lastReturn) + postamble + '\n' + bodyCode.slice(lastReturn);
+      postamble = ''; // already injected
+    }
   }
 
   // Final assembly — add _userId param for conversation/memory agents
@@ -4267,6 +4292,13 @@ ${pad}}`;
       }
     }
 
+    case NodeType.BROADCAST: {
+      const msg = node.value ? exprToCode(node.value, ctx) : 'message';
+      if (ctx.lang === 'python') {
+        return `${pad}for _client in _ws_clients:\n${pad}    await _client.send_json(${msg})`;
+      }
+      return `${pad}wss.clients.forEach(_c => { if (_c.readyState === 1) _c.send(JSON.stringify(${msg})); });`;
+    }
     case NodeType.SUBSCRIBE: {
       if (ctx.lang === 'python') {
         const bodyCode = compileBody(node.body, ctx);
@@ -5150,6 +5182,15 @@ export function exprToCode(expr, ctx) {
         return `[_item for _item in ${list} if ${cond}]`;
       }
       return `${list}.filter(_item => ${cond})`;
+    }
+
+    case NodeType.SEARCH: {
+      const table = expr.table ? pluralizeName(expr.table) : 'unknown';
+      const query = exprToCode(expr.query, ctx);
+      if (ctx.lang === 'python') {
+        return `[r for r in await db.find_all('${table}', {}) if ${query}.lower() in ' '.join(str(v) for v in r.values()).lower()]`;
+      }
+      return `(await db.findAll('${table}', {})).filter(_r => Object.values(_r).some(_v => String(_v).toLowerCase().includes(String(${query}).toLowerCase())))`;
     }
 
     case NodeType.LOAD_CSV: {
@@ -7878,6 +7919,38 @@ function compileToJSBackend(body, errors, sourceMap = false) {
 
   lines.push(...bodyLines);
 
+  // Generate nested endpoints for 'has many' relationships
+  // e.g. Users has many Posts → GET /api/users/:id/posts
+  for (const ds of dataShapes) {
+    for (const field of ds.fields) {
+      if (!field.hasMany) continue;
+      const parentTable = pluralizeName(ds.name).toLowerCase();
+      const childTable = pluralizeName(field.hasMany);
+      const childTableLower = childTable.toLowerCase();
+      // Find the FK field in the child table that belongs to this parent
+      const childSchema = schemaMap[field.hasMany.toLowerCase()] || schemaMap[childTableLower];
+      let fkFieldName = null;
+      if (childSchema) {
+        const fkField = childSchema.fields.find(f => f.fk && f.fk.toLowerCase() === ds.name.toLowerCase());
+        if (fkField) fkFieldName = sanitizeName(fkField.name);
+      }
+      // Fallback: try common FK patterns
+      if (!fkFieldName) {
+        const parentSingular = ds.name.toLowerCase();
+        fkFieldName = parentSingular + '_id';
+      }
+      lines.push('');
+      lines.push(`// Has many: ${ds.name} has many ${field.hasMany}`);
+      lines.push(`app.get('/api/${parentTable}/:id/${childTableLower}', async (req, res) => {`);
+      lines.push(`  try {`);
+      lines.push(`    const all = await db.findAll('${childTable}', {});`);
+      lines.push(`    const filtered = all.filter(r => String(r.${fkFieldName} || r.${ds.name.toLowerCase()}_id) === req.params.id);`);
+      lines.push(`    res.json(filtered);`);
+      lines.push(`  } catch(e) { res.status(500).json({ error: e.message }); }`);
+      lines.push(`});`);
+    }
+  }
+
   // Serve static files for full-stack apps (HTML, CSS, assets)
   const hasPages = body.some(n => n.type === NodeType.PAGE);
   if (hasPages) {
@@ -8344,6 +8417,21 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
         }
       }
     }
+  }
+
+  // Serve static files for full-stack apps (HTML, CSS, assets)
+  const pyHasPages = body.some(n => n.type === NodeType.PAGE);
+  if (pyHasPages) {
+    lines.push('');
+    lines.push('from fastapi.staticfiles import StaticFiles');
+    lines.push('from fastapi.responses import FileResponse');
+    lines.push('');
+    lines.push('@app.get("/")');
+    lines.push('async def serve_index():');
+    lines.push('    return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))');
+    lines.push('');
+    lines.push('# Mount static files LAST (catch-all)');
+    lines.push('app.mount("/", StaticFiles(directory=os.path.dirname(__file__)), name="static")');
   }
 
   lines.push('');

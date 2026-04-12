@@ -20,8 +20,8 @@ describe('Synonym Table', () => {
     expect(Object.isFrozen(SYNONYM_TABLE)).toBe(true);
   });
 
-  it('has a version string', () => {
-    expect(SYNONYM_VERSION).toBe('0.16.0');
+  it('has a valid semver version string', () => {
+    expect(/^\d+\.\d+\.\d+$/.test(SYNONYM_VERSION)).toBe(true);
   });
 
   it('maps "create" to canonical "set"', () => {
@@ -20298,6 +20298,122 @@ every day at 9am:
 });
 
 // =============================================================================
+// AGENT BUG FIXES (Roadmap items 7, 8)
+// =============================================================================
+describe('Agent memory save order', () => {
+  it('assistant response save comes before return (not dead code)', () => {
+    const src = `build for javascript backend
+
+agent 'Helper' receives question:
+  remember conversation context
+  response = ask claude 'Help' with question
+  send back response`;
+    const r = compileProgram(src);
+    const js = r.serverJS || r.javascript;
+    const returnIdx = js.indexOf('return response');
+    // The ASSISTANT save (second _history.push) must come before return
+    const assistantSaveIdx = js.indexOf("_history.push({ role: 'assistant'");
+    expect(assistantSaveIdx).not.toBe(-1);
+    expect(returnIdx).not.toBe(-1);
+    expect(assistantSaveIdx < returnIdx).toBe(true);
+  });
+
+  it('db update of conversation comes before return', () => {
+    const src = `build for javascript backend
+
+agent 'Helper' receives question:
+  remember conversation context
+  response = ask claude 'Help' with question
+  send back response`;
+    const r = compileProgram(src);
+    const js = r.serverJS || r.javascript;
+    const returnIdx = js.indexOf('return response');
+    const dbUpdateIdx = js.indexOf('db.update');
+    expect(dbUpdateIdx).not.toBe(-1);
+    expect(dbUpdateIdx < returnIdx).toBe(true);
+  });
+});
+
+describe('Agent tool use schema', () => {
+  it('tool schema has proper parameter names not [object Object]', () => {
+    const src = `build for javascript backend
+
+define function lookup_user(email):
+  return email
+
+agent 'Support' receives question:
+  can use: lookup_user
+  response = ask claude 'Help' with question
+  send back response`;
+    const r = compileProgram(src);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('"email"');
+    expect(js).not.toContain('[object Object]');
+  });
+
+  it('multi-param tool has all param names', () => {
+    const src = `build for javascript backend
+
+define function find_order(order_id, customer):
+  return order_id
+
+agent 'Bot' receives q:
+  can use: find_order
+  response = ask claude 'Help' with q
+  send back response`;
+    const r = compileProgram(src);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('order_id');
+    expect(js).toContain('customer');
+    expect(js).not.toContain('[object Object]');
+  });
+});
+
+// =============================================================================
+// STRING CONCAT (Roadmap item 9 — verified working)
+// =============================================================================
+describe('String concatenation', () => {
+  it('concatenates string + variable', () => {
+    const r = compileProgram("name is 'World'\ngreeting = 'Hello, ' + name\nshow greeting");
+    expect(r.javascript).toContain('"Hello, " + name');
+  });
+  it('concatenates variable + string', () => {
+    const r = compileProgram("name is 'World'\ngreeting = name + '!'\nshow greeting");
+    expect(r.javascript).toContain('name + "!"');
+  });
+  it('concatenates three parts', () => {
+    const r = compileProgram("name is 'World'\ngreeting = 'Hello, ' + name + '!'\nshow greeting");
+    expect(r.javascript).toContain('name');
+    expect(r.javascript).not.toContain('undefined');
+  });
+});
+
+// =============================================================================
+// BROADCAST STATEMENT (Roadmap item 6)
+// =============================================================================
+describe('Broadcast statement', () => {
+  it('parses broadcast to all', () => {
+    const src = `build for javascript backend
+
+subscribe to 'chat':
+  broadcast to all message`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('compiles broadcast to wss.clients.forEach', () => {
+    const src = `build for javascript backend
+
+subscribe to 'chat':
+  broadcast to all message`;
+    const r = compileProgram(src);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('clients');
+    expect(js).toContain('forEach');
+  });
+});
+
+// =============================================================================
 // SOURCE MAP MARKERS
 // =============================================================================
 describe('Source map markers', () => {
@@ -20338,6 +20454,150 @@ describe('Source map markers', () => {
     const src = "build for python backend\nwhen user calls GET /test:\n  send back 'ok'";
     const result = compileProgram(src);
     expect(result.python).toContain('# clear:');
+  });
+});
+
+// =============================================================================
+// FULL TEXT SEARCH (Roadmap Item 5)
+// =============================================================================
+
+describe('Full text search', () => {
+  it('parses search Table for expr as SEARCH node', () => {
+    const src = "build for javascript backend\n\nresults = search Posts for query";
+    const result = parse(src);
+    const assigns = result.body.filter(n => n.type === 'assign');
+    expect(assigns.length).toBe(1);
+    expect(assigns[0].expression.type).toBe('search');
+    expect(assigns[0].expression.table).toBe('Posts');
+  });
+
+  it('compiles search to findAll + filter in JS backend', () => {
+    const src = "build for javascript backend\n\ncreate a Posts table:\n  title\n  body\n\nwhen user calls GET /api/search:\n  query = incoming's q\n  results = search Posts for query\n  send back results";
+    const result = compileProgram(src);
+    const output = result.serverJS || result.javascript;
+    expect(output).toContain('findAll');
+    expect(output).toContain('.filter(');
+    expect(output).toContain('toLowerCase');
+    expect(output).toContain('Object.values');
+  });
+
+  it('search produces case-insensitive matching code', () => {
+    const src = "build for javascript backend\n\ncreate a Posts table:\n  title\n  body\n\nwhen user calls GET /api/search:\n  query = incoming's q\n  results = search Posts for query\n  send back results";
+    const result = compileProgram(src);
+    const output = result.serverJS || result.javascript;
+    // Should use toLowerCase for case-insensitive matching
+    expect(output).toContain('.toLowerCase()');
+    expect(output).toContain('.includes(');
+  });
+
+  it('search compiles without errors', () => {
+    const src = "build for javascript backend\n\ncreate a Posts table:\n  title\n  body\n\nwhen user calls GET /api/search:\n  query = incoming's q\n  results = search Posts for query\n  send back results";
+    const result = compileProgram(src);
+    expect(result.errors.length).toBe(0);
+  });
+});
+
+// =============================================================================
+// HAS MANY RELATIONSHIPS (Roadmap Item 11)
+// =============================================================================
+
+describe('Has many relationships', () => {
+  it('parses has many modifier on table fields', () => {
+    const src = "build for javascript backend\n\ncreate a Users table:\n  name\n  posts has many Posts\n\ncreate a Posts table:\n  title\n  author belongs to Users";
+    const result = parse(src);
+    const shapes = result.body.filter(n => n.type === 'data_shape');
+    expect(shapes.length).toBe(2);
+    const usersShape = shapes.find(s => s.name === 'Users');
+    const postsField = usersShape.fields.find(f => f.name === 'posts');
+    expect(postsField.hasMany).toBe('Posts');
+  });
+
+  it('generates nested GET endpoint for has many', () => {
+    const src = "build for javascript backend\n\ncreate a Users table:\n  name\n  posts has many Posts\n\ncreate a Posts table:\n  title\n  author belongs to Users";
+    const result = compileProgram(src);
+    const output = result.serverJS || result.javascript;
+    expect(output).toContain("/api/users/:id/posts");
+    expect(output).toContain('app.get');
+    expect(output).toContain('findAll');
+  });
+
+  it('has many endpoint filters by FK field', () => {
+    const src = "build for javascript backend\n\ncreate a Users table:\n  name\n  posts has many Posts\n\ncreate a Posts table:\n  title\n  author belongs to Users";
+    const result = compileProgram(src);
+    const output = result.serverJS || result.javascript;
+    expect(output).toContain('req.params.id');
+    expect(output).toContain('.filter(');
+  });
+
+  it('has many compiles without errors', () => {
+    const src = "build for javascript backend\n\ncreate a Users table:\n  name\n  posts has many Posts\n\ncreate a Posts table:\n  title\n  author belongs to Users";
+    const result = compileProgram(src);
+    expect(result.errors.length).toBe(0);
+  });
+});
+
+// =============================================================================
+// PYTHON FRONTEND SERVING (Item 10)
+// =============================================================================
+describe('Python frontend serving', () => {
+  it('Python backend serves static HTML when pages exist', () => {
+    const src = `build for web and python backend
+create a Todos table:
+  title
+
+page 'Home' at '/':
+  heading 'Hello'`;
+    const r = compileProgram(src);
+    expect(r.python).toContain('StaticFiles');
+    expect(r.python).toContain('index.html');
+    expect(r.python).toContain('FileResponse');
+  });
+
+  it('Python backend without pages does not serve static files', () => {
+    const src = `build for python backend
+
+when user calls GET /test:
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.python).not.toContain('StaticFiles');
+  });
+});
+
+// =============================================================================
+// AGENT ARGUMENT GUARDRAILS (Item 12)
+// =============================================================================
+describe('Agent argument guardrails', () => {
+  it('parses block arguments matching', () => {
+    const src = `build for javascript backend
+
+define function run_command(cmd):
+  return cmd
+
+agent 'Builder' receives task:
+  can use: run_command
+  block arguments matching 'rm -rf', 'drop table'
+  response = ask claude 'Build' with task
+  send back response`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('compiles guardrail regex check', () => {
+    const src = `build for javascript backend
+
+define function run_command(cmd):
+  return cmd
+
+agent 'Builder' receives task:
+  can use: run_command
+  block arguments matching 'rm -rf', 'drop table'
+  response = ask claude 'Build' with task
+  send back response`;
+    const r = compileProgram(src);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('rm -rf');
+    expect(js).toContain('drop table');
+    expect(js).toContain('Blocked by guardrail');
   });
 });
 

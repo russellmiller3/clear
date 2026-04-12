@@ -374,7 +374,7 @@ Real features, but they have workarounds or don't clear the Surface Area Rule ba
 | Feature | Verdict | Reasoning |
 |---------|---------|-----------|
 | **OAuth / social login** | Correct deferral | `allow signup and login` covers MVP apps. OAuth is a rat's nest (passport.js, callback URLs, provider-specific quirks). Add when a specific app needs Google login. |
-| **Agent guardrails** | **Reconsider** — see item 11 | `can use:` is already a deterministic tool whitelist. Adding `block arguments matching` (regex on tool inputs) would make agents genuinely secure, not just prompt-constrained. Worth doing. |
+| **Agent guardrails** | **✅ Done** — item 12 | `can use:` whitelists tools, `block arguments matching` adds regex filter on tool inputs. Deterministic safety, compiled into code. |
 | **Cookies** | Skip permanently | JWT is the right auth pattern for Clear apps. Cookies are a different paradigm with no upside here. |
 | **DB transactions** | Skip for now | In-memory and SQLite handle this implicitly. Only needed for Supabase multi-table writes. Rare enough to defer. |
 | **Upsert** | Skip permanently | `save` + `get first where` is 2 lines. Not worth a keyword. |
@@ -392,6 +392,47 @@ Real features, but they have workarounds or don't clear the Surface Area Rule ba
 | **Infinite / virtual scroll** | `script:` permanently | IntersectionObserver. Performance optimization, not language feature. |
 | **Skeleton loading** | Not a compiler concern | DaisyUI `skeleton` class. CSS. |
 | **Lazy load images** | Just do it | One-line compiler tweak (`loading="lazy"` on every `<img>`). So trivial it should be default behavior, not a feature. |
+
+---
+
+## Refactoring Backlog
+
+Architectural improvements identified during roadmap 5-12 work. Not blocking features,
+but compounding pain if left indefinitely.
+
+### R1 — Decompose `compileAgent()` (compiler.js)
+
+The agent compiler is a 300-line monolith with 7 feature sections (streaming, tools,
+observability, conversation, memory, RAG, guardrails) that all mutate `preamble`,
+`bodyCode`, and `postamble` via string manipulation and regex replacements. Each section
+is a natural helper function: `applyToolUse()`, `applyMemory()`, `applyRAG()`, etc.
+
+**Why it matters:** Every new agent feature (guardrails was the latest) requires
+understanding the whole function to know where to inject code. String regex replacements
+on bodyCode are fragile — they break when the target pattern changes slightly.
+
+**Effort:** 1-2 days. **When:** Before adding more agent features.
+
+### R2 — Deduplicate JS/Python CRUD compilation
+
+JS and Python backend CRUD handlers have parallel logic with duplicated patterns.
+A shared "CRUD spec" intermediate representation could generate both from one source.
+
+**Why it matters:** Every CRUD feature (relationships, validation, search) has to be
+implemented twice — once for JS, once for Python. Bugs in one are often missed in the other.
+
+**Effort:** 2-3 days. **When:** When Python support becomes a priority.
+
+### R3 — Frontend source maps (click-to-highlight for HTML)
+
+Click-to-highlight only works for compiled JS/Python, not HTML output. Frontend pages
+compile to HTML elements, not JS statements, so there are no `// clear:N` markers.
+
+Would need a different kind of mapping: Clear line → HTML element ID or data attribute.
+The compiler could emit `data-clear-line="5"` on each generated element, and the IDE
+could highlight those in the preview.
+
+**Effort:** 2-3 days. **When:** When Studio IDE polish becomes a priority.
 
 ---
 
@@ -490,14 +531,14 @@ Missing: `when client connects/disconnects`, `broadcast to all`, `send to client
 | 2 | DB relationships (`belongs to`) | **✅ Complete** |
 | 3 | Validation → real 400 errors | **✅ Complete** |
 | 4 | Aggregates (`sum of` → number) | **✅ Complete** |
-| 5 | Full text search | Exact match only |
-| 6 | WebSocket `broadcast` | `subscribe to` works, `broadcast` needs statement parsing |
-| 7 | Agent memory + keyword search | ⚠️ Memory save is dead code (return before save) |
-| 8 | Agent tool use (`can use:`) | ⚠️ Tool schema serializes as `[object Object]` |
-| 9 | String `+` concat bug | Parsed, drops values |
-| 10 | Python frontend serving | No static routes |
-| 11 | `has many` relationships | Not started — `belongs to` done, `has many` deferred |
-| 12 | Agent argument guardrails | Not started — tool whitelist exists, argument regex doesn't |
+| 5 | Full text search (`search X for Y`) | **✅ Complete** |
+| 6 | WebSocket `broadcast to all` | **✅ Complete** |
+| 7 | Agent memory + keyword search | **✅ Complete** (memory save bug fixed) |
+| 8 | Agent tool use (`can use:`) | **✅ Complete** (schema bug fixed) |
+| 9 | String `+` concat | **✅ Verified working** (regression tests added) |
+| 10 | Python frontend serving | **✅ Complete** (FastAPI serves HTML + static files) |
+| 11 | `has many` relationships | **✅ Complete** (nested endpoints auto-generated) |
+| 12 | Agent argument guardrails (`block arguments matching`) | **✅ Complete** (regex filter on tool inputs) |
 
 ---
 

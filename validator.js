@@ -174,7 +174,7 @@ function validateForwardReferences(body, errors) {
         case NodeType.FUNCTION_DEF: {
           // Function body gets its own scope with params
           const fnScope = new Set(localDefined);
-          for (const p of node.params) fnScope.add(typeof p === 'string' ? p : p.name);
+          for (const p of node.params) fnScope.add(p.name);
           checkNode(node.body, fnScope, true);
           break;
         }
@@ -290,6 +290,8 @@ function validateForwardReferences(body, errors) {
           checkNode(node.body, subScope, true);
           break;
         }
+        case NodeType.BROADCAST:
+          break;
         case NodeType.MIGRATION:
         case NodeType.WAIT:
           break;

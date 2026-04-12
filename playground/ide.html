@@ -873,7 +873,8 @@ async function runCompileAnimation(clearSource, compiledCode) {
   });
   viewContainer.appendChild(compiledView.dom);
 
-  const msPerBlock = Math.max(180, Math.min(500, 8000 / Math.max(mapping.length, 1)));
+  // Cap total animation at ~5 seconds regardless of file size
+  const msPerBlock = Math.max(80, Math.min(400, 5000 / Math.max(mapping.length, 1)));
   let prevLeftHighlight = null;
   let prevRightHighlights = [];
 
