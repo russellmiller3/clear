@@ -163,9 +163,9 @@ when user calls POST /api/chat sending data:
 
   create user_msg:
     role is 'user'
-    content is data's message
+    content is data's user_message
   save user_msg as new Message
-  result = call 'Customer Support' with data's message
+  result = call 'Customer Support' with data's user_message
   create bot_msg:
     role is 'assistant'
     content is result
