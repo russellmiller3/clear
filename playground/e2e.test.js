@@ -642,11 +642,11 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 // New
 await page.locator('button[onclick="newFile()"]').click();
 await page.waitForTimeout(300);
-assert((await page.locator('.cm-content').innerText()).includes('build for web'), 'New resets editor');
+assert((await page.locator('#editor-mount .cm-content').innerText()).includes('build for web'), 'New resets editor');
 assert((await page.locator('#editor-label').innerText()).toLowerCase() === 'main.clear', 'New resets label');
 
 // Compile (Ctrl+S)
-await page.locator('.cm-editor').click();
+await page.locator('#editor-mount .cm-editor').click();
 await page.keyboard.press('Control+s');
 await page.waitForTimeout(1000);
 assert((await page.locator('#status').innerText()).startsWith('OK'), 'Ctrl+S compiles');
@@ -693,7 +693,7 @@ await page.locator('button[onclick="doStop()"]').click();
 await page.waitForTimeout(300);
 
 // Chat focus (Ctrl+K)
-await page.locator('.cm-editor').click();
+await page.locator('#editor-mount .cm-editor').click();
 await page.keyboard.press('Control+k');
 await page.waitForTimeout(200);
 assert(await page.locator('#chat-input').evaluate(el => el === document.activeElement), 'Ctrl+K focuses chat');
