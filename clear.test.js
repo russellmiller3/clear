@@ -20416,6 +20416,40 @@ subscribe to 'chat':
 // =============================================================================
 // SOURCE MAP MARKERS
 // =============================================================================
+describe('HTML source map markers (data-clear-line)', () => {
+  it('emits data-clear-line on sections', () => {
+    const src = "build for web\n\npage 'Test' at '/':\n  section 'Hero' centered:\n    heading 'Hello'";
+    const r = compileProgram(src);
+    expect(r.html).toContain('data-clear-line=');
+  });
+
+  it('data-clear-line has correct line number for section', () => {
+    const src = "build for web\n\npage 'Test' at '/':\n  section 'Hero' centered:\n    heading 'Hello'";
+    const r = compileProgram(src);
+    // section is on line 4
+    expect(r.html).toContain('data-clear-line="4"');
+  });
+
+  it('emits data-clear-line on buttons', () => {
+    const src = "build for web\n\npage 'Test' at '/':\n  button 'Click me':\n    show 'clicked'";
+    const r = compileProgram(src);
+    expect(r.html).toContain('data-clear-line=');
+    expect(r.html).toContain('Click me');
+  });
+
+  it('emits data-clear-line on inputs', () => {
+    const src = "build for web\n\npage 'Test' at '/':\n  'Name' is a text input saved as a name";
+    const r = compileProgram(src);
+    expect(r.html).toContain('data-clear-line=');
+  });
+
+  it('emits data-clear-line on display elements', () => {
+    const src = "build for web\n\npage 'Test' at '/':\n  items is an empty list\n  display items as table showing name";
+    const r = compileProgram(src);
+    expect(r.html).toContain('data-clear-line=');
+  });
+});
+
 describe('Source map markers', () => {
   it('emits // clear:N markers when sourceMap option is true', () => {
     const result = compileProgram("x = 5\nshow x", { sourceMap: true });

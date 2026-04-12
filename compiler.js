@@ -6299,6 +6299,8 @@ function buildHTML(body) {
   const parts = [];
   const inlineStyleBlocks = []; // CSS generated from inline section modifiers
   const usedIds = new Set(); // Track element IDs to prevent duplicates
+  // Source map: emit data-clear-line="N" on every HTML element for click-to-highlight
+  const clAttr = (node) => node.line ? ` data-clear-line="${node.line}"` : '';
   let pageTitle = 'Clear App';
   let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
   let hasMap = false;   // Track if any map display nodes exist (for Leaflet CDN)
@@ -6543,7 +6545,7 @@ function buildHTML(body) {
             ];
             const isGridSection = GRID_SECTION_PRESETS.includes(node.styleName);
             const needsWrapper = !isAppPreset && !isCardPreset && !isHeroPreset && !isNavbarPreset && !isGridSection;
-            parts.push(`    <div class="${cls}"${heroInlineStyle}>`);
+            parts.push(`    <div class="${cls}"${heroInlineStyle}${clAttr(node)}>`);
             if (needsWrapper) parts.push(`      <div class="max-w-4xl mx-auto">`);
             sectionStack.push(node.styleName);
             if (node.styleName === 'app_sidebar') {
@@ -6867,7 +6869,7 @@ function buildHTML(body) {
             // Only add CSS class if there are raw (non-token) properties to generate CSS for
             const cssClass = (hasUserStyle && rawProperties.length > 0) ? node.ui.cssClass : '';
             const allClasses = [tokenClasses, cssClass, inlineClass, tailwindClasses].filter(Boolean).join(' ');
-            parts.push(`    <div class="${allClasses}">`);
+            parts.push(`    <div class="${allClasses}"${clAttr(node)}>`);
             // Wrapper for raw-CSS-only styles (treats like old behavior); skip for pure-token styles
             if (hasUserStyle && !hasInline && rawProperties.length > 0) {
               parts.push(`      <div class="max-w-5xl mx-auto px-4">`);
@@ -6886,13 +6888,13 @@ function buildHTML(body) {
             const inStyledParent = sectionStack.length > 0;
             if (inStyledParent) {
               const allClasses = ['clear-section', inlineClass, tailwindClasses].filter(Boolean).join(' ');
-              parts.push(`    <div class="${allClasses}">`);
+              parts.push(`    <div class="${allClasses}"${clAttr(node)}>`);
               walk(node.body);
               parts.push(`    </div>`);
             } else {
               // Default card section using DaisyUI utilities
               const allClasses = ['clear-section bg-base-200 rounded-box p-6 mb-6', inlineClass, tailwindClasses].filter(Boolean).join(' ');
-              parts.push(`    <div class="${allClasses}">
+              parts.push(`    <div class="${allClasses}"${clAttr(node)}>
       <h2 class="text-xl font-semibold text-base-content tracking-tight mb-4">${node.ui.title}</h2>`);
               walk(node.body);
               parts.push(`    </div>`);
@@ -6908,30 +6910,30 @@ function buildHTML(body) {
           const inputInFlex = ['card', 'card_bordered', 'form', 'metric_card'].includes(inputParent);
           const fieldsetCls = inputInFlex ? 'fieldset' : 'fieldset mb-4';
           if (ui.htmlType === 'checkbox') {
-            parts.push(`    <div class="flex items-center gap-3${inputInFlex ? '' : ' mb-3'}">
+            parts.push(`    <div class="flex items-center gap-3${inputInFlex ? '' : ' mb-3'}"${clAttr(node)}>
       <input id="${ui.id}" type="checkbox" class="checkbox checkbox-primary">
       <label for="${ui.id}" class="text-sm text-base-content/70">${ui.label}</label>
     </div>`);
           } else if (ui.htmlType === 'textarea') {
-            parts.push(`    <fieldset class="${fieldsetCls}">
+            parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <textarea id="${ui.id}" class="textarea textarea-bordered w-full" placeholder="${ui.label}" rows="6"></textarea>
     </fieldset>`);
           } else if (ui.htmlType === 'select' && ui.choices) {
             const options = ui.choices.map(c => `        <option value="${c}">${c}</option>`).join('\n');
-            parts.push(`    <fieldset class="${fieldsetCls}">
+            parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <select id="${ui.id}" class="select select-bordered w-full">
 ${options}
       </select>
     </fieldset>`);
           } else if (ui.htmlType === 'file') {
-            parts.push(`    <fieldset class="${fieldsetCls}">
+            parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <input id="${ui.id}" class="file-input file-input-bordered w-full" type="file">
     </fieldset>`);
           } else {
-            parts.push(`    <fieldset class="${fieldsetCls}">
+            parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <input id="${ui.id}" class="input input-bordered w-full" type="${ui.htmlType}"${ui.htmlType === 'number' ? ' step="any"' : ''} placeholder="${ui.label}">
     </fieldset>`);
@@ -6952,8 +6954,9 @@ ${options}
           // Store the deduplicated ID back on the node for the reactive compiler
           node.ui._resolvedId = displayId;
           const inUserSection = sectionStack.length > 0;
+          const _cl = clAttr(node);
           if (ui.tag === 'table') {
-            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}">
+            parts.push(`    <div class="bg-base-100 rounded-box border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}"${_cl}>
       <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
       </div>
@@ -6971,7 +6974,7 @@ ${options}
           } else if (ui.tag === 'gallery') {
             parts.push(`    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="${displayId}_gallery"></div>`);
           } else if (ui.tag === 'map') {
-            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}">
+            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}"${_cl}>
       <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
       </div>
@@ -6979,14 +6982,14 @@ ${options}
     </div>`);
             hasMap = true;
           } else if (ui.tag === 'calendar') {
-            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}">
+            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm overflow-hidden" id="${displayId}"${_cl}>
       <div class="px-6 py-4 border-b border-base-300/40">
         <h3 class="text-sm font-semibold text-base-content">${ui.label}</h3>
       </div>
       <div class="p-4" id="${displayId}_calendar"></div>
     </div>`);
           } else if (ui.tag === 'qr') {
-            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-6 flex flex-col items-center gap-4" id="${displayId}">
+            parts.push(`    <div class="bg-base-100 rounded-xl border border-base-300/40 shadow-sm p-6 flex flex-col items-center gap-4" id="${displayId}"${_cl}>
       <p class="text-sm font-medium text-base-content/50">${ui.label}</p>
       <canvas id="${displayId}_qr" width="200" height="200"></canvas>
     </div>`);
@@ -6996,7 +6999,7 @@ ${options}
             parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>`);
             if (ui.label) parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 mt-1">${ui.label}</p>`);
           } else {
-            parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 p-6 flex flex-col gap-2" id="${displayId}">
+            parts.push(`    <div class="bg-base-200 rounded-xl border border-base-300/40 p-6 flex flex-col gap-2" id="${displayId}"${_cl}>
       <p class="text-sm font-medium text-base-content/50">${ui.label}</p>
       <p class="font-display text-3xl font-bold text-base-content tracking-tight" id="${displayId}_value"></p>
     </div>`);
@@ -7049,7 +7052,7 @@ ${options}
             // Default: primary CTA
             btnCls = btnInForm ? 'btn btn-primary w-full' : 'btn btn-primary';
           }
-          parts.push(`    <button class="${btnCls}" id="${node.ui.id}">${node.ui.label}</button>`);
+          parts.push(`    <button class="${btnCls}" id="${node.ui.id}"${clAttr(node)}>${node.ui.label}</button>`);
           break;
         }
 
@@ -7112,75 +7115,79 @@ ${options}
             'feature_card_indigo', 'feature_card_emerald', 'feature_card_rose', 'feature_card_amber',
           ];
           const inDarkCard = COLORED_CARD_PRESETS.includes(parentPreset);
+          const _clContent = clAttr(node);
+          // Inject data-clear-line into the first tag of whatever content is pushed
+          const _pushContent = (html) => { parts.push(_clContent ? html.replace(/>/, _clContent + '>') : html); };
+          const _pc = _pushContent; // short alias
           switch (ui.contentType) {
             case 'heading':
               if (inLogoBar) {
                 // Logo bar label — small muted, not a big section heading
-                parts.push(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 text-center mb-6">${formatted}</p>`);
+                _pc(`    <p class="text-xs font-semibold uppercase tracking-widest text-base-content/40 text-center mb-6">${formatted}</p>`);
               } else if (inCta) {
                 // CTA headline — smaller than hero, white text on primary bg
-                parts.push(`    <h2 class="font-display text-3xl lg:text-4xl font-bold tracking-tight text-primary-content max-w-3xl text-center mx-auto">${formatted}</h2>`);
+                _pc(`    <h2 class="font-display text-3xl lg:text-4xl font-bold tracking-tight text-primary-content max-w-3xl text-center mx-auto">${formatted}</h2>`);
               } else if (inHero) {
                 // Hero headline — left or centered; hero_left gets larger font to fill viewport
                 const heroAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
                 const heroSize = inHeroLeft ? 'text-5xl lg:text-6xl' : 'text-5xl md:text-6xl';
-                parts.push(`    <h1 class="font-display ${heroSize} font-bold tracking-tight leading-[1.05] text-base-content max-w-3xl ${heroAlign}">${formatted}</h1>`);
+                _pc(`    <h1 class="font-display ${heroSize} font-bold tracking-tight leading-[1.05] text-base-content max-w-3xl ${heroAlign}">${formatted}</h1>`);
               } else if (inHeader) {
-                parts.push(`    <h1 class="font-display text-base font-semibold text-base-content">${formatted}</h1>`);
+                _pc(`    <h1 class="font-display text-base font-semibold text-base-content">${formatted}</h1>`);
               } else if (inMetricCard) {
-                parts.push(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
+                _pc(`    <p class="font-display text-3xl font-bold text-base-content tracking-tight">${formatted}</p>`);
               } else if (inSidebar) {
-                parts.push(`    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">${formatted.charAt(0)}</div><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
+                _pc(`    <div class="h-16 px-6 border-b border-base-300/50 shrink-0 flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-content font-bold text-sm">${formatted.charAt(0)}</div><span class="text-base font-bold text-base-content tracking-tight">${formatted}</span></div>`);
               } else if (inStatItem) {
-                parts.push(`    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
+                _pc(`    <p class="font-display text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-none">${formatted}</p>`);
               } else if (inFeaturedPricing) {
-                parts.push(`    <h3 class="text-xl font-bold text-primary-content">${formatted}</h3>`);
+                _pc(`    <h3 class="text-xl font-bold text-primary-content">${formatted}</h3>`);
               } else if (inPricingCard) {
-                parts.push(`    <h3 class="text-xl font-bold text-base-content">${formatted}</h3>`);
+                _pc(`    <h3 class="text-xl font-bold text-base-content">${formatted}</h3>`);
               } else if (inTestimonialCard) {
-                parts.push(`    <h3 class="text-sm font-semibold text-base-content leading-snug">${formatted}</h3>`);
+                _pc(`    <h3 class="text-sm font-semibold text-base-content leading-snug">${formatted}</h3>`);
               } else if (inLandingCard) {
                 const tc = inDarkCard ? 'text-white' : inLargeCard ? 'text-primary-content' : 'text-base-content';
-                parts.push(`    <h3 class="text-lg font-bold ${tc} leading-snug">${formatted}</h3>`);
+                _pc(`    <h3 class="text-lg font-bold ${tc} leading-snug">${formatted}</h3>`);
               } else if (inForm) {
-                parts.push(`    <h2 class="text-xl font-bold text-base-content mb-2">${formatted}</h2>`);
+                _pc(`    <h2 class="text-xl font-bold text-base-content mb-2">${formatted}</h2>`);
               } else if (inModal) {
-                parts.push(`    <h2 class="text-lg font-bold text-base-content">${formatted}</h2>`);
+                _pc(`    <h2 class="text-lg font-bold text-base-content">${formatted}</h2>`);
               } else if (inEmptyState) {
-                parts.push(`    <h3 class="text-lg font-semibold text-base-content/70">${formatted}</h3>`);
+                _pc(`    <h3 class="text-lg font-semibold text-base-content/70">${formatted}</h3>`);
               } else if (inCard) {
-                parts.push(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
+                _pc(`    <h2 class="text-lg font-semibold text-base-content">${formatted}</h2>`);
               } else if (inPageSection) {
                 const textColor = inDarkSection ? 'text-neutral-content' : 'text-base-content';
-                parts.push(`    <h2 class="font-display text-3xl lg:text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
+                _pc(`    <h2 class="font-display text-3xl lg:text-4xl font-bold ${textColor} tracking-tight mb-4">${formatted}</h2>`);
               } else {
-                parts.push(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
+                _pc(`    <h1 class="text-3xl font-bold text-base-content tracking-tight leading-snug mb-4">${formatted}</h1>`);
               }
               break;
             case 'subheading':
               if (inCta) {
-                parts.push(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
+                _pc(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
               } else if (inHero) {
                 const heroSubAlign = inHeroLeft ? 'text-left' : 'text-center mx-auto';
                 const heroSubMaxW = inHeroLeft ? 'max-w-xl' : 'max-w-2xl';
-                parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed ${heroSubMaxW} ${heroSubAlign}">${formatted}</p>`);
+                _pc(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed ${heroSubMaxW} ${heroSubAlign}">${formatted}</p>`);
               } else if (inPricingCard) {
-                parts.push(`    <p class="font-display text-4xl font-bold tracking-tight text-primary">${formatted}</p>`);
+                _pc(`    <p class="font-display text-4xl font-bold tracking-tight text-primary">${formatted}</p>`);
               } else if (inFeaturedPricing) {
-                parts.push(`    <p class="font-display text-4xl font-bold tracking-tight text-primary-content">${formatted}</p>`);
+                _pc(`    <p class="font-display text-4xl font-bold tracking-tight text-primary-content">${formatted}</p>`);
               } else if (inTestimonialCard) {
-                parts.push(`    <p class="text-sm text-base-content/60 leading-relaxed">${formatted}</p>`);
+                _pc(`    <p class="text-sm text-base-content/60 leading-relaxed">${formatted}</p>`);
               } else if (inLandingCard) {
                 const tc = inDarkCard ? 'text-white/70' : inLargeCard ? 'text-primary-content/70' : 'text-base-content/60';
-                parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
+                _pc(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
               } else if (inDarkSection) {
-                parts.push(`    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
+                _pc(`    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               } else {
-                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
+                _pc(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               }
               break;
             case 'label':
-              parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/40 block mb-1">${formatted}</span>`);
+              _pc(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/40 block mb-1">${formatted}</span>`);
               break;
             case 'badge': {
               const variant = ui.badgeVariant || 'neutral';
@@ -7190,12 +7197,12 @@ ${options}
                 secondary: 'badge-secondary', accent: 'badge-accent', ghost: 'badge-ghost',
               };
               const badgeCls = badgeColorMap[variant] || 'badge-neutral';
-              parts.push(`    <span class="badge ${badgeCls} badge-sm font-medium">${formatted}</span>`);
+              _pc(`    <span class="badge ${badgeCls} badge-sm font-medium">${formatted}</span>`);
               break;
             }
             case 'text':
               if (inSidebar) {
-                parts.push(`    <li><a class="clear-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
+                _pc(`    <li><a class="clear-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-base-content/60 hover:bg-base-content/8 hover:text-base-content transition-colors cursor-pointer" data-nav-item="true">${formatted}</a></li>`);
               } else if (inMetricCard) {
                 // Detect trend text: starts with +/- followed by number (e.g. "+3 this week", "-2% vs last month")
                 const trendMatch = formatted.match(/^([+\-−][\d.,]+%?\s*)/);
@@ -7207,92 +7214,92 @@ ${options}
                     : '<svg class="inline w-3.5 h-3.5" fill="none" viewBox="0 0 14 14"><path d="M7 12.833V1.167M7 12.833L2.333 8.167M7 12.833l4.667-4.666" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
                   const trendPart = trendMatch[1].trim();
                   const restPart = formatted.slice(trendMatch[1].length);
-                  parts.push(`    <p class="text-sm font-medium text-base-content/50 flex items-center gap-1"><span class="${trendColor} font-semibold inline-flex items-center gap-0.5">${arrowSvg}${trendPart}</span>${restPart}</p>`);
+                  _pc(`    <p class="text-sm font-medium text-base-content/50 flex items-center gap-1"><span class="${trendColor} font-semibold inline-flex items-center gap-0.5">${arrowSvg}${trendPart}</span>${restPart}</p>`);
                 } else {
-                  parts.push(`    <p class="text-sm font-medium text-base-content/50">${formatted}</p>`);
+                  _pc(`    <p class="text-sm font-medium text-base-content/50">${formatted}</p>`);
                 }
               } else if (inCta) {
-                parts.push(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
+                _pc(`    <p class="text-lg text-primary-content/90 max-w-2xl text-center mx-auto leading-relaxed">${formatted}</p>`);
               } else if (inHero) {
-                parts.push(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl ${inHeroLeft ? 'text-left' : 'text-center mx-auto'}">${formatted}</p>`);
+                _pc(`    <p class="text-lg lg:text-xl text-base-content/70 leading-relaxed max-w-2xl ${inHeroLeft ? 'text-left' : 'text-center mx-auto'}">${formatted}</p>`);
               } else if (inStatItem) {
-                parts.push(`    <p class="text-sm font-medium text-base-content/50 uppercase tracking-wider">${formatted}</p>`);
+                _pc(`    <p class="text-sm font-medium text-base-content/50 uppercase tracking-wider">${formatted}</p>`);
               } else if (inLogoItem) {
-                parts.push(`    <span class="text-sm font-semibold text-base-content/30 tracking-widest uppercase">${formatted}</span>`);
+                _pc(`    <span class="text-sm font-semibold text-base-content/30 tracking-widest uppercase">${formatted}</span>`);
               } else if (inFeaturedPricing) {
-                parts.push(`    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>${formatted}</p>`);
+                _pc(`    <p class="flex items-start gap-2 text-sm text-primary-content/80"><span class="text-primary-content font-bold shrink-0">✓</span>${formatted}</p>`);
               } else if (inPricingCard) {
                 // MUST be before inLandingCard — pricing_card is not in inLandingCard but guard anyway
-                parts.push(`    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>${formatted}</p>`);
+                _pc(`    <p class="flex items-start gap-2 text-sm text-base-content/70"><span class="text-primary font-bold shrink-0">✓</span>${formatted}</p>`);
               } else if (inLandingCard) {
                 const tc = inDarkCard ? 'text-white/80' : inLargeCard ? 'text-primary-content/80' : 'text-base-content/60';
-                parts.push(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
+                _pc(`    <p class="text-sm ${tc} leading-relaxed">${formatted}</p>`);
               } else if (inDarkSection) {
-                parts.push(`    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
+                _pc(`    <p class="text-lg text-neutral-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               } else if (inPageSection) {
-                parts.push(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
+                _pc(`    <p class="text-lg text-base-content/60 leading-relaxed max-w-2xl mx-auto mb-3">${formatted}</p>`);
               } else if (inForm || inModal) {
-                parts.push(`    <p class="text-sm text-base-content/60 mb-4">${formatted}</p>`);
+                _pc(`    <p class="text-sm text-base-content/60 mb-4">${formatted}</p>`);
               } else if (inEmptyState) {
-                parts.push(`    <p class="text-sm text-base-content/40 max-w-sm">${formatted}</p>`);
+                _pc(`    <p class="text-sm text-base-content/40 max-w-sm">${formatted}</p>`);
               } else if (inCard) {
-                parts.push(`    <p class="text-sm text-base-content/80 leading-relaxed">${formatted}</p>`);
+                _pc(`    <p class="text-sm text-base-content/80 leading-relaxed">${formatted}</p>`);
               } else {
-                parts.push(`    <p class="text-sm font-medium text-base-content/90 leading-snug">${formatted}</p>`);
+                _pc(`    <p class="text-sm font-medium text-base-content/90 leading-snug">${formatted}</p>`);
               }
               break;
             case 'bold':
-              parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><strong class="text-base-content font-semibold">${formatted}</strong></p>`);
+              _pc(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><strong class="text-base-content font-semibold">${formatted}</strong></p>`);
               break;
             case 'italic':
-              parts.push(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><em>${formatted}</em></p>`);
+              _pc(`    <p class="text-sm text-base-content/70 leading-relaxed mb-3"><em>${formatted}</em></p>`);
               break;
             case 'small':
               if (inMetricCard) {
-                parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50">${formatted}</span>`);
+                _pc(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50">${formatted}</span>`);
               } else if (inHeader) {
-                parts.push(`    <span class="badge badge-ghost badge-sm font-mono">${formatted}</span>`);
+                _pc(`    <span class="badge badge-ghost badge-sm font-mono">${formatted}</span>`);
               } else if (inHero) {
-                parts.push(`    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase border border-primary/30 text-primary" style="background:oklch(from var(--color-primary) l c h / 0.08)">${formatted}</span>`);
+                _pc(`    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase border border-primary/30 text-primary" style="background:oklch(from var(--color-primary) l c h / 0.08)">${formatted}</span>`);
               } else if (inTestimonialCard) {
                 // testimonial_card: role + company attribution — muted meta text
-                parts.push(`    <span class="text-sm text-base-content/60 leading-snug">${formatted}</span>`);
+                _pc(`    <span class="text-sm text-base-content/60 leading-snug">${formatted}</span>`);
               } else if (inLandingCard) {
-                parts.push(`    <span class="text-xs text-base-content/40 leading-snug">${formatted}</span>`);
+                _pc(`    <span class="text-xs text-base-content/40 leading-snug">${formatted}</span>`);
               } else if (inLogoItem) {
-                parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/20">${formatted}</span>`);
+                _pc(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/20">${formatted}</span>`);
               } else {
-                parts.push(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">${formatted}</span>`);
+                _pc(`    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/50 block mb-2">${formatted}</span>`);
               }
               break;
             case 'link':
               if (inCta) {
                 // CTA link — inverted colors for contrast against primary bg
-                parts.push(`    <a class="btn btn-lg bg-base-100 text-primary hover:bg-base-200" href="${ui.href || '#'}">${formatted}</a>`);
+                _pc(`    <a class="btn btn-lg bg-base-100 text-primary hover:bg-base-200" href="${ui.href || '#'}">${formatted}</a>`);
               } else if (inHero) {
                 // Lone hero link (not in a group) — primary by default
-                parts.push(`    <a class="btn btn-primary btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
+                _pc(`    <a class="btn btn-primary btn-lg" href="${ui.href || '#'}">${formatted}</a>`);
               } else if (inFeaturedPricing) {
-                parts.push(`    <a class="btn btn-sm bg-white text-primary font-semibold mt-auto" href="${ui.href || '#'}">${formatted}</a>`);
+                _pc(`    <a class="btn btn-sm bg-white text-primary font-semibold mt-auto" href="${ui.href || '#'}">${formatted}</a>`);
               } else if (inPricingCard) {
-                parts.push(`    <a class="btn btn-outline btn-primary btn-sm mt-auto" href="${ui.href || '#'}">${formatted}</a>`);
+                _pc(`    <a class="btn btn-outline btn-primary btn-sm mt-auto" href="${ui.href || '#'}">${formatted}</a>`);
               } else if (inLandingCard) {
-                parts.push(`    <a class="link link-primary text-sm font-medium" href="${ui.href || '#'}">${formatted}</a>`);
+                _pc(`    <a class="link link-primary text-sm font-medium" href="${ui.href || '#'}">${formatted}</a>`);
               } else {
-                parts.push(`    <a class="link link-primary text-sm" href="${ui.href || '#'}">${formatted}</a>`);
+                _pc(`    <a class="link link-primary text-sm" href="${ui.href || '#'}">${formatted}</a>`);
               }
               break;
             case 'code': {
               // In dark sections, use a terminal-style dark code block; in light sections, a light one
               if (inDarkSection) {
-                parts.push(`    <div class="rounded-xl border border-neutral-content/10 overflow-hidden mb-4" style="background:oklch(12% 0.015 240)"><div class="flex items-center gap-1.5 px-4 py-3 border-b border-neutral-content/10"><span class="w-3 h-3 rounded-full bg-red-500/70"></span><span class="w-3 h-3 rounded-full bg-amber-400/70"></span><span class="w-3 h-3 rounded-full bg-emerald-500/70"></span></div><pre class="font-mono text-sm text-neutral-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
+                _pc(`    <div class="rounded-xl border border-neutral-content/10 overflow-hidden mb-4" style="background:oklch(12% 0.015 240)"><div class="flex items-center gap-1.5 px-4 py-3 border-b border-neutral-content/10"><span class="w-3 h-3 rounded-full bg-red-500/70"></span><span class="w-3 h-3 rounded-full bg-amber-400/70"></span><span class="w-3 h-3 rounded-full bg-emerald-500/70"></span></div><pre class="font-mono text-sm text-neutral-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
               } else {
-                parts.push(`    <div class="rounded-xl border border-base-300/60 overflow-hidden mb-4" style="background:oklch(97% 0.005 240)"><div class="flex items-center gap-1.5 px-4 py-3 border-b border-base-300/60 bg-base-200"><span class="w-3 h-3 rounded-full bg-red-400/60"></span><span class="w-3 h-3 rounded-full bg-amber-400/60"></span><span class="w-3 h-3 rounded-full bg-emerald-400/60"></span></div><pre class="font-mono text-sm text-base-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
+                _pc(`    <div class="rounded-xl border border-base-300/60 overflow-hidden mb-4" style="background:oklch(97% 0.005 240)"><div class="flex items-center gap-1.5 px-4 py-3 border-b border-base-300/60 bg-base-200"><span class="w-3 h-3 rounded-full bg-red-400/60"></span><span class="w-3 h-3 rounded-full bg-amber-400/60"></span><span class="w-3 h-3 rounded-full bg-emerald-400/60"></span></div><pre class="font-mono text-sm text-base-content/80 p-5 leading-relaxed overflow-x-auto"><code>${ui.text.replace(/\\n/g, '\n')}</code></pre></div>`);
               }
               break;
             }
             case 'divider':
-              parts.push(`    <div class="divider my-4"></div>`);
+              _pc(`    <div class="divider my-4"></div>`);
               break;
             case 'image': {
               const src = node.text || '';
@@ -7300,17 +7307,17 @@ ${options}
               const widthStyle = node.width ? ` width="${node.width}"` : '';
               const heightStyle = node.height ? ` height="${node.height}"` : '';
               const sizeClass = (node.width || node.height) ? '' : ' w-full';
-              parts.push(`    <img src="${src}" alt=""${widthStyle}${heightStyle} class="${sizeClass}${roundedClass}" loading="lazy" />`);
+              _pc(`    <img src="${src}" alt=""${widthStyle}${heightStyle} class="${sizeClass}${roundedClass}" loading="lazy" />`);
               break;
             }
             case 'video': {
               const src = node.text || '';
-              parts.push(`    <video src="${src}" controls class="w-full rounded-lg"></video>`);
+              _pc(`    <video src="${src}" controls class="w-full rounded-lg"></video>`);
               break;
             }
             case 'audio': {
               const src = node.text || '';
-              parts.push(`    <audio src="${src}" controls class="w-full"></audio>`);
+              _pc(`    <audio src="${src}" controls class="w-full"></audio>`);
               break;
             }
           }
