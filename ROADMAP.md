@@ -393,6 +393,142 @@ could highlight those in the preview.
 
 ---
 
+## What's Next — Studio + Quality
+
+Ordered by impact. These aren't language features — they're platform quality.
+
+### N1 — ClearMan (built-in API tester)
+
+The API tab already lists endpoints. Add a "Try it" button per endpoint that sends
+a request and shows the response inline. POST/PUT get a JSON body editor.
+Basically Postman built into Studio.
+
+**Why:** Meph already has `http_request` tool. ClearMan is the same thing for humans.
+No switching to Postman or curl — test endpoints where you write them.
+
+**Effort:** 1-2 days
+
+---
+
+### N2 — Playwright Template Tests
+
+Every template app should actually work — CRUD creates/reads/updates/deletes,
+forms submit, pages navigate, buttons do things. No dummy tabs, no dead buttons.
+
+Write a Playwright test per template that verifies:
+- Page loads without errors
+- CRUD happy path (create → appears in list → update → verify → delete → gone)
+- Forms validate required fields
+- Auth flow works (signup → login → protected page)
+- API endpoints return expected status codes
+
+Run with: `node playground/e2e.test.js`
+
+**Why:** Templates are the first thing new users see. A broken delete button on the
+Todo app kills confidence. This is the quality floor.
+
+**Effort:** 3-5 days (43 templates × ~5 tests each)
+
+---
+
+### N3 — Compiler-Generated Tests
+
+The compiler knows the schema: tables, fields, endpoints, pages. Auto-generate
+happy path tests from the AST:
+
+```clear
+# This is what the compiler would emit automatically:
+test 'POST /api/todos creates a record':
+  call POST /api/todos with title is 'Test'
+  expect response status 201
+
+test 'GET /api/todos returns array':
+  call GET /api/todos
+  expect response status 200
+
+test 'DELETE /api/todos/:id removes record':
+  call POST /api/todos with title is 'Delete me'
+  id = response's id
+  call DELETE /api/todos/{id}
+  expect response status 200
+```
+
+Add a "Tests" tab in Studio that runs these with one click.
+
+**Why:** No other language does this. The compiler has perfect knowledge of the app
+structure. Auto-generated tests are free quality. Users get test coverage without
+writing tests.
+
+**Effort:** 2-3 days
+
+---
+
+### N4 — Multi-File Download
+
+Download as a zip with proper file structure:
+- `server.js` + `index.html` + `package.json` (JS full-stack)
+- `server.py` + `index.html` + `requirements.txt` (Python full-stack)
+- `index.html` only (web-only)
+
+Currently downloads as a single file. Single files don't deploy.
+
+**Effort:** 1 day
+
+---
+
+### N5 — GAN Loop (Claude Code + Meph)
+
+Claude Code spins up Studio, tells Meph to build an app, screenshots it, grades
+against Linear/Stripe quality bar, gives feedback, repeats until it's good.
+Automated discriminator/generator loop.
+
+**Why:** This is how Clear apps reach production quality without manual UI review.
+The infrastructure exists — just needs orchestration.
+
+**Effort:** 1 day to wire up, ongoing for each app
+
+---
+
+### N6 — Fix Server Test Suite
+
+2 pre-existing failures:
+1. Template count assertion (expects 40+, only 8 exist) — stale
+2. Chat validation SSE JSON parse crash — blocks all tests after it
+
+These block new test coverage from running in CI.
+
+**Effort:** 0.5 days
+
+---
+
+### N7 — Batteries-Included Integrations
+
+Standard outside packages with first-class Clear syntax. Like how `ask claude`
+is the default LLM — give every common integration a keyword:
+
+| Integration | Syntax | Package |
+|-------------|--------|---------|
+| **Texting** | `send text to '+1234' saying 'Hello'` | Twilio |
+| **Email** | `send email via sendgrid` (already exists for SMTP) | SendGrid |
+| **Rich text** | `rich text editor` in page | Tiptap |
+| **Billing** | `create checkout for product` | Stripe |
+| **File storage** | `upload file to bucket` | S3/Supabase Storage |
+| **Auth (OAuth)** | `allow login with google` | Passport.js |
+
+Per the Surface Area Rule: only add integrations that show up in >30% of apps.
+Texting, email, billing, and file storage probably clear that bar. Rich text
+editor is borderline. OAuth is worth it when someone needs Google login.
+
+Each integration follows the same pattern:
+1. One-line Clear syntax
+2. Compiles to the standard package's API
+3. Requires an env var for the API key
+4. `script:` escape hatch for advanced usage
+
+**Effort:** 1-2 days per integration
+
+---
+
 ## Speculative: RL Training Environment
 
 Clear's deterministic compiler, structured errors, constrained action space, and built-in
