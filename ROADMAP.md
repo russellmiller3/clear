@@ -267,74 +267,45 @@ All compile to direct REST `fetch()` calls. No SDK required.
 
 ---
 
+## Recently Completed
+
+| Feature | Syntax | Status |
+|---------|--------|--------|
+| Intent classification | `classify X as 'a', 'b', 'c'` | Done — Claude Haiku call |
+| Extended RAG | `knows about: 'https://url'`, `'file.pdf'`, `'doc.docx'` | Done — URLs + files + tables |
+| Send email inline | `send email to X:` + subject/body block | Done |
+| Scheduled at time | `runs every 1 day at '9:00 AM'` | Done — node-cron |
+| `find all` synonym | `find all Orders where status is 'active'` | Done |
+| `today` literal | `where created_at is today` | Done |
+| Multi-context ask ai | `ask ai 'prompt' with X, Y, Z` | Done |
+| Store-ops GAN target | 230-line e-commerce agent demo | Done — compiles + runs |
+
+---
+
 ## What's Next
 
-Ordered by impact. Builds toward the **agent harness** vision: Clear as Rails for AI agents.
+Ordered by impact. Two tracks: **language completeness** and **platform quality**.
 
-### P1 — Intent Classification (new syntax)
+### Language Completeness
 
-```clear
-intent = classify message as 'order status', 'return', 'general question'
-match intent:
-  when 'order status':
-    response = ask claude 'Look up their order' with message
-  when 'return':
-    response = ask claude 'Process the return' with message
-  otherwise:
-    response = ask claude 'Help the customer' with message
-```
+Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it compiles to working software. If the LLM needs a feature to build what Russell asked for, Clear needs it.
 
-New `CLASSIFY` node. Compiles to a lightweight Claude Haiku call that picks from a fixed list. Enables agents to route based on intent instead of processing everything linearly.
+| Priority | Feature | Syntax | Why |
+|----------|---------|--------|-----|
+| P1 | Error throwing | `send error 'Order not found'` | Can't throw custom errors from functions today. Guards only work in endpoints. |
+| P2 | Finally block | `try:` ... `finally:` | Cleanup code (close connections, release locks) can't be guaranteed today |
+| P3 | First-class functions | `pass greet to apply_to_each(users, greet)` | Can't pass functions as arguments. Blocks callbacks, higher-order patterns, event handlers. |
+| P4 | Decorators / middleware | `before each endpoint: log request` or `wrap function with retry:` | Cross-cutting concerns (logging, retry, timing) require copy-paste today |
+| P5 | `clear serve` ESM fix | `clear serve app.clear` | CLI serve crashes with `require is not defined` because project uses `"type": "module"`. Must output `.cjs` or use `createRequire`. |
 
-**Why:** Every real agent needs intent routing. Without it, agents are one-trick ponies.
+### Platform Quality
 
-### P2 — Send Email with Inline Recipient
-
-```clear
-send email to order's customer_email:
-  subject is 'Your order has shipped'
-  body is 'Track it at {tracking_url}'
-```
-
-Extends existing `SEND_EMAIL` node. Currently only supports bare `send email:` config block. This adds `to <expr>:` after `email` for cleaner syntax when the recipient is dynamic.
-
-**Why:** Every transactional app sends email. The current config-block syntax is clunky for dynamic recipients.
-
-### P3 — Scheduled Agent Time-of-Day
-
-```clear
-agent 'Daily Reporter' runs every 1 day at '9:00 AM':
-  orders = get all Orders
-  report = ask claude 'Summarize today' with orders
-  send email to env('OPS_TEAM'):
-    subject is 'Daily Report'
-    body is report
-```
-
-Extends existing scheduled agent parser. Currently supports `runs every N unit`. Adds `at 'time'` for cron-style scheduling. Compiles to `node-cron` instead of `setInterval`.
-
-**Why:** "Every 24 hours" and "every day at 9am" are different requirements. Business agents need clock-time scheduling.
-
-### P4 — Convenience Syntax
-
-| Feature | Syntax | Compiles To |
-|---------|--------|-------------|
-| `find all` synonym | `find all Orders where status is 'active'` | Same as `look up all Orders where ...` |
-| `today` literal | `find all Orders where created_at is today` | `where created_at >= startOfToday()` |
-| Multi-context `ask ai` | `ask ai 'prompt' with X, Y, Z` | `_askAI(prompt, {X, Y, Z})` |
-| Expect failure | `expect calling fn(x) to fail with 'msg'` | try/catch assertion |
-
-### P5 — ClearMan (Built-in API Tester)
-
-"Try it" button per endpoint in the API tab. POST/PUT get a JSON body editor. Postman built into Studio.
-
-### P6 — Compiler-Generated Tests
-
-Auto-generate happy-path tests from the AST. The compiler knows every table, field, and endpoint. Free test coverage.
-
-### P7 — Multi-File Download
-
-Download as zip: `server.js` + `index.html` + `package.json`. Currently single-file. Single files don't deploy.
+| Priority | Feature | Notes |
+|----------|---------|-------|
+| P6 | ClearMan (API tester) | "Try it" button per endpoint in API tab. Postman built into Studio. |
+| P7 | Compiler-generated tests | Auto-generate happy-path tests from AST. Free test coverage. |
+| P8 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
+| P9 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
 
 ---
 

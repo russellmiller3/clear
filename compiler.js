@@ -8011,6 +8011,16 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   const declared = new Set();
   const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, _astBody: body, _allNodes: body };
   for (const node of body) {
+    // Skip test blocks in server output when running as a server (not test mode)
+    // Tests are compiled into the server output for `compileProgram()` consumers
+    // but excluded from `clear serve` via the CLI's test runner
+    // For now: keep them in serverJS so tests can verify compilation, but guard with runtime check
+    if (node.type === NodeType.TEST_DEF) {
+      // Wrap test blocks in a runtime guard so they don't crash when `test` is undefined
+      const testCode = compileNode(node, ctx);
+      if (testCode) bodyLines.push(`if (typeof test === 'function') {\n${testCode}\n}`);
+      continue;
+    }
     const result = compileNode(node, ctx);
     if (result !== null) {
       bodyLines.push(result);
