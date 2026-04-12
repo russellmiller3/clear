@@ -622,6 +622,19 @@ stream:
 
 This creates a `/stream` endpoint that pushes data to connected clients.
 
+### WebSocket Broadcasting
+
+Build a real-time chat in a few lines:
+
+```clear
+subscribe to 'chat':
+  log message
+  broadcast to all message
+```
+
+`broadcast to all X` sends the value to every connected WebSocket client
+on that channel. Combined with `subscribe to`, you get a full pub/sub system.
+
 ### Background Jobs
 
 Run tasks on a schedule:
@@ -691,6 +704,22 @@ Agents can:
 - **Have guardrails** — compile-time restrictions on what they can do
 - **Remember context** — maintain conversation history
 - **Run on a schedule** — `agent 'Report' runs every 1 day:`
+
+### Agent Argument Guardrails
+
+Block sensitive data from reaching agent tools:
+
+```clear
+agent 'Support' receives message:
+  block arguments matching 'password|secret|ssn|credit.?card'
+  can use: look_up_orders
+  response = ask claude 'Help this customer' with message
+  send back response
+```
+
+`block arguments matching 'pattern'` adds a regex guard. If any tool argument
+matches the pattern, the call is rejected before it executes. This prevents
+agents from accidentally passing sensitive data to external tools.
 
 ---
 
@@ -898,6 +927,40 @@ when user calls GET /api/posts:
 ```
 
 When you `get all Posts`, the compiler auto-loads the related User for each post's `author` field.
+
+### Has Many Relationships
+
+The inverse of `belongs to`. Declare that a parent table has many children,
+and the compiler auto-generates nested endpoints:
+
+```clear
+create a Users table:
+  name
+  email, unique
+
+create a Posts table:
+  title
+  body
+  author belongs to Users
+
+Users has many Posts
+```
+
+This auto-generates `GET /api/users/:id/posts` — returns all posts belonging
+to a specific user. You don't need to write the endpoint yourself.
+
+### Full Text Search
+
+Search across all fields of a table with one line:
+
+```clear
+when user calls GET /api/posts/search sending search_data:
+  results = search Posts for search_data's query
+  send back results
+```
+
+`search X for Y` filters records where ANY field contains the search term
+(case-insensitive). No need to specify which fields — it checks all of them.
 
 ### Aggregate Field Extraction
 
@@ -1243,6 +1306,37 @@ clear build main.clear --auto-fix  # Auto-patch errors during build
 | 2 | Runtime error |
 | 3 | File not found |
 | 4 | Test failure |
+
+---
+
+## Chapter 16b: Clear Studio (The IDE)
+
+Clear has a built-in IDE called **Clear Studio**. Run `node playground/server.js`
+and open `http://localhost:3456`.
+
+### Three Panels
+
+- **Left:** Code editor (CodeMirror 6) — write and edit Clear code
+- **Right top:** Live preview and terminal — see your app running
+- **Right bottom:** AI chat — talk to Meph, the built-in AI assistant
+
+### Click-to-Highlight (Source Mapping)
+
+Click any line in the Clear editor and the compiled output highlights the
+corresponding JavaScript/HTML line. This works because the compiler embeds
+source map markers (`// clear:N`) in the compiled output.
+
+Click a line in the compiled output and it highlights the original Clear line.
+Two-way mapping — you always know which Clear line produced which output line.
+
+This is especially useful for debugging: if something looks wrong in the
+compiled output, click it to find the Clear line that generated it.
+
+### 43 Template Apps
+
+The dropdown at the top has 43 pre-built example apps — from simple todo lists
+to full dashboards with charts and AI agents. Pick one, click it, and the code
+loads in the editor. Great for learning and starting new projects.
 
 ---
 
@@ -2379,5 +2473,50 @@ when user calls GET /api/version:
 
 The `= run command` form captures stdout as a string. Without the `=`, the command
 just runs without capturing anything.
+
+---
+
+## Appendix: What Meph Can Do
+
+Meph is the AI agent inside Clear Studio. Here's everything Meph has access to:
+
+### Tools
+
+| Tool | What it does |
+|------|-------------|
+| `edit_code` | Read, replace, or undo the Clear source in the editor |
+| `read_file` | Read SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md, meph-memory.md |
+| `run_command` | Run CLI commands: `node cli/clear.js check`, `curl`, `ls` |
+| `compile` | Compile the current source — returns errors, warnings, output targets |
+| `run_app` | Start the compiled app as a live server |
+| `stop_app` | Stop the running app |
+| `http_request` | Make HTTP requests to the running app (GET, POST, PUT, DELETE) |
+| `edit_file` | Edit any project file (append, insert, replace, overwrite, read) |
+| `read_terminal` | Read terminal output + frontend console errors |
+| `screenshot_output` | Get the rendered HTML from the running app |
+| `highlight_code` | Flash-highlight lines in the editor to point something out |
+| `browse_templates` | List or read any template's source code |
+| `source_map` | Query which compiled output comes from which Clear line |
+| `web_search` | Search the web (when enabled) |
+| `web_fetch` | Fetch content from URLs (when enabled) |
+
+### What Meph Can Access
+
+Meph can see and use everything in Studio: templates, docs, source maps, terminal,
+data view, API testing, screenshots. The only things Meph cannot touch are the dark
+mode button, "New" (clearing the editor), and "Load" (loading a template) — those
+are user-initiated actions only.
+
+### How Meph Edits Code
+
+Meph currently uses `edit_code action='write'` which replaces the entire editor
+content. For small changes, this is like rewriting a whole essay to fix a typo.
+The patch API (`patch.js`) provides surgical edits — add an endpoint, fix a line,
+add a field — but isn't yet wired as a Meph tool. Coming soon.
+
+### Meph's Memory
+
+Meph has persistent memory in `meph-memory.md`. Tell Meph "remember this" and it
+saves facts across conversations. Memory persists between sessions.
 
 Happy building!
