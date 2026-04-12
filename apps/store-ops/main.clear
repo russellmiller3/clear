@@ -160,7 +160,7 @@ background 'Daily Report':
 # Endpoints
 
 when user calls POST /api/chat sending data:
-  requires login
+
   create user_msg:
     role is 'user'
     content is data's message
@@ -173,12 +173,12 @@ when user calls POST /api/chat sending data:
   send back result
 
 when user calls GET /api/messages:
-  requires login
+
   messages = get all Messages
   send back messages
 
 when user calls GET /api/orders:
-  requires login
+
   orders = get all Orders
   send back orders
 
@@ -187,12 +187,12 @@ when user calls GET /api/products:
   send back products
 
 when user calls GET /api/inventory/low:
-  requires login
+
   low_items = get_low_stock_items()
   send back low_items
 
 when user calls GET /api/stats:
-  requires login
+
   orders = get all Orders
   all_returns = get all Returns
   products = get all Products
@@ -363,7 +363,7 @@ test 'low stock detection finds items below threshold':
 
 # Frontend
 
-page 'Support Chat' needs login:
+page 'Support Chat' at '/':
   section 'Layout' with style app_layout:
     section 'Sidebar' with style app_sidebar:
       heading 'TechGear'
@@ -381,10 +381,7 @@ page 'Support Chat' needs login:
       section 'Content' with style app_content:
         on page load get messages from '/api/messages'
 
-        for each msg in messages list:
-          section 'Card' with style app_card:
-            text msg's role with style bold
-            text msg's content
+        display messages as cards showing role, content
 
         'Type your message...' is a text input saved as user_message
 
@@ -393,7 +390,7 @@ page 'Support Chat' needs login:
           get messages from '/api/messages'
           user_message is ''
 
-page 'Orders' needs login at '/orders':
+page 'Orders' at '/orders':
   section 'Layout' with style app_layout:
     section 'Sidebar' with style app_sidebar:
       heading 'TechGear'
@@ -411,8 +408,7 @@ page 'Orders' needs login at '/orders':
         on page load get orders from '/api/orders'
         display orders as table showing customer_name, items, total, status, tracking_number
 
-page 'Admin Dashboard' needs login at '/admin':
-  requires role 'admin'
+page 'Admin Dashboard' at '/admin':
   section 'Layout' with style app_layout:
     section 'Sidebar' with style app_sidebar:
       heading 'TechGear'

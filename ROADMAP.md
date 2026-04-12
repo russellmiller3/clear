@@ -348,6 +348,8 @@ Clear's deterministic compiler, structured errors, constrained action space, and
 | R4 | Skill instruction raw text — tokenizer destroys parentheses and punctuation in skill `instructions:` blocks. Parser should store `.raw` line text instead of reconstructing from tokens. Partially fixed (now uses `.raw` when available) but tokenizer still eats some formatting. | Before shipping store-ops demo |
 | R5 | `clear test` runner doesn't include user-written `test` blocks — only compiler-generated e2e tests. User tests compile into `serverJS` but the `.clear-test-runner.cjs` skips them. Needs unified test extraction. | Before shipping store-ops demo |
 | R6 | All `[^)]*` regex patterns in `compileAgent()` are fragile — break when prompts contain literal parentheses. Two instances fixed (tool-use injection, agent-log wrapping) but more may exist. The real fix is R1 (decompose compileAgent into helpers that don't use regex string surgery). | Part of R1 |
+| R7 | **`needs login` frontend guard is broken.** Pages with `needs login` compile to blank white pages — the JWT check hides everything but doesn't show a login form or redirect to `/login`. Should either generate an auto-login page or redirect. This is a **serious user-facing bug** — any app using `needs login` on a page shows nothing. | ASAP |
+| R8 | **`for each` loop body in HTML doesn't render child content.** A loop like `for each msg in messages: section with style card: text msg's role` compiles to `+ msg +` (whole object as string) instead of expanding the child template. Workaround: use `display X as cards showing field1, field2`. | Before demo polish |
 
 ---
 
