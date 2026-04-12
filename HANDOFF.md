@@ -1,61 +1,56 @@
-# Handoff — 2026-04-12 (Final)
+# Handoff — 2026-04-12 (Agent Harness)
 
 ## Current State
-- **Branch:** `main`
-- **Compiler tests:** 1730 (0 failures)
-- **E2e tests:** 80/80 (0 failures)
-- **Husky:** pre-commit runs compiler tests, pre-push runs full suite
-- **Roadmap:** All 12 gaps closed. R3 (frontend source maps) done. R1, R2 remain.
+- **Branch:** `feature/agent-harness`
+- **Last commit:** `1b01b0e feat: compiler emits frontend element tests + clear test CLI fix`
+- **Compiler tests:** 1762 (0 failures)
+- **Working tree:** Dirty — template .clear files, SYNTAX.md, skill files uncommitted
 
 ## What Was Done This Session
 
-### Roadmap Items 1–12: All Gaps Closed
-Auth scaffolding, belongs to, validation, aggregates, search, broadcast, agent memory fix,
-tool schema fix, string concat verified, Python serving, has many, agent guardrails.
+- **Agent harness**: classify intent (already existed — undocumented), extended RAG (URLs/PDFs/DOCX), send email to X, scheduled agents at cron times, find all/today/multi-context ask ai. Store-ops 230-line demo compiles and runs with real AI.
+- **Documentation audit**: found 5 undocumented node types. Rewrote ROADMAP.md from scratch. Added mandatory doc enforcement rules to ship skill, write-plan skill, CLAUDE.md.
+- **Compiler bug fixes**: parentheses in skill instructions (regex → paren-counting), test block server crash (typeof guard), async test callbacks, link href, model ID.
+- **Testing infrastructure**: compiler emits frontend element tests. `clear test` CLI extracts user-written test blocks. 3 real bugs found by generated tests.
 
-### Three-Way Bidirectional Source Mapping
-Click any direction — source, compiled output, or live preview — and trace to the others:
-- **Clear → JS/Python:** `// clear:N` / `# clear:N` comments, click highlights compiled block
-- **Clear → HTML:** `data-clear-line="N"` attributes on every visible element
-- **JS/Python → Clear:** click compiled line → jumps to source (or "boilerplate" toast)
-- **HTML → Clear:** click element in Code tab → jumps to source
-- **Live Preview → Clear:** click element in running app → editor jumps to source line
-- Meph `source_map` tool for programmatic lookup
+## What's In Progress
 
-### Core 7 Templates — Rewritten + Playwright-Tested
-All templates use new features. 80 e2e tests verify CRUD, auth, search, relationships:
-1. todo-fullstack (95 lines) — categories, belongs to, has many, search
-2. crm-pro (218 lines) — 3 tables, relationships, search, aggregates
-3. blog-fullstack (125 lines) — authors/categories, belongs to, has many, search
-4. live-chat (55 lines) — WebSocket, subscribe, broadcast
-5. helpdesk-agent (145 lines) — all 5 agent features + keyword search
-6. booking (142 lines) — rooms has many bookings, search
-7. expense-tracker (135 lines) — categories, aggregates, search
+**3 failing `clear test` tests** for store-ops:
+1. `response is not defined` — mock AI doesn't mock `_classifyIntent` (runs before `_askAIWithTools`)
+2. Same for second agent test
+3. `length is not defined` — `expect length of result` compiles to `expect(length)` not `expect(result.length)`
 
-### Compiler Fixes Found During Template Testing
-- GET endpoints with `sending params` → `req.query` not `req.body`
-- `send back get all X` one-liner → undefined variable (must be two lines)
-- Server auto-installs bcryptjs/jsonwebtoken when compiled code needs them
-- Query param false positive stripped from validator
-- "Did you mean 'if'?" for word 'a' → skip reserved words
-- `this endpoint requires login` synonym added
-- `has many` docs corrected (field modifier, not standalone)
+## Key Decisions
 
-### Other
-- Husky git hooks (pre-commit: 1730 tests, pre-push: full suite)
-- Meph tools: browse_templates, source_map, patch_code, highlight_code
-- Philosophy rules 15 (Meph access) + 16 (error messages first-class)
-- Rotating quotes in status bar
-- Compiled view font/line-number matching
-- Ross Perot Rule in personal CLAUDE.md
+1. **No batteries system** — SERVICE_CALL already does Stripe/SendGrid/Twilio via fetch()
+2. **14-year-old = readability bar, not capability bar** — Clear needs full language features (throw, finally, first-class functions, decorators) because LLMs need them
+3. **Never Test By Hand** — if you'd click a button in Chrome, the compiler is missing a test
+4. **`/* */` for diagrams** — `#` comments pollute Studio TOC
+5. **No self-assignment** — `subject is subject` banned, use different arg names
+
+## Next Steps
+
+1. Fix 3 failing `clear test` bugs (mock classify, length-of, link href paths)
+2. Make `clear test` also run auto-generated e2e tests from `result.tests`
+3. **Studio Test button** — add "Test" button to IDE toolbar that runs `clear test` on current app, shows pass/fail + errors in Terminal tab. Meph sees results via tool too. (ROADMAP P6)
+4. Language completeness: `send error`, `finally`, first-class functions, decorators
+5. Convert template diagrams from `#` to `/* */`
+6. GAN the store-ops frontend (dashboard OUTPUT placeholders, chat card grid → thread)
 
 ## Resume Prompt
 
-> On main. 1730 compiler + 80 e2e tests, all green. Husky enforces.
-> Next priorities:
-> 1. GAN loop — spin up Studio, Meph builds app, Claude Code grades + iterates
-> 2. ClearMan (N1) — built-in API tester, "Try it" button per endpoint
-> 3. Compiler-generated tests (N3) — auto-emit happy path tests from AST
-> 4. Multi-file download (N4) — zip with server.js + index.html + package.json
-> 5. Batteries — Stripe checkout (N7a), SendGrid (N7b), Supabase storage (N7c)
-> 6. Refactoring — R1 (decompose compileAgent), R2 (dedup JS/Python CRUD)
+```
+Read HANDOFF.md and continue from where we left off.
+
+Branch: feature/agent-harness. 1762 compiler tests passing.
+
+Fix the 3 failing clear test bugs for apps/store-ops/main.clear:
+1. Mock _classifyIntent in agent test blocks (compiler.js ~line 4186)
+2. Fix length-of in EXPECT context (compiles to expect(length) instead of expect(X.length))
+3. Fix link href # prefix in all 4 rendering paths (compiler.js lines 7415-7421)
+
+Run: node cli/clear.js test apps/store-ops/main.clear
+Gate: node clear.test.js (1762 passing, 0 failures)
+
+After tests pass: language completeness per ROADMAP.md P1-P4.
+```

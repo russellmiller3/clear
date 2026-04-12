@@ -4393,9 +4393,11 @@ function parseContent(tokens, line, canonical) {
   };
   const contentType = contentTypeMap[canonical] || 'text';
 
-  // For links: link 'Learn more' to '/about'
+  // For links: link 'Learn more' to '/about'  OR  link 'Chat' goes to '/'
   let href = null;
   if (contentType === 'link') {
+    // Skip optional 'goes' before 'to'
+    if (pos < tokens.length && tokens[pos].value === 'goes') pos++;
     if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
       pos++;
       if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {

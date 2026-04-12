@@ -110,6 +110,7 @@ export function validate(ast) {
   validateInferredTypes(ast.body, errors);
   validateChainDepth(ast.body, warnings);
   validateExprComplexity(ast.body, warnings);
+  validateClassify(ast.body, errors);
   return { errors, warnings };
 }
 
@@ -1785,6 +1786,30 @@ function validateExprComplexity(body, warnings) {
       const line = node.line;
       if (node.expression) checkExpr(node.expression, line);
       if (node.condition) checkExpr(node.condition, line);
+      if (Array.isArray(node.body)) walk(node.body);
+      if (Array.isArray(node.thenBranch)) walk(node.thenBranch);
+      if (Array.isArray(node.otherwiseBranch)) walk(node.otherwiseBranch);
+      if (node.handlers) node.handlers.forEach(h => walk(h.body));
+    }
+  }
+
+  walk(body);
+}
+
+/**
+ * CLASSIFY VALIDATION: classify needs at least 2 categories.
+ */
+function validateClassify(body, errors) {
+  function walk(nodes) {
+    for (const node of nodes) {
+      if (node.type === NodeType.ASSIGN && node.expression?.type === NodeType.CLASSIFY) {
+        if (!node.expression.categories || node.expression.categories.length < 2) {
+          errors.push({
+            line: node.line,
+            message: `classify needs at least 2 categories. Example: intent = classify message as 'order', 'return'`
+          });
+        }
+      }
       if (Array.isArray(node.body)) walk(node.body);
       if (Array.isArray(node.thenBranch)) walk(node.thenBranch);
       if (Array.isArray(node.otherwiseBranch)) walk(node.otherwiseBranch);

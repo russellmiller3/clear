@@ -302,10 +302,11 @@ Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it com
 
 | Priority | Feature | Notes |
 |----------|---------|-------|
-| P6 | ClearMan (API tester) | "Try it" button per endpoint in API tab. Postman built into Studio. |
-| P7 | Compiler-generated tests | Auto-generate happy-path tests from AST. Free test coverage. |
-| P8 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
-| P9 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
+| P6 | Studio Test button | "Test" button in toolbar runs `clear test` on the current app. Shows pass/fail results + error messages in Terminal tab. Meph can see results too (via tool). Both human and AI get the same test output. |
+| P7 | ClearMan (API tester) | "Try it" button per endpoint in API tab. Postman built into Studio. |
+| P8 | Compiler-generated tests | Auto-generate happy-path tests from AST. Free test coverage. |
+| P9 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
+| P10 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
 
 ---
 
