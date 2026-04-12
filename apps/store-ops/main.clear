@@ -208,6 +208,12 @@ when user calls GET /api/stats:
 
 # Seed Data — realistic e-commerce store
 
+when user calls DELETE /api/messages:
+  requires login
+  script:
+    await db.deleteAll('messages')
+  send back 'cleared'
+
 when user calls POST /api/seed:
   create p1:
     name is 'Wireless Keyboard'
@@ -381,7 +387,7 @@ page 'Support Chat' at '/':
       section 'Content' with style app_content:
         on page load get messages from '/api/messages'
 
-        display messages as list showing role, content
+        display messages as chat showing role, content
 
         'Type your message...' is a text input saved as user_message
 

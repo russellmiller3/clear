@@ -530,7 +530,7 @@ function displayNode(expression, format, label, line) {
     ? autoLabelFromName(expression.name)
     : 'Output');
   const ui = {
-    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : format === 'list' ? 'list' : format === 'gallery' ? 'gallery' : format === 'map' ? 'map' : format === 'calendar' ? 'calendar' : (format === 'qr' || format === 'qrcode') ? 'qr' : 'output',
+    tag: format === 'table' ? 'table' : format === 'cards' ? 'cards' : format === 'list' ? 'list' : format === 'chat' ? 'chat' : format === 'gallery' ? 'gallery' : format === 'map' ? 'map' : format === 'calendar' ? 'calendar' : (format === 'qr' || format === 'qrcode') ? 'qr' : 'output',
     id: `output_${sanitizeForId(displayLabel.replace(/\s+/g, '_'))}`,
     label: displayLabel,
   };

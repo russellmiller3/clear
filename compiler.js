@@ -5688,7 +5688,7 @@ function isReactiveApp(body) {
       if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL && /^[A-Z]/.test(node.expression.name)) return true;
       if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
       // A table/list/cards/gallery/map/calendar/qr display requires _recompute() to render into the DOM.
-      if (node.type === NodeType.DISPLAY && (node.format === 'table' || node.format === 'list' || node.format === 'cards' || node.format === 'gallery' || node.format === 'map' || node.format === 'calendar' || node.format === 'qr' || node.format === 'qrcode')) return true;
+      if (node.type === NodeType.DISPLAY && (node.format === 'table' || node.format === 'list' || node.format === 'cards' || node.format === 'chat' || node.format === 'gallery' || node.format === 'map' || node.format === 'calendar' || node.format === 'qr' || node.format === 'qrcode')) return true;
       // An on-page-load block with API calls requires the async IIFE + _recompute().
       if (node.type === NodeType.ON_PAGE_LOAD) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
@@ -6125,6 +6125,32 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`        }`);
       lines.push(`        return '<li class="text-sm text-base-content">' + _esc(String(item)) + '</li>';`);
       lines.push(`      }).join('');`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (disp.format === 'chat') {
+      // Chat rendering: DaisyUI chat bubbles with role-based alignment
+      const chatCols = disp.columns || ['role', 'content'];
+      const roleField = JSON.stringify(chatCols[0] || 'role');
+      const contentField = JSON.stringify(chatCols[1] || 'content');
+      lines.push(`  {`);
+      lines.push(`    const _chatEl = document.getElementById('${outputId}_chat');`);
+      lines.push(`    const _data = ${val};`);
+      lines.push(`    if (_chatEl && Array.isArray(_data)) {`);
+      lines.push(`      _chatEl.innerHTML = _data.map(msg => {`);
+      lines.push(`        const role = String(msg[${roleField}] || 'user').toLowerCase();`);
+      lines.push(`        const content = String(msg[${contentField}] || '');`);
+      lines.push(`        const isUser = role === 'user';`);
+      lines.push(`        const align = isUser ? 'chat-end' : 'chat-start';`);
+      lines.push(`        const bubbleClass = isUser ? 'chat-bubble-primary' : '';`);
+      lines.push(`        const label = isUser ? 'You' : role.charAt(0).toUpperCase() + role.slice(1);`);
+      lines.push(`        return '<div class="chat ' + align + '">' +`);
+      lines.push(`          '<div class="chat-header text-xs opacity-60">' + _esc(label) + '</div>' +`);
+      lines.push(`          '<div class="chat-bubble ' + bubbleClass + ' whitespace-pre-wrap">' + _esc(content) + '</div>' +`);
+      lines.push(`        '</div>';`);
+      lines.push(`      }).join('');`);
+      lines.push(`      _chatEl.scrollTop = _chatEl.scrollHeight;`);
+      lines.push(`    } else if (_chatEl) {`);
+      lines.push(`      _chatEl.innerHTML = '<p class="text-sm text-base-content/40 text-center py-8">No messages yet</p>';`);
       lines.push(`    }`);
       lines.push(`  }`);
     } else if (disp.format === 'gallery') {
@@ -7239,6 +7265,8 @@ ${options}
             parts.push(`    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto" id="${displayId}_cards"></div>`);
           } else if (ui.tag === 'list') {
             parts.push(`    <ul class="list-disc pl-6 space-y-1" id="${displayId}_list"></ul>`);
+          } else if (ui.tag === 'chat') {
+            parts.push(`    <div class="flex flex-col gap-1 max-h-[60vh] overflow-y-auto p-4" id="${displayId}_chat"></div>`);
           } else if (ui.tag === 'gallery') {
             parts.push(`    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="${displayId}_gallery"></div>`);
           } else if (ui.tag === 'map') {
