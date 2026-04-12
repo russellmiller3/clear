@@ -46,7 +46,8 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `BREAK` | `stop` / `break` | `break;` |
 | `CONTINUE` | `skip` / `continue` | `continue;` |
 | `COMMENT` | `# text` | `// text` / `# text` |
-| `TRY_HANDLE` | `try:` + `if error:` / `if error 'not found':` / `if error 'forbidden':` | `try { ... } catch (_err) { if (_err.status === 404) { ... } }` — typed handlers emit status checks; multiple handlers chain as `if/else if/else` |
+| `TRY_HANDLE` | `try:` + `if error:` / `if error 'not found':` + optional `finally:` / `always do:` | `try { ... } catch (_err) { ... } finally { ... }` — typed handlers emit status checks; multiple handlers chain as `if/else if/else`; finally always runs |
+| `THROW` | `send error 'message'` / `throw error` / `fail with` / `raise error` | `throw new Error('message')` (JS) / `raise Exception('message')` (Python) — custom errors from any context |
 | `LITERAL_STRING` (interpolated) | `'Hello, {name}!'` | `` `Hello, ${name}!` `` (JS) / `f"Hello, {name}!"` (Python) |
 | `USE` | `use 'helpers'` / `use double from 'helpers'` / `use everything from 'helpers'` / `use 'lib' from './lib.js'` | Module import (namespaced, selective, inline-all, or external JS) |
 | `SCRIPT` | `script:` + indented block | Raw JS escape hatch (emitted as-is) |

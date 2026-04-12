@@ -1112,6 +1112,38 @@ if error:
 Supported typed handlers: `not found` (404), `forbidden` (403), `unauthorized` (401),
 `bad request` (400), `server error` (500).
 
+### Throwing Custom Errors
+
+Use `send error` to throw your own error and stop execution:
+
+```clear
+define function validate_age(age):
+  if age is less than 0:
+    send error 'Age cannot be negative'
+  if age is less than 18:
+    fail with 'Must be 18 or older'
+  return age
+```
+
+Aliases: `throw error`, `fail with`, `raise error` — all work identically.
+Errors propagate up to the nearest `try/if error` block, or crash if uncaught.
+
+### Finally (Cleanup Code)
+
+Need to clean up resources no matter what — close a file, release a lock?
+
+```clear
+try:
+  process_data(connection)
+if error:
+  show 'Processing failed: {error's message}'
+finally:
+  close_connection()
+```
+
+The `finally:` block always runs, whether the try succeeded or failed.
+Aliases: `always do:` and `after everything:`.
+
 ### Retry on Failure
 
 ```clear

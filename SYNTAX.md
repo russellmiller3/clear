@@ -233,6 +233,33 @@ if error:
 # error's message, error's status, error's code
 ```
 
+## Finally (Cleanup Code)
+
+```clear
+# Code that always runs, whether an error occurred or not
+try:
+  process_data(connection)
+if error:
+  show error's message
+finally:
+  close_connection()
+
+# Synonyms: always do:, after everything:
+```
+
+## Throwing Errors
+
+```clear
+# Throw a custom error from any context (functions, endpoints, etc.)
+if price is less than 0:
+  send error 'Price cannot be negative'
+
+# Synonyms all compile identically:
+throw error 'Invalid input'
+fail with 'Database connection failed'
+raise error 'Unauthorized access'
+```
+
 ## Transactions
 
 ```clear

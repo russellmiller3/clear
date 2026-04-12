@@ -1893,6 +1893,28 @@ if error:
 Status mappings: `not found`=404, `forbidden`=403, `unauthorized`=401, `bad request`=400, `server error`=500.
 `error` is automatically bound in every handler body.
 
+### Throwing Errors
+Throw custom errors from any context (functions, endpoints, agents):
+```
+if product is nothing:
+  send error 'Product not found'
+```
+Synonyms: `throw error`, `fail with`, `raise error` — all compile identically.
+Compiles to `throw new Error()` (JS) / `raise Exception()` (Python).
+Errors propagate to the nearest `try/if error` handler, or crash if uncaught.
+
+### Finally Blocks
+Cleanup code that always runs after try/catch:
+```
+try:
+  save data as new Order
+if error:
+  show error's message
+finally:
+  release_lock()
+```
+Synonyms: `always do:`, `after everything:` compile identically to `finally:`.
+
 ## npm Package Imports (Phase 99)
 
 Import any npm package into a JS backend app with `use npm`:

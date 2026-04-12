@@ -279,6 +279,10 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | `today` literal | `where created_at is today` | Done |
 | Multi-context ask ai | `ask ai 'prompt' with X, Y, Z` | Done |
 | Store-ops GAN target | 230-line e-commerce agent demo | Done — compiles + runs |
+| Error throwing | `send error 'message'` / `throw error` / `fail with` / `raise error` | Done — P1 |
+| Finally blocks | `try:` ... `finally:` / `always do:` / `after everything:` | Done — P2 |
+| First-class functions | Pass function refs as arguments | Done — P3, works natively |
+| Async function await | User-defined async fns auto-get `await` at call sites | Done — pre-scan + transitive |
 
 ---
 
@@ -290,12 +294,12 @@ Ordered by impact. Two tracks: **language completeness** and **platform quality*
 
 Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it compiles to working software. If the LLM needs a feature to build what Russell asked for, Clear needs it.
 
-| Priority | Feature | Syntax | Why |
-|----------|---------|--------|-----|
-| P1 | Error throwing | `send error 'Order not found'` | Can't throw custom errors from functions today. Guards only work in endpoints. |
-| P2 | Finally block | `try:` ... `finally:` | Cleanup code (close connections, release locks) can't be guaranteed today |
-| P3 | First-class functions | `pass greet to apply_to_each(users, greet)` | Can't pass functions as arguments. Blocks callbacks, higher-order patterns, event handlers. |
-| P4 | Decorators / middleware | `before each endpoint: log request` or `wrap function with retry:` | Cross-cutting concerns (logging, retry, timing) require copy-paste today |
+| Priority | Feature | Syntax | Status |
+|----------|---------|--------|--------|
+| P1 | Error throwing | `send error 'message'` / `throw error` / `fail with` / `raise error` | **Done** |
+| P2 | Finally block | `try:` ... `finally:` / `always do:` / `after everything:` | **Done** |
+| P3 | First-class functions | `map_list(items, double)` — pass fn refs as args | **Done** (works natively) |
+| P4 | Decorators / middleware | `before each endpoint:` | Skipped — built-in middleware covers use cases |
 | P5 | `clear serve` ESM fix | `clear serve app.clear` | CLI serve crashes with `require is not defined` because project uses `"type": "module"`. Must output `.cjs` or use `createRequire`. |
 
 ### Platform Quality
