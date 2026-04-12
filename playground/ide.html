@@ -1113,9 +1113,13 @@ function showOutput() {
   window.onunhandledrejection = function(e){ _post('unhandledrejection', [e.reason]); };
 })();
 <\/script>`;
-    // Source map: click element in preview → jump to Clear source line
+    // Source map: Alt+click element in preview → jump to Clear source line
+    // Regular clicks interact with the UI normally. Alt+click inspects.
     const sourceMapCapture = `<script>
 document.addEventListener('click', function(e) {
+  if (!e.altKey) return; // Regular click = interact. Alt+click = inspect source.
+  e.preventDefault();
+  e.stopPropagation();
   var el = e.target;
   while (el && el !== document.body) {
     if (el.dataset && el.dataset.clearLine) {
@@ -1126,7 +1130,7 @@ document.addEventListener('click', function(e) {
     }
     el = el.parentElement;
   }
-});
+}, true);
 <\/script>`;
     html = html.replace('</head>', errorCapture + sourceMapCapture + '</head>');
     el.innerHTML = '<iframe sandbox="allow-scripts allow-same-origin"></iframe>';
