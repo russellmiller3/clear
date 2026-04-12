@@ -170,8 +170,9 @@ when user calls DELETE /api/deals/:id:
   send back 'deleted' with success message
 
 # Search contacts
-when user calls GET /api/search/contacts sending query:
-  results = search Contacts for query
+when user calls GET /api/search/contacts sending params:
+  search_term = params's q
+  results = search Contacts for search_term
   send back results
 
 # Aggregate
