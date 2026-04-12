@@ -61,8 +61,8 @@ when user calls DELETE /api/posts/:id:
   delete the Post with this id
   send back 'deleted'
 
-when user calls GET /api/search/:q:
-  results = search Posts for incoming's q
+when user calls GET /api/search sending params:
+  results = search Posts for params's q
   send back results
 
 when user calls POST /api/seed:
@@ -122,6 +122,6 @@ page 'Blog' at '/':
   section 'Search' centered:
     'Search posts...' as text input saves to query
     button 'Search':
-      get posts from '/api/search/{query}'
+      get posts from '/api/search'
   section 'Posts' with style blog_grid:
     display posts as cards showing image_url, category, title, excerpt, author
