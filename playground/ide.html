@@ -478,7 +478,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <span class="sb-sep"></span>
     <span id="sb-shortcuts">Ctrl+S compile &middot; Ctrl+Enter run &middot; Ctrl+K chat</span>
     <span class="sb-sep"></span>
-    <span style="color:rgba(255,255,255,.5);font-size:10px;">Proudly made in America 🇺🇸 fuck you commies</span>
+    <span id="sb-quote" style="color:var(--tx4);font-size:10px;font-style:italic;cursor:default;" title="Click for another"></span>
   </div>
 </div>
 
@@ -731,6 +731,42 @@ window._editor = editor;      // For chat apply
 window._editorView = editor;  // For tests
 window._sourceMapData = () => sourceMapData; // For debugging/tests
 window._debug = () => ({ compileAnimRunning, sourceMapTab, compiledTab, hasCompiledView: !!compiledView, hasSourceMap: !!sourceMapData, activeTab });
+
+// ==========================================================================
+// ROTATING QUOTES
+// ==========================================================================
+const _quotes = [
+  ['All men are brothers.', 'Clear Studio'],
+  ['What good will you do this day?', 'Benjamin Franklin'],
+  ['What would you want in your obituary?', 'Clear Studio'],
+  ['We all do better when we all do better.', 'Paul Wellstone'],
+  ['The best way to predict the future is to invent it.', 'Alan Kay, 1971'],
+  ['A computer is like a bicycle for the mind.', 'Steve Jobs, 1981'],
+  ['The purpose of computing is insight, not numbers.', 'Richard Hamming, 1962'],
+  ['Technology is anything that makes life more interesting.', 'Freeman Dyson'],
+  ['The real problem is not whether machines think but whether men do.', 'B.F. Skinner, 1969'],
+  ['We can only see a short distance ahead, but we can see plenty there that needs to be done.', 'Alan Turing, 1950'],
+  ['The computer is the most remarkable tool that we have ever come up with. It is the equivalent of a bicycle for our minds.', 'Steve Jobs, 1990'],
+  ['Any sufficiently advanced technology is indistinguishable from magic.', 'Arthur C. Clarke, 1962'],
+  ['The question is not whether intelligent machines can have any emotions, but whether machines can be intelligent without any emotions.', 'Marvin Minsky, 1986'],
+  ['Man is a tool-using animal. Without tools he is nothing, with tools he is all.', 'Thomas Carlyle'],
+  ['Computers are useless. They can only give you answers.', 'Pablo Picasso'],
+  ['The real danger is not that computers will begin to think like men, but that men will begin to think like computers.', 'Sydney Harris, 1964'],
+  ['In a gentle way, you can shake the world.', 'Mahatma Gandhi'],
+  ['Never doubt that a small group of thoughtful, committed citizens can change the world.', 'Margaret Mead'],
+  ['The measure of a life is not its duration, but its donation.', 'Peter Marshall'],
+  ['What counts in life is not the mere fact that we have lived, but what difference we have made to the lives of others.', 'Nelson Mandela'],
+];
+{
+  const qEl = document.getElementById('sb-quote');
+  if (qEl) {
+    let qi = Math.floor(Math.random() * _quotes.length);
+    const show = () => { qEl.textContent = `"${_quotes[qi][0]}" — ${_quotes[qi][1]}`; };
+    show();
+    qEl.addEventListener('click', () => { qi = (qi + 1) % _quotes.length; show(); });
+    setInterval(() => { qi = (qi + 1) % _quotes.length; show(); }, 45000);
+  }
+}
 
 // ==========================================================================
 // EDITOR TOC
