@@ -589,7 +589,8 @@ function buildSourceMap(compiledCode) {
   let currentClear = null, blockStart = -1;
 
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/(?:\/\/|#) clear:(\d+)/);
+    // Match JS/Python comments (// clear:N, # clear:N) or HTML attributes (data-clear-line="N")
+    const m = lines[i].match(/(?:\/\/|#) clear:(\d+)/) || lines[i].match(/data-clear-line="(\d+)"/);
     if (m) {
       if (currentClear !== null && blockStart >= 0) {
         const range = { start: blockStart, end: i - 1 };

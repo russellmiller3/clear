@@ -44,6 +44,18 @@ When you discover a bug or missing feature in the compiler itself (not your code
 - `browse_templates` — List all templates or read a template's source code. Use for learning patterns or starting from an existing app.
 - `source_map` — Query which compiled output lines correspond to which Clear source lines. Use to debug compilation or trace bugs.
 
+## Source Mapping (debugging superpower)
+
+The compiler embeds source maps in ALL output:
+- **JS/Python:** `// clear:N` or `# clear:N` comments mark which Clear line generated each block
+- **HTML:** `data-clear-line="N"` attributes on every visible element (sections, buttons, inputs, headings, text, displays)
+
+This means:
+- Use `source_map` to trace any compiled line back to Clear source
+- When `screenshot_output` shows a broken element, check its `data-clear-line` attribute to find the exact Clear line to fix
+- When `read_terminal` shows a runtime error with a line number, use `source_map` to map it back to Clear
+- The user can click any element in the live preview and the editor jumps to the source line that generated it
+
 ## Workflow
 
 1. Write code with `edit_code`
