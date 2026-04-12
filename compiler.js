@@ -419,6 +419,47 @@ const UTILITY_FUNCTIONS = [
     }
   }
 }`, deps: [] },
+  { name: '_classifyIntent', code: `async function _classifyIntent(input, categories) {
+  const prompt = "Classify the following input into exactly one of these categories: " + categories.join(", ") + ".\\n\\nInput: " + String(input) + "\\n\\nRespond with ONLY the category name, nothing else.";
+  const response = await _askAI(prompt, null, null, "claude-haiku-4-20250514");
+  const cleaned = String(response).trim().toLowerCase();
+  for (const cat of categories) {
+    if (cleaned === cat.toLowerCase() || cleaned.includes(cat.toLowerCase())) return cat;
+  }
+  return categories[categories.length - 1];
+}`, deps: ['_askAI'] },
+  // RAG: fetch web page text (strip HTML tags)
+  { name: '_fetchPageText', code: `async function _fetchPageText(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return '';
+    const html = await res.text();
+    return html.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '').replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+  } catch (e) { console.warn('RAG fetch failed:', url, e.message); return ''; }
+}`, deps: [] },
+  // RAG: load local file text (txt, md, pdf, docx)
+  { name: '_loadFileText', code: `async function _loadFileText(filePath) {
+  const fs = require('fs');
+  const ext = filePath.split('.').pop().toLowerCase();
+  try {
+    if (ext === 'txt' || ext === 'md') return fs.readFileSync(filePath, 'utf8');
+    if (ext === 'pdf') { const pdf = require('pdf-parse'); const buf = fs.readFileSync(filePath); const data = await pdf(buf); return data.text; }
+    if (ext === 'docx') { const mammoth = require('mammoth'); const result = await mammoth.extractRawText({ path: filePath }); return result.value; }
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (e) { console.warn('RAG file load failed:', filePath, e.message); return ''; }
+}`, deps: [] },
+  // RAG: keyword search against cached text, returns scored chunks
+  { name: '_searchText', code: `function _searchText(text, queryWords, sourceName) {
+  if (!text) return [];
+  const chunks = text.match(/[^.!?\\n]+[.!?\\n]*/g) || [text];
+  const results = [];
+  for (const chunk of chunks) {
+    const lower = chunk.toLowerCase();
+    const score = queryWords.filter(w => lower.includes(w)).length;
+    if (score > 0) results.push({ source: sourceName, data: chunk.trim(), score });
+  }
+  return results.sort((a, b) => b.score - a.score).slice(0, 3);
+}`, deps: [] },
 ];
 
 // Tree-shake: scan compiled code and return only used utility function definitions
@@ -2067,6 +2108,20 @@ function compileAgent(node, ctx, pad) {
   const agentDeclared = new Set();
   let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 1, declared: agentDeclared, insideAgent: true });
 
+  // Emit startup code for URL/file knowledge sources (loaded once at module level)
+  let startupCode = '';
+  if (node.knowsAbout && node.knowsAbout.length > 0) {
+    const sources = node.knowsAbout.map(src => typeof src === 'string' ? { type: 'table', value: src } : src);
+    const urlSources = sources.filter(s => s.type === 'url');
+    const fileSources = sources.filter(s => s.type === 'file');
+    for (let i = 0; i < urlSources.length; i++) {
+      startupCode += `${pad}let _knowledge_url_${i} = '';\n${pad}_fetchPageText(${JSON.stringify(urlSources[i].value)}).then(t => { _knowledge_url_${i} = t; }).catch(e => console.warn('RAG: could not load ${urlSources[i].value}:', e.message));\n`;
+    }
+    for (let i = 0; i < fileSources.length; i++) {
+      startupCode += `${pad}let _knowledge_file_${i} = '';\n${pad}_loadFileText(${JSON.stringify(fileSources[i].value)}).then(t => { _knowledge_file_${i} = t; }).catch(e => console.warn('RAG: could not load ${fileSources[i].value}:', e.message));\n`;
+    }
+  }
+
   // Scheduled agent: runs on interval, no input parameter
   if (node.schedule) {
     const { value, unit } = node.schedule;
@@ -2341,14 +2396,29 @@ function compileAgent(node, ctx, pad) {
     postamble += `${innerPad}}\n`;
   }
 
-  // 6. RAG: knows about: Table1, Table2 — keyword search before _askAI
+  // 6. RAG: knows about: Table1, 'https://url', 'file.pdf' — keyword search before _askAI
   if (node.knowsAbout && node.knowsAbout.length > 0 && ctx.lang !== 'python') {
-    const tables = node.knowsAbout;
+    // Normalize: old format (plain strings) and new format ({ type, value } objects)
+    const sources = node.knowsAbout.map(src =>
+      typeof src === 'string' ? { type: 'table', value: src } : src
+    );
+    const tableSources = sources.filter(s => s.type === 'table');
+    const urlSources = sources.filter(s => s.type === 'url');
+    const fileSources = sources.filter(s => s.type === 'file');
     preamble += `${innerPad}const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);\n`;
     preamble += `${innerPad}const _ragContext = [];\n`;
-    for (const table of tables) {
-      preamble += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${table}', {}) : [];\n`;
-      preamble += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${table}', data: _rec, score: _score }); } }\n`;
+    // Table sources — query DB per request
+    for (const src of tableSources) {
+      preamble += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${src.value}', {}) : [];\n`;
+      preamble += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${src.value}', data: _rec, score: _score }); } }\n`;
+    }
+    // URL sources — search against cached page text
+    for (const src of urlSources) {
+      preamble += `${innerPad}_ragContext.push(..._searchText(_knowledge_url_${urlSources.indexOf(src)}, _query, '${src.value}'));\n`;
+    }
+    // File sources — search against cached file text
+    for (const src of fileSources) {
+      preamble += `${innerPad}_ragContext.push(..._searchText(_knowledge_file_${fileSources.indexOf(src)}, _query, '${src.value}'));\n`;
     }
     preamble += `${innerPad}_ragContext.sort((a, b) => b.score - a.score);\n`;
     preamble += `${innerPad}const _ragStr = _ragContext.slice(0, 5).length ? '\\n\\nRelevant context:\\n' + _ragContext.slice(0, 5).map(r => JSON.stringify(r.data)).join('\\n') : '';\n`;
@@ -2387,9 +2457,9 @@ function compileAgent(node, ctx, pad) {
     ? (param ? `${param}, _userId` : '_userId')
     : param;
   if (ctx.lang === 'python') {
-    return `${pad}async def ${fnName}(${finalParam}):\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}`;
+    return `${startupCode}${pad}async def ${fnName}(${finalParam}):\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}`;
   }
-  return `${pad}async function${genStar} ${fnName}(${finalParam}) {\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}\n${pad}}`;
+  return `${startupCode}${pad}async function${genStar} ${fnName}(${finalParam}) {\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}\n${pad}}`;
 }
 
 // Workflow compiler — Phases 85-90
@@ -5119,6 +5189,12 @@ export function exprToCode(expr, ctx) {
       }
       if (schema || model) return `await _askAI(${prompt}, ${context || 'null'}, ${schema || 'null'}, ${model || 'null'})`;
       return context ? `await _askAI(${prompt}, ${context})` : `await _askAI(${prompt})`;
+    }
+
+    case NodeType.CLASSIFY: {
+      const inputCode = exprToCode(expr.input, ctx);
+      const cats = expr.categories.map(c => JSON.stringify(c)).join(', ');
+      return `await _classifyIntent(${inputCode}, [${cats}])`;
     }
 
     case NodeType.RUN_AGENT: {

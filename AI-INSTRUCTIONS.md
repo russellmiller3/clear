@@ -11,6 +11,10 @@ The diagram is the source of truth for the app's structure. When changing
 an app's layout or logic, update the diagram FIRST, then change the code
 to match. If the code disagrees with the diagram, the diagram wins.
 
+**USE `/* */` FOR DIAGRAMS, NOT `#`.** Single-line `#` comments become TOC
+entries in the Studio IDE. Architecture diagrams pollute the TOC with
+box-drawing fragments. Always wrap diagrams in `/* ... */` block comments.
+
 **When AI updates a program:**
 1. Read the existing diagram to understand current structure
 2. Update the diagram to reflect the planned changes
@@ -18,57 +22,66 @@ to match. If the code disagrees with the diagram, the diagram wins.
 
 **Layout diagram** — for any app with sections, sidebar, header, content areas:
 ```
-# ┌─────────────┬──────────────────────────┐
-# │  Sidebar    │  Header        [Q4 2026] │
-# │             ├──────────────────────────┤
-# │  Dashboard  │  ┌─────────┐ ┌────────┐ │
-# │  Customers  │  │ Revenue │ │ Deals  │ │
-# │  Invoices   │  │ $42,300 │ │   23   │ │
-# │  Settings   │  └─────────┘ └────────┘ │
-# │             │  ┌──────────────────────┐│
-# │             │  │ Recent Activity      ││
-# │             │  └──────────────────────┘│
-# └─────────────┴──────────────────────────┘
+/*
+LAYOUT:
+┌─────────────┬──────────────────────────┐
+│  Sidebar    │  Header        [Q4 2026] │
+│             ├──────────────────────────┤
+│  Dashboard  │  ┌─────────┐ ┌────────┐ │
+│  Customers  │  │ Revenue │ │ Deals  │ │
+│  Invoices   │  │ $42,300 │ │   23   │ │
+│  Settings   │  └─────────┘ └────────┘ │
+│             │  ┌──────────────────────┐│
+│             │  │ Recent Activity      ││
+│             │  └──────────────────────┘│
+└─────────────┴──────────────────────────┘
+*/
 ```
 
 **Dataflow diagram** — for any app with frontend → backend → database:
 ```
-# DATAFLOW:
-# ┌──────────┐    POST /api/contacts    ┌──────────┐    save    ┌────────┐
-# │ Frontend │ ──────────────────────> │ Backend  │ ────────> │   DB   │
-# │  (form)  │ <────────────────────── │ (server) │ <──────── │(memory)│
-# └──────────┘    GET /api/contacts    └──────────┘   query   └────────┘
-#      │                                     │
-#      │  on page load --> GET --> table      │  DELETE /api/contacts/:id
-#      │  button click --> POST --> refresh   │  --> remove row --> refresh
+/*
+DATAFLOW:
+┌──────────┐    POST /api/contacts    ┌──────────┐    save    ┌────────┐
+│ Frontend │ ──────────────────────> │ Backend  │ ────────> │   DB   │
+│  (form)  │ <────────────────────── │ (server) │ <──────── │(memory)│
+└──────────┘    GET /api/contacts    └──────────┘   query   └────────┘
+     │                                     │
+     │  on page load --> GET --> table      │  DELETE /api/contacts/:id
+     │  button click --> POST --> refresh   │  --> remove row --> refresh
+*/
 ```
 
 **Landing page section diagram** — for marketing/content pages:
 ```
-# LAYOUT:
-# ┌──────────────────────────────────────┐
-# │           HERO (centered)            │
-# │  badge · headline · subhead · CTA    │
-# ├──────────────────────────────────────┤
-# │      FEATURES (3-col grid)          │
-# │  [Card 1]  [Card 2]  [Card 3]      │
-# ├──────────────────────────────────────┤
-# │           CTA (centered)            │
-# │       headline · text · button       │
-# └──────────────────────────────────────┘
+/*
+LAYOUT:
+┌──────────────────────────────────────┐
+│           HERO (centered)            │
+│  badge · headline · subhead · CTA    │
+├──────────────────────────────────────┤
+│      FEATURES (3-col grid)          │
+│  [Card 1]  [Card 2]  [Card 3]      │
+├──────────────────────────────────────┤
+│           CTA (centered)            │
+│       headline · text · button       │
+└──────────────────────────────────────┘
+*/
 ```
 
 **Dataflow diagram** — for backend-only apps with agents or API chains:
 ```
-# DATAFLOW:
-# ┌────────┐  POST /api/leads  ┌───────────────┐  ask ai  ┌──────┐
-# │ Client │ ────────────────> │ Lead Scorer   │ ───────> │  AI  │
-# └────────┘                   │   (agent)     │ <─────── │      │
-#                              └───────┬───────┘          └──────┘
-#                                      │ save
-#                              ┌───────v───────┐
-#                              │   Leads DB    │
-#                              └───────────────┘
+/*
+DATAFLOW:
+┌────────┐  POST /api/leads  ┌───────────────┐  ask ai  ┌──────┐
+│ Client │ ────────────────> │ Lead Scorer   │ ───────> │  AI  │
+└────────┘                   │   (agent)     │ <─────── │      │
+                             └───────┬───────┘          └──────┘
+                                     │ save
+                             ┌───────v───────┐
+                             │   Leads DB    │
+                             └───────────────┘
+*/
 ```
 
 **How to draw aligned boxes:**
@@ -219,6 +232,57 @@ new_user = save user_data as new User
 define total as: price + tax
 define all_users as: look up all records in Users table
 ```
+
+## No Self-Assignment — Intermediates Need Different Names
+
+**Never write `x is x`.** When a field name matches an argument name, the line
+becomes opaque: `subject is subject` — which is the field and which is the argument?
+
+**Bad — can't tell field from argument:**
+```
+define function create_ticket(subject, customer_email):
+  create new_ticket:
+    subject is subject
+    customer_email is customer_email
+  saved = save new_ticket as new Ticket
+  return saved
+```
+
+**Good — arguments have descriptive prefixes:**
+```
+define function create_ticket(title, email_address):
+  create new_ticket:
+    subject is title
+    customer_email is email_address
+  saved = save new_ticket as new Ticket
+  return saved
+```
+
+The rule: **function arguments should describe *what* the value is, not match the
+field they'll be stored in.** Use `title` not `subject`, `email_address` not
+`customer_email`, `amount` not `total`. The reader should instantly see which
+side is the source and which is the destination.
+
+## Name Intermediates After What They Are
+
+**No dummy variable names.** `saved`, `result`, `tmp`, `data`, `res` tell the reader
+nothing. Name intermediates after what they contain:
+
+**Bad — what is "saved"?**
+```
+saved = save data as new Ticket
+send back saved with success message
+```
+
+**Good — it's a new ticket:**
+```
+new_ticket = save data as new Ticket
+send back new_ticket with success message
+```
+
+You need the intermediate when the save adds fields (like `id` or `created_at`)
+that you want to send back. If you `send back data`, you get the input without
+the auto-generated id. If you `send back new_ticket`, you get the full record.
 
 Visual hint for the human reader: `=` lines are formulas to check,
 `is` lines are values to note. The compiler doesn't care.

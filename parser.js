@@ -180,6 +180,7 @@ export const NodeType = Object.freeze({
   HUMAN_CONFIRM: 'human_confirm',
   MOCK_AI: 'mock_ai',
   SKILL: 'skill',
+  CLASSIFY: 'classify',
 
   // Workflow primitives (Phases 85-90)
   WORKFLOW: 'workflow',
@@ -3007,12 +3008,19 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
         (dTokens[1].value === "user's" || (dTokens[1].value === 'user' && dTokens.length >= 3))) {
       directives.rememberPreferences = true; bodyStartIdx++; continue;
     }
-    // knows about: Table1, Table2
+    // knows about: Table1, Table2, 'https://docs.example.com', 'policy.pdf'
+    // Tables are unquoted identifiers. URLs and files are quoted strings.
     if (dTokens[0].value === 'knows' && dTokens.length >= 3 && dTokens[1].value === 'about') {
-      directives.knowsAbout = [];
+      directives.knowsAbout = directives.knowsAbout || [];
       for (let t = 2; t < dTokens.length; t++) {
         if (dTokens[t].type === TokenType.COMMA) continue;
-        if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) directives.knowsAbout.push(dTokens[t].value);
+        if (dTokens[t].type === TokenType.STRING) {
+          const val = dTokens[t].value;
+          const srcType = val.startsWith('http://') || val.startsWith('https://') ? 'url' : 'file';
+          directives.knowsAbout.push({ type: srcType, value: val });
+        } else if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) {
+          directives.knowsAbout.push({ type: 'table', value: dTokens[t].value });
+        }
       }
       bodyStartIdx++; continue;
     }
@@ -4881,6 +4889,29 @@ function parseDefineAs(tokens, line) {
     if (pos >= tokens.length) return { error: "train model needs a target field after 'predicting'." };
     const target = tokens[pos].value;
     return { node: assignNode(name, { type: NodeType.TRAIN_MODEL, data: dataVar, target, line }, line) };
+  }
+
+  // Check for "classify INPUT as 'cat1', 'cat2'" (define-as path)
+  // "classify" tokenizes as predict_with. Discriminator: as_format + strings after identifier.
+  if (tokens[pos].canonical === 'predict_with' &&
+      pos + 2 < tokens.length &&
+      (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD) &&
+      tokens[pos + 2].canonical === 'as_format') {
+    pos++; // skip 'classify' (predict_with)
+    const input = { type: NodeType.VARIABLE_REF, name: tokens[pos].value, line };
+    pos++; // skip input variable
+    pos++; // skip 'as' (as_format)
+    const categories = [];
+    while (pos < tokens.length) {
+      if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+      if (tokens[pos].type === TokenType.STRING) {
+        categories.push(tokens[pos].value);
+        pos++;
+      } else {
+        break;
+      }
+    }
+    return { node: assignNode(name, { type: NodeType.CLASSIFY, input, categories, line }, line) };
   }
 
   // Check for "predict with MODEL using FEATURES" (define-as path)
@@ -7048,6 +7079,32 @@ function parseAssignment(tokens, line) {
     }
     const target = tokens[pos].value;
     return { name, expression: { type: NodeType.TRAIN_MODEL, data: dataVar, target, line } };
+  }
+
+  // Check for "classify INPUT as 'cat1', 'cat2', ..." on the right side
+  // "classify" alone is a plain identifier (only "classify with" maps to predict_with).
+  // Pattern: classify + identifier + as + string literals separated by commas
+  // e.g. intent = classify message as 'order', 'return', 'general'
+  if (pos < tokens.length && tokens[pos].value === 'classify' &&
+      pos + 2 < tokens.length &&
+      (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD) &&
+      (tokens[pos + 2].canonical === 'as_format' || tokens[pos + 2].value === 'as')) {
+    pos++; // skip 'classify'
+    const input = { type: NodeType.VARIABLE_REF, name: tokens[pos].value, line };
+    pos++; // skip input variable
+    pos++; // skip 'as'
+    // Parse category strings separated by commas
+    const categories = [];
+    while (pos < tokens.length) {
+      if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+      if (tokens[pos].type === TokenType.STRING) {
+        categories.push(tokens[pos].value);
+        pos++;
+      } else {
+        break;
+      }
+    }
+    return { name, expression: { type: NodeType.CLASSIFY, input, categories, line } };
   }
 
   // Check for "predict with MODEL using FEATURE and FEATURE" on the right side

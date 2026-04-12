@@ -1,13 +1,14 @@
-# Helpdesk Agent -- AI support bot with tools, RAG, memory, and guardrails
-#
-# DATAFLOW:
-# POST /api/ask
-# +----------+  question   +------------------+  ask ai  +-------+
-# |  Client  | ---------> |  Helpdesk Agent  | -------> | Claude |
-# +----------+            |  [tools, RAG,    | <------- |        |
-#                         |   memory, guard] |          +-------+
-#                         +------------------+
+/*
+Helpdesk Agent -- AI support bot with tools, RAG, memory, and guardrails
 
+DATAFLOW:
+POST /api/ask
++----------+  question   +------------------+  ask ai  +-------+
+|  Client  | ---------> |  Helpdesk Agent  | -------> | Claude |
++----------+            |  [tools, RAG,    | <------- |        |
+                        |   memory, guard] |          +-------+
+                        +------------------+
+*/
 build for javascript backend
 database is local memory
 allow signup and login
@@ -28,8 +29,8 @@ create a Tickets table:
 # === CRUD ===
 
 when user calls POST /api/products sending data:
-  saved = save data as new Product
-  send back saved with success message
+  new_product = save data as new Product
+  send back new_product with success message
 
 when user calls GET /api/products:
   products = get all Products
@@ -46,8 +47,8 @@ when user calls DELETE /api/products:id:
   send back 'deleted' with success message
 
 when user calls POST /api/tickets sending data:
-  saved = save data as new Ticket
-  send back saved with success message
+  new_ticket = save data as new Ticket
+  send back new_ticket with success message
 
 when user calls GET /api/tickets:
   tickets = get all Tickets
@@ -75,12 +76,12 @@ define function lookup_product(query):
   results = search Products for query
   return results
 
-define function create_ticket(subject, customer_email):
+define function create_ticket(title, email_address):
   create new_ticket:
-    subject is subject
-    customer_email is customer_email
-  saved = save new_ticket as new Ticket
-  return saved
+    subject is title
+    customer_email is email_address
+  created_ticket = save new_ticket as new Ticket
+  return created_ticket
 
 # === AGENT ===
 

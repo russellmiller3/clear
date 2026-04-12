@@ -8,7 +8,7 @@ Run ToolSearch for these before doing anything else:
 `mcp__computer-use__screenshot`, `mcp__computer-use__zoom`, `mcp__Claude_in_Chrome__computer`, `mcp__Claude_in_Chrome__tabs_context_mcp`, `mcp__Claude_in_Chrome__navigate`, `mcp__Claude_in_Chrome__get_page_text`
 
 ## On Startup -- Read These First
-1. **`intent.md`** -- the authoritative spec. All 99+ node types, build targets, compiler passes, synonym collisions, validation rules. If it's not in intent.md, it doesn't exist.
+1. **`intent.md`** -- the authoritative spec. All 119+ node types, build targets, compiler passes, synonym collisions, validation rules. If it's not in intent.md, it doesn't exist. **Always check the parser too** -- intent.md has historically lagged behind the implementation.
 2. **`learnings.md`** -- scan the TOC before any work. Engineering gotchas: synonym traps, tokenizer quirks, CRUD parse shapes, parser ordering, runtime coercion. Every section is a bug someone already hit.
 3. **`PHILOSOPHY.md`** -- the 14 design rules. 14-year-old test, one op per line, no jargon, source-of-truth rule (Clear is source code, compiled output is build artifact), 1:1 mapping (every output line traces to one Clear line), explicit over terse, possessive access, colons signal blocks, deterministic compilation.
 4. **`AI-INSTRUCTIONS.md`** -- how to WRITE Clear code and use the CLI. `=` for numbers, `is` for strings. Single quotes canonical. Numbers get px in styles. Use built-in presets before custom styles. `sending` not `receiving`. File structure: Database > Backend > Frontend sections.
@@ -36,7 +36,7 @@ Run ToolSearch for these before doing anything else:
 - `tokenizer.js` -> `parser.js` -> `validator.js` -> `compiler.js` (the pipeline)
 - `synonyms.js` -- keyword synonym table (check before adding new keywords)
 - `cli/clear.js` -- CLI for AI agents: build, check, info, fix, lint, serve, test
-- `intent.md` -- authoritative spec for all node types (100+)
+- `intent.md` -- authoritative spec for all node types (119+). Check parser.js if in doubt.
 - `PHILOSOPHY.md` -- design rules (14-year-old test, one op per line, no jargon)
 - `learnings.md` -- scan TOC before starting any work
 - `patch.js` -- program diff/patch API (11 structured edit operations for RL)
@@ -84,6 +84,9 @@ Playwright-tested. If a template breaks, the compiler has a regression.
 | 6 | `booking` | Workflow | Multi-step logic, validation, relationships, scheduling |
 | 7 | `expense-tracker` | Personal app | CRUD, aggregates, charts, CSV export, categories |
 
+## No Self-Assignment Rule
+Never write `x is x` in Clear code. When building records from function arguments, the argument names must differ from the field names: `subject is title` not `subject is subject`. The reader must instantly see which side is the source and which is the destination. See AI-INSTRUCTIONS.md for full examples.
+
 ## No Backward Compatibility
 There are no users yet. Do not preserve backward compatibility. Always do things the right way.
 If the right design breaks existing tests, update the tests. If it changes syntax, change it.
@@ -118,6 +121,18 @@ Read the TOC before working in the file so you know where things are.
 - **Themes:** `midnight` (dark), `ivory` (light, default), `nova` (warm)
 - **Built-in presets:** `page_hero`, `page_section`, `page_section_dark`, `page_card`, `app_layout`, `app_sidebar`, `app_main`, `app_content`, `app_header`, `app_card`
 - **10 hard rules:** One accent color, one btn-primary per section, hero <= 10 words, 8pt grid, cards bg OR border not both, etc.
+
+## Documentation Rule (MANDATORY)
+**If a feature exists in the compiler but not in the docs, it doesn't exist.** Every new feature MUST be documented in ALL of these before shipping:
+1. `intent.md` — node type row in the spec table
+2. `SYNTAX.md` — complete syntax reference with example
+3. `AI-INSTRUCTIONS.md` — conventions, when to use, gotchas
+4. `USER-GUIDE.md` — tutorial coverage with worked example
+5. `ROADMAP.md` — mark the phase complete, update counts
+
+`intent.md` is the **authoritative spec** — always check it before building. If a feature isn't in intent.md, check the parser before assuming it doesn't exist. We have 119+ node types; the docs have historically lagged behind the implementation.
+
+Before building a new feature, grep the parser for similar existing features. We've nearly rebuilt things that already existed (e.g. SERVICE_CALL for Stripe/SendGrid/Twilio was implemented but undocumented, which almost led to building a parallel "batteries" system).
 
 ## Before Adding New Features or Syntax (MANDATORY)
 1. Use `/write-plan` to create an implementation plan
