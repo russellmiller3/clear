@@ -787,6 +787,33 @@ when user calls POST /api/users sending user_data:
     role is text, one of ['reader', 'editor', 'admin']
 ```
 
+### Auth Scaffolding
+
+One line gets you a full auth system with signup, login, and JWT tokens:
+
+```clear
+build for javascript backend
+allow signup and login
+
+when user calls GET /api/dashboard:
+  requires auth
+  send back 'Welcome!'
+```
+
+This generates:
+- `POST /auth/signup` — creates user with bcrypt-hashed password, returns JWT
+- `POST /auth/login` — verifies password, returns JWT  
+- `GET /auth/me` — returns current user info
+- JWT middleware on every request (extracts user from `Authorization: Bearer <token>`)
+
+On the frontend, use `needs login` to protect pages:
+
+```clear
+page 'Dashboard':
+  needs login
+  heading 'Welcome back'
+```
+
 ### Authentication
 
 ```clear
@@ -848,6 +875,42 @@ when user calls DELETE /api/users/:id:
   delete the User with this id
   send back 'deleted' with success message
 ```
+
+### DB Relationships
+
+Use `belongs to` to declare foreign key relationships between tables:
+
+```clear
+build for javascript backend
+
+create a Users table:
+  name
+  email, unique
+
+create a Posts table:
+  title
+  body
+  author belongs to Users
+
+when user calls GET /api/posts:
+  all_posts = get all Posts
+  send back all_posts
+```
+
+When you `get all Posts`, the compiler auto-loads the related User for each post's `author` field.
+
+### Aggregate Field Extraction
+
+Extract and aggregate a field from a list of records:
+
+```clear
+total_revenue = sum of amount in orders
+avg_price = average of price in products
+highest_score = max of score in results
+lowest_score = min of score in results
+```
+
+Without `in`, aggregates work on flat arrays as before: `total = sum of prices`.
 
 ### Environment Variables
 

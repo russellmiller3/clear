@@ -131,6 +131,10 @@ const CLEAR_VERSION = '1.0';
 const UTILITY_FUNCTIONS = [
   { name: '_clear_sum', code: 'function _clear_sum(arr) { return Array.isArray(arr) ? arr.reduce((a, b) => a + b, 0) : 0; }', deps: [] },
   { name: '_clear_avg', code: 'function _clear_avg(arr) { return Array.isArray(arr) && arr.length ? _clear_sum(arr) / arr.length : 0; }', deps: ['_clear_sum'] },
+  { name: '_clear_sum_field', code: 'function _clear_sum_field(arr, f) { if (!Array.isArray(arr)) return 0; return arr.reduce(function(a, item) { return a + Number(item[f] || 0); }, 0); }', deps: [] },
+  { name: '_clear_avg_field', code: 'function _clear_avg_field(arr, f) { if (!Array.isArray(arr) || !arr.length) return 0; return _clear_sum_field(arr, f) / arr.length; }', deps: ['_clear_sum_field'] },
+  { name: '_clear_max_field', code: 'function _clear_max_field(arr, f) { if (!Array.isArray(arr) || !arr.length) return 0; return Math.max.apply(null, arr.map(function(item) { return Number(item[f] || 0); })); }', deps: [] },
+  { name: '_clear_min_field', code: 'function _clear_min_field(arr, f) { if (!Array.isArray(arr) || !arr.length) return 0; return Math.min.apply(null, arr.map(function(item) { return Number(item[f] || 0); })); }', deps: [] },
   { name: '_clear_len', code: 'function _clear_len(val) { if (val == null) return 0; if (typeof val === "string" || Array.isArray(val)) return val.length; if (typeof val === "object") return Object.keys(val).length; return 0; }', deps: [] },
   { name: '_clear_uppercase', code: 'function _clear_uppercase(s) { return String(s).toUpperCase(); }', deps: [] },
   { name: '_clear_lowercase', code: 'function _clear_lowercase(s) { return String(s).toLowerCase(); }', deps: [] },
@@ -181,24 +185,26 @@ const UTILITY_FUNCTIONS = [
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v])); }', deps: [] },
   { name: '_revive', code: 'function _revive(record) { if (!record) return record; const out = {}; for (const [k, v] of Object.entries(record)) { if (typeof v === "string" && (v[0] === "{" || v[0] === "[")) { try { out[k] = JSON.parse(v); } catch(_) { out[k] = v; } } else { out[k] = v; } } return out; }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
+  if (body == null || typeof body !== 'object') return [{ field: '_body', message: 'Request body is required' }];
+  const _errs = [];
   for (const r of rules) {
     let v = body[r.field];
-    if (r.required && (v == null || v === '')) return r.field + ' is required';
+    if (r.required && (v == null || v === '')) { _errs.push({ field: r.field, message: r.field + ' is required' }); continue; }
     if (v == null) continue;
     if (r.type === 'number' && typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) { body[r.field] = Number(v); v = body[r.field]; }
-    if (r.type === 'number' && typeof v !== 'number') return r.field + ' must be a number';
-    if (r.type === 'boolean' && typeof v !== 'boolean') return r.field + ' must be true or false';
-    if (r.min != null && r.type === 'text' && String(v).length < r.min) return r.field + ' must be at least ' + r.min + (r.min === 1 ? ' character' : ' characters');
-    if (r.max != null && r.type === 'text' && String(v).length > r.max) return r.field + ' must be at most ' + r.max + (r.max === 1 ? ' character' : ' characters');
-    if (r.min != null && r.type !== 'text' && v < r.min) return r.field + ' must be at least ' + r.min;
-    if (r.max != null && r.type !== 'text' && v > r.max) return r.field + ' must be at most ' + r.max;
-    if (r.matches === 'email' && !/^[^@]+@[^@]+\\.[^@]+$/.test(v)) return r.field + ' must be a valid email';
-    if (r.matches === 'time' && !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(v)) return r.field + ' must be a valid time (HH:MM)';
-    if (r.matches === 'phone' && !/^[\\+]?[\\d\\s\\-\\.\\(\\)]{7,15}$/.test(v)) return r.field + ' must be a valid phone number';
-    if (r.matches === 'url' && !/^https?:\\/\\/.+/.test(v)) return r.field + ' must be a valid URL';
-    if (r.oneOf && !r.oneOf.includes(v)) return r.field + ' must be one of: ' + r.oneOf.join(', ');
+    if (r.type === 'number' && typeof v !== 'number') { _errs.push({ field: r.field, message: r.field + ' must be a number' }); continue; }
+    if (r.type === 'boolean' && typeof v !== 'boolean') { _errs.push({ field: r.field, message: r.field + ' must be true or false' }); continue; }
+    if (r.min != null && r.type === 'text' && String(v).length < r.min) _errs.push({ field: r.field, message: r.field + ' must be at least ' + r.min + (r.min === 1 ? ' character' : ' characters') });
+    if (r.max != null && r.type === 'text' && String(v).length > r.max) _errs.push({ field: r.field, message: r.field + ' must be at most ' + r.max + (r.max === 1 ? ' character' : ' characters') });
+    if (r.min != null && r.type !== 'text' && v < r.min) _errs.push({ field: r.field, message: r.field + ' must be at least ' + r.min });
+    if (r.max != null && r.type !== 'text' && v > r.max) _errs.push({ field: r.field, message: r.field + ' must be at most ' + r.max });
+    if (r.matches === 'email' && !/^[^@]+@[^@]+\\.[^@]+$/.test(v)) _errs.push({ field: r.field, message: r.field + ' must be a valid email' });
+    if (r.matches === 'time' && !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(v)) _errs.push({ field: r.field, message: r.field + ' must be a valid time (HH:MM)' });
+    if (r.matches === 'phone' && !/^[\\+]?[\\d\\s\\-\\.\\(\\)]{7,15}$/.test(v)) _errs.push({ field: r.field, message: r.field + ' must be a valid phone number' });
+    if (r.matches === 'url' && !/^https?:\\/\\/.+/.test(v)) _errs.push({ field: r.field, message: r.field + ' must be a valid URL' });
+    if (r.oneOf && !r.oneOf.includes(v)) _errs.push({ field: r.field, message: r.field + ' must be one of: ' + r.oneOf.join(', ') });
   }
-  return null;
+  return _errs.length ? _errs : null;
 }`, deps: [] },
   { name: '_clearError', code: `function _clearError(err, ctx) {
   const debug = typeof process !== 'undefined' && process.env.CLEAR_DEBUG;
@@ -1693,7 +1699,7 @@ export function compileNode(node, ctx) {
 const BACKEND_ONLY_NODES = new Set([
   NodeType.ENDPOINT, NodeType.RESPOND, NodeType.DATA_SHAPE, NodeType.CRUD,
   NodeType.REQUIRES_ROLE, NodeType.DEFINE_ROLE, NodeType.GUARD,
-  NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.VALIDATE, NodeType.FIELD_RULE,
+  NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.AUTH_SCAFFOLD, NodeType.VALIDATE, NodeType.FIELD_RULE,
   NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK, NodeType.OAUTH_CONFIG,
   NodeType.CHECKOUT, NodeType.USAGE_LIMIT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
   NodeType.STREAM, NodeType.STREAM_AI, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
@@ -1938,6 +1944,19 @@ function compileCrud(node, ctx, pad) {
       const pageExpr = typeof node.page === 'number' ? node.page : sanitizeName(String(node.page));
       lookupCode = `${pad}const _all_${varName} = await db.findAll('${table}'${where});\n`;
       lookupCode += `${pad}const ${varName} = _all_${varName}.slice((${pageExpr} - 1) * ${perPage}, ${pageExpr} * ${perPage});`;
+    }
+    // FK join stitching: for each FK field, load the related record
+    if (!isSingleLookup && ctx.schemaMap) {
+      const targetName = node.target || '';
+      const schema = ctx.schemaMap[targetName.toLowerCase()];
+      if (schema && schema.fkFields.length > 0) {
+        const varName = sanitizeName(node.variable);
+        for (const fkField of schema.fkFields) {
+          const fkTable = pluralizeName(fkField.fk).toLowerCase();
+          const fkName = sanitizeName(fkField.name);
+          lookupCode += `\n${pad}for (const _item of ${varName}) { if (_item.${fkName}) _item.${fkName} = await db.findOne('${fkTable}', { id: _item.${fkName} }); }`;
+        }
+      }
     }
     return lookupCode;
   }
@@ -2871,47 +2890,98 @@ function compilePolicyPython(node, ctx, pad) {
   return code;
 }
 
+function compileAuthScaffoldPython(pad) {
+  const lines = [];
+  lines.push(`${pad}from passlib.hash import bcrypt as _bcrypt`);
+  lines.push(`${pad}import jwt as _pyjwt`);
+  lines.push(`${pad}import os, secrets`);
+  lines.push(`${pad}_JWT_SECRET = os.environ.get("JWT_SECRET", secrets.token_hex(32))`);
+  lines.push(`${pad}_users = []`);
+  lines.push('');
+  lines.push(`${pad}@app.post("/auth/signup")`);
+  lines.push(`${pad}async def _auth_signup(request: Request):`);
+  lines.push(`${pad}    incoming = await request.json()`);
+  lines.push(`${pad}    email = incoming.get("email")`);
+  lines.push(`${pad}    password = incoming.get("password")`);
+  lines.push(`${pad}    if not email or not password:`);
+  lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email and password are required")`);
+  lines.push(`${pad}    if any(u["email"] == email for u in _users):`);
+  lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email already registered")`);
+  lines.push(`${pad}    password_hash = _bcrypt.hash(password)`);
+  lines.push(`${pad}    user = {"id": len(_users) + 1, "email": email, "password_hash": password_hash, "role": "user"}`);
+  lines.push(`${pad}    _users.append(user)`);
+  lines.push(`${pad}    token = _pyjwt.encode({"id": user["id"], "email": email, "role": "user"}, _JWT_SECRET, algorithm="HS256")`);
+  lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": "user"}}`);
+  lines.push('');
+  lines.push(`${pad}@app.post("/auth/login")`);
+  lines.push(`${pad}async def _auth_login(request: Request):`);
+  lines.push(`${pad}    incoming = await request.json()`);
+  lines.push(`${pad}    email = incoming.get("email")`);
+  lines.push(`${pad}    password = incoming.get("password")`);
+  lines.push(`${pad}    if not email or not password:`);
+  lines.push(`${pad}        raise HTTPException(status_code=400, detail="Email and password are required")`);
+  lines.push(`${pad}    user = next((u for u in _users if u["email"] == email), None)`);
+  lines.push(`${pad}    if not user or not _bcrypt.verify(password, user["password_hash"]):`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid email or password")`);
+  lines.push(`${pad}    token = _pyjwt.encode({"id": user["id"], "email": email, "role": user["role"]}, _JWT_SECRET, algorithm="HS256")`);
+  lines.push(`${pad}    return {"token": token, "user": {"id": user["id"], "email": email, "role": user["role"]}}`);
+  lines.push('');
+  lines.push(`${pad}@app.get("/auth/me")`);
+  lines.push(`${pad}async def _auth_me(request: Request):`);
+  lines.push(`${pad}    auth_header = request.headers.get("authorization", "")`);
+  lines.push(`${pad}    if not auth_header.startswith("Bearer "):`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Not authenticated")`);
+  lines.push(`${pad}    try:`);
+  lines.push(`${pad}        payload = _pyjwt.decode(auth_header[7:], _JWT_SECRET, algorithms=["HS256"])`);
+  lines.push(`${pad}        user = next((u for u in _users if u["id"] == payload["id"]), None)`);
+  lines.push(`${pad}        if not user: raise HTTPException(status_code=404, detail="User not found")`);
+  lines.push(`${pad}        return {"id": user["id"], "email": user["email"], "role": user["role"]}`);
+  lines.push(`${pad}    except _pyjwt.PyJWTError:`);
+  lines.push(`${pad}        raise HTTPException(status_code=401, detail="Invalid or expired token")`);
+  return lines.join('\n');
+}
+
 function compileValidate(node, ctx, pad) {
   if (ctx.lang === 'python') {
-    const checks = node.rules.map(rule => {
-      const vlines = [];
+    const lines = [`${pad}_errors = []`];
+    for (const rule of node.rules) {
       const f = rule.name;
       const acc = `incoming.get("${f}")`;
       if (rule.constraints.required)
-        vlines.push(`${pad}if ${acc} is None and ${acc} != 0 and ${acc} is not False:\n${pad}    raise HTTPException(status_code=400, detail="${f} is required")`);
+        lines.push(`${pad}if ${acc} is None and ${acc} != 0 and ${acc} is not False:\n${pad}    _errors.append({"field": "${f}", "message": "${f} is required"})`);
       if (rule.fieldType === 'number')
-        vlines.push(`${pad}if ${acc} is not None and not isinstance(${acc}, (int, float)):\n${pad}    raise HTTPException(status_code=400, detail=f"${f} must be a number, got {type(${acc}).__name__}")`);
+        lines.push(`${pad}if ${acc} is not None and not isinstance(${acc}, (int, float)):\n${pad}    _errors.append({"field": "${f}", "message": f"${f} must be a number, got {type(${acc}).__name__}"})`);
       if (rule.fieldType === 'boolean')
-        vlines.push(`${pad}if ${acc} is not None and not isinstance(${acc}, bool):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be true or false")`);
+        lines.push(`${pad}if ${acc} is not None and not isinstance(${acc}, bool):\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be true or false"})`);
       if (rule.constraints.min !== undefined) {
         const charWord = rule.constraints.min === 1 ? 'character' : 'characters';
         if (rule.fieldType === 'text')
-          vlines.push(`${pad}if ${acc} and len(str(${acc})) < ${rule.constraints.min}:\n${pad}    raise HTTPException(status_code=400, detail="${f} must be at least ${rule.constraints.min} ${charWord}")`);
+          lines.push(`${pad}if ${acc} and len(str(${acc})) < ${rule.constraints.min}:\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be at least ${rule.constraints.min} ${charWord}"})`);
         else
-          vlines.push(`${pad}if ${acc} is not None and ${acc} < ${rule.constraints.min}:\n${pad}    raise HTTPException(status_code=400, detail="${f} must be at least ${rule.constraints.min}")`);
+          lines.push(`${pad}if ${acc} is not None and ${acc} < ${rule.constraints.min}:\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be at least ${rule.constraints.min}"})`);
       }
       if (rule.constraints.max !== undefined) {
         const charWord = rule.constraints.max === 1 ? 'character' : 'characters';
         if (rule.fieldType === 'text')
-          vlines.push(`${pad}if ${acc} and len(str(${acc})) > ${rule.constraints.max}:\n${pad}    raise HTTPException(status_code=400, detail="${f} must be at most ${rule.constraints.max} ${charWord}")`);
+          lines.push(`${pad}if ${acc} and len(str(${acc})) > ${rule.constraints.max}:\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be at most ${rule.constraints.max} ${charWord}"})`);
         else
-          vlines.push(`${pad}if ${acc} is not None and ${acc} > ${rule.constraints.max}:\n${pad}    raise HTTPException(status_code=400, detail="${f} must be at most ${rule.constraints.max}")`);
+          lines.push(`${pad}if ${acc} is not None and ${acc} > ${rule.constraints.max}:\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be at most ${rule.constraints.max}"})`);
       }
       if (rule.constraints.matches === 'email')
-        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"[^@]+@[^@]+\\.[^@]+", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid email")`);
+        lines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"[^@]+@[^@]+\\.[^@]+", str(${acc})):\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be a valid email"})`);
       if (rule.constraints.matches === 'time')
-        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^([01]\\d|2[0-3]):[0-5]\\d$", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid time (HH:MM)")`);
+        lines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^([01]\\d|2[0-3]):[0-5]\\d$", str(${acc})):\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be a valid time (HH:MM)"})`);
       if (rule.constraints.matches === 'phone')
-        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^[\\+]?[\\d\\s\\-\\.\\(\\)]{7,15}$", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid phone number")`);
+        lines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^[\\+]?[\\d\\s\\-\\.\\(\\)]{7,15}$", str(${acc})):\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be a valid phone number"})`);
       if (rule.constraints.matches === 'url')
-        vlines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^https?://.+", str(${acc})):\n${pad}    raise HTTPException(status_code=400, detail="${f} must be a valid URL")`);
+        lines.push(`${pad}import re\n${pad}if ${acc} and not re.match(r"^https?://.+", str(${acc})):\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be a valid URL"})`);
       if (rule.constraints.oneOf) {
         const opts = rule.constraints.oneOf.map(o => `"${o}"`).join(', ');
-        vlines.push(`${pad}if ${acc} not in [${opts}]:\n${pad}    raise HTTPException(status_code=400, detail="${f} must be one of: ${rule.constraints.oneOf.join(', ')}")`);
+        lines.push(`${pad}if ${acc} not in [${opts}]:\n${pad}    _errors.append({"field": "${f}", "message": "${f} must be one of: ${rule.constraints.oneOf.join(', ')}"})`);
       }
-      return vlines.join('\n');
-    }).filter(Boolean);
-    return checks.join('\n');
+    }
+    lines.push(`${pad}if _errors:\n${pad}    raise HTTPException(status_code=400, detail=_errors)`);
+    return lines.join('\n');
   }
   // JS: generate a _validate helper call with rules array
   const rules = node.rules.map(rule => {
@@ -2924,7 +2994,7 @@ function compileValidate(node, ctx, pad) {
     if (rule.constraints.oneOf) r.oneOf = rule.constraints.oneOf;
     return JSON.stringify(r);
   });
-  return `${pad}const _vErr = _validate(req.body, [${rules.join(', ')}]);\n${pad}if (_vErr) return res.status(400).json({ error: _vErr });`;
+  return `${pad}const _vErrs = _validate(req.body, [${rules.join(', ')}]);\n${pad}if (_vErrs) return res.status(400).json({ errors: _vErrs });`;
 }
 
 function compileDataShape(node, ctx, pad) {
@@ -4708,6 +4778,14 @@ ${pad}}`;
       return null; // emitted in scaffold before auth middleware
     }
 
+    case NodeType.AUTH_SCAFFOLD: {
+      // JS: handled in scaffold (compileToJSBackend) — emits full auth system
+      if (ctx.lang === 'python') {
+        return compileAuthScaffoldPython(pad);
+      }
+      return null; // emitted in scaffold
+    }
+
     // Nodes handled by dedicated loops in the reactive compiler -- skip here
     case NodeType.ON_PAGE_LOAD:
     case NodeType.ON_CHANGE:
@@ -5263,12 +5341,23 @@ function compileToJS(body, errors, sourceMap = false) {
   const declared = new Set();
 
   const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'web', sourceMap };
+  const bodyLines = [];
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
-      lines.push(result);
+      bodyLines.push(result);
     }
   }
+
+  // Tree-shake: only emit utility functions that are actually used
+  const bodyText = bodyLines.join('\n');
+  const usedUtils = _getUsedUtilities(bodyText);
+  if (usedUtils.length > 0) {
+    for (const util of usedUtils) lines.push(util);
+    lines.push('');
+  }
+
+  lines.push(...bodyLines);
 
   return lines.join('\n');
 }
@@ -7570,7 +7659,8 @@ function generateDiagram(body, commentPrefix = '//') {
  */
 function compileToJSBackend(body, errors, sourceMap = false) {
   // Detect feature usage for auto-imports
-  const usesAuth = body.some(n =>
+  const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
+  const usesAuth = hasAuthScaffold || body.some(n =>
     n.type === NodeType.ENDPOINT && n.body &&
     n.body.some(b => b.type === NodeType.REQUIRES_AUTH || b.type === NodeType.REQUIRES_ROLE)
   );
@@ -7592,7 +7682,10 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   } else {
     lines.push("const db = require('./clear-runtime/db');");
   }
-  if (usesAuth) {
+  if (hasAuthScaffold) {
+    lines.push("const bcrypt = require('bcryptjs');");
+    lines.push("const jwt = require('jsonwebtoken');");
+  } else if (usesAuth) {
     lines.push("const auth = require('./clear-runtime/auth');");
   }
   if (usesRateLimit) {
@@ -7658,7 +7751,58 @@ function compileToJSBackend(body, errors, sourceMap = false) {
     lines.push('  next();');
     lines.push('});');
   }
-  if (usesAuth) {
+  if (hasAuthScaffold) {
+    lines.push('// Auth scaffolding: JWT secret, middleware, signup/login/me endpoints');
+    lines.push("const _JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');");
+    lines.push('const _users = [];');
+    lines.push('');
+    lines.push('// JWT middleware — extracts user from token on every request');
+    lines.push('app.use((req, res, next) => {');
+    lines.push("  const authHeader = req.headers.authorization || '';");
+    lines.push("  if (authHeader.startsWith('Bearer ')) {");
+    lines.push('    try {');
+    lines.push('      req.user = jwt.verify(authHeader.slice(7), _JWT_SECRET);');
+    lines.push('    } catch(e) { req.user = null; }');
+    lines.push('  }');
+    lines.push('  next();');
+    lines.push('});');
+    lines.push('');
+    lines.push('// POST /auth/signup — create new user');
+    lines.push("app.post('/auth/signup', async (req, res) => {");
+    lines.push('  try {');
+    lines.push('    const { email, password } = req.body;');
+    lines.push("    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });");
+    lines.push("    if (_users.find(u => u.email === email)) return res.status(400).json({ error: 'Email already registered' });");
+    lines.push('    const password_hash = await bcrypt.hash(password, 10);');
+    lines.push("    const user = { id: _users.length + 1, email, password_hash, role: 'user', created_at: new Date().toISOString() };");
+    lines.push('    _users.push(user);');
+    lines.push('    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, _JWT_SECRET, { expiresIn: "7d" });');
+    lines.push('    res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role } });');
+    lines.push('  } catch(e) { res.status(500).json({ error: e.message }); }');
+    lines.push('});');
+    lines.push('');
+    lines.push('// POST /auth/login — authenticate user');
+    lines.push("app.post('/auth/login', async (req, res) => {");
+    lines.push('  try {');
+    lines.push('    const { email, password } = req.body;');
+    lines.push("    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });");
+    lines.push("    const user = _users.find(u => u.email === email);");
+    lines.push("    if (!user) return res.status(401).json({ error: 'Invalid email or password' });");
+    lines.push('    const valid = await bcrypt.compare(password, user.password_hash);');
+    lines.push("    if (!valid) return res.status(401).json({ error: 'Invalid email or password' });");
+    lines.push('    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, _JWT_SECRET, { expiresIn: "7d" });');
+    lines.push('    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });');
+    lines.push('  } catch(e) { res.status(500).json({ error: e.message }); }');
+    lines.push('});');
+    lines.push('');
+    lines.push('// GET /auth/me — return current user');
+    lines.push("app.get('/auth/me', (req, res) => {");
+    lines.push("  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });");
+    lines.push("  const user = _users.find(u => u.id === req.user.id);");
+    lines.push("  if (!user) return res.status(404).json({ error: 'User not found' });");
+    lines.push('  res.json({ id: user.id, email: user.email, role: user.role, created_at: user.created_at });');
+    lines.push('});');
+  } else if (usesAuth) {
     lines.push('app.use(auth.middleware());');
   }
   lines.push('');
@@ -7666,13 +7810,20 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   // Compile body first, then tree-shake utilities
   // Collect schema names so CRUD can reference the correct Schema variable
   const schemaNames = new Set();
+  const schemaMap = {};
   for (const node of body) {
-    if (node.type === NodeType.DATA_SHAPE) schemaNames.add(node.name);
+    if (node.type === NodeType.DATA_SHAPE) {
+      schemaNames.add(node.name);
+      schemaMap[node.name.toLowerCase()] = {
+        fields: node.fields,
+        fkFields: node.fields.filter(f => f.fk)
+      };
+    }
   }
 
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, dbBackend, _astBody: body, _allNodes: body };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, _astBody: body, _allNodes: body };
   for (const node of body) {
     const result = compileNode(node, ctx);
     if (result !== null) {
@@ -8829,6 +8980,22 @@ function _clear_avg(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return 0;
   return _clear_sum(arr) / arr.length;
 }
+function _clear_sum_field(arr, f) {
+  if (!Array.isArray(arr)) return 0;
+  return arr.reduce(function(a, item) { return a + Number(item[f] || 0); }, 0);
+}
+function _clear_avg_field(arr, f) {
+  if (!Array.isArray(arr) || !arr.length) return 0;
+  return _clear_sum_field(arr, f) / arr.length;
+}
+function _clear_max_field(arr, f) {
+  if (!Array.isArray(arr) || !arr.length) return 0;
+  return Math.max.apply(null, arr.map(function(item) { return Number(item[f] || 0); }));
+}
+function _clear_min_field(arr, f) {
+  if (!Array.isArray(arr) || !arr.length) return 0;
+  return Math.min.apply(null, arr.map(function(item) { return Number(item[f] || 0); }));
+}
 function _clear_len(val) {
   if (val === null || val === undefined) return 0;
   if (typeof val === 'string' || Array.isArray(val)) return val.length;
@@ -8923,6 +9090,11 @@ function mapFunctionNameJS(name) {
     length: '_clear_len',
     size: '_clear_len',
     count: '_clear_len',
+    // Field aggregates
+    _sum_field: '_clear_sum_field',
+    _avg_field: '_clear_avg_field',
+    _max_field: '_clear_max_field',
+    _min_field: '_clear_min_field',
     // Strings
     uppercase: '_clear_uppercase',
     lowercase: '_clear_lowercase',
@@ -8969,6 +9141,11 @@ function mapFunctionNamePython(name) {
     length: 'len',
     size: 'len',
     count: 'len',
+    // Field aggregates
+    _sum_field: '_clear_sum_field',
+    _avg_field: '_clear_avg_field',
+    _max_field: '_clear_max_field',
+    _min_field: '_clear_min_field',
     // Strings
     uppercase: '_clear_uppercase',
     lowercase: '_clear_lowercase',

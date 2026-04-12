@@ -721,6 +721,27 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **PUT and DELETE endpoints without `:id` in the path silently failed** — the compiled code referenced `req.params.id` but the Express route had no `:id` parameter, so `req.params.id` was `undefined`.
 - **Fix:** Compiler auto-appends `/:id` to PUT/DELETE endpoint paths if not already present. This matches REST convention and prevents silent data loss.
 
+## Session 24: Roadmap Items 1-4 (2026-04-12)
+
+### Non-Reactive JS Didn't Tree-Shake Utilities
+- **`compileToJS` (non-reactive web path) compiled code that referenced utility functions like `_clear_sum_field` but never emitted their definitions.** The backend path (`compileToJSBackend`) and reactive path both had tree-shaking, but the plain JS path just joined compiled lines directly.
+- **Fix:** Added `_getUsedUtilities(bodyText)` call to `compileToJS` before joining lines.
+- **Rule:** Any new compilation path that emits function calls to UTILITY_FUNCTIONS must also include the tree-shaking step.
+
+### `in` Is Not a Binary Operator — Expression Parser Stops At It
+- **`sum of amount in orders` — the expression parser stops at `in` because it's not in the PRECEDENCE table.** This means `parsePrimary` called from the collection ops handler returns just `amount`, leaving `in orders` unconsumed.
+- **Fix:** Handle `in` explicitly inside the collection ops handler, not in general expression parsing. After `parsePrimary` returns the operand, check if the next token is `in` and consume the list token.
+- **Pattern:** When a keyword serves as both a preposition (field `in` list) and a general word, handle it in the specific handler that understands the context, not in the general expression parser.
+
+### Multi-Word Synonyms for New Syntax: `allow signup and login`
+- **New syntax that uses multiple ordinary words needs a multi-word synonym entry** so the tokenizer merges them into a single canonical token before the parser sees them.
+- **Pattern:** Follow the `allow_cors` pattern — add to `SYNONYM_TABLE` with all phrase variants, add to `CANONICAL_DISPATCH` with a simple node push, bump `SYNONYM_VERSION`.
+- **Gotcha:** Remember to update the version string test (`has a version string`) in clear.test.js when bumping `SYNONYM_VERSION`.
+
+### Validator BUILTINS Must Include Internal Function Names
+- **Parser-generated internal function names like `_sum_field` must be in the validator's `BUILTINS` set** or the validator will flag them as "undefined function" errors.
+- **The validator runs BEFORE the compiler**, so it doesn't know about `mapFunctionNameJS` which maps `_sum_field` → `_clear_sum_field`. It only knows about names in the `BUILTINS` set.
+
 ### Multer `require` Must Be Module-Scope
 - **`const multer = require('multer')` was emitted inside endpoint handler functions.** Each request re-required multer, and the upload middleware wasn't available at route registration time.
 - **Fix:** Detect file upload nodes in the AST during the pre-scan phase and emit the multer require at module scope, before any route definitions.

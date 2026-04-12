@@ -283,6 +283,7 @@ const SYNONYM_TABLE = Object.freeze({
   // Production hardening (Phase 21)
   log_requests: Object.freeze(['log every request', 'log all requests']),
   allow_cors: Object.freeze(['allow server to accept requests from frontend', 'accept requests from any website', 'allow cross-origin requests', 'enable cors']),
+  auth_scaffold: Object.freeze(['allow signup and login', 'allow login and signup']),
 
   // Collection operations (Phase 21)
   sum_of: Object.freeze(['sum of', 'total of']),
@@ -437,6 +438,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.15.0';
+const SYNONYM_VERSION = '0.16.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

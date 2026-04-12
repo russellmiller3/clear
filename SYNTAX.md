@@ -118,7 +118,15 @@ remaining = rest of items
 
 all_names = each user's name in users
 merged = combine defaults with overrides
+
+# Field extraction from a list of records
+total_revenue = sum of amount in orders
+avg_price = average of price in products
+highest_score = max of score in results
+lowest_score = min of score in results
 ```
+
+`sum of amount in orders` extracts the `amount` field from each record in `orders` and sums them. Works with `sum of`, `average of`, `max of`, `min of`. Without `in`, operates on a flat array as before.
 
 ## Functions
 
@@ -1021,6 +1029,25 @@ create a Votes table:
 
 `one per field1 and field2` prevents duplicate combinations. Compiles to `UNIQUE(field1, field2)`.
 
+## DB Relationships
+
+```clear
+create a Users table:
+  name
+  email, unique
+
+create a Posts table:
+  title
+  body
+  author belongs to Users
+
+create a Comments table:
+  text
+  post belongs to Posts
+```
+
+`belongs to` declares a foreign key relationship. The field stores the related record's ID and compiles to an INTEGER column with `REFERENCES`. When you `get all Posts`, the compiler auto-stitches related records by looking up each FK.
+
 ## Backend
 
 ```clear
@@ -1053,6 +1080,8 @@ when user calls POST /api/users sending user_data:
     name is text, required, min 1, max 100
     email is text, required, matches email
     age is number
+  # Validation collects ALL errors, returns 400 with:
+  # { errors: [{ field: "name", message: "name is required" }, ...] }
   new_user = save user_data as new User
   send back new_user with success message
 
@@ -1068,6 +1097,19 @@ when user calls DELETE /api/users/:id:
   send back 'deleted' with success message
 ```
 
+## Auth Scaffolding
+
+```clear
+# One line scaffolds full auth system:
+# - POST /auth/signup (bcrypt hash, JWT token)
+# - POST /auth/login (bcrypt compare, JWT token)
+# - GET /auth/me (returns current user)
+# - JWT middleware on every request
+allow signup and login
+```
+
+Requires `bcryptjs` and `jsonwebtoken` npm packages. Auto-generates an in-memory `_users` table. JWT secret from `JWT_SECRET` env var or auto-generated.
+
 ## Auth & Guards
 
 ```clear
@@ -1078,6 +1120,11 @@ guard product's stock is greater than 0 or 'Out of stock'
 # Access current user
 define user_id as: current user's id
 define email as: current user's email
+
+# Frontend guard — redirects to /login if no token
+page 'Dashboard':
+  needs login
+  heading 'Welcome back'
 ```
 
 ## Production Features
