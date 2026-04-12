@@ -425,7 +425,7 @@ every CRUD flow completes.
 | 2 | `crm-pro` | Data dashboard | Charts, filters, search, aggregates, `has many` |
 | 3 | `blog-fullstack` | Content app | `belongs to`, rich display, public + admin pages |
 | 4 | `live-chat` | Real-time | WebSocket, `subscribe to`, `broadcast to all`, auth |
-| 5 | `helpdesk-agent` | AI agent | `ask claude`, `can use:`, `knows about:`, `remember`, guardrails |
+| 5 | `helpdesk-agent` | AI agent | `ask claude`, `can use:`, `knows about:`, `remember`, guardrails, keyword search |
 | 6 | `booking` | Workflow | Multi-step logic, validation, email, scheduling |
 | 7 | `expense-tracker` | Personal app | CRUD, aggregates, charts, CSV export, categories |
 

@@ -1,126 +1,102 @@
-# ┌──────────┬──────────────────────────────┐
-# │ Sidebar  │  Header          [New Booking]│
-# │          ├──────────────────────────────┤
-# │ Calendar │  ┌────────┐┌────────┐┌─────┐│
-# │ Services │  │ Today  ││ Week   ││Rev. ││
-# │ Clients  │  │   5    ││  23    ││$1.8k││
-# │ Settings │  └────────┘└────────┘└─────┘│
-# │          │  ┌──────────────────────────┐│
-# │          │  │ Upcoming Bookings (table)││
-# │          │  └──────────────────────────┘│
-# └──────────┴──────────────────────────────┘
-#
 # DATAFLOW:
-# ┌──────────┐  POST /api/bookings  ┌──────────┐  save   ┌────────┐
-# │ Frontend │ ───────────────────> │ Backend  │ ──────> │  DB    │
-# │  (forms) │ <─────────────────── │ (server) │ <────── │(memory)│
-# └──────────┘  GET /api/bookings   └──────────┘  query  └────────┘
+# ┌──────────┐  POST /api/rooms      ┌──────────┐  save   ┌────────┐
+# │ Frontend │  POST /api/bookings   │ Backend  │ ──────> │  DB    │
+# │  (page)  │ ───────────────────> │ (server) │         │(memory)│
+# │          │ <─────────────────── │          │ <────── │        │
+# └──────────┘  GET /api/rooms       └──────────┘  query  └────────┘
+#      │         GET /api/bookings        │
+#      │  page load --> GET --> display   │  DELETE requires login
+#      │  form submit --> POST --> refresh│  GET /api/rooms/:id/bookings
 
 build for web and javascript backend
 
 # Database
 database is local memory
 
-create a Services table:
+create a Rooms table:
   name, required
-  duration (number), default 60
-  price (number), default 0
-  created_at_date, auto
-
-create a Clients table:
-  name, required
-  email, required, unique
-  phone
-  created_at_date, auto
+  capacity (number)
+  description
+  bookings has many Bookings
 
 create a Bookings table:
-  client_name, required
-  service_name, required
+  guest_name, required
   date, required
   time, required
-  status, default 'pending'
   notes
   created_at_date, auto
+  room belongs to Rooms
 
 # Backend
-
-# Allow the frontend to talk to the backend
 allow cross-origin requests
-
-# Print every request to the console for debugging
 log every request
 
-# --- Seed data ---
 when user calls POST /api/seed:
-  create s1:
-    name is 'Consultation'
-    duration = 60
-    price = 150
-  save s1 as new Service
-  create s2:
-    name is 'Follow-up'
-    duration = 30
-    price = 75
-  save s2 as new Service
+  create r1:
+    name is 'Conference A'
+    capacity = 10
+    description is 'Large meeting room with projector'
+  save r1 as new Room
+  create r2:
+    name is 'Conference B'
+    capacity = 6
+    description is 'Small huddle room'
+  save r2 as new Room
+  create r3:
+    name is 'Lounge'
+    capacity = 20
+    description is 'Open lounge area'
+  save r3 as new Room
   create b1:
-    client_name is 'Sarah Johnson'
-    service_name is 'Consultation'
-    date is '2026-04-08'
-    time is '10:00'
-    status is 'confirmed'
+    guest_name is 'Alice Smith'
+    date is '2026-04-14'
+    time is '09:00'
+    room_id = 1
   save b1 as new Booking
   create b2:
-    client_name is 'Mike Peters'
-    service_name is 'Follow-up'
-    date is '2026-04-08'
+    guest_name is 'Bob Jones'
+    date is '2026-04-14'
     time is '14:00'
-    status is 'pending'
+    room_id = 2
   save b2 as new Booking
+  create b3:
+    guest_name is 'Carol Lee'
+    date is '2026-04-15'
+    time is '10:00'
+    room_id = 1
+  save b3 as new Booking
+  create b4:
+    guest_name is 'Dan Park'
+    date is '2026-04-15'
+    time is '16:00'
+    room_id = 3
+  save b4 as new Booking
   send back 'seeded' with success message
 
-# --- Services ---
-when user calls GET /api/services:
-  all_services = get all Services
-  send back all_services
+when user calls GET /api/rooms:
+  all_rooms = get all Rooms
+  send back all_rooms
 
-when user calls POST /api/services sending service_data:
-  requires login
-  validate service_data:
+when user calls POST /api/rooms sending room_data:
+  validate room_data:
     name is text, required
-    duration is number
-    price is number
-  new_service = save service_data as new Service
-  send back new_service with success message
+    capacity is number
+    description is text
+  new_room = save room_data as new Room
+  send back new_room with success message
 
-when user calls DELETE /api/services/:id:
+when user calls DELETE /api/rooms/:id:
   requires login
-  delete the Service with this id
+  delete the Room with this id
   send back 'deleted' with success message
 
-# --- Clients ---
-when user calls GET /api/clients:
-  all_clients = get all Clients
-  send back all_clients
-
-when user calls POST /api/clients sending client_data:
-  requires login
-  validate client_data:
-    name is text, required
-    email is text, required, matches email
-    phone is text
-  new_client = save client_data as new Client
-  send back new_client with success message
-
-# --- Bookings ---
 when user calls GET /api/bookings:
   all_bookings = get all Bookings
   send back all_bookings
 
 when user calls POST /api/bookings sending booking_data:
-  requires login
   validate booking_data:
-    client_name is text, required
-    service_name is text, required
+    guest_name is text, required
     date is text, required
     time is text, required
     notes is text
@@ -132,55 +108,35 @@ when user calls DELETE /api/bookings/:id:
   delete the Booking with this id
   send back 'deleted' with success message
 
+when user calls GET /api/bookings/search sending query:
+  results = search Bookings for query
+  send back results
+
 # Frontend
-page 'BookIt' at '/':
+page 'Room Booking' at '/':
 
   on page load:
     send nothing to '/api/seed'
+    get rooms from '/api/rooms'
     get bookings from '/api/bookings'
-    get services from '/api/services'
 
-  section 'Layout' with style app_layout:
+  section 'Rooms' with style page_section:
+    heading 'Rooms'
+    display rooms as cards showing name, capacity, description
 
-    section 'Nav' with style app_sidebar:
-      heading 'BookIt'
-      text 'Calendar'
-      text 'Services'
-      text 'Clients'
+  section 'Book a Room' with style page_section:
+    heading 'Book a Room'
+    'Guest Name' is a text input saved as a guest_name
+    'Date' is a text input saved as a date
+    'Time' is a text input saved as a time
+    'Room' is a dropdown with ['Conference A', 'Conference B', 'Lounge']
+    'Notes' is a text area saved as a notes
+    button 'Book Now':
+      send guest_name and date and time and room and notes to '/api/bookings'
+      get bookings from '/api/bookings'
+      guest_name is ''
+      notes is ''
 
-    section 'Right' with style app_main:
-      section 'Top' with style app_header:
-        heading 'Upcoming Bookings'
-
-      section 'Body' with style app_content:
-
-        # --- New Booking ---
-        section 'New Booking' with style app_card:
-          subheading 'New Booking'
-          'Client Name' is a text input saved as a client_name
-          'Service' is a dropdown with ['Consultation', 'Follow-up']
-          'Date' is a text input saved as a date
-          'Time' is a text input saved as a time
-          'Notes' is a text area saved as a notes
-          button 'Book':
-            send client_name and service and date and time and notes to '/api/bookings'
-            get bookings from '/api/bookings'
-            client_name is ''
-            notes is ''
-
-        # --- Bookings Table ---
-        section 'Bookings' with style app_card:
-          subheading 'All Bookings'
-          display bookings as table showing client_name, service_name, date, time, status with delete
-
-        # --- Services ---
-        section 'Services' with style app_card:
-          subheading 'Manage Services'
-          'Service Name' is a text input saved as a service_name
-          'Duration (min)' is a number input saved as a duration
-          'Price' is a number input saved as a price
-          button 'Add Service':
-            send service_name and duration and price to '/api/services'
-            get services from '/api/services'
-            service_name is ''
-          display services as table showing name, duration, price with delete
+  section 'Bookings' with style page_section:
+    heading 'All Bookings'
+    display bookings as table showing guest_name, date, time, room, notes with delete

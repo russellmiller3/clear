@@ -1,12 +1,27 @@
 build for web and javascript backend
 
+# DATAFLOW:
+# ┌──────────┐  POST /api/expenses     ┌──────────┐  save   ┌────────┐
+# │ Frontend │ ─────────────────────> │ Backend  │ ──────> │   DB   │
+# │  (form)  │ <───────────────────── │ (server) │ <────── │(memory)│
+# └──────────┘  GET /api/expenses     └──────────┘  query  └────────┘
+#      │                                    │
+#      │  page load --> GET --> table        │  DELETE /api/expenses/:id
+#      │  form submit --> POST --> refresh   │  GET /api/expenses/total
+#      │  search --> GET /api/search?q=      │  POST /api/seed
+
 # Database
 database is local memory
+
+create a Categories table:
+  name
+  expenses has many Expenses
+
 create a Expenses table:
   description, required
   amount (number), required
-  category, default 'other'
   created_at, auto
+  category belongs to Categories
 
 # Backend
 allow server to accept requests from frontend
@@ -20,7 +35,6 @@ when user calls POST /api/expenses sending expense_data:
   validate expense_data:
     description is text, required, min 1, max 200
     amount is number, required
-    category is text
   new_expense = save expense_data as new Expense
   send back new_expense with success message
 
@@ -28,6 +42,61 @@ when user calls DELETE /api/expenses/:id:
   requires login
   delete the Expense with this id
   send back 'deleted' with success message
+
+when user calls GET /api/search sending params:
+  query = incoming's q
+  results = search Expenses for query
+  send back results
+
+when user calls GET /api/expenses/total:
+  all_expenses = get all Expenses
+  total = sum of amount in all_expenses
+  send back total
+
+when user calls POST /api/seed:
+  create c1:
+    name is 'Food'
+  save c1 as new Category
+  create c2:
+    name is 'Transport'
+  save c2 as new Category
+  create c3:
+    name is 'Entertainment'
+  save c3 as new Category
+  create c4:
+    name is 'Bills'
+  save c4 as new Category
+  create e1:
+    description is 'Groceries'
+    amount = 45.50
+    category = c1's id
+  save e1 as new Expense
+  create e2:
+    description is 'Bus pass'
+    amount = 30
+    category = c2's id
+  save e2 as new Expense
+  create e3:
+    description is 'Movie tickets'
+    amount = 24
+    category = c3's id
+  save e3 as new Expense
+  create e4:
+    description is 'Electric bill'
+    amount = 89.99
+    category = c4's id
+  save e4 as new Expense
+  create e5:
+    description is 'Coffee and lunch'
+    amount = 18.75
+    category = c1's id
+  save e5 as new Expense
+  create e6:
+    description is 'Internet bill'
+    amount = 59.99
+    category = c4's id
+  save e6 as new Expense
+  send back 'seeded' with success message
 
 # Frontend
 page 'Expense Tracker':
@@ -46,9 +115,17 @@ page 'Expense Tracker':
       description is ''
       amount is 0
 
+  section 'Search':
+    'Search expenses' is a text input saved as a search_query
+    button 'Search':
+      get expenses from '/api/search'
+
   section 'Summary':
-    define total_spent as: sum of expenses
+    define total_spent as: sum of amount in expenses
     display total_spent as dollars called 'Total Spent'
 
   section 'All Expenses':
     display expenses as table showing description, amount, category with delete
+
+  section 'Spending by Category':
+    pie chart 'Spending by Category' showing expenses by category

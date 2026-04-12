@@ -1,367 +1,213 @@
-# CRM Pro -- contacts, deals, pipeline, activity log, and revenue tracking
-# │ Sidebar  │  Header [Search]     [New Contact]│
-# │          ├──────────────────────────────────┤
-# │ Dashboard│  ┌────────┐┌────────┐┌──────────┐│
-# │ Contacts │  │Contacts││ Deals  ││ Revenue  ││
-# │ Deals    │  │  247   ││  18    ││ $142,300 ││
-# │ Pipeline │  └────────┘└────────┘└──────────┘│
-# │ Activity │  ┌────────────────┐┌────────────┐│
-# │ Reports  │  │ Pipeline Chart ││ Recent Log ││
-# │          │  └────────────────┘└────────────┘│
-# │          │  ┌──────────────────────────────┐│
-# │          │  │ Contacts Table (CRUD+search) ││
-# │          │  └──────────────────────────────┘│
-# └──────────┴──────────────────────────────────┘
+# CRM Pro -- companies, contacts, deals, pipeline tracking
+# ┌──────────────────────────────────────────────────┐
+# │  Pipeline: $142,300 total  |  18 deals           │
+# ├──────────────────────────────────────────────────┤
+# │  Companies (cards)   │  Contacts (table+search)  │
+# │  ┌──────┐ ┌──────┐  │  [Search________]          │
+# │  │ Acme │ │Globex│  │  Name | Email | Company    │
+# │  └──────┘ └──────┘  │                            │
+# ├──────────────────────────────────────────────────┤
+# │  Deals (table): Title | Value | Stage | Contact  │
+# └──────────────────────────────────────────────────┘
 #
 # DATAFLOW:
-# ┌──────────┐   POST /api/contacts    ┌──────────┐   save    ┌────────┐
-# │ Frontend │ ──────────────────────> │ Backend  │ ────────> │   DB   │
-# │  (forms) │ <────────────────────── │ (server) │ <──────── │(memory)│
-# └──────────┘   GET /api/contacts     └──────────┘   query   └────────┘
-#      │                                     │
-#      │ debounced search ──> GET?q=...      │ PUT /api/deals/:id
-#      │ on page load ──> GET all            │ DELETE /api/contacts/:id
-#      │ pipeline chart ──> GET /api/deals   │ POST /api/activity
+# Frontend --> POST /api/companies, /api/contacts, /api/deals --> DB
+# Frontend --> GET /api/search/contacts?q=... --> filtered contacts
+# Frontend --> GET /api/deals/total --> sum of deal values
 
 build for web and javascript backend
 
 theme 'midnight'
 
-# Database
 database is local memory
+
+create a Companies table:
+  name, required
+  industry
+  website
+  contacts has many Contacts
 
 create a Contacts table:
   name, required
-  email, required, unique
-  company
+  email, required
   phone
-  status, default 'lead'
-  source, default 'direct'
-  notes
-  last_contacted
-  created_at_date, auto
+  company belongs to Companies
+  deals has many Deals
 
 create a Deals table:
-  contact_id, required
   title, required
   value (number), default 0
-  stage, default 'prospect'
-  probability (number), default 10
-  expected_close
-  notes
-  created_at_date, auto
+  stage, default 'lead'
+  contact belongs to Contacts
 
-create a Activities table:
-  contact_id
-  deal_id
-  action, required
-  detail
-  performed_by, default 'system'
-  created_at_date, auto
-
-create a Tags table:
-  name, required, unique
-  color, default 'blue'
-
-create a ContactTags table:
-  contact_id, required
-  tag_id, required
-  one per contact_id and tag_id
-
-# Backend
-
-# Allow the frontend to talk to the backend
+allow signup and login
 allow cross-origin requests
-
-# Print every request to the console for debugging
 log every request
 
-# --- Seed data for demo ---
+# Seed
 when user calls POST /api/seed:
+  create co1:
+    name is 'Acme Corp'
+    industry is 'Technology'
+    website is 'acme.co'
+  save co1 as new Company
+  create co2:
+    name is 'Globex Industries'
+    industry is 'Manufacturing'
+    website is 'globex.io'
+  save co2 as new Company
   create c1:
     name is 'Alice Chen'
     email is 'alice@acme.co'
-    company is 'Acme Corporation'
     phone is '555-0101'
-    status is 'customer'
-    source is 'referral'
-    last_contacted is '2026-04-01'
+    company is '1'
   save c1 as new Contact
   create c2:
     name is 'Bob Smith'
-    email is 'bob@globex.io'
-    company is 'Globex Industries'
+    email is 'bob@acme.co'
     phone is '555-0102'
-    status is 'qualified'
-    source is 'website'
+    company is '1'
   save c2 as new Contact
   create c3:
     name is 'Carol Davis'
-    email is 'carol@initech.com'
-    company is 'Initech'
-    status is 'lead'
-    source is 'cold-call'
+    email is 'carol@globex.io'
+    company is '2'
   save c3 as new Contact
   create c4:
     name is 'Dan Wilson'
-    email is 'dan@umbrella.org'
-    company is 'Umbrella Corp'
-    status is 'customer'
-    source is 'referral'
-    last_contacted is '2026-03-28'
+    email is 'dan@globex.io'
+    company is '2'
   save c4 as new Contact
   create d1:
-    contact_id is '1'
     title is 'Acme Enterprise License'
     value = 45000
     stage is 'negotiation'
-    probability = 70
-    expected_close is '2026-05-15'
+    contact is '1'
   save d1 as new Deal
   create d2:
-    contact_id is '2'
-    title is 'Globex Pilot Program'
+    title is 'Globex Pilot'
     value = 12000
     stage is 'proposal'
-    probability = 40
-    expected_close is '2026-06-01'
+    contact is '3'
   save d2 as new Deal
   create d3:
-    contact_id is '1'
     title is 'Acme Support Contract'
     value = 18000
     stage is 'closed-won'
-    probability = 100
+    contact is '2'
   save d3 as new Deal
   create d4:
-    contact_id is '4'
-    title is 'Umbrella Annual Deal'
+    title is 'Globex Annual'
     value = 67300
-    stage is 'prospect'
-    probability = 20
-    expected_close is '2026-08-01'
+    stage is 'lead'
+    contact is '4'
   save d4 as new Deal
-  create a1:
-    contact_id is '1'
-    action is 'Email sent'
-    detail is 'Follow-up on enterprise proposal'
-    performed_by is 'Sales Rep'
-  save a1 as new Activity
-  create a2:
-    contact_id is '2'
-    action is 'Call logged'
-    detail is 'Discussed pilot timeline'
-    performed_by is 'Sales Rep'
-  save a2 as new Activity
-  create a3:
-    deal_id is '1'
-    action is 'Deal updated'
-    detail is 'Moved to negotiation stage'
-    performed_by is 'Sales Manager'
-  save a3 as new Activity
-  create t1:
-    name is 'Enterprise'
-    color is 'purple'
-  save t1 as new Tag
-  create t2:
-    name is 'Hot Lead'
-    color is 'red'
-  save t2 as new Tag
+  create d5:
+    title is 'Acme Consulting'
+    value = 9500
+    stage is 'proposal'
+    contact is '1'
+  save d5 as new Deal
   send back 'seeded' with success message
 
-# --- Contacts CRUD ---
+# Companies CRUD
+when user calls GET /api/companies:
+  send back get all Companies
+
+when user calls POST /api/companies sending data:
+  requires login
+  validate data:
+    name is text, required
+    industry is text
+    website is text
+  new_company = save data as new Company
+  send back new_company with success message
+
+when user calls DELETE /api/companies/:id:
+  requires login
+  delete the Company with this id
+  send back 'deleted' with success message
+
+# Contacts CRUD
 when user calls GET /api/contacts:
-  all_contacts = get all Contacts
-  send back all_contacts
+  send back get all Contacts
 
-when user calls POST /api/contacts sending contact_data:
+when user calls POST /api/contacts sending data:
   requires login
-  validate contact_data:
-    name is text, required, min 1, max 100
-    email is text, required, matches email
-    company is text
+  validate data:
+    name is text, required
+    email is text, required
     phone is text
-    status is text
-    source is text
-    notes is text
-  new_contact = save contact_data as new Contact
+    company is text
+  new_contact = save data as new Contact
   send back new_contact with success message
-
-when user calls PUT /api/contacts/:id sending update_data:
-  requires login
-  validate update_data:
-    name is text
-    email is text
-    company is text
-    phone is text
-    status is text
-    notes is text
-    last_contacted is text
-  save update_data to Contacts
-  send back 'updated' with success message
 
 when user calls DELETE /api/contacts/:id:
   requires login
   delete the Contact with this id
   send back 'deleted' with success message
 
-# --- Deals CRUD ---
+# Deals CRUD
 when user calls GET /api/deals:
-  all_deals = get all Deals
-  send back all_deals
+  send back get all Deals
 
-when user calls POST /api/deals sending deal_data:
+when user calls POST /api/deals sending data:
   requires login
-  validate deal_data:
-    contact_id is text, required
-    title is text, required, min 1, max 200
+  validate data:
+    title is text, required
     value is number
     stage is text
-    probability is number
-    expected_close is text
-    notes is text
-  new_deal = save deal_data as new Deal
+    contact is text
+  new_deal = save data as new Deal
   send back new_deal with success message
-
-when user calls PUT /api/deals/:id sending update_data:
-  requires login
-  validate update_data:
-    contact_id is text
-    title is text
-    value is number
-    stage is text
-    probability is number
-    expected_close is text
-    notes is text
-  save update_data to Deals
-  send back 'updated' with success message
 
 when user calls DELETE /api/deals/:id:
   requires login
   delete the Deal with this id
   send back 'deleted' with success message
 
-# --- Activities ---
-when user calls GET /api/activities:
-  all_activities = get all Activities
-  send back all_activities
+# Search contacts
+when user calls GET /api/search/contacts sending query:
+  results = search Contacts for query
+  send back results
 
-when user calls POST /api/activities sending activity_data:
-  requires login
-  validate activity_data:
-    contact_id is text
-    deal_id is text
-    action is text, required
-    detail is text
-    performed_by is text
-  new_activity = save activity_data as new Activity
-  send back new_activity with success message
-
-# --- Tags ---
-when user calls GET /api/tags:
-  all_tags = get all Tags
-  send back all_tags
-
-when user calls POST /api/tags sending tag_data:
-  requires login
-  validate tag_data:
-    name is text, required
-    color is text
-  new_tag = save tag_data as new Tag
-  send back new_tag with success message
+# Aggregate
+when user calls GET /api/deals/total:
+  all_deals = get all Deals
+  total = sum of value in all_deals
+  send back total
 
 # Frontend
-
 page 'CRM Pro' at '/':
 
   on page load:
     send nothing to '/api/seed'
+    get companies from '/api/companies'
     get contacts from '/api/contacts'
     get deals from '/api/deals'
-    get activities from '/api/activities'
 
   section 'Layout' with style app_layout:
-
-    section 'Nav' with style app_sidebar:
-      heading 'CRM Pro'
-      divider
-      text 'Dashboard'
-      text 'Contacts'
-      text 'Deals'
-      text 'Pipeline'
-      text 'Activity'
-      text 'Reports'
-
-    section 'Right' with style app_main:
-      section 'Top' with style app_header:
-        heading 'Dashboard'
-        'Search contacts...' is a text input saved as a search_query
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'CRM Pro'
 
       section 'Body' with style app_content:
 
-        # --- Search with debounce ---
-        when search_query changes after 250ms:
-          get contacts from '/api/contacts'
-
-        # --- Pipeline Chart ---
         section 'Pipeline' with style app_card:
-          subheading 'Deal Pipeline'
-          chart 'Pipeline' as bar showing deals
+          subheading 'Pipeline Summary'
+          display deals as table showing title, value, stage
 
-        # --- Add Contact Form ---
-        section 'New Contact' with style app_card:
-          subheading 'Add Contact'
-          'Name' is a text input saved as a name
-          'Email' is a text input saved as an email
-          'Company' is a text input saved as a company
-          'Phone' is a text input saved as a phone
-          'Status' is a dropdown with ['lead', 'qualified', 'customer', 'churned']
-          'Source' is a dropdown with ['direct', 'website', 'referral', 'cold-call', 'event']
-          button 'Add Contact':
-            send name and email and company and phone and status and source to '/api/contacts'
-            get contacts from '/api/contacts'
-            name is ''
-            email is ''
-            company is ''
-            phone is ''
+        section 'Companies' with style app_card:
+          subheading 'Companies'
+          display companies as cards showing name, industry
 
-        # --- Contacts Table ---
         section 'Contacts' with style app_card:
-          subheading 'All Contacts'
-          display contacts as table showing name, email, company, status, source with delete and edit
+          subheading 'Contacts'
+          'Search contacts...' is a text input saved as a search_query
+          when search_query changes after 250ms:
+            get contacts from '/api/contacts'
+          display contacts as table showing name, email, phone
 
-        # --- Add Deal Form ---
-        section 'New Deal' with style app_card:
-          subheading 'Add Deal'
-          'Deal Title' is a text input saved as a title
-          'Contact ID' is a text input saved as a contact_id
-          'Value ($)' is a number input saved as a value
-          'Stage' is a dropdown with ['prospect', 'proposal', 'negotiation', 'closed-won', 'closed-lost']
-          'Probability (%)' is a number input saved as a probability
-          'Expected Close' is a text input saved as an expected_close
-          button 'Add Deal':
-            send title and contact_id and value and stage and probability and expected_close to '/api/deals'
-            get deals from '/api/deals'
-            title is ''
-            contact_id is ''
-
-        # --- Deals Table ---
         section 'Deals' with style app_card:
-          subheading 'All Deals'
-          display deals as table showing title, value, stage, probability, expected_close with delete and edit
-
-        # --- Activity Log ---
-        section 'Activity' with style app_card:
-          subheading 'Recent Activity'
-          display activities as table showing action, detail, performed_by
-
-        # --- Log Activity ---
-        section 'Log Activity' with style app_card:
-          subheading 'Log Activity'
-          'Contact ID' is a text input saved as an activity_contact_id
-          'Action' is a dropdown with ['Email sent', 'Call logged', 'Meeting held', 'Note added', 'Deal updated']
-          'Detail' is a text area saved as an activity_detail
-          button 'Log':
-            send activity_contact_id and action and activity_detail to '/api/activities'
-            get activities from '/api/activities'
-            activity_detail is ''
+          subheading 'Deals'
+          display deals as table showing title, value, stage

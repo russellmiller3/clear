@@ -1,6 +1,16 @@
 build for web and javascript backend
 
-# Live Chat -- real-time messaging with rooms, SSE, and message history
+# Live Chat -- real-time messaging with WebSockets
+#
+# DATAFLOW:
+# ┌──────────┐    POST /api/messages     ┌──────────┐    save    ┌────────┐
+# │ Frontend │ ───────────────────────> │ Backend  │ ────────> │   DB   │
+# │  (form)  │ <─────────────────────── │ (server) │ <──────── │(memory)│
+# └──────────┘    GET /api/messages     └──────────┘   query   └────────┘
+#      │                                     │
+#      │  on page load --> GET --> table      │  WS 'chat' channel
+#      │  button click --> POST --> refresh   │  broadcast to all clients
+#      │  WebSocket --> live updates          │  DELETE requires login
 
 # Database
 database is local memory
@@ -10,26 +20,10 @@ create a Messages table:
   room, default 'general'
   created_at, auto
 
-create a Rooms table:
-  name, required, unique
-  description
-
 # Backend
 allow server to accept requests from frontend
 log every request
 
-# Rooms
-when user calls GET /api/rooms:
-  all_rooms = get all Rooms
-  send back all_rooms
-
-when user calls POST /api/rooms sending room_data:
-  validate room_data:
-    name is text, required, min 1, max 50
-  new_room = save room_data as new Room
-  send back new_room with success message
-
-# Messages
 when user calls GET /api/messages:
   all_messages = get all Messages
   send back all_messages
@@ -47,14 +41,9 @@ when user calls DELETE /api/messages/:id:
   delete the Message with this id
   send back 'deleted' with success message
 
-# Real-time: stream new messages via SSE
-stream:
-  all_messages = get all Messages
-  send back all_messages
-
-# Background: clean up old messages every hour
-background 'cleanup':
-  runs every 1 hour
+# WebSocket -- broadcast every incoming message to all clients
+subscribe to 'chat':
+  broadcast to all message
 
 # Frontend
 page 'Live Chat' at '/':
@@ -72,21 +61,3 @@ page 'Live Chat' at '/':
 
   section 'Messages':
     display messages as table showing sender, content, created_at
-
-page 'Rooms' at '/rooms':
-  on page load get rooms from '/api/rooms'
-
-  heading 'Chat Rooms'
-  text 'Create and browse chat rooms'
-
-  section 'New Room' with style card:
-    'Room Name' is a text input saved as a name
-    'Description' is a text input saved as a description
-    button 'Create Room':
-      send name and description as a new room to '/api/rooms'
-      get rooms from '/api/rooms'
-      name is ''
-      description is ''
-
-  section 'All Rooms':
-    display rooms as table showing name, description

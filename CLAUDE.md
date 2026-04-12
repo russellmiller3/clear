@@ -19,14 +19,14 @@ Run ToolSearch for these before doing anything else:
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1699 compiler tests)
+- Run all tests: `node clear.test.js` (1725 compiler tests)
 - Run sandbox tests: `node sandbox.test.js` (9 integration tests — spins up real servers)
 - Run playground tests (each is a separate file):
   - `node playground/server.test.js` (~85 server API tests)
   - `node playground/e2e.test.js` (~60 template compile + endpoint tests)
   - `node playground/ide.test.js` (~46 Playwright IDE UI tests)
   - `node playground/agent.test.js` (~50 Claude agent tool tests, needs ANTHROPIC_API_KEY)
-- Total: 1699 compiler + 9 sandbox + ~241 playground tests
+- Total: 1725 compiler + 9 sandbox + ~241 playground tests
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
 
@@ -68,6 +68,20 @@ Exit codes: 0=ok, 1=compile error, 2=runtime error, 3=file not found, 4=test fai
 - **Deterministic.** Same input = same output. No AI in the compile step.
 - **Compiler accumulates quality.** Fix a bug once, every app gets the fix on recompile.
 - **Compiled output is self-documenting.** Every compiled file starts with an auto-generated ASCII architecture diagram (tables, endpoints, pages, data flow). Regenerates on every build. The diagram IS the intent file for that app.
+
+## Core 7 Templates
+These are the showcase apps — each archetype exercises a different feature slice.
+Playwright-tested. If a template breaks, the compiler has a regression.
+
+| # | Template | Archetype | Features Showcased |
+|---|----------|-----------|-------------------|
+| 1 | `todo-fullstack` | CRUD basics | Tables, endpoints, auth, validation, pages |
+| 2 | `crm-pro` | Data dashboard | Charts, filters, search, aggregates, multiple tables, `has many` |
+| 3 | `blog-fullstack` | Content app | `belongs to`, rich display, public + admin pages |
+| 4 | `live-chat` | Real-time | WebSocket, `subscribe to`, `broadcast to all`, auth |
+| 5 | `helpdesk-agent` | AI agent | `ask claude`, `can use:`, `knows about:`, `remember conversation`, `block arguments matching`, keyword search |
+| 6 | `booking` | Workflow | Multi-step logic, validation, relationships, scheduling |
+| 7 | `expense-tracker` | Personal app | CRUD, aggregates, charts, CSV export, categories |
 
 ## No Backward Compatibility
 There are no users yet. Do not preserve backward compatibility. Always do things the right way.

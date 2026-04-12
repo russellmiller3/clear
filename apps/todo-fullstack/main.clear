@@ -1,16 +1,18 @@
-# Todo App -- simple full-stack todo list with auth-protected delete
+# Todo App — categories, CRUD, search, has-many
 
 build for web and javascript backend
-
-# Database
 database is local memory
+
+create a Categories table:
+  name, required
+  todos has many Todos
 
 create a Todos table:
   title, required
   completed, default false
   created_at_date, auto
+  category belongs to Categories
 
-# Backend
 allow cross-origin requests
 
 when user calls GET /api/todos:
@@ -23,21 +25,80 @@ when user calls POST /api/todos sending todo_data:
   new_todo = save todo_data as new Todo
   send back new_todo with success message
 
+when user calls PUT /api/todos/:id sending update_data:
+  requires login
+  save update_data to Todos
+  send back 'updated' with success message
+
 when user calls DELETE /api/todos/:id:
   requires login
   delete the Todo with this id
   send back 'deleted' with success message
 
-# Frontend
-page 'Todo App' at '/':
-  on page load get todos from '/api/todos'
+when user calls GET /api/categories:
+  all_categories = get all Categories
+  send back all_categories
 
-  section 'Form' with style card_bordered:
-    heading 'My Todos'
+when user calls GET /api/search sending params:
+  results = search Todos for params's q
+  send back results
+
+when user calls POST /api/seed:
+  create c1:
+    name is 'Work'
+  save c1 as new Category
+  create c2:
+    name is 'Personal'
+  save c2 as new Category
+  create c3:
+    name is 'Shopping'
+  save c3 as new Category
+  create t1:
+    title is 'Finish quarterly report'
+    category is c1's id
+  save t1 as new Todo
+  create t2:
+    title is 'Book dentist appointment'
+    category is c2's id
+  save t2 as new Todo
+  create t3:
+    title is 'Buy groceries'
+    completed is true
+    category is c3's id
+  save t3 as new Todo
+  create t4:
+    title is 'Review pull requests'
+    category is c1's id
+  save t4 as new Todo
+  create t5:
+    title is 'Pick up dry cleaning'
+    category is c2's id
+  save t5 as new Todo
+  send back 'seeded' with success message
+
+page 'Todo App' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get todos from '/api/todos'
+
+  section 'Header' centered, padded:
+    heading 'Todo App'
+    total = count of todos
+    text '{total} todos'
+
+  section 'Add' with style card_bordered:
     'What needs to be done?' is a text input saved as a title
-    button 'Add':
-      send title to '/api/todos'
+    'Category' is a dropdown with ['Work', 'Personal', 'Shopping'] saved as a category
+    button 'Add Todo':
+      send title and category to '/api/todos'
       get todos from '/api/todos'
       title is ''
 
-  display todos as table showing title, completed with delete
+  section 'Search' centered:
+    'Search todos...' as text input saves to search_query
+    button 'Search':
+      get todos from '/api/search'
+    button 'Show All':
+      get todos from '/api/todos'
+
+  display todos as table showing title, completed, category with delete
