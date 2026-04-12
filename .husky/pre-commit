@@ -1,0 +1,4 @@
+#!/bin/sh
+# Pre-commit: fast compiler tests (1725 tests, ~10s)
+echo "🔍 Running compiler tests..."
+node clear.test.js

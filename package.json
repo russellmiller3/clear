@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "node clear.test.js"
+    "test": "node clear.test.js",
+    "test:e2e": "node playground/e2e.test.js",
+    "test:all": "node clear.test.js && node playground/e2e.test.js",
+    "start": "node playground/server.js",
+    "prepare": "husky"
   },
   "private": true,
   "dependencies": {
@@ -11,6 +15,25 @@
     "express": "^5.2.1"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
     "playwright": "^1.59.1"
-  }
+  },
+  "description": "A programming language designed for AI to write and humans to read.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/russellmiller3/clear.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/russellmiller3/clear/issues"
+  },
+  "homepage": "https://github.com/russellmiller3/clear#readme"
 }

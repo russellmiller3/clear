@@ -1,0 +1,9 @@
+#!/bin/sh
+# Pre-push: full test suite — compiler + e2e + curriculum
+echo "🔍 Running compiler tests..."
+node clear.test.js || exit 1
+
+echo "🎯 Running e2e tests (templates + curriculum)..."
+node playground/e2e.test.js || exit 1
+
+echo "✅ All tests passed — pushing."
