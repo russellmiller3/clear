@@ -58,14 +58,19 @@ app.post('/api/compile', (req, res) => {
 // TEMPLATES
 // =============================================================================
 const FEATURED_TEMPLATES = [
-  'project-tracker',   // Issue tracker — semantic tokens only, no raw CSS
-  'team-dashboard',    // Project management dashboard (app_layout, sidebar)
-  'ecommerce-api',     // Pure REST backend API (no frontend)
-  'crm-pro',           // CRM with contacts + deals (relational data)
-  'live-chat',         // Real-time messaging (websockets)
-  'todo-fullstack',    // Simple full-stack with auth
-  'product-landing',   // Multi-page marketing site (pure frontend)
-  'helpdesk-agent',    // Multi-agent AI pipeline (agents, skills, pipelines)
+  // Core 7 — Playwright-tested, showcase all features
+  'todo-fullstack',    // CRUD basics: tables, endpoints, auth, validation, search, has many
+  'crm-pro',           // Data dashboard: charts, search, aggregates, relationships
+  'blog-fullstack',    // Content app: belongs to, rich display, search
+  'live-chat',         // Real-time: WebSocket, subscribe, broadcast
+  'helpdesk-agent',    // AI agent: tools, RAG, memory, guardrails, search
+  'booking',           // Workflow: relationships, validation, scheduling
+  'expense-tracker',   // Personal app: aggregates, charts, search, categories
+  // Extras
+  'project-tracker',   // Issue tracker with semantic tokens
+  'team-dashboard',    // Dashboard with app_layout + sidebar
+  'ecommerce-api',     // Pure REST backend API
+  'product-landing',   // Multi-page marketing site
 ];
 
 app.get('/api/templates', (req, res) => {

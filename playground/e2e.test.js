@@ -109,7 +109,7 @@ console.log('📦 Compile all 43 templates');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
 const { status: tplStatus, data: templates } = await apiGet('/api/templates');
-assert(tplStatus === 200 && templates.length >= 40, `template list loads (${templates.length} templates)`);
+assert(tplStatus === 200 && templates.length >= 7, `template list loads (${templates.length} templates)`);
 
 const compiled = {}; // name -> compile result
 let compileErrors = 0;
@@ -141,7 +141,7 @@ console.log('🔌 JS-Backend apps — run and hit endpoints');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
 // todo-api: full CRUD
-{
+if (compiled['todo-api']) {
   console.log('\n  📋 todo-api');
   const r = compiled['todo-api'];
   const code = r.serverJS || r.javascript;
@@ -171,10 +171,10 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
     assert(deleted.status === 401, `DELETE /api/todos/${id} returns 401 without auth (auth-protected)`);
   }
   await stopApp();
-}
+} else { console.log('\n  ⏭️  todo-api not in featured list, skipping'); }
 
 // blog-api: posts CRUD
-{
+if (compiled['blog-api']) {
   console.log('\n  📰 blog-api');
   const r = compiled['blog-api'];
   const code = r.serverJS || r.javascript;
@@ -190,10 +190,10 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
   assert(created.status === 401, 'POST /api/posts returns 401 without auth (auth-protected)');
 
   await stopApp();
-}
+} else { console.log('\n  ⏭️  blog-api not in featured list, skipping'); }
 
 // chat-backend
-{
+if (compiled['chat-backend']) {
   console.log('\n  💬 chat-backend');
   const r = compiled['chat-backend'];
   const code = r.serverJS || r.javascript;
@@ -211,7 +211,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 }
 
 // url-shortener
-{
+if (compiled['url-shortener']) {
   console.log('\n  🔗 url-shortener');
   const r = compiled['url-shortener'];
   const code = r.serverJS || r.javascript;
@@ -227,7 +227,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
   assert(created.status === 200 || created.status === 201, 'POST /api/shorten creates link');
 
   await stopApp();
-}
+} else { console.log('\n  ⏭️  url-shortener not in featured list, skipping'); }
 
 // book-library: new fullstack CRUD app
 {
@@ -263,6 +263,257 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
     await stopApp();
   }
 }
+
+// =============================================================================
+// CORE 7 TEMPLATES — deep CRUD + feature tests
+// =============================================================================
+console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('🎯 Core 7 templates — full CRUD happy path');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+// Helper: compile a template by name using the API
+async function compileTemplate(name) {
+  const src = await (await fetch(BASE + '/api/template/' + name)).text();
+  const parsed = JSON.parse(src);
+  const { data } = await apiPost('/api/compile', { source: parsed.source || src });
+  return data;
+}
+
+// ── 1. todo-fullstack ────────────────────────────────────────────────────
+{
+  console.log('\n  📋 Core: todo-fullstack');
+  const r = compiled['todo-fullstack'] || await compileTemplate('todo-fullstack');
+  assert(r.errors.length === 0, 'compiles with 0 errors');
+  assert(!!r.serverJS, 'has server JS');
+  assert(!!r.html, 'has HTML');
+
+  const port = await startApp(r.serverJS);
+  assert(!!port, `started on port ${port}`);
+
+  // Seed
+  const { data: seed } = await appPost('/api/seed', {});
+  assert(seed.status === 200 || seed.status === 201, 'seed endpoint works');
+
+  // Read
+  const { data: todos } = await appGet('/api/todos');
+  assert(todos.status === 200, 'GET /api/todos returns 200');
+  assert(Array.isArray(todos.data) && todos.data.length >= 3, `seeded ${todos.data?.length || 0} todos`);
+
+  // Create
+  const { data: created } = await appPost('/api/todos', { title: 'Playwright test', category: '1' });
+  assert(created.status === 200 || created.status === 201, 'POST /api/todos creates todo');
+
+  // Verify creation
+  const { data: todos2 } = await appGet('/api/todos');
+  const found = todos2.data?.find(t => t.title === 'Playwright test');
+  assert(!!found, 'created todo appears in list');
+
+  // Search
+  const { data: search } = await appGet('/api/search');
+  assert(search.status === 200, 'GET /api/search returns 200');
+
+  // Categories
+  const { data: cats } = await appGet('/api/categories');
+  assert(cats.status === 200 && Array.isArray(cats.data), 'GET /api/categories returns array');
+
+  // Delete (requires auth — should 401)
+  if (found?.id) {
+    const { data: del } = await appDel(`/api/todos/${found.id}`);
+    assert(del.status === 401, 'DELETE requires login (401 without auth)');
+  }
+
+  await stopApp();
+}
+
+// ── 2. crm-pro ──────────────────────────────────────────────────────────
+{
+  console.log('\n  👥 Core: crm-pro');
+  const r = compiled['crm-pro'] || await compileTemplate('crm-pro');
+  assert(r.errors.length === 0, 'compiles with 0 errors');
+
+  const port = await startApp(r.serverJS);
+  assert(!!port, `started on port ${port}`);
+
+  // Seed
+  await appPost('/api/seed', {});
+
+  // Companies
+  const { data: companies } = await appGet('/api/companies');
+  assert(companies.status === 200 && Array.isArray(companies.data), 'GET /api/companies returns array');
+
+  // Contacts
+  const { data: contacts } = await appGet('/api/contacts');
+  assert(contacts.status === 200 && Array.isArray(contacts.data), 'GET /api/contacts returns array');
+
+  // Deals
+  const { data: deals } = await appGet('/api/deals');
+  assert(deals.status === 200 && Array.isArray(deals.data), 'GET /api/deals returns array');
+
+  // Create contact
+  const { data: newContact } = await appPost('/api/contacts', { name: 'E2E Test', email: 'test@e2e.com' });
+  assert(newContact.status === 200 || newContact.status === 201, 'POST /api/contacts creates contact');
+
+  // Search contacts
+  const { data: searched } = await appGet('/api/search/contacts');
+  assert(searched.status === 200, 'search contacts endpoint responds');
+
+  // Deals aggregate
+  const { data: total } = await appGet('/api/deals/total');
+  assert(total.status === 200, 'deals total aggregate endpoint responds');
+
+  await stopApp();
+}
+
+// ── 3. blog-fullstack ───────────────────────────────────────────────────
+{
+  console.log('\n  📰 Core: blog-fullstack');
+  const r = compiled['blog-fullstack'] || await compileTemplate('blog-fullstack');
+  assert(r.errors.length === 0, 'compiles with 0 errors');
+
+  const port = await startApp(r.serverJS);
+  assert(!!port, `started on port ${port}`);
+
+  // Seed
+  await appPost('/api/seed', {});
+
+  // Posts
+  const { data: posts } = await appGet('/api/posts');
+  assert(posts.status === 200 && Array.isArray(posts.data), 'GET /api/posts returns array');
+  assert(posts.data.length >= 3, `seeded ${posts.data?.length || 0} posts`);
+
+  // Create
+  const { data: newPost } = await appPost('/api/posts', { title: 'E2E Post', body: 'Test content' });
+  assert(newPost.status === 200 || newPost.status === 201, 'POST /api/posts creates post');
+
+  // Authors
+  const { data: authors } = await appGet('/api/authors');
+  assert(authors.status === 200 && Array.isArray(authors.data), 'GET /api/authors returns array');
+
+  // Categories
+  const { data: cats } = await appGet('/api/categories');
+  assert(cats.status === 200 && Array.isArray(cats.data), 'GET /api/categories returns array');
+
+  // Search
+  const { data: searched } = await appGet('/api/search/test');
+  assert(searched.status === 200, 'search endpoint responds');
+
+  await stopApp();
+}
+
+// ── 4. live-chat ────────────────────────────────────────────────────────
+{
+  console.log('\n  💬 Core: live-chat');
+  const r = compiled['live-chat'] || await compileTemplate('live-chat');
+  assert(r.errors.length === 0, 'compiles with 0 errors');
+
+  const port = await startApp(r.serverJS);
+  assert(!!port, `started on port ${port}`);
+
+  // Send a message
+  const { data: sent } = await appPost('/api/messages', { sender: 'E2E', content: 'Hello from Playwright' });
+  assert(sent.status === 200 || sent.status === 201, 'POST /api/messages works');
+
+  // Read messages
+  const { data: msgs } = await appGet('/api/messages');
+  assert(msgs.status === 200 && Array.isArray(msgs.data), 'GET /api/messages returns array');
+  const found = msgs.data?.find(m => m.content === 'Hello from Playwright');
+  assert(!!found, 'sent message appears in list');
+
+  await stopApp();
+}
+
+// ── 5. helpdesk-agent ───────────────────────────────────────────────────
+{
+  console.log('\n  🤖 Core: helpdesk-agent');
+  const r = compiled['helpdesk-agent'] || await compileTemplate('helpdesk-agent');
+  assert(r.errors.length === 0, 'compiles with 0 errors');
+  // helpdesk-agent is JS-only (no HTML), uses ask claude — can't run without API key
+  // Just verify it has the right structure
+  const js = r.serverJS || r.javascript;
+  assert(js.includes('_askAI') || js.includes('_askAIWithTools'), 'compiled code has AI call');
+  assert(js.includes('_toolFns') || js.includes('toolFns'), 'compiled code has tool dispatch');
+  assert(js.includes('Blocked by guardrail') || js.includes('guardrail'), 'compiled code has guardrail check');
+  assert(js.includes('_history') || js.includes('conversation'), 'compiled code has conversation memory');
+}
+
+// ── 6. booking ──────────────────────────────────────────────────────────
+{
+  console.log('\n  📅 Core: booking');
+  const r = compiled['booking'] || await compileTemplate('booking');
+  assert(r.errors.length === 0, 'compiles with 0 errors');
+
+  const port = await startApp(r.serverJS);
+  assert(!!port, `started on port ${port}`);
+
+  // Seed
+  await appPost('/api/seed', {});
+
+  // Rooms
+  const { data: rooms } = await appGet('/api/rooms');
+  assert(rooms.status === 200 && Array.isArray(rooms.data), 'GET /api/rooms returns array');
+  assert(rooms.data.length >= 3, `seeded ${rooms.data?.length || 0} rooms`);
+
+  // Create booking
+  const roomId = rooms.data[0]?.id;
+  const { data: booked } = await appPost('/api/bookings', {
+    guest_name: 'E2E Guest', date: '2026-05-01', time: '10:00', room: roomId
+  });
+  assert(booked.status === 200 || booked.status === 201, 'POST /api/bookings creates booking');
+
+  // Read bookings
+  const { data: bookings } = await appGet('/api/bookings');
+  assert(bookings.status === 200 && Array.isArray(bookings.data), 'GET /api/bookings returns array');
+
+  // Has many: rooms/:id/bookings
+  if (roomId) {
+    const { data: nested } = await appGet(`/api/rooms/${roomId}/bookings`);
+    assert(nested.status === 200, 'GET /api/rooms/:id/bookings (has many) responds');
+  }
+
+  // Search
+  const { data: searched } = await appGet('/api/bookings/search');
+  assert(searched.status === 200, 'search bookings endpoint responds');
+
+  await stopApp();
+}
+
+// ── 7. expense-tracker ──────────────────────────────────────────────────
+{
+  console.log('\n  💰 Core: expense-tracker');
+  const r = compiled['expense-tracker'] || await compileTemplate('expense-tracker');
+  assert(r.errors.length === 0, 'compiles with 0 errors');
+
+  const port = await startApp(r.serverJS);
+  assert(!!port, `started on port ${port}`);
+
+  // Seed
+  await appPost('/api/seed', {});
+
+  // Expenses
+  const { data: expenses } = await appGet('/api/expenses');
+  assert(expenses.status === 200 && Array.isArray(expenses.data), 'GET /api/expenses returns array');
+  assert(expenses.data.length >= 4, `seeded ${expenses.data?.length || 0} expenses`);
+
+  // Create
+  const { data: created } = await appPost('/api/expenses', { description: 'E2E Coffee', amount: 4.50 });
+  assert(created.status === 200 || created.status === 201, 'POST /api/expenses creates expense');
+
+  // Categories
+  const { data: cats } = await appGet('/api/categories');
+  assert(cats.status === 200 && Array.isArray(cats.data), 'GET /api/categories returns array');
+
+  // Aggregate
+  const { data: total } = await appGet('/api/expenses/total');
+  assert(total.status === 200, 'total aggregate endpoint responds');
+
+  // Search
+  const { data: searched } = await appGet('/api/search');
+  assert(searched.status === 200, 'search expenses endpoint responds');
+
+  await stopApp();
+}
+
+console.log('\n  ✨ All 7 core templates passed CRUD tests');
 
 // =============================================================================
 // 3. RUN + TEST ENDPOINTS: Fullstack apps
