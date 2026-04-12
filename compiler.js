@@ -421,7 +421,7 @@ const UTILITY_FUNCTIONS = [
 }`, deps: [] },
   { name: '_classifyIntent', code: `async function _classifyIntent(input, categories) {
   const prompt = "Classify the following input into exactly one of these categories: " + categories.join(", ") + ".\\n\\nInput: " + String(input) + "\\n\\nRespond with ONLY the category name, nothing else.";
-  const response = await _askAI(prompt, null, null, "claude-haiku-4-20250514");
+  const response = await _askAI(prompt, null, null, "claude-haiku-4-5-20251001");
   const cleaned = String(response).trim().toLowerCase();
   for (const cat of categories) {
     if (cleaned === cat.toLowerCase() || cleaned.includes(cat.toLowerCase())) return cat;

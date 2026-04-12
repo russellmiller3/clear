@@ -52,6 +52,11 @@ create a Messages table:
   intent
   created_at (timestamp), auto
 
+create a Conversations table:
+  user_id
+  messages
+  created_at (timestamp), auto
+
 # Tools
 
 define function lookup_order(order_id):
