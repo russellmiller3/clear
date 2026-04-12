@@ -238,6 +238,7 @@ export const NodeType = Object.freeze({
   REQUIRES_ROLE: 'requires_role',
   DEFINE_ROLE: 'define_role',
   GUARD: 'guard',
+  THROW: 'throw',
 
   // Auth scaffolding
   AUTH_SCAFFOLD: 'auth_scaffold',
@@ -599,8 +600,10 @@ function memberAccessNode(object, member, line) {
   return { type: NodeType.MEMBER_ACCESS, object, member, line };
 }
 
-function tryHandleNode(tryBody, handlers, line) {
-  return { type: NodeType.TRY_HANDLE, tryBody, handlers, line };
+function tryHandleNode(tryBody, handlers, line, finallyBody) {
+  const node = { type: NodeType.TRY_HANDLE, tryBody, handlers, line };
+  if (finallyBody) node.finallyBody = finallyBody;
+  return node;
 }
 
 function deployNode(platform, line) {
@@ -1021,6 +1024,21 @@ const CANONICAL_DISPATCH = new Map([
       ctx.errors.push({ line: ctx.line, message: result.error });
     } else {
       ctx.body.push(guardNode(result.node, ctx.line, guardMessage));
+    }
+    return ctx.i + 1;
+  }],
+  ['send_error', (ctx) => {
+    // send error 'message' — throw a custom error from any context
+    const pos = 1; // skip 'send error' (single multi-word token)
+    if (pos < ctx.tokens.length) {
+      const expr = parseExpression(ctx.tokens, pos, ctx.line);
+      if (expr.error) {
+        ctx.errors.push({ line: ctx.line, message: expr.error });
+      } else {
+        ctx.body.push({ type: NodeType.THROW, expression: expr.node, line: ctx.line });
+      }
+    } else {
+      ctx.errors.push({ line: ctx.line, message: "send error needs a message — what should the error say? Example: send error 'Order not found'" });
     }
     return ctx.i + 1;
   }],
@@ -6385,7 +6403,21 @@ function parseTryHandle(lines, startIdx, blockIndent, errors) {
     handlers.push({ errorType: null, body: [] });
   }
 
-  return { node: tryHandleNode(tryBody, handlers, line), endIdx: i };
+  // Optional finally: block (runs whether try succeeded or failed)
+  let finallyBody = null;
+  if (i < lines.length && lines[i].indent <= blockIndent) {
+    const fTokens = lines[i].tokens;
+    if (fTokens.length && fTokens[0].canonical === 'finally') {
+      const finallyResult = parseBlock(lines, i + 1, blockIndent, errors);
+      finallyBody = finallyResult.body;
+      i = finallyResult.endIdx;
+      if (finallyBody.length === 0) {
+        errors.push({ line: fTokens[0].line, message: "The finally: block is empty — add cleanup code inside it." });
+      }
+    }
+  }
+
+  return { node: tryHandleNode(tryBody, handlers, line, finallyBody), endIdx: i };
 }
 
 // =============================================================================

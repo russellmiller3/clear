@@ -3793,7 +3793,12 @@ ${pad}}`;
             catchBody += `\n${pad}    else:\n${bodyCode}`;
           }
         });
-        return `${pad}try:\n${tryCode}\n${pad}except Exception as ${errVar}:\n${catchBody}`;
+        let pyCode = `${pad}try:\n${tryCode}\n${pad}except Exception as ${errVar}:\n${catchBody}`;
+        if (node.finallyBody) {
+          const finallyCode = compileBody(node.finallyBody, ctx);
+          pyCode += `\n${pad}finally:\n${finallyCode}`;
+        }
+        return pyCode;
       }
 
       const tryDeclared = new Set(ctx.declared);
@@ -3818,7 +3823,12 @@ ${pad}}`;
           catchBody += ` else {\n${bodyCode}\n${pad}  }`;
         }
       });
-      return `${pad}try {\n${tryCode}\n${pad}} catch (${errVar}) {\n${catchBody}\n${pad}}`;
+      let jsCode = `${pad}try {\n${tryCode}\n${pad}} catch (${errVar}) {\n${catchBody}\n${pad}}`;
+      if (node.finallyBody) {
+        const finallyCode = compileBody(node.finallyBody, ctx);
+        jsCode += ` finally {\n${finallyCode}\n${pad}}`;
+      }
+      return jsCode;
     }
 
     case NodeType.RETRY: {
@@ -4002,6 +4012,12 @@ ${pad}}`;
         return `${pad}if not (${expr}):\n${pad}    raise HTTPException(status_code=403, detail="${msg}")`;
       }
       return `${pad}if (!(${expr})) { return res.status(403).json({ error: "${msg}" }); }`;
+    }
+
+    case NodeType.THROW: {
+      const errMsg = exprToCode(node.expression, ctx);
+      if (ctx.lang === 'python') return `${pad}raise Exception(${errMsg})`;
+      return `${pad}throw new Error(${errMsg});`;
     }
 
     case NodeType.DEPLOY:

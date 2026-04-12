@@ -6432,6 +6432,52 @@ when user calls POST /api/order:
   });
 });
 
+describe('Send Error (throw)', () => {
+  it('parses send error with string message', () => {
+    const result = compileProgram("send error 'Something went wrong'");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("throw new Error(\"Something went wrong\")");
+  });
+
+  it('parses throw error synonym', () => {
+    const result = compileProgram("throw error 'Bad input'");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("throw new Error(\"Bad input\")");
+  });
+
+  it('parses fail with synonym', () => {
+    const result = compileProgram("fail with 'Invalid data'");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("throw new Error(\"Invalid data\")");
+  });
+
+  it('works with expression (not just string literal)', () => {
+    const result = compileProgram("msg is 'error'\nsend error msg");
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("throw new Error(msg)");
+  });
+
+  it('compiles to Python raise', () => {
+    const result = compileProgram("build for python backend\nsend error 'Not found'");
+    expect(result.errors).toHaveLength(0);
+    expect(result.python).toContain("raise Exception(\"Not found\")");
+  });
+
+  it('works inside a function', () => {
+    const source = [
+      "build for javascript backend",
+      "define function validate(x):",
+      "  if x is nothing:",
+      "    send error 'x is required'",
+      "  return x"
+    ].join('\n');
+    const result = compileProgram(source);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript;
+    expect(js).toContain('throw new Error("x is required")');
+  });
+});
+
 // =============================================================================
 // IF/THEN WITH SEND BACK + RETURN BEHAVIOR
 // =============================================================================
@@ -19235,6 +19281,47 @@ describe('Typed error handling — basic try/handle', () => {
     expect(r.python).toContain('try:');
     expect(r.python).toContain('except Exception as _err:');
     expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('Finally block', () => {
+  it('compiles try/catch/finally in JS', () => {
+    const r = compileProgram(
+      "try:\n  x = 1\nif error:\n  show 'failed'\nfinally:\n  show 'cleanup'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('try {');
+    expect(r.javascript).toContain('} catch (_err) {');
+    expect(r.javascript).toContain('} finally {');
+    expect(r.javascript).toContain('"cleanup"');
+  });
+
+  it('compiles try/catch/finally in Python', () => {
+    const r = compileProgram(
+      "build for python backend\ntry:\n  x = 1\nif error:\n  show 'failed'\nfinally:\n  show 'cleanup'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain('try:');
+    expect(r.python).toContain('except Exception as _err:');
+    expect(r.python).toContain('finally:');
+  });
+
+  it('works with "always do:" synonym', () => {
+    const r = compileProgram(
+      "try:\n  x = 1\nif error:\n  show 'oops'\nalways do:\n  show 'done'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('} finally {');
+  });
+
+  it('finally is optional (existing try/catch still works)', () => {
+    const r = compileProgram(
+      "try:\n  x = 1\nif error:\n  show 'failed'"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('try {');
+    expect(r.javascript).toContain('} catch (_err) {');
+    expect(r.javascript).not.toContain('finally');
   });
 });
 

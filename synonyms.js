@@ -145,6 +145,7 @@ const SYNONYM_TABLE = Object.freeze({
   // ---------------------------------------------------------------------------
   try: Object.freeze(['try', 'attempt']),
   if_error: Object.freeze(["if there's an error", "if error", 'handle the error', 'handle', 'catch']),
+  finally: Object.freeze(['finally', 'always do', 'after everything']),
 
   // ---------------------------------------------------------------------------
   // Modules (Phase 3)
@@ -198,6 +199,7 @@ const SYNONYM_TABLE = Object.freeze({
   when_user_calls: Object.freeze(['when user calls']),
   on_method: Object.freeze(['on']),
   send_back: Object.freeze(['send back', 'respond with', 'reply with']),
+  send_error: Object.freeze(['send error', 'throw error', 'fail with', 'raise error']),
   respond: Object.freeze(['respond', 'send', 'reply']),
   status_code: Object.freeze(['status']),
 
@@ -288,7 +290,7 @@ const SYNONYM_TABLE = Object.freeze({
   // Collection operations (Phase 21)
   sum_of: Object.freeze(['sum of', 'total of']),
   avg_of: Object.freeze(['avg of', 'average of', 'mean of']),
-  count_of: Object.freeze(['count of']),
+  count_of: Object.freeze(['count of', 'length of', 'size of']),
   max_of: Object.freeze(['max of', 'maximum of', 'largest of']),
   min_of: Object.freeze(['min of', 'minimum of', 'smallest of']),
   first_of: Object.freeze(['first of', 'first in']),
@@ -441,6 +443,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.18.0';
+const SYNONYM_VERSION = '0.20.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };
