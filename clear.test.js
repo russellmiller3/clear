@@ -697,6 +697,58 @@ describe('Compiler - Functions (JS)', () => {
     const result = compileProgram(source, { target: 'web' });
     expect(result.javascript).toContain('let y = double(5);');
   });
+
+  it('adds await when calling async user-defined functions', () => {
+    const source = [
+      "build for javascript backend",
+      "database is local memory",
+      "create a Items table:",
+      "  name is text, required",
+      "",
+      "define function get_items():",
+      "  items = get all Items",
+      "  return items",
+      "",
+      "when user calls GET /api/items:",
+      "  result = get_items()",
+      "  send back result"
+    ].join('\n');
+    const result = compileProgram(source);
+    const js = result.serverJS || result.javascript;
+    // Function should be async (contains CRUD)
+    expect(js).toContain('async function get_items()');
+    // Call site should have await
+    expect(js).toContain('await get_items()');
+  });
+
+  it('adds await transitively (A calls async B)', () => {
+    const source = [
+      "build for javascript backend",
+      "database is local memory",
+      "create a Items table:",
+      "  name is text, required",
+      "",
+      "define function get_items():",
+      "  items = get all Items",
+      "  return items",
+      "",
+      "define function count_items():",
+      "  items = get_items()",
+      "  return length of items",
+      "",
+      "when user calls GET /api/count:",
+      "  result = count_items()",
+      "  send back result"
+    ].join('\n');
+    const result = compileProgram(source);
+    const js = result.serverJS || result.javascript;
+    // Both functions should be async
+    expect(js).toContain('async function get_items()');
+    expect(js).toContain('async function count_items()');
+    // All call sites should have await
+    expect(js).toMatch(/await get_items\(\)/);
+    expect(js).toMatch(/await count_items\(\)/);
+  });
 });
 
 describe('Compiler - Functions (Python)', () => {

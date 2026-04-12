@@ -422,7 +422,9 @@ const UTILITY_FUNCTIONS = [
   { name: '_classifyIntent', code: `async function _classifyIntent(input, categories) {
   const prompt = "Classify the following input into exactly one of these categories: " + categories.join(", ") + ".\\n\\nInput: " + String(input) + "\\n\\nRespond with ONLY the category name, nothing else.";
   const response = await _askAI(prompt, null, null, "claude-haiku-4-5-20251001");
-  const cleaned = String(response).trim().toLowerCase();
+  // Handle both string responses and object responses (e.g. from mocks returning {text: "..."})
+  const text = (typeof response === 'object' && response !== null && response.text) ? response.text : String(response);
+  const cleaned = text.trim().toLowerCase();
   for (const cat of categories) {
     if (cleaned === cat.toLowerCase() || cleaned.includes(cat.toLowerCase())) return cat;
   }
@@ -4256,8 +4258,15 @@ ${pad}}`;
       }
       const bodyCode = compileBody(nonMockBody, ctx, { declared: new Set() });
       if (mockNodes.length > 0) {
-        // Build mock responses array
+        // Build mock responses. _askAI returns a plain string for text responses,
+        // and an object for structured output (with schema). Match that behavior:
+        // - single `text` field → return the string directly
+        // - multiple fields → return object (structured output)
         const mocks = mockNodes.map(m => {
+          if (m.fields.length === 1 && m.fields[0].name === 'text') {
+            // Plain text mock — _askAI returns a string, not {text: "..."}
+            return typeof m.fields[0].value === 'string' ? JSON.stringify(m.fields[0].value) : String(m.fields[0].value);
+          }
           const obj = m.fields.map(f => {
             const val = typeof f.value === 'string' ? JSON.stringify(f.value) : f.value;
             return `${JSON.stringify(f.name)}: ${val}`;
@@ -4267,6 +4276,7 @@ ${pad}}`;
         let code = `${pad}test(${JSON.stringify(node.name)}, async () => {\n`;
         code += `${pad}  const _origAskAI = typeof _askAI !== 'undefined' ? _askAI : null;\n`;
         code += `${pad}  const _origAskAITools = typeof _askAIWithTools !== 'undefined' ? _askAIWithTools : null;\n`;
+        code += `${pad}  const _origClassify = typeof _classifyIntent !== 'undefined' ? _classifyIntent : null;\n`;
         if (mocks.length === 1) {
           code += `${pad}  _askAI = async () => (${mocks[0]});\n`;
           code += `${pad}  _askAIWithTools = async () => (${mocks[0]});\n`;
@@ -4277,9 +4287,12 @@ ${pad}}`;
           code += `${pad}  _askAI = _mockFn;\n`;
           code += `${pad}  _askAIWithTools = _mockFn;\n`;
         }
+        // Mock _classifyIntent to use the mocked _askAI (it calls _askAI internally,
+        // so with the mock in place it will work correctly for text responses)
+        code += `${pad}  _classifyIntent = async (input, cats) => { const r = await _askAI(input); const c = String(r).trim().toLowerCase(); for (const cat of cats) { if (c.includes(cat.toLowerCase())) return cat; } return cats[cats.length - 1]; };\n`;
         code += `${pad}  try {\n`;
         code += bodyCode.split('\n').map(l => '  ' + l).join('\n') + '\n';
-        code += `${pad}  } finally { if (_origAskAI) _askAI = _origAskAI; if (_origAskAITools) _askAIWithTools = _origAskAITools; }\n`;
+        code += `${pad}  } finally { if (_origAskAI) _askAI = _origAskAI; if (_origAskAITools) _askAIWithTools = _origAskAITools; if (_origClassify) _classifyIntent = _origClassify; }\n`;
         code += `${pad}});`;
         return code;
       }
@@ -4970,7 +4983,23 @@ ${pad}}`;
         return code;
       }
       // JS: compile to if/else-if chain
+      // Hoist variable declarations from branches to avoid block-scoping issues
+      // Without this, `let x = ...` in the first branch is invisible to else branches
       const lines = [];
+      const allBranches = node.cases.map(c => c.body);
+      if (node.defaultBody) allBranches.push(node.defaultBody);
+      const hoisted = new Set();
+      for (const branch of allBranches) {
+        for (const n of branch) {
+          if (n.type === NodeType.ASSIGN && n.name && !ctx.declared.has(n.name)) {
+            hoisted.add(n.name);
+          }
+        }
+      }
+      for (const v of hoisted) {
+        lines.push(`${pad}let ${sanitizeName(v)};`);
+        ctx.declared.add(v);
+      }
       for (let ci = 0; ci < node.cases.length; ci++) {
         const c = node.cases[ci];
         const val = exprToCode(c.value, ctx);
@@ -5247,7 +5276,9 @@ export function exprToCode(expr, ctx) {
       }
       const fnName = ctx.lang === 'python' ? mapFunctionNamePython(expr.name) : mapFunctionNameJS(expr.name);
       const args = expr.args.map(a => exprToCode(a, ctx)).join(', ');
-      return `${fnName}(${args})`;
+      // Add await for user-defined async functions (detected by pre-scan)
+      const awaitPrefix = ctx._asyncFunctions?.has(expr.name) ? 'await ' : '';
+      return `${awaitPrefix}${fnName}(${args})`;
     }
 
     case NodeType.JSON_PARSE: {
@@ -7923,6 +7954,88 @@ function generateDiagram(body, commentPrefix = '//') {
 }
 
 /**
+ * Pre-scan AST to identify user-defined functions that will compile as async.
+ * A function is async if its body (recursively) contains CRUD operations,
+ * ASK_AI calls, external fetches, agent/pipeline calls, or HTTP requests.
+ * Also handles transitive async: if function A calls async function B, A is async too.
+ */
+function _findAsyncFunctions(body) {
+  const ASYNC_NODE_TYPES = new Set([
+    NodeType.CRUD, NodeType.ASK_AI, NodeType.EXTERNAL_FETCH,
+    NodeType.HTTP_REQUEST, NodeType.RUN_AGENT, NodeType.RUN_PIPELINE,
+    NodeType.TRANSACTION
+  ]);
+
+  // Recursively check if a list of nodes contains any async-producing patterns
+  function hasAsyncNodes(nodes) {
+    for (const n of nodes) {
+      if (ASYNC_NODE_TYPES.has(n.type)) return true;
+      // ASSIGN whose expression is async
+      if (n.type === NodeType.ASSIGN && n.expression) {
+        if (ASYNC_NODE_TYPES.has(n.expression.type)) return true;
+      }
+      // Recurse into block-containing nodes
+      if (n.body && hasAsyncNodes(n.body)) return true;
+      if (n.thenBranch && hasAsyncNodes(n.thenBranch)) return true;
+      if (n.otherwiseBranch && hasAsyncNodes(n.otherwiseBranch)) return true;
+      if (n.cases) {
+        for (const c of n.cases) {
+          if (c.body && hasAsyncNodes(c.body)) return true;
+        }
+      }
+      if (n.defaultBody && hasAsyncNodes(n.defaultBody)) return true;
+    }
+    return false;
+  }
+
+  // First pass: find functions with directly async bodies
+  const asyncFns = new Set();
+  const fnBodies = new Map(); // name → body nodes (for transitive analysis)
+  for (const n of body) {
+    if (n.type === NodeType.FUNCTION_DEF && n.name && n.body) {
+      fnBodies.set(n.name, n.body);
+      if (hasAsyncNodes(n.body)) {
+        asyncFns.add(n.name);
+      }
+    }
+  }
+
+  // Second pass: transitive — if function A calls an async function, A is async too
+  // Iterate until stable (handles chains like A→B→C where C is async)
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [name, fnBody] of fnBodies) {
+      if (asyncFns.has(name)) continue;
+      if (_bodyCallsAny(fnBody, asyncFns)) {
+        asyncFns.add(name);
+        changed = true;
+      }
+    }
+  }
+
+  return asyncFns;
+}
+
+/** Check if any node in `nodes` contains a CALL to a function in `fnSet` */
+function _bodyCallsAny(nodes, fnSet) {
+  for (const n of nodes) {
+    if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.CALL && fnSet.has(n.expression.name)) return true;
+    if (n.type === NodeType.CALL && fnSet.has(n.name)) return true;
+    if (n.body && _bodyCallsAny(n.body, fnSet)) return true;
+    if (n.thenBranch && _bodyCallsAny(n.thenBranch, fnSet)) return true;
+    if (n.otherwiseBranch && _bodyCallsAny(n.otherwiseBranch, fnSet)) return true;
+    if (n.cases) {
+      for (const c of n.cases) {
+        if (c.body && _bodyCallsAny(c.body, fnSet)) return true;
+      }
+    }
+    if (n.defaultBody && _bodyCallsAny(n.defaultBody, fnSet)) return true;
+  }
+  return false;
+}
+
+/**
  * Compile to a complete, runnable Express.js server.
  */
 function compileToJSBackend(body, errors, sourceMap = false) {
@@ -8089,9 +8202,15 @@ function compileToJSBackend(body, errors, sourceMap = false) {
     }
   }
 
+  // Pre-scan: identify user-defined functions that will compile as async.
+  // This lets CALL sites add `await` when calling async functions.
+  // A function is async if its body contains CRUD, ASK_AI, EXTERNAL_FETCH,
+  // RUN_AGENT, RUN_PIPELINE, HTTP_REQUEST, or calls to other async functions.
+  const _asyncFunctions = _findAsyncFunctions(body);
+
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, _astBody: body, _allNodes: body };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, _astBody: body, _allNodes: body, _asyncFunctions };
   for (const node of body) {
     // Skip test blocks in server output when running as a server (not test mode)
     // Tests are compiled into the server output for `compileProgram()` consumers
@@ -8259,9 +8378,10 @@ function compileToBrowserServer(body, errors) {
   for (const node of body) {
     if (node.type === NodeType.DATA_SHAPE) schemaNames.add(node.name);
   }
+  const _asyncFunctions = _findAsyncFunctions(body);
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames, _astBody: body, _allNodes: body };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames, _astBody: body, _allNodes: body, _asyncFunctions };
 
   // Collect schemas and route handlers
   for (const node of body) {
