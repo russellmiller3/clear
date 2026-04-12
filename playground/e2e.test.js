@@ -737,6 +737,29 @@ if (apiKey) {
 }
 
 // =============================================================================
+// =============================================================================
+// CURRICULUM TASKS — all skeletons must compile
+// =============================================================================
+console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('📚 Curriculum — compile all 20 task skeletons');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+{
+  const { tasks } = await import('../curriculum/index.js');
+  let curriculumErrors = 0;
+  for (const task of tasks) {
+    if (!task.skeleton) continue;
+    const { data } = await apiPost('/api/compile', { source: task.skeleton });
+    if (data.errors && data.errors.length > 0) {
+      curriculumErrors++;
+      console.log(`    ⚠️  L${task.level} ${task.id}: ${data.errors[0].message}`);
+    }
+  }
+  assert(curriculumErrors === 0, `all ${tasks.length} curriculum skeletons compile (${curriculumErrors} errors)`);
+  console.log(`  ✅ ${tasks.length} curriculum tasks checked`);
+}
+
+// =============================================================================
 // 7. NO JS ERRORS THROUGHOUT
 // =============================================================================
 console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
