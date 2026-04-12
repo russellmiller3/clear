@@ -5186,7 +5186,18 @@ export function exprToCode(expr, ctx) {
 
     case NodeType.ASK_AI: {
       const prompt = exprToCode(expr.prompt, ctx);
-      const context = expr.context ? exprToCode(expr.context, ctx) : null;
+      // Multi-context: merge comma-separated vars into JSON object
+      let context;
+      if (expr.context && expr.context.type === 'multi_context') {
+        const entries = expr.context.contexts.map(c => {
+          const code = exprToCode(c, ctx);
+          const key = c.name || c.value || code.replace(/[^a-zA-Z0-9_]/g, '_');
+          return `${JSON.stringify(key)}: ${code}`;
+        });
+        context = `JSON.stringify({ ${entries.join(', ')} })`;
+      } else {
+        context = expr.context ? exprToCode(expr.context, ctx) : null;
+      }
       const schema = expr.schema ? JSON.stringify(expr.schema) : null;
       const model = expr.model ? JSON.stringify(expr.model) : null;
       // Streaming mode: use _askAIStream async generator
@@ -5365,6 +5376,10 @@ export function exprToCode(expr, ctx) {
     }
 
     case NodeType.CURRENT_TIME: {
+      if (expr.subtype === 'today') {
+        if (ctx.lang === 'python') return 'datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)';
+        return 'new Date(new Date().setHours(0,0,0,0))';
+      }
       if (ctx.lang === 'python') return 'datetime.datetime.now()';
       return 'new Date()';
     }

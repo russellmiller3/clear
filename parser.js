@@ -6746,13 +6746,26 @@ function parseAssignment(tokens, line) {
     let context = null;
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
       pos++;
-      // Parse context, but stop before 'returning' or 'using' if present
+      // Parse context — supports comma-separated: ask ai 'prompt' with X, Y, Z
+      // Stop before 'returning' or 'using' keywords
       const stopIdx = tokens.findIndex((t, i) => i >= pos && (t.value === 'returning' || t.value === 'using'));
       const endPos = stopIdx >= 0 ? stopIdx : undefined;
-      const expr = parseExpression(tokens, pos, line, endPos);
-      if (expr.error) return { error: expr.error };
-      context = expr.node;
-      pos = expr.nextPos;
+      // Check for comma-separated contexts: collect into list if multiple
+      const contexts = [];
+      while (pos < (endPos || tokens.length)) {
+        if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+        const nextComma = tokens.findIndex((t, i) => i > pos && i < (endPos || tokens.length) && t.type === TokenType.COMMA);
+        const segEnd = nextComma >= 0 ? nextComma : endPos;
+        const expr = parseExpression(tokens, pos, line, segEnd);
+        if (expr.error) break;
+        contexts.push(expr.node);
+        pos = expr.nextPos;
+      }
+      if (contexts.length === 1) {
+        context = contexts[0];
+      } else if (contexts.length > 1) {
+        context = { type: 'multi_context', contexts, line };
+      }
     }
     // Check for "using 'model-name'" clause
     let model = null;
@@ -7045,6 +7058,20 @@ function parseAssignment(tokens, line) {
     const urlExpr = parseExpression(tokens, pos, line);
     if (urlExpr.error) return { error: urlExpr.error };
     return { name, expression: { type: NodeType.FETCH_PAGE, url: urlExpr.node, line } };
+  }
+
+  // Check for "find all TableName where ..." — CRUD alias for "look up all"
+  // e.g. orders = find all Orders where status is 'active'
+  // Discriminator: token after "find all" is an identifier (table name), not a string (CSS selector)
+  if (pos < tokens.length && tokens[pos].value === 'find' &&
+      pos + 1 < tokens.length && tokens[pos + 1].value === 'all' &&
+      pos + 2 < tokens.length && (tokens[pos + 2].type === TokenType.IDENTIFIER || tokens[pos + 2].type === TokenType.KEYWORD) &&
+      tokens[pos + 2].type !== TokenType.STRING) {
+    // Route through parseLookUpAssignment — skip "find", leave "all TableName where ..."
+    // parseLookUpAssignment expects to start at the token after "look up"
+    const result = parseLookUpAssignment(name, tokens, pos + 1, line);
+    if (result.error) return { error: result.error };
+    return result;
   }
 
   // Check for "find all 'selector' in page" or "find first 'selector' in page"
@@ -7592,6 +7619,11 @@ function parsePrimary(tokens, pos, line, end) {
 
   if (tok.canonical === 'nothing') {
     return { node: literalNothing(line), nextPos: pos + 1 };
+  }
+
+  // "today" → date expression for start of current day
+  if (tok.value === 'today') {
+    return { node: { type: NodeType.CURRENT_TIME, subtype: 'today', line }, nextPos: pos + 1 };
   }
 
   // "keys of X" → MAP_KEYS node

@@ -20910,4 +20910,84 @@ agent 'Router' receives msg:
   });
 });
 
+// =============================================================================
+// PHASE 4: CONVENIENCE SYNTAX — find all, today, multi-context ask ai
+// =============================================================================
+
+describe('find all synonym for look up all', () => {
+  it('find all Orders compiles same as look up all', () => {
+    const src = `build for javascript backend
+create an Orders table:
+  status, required
+when user calls GET /api/orders:
+  active_orders = find all Orders where status is 'active'
+  send back active_orders`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('findAll');
+  });
+
+  it('find all without where clause', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+when user calls GET /api/products:
+  all_products = find all Products
+  send back all_products`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('findAll');
+  });
+});
+
+describe('today literal', () => {
+  it('today compiles to start of day', () => {
+    const src = `build for javascript backend\ndate = today`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('setHours(0,0,0,0)');
+  });
+
+  it('today works in expressions', () => {
+    const src = `build for web\nshow today`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('multi-context ask ai', () => {
+  it('ask ai with two contexts parses and compiles', () => {
+    const src = `build for javascript backend
+agent 'Reporter' receives data:
+  report = ask claude 'Summarize' with orders, returns
+  send back report`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('orders');
+    expect(r.javascript).toContain('returns');
+  });
+
+  it('ask ai with three contexts creates merged object', () => {
+    const src = `build for javascript backend
+agent 'Reporter' receives data:
+  summary = ask claude 'Report' with orders, returns, inventory
+  send back summary`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('JSON.stringify');
+  });
+
+  it('single context still works (no regression)', () => {
+    const src = `build for javascript backend
+agent 'Bot' receives data:
+  answer = ask claude 'Help' with data
+  send back answer`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Single context should compile to _askAI("Help", data) — no multi-context merge
+    expect(r.javascript).toContain('_askAI("Help", data)');
+  });
+});
+
 run();
+
