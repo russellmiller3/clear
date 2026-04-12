@@ -485,6 +485,18 @@ try {
     assert(output && output.includes('// clear:'), 'compiled backend has source map markers');
   }
 
+  // =========================================================================
+  // BROWSE TEMPLATES — Meph can read template library
+  // =========================================================================
+  console.log('\n📚 Browse templates');
+
+  {
+    const fs = await import('fs');
+    const serverSrc = fs.readFileSync(join(__dirname, 'server.js'), 'utf8');
+    assert(serverSrc.includes("name: 'browse_templates'"), 'server.js has browse_templates tool');
+    assert(serverSrc.includes("case 'browse_templates'"), 'server.js has browse_templates dispatch');
+  }
+
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);
   failed++;

@@ -702,3 +702,32 @@ The reader knows what data exists, what the API does, and what the user sees.
 | Rate limit | `rate limit 10 per minute` |
 | Database migration | `update database:` + `in Users table:` + `add X field` |
 | Full-stack app | `build for web and javascript backend` |
+
+---
+
+## Rule 15: Meph Has Access to Everything
+
+Meph (the Studio AI agent) should have tool access to everything in Studio:
+templates, docs, source maps, terminal, data, API testing, screenshots. The only
+things Meph cannot touch are the dark mode button, "New" (clearing the editor),
+and "Load" (loading a template) — those are user-initiated actions only.
+
+If a feature exists in the IDE, Meph should be able to use it as a tool. If it
+can't, that's a gap to fix.
+
+## Rule 16: Error Messages Are First-Class
+
+Error messages aren't afterthoughts — they're features. Every compiler error should:
+
+1. **Say what's wrong** in plain English (no jargon, no AST node names)
+2. **Say where** with a clickable Clear line number
+3. **Say how to fix it** with a concrete example of correct syntax
+4. **Link to docs** — point to the SYNTAX.md or USER-GUIDE.md section that explains the feature
+5. **Be one-click fixable** in Studio when the fix is unambiguous
+
+Meph should love error messages. When Meph gets an error, it should contain
+enough information to fix the bug without reading the source. The error IS
+the debugging tool.
+
+Bad: `Error: Unexpected token at line 5`
+Good: `Line 5: 'send back' needs a value to return. Example: send back result — see Syntax Reference > Endpoints`

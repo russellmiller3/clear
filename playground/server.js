@@ -1,6 +1,6 @@
 import express from 'express';
 import { compileProgram } from '../index.js';
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
@@ -486,6 +486,18 @@ You can modify .clear files and requests.md. You can create new files of any all
     },
   },
   {
+    name: 'browse_templates',
+    description: 'Browse the template library. Use action="list" to see all available templates with descriptions. Use action="read" with a template name to get its full Clear source code. Great for learning patterns, finding examples of specific features, or starting from an existing app.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'read'], description: 'list = show all templates, read = get source code for a specific template' },
+        name: { type: 'string', description: 'Template name to read (e.g. "todo-fullstack", "crm-pro"). Only needed for action=read.' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'source_map',
     description: 'Get the source map for the current compiled code. Shows which compiled output lines correspond to which Clear source lines. Use to understand how Clear compiles, debug compilation issues, or trace a bug in compiled output back to the Clear source.',
     input_schema: {
@@ -828,6 +840,34 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ result: summary });
       }
 
+      case 'browse_templates': {
+        const TEMPLATE_DIR = join(ROOT_DIR, 'apps');
+        if (input.action === 'list') {
+          try {
+            const dirs = readdirSync(TEMPLATE_DIR).filter(d => {
+              try { return statSync(join(TEMPLATE_DIR, d)).isDirectory(); } catch { return false; }
+            });
+            const templates = dirs.map(d => {
+              const mainFile = join(TEMPLATE_DIR, d, 'main.clear');
+              if (!existsSync(mainFile)) return null;
+              const src = readFileSync(mainFile, 'utf8');
+              const firstComment = src.match(/^#\s*(.+)/m);
+              const lineCount = src.split('\n').filter(l => l.trim()).length;
+              return { name: d, description: firstComment?.[1] || '', lines: lineCount };
+            }).filter(Boolean);
+            return JSON.stringify({ templates, count: templates.length });
+          } catch (e) { return JSON.stringify({ error: e.message }); }
+        }
+        if (input.action === 'read') {
+          if (!input.name) return JSON.stringify({ error: 'Need a template name. Use action="list" first to see available templates.' });
+          const safeName = input.name.replace(/[^a-zA-Z0-9_-]/g, '');
+          const mainFile = join(TEMPLATE_DIR, safeName, 'main.clear');
+          if (!existsSync(mainFile)) return JSON.stringify({ error: `Template "${safeName}" not found. Use action="list" to see available templates.` });
+          return JSON.stringify({ name: safeName, source: readFileSync(mainFile, 'utf8') });
+        }
+        return JSON.stringify({ error: 'action must be "list" or "read"' });
+      }
+
       default:
         return JSON.stringify({ error: 'Unknown tool: ' + name });
     }
@@ -1009,6 +1049,7 @@ app.post('/api/chat', async (req, res) => {
             case 'screenshot_output': return 'Taking screenshot';
             case 'highlight_code': return `Highlighting lines ${input.start_line || ''}–${input.end_line || ''}`;
             case 'source_map': return input.clear_line ? `Looking up Clear line ${input.clear_line}` : 'Getting full source map';
+            case 'browse_templates': return input.action === 'read' ? `Reading template: ${input.name}` : 'Browsing templates';
             default: return tb.name;
           }
         })();
@@ -1106,6 +1147,8 @@ app.post('/api/chat', async (req, res) => {
               return `[tool] highlight lines ${input.start_line}–${input.end_line || input.start_line}${input.message ? ': ' + input.message : ''}`;
             case 'source_map':
               return `[tool] ✓ source_map`;
+            case 'browse_templates':
+              return `[tool] ✓ browse_templates — ${input.action} ${input.name || ''}`.trim();
             default:
               return `[tool] ${tb.name}`;
           }
