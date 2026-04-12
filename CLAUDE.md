@@ -40,6 +40,19 @@ Run ToolSearch for these before doing anything else:
 
 Never declare an app "done" or "compiles clean" based only on step 1. Steps 2-3 catch bugs in the COMPILED OUTPUT that the compiler tests don't cover (e.g. parentheses in skill instructions breaking generated JS, missing closing braces, malformed string concatenation).
 
+## Never Test By Hand (MANDATORY)
+**Never manually click buttons in a browser to verify an app works.** If you're tempted to open Chrome and click something, that means the compiler is missing a generated test. Fix the compiler to emit the test, then run `clear test`. The compiler knows every button, link, input, endpoint, and page in the app — it should generate tests for ALL of them:
+- Every button click triggers an action (not a dead button)
+- Every link navigates to its target page
+- Every input accepts and stores a value
+- Every endpoint returns the expected status code
+- Every page renders without JS errors
+- Every display element shows data (not "undefined" or "OUTPUT")
+
+If `clear test` doesn't cover it, the gap is in the compiler's test generator — fix that, not the app.
+
+Never declare an app "done" or "compiles clean" based only on step 1. Steps 2-3 catch bugs in the COMPILED OUTPUT that the compiler tests don't cover (e.g. parentheses in skill instructions breaking generated JS, missing closing braces, malformed string concatenation).
+
 ## Key Files
 - `index.js` -- public API, `compileProgram(source)` is the entry point
 - `tokenizer.js` -> `parser.js` -> `validator.js` -> `compiler.js` (the pipeline)

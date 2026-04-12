@@ -429,18 +429,21 @@ async function testCommand(args) {
     process.exit(1);
   }
 
-  // Build test JS: combine browserServer (db + agents) with test blocks from javascript
+  // Build test JS: combine server code with test blocks
+  // Sources of tests:
+  //   1. result.tests — auto-generated e2e tests from generateE2ETests()
+  //   2. serverJS — user-written test blocks (wrapped in typeof test guard)
+  //   3. javascript/browserServer — frontend tests
   let js = '';
   let testBlocks = '';
 
   if (result.browserServer) {
     js = result.browserServer;
-    // Extract test blocks from frontend JS (they compile there, not in browserServer)
+    // Extract test blocks from frontend JS
     const frontendJs = result.javascript || '';
     const testStart = frontendJs.indexOf('test("');
     if (testStart > 0) {
       let testEnd = frontendJs.length;
-      // Stop before server startup code
       const serverIdx = frontendJs.indexOf('const server', testStart);
       const appListenIdx = frontendJs.indexOf('app.listen', testStart);
       const portIdx = frontendJs.indexOf('const PORT', testStart);
@@ -453,20 +456,37 @@ async function testCommand(args) {
     js = result.serverJS || result.javascript || '';
   }
 
+  // Also extract user-written test blocks from serverJS
+  // They're wrapped in: if (typeof test === 'function') { test(...) }
+  // The test runner defines test(), so the guard passes — include the blocks as-is
+  const serverJs = result.serverJS || '';
+  const guardMarker = "if (typeof test === 'function') {";
+  let searchPos = 0;
+  while (true) {
+    const idx = serverJs.indexOf(guardMarker, searchPos);
+    if (idx < 0) break;
+    // Find matching closing brace by counting depth
+    let depth = 1, i = idx + guardMarker.length;
+    while (i < serverJs.length && depth > 0) {
+      if (serverJs[i] === '{') depth++;
+      else if (serverJs[i] === '}') depth--;
+      i++;
+    }
+    // Extract the full guarded block (including the if wrapper — test() is defined)
+    testBlocks += '\n' + serverJs.substring(idx, i);
+    searchPos = i;
+  }
+
   // Strip browser-specific code for Node test runner
   if (js.includes('// --- Clear Browser Server')) {
-    // Remove IIFE wrapper
     js = js.replace(/^[^\n]*\n\(function\(\)\s*\{/, '');
-    // Cut at fetch interceptor
     const fetchIdx = js.indexOf('const _origFetch');
     if (fetchIdx > 0) js = js.substring(0, fetchIdx);
-    // Remove trailing })();
     js = js.trimEnd().replace(/\}\)\(\);?\s*$/, '');
-    // Stub browser globals + AI functions (real ones were in the fetch interceptor we stripped)
     js = 'var window = {};\nasync function _askAI() { throw new Error("Set ANTHROPIC_API_KEY"); }\nasync function _askAIWithTools() { throw new Error("Set ANTHROPIC_API_KEY"); }\n' + js;
   }
 
-  // Append test blocks AFTER stripping
+  // Append extracted test blocks
   if (testBlocks) js += '\n' + testBlocks;
 
   // Write test runner to temp file and execute with Node

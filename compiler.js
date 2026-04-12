@@ -1138,6 +1138,87 @@ function generateE2ETests(body) {
     lines.push('');
   }
 
+  // === AUTO-GENERATED FRONTEND ELEMENT TESTS ===
+  // Walk the AST to find pages, links, buttons, inputs, and displays
+  const pages = body.filter(n => n.type === NodeType.PAGE);
+  if (pages.length > 0) {
+    lines.push('  // --- Frontend Element Tests (auto-generated) ---');
+    lines.push('');
+
+    // Collect all interactive elements from all pages
+    function collectElements(nodes, pageName) {
+      const elements = { links: [], buttons: [], inputs: [], displays: [] };
+      for (const n of nodes) {
+        if (n.type === NodeType.CONTENT && n.contentType === 'link' && n.href) {
+          elements.links.push({ text: n.text, href: n.href, page: pageName });
+        }
+        if (n.type === NodeType.BUTTON) {
+          elements.buttons.push({ text: n.text || n.label, page: pageName });
+        }
+        if (n.type === NodeType.ASK_FOR || (n.ui && n.ui.inputType)) {
+          elements.inputs.push({ label: n.ui?.label || n.variable || 'input', page: pageName });
+        }
+        if (n.type === NodeType.DISPLAY) {
+          elements.displays.push({ name: n.variable || n.text || 'display', page: pageName });
+        }
+        // Recurse into sections, pages, etc.
+        if (n.body) collectElements(n.body, pageName);
+      }
+      return elements;
+    }
+
+    const allElements = { links: [], buttons: [], inputs: [], displays: [] };
+    for (const page of pages) {
+      const pageName = page.title || page.name || 'page';
+      const els = collectElements(page.body || [], pageName);
+      allElements.links.push(...els.links);
+      allElements.buttons.push(...els.buttons);
+      allElements.inputs.push(...els.inputs);
+      allElements.displays.push(...els.displays);
+    }
+
+    // Test: each page renders (route exists and returns HTML content)
+    for (const page of pages) {
+      const route = page.route || '/';
+      lines.push(`  await test("Page '${page.title || page.name}' renders at ${route}", async () => {`);
+      lines.push(`    const r = await fetch(BASE + "/");`);
+      lines.push(`    const html = await r.text();`);
+      lines.push(`    assert(html.includes("${page.title || page.name}"), "Page should contain title '${page.title || page.name}'");`);
+      lines.push(`  });`);
+      lines.push('');
+    }
+
+    // Test: each link has a valid href (not just "#")
+    for (const link of allElements.links) {
+      lines.push(`  await test("Link '${link.text}' navigates to ${link.href}", async () => {`);
+      lines.push(`    const r = await fetch(BASE + "/");`);
+      lines.push(`    const html = await r.text();`);
+      lines.push(`    assert(html.includes('href="#${link.href}"') || html.includes('href="${link.href}"'), "Link '${link.text}' should have href to '${link.href}', not '#'");`);
+      lines.push(`  });`);
+      lines.push('');
+    }
+
+    // Test: each button exists in the HTML
+    for (const btn of allElements.buttons) {
+      lines.push(`  await test("Button '${btn.text}' exists on page '${btn.page}'", async () => {`);
+      lines.push(`    const r = await fetch(BASE + "/");`);
+      lines.push(`    const html = await r.text();`);
+      lines.push(`    assert(html.includes("${btn.text}"), "Button '${btn.text}' should exist in HTML");`);
+      lines.push(`  });`);
+      lines.push('');
+    }
+
+    // Test: each display element is present (not showing "OUTPUT" placeholder)
+    for (const disp of allElements.displays) {
+      lines.push(`  await test("Display '${disp.name}' element exists on page '${disp.page}'", async () => {`);
+      lines.push(`    const r = await fetch(BASE + "/");`);
+      lines.push(`    const html = await r.text();`);
+      lines.push(`    assert(html.includes("${disp.name}") || html.includes("output_"), "Display element for '${disp.name}' should exist");`);
+      lines.push(`  });`);
+      lines.push('');
+    }
+  }
+
   // === AUTO-GENERATED AGENT TESTS ===
   // For each agent, generate smoke tests that verify:
   // - The agent endpoint accepts POST and returns a response
@@ -7418,7 +7499,8 @@ ${options}
               } else if (inLandingCard) {
                 _pc(`    <a class="link link-primary text-sm font-medium" href="${ui.href || '#'}">${formatted}</a>`);
               } else {
-                _pc(`    <a class="link link-primary text-sm" href="${ui.href || '#'}">${formatted}</a>`);
+                const linkHref = ui.href ? (ui.href.startsWith('/') ? '#' + ui.href : ui.href) : '#';
+                _pc(`    <a class="link link-primary text-sm" href="${linkHref}">${formatted}</a>`);
               }
               break;
             case 'code': {
