@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (99 total)
+## Node Types (124 total)
 
 ### Core Language
 
@@ -52,6 +52,12 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `SCRIPT` | `script:` + indented block | Raw JS escape hatch (emitted as-is) |
 | `STORE` | `store settings` / `store settings as 'prefs'` | Save to localStorage (JSON) |
 | `RESTORE` | `restore settings` / `restore settings as 'prefs'` | Load from localStorage (JSON) |
+| `TOAST` | `show toast 'message'` / `show alert 'message'` | Toast notification UI |
+| `TRANSACTION` | `transaction:` + block | Atomic database operations (begin/commit/rollback) |
+| `RETRY` | `retry 3 times:` + block | Retry loop with catch |
+| `TIMEOUT` | `with timeout 5 seconds:` + block | `Promise.race` with timeout |
+| `RACE` | `first to finish:` + block | `Promise.race` |
+| `REFRESH` | `refresh` / `reload` | `window.location.reload()` |
 
 ### Scheduled Agents
 
@@ -109,6 +115,11 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `NAVIGATE` | `go to '/path'` | `location.hash = '/path'` |
 | `COMPONENT_DEF` | `define component Card receiving content:` | Reusable HTML function |
 | `COMPONENT_USE` | `show Card(arg)` / `show Card:` + content | Component invocation |
+| `HIDE_ELEMENT` | `hide X` | Toggle element visibility |
+| `CLIPBOARD_COPY` | `copy X to clipboard` | Clipboard API |
+| `DOWNLOAD_FILE` | `download X as 'filename'` | Trigger file download |
+| `LOADING_ACTION` | `show loading` / `hide loading` | Loading indicator |
+| `ON_CHANGE` | `when X changes:` + block | Reactive input handler |
 
 ### Backend (Phase 5-6)
 
@@ -121,6 +132,9 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `GUARD` | `guard stock > 0 or 'Out of stock'` | Conditional 400 response |
 | `LOG_REQUESTS` | `log every request` | Request logging middleware |
 | `ALLOW_CORS` | `allow cross-origin requests` | CORS headers |
+| `DEPLOY` | `deploy to vercel` / `deploy to netlify` | Deployment directive |
+| `DEFINE_ROLE` | `define role 'editor':` + permissions | Role definition for RBAC |
+| `RUN_COMMAND` | `run command 'shell cmd'` | `child_process.exec` / `subprocess.run` |
 
 ### Data (Phase 9)
 
@@ -160,13 +174,17 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `(nu
 |-----------|--------|-------|
 | `ACCEPT_FILE` | `accept file:` + max size, allowed types | Multer / UploadFile |
 | `EXTERNAL_FETCH` | `data from 'url':` + timeout, cache, fallback | AbortController / httpx |
+| `UPLOAD_TO` | `upload file to 's3-bucket'` | File upload to cloud storage |
+| `LOGIN_ACTION` | `login with 'google'` | Social login redirect flow |
 
 ### Real-time (Phase 20)
 
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `STREAM` | `stream:` + `send back 'event'` | SSE |
+| `STREAM_AI` | `stream ask claude 'prompt' with context` | SSE streaming of AI response, token-by-token |
 | `BACKGROUND` | `background 'name':` + `runs every 1 hour` | setInterval / asyncio |
+| `CRON` | `every day at '9:00 AM':` + block | node-cron scheduled execution |
 | `SUBSCRIBE` | `subscribe to 'channel':` | WebSocket |
 | `MIGRATION` | `update database:` + ALTER TABLE ops | SQL migration |
 | `WAIT` | `wait 500ms` | setTimeout / sleep |
@@ -213,6 +231,17 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `(nu
 | `TRAIN_MODEL` | `train model on data predicting target` | REST to Python | `sklearn` |
 | `PREDICT` | `predict with model using features` | REST to Python | `model.predict` |
 
+### Service Integrations (Phase 45)
+
+| Node Type | Syntax | JS |
+|-----------|--------|-----|
+| `HTTP_REQUEST` | `send to 'url':` + method/headers/body config | `fetch()` with options |
+| `SERVICE_CALL` (stripe) | `charge via stripe:` + amount/currency/token | `fetch('https://api.stripe.com/v1/charges', ...)` |
+| `SERVICE_CALL` (sendgrid) | `send email via sendgrid:` + to/from/subject/body | `fetch('https://api.sendgrid.com/v3/mail/send', ...)` |
+| `SERVICE_CALL` (twilio) | `send sms via twilio:` + to/body | `fetch('https://api.twilio.com/...', ...)` |
+
+Service calls use direct REST API calls via `fetch()`, not SDK imports. Auth via env vars: `STRIPE_KEY`, `SENDGRID_KEY`, `TWILIO_SID`/`TWILIO_TOKEN`.
+
 ### Advanced (Phase 28)
 
 | Node Type | Syntax | JS | Python |
@@ -235,6 +264,8 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `(nu
 | `SKILL` | `skill 'Name':` + `can:` + `instructions:` | (same) | Compile-time merge into agent |
 | `HUMAN_CONFIRM` | `ask user to confirm 'message'` | (same) | Approvals table insert + 202 response |
 | `MOCK_AI` | `mock claude responding:` + fields (in test) | (same) | `_askAI` override with mock |
+| `CLASSIFY` | `intent = classify X as 'a', 'b', 'c'` | (same) | `await _classifyIntent(X, ['a','b','c'])` — Claude Haiku |
+| `ASK_AI` (multi-context) | `ask ai 'prompt' with X, Y, Z` | (same) | `await _askAI(prompt, JSON.stringify({X, Y, Z}))` |
 
 Agent directives (metadata on AGENT node, not separate nodes):
 
@@ -246,7 +277,9 @@ Agent directives (metadata on AGENT node, not separate nodes):
 | `remember conversation context` | DB-backed multi-turn conversation history |
 | `remember user's preferences` | Per-user long-term memory |
 | `track agent decisions` | Observability — logs _askAI calls with timing |
-| `knows about: Table1, Table2` | RAG — keyword search before prompting |
+| `knows about: Table1, Table2` | RAG — keyword search over DB tables before prompting |
+| `knows about: 'https://url'` | RAG — fetch page text at startup, keyword search |
+| `knows about: 'file.pdf'` | RAG — read PDF/DOCX/TXT/MD at startup, keyword search |
 
 ### App-Level Policies (Enact Guards)
 

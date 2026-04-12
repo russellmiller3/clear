@@ -1,0 +1,456 @@
+/*
+Store Operations Agent — AI-powered e-commerce backend
+
+DEMO: Customer support chat with intent routing, order lookup,
+return processing, stock checking, inventory alerts, and admin dashboard.
+
+DATAFLOW:
+                              classify
+  Customer ──► Chat ──► Intent Router ──┬──► Order Lookup ──► DB
+                                        ├──► Return Processing ──► DB + Email
+                                        ├──► Stock Check ──► DB
+                                        └──► General Support
+
+  Background ──► Inventory Monitor (every 6 hours) ──► Low Stock Alerts
+             ──► Daily Report (every day at 9 AM) ──► Email Summary
+*/
+
+build for web and javascript backend
+database is local memory
+allow signup and login
+
+# Database
+
+create a Products table:
+  name, required
+  sku, required, unique
+  category, default 'general'
+  price (number), required
+  stock (number), default 0
+  reorder_threshold (number), default 10
+  image_url
+
+create an Orders table:
+  customer_name, required
+  customer_email, required
+  items, required
+  total (number), required
+  status, default 'pending'
+  tracking_number
+  created_at (timestamp), auto
+
+create a Returns table:
+  order_id (number), required
+  reason, required
+  status, default 'requested'
+  refund_amount (number)
+  created_at (timestamp), auto
+
+create a Messages table:
+  role, required
+  content, required
+  intent
+  created_at (timestamp), auto
+
+create a Conversations table:
+  user_id
+  messages
+  created_at (timestamp), auto
+
+# Tools
+
+define function lookup_order(order_id):
+  order = look up Order where id is order_id
+  return order
+
+define function lookup_orders_by_email(email):
+  orders = look up all Orders where customer_email is email
+  return orders
+
+define function check_stock(product_name):
+  results = search Products for product_name
+  return results
+
+define function process_return(target_order_id, return_reason):
+  order = look up Order where id is target_order_id
+  guard order is not missing or 'Order not found'
+  guard order's status is 'delivered' or 'Only delivered orders can be returned'
+  create return_record:
+    order_id is target_order_id
+    reason is return_reason
+    refund_amount is order's total
+    status is 'approved'
+  save return_record as new Return
+  set order's status to 'returned'
+  save order to Orders
+  return return_record
+
+define function get_low_stock_items():
+  products = get all Products
+  low_stock is an empty list
+  for each product in products list:
+    if product's stock is less than product's reorder_threshold:
+      add product to low_stock
+  return low_stock
+
+# Skills
+
+skill 'Order Management':
+  can: lookup_order, lookup_orders_by_email
+  instructions:
+    Always look up the order before taking action.
+    Include the order status and tracking number in your response.
+    Be empathetic about delays.
+
+skill 'Returns':
+  can: process_return
+  instructions:
+    Only process returns for delivered orders.
+    Always explain the refund timeline (5-7 business days).
+    If the order is not eligible, explain why.
+
+skill 'Inventory':
+  can: check_stock, get_low_stock_items
+  instructions:
+    Report stock levels precisely.
+    Suggest alternatives if an item is out of stock.
+
+# Agent
+
+agent 'Customer Support' receives message:
+  uses skills: 'Order Management', 'Returns', 'Inventory'
+  knows about: Products, Orders
+  remember conversation context
+  track agent decisions
+  block arguments matching 'drop|truncate|delete.*all'
+  must not:
+    modify Products table
+
+  intent = classify message as 'order status', 'return or refund', 'product availability'
+
+  match intent:
+    when 'order status':
+      response = ask claude 'Help this customer check their order. Look it up by ID or email and give a clear status update with tracking info if available.' with message
+    when 'return or refund':
+      response = ask claude 'Help with this return request. Process it if the order is delivered. Explain the refund timeline.' with message
+    when 'product availability':
+      response = ask claude 'Check if this product is in stock. Give the exact count. Suggest alternatives if out of stock.' with message
+    otherwise:
+      response = ask claude 'You are a friendly e-commerce support agent for TechGear Store. Help the customer with their question about our electronics products.' with message
+
+  send back response
+
+# Scheduled Tasks
+
+background 'Inventory Monitor':
+  runs every 6 hours
+  low_items = get_low_stock_items()
+  if length of low_items is greater than 0:
+    for each item in low_items list:
+      show 'LOW STOCK ALERT: {item's name} ({item's sku}) — {item's stock} remaining'
+
+background 'Daily Report':
+  runs every 1 day at '9:00 AM'
+  orders = get all Orders
+  returns = get all Returns
+  low_stock = get_low_stock_items()
+  total_revenue = sum of total in orders
+  show 'DAILY REPORT: {length of orders} orders, ${total_revenue} revenue, {length of returns} returns, {length of low_stock} low stock items'
+
+# Endpoints
+
+when user calls POST /api/chat sending data:
+
+  create user_msg:
+    role is 'user'
+    content is data's message
+  save user_msg as new Message
+  result = call 'Customer Support' with data's message
+  create bot_msg:
+    role is 'assistant'
+    content is result
+  save bot_msg as new Message
+  send back result
+
+when user calls GET /api/messages:
+
+  messages = get all Messages
+  send back messages
+
+when user calls GET /api/orders:
+
+  orders = get all Orders
+  send back orders
+
+when user calls GET /api/products:
+  products = get all Products
+  send back products
+
+when user calls GET /api/inventory/low:
+
+  low_items = get_low_stock_items()
+  send back low_items
+
+when user calls GET /api/stats:
+
+  orders = get all Orders
+  all_returns = get all Returns
+  products = get all Products
+  low_stock = get_low_stock_items()
+  total_revenue = sum of total in orders
+  create stats:
+    total_orders is length of orders
+    total_revenue is total_revenue
+    total_returns is length of all_returns
+    total_products is length of products
+    low_stock_count is length of low_stock
+  send back stats
+
+# Seed Data — realistic e-commerce store
+
+when user calls POST /api/seed:
+  create p1:
+    name is 'Wireless Keyboard'
+    sku is 'KB-001'
+    category is 'peripherals'
+    price = 49.99
+    stock = 25
+    reorder_threshold = 10
+    image_url is 'https://picsum.photos/seed/kb/200'
+  save p1 as new Product
+  create p2:
+    name is 'USB-C Hub 7-Port'
+    sku is 'HUB-001'
+    category is 'peripherals'
+    price = 34.99
+    stock = 3
+    reorder_threshold = 10
+    image_url is 'https://picsum.photos/seed/hub/200'
+  save p2 as new Product
+  create p3:
+    name is 'Monitor Stand Pro'
+    sku is 'MS-001'
+    category is 'accessories'
+    price = 79.99
+    stock = 15
+    reorder_threshold = 5
+    image_url is 'https://picsum.photos/seed/stand/200'
+  save p3 as new Product
+  create p4:
+    name is 'Webcam HD 1080p'
+    sku is 'WC-001'
+    category is 'peripherals'
+    price = 59.99
+    stock = 42
+    reorder_threshold = 10
+    image_url is 'https://picsum.photos/seed/webcam/200'
+  save p4 as new Product
+  create p5:
+    name is 'Laptop Sleeve 15-inch'
+    sku is 'LS-001'
+    category is 'accessories'
+    price = 24.99
+    stock = 0
+    reorder_threshold = 15
+    image_url is 'https://picsum.photos/seed/sleeve/200'
+  save p5 as new Product
+  create p6:
+    name is 'Mechanical Keyboard RGB'
+    sku is 'KB-002'
+    category is 'peripherals'
+    price = 89.99
+    stock = 18
+    reorder_threshold = 8
+    image_url is 'https://picsum.photos/seed/mech/200'
+  save p6 as new Product
+  create p7:
+    name is 'Noise-Canceling Headphones'
+    sku is 'HP-001'
+    category is 'audio'
+    price = 149.99
+    stock = 7
+    reorder_threshold = 10
+    image_url is 'https://picsum.photos/seed/headphones/200'
+  save p7 as new Product
+  create p8:
+    name is 'Wireless Mouse Ergonomic'
+    sku is 'MO-001'
+    category is 'peripherals'
+    price = 39.99
+    stock = 31
+    reorder_threshold = 10
+    image_url is 'https://picsum.photos/seed/mouse/200'
+  save p8 as new Product
+
+  create o1:
+    customer_name is 'Sarah Chen'
+    customer_email is 'sarah@example.com'
+    items is 'Wireless Keyboard x1, USB-C Hub x1'
+    total = 84.98
+    status is 'delivered'
+    tracking_number is 'TRK-20260401-001'
+  save o1 as new Order
+  create o2:
+    customer_name is 'Mike Johnson'
+    customer_email is 'mike@example.com'
+    items is 'Monitor Stand Pro x1'
+    total = 79.99
+    status is 'shipped'
+    tracking_number is 'TRK-20260405-002'
+  save o2 as new Order
+  create o3:
+    customer_name is 'Sarah Chen'
+    customer_email is 'sarah@example.com'
+    items is 'Webcam HD 1080p x1, Wireless Mouse x1'
+    total = 99.98
+    status is 'delivered'
+    tracking_number is 'TRK-20260320-003'
+  save o3 as new Order
+  create o4:
+    customer_name is 'Alex Rivera'
+    customer_email is 'alex@example.com'
+    items is 'Mechanical Keyboard RGB x1, Laptop Sleeve x1'
+    total = 114.98
+    status is 'pending'
+  save o4 as new Order
+  create o5:
+    customer_name is 'Jordan Lee'
+    customer_email is 'jordan@example.com'
+    items is 'Noise-Canceling Headphones x1'
+    total = 149.99
+    status is 'delivered'
+    tracking_number is 'TRK-20260328-005'
+  save o5 as new Order
+  create o6:
+    customer_name is 'Mike Johnson'
+    customer_email is 'mike@example.com'
+    items is 'Wireless Keyboard x2'
+    total = 99.98
+    status is 'delivered'
+    tracking_number is 'TRK-20260310-006'
+  save o6 as new Order
+
+  send back 'Seeded 8 products and 6 orders' with success message
+
+# Tests
+
+test 'customer support routes order questions':
+  mock claude responding:
+    text is 'Your order #1 has been delivered. Tracking: TRK-20260401-001'
+  result = call 'Customer Support' with 'Where is my order 1?'
+  expect result contains 'order'
+
+test 'customer support routes return requests':
+  mock claude responding:
+    text is 'I can help you with that return. Processing now.'
+  result = call 'Customer Support' with 'I want to return my purchase'
+  expect result contains 'return'
+
+test 'low stock detection finds items below threshold':
+  create low_item:
+    name is 'Test Widget'
+    sku is 'TW-001'
+    price = 9.99
+    stock = 3
+    reorder_threshold = 10
+  save low_item as new Product
+  result = get_low_stock_items()
+  expect length of result is greater than 0
+
+# TODO: add expect-to-fail test when TEST_EXPECT_ERROR is implemented
+# test 'process_return rejects non-delivered orders':
+#   expect calling process_return(test_order's id, 'Wrong size') to fail with 'Only delivered orders'
+
+# Frontend
+
+page 'Support Chat' at '/':
+  section 'Layout' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'TechGear'
+      subheading 'Support Center'
+      divider
+      link 'Chat' goes to '/'
+      link 'Orders' goes to '/orders'
+      link 'Dashboard' goes to '/admin'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'Customer Support'
+        subheading 'Ask about orders, returns, or products'
+
+      section 'Content' with style app_content:
+        on page load get messages from '/api/messages'
+
+        display messages as cards showing role, content
+
+        'Type your message...' is a text input saved as user_message
+
+        button 'Send':
+          send user_message to '/api/chat'
+          get messages from '/api/messages'
+          user_message is ''
+
+page 'Orders' at '/orders':
+  section 'Layout' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'TechGear'
+      subheading 'Support Center'
+      divider
+      link 'Chat' goes to '/'
+      link 'Orders' goes to '/orders'
+      link 'Dashboard' goes to '/admin'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'Orders'
+
+      section 'Content' with style app_content:
+        on page load get orders from '/api/orders'
+        display orders as table showing customer_name, items, total, status, tracking_number
+
+page 'Admin Dashboard' at '/admin':
+  section 'Layout' with style app_layout:
+    section 'Sidebar' with style app_sidebar:
+      heading 'TechGear'
+      subheading 'Support Center'
+      divider
+      link 'Chat' goes to '/'
+      link 'Orders' goes to '/orders'
+      link 'Dashboard' goes to '/admin'
+
+    section 'Main' with style app_main:
+      section 'Header' with style app_header:
+        heading 'Operations Dashboard'
+
+      section 'Content' with style app_content:
+        on page load:
+          get stats from '/api/stats'
+          get low_items from '/api/inventory/low'
+          get products from '/api/products'
+
+        section 'Key Metrics' with style split:
+          section 'Card' with style app_card:
+            heading 'Total Orders'
+            display stats's total_orders as count
+          section 'Card' with style app_card:
+            heading 'Revenue'
+            display stats's total_revenue as dollars
+          section 'Card' with style app_card:
+            heading 'Returns'
+            display stats's total_returns as count
+          section 'Card' with style app_card:
+            heading 'Low Stock'
+            display stats's low_stock_count as count
+
+        section 'Inventory Alerts':
+          if length of low_items is greater than 0:
+            for each item in low_items list:
+              section 'Card' with style app_card:
+                text '{item's name} ({item's sku})'
+                text '{item's stock} remaining — reorder at {item's reorder_threshold}'
+                badge 'Low Stock' with style 'warning'
+          otherwise:
+            text 'All stock levels healthy'
+
+        section 'Product Catalog':
+          display products as cards showing name, category, price, stock

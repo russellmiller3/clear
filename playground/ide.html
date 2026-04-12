@@ -117,7 +117,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .prev-tab { padding: 10px 16px; font-size: 12px; font-weight: 500; color: var(--tx3); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all .15s; position: relative; }
 .prev-tab:hover { color: var(--tx2); }
 .prev-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-.prev-tab.active::after { content: ''; position: absolute; bottom: -1px; left: 20%; right: 20%; height: 2px; background: var(--accent); filter: blur(4px); }
+.prev-tab.active::after { display: none; }
 #preview-content { flex: 1; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
 #preview-content iframe { width: 100%; height: 100%; border: none; background: var(--iframe-bg); border-radius: 0; }
 #preview-content pre { padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--tx2); white-space: pre-wrap; }
@@ -165,10 +165,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 /* Meta chips */
 #meta-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px 12px; border-bottom: 1px solid var(--bd); min-height: 0; }
 #meta-chips:empty { display: none; }
-.chip { font-size: 10px; font-family: var(--mono); padding: 2px 7px; border-radius: 10px; border: 1px solid var(--bd2); color: var(--tx3); background: var(--bg2); white-space: nowrap; }
-.chip.chip-table { color: var(--accent); border-color: var(--accent2); background: var(--accent-glow); }
-.chip.chip-agent { color: var(--green); border-color: var(--green); background: var(--green-bg); }
-.chip.chip-auth  { color: var(--amber); border-color: var(--amber); background: var(--amber-bg); }
+.chip { font-size: 10px; font-family: var(--mono); padding: 2px 7px; border-radius: 4px; border: none; color: var(--tx3); background: none; white-space: nowrap; cursor: default; user-select: none; }
+.chip.chip-table { color: var(--accent); }
+.chip.chip-agent { color: var(--green); }
+.chip.chip-auth  { color: var(--amber); }
 .chip.chip-route { color: var(--tx2); }
 
 /* API tab */
@@ -311,9 +311,9 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 8px 20px; font-size: 13px; font-weight: 500; z-index: 1000; animation: toastIn .2s ease, toastOut .3s ease 2s forwards; box-shadow: var(--shadow); }
 
 /* Compile animation — scan lines */
-@keyframes scanPulse { 0% { background: rgba(108,140,255,.18); } 100% { background: transparent; } }
-.cm-scan-line { animation: scanPulse .35s ease forwards; }
-.cm-compile-highlight { background: rgba(108,140,255,.18); transition: background .2s; }
+@keyframes scanPulse { 0% { background: rgba(108,140,255,.15); } 100% { background: transparent; } }
+.cm-scan-line { animation: scanPulse .6s ease-out forwards; }
+.cm-compile-highlight { background: rgba(108,140,255,.12); transition: background .4s ease; }
 
 /* Jump-to highlight — flash a line in the editor */
 @keyframes lineFlash { 0%,100% { background: transparent; } 20%,60% { background: rgba(251,191,36,.25); } }
@@ -780,6 +780,8 @@ function updateEditorTOC(source) {
   lines.forEach((line, idx) => {
     const m = line.match(/^(#{1,2})\s+(.+)/);
     if (!m) return;
+    // Skip diagram/ASCII art lines (box-drawing, pipes, arrows pointing at boxes)
+    if (/[│┌┐└┘├┤┬┴─═▼▲]/.test(m[2]) || /[|].*[|]/.test(m[2]) || /[<>]-{2,}/.test(m[2])) return;
     // Strip decorative dashes: "--- Section ---" → "Section"
     let label = m[2].trim().replace(/^-+\s*/, '').replace(/\s*-+$/, '').trim();
     if (!label) return; // skip blank after stripping
@@ -970,15 +972,16 @@ async function runCompileAnimation(clearSource, compiledCode) {
 
     compiledView.dispatch({
       changes: { from: docLen, insert: insertText },
-      effects: EditorView.scrollIntoView(docLen + insertText.length, { y: 'end' }),
     });
 
     const newStartLine = totalInserted + 1;
     const linesAdded = block.end - block.start + 1;
     totalInserted += linesAdded;
 
-    // Wait for CodeMirror to render the new lines in the DOM before highlighting
+    // Wait for CodeMirror to render, then scroll vertically only (no horizontal shift)
     await new Promise(r => requestAnimationFrame(r));
+    const scroller = compiledView.dom.querySelector('.cm-scroller');
+    if (scroller) { scroller.scrollTop = scroller.scrollHeight; scroller.scrollLeft = 0; }
     highlightCompiledLines(newStartLine, totalInserted);
 
     await new Promise(r => setTimeout(r, msPerBlock));

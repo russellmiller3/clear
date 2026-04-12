@@ -10509,7 +10509,7 @@ describe('Scheduled agents (runs every)', () => {
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const agent = result.ast.body.find(n => n.type === 'agent');
-    expect(agent.schedule).toEqual({ value: 1, unit: 'hour' });
+    expect(agent.schedule).toEqual({ value: 1, unit: 'hour', at: null });
     expect(agent.receivingVar).toBe(null);
   });
 
@@ -10550,6 +10550,74 @@ describe('Scheduled agents (runs every)', () => {
     const result = compileProgram(src);
     expect(result.javascript).toContain('Scheduled agent');
     expect(result.javascript).toContain('every 1 day');
+  });
+});
+
+describe('Scheduled agents with at time', () => {
+  it('parses at time into schedule.at', () => {
+    const src = "build for javascript backend\nagent 'Report' runs every 1 day at '9:00 AM':\n  send back 'done'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.schedule.at).toBe('9:00 AM');
+  });
+
+  it('compiles at 9:00 AM to cron 0 9 * * *', () => {
+    const src = "build for javascript backend\nagent 'Report' runs every 1 day at '9:00 AM':\n  send back 'done'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('0 9 * * *');
+    expect(result.javascript).toContain('node-cron');
+  });
+
+  it('compiles at 2:30 PM to cron 30 14 * * *', () => {
+    const src = "build for javascript backend\nagent 'Afternoon' runs every 1 day at '2:30 PM':\n  send back 'done'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('30 14 * * *');
+  });
+
+  it('without at still uses setInterval', () => {
+    const src = "build for javascript backend\nagent 'Check' runs every 6 hour:\n  send back 'ok'";
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('setInterval');
+    expect(result.javascript).not.toContain('node-cron');
+  });
+});
+
+describe('Send email with inline recipient', () => {
+  it('parses send email to expression with config block', () => {
+    const src = `build for javascript backend
+configure email:
+  service is 'gmail'
+  user is 'test@test.com'
+  password is 'pass'
+when user calls POST /api/notify sending data:
+  send email to data's email:
+    subject is 'Hello'
+    body is 'Welcome!'
+  send back 'sent'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('sendMail');
+    expect(result.javascript).toContain('email');
+  });
+
+  it('parses send email to string literal', () => {
+    const src = `build for javascript backend
+configure email:
+  service is 'gmail'
+  user is 'test@test.com'
+  password is 'pass'
+when user calls POST /api/test:
+  send email to 'admin@example.com':
+    subject is 'Test'
+    body is 'Testing'
+  send back 'ok'`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('admin@example.com');
   });
 });
 
@@ -16952,7 +17020,7 @@ agent 'KnowledgeBot' receiving question:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const agent = result.ast.body.find(n => n.type === 'agent');
-    expect(agent.knowsAbout).toEqual(['Documents', 'Products', 'FAQ']);
+    expect(agent.knowsAbout).toEqual([{ type: 'table', value: 'Documents' }, { type: 'table', value: 'Products' }, { type: 'table', value: 'FAQ' }]);
   });
 
   it('single table knowledge base', () => {
@@ -16964,7 +17032,7 @@ agent 'Bot' receiving question:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const agent = result.ast.body.find(n => n.type === 'agent');
-    expect(agent.knowsAbout).toEqual(['Products']);
+    expect(agent.knowsAbout).toEqual([{ type: 'table', value: 'Products' }]);
   });
 
   it('agent without knows about has null', () => {
@@ -17035,6 +17103,155 @@ agent 'Plain' receiving data:
     expect(result.errors).toHaveLength(0);
     expect(result.javascript).not.toContain('_ragContext');
     expect(result.javascript).not.toContain('_ragStr');
+  });
+});
+
+// =============================================================================
+// EXTENDED RAG — knows about: URLs, PDFs, DOCX files
+// =============================================================================
+
+describe('Extended RAG - parser', () => {
+  it('parses knows about with URL string', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving question:
+  knows about: 'https://docs.example.com/support'
+  answer = ask claude 'Help' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual([{ type: 'url', value: 'https://docs.example.com/support' }]);
+  });
+
+  it('parses knows about with file path', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving question:
+  knows about: 'policies/returns.pdf'
+  answer = ask claude 'Help' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual([{ type: 'file', value: 'policies/returns.pdf' }]);
+  });
+
+  it('parses mixed table names and strings', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving question:
+  knows about: Products, 'https://docs.example.com', 'guide.txt'
+  answer = ask claude 'Help' with question
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual([
+      { type: 'table', value: 'Products' },
+      { type: 'url', value: 'https://docs.example.com' },
+      { type: 'file', value: 'guide.txt' },
+    ]);
+  });
+
+  it('parses docx file source', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving q:
+  knows about: 'handbook.docx'
+  answer = ask claude 'Help' with q
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual([{ type: 'file', value: 'handbook.docx' }]);
+  });
+
+  it('parses markdown file source', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving q:
+  knows about: 'README.md'
+  answer = ask claude 'Help' with q
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual([{ type: 'file', value: 'README.md' }]);
+  });
+
+  it('backward compatible — plain table names still work as before', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving q:
+  knows about: Products, FAQ
+  answer = ask claude 'Help' with q
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    const agent = result.ast.body.find(n => n.type === 'agent');
+    expect(agent.knowsAbout).toEqual([
+      { type: 'table', value: 'Products' },
+      { type: 'table', value: 'FAQ' },
+    ]);
+  });
+});
+
+describe('Extended RAG - compiler', () => {
+  it('URL source compiles to fetch + text extraction at startup', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving q:
+  knows about: 'https://docs.example.com'
+  answer = ask claude 'Help' with q
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_fetchPageText');
+    expect(result.javascript).toContain('https://docs.example.com');
+  });
+
+  it('file source compiles to file read at startup', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving q:
+  knows about: 'guide.txt'
+  answer = ask claude 'Help' with q
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_loadFileText');
+    expect(result.javascript).toContain('guide.txt');
+  });
+
+  it('PDF source references pdf extraction', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving q:
+  knows about: 'report.pdf'
+  answer = ask claude 'Help' with q
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('report.pdf');
+  });
+
+  it('mixed sources compile correctly', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+agent 'Bot' receiving q:
+  knows about: Products, 'https://help.example.com'
+  answer = ask claude 'Help' with q
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("'Products'");
+    expect(result.javascript).toContain('_fetchPageText');
+    expect(result.javascript).toContain('_ragContext');
+  });
+
+  it('all sources inject into RAG context string', () => {
+    const src = `build for javascript backend
+agent 'Bot' receiving q:
+  knows about: 'https://example.com', 'guide.txt'
+  answer = ask claude 'Help' with q
+  send back answer`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('_ragStr');
+    expect(result.javascript).toContain('_searchText');
   });
 });
 
@@ -20635,4 +20852,142 @@ agent 'Builder' receives task:
   });
 });
 
+// =============================================================================
+// CLASSIFY INTENT (Agent Harness Phase 1)
+// =============================================================================
+describe('classify intent', () => {
+  it('parses classify with two categories', () => {
+    const r = compileProgram("build for javascript backend\nintent = classify message as 'order', 'return'");
+    expect(r.errors.length).toBe(0);
+  });
+
+  it('parses classify with three categories', () => {
+    const r = compileProgram("build for javascript backend\nintent = classify message as 'order status', 'return or refund', 'general'");
+    expect(r.errors.length).toBe(0);
+  });
+
+  it('compiles classify to _classifyIntent call', () => {
+    const r = compileProgram("build for javascript backend\nintent = classify message as 'order', 'return'");
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('_classifyIntent');
+    expect(js).toContain('"order"');
+    expect(js).toContain('"return"');
+  });
+
+  it('classify inside agent body works', () => {
+    const src = `build for javascript backend
+agent 'Router' receives msg:
+  intent = classify msg as 'greeting', 'complaint'
+  send back intent`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBe(0);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('_classifyIntent');
+  });
+
+  it('classify with one category errors', () => {
+    const r = compileProgram("build for javascript backend\nintent = classify message as 'only_one'");
+    expect(r.errors.length).toBeGreaterThan(0);
+    expect(r.errors[0].message).toContain('at least 2');
+  });
+
+  it('classify with variable input works', () => {
+    const r = compileProgram("build for javascript backend\ntext is 'hello'\nresult = classify text as 'positive', 'negative'");
+    expect(r.errors.length).toBe(0);
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('_classifyIntent(text,');
+  });
+
+  it('_classifyIntent utility is included when classify is used', () => {
+    const r = compileProgram("build for javascript backend\nintent = classify message as 'a', 'b'");
+    const js = r.serverJS || r.javascript;
+    expect(js).toContain('async function _classifyIntent');
+  });
+
+  it('_classifyIntent utility is NOT included when classify is not used', () => {
+    const r = compileProgram("build for javascript backend\nx = 5");
+    expect(r.serverJS || '').not.toContain('_classifyIntent');
+  });
+});
+
+// =============================================================================
+// PHASE 4: CONVENIENCE SYNTAX — find all, today, multi-context ask ai
+// =============================================================================
+
+describe('find all synonym for look up all', () => {
+  it('find all Orders compiles same as look up all', () => {
+    const src = `build for javascript backend
+create an Orders table:
+  status, required
+when user calls GET /api/orders:
+  active_orders = find all Orders where status is 'active'
+  send back active_orders`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('findAll');
+  });
+
+  it('find all without where clause', () => {
+    const src = `build for javascript backend
+create a Products table:
+  name, required
+when user calls GET /api/products:
+  all_products = find all Products
+  send back all_products`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('findAll');
+  });
+});
+
+describe('today literal', () => {
+  it('today compiles to start of day', () => {
+    const src = `build for javascript backend\ndate = today`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('setHours(0,0,0,0)');
+  });
+
+  it('today works in expressions', () => {
+    const src = `build for web\nshow today`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
+describe('multi-context ask ai', () => {
+  it('ask ai with two contexts parses and compiles', () => {
+    const src = `build for javascript backend
+agent 'Reporter' receives data:
+  report = ask claude 'Summarize' with orders, returns
+  send back report`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('orders');
+    expect(r.javascript).toContain('returns');
+  });
+
+  it('ask ai with three contexts creates merged object', () => {
+    const src = `build for javascript backend
+agent 'Reporter' receives data:
+  summary = ask claude 'Report' with orders, returns, inventory
+  send back summary`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('JSON.stringify');
+  });
+
+  it('single context still works (no regression)', () => {
+    const src = `build for javascript backend
+agent 'Bot' receives data:
+  answer = ask claude 'Help' with data
+  send back answer`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Single context should compile to _askAI("Help", data) — no multi-context merge
+    expect(r.javascript).toContain('_askAI("Help", data)');
+  });
+});
+
 run();
+

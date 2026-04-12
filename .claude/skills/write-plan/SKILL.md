@@ -187,6 +187,7 @@ Before calling the plan done, verify:
 - [ ] Edge cases have matching tests or explicit "no test" justification
 - [ ] For any data pipeline (API → store → component): at least one test checks the *shape* of the output object, not just that state changed. Mocks include ALL fields the consumer reads.
 - [ ] Branch name follows `feature/` or `fix/` convention
+- [ ] **Documentation gate (MANDATORY):** If the plan adds ANY new syntax, node types, keywords, or features, the plan MUST include a documentation step in its FINAL phase that updates ALL of: `intent.md` (spec table), `SYNTAX.md` (reference + example), `AI-INSTRUCTIONS.md` (conventions), `USER-GUIDE.md` (tutorial), `ROADMAP.md` (completion status). If it's not in the docs, it doesn't exist.
 - [ ] If new shapes/actions/env vars added: `intent.md` update is included in the plan
 - [ ] Learnings hooks added to each phase (large plan) or at end (small plan)
 - [ ] **Five-surface checklist** included for any phase that adds new functions

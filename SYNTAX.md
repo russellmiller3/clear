@@ -233,6 +233,20 @@ if error:
 # error's message, error's status, error's code
 ```
 
+## Transactions
+
+```clear
+# Multi-step database changes that must all succeed or all fail
+as one operation:
+  decrease product's stock by order's quantity
+  save order as new Order
+  send email:
+    to is order's email
+    subject is 'Order confirmed'
+```
+
+Compiles to `BEGIN`/`COMMIT`/`ROLLBACK`. If any step fails, all changes are rolled back.
+
 ## Comparisons
 
 ```clear
@@ -1127,6 +1141,38 @@ page 'Dashboard':
   heading 'Welcome back'
 ```
 
+## Role Definitions
+
+```clear
+# Define custom roles with permissions
+define role 'editor':
+  can edit articles
+  can delete comments
+
+define role 'viewer':
+  can read articles
+
+# Use in endpoints
+requires role 'editor'
+```
+
+## File Uploads
+
+```clear
+# Upload to cloud storage
+upload file to 's3-bucket'
+
+# Accept file uploads in endpoints (see Accept File section)
+```
+
+## Social Login
+
+```clear
+# Redirect-based social login
+login with 'google'
+login with 'github'
+```
+
 ## Production Features
 
 ```clear
@@ -1900,11 +1946,86 @@ agent 'Summarizer' receives text:
   send back summary
 ```
 
+### Intent Classification
+```clear
+# AI-powered routing — sorts input into categories using Claude Haiku
+intent = classify message as 'order status', 'return or refund', 'general'
+match intent:
+  when 'order status':
+    response = ask claude 'Look up their order' with message
+  when 'return or refund':
+    response = ask claude 'Process the return' with message
+  otherwise:
+    response = ask claude 'General help' with message
+```
+
+### Extended RAG (Knowledge Sources)
+```clear
+# Tables (existing) — keyword search against DB records
+knows about: Products, FAQ
+
+# URLs (new) — fetches page text at startup, keyword search
+knows about: 'https://docs.myapp.com/support'
+
+# Files (new) — reads file at startup, keyword search
+knows about: 'policies/return-policy.pdf'
+knows about: 'handbook/guide.docx'
+knows about: 'README.md'
+
+# Mixed — all sources in one directive
+knows about: Products, 'https://docs.example.com', 'guide.txt'
+```
+
+Supported file types: `.pdf` (pdf-parse), `.docx` (mammoth), `.txt`, `.md` (fs.readFileSync).
+
+### Multi-Context Ask AI
+```clear
+# Pass multiple variables as context — merged into JSON object
+summary = ask claude 'Write a report' with orders, returns, inventory
+```
+
+Compiles to: `_askAI(prompt, JSON.stringify({ orders, returns, inventory }))`.
+
 ### Scheduled Agents
 ```clear
+# Interval-based (existing)
 agent 'Daily Report' runs every 1 day:
   leads = get all Leads where status is 'new'
   send back leads
+
+# With time-of-day (new) — compiles to node-cron
+agent 'Morning Report' runs every 1 day at '9:00 AM':
+  orders = get all Orders
+  send back orders
+
+agent 'Afternoon Check' runs every 1 day at '2:30 PM':
+  low_stock = get_low_stock_items()
+  send back low_stock
+```
+
+### Send Email with Inline Recipient
+```clear
+# Inline recipient — cleaner than config block when recipient is dynamic
+send email to order's customer_email:
+  subject is 'Your order has shipped'
+  body is 'Track at {tracking_url}'
+
+# Config block (existing) — still works
+send email:
+  to is 'admin@example.com'
+  subject is 'Alert'
+  body is 'Something happened'
+```
+
+### Convenience: find all, today
+```clear
+# find all — synonym for look up all
+active_orders = find all Orders where status is 'active'
+all_products = find all Products
+
+# today — start of current day as Date
+recent = find all Orders where created_at is today
+date = today
 ```
 
 ## Policies (Enact Guards)

@@ -180,6 +180,7 @@ export const NodeType = Object.freeze({
   HUMAN_CONFIRM: 'human_confirm',
   MOCK_AI: 'mock_ai',
   SKILL: 'skill',
+  CLASSIFY: 'classify',
 
   // Workflow primitives (Phases 85-90)
   WORKFLOW: 'workflow',
@@ -1524,7 +1525,25 @@ const CANONICAL_DISPATCH = new Map([
       ctx.body.push({ type: NodeType.SERVICE_CALL, service: 'sendgrid', config, line: ctx.line });
       return endIdx;
     }
-    // 2. SMTP email: send email: + config block
+    // 2. Email with inline recipient: send email to <expr>: + subject/body block
+    if (ctx.tokens.length >= 4 && ctx.tokens[1].value === 'email' &&
+        ctx.tokens[2].canonical === 'to_connector' &&
+        ctx.i + 1 < ctx.lines.length && ctx.lines[ctx.i + 1].indent > ctx.indent) {
+      // Parse the recipient expression (everything between "to" and end of line)
+      const recipientTokens = ctx.tokens.slice(3);
+      let recipientExpr;
+      if (recipientTokens.length === 1 && recipientTokens[0].type === TokenType.STRING) {
+        recipientExpr = literalString(recipientTokens[0].value, ctx.line);
+      } else {
+        const expr = parseExpression(recipientTokens, 0, ctx.line);
+        recipientExpr = expr.error ? literalString(recipientTokens.map(t => t.value).join(''), ctx.line) : expr.node;
+      }
+      const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
+      config._inlineRecipient = recipientExpr;
+      ctx.body.push({ type: NodeType.SEND_EMAIL, config, line: ctx.line });
+      return endIdx;
+    }
+    // 3. SMTP email: send email: + config block (no inline recipient)
     if (ctx.tokens.length >= 2 && ctx.tokens[1].value === 'email' &&
         ctx.i + 1 < ctx.lines.length && ctx.lines[ctx.i + 1].indent > ctx.indent) {
       const { config, endIdx } = parseConfigBlock(ctx.lines, ctx.i + 1, ctx.indent);
@@ -2870,12 +2889,20 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
     }
     if (pos < tokens.length && (tokens[pos].type === TokenType.IDENTIFIER || tokens[pos].type === TokenType.KEYWORD)) {
       scheduleUnit = tokens[pos].value.toLowerCase().replace(/s$/, '');
+      pos++;
+    }
+    // Optional: "at '9:00 AM'" — time-of-day for cron scheduling
+    let scheduleAt = null;
+    if (pos < tokens.length && tokens[pos].canonical === 'at' && pos + 1 < tokens.length && tokens[pos + 1].type === TokenType.STRING) {
+      pos++; // skip 'at'
+      scheduleAt = tokens[pos].value;
+      pos++;
     }
     const result = parseBlock(lines, startIdx + 1, blockIndent, errors);
     if (result.body.length === 0) {
       errors.push({ line, message: `agent '${name}' is empty — add code inside the scheduled agent` });
     }
-    const schedule = { value: scheduleValue, unit: scheduleUnit };
+    const schedule = { value: scheduleValue, unit: scheduleUnit, at: scheduleAt };
     return {
       node: { type: NodeType.AGENT, name, receivingVar: null, schedule, body: result.body, line },
       endIdx: result.endIdx,
@@ -3007,12 +3034,19 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
         (dTokens[1].value === "user's" || (dTokens[1].value === 'user' && dTokens.length >= 3))) {
       directives.rememberPreferences = true; bodyStartIdx++; continue;
     }
-    // knows about: Table1, Table2
+    // knows about: Table1, Table2, 'https://docs.example.com', 'policy.pdf'
+    // Tables are unquoted identifiers. URLs and files are quoted strings.
     if (dTokens[0].value === 'knows' && dTokens.length >= 3 && dTokens[1].value === 'about') {
-      directives.knowsAbout = [];
+      directives.knowsAbout = directives.knowsAbout || [];
       for (let t = 2; t < dTokens.length; t++) {
         if (dTokens[t].type === TokenType.COMMA) continue;
-        if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) directives.knowsAbout.push(dTokens[t].value);
+        if (dTokens[t].type === TokenType.STRING) {
+          const val = dTokens[t].value;
+          const srcType = val.startsWith('http://') || val.startsWith('https://') ? 'url' : 'file';
+          directives.knowsAbout.push({ type: srcType, value: val });
+        } else if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) {
+          directives.knowsAbout.push({ type: 'table', value: dTokens[t].value });
+        }
       }
       bodyStartIdx++; continue;
     }
@@ -3118,8 +3152,9 @@ function parseSkill(lines, startIdx, blockIndent, errors) {
       j++;
       const instrIndent = lines[j - 1].indent;
       while (j < lines.length && lines[j].indent > instrIndent) {
-        const iTokens = lines[j].tokens;
-        if (iTokens.length > 0) instructions.push(iTokens.map(t => t.value).join(' '));
+        // Use raw text to preserve original formatting (parens, punctuation, spacing)
+        const rawText = lines[j].raw || lines[j].tokens.map(t => t.value).join(' ');
+        if (rawText.trim()) instructions.push(rawText.trim());
         j++;
       }
       continue;
@@ -4358,9 +4393,11 @@ function parseContent(tokens, line, canonical) {
   };
   const contentType = contentTypeMap[canonical] || 'text';
 
-  // For links: link 'Learn more' to '/about'
+  // For links: link 'Learn more' to '/about'  OR  link 'Chat' goes to '/'
   let href = null;
   if (contentType === 'link') {
+    // Skip optional 'goes' before 'to'
+    if (pos < tokens.length && tokens[pos].value === 'goes') pos++;
     if (pos < tokens.length && tokens[pos].canonical === 'to_connector') {
       pos++;
       if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
@@ -4881,6 +4918,29 @@ function parseDefineAs(tokens, line) {
     if (pos >= tokens.length) return { error: "train model needs a target field after 'predicting'." };
     const target = tokens[pos].value;
     return { node: assignNode(name, { type: NodeType.TRAIN_MODEL, data: dataVar, target, line }, line) };
+  }
+
+  // Check for "classify INPUT as 'cat1', 'cat2'" (define-as path)
+  // "classify" tokenizes as predict_with. Discriminator: as_format + strings after identifier.
+  if (tokens[pos].canonical === 'predict_with' &&
+      pos + 2 < tokens.length &&
+      (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD) &&
+      tokens[pos + 2].canonical === 'as_format') {
+    pos++; // skip 'classify' (predict_with)
+    const input = { type: NodeType.VARIABLE_REF, name: tokens[pos].value, line };
+    pos++; // skip input variable
+    pos++; // skip 'as' (as_format)
+    const categories = [];
+    while (pos < tokens.length) {
+      if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+      if (tokens[pos].type === TokenType.STRING) {
+        categories.push(tokens[pos].value);
+        pos++;
+      } else {
+        break;
+      }
+    }
+    return { node: assignNode(name, { type: NodeType.CLASSIFY, input, categories, line }, line) };
   }
 
   // Check for "predict with MODEL using FEATURES" (define-as path)
@@ -6689,13 +6749,26 @@ function parseAssignment(tokens, line) {
     let context = null;
     if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
       pos++;
-      // Parse context, but stop before 'returning' or 'using' if present
+      // Parse context — supports comma-separated: ask ai 'prompt' with X, Y, Z
+      // Stop before 'returning' or 'using' keywords
       const stopIdx = tokens.findIndex((t, i) => i >= pos && (t.value === 'returning' || t.value === 'using'));
       const endPos = stopIdx >= 0 ? stopIdx : undefined;
-      const expr = parseExpression(tokens, pos, line, endPos);
-      if (expr.error) return { error: expr.error };
-      context = expr.node;
-      pos = expr.nextPos;
+      // Check for comma-separated contexts: collect into list if multiple
+      const contexts = [];
+      while (pos < (endPos || tokens.length)) {
+        if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+        const nextComma = tokens.findIndex((t, i) => i > pos && i < (endPos || tokens.length) && t.type === TokenType.COMMA);
+        const segEnd = nextComma >= 0 ? nextComma : endPos;
+        const expr = parseExpression(tokens, pos, line, segEnd);
+        if (expr.error) break;
+        contexts.push(expr.node);
+        pos = expr.nextPos;
+      }
+      if (contexts.length === 1) {
+        context = contexts[0];
+      } else if (contexts.length > 1) {
+        context = { type: 'multi_context', contexts, line };
+      }
     }
     // Check for "using 'model-name'" clause
     let model = null;
@@ -6990,6 +7063,20 @@ function parseAssignment(tokens, line) {
     return { name, expression: { type: NodeType.FETCH_PAGE, url: urlExpr.node, line } };
   }
 
+  // Check for "find all TableName where ..." — CRUD alias for "look up all"
+  // e.g. orders = find all Orders where status is 'active'
+  // Discriminator: token after "find all" is an identifier (table name), not a string (CSS selector)
+  if (pos < tokens.length && tokens[pos].value === 'find' &&
+      pos + 1 < tokens.length && tokens[pos + 1].value === 'all' &&
+      pos + 2 < tokens.length && (tokens[pos + 2].type === TokenType.IDENTIFIER || tokens[pos + 2].type === TokenType.KEYWORD) &&
+      tokens[pos + 2].type !== TokenType.STRING) {
+    // Route through parseLookUpAssignment — skip "find", leave "all TableName where ..."
+    // parseLookUpAssignment expects to start at the token after "look up"
+    const result = parseLookUpAssignment(name, tokens, pos + 1, line);
+    if (result.error) return { error: result.error };
+    return result;
+  }
+
   // Check for "find all 'selector' in page" or "find first 'selector' in page"
   // e.g. stories = find all '.titleline a' in page
   // e.g. title = find first 'h1' in page
@@ -7048,6 +7135,32 @@ function parseAssignment(tokens, line) {
     }
     const target = tokens[pos].value;
     return { name, expression: { type: NodeType.TRAIN_MODEL, data: dataVar, target, line } };
+  }
+
+  // Check for "classify INPUT as 'cat1', 'cat2', ..." on the right side
+  // "classify" alone is a plain identifier (only "classify with" maps to predict_with).
+  // Pattern: classify + identifier + as + string literals separated by commas
+  // e.g. intent = classify message as 'order', 'return', 'general'
+  if (pos < tokens.length && tokens[pos].value === 'classify' &&
+      pos + 2 < tokens.length &&
+      (tokens[pos + 1].type === TokenType.IDENTIFIER || tokens[pos + 1].type === TokenType.KEYWORD) &&
+      (tokens[pos + 2].canonical === 'as_format' || tokens[pos + 2].value === 'as')) {
+    pos++; // skip 'classify'
+    const input = { type: NodeType.VARIABLE_REF, name: tokens[pos].value, line };
+    pos++; // skip input variable
+    pos++; // skip 'as'
+    // Parse category strings separated by commas
+    const categories = [];
+    while (pos < tokens.length) {
+      if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+      if (tokens[pos].type === TokenType.STRING) {
+        categories.push(tokens[pos].value);
+        pos++;
+      } else {
+        break;
+      }
+    }
+    return { name, expression: { type: NodeType.CLASSIFY, input, categories, line } };
   }
 
   // Check for "predict with MODEL using FEATURE and FEATURE" on the right side
@@ -7509,6 +7622,11 @@ function parsePrimary(tokens, pos, line, end) {
 
   if (tok.canonical === 'nothing') {
     return { node: literalNothing(line), nextPos: pos + 1 };
+  }
+
+  // "today" → date expression for start of current day
+  if (tok.value === 'today') {
+    return { node: { type: NodeType.CURRENT_TIME, subtype: 'today', line }, nextPos: pos + 1 };
   }
 
   // "keys of X" → MAP_KEYS node

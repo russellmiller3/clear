@@ -419,6 +419,47 @@ const UTILITY_FUNCTIONS = [
     }
   }
 }`, deps: [] },
+  { name: '_classifyIntent', code: `async function _classifyIntent(input, categories) {
+  const prompt = "Classify the following input into exactly one of these categories: " + categories.join(", ") + ".\\n\\nInput: " + String(input) + "\\n\\nRespond with ONLY the category name, nothing else.";
+  const response = await _askAI(prompt, null, null, "claude-haiku-4-5-20251001");
+  const cleaned = String(response).trim().toLowerCase();
+  for (const cat of categories) {
+    if (cleaned === cat.toLowerCase() || cleaned.includes(cat.toLowerCase())) return cat;
+  }
+  return categories[categories.length - 1];
+}`, deps: ['_askAI'] },
+  // RAG: fetch web page text (strip HTML tags)
+  { name: '_fetchPageText', code: `async function _fetchPageText(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return '';
+    const html = await res.text();
+    return html.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '').replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+  } catch (e) { console.warn('RAG fetch failed:', url, e.message); return ''; }
+}`, deps: [] },
+  // RAG: load local file text (txt, md, pdf, docx)
+  { name: '_loadFileText', code: `async function _loadFileText(filePath) {
+  const fs = require('fs');
+  const ext = filePath.split('.').pop().toLowerCase();
+  try {
+    if (ext === 'txt' || ext === 'md') return fs.readFileSync(filePath, 'utf8');
+    if (ext === 'pdf') { const pdf = require('pdf-parse'); const buf = fs.readFileSync(filePath); const data = await pdf(buf); return data.text; }
+    if (ext === 'docx') { const mammoth = require('mammoth'); const result = await mammoth.extractRawText({ path: filePath }); return result.value; }
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (e) { console.warn('RAG file load failed:', filePath, e.message); return ''; }
+}`, deps: [] },
+  // RAG: keyword search against cached text, returns scored chunks
+  { name: '_searchText', code: `function _searchText(text, queryWords, sourceName) {
+  if (!text) return [];
+  const chunks = text.match(/[^.!?\\n]+[.!?\\n]*/g) || [text];
+  const results = [];
+  for (const chunk of chunks) {
+    const lower = chunk.toLowerCase();
+    const score = queryWords.filter(w => lower.includes(w)).length;
+    if (score > 0) results.push({ source: sourceName, data: chunk.trim(), score });
+  }
+  return results.sort((a, b) => b.score - a.score).slice(0, 3);
+}`, deps: [] },
 ];
 
 // Tree-shake: scan compiled code and return only used utility function definitions
@@ -1095,6 +1136,87 @@ function generateE2ETests(body) {
     lines.push(`    assert(html.includes("<!DOCTYPE html>"), "Expected HTML document");`);
     lines.push(`  });`);
     lines.push('');
+  }
+
+  // === AUTO-GENERATED FRONTEND ELEMENT TESTS ===
+  // Walk the AST to find pages, links, buttons, inputs, and displays
+  const pages = body.filter(n => n.type === NodeType.PAGE);
+  if (pages.length > 0) {
+    lines.push('  // --- Frontend Element Tests (auto-generated) ---');
+    lines.push('');
+
+    // Collect all interactive elements from all pages
+    function collectElements(nodes, pageName) {
+      const elements = { links: [], buttons: [], inputs: [], displays: [] };
+      for (const n of nodes) {
+        if (n.type === NodeType.CONTENT && n.contentType === 'link' && n.href) {
+          elements.links.push({ text: n.text, href: n.href, page: pageName });
+        }
+        if (n.type === NodeType.BUTTON) {
+          elements.buttons.push({ text: n.text || n.label, page: pageName });
+        }
+        if (n.type === NodeType.ASK_FOR || (n.ui && n.ui.inputType)) {
+          elements.inputs.push({ label: n.ui?.label || n.variable || 'input', page: pageName });
+        }
+        if (n.type === NodeType.DISPLAY) {
+          elements.displays.push({ name: n.variable || n.text || 'display', page: pageName });
+        }
+        // Recurse into sections, pages, etc.
+        if (n.body) collectElements(n.body, pageName);
+      }
+      return elements;
+    }
+
+    const allElements = { links: [], buttons: [], inputs: [], displays: [] };
+    for (const page of pages) {
+      const pageName = page.title || page.name || 'page';
+      const els = collectElements(page.body || [], pageName);
+      allElements.links.push(...els.links);
+      allElements.buttons.push(...els.buttons);
+      allElements.inputs.push(...els.inputs);
+      allElements.displays.push(...els.displays);
+    }
+
+    // Test: each page renders (route exists and returns HTML content)
+    for (const page of pages) {
+      const route = page.route || '/';
+      lines.push(`  await test("Page '${page.title || page.name}' renders at ${route}", async () => {`);
+      lines.push(`    const r = await fetch(BASE + "/");`);
+      lines.push(`    const html = await r.text();`);
+      lines.push(`    assert(html.includes("${page.title || page.name}"), "Page should contain title '${page.title || page.name}'");`);
+      lines.push(`  });`);
+      lines.push('');
+    }
+
+    // Test: each link has a valid href (not just "#")
+    for (const link of allElements.links) {
+      lines.push(`  await test("Link '${link.text}' navigates to ${link.href}", async () => {`);
+      lines.push(`    const r = await fetch(BASE + "/");`);
+      lines.push(`    const html = await r.text();`);
+      lines.push(`    assert(html.includes('href="#${link.href}"') || html.includes('href="${link.href}"'), "Link '${link.text}' should have href to '${link.href}', not '#'");`);
+      lines.push(`  });`);
+      lines.push('');
+    }
+
+    // Test: each button exists in the HTML
+    for (const btn of allElements.buttons) {
+      lines.push(`  await test("Button '${btn.text}' exists on page '${btn.page}'", async () => {`);
+      lines.push(`    const r = await fetch(BASE + "/");`);
+      lines.push(`    const html = await r.text();`);
+      lines.push(`    assert(html.includes("${btn.text}"), "Button '${btn.text}' should exist in HTML");`);
+      lines.push(`  });`);
+      lines.push('');
+    }
+
+    // Test: each display element is present (not showing "OUTPUT" placeholder)
+    for (const disp of allElements.displays) {
+      lines.push(`  await test("Display '${disp.name}' element exists on page '${disp.page}'", async () => {`);
+      lines.push(`    const r = await fetch(BASE + "/");`);
+      lines.push(`    const html = await r.text();`);
+      lines.push(`    assert(html.includes("${disp.name}") || html.includes("output_"), "Display element for '${disp.name}' should exist");`);
+      lines.push(`  });`);
+      lines.push('');
+    }
   }
 
   // === AUTO-GENERATED AGENT TESTS ===
@@ -2067,18 +2189,38 @@ function compileAgent(node, ctx, pad) {
   const agentDeclared = new Set();
   let bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 1, declared: agentDeclared, insideAgent: true });
 
-  // Scheduled agent: runs on interval, no input parameter
+  // Emit startup code for URL/file knowledge sources (loaded once at module level)
+  let startupCode = '';
+  if (node.knowsAbout && node.knowsAbout.length > 0) {
+    const sources = node.knowsAbout.map(src => typeof src === 'string' ? { type: 'table', value: src } : src);
+    const urlSources = sources.filter(s => s.type === 'url');
+    const fileSources = sources.filter(s => s.type === 'file');
+    for (let i = 0; i < urlSources.length; i++) {
+      startupCode += `${pad}let _knowledge_url_${i} = '';\n${pad}_fetchPageText(${JSON.stringify(urlSources[i].value)}).then(t => { _knowledge_url_${i} = t; }).catch(e => console.warn('RAG: could not load ${urlSources[i].value}:', e.message));\n`;
+    }
+    for (let i = 0; i < fileSources.length; i++) {
+      startupCode += `${pad}let _knowledge_file_${i} = '';\n${pad}_loadFileText(${JSON.stringify(fileSources[i].value)}).then(t => { _knowledge_file_${i} = t; }).catch(e => console.warn('RAG: could not load ${fileSources[i].value}:', e.message));\n`;
+    }
+  }
+
+  // Scheduled agent: runs on interval or cron, no input parameter
   if (node.schedule) {
-    const { value, unit } = node.schedule;
+    const { value, unit, at } = node.schedule;
+    if (ctx.lang === 'python') {
+      return `${startupCode}${pad}async def ${fnName}():\n${bodyCode}\n${pad}# Schedule: runs every ${value} ${unit}(s)${at ? ' at ' + at : ''}`;
+    }
+    // If "at" time specified, use cron-style scheduling
+    if (at) {
+      const cronExpr = _timeToCron(at, value, unit);
+      return `${startupCode}${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}const _cron_${fnName} = require('node-cron');\n${pad}_cron_${fnName}.schedule('${cronExpr}', ${fnName});\n${pad}console.log("Scheduled agent '${node.name}' running ${cronExpr}");`;
+    }
+    // Otherwise use setInterval
     const ms = unit === 'second' ? value * 1000
       : unit === 'minute' ? value * 60000
       : unit === 'hour' ? value * 3600000
       : unit === 'day' ? value * 86400000
       : value * 3600000; // default hour
-    if (ctx.lang === 'python') {
-      return `${pad}async def ${fnName}():\n${bodyCode}\n${pad}# Schedule: runs every ${value} ${unit}(s)`;
-    }
-    return `${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}setInterval(${fnName}, ${ms});\n${pad}console.log("Scheduled agent '${node.name}' running every ${value} ${unit}(s)");`;
+    return `${startupCode}${pad}async function ${fnName}() {\n${bodyCode}\n${pad}}\n${pad}setInterval(${fnName}, ${ms});\n${pad}console.log("Scheduled agent '${node.name}' running every ${value} ${unit}(s)");`;
   }
 
   const param = node.receivingVar ? sanitizeName(node.receivingVar) : '';
@@ -2256,10 +2398,25 @@ function compileAgent(node, ctx, pad) {
       preamble += `${innerPad}const _tools = ${toolsJson};\n`;
       preamble += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
       // Replace _askAI calls with _askAIWithTools in bodyCode
-      bodyCode = bodyCode.replace(
-        /await _askAI\(([^)]*)\)/g,
-        'await _askAIWithTools($1, _tools, _toolFns)'
-      );
+      // Can't use simple regex [^)]* because prompts may contain literal parentheses
+      // e.g. "explain the refund timeline (5-7 business days)"
+      // Instead: iteratively find each _askAI( call, count parens to find the matching ), splice
+      const marker = 'await _askAI(';
+      let searchFrom = 0;
+      while (true) {
+        const idx = bodyCode.indexOf(marker, searchFrom);
+        if (idx < 0) break;
+        let depth = 1, i = idx + marker.length;
+        while (i < bodyCode.length && depth > 0) {
+          if (bodyCode[i] === '(') depth++;
+          else if (bodyCode[i] === ')') depth--;
+          i++;
+        }
+        const args = bodyCode.substring(idx + marker.length, i - 1);
+        const replacement = `await _askAIWithTools(${args}, _tools, _toolFns)`;
+        bodyCode = bodyCode.substring(0, idx) + replacement + bodyCode.substring(i);
+        searchFrom = idx + replacement.length;
+      }
     }
   }
 
@@ -2303,11 +2460,27 @@ function compileAgent(node, ctx, pad) {
       preamble += `${innerPad}};\n`;
     }
     // Wrap _askAI and _askAIWithTools calls with logging
+    // Can't use [^)]* — prompts may contain literal parentheses e.g. "(5-7 business days)"
     if (ctx.lang !== 'python') {
-      bodyCode = bodyCode.replace(
-        /await (_askAI(?:WithTools)?)\(([^)]*)\)/g,
-        (m, fn, args) => `await _agentLog("ask_ai", ${param}, () => ${fn}(${args}))`
-    );
+      const logMarkers = ['await _askAIWithTools(', 'await _askAI('];
+      for (const logMarker of logMarkers) {
+        let logSearch = 0;
+        while (true) {
+          const logIdx = bodyCode.indexOf(logMarker, logSearch);
+          if (logIdx < 0) break;
+          let logDepth = 1, logI = logIdx + logMarker.length;
+          while (logI < bodyCode.length && logDepth > 0) {
+            if (bodyCode[logI] === '(') logDepth++;
+            else if (bodyCode[logI] === ')') logDepth--;
+            logI++;
+          }
+          const fnName = logMarker.replace('await ', '').replace('(', '');
+          const logArgs = bodyCode.substring(logIdx + logMarker.length, logI - 1);
+          const replacement = `await _agentLog("ask_ai", ${param}, () => ${fnName}(${logArgs}))`;
+          bodyCode = bodyCode.substring(0, logIdx) + replacement + bodyCode.substring(logI);
+          logSearch = logIdx + replacement.length;
+        }
+      }
     }
   }
 
@@ -2341,14 +2514,29 @@ function compileAgent(node, ctx, pad) {
     postamble += `${innerPad}}\n`;
   }
 
-  // 6. RAG: knows about: Table1, Table2 — keyword search before _askAI
+  // 6. RAG: knows about: Table1, 'https://url', 'file.pdf' — keyword search before _askAI
   if (node.knowsAbout && node.knowsAbout.length > 0 && ctx.lang !== 'python') {
-    const tables = node.knowsAbout;
+    // Normalize: old format (plain strings) and new format ({ type, value } objects)
+    const sources = node.knowsAbout.map(src =>
+      typeof src === 'string' ? { type: 'table', value: src } : src
+    );
+    const tableSources = sources.filter(s => s.type === 'table');
+    const urlSources = sources.filter(s => s.type === 'url');
+    const fileSources = sources.filter(s => s.type === 'file');
     preamble += `${innerPad}const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);\n`;
     preamble += `${innerPad}const _ragContext = [];\n`;
-    for (const table of tables) {
-      preamble += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${table}', {}) : [];\n`;
-      preamble += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${table}', data: _rec, score: _score }); } }\n`;
+    // Table sources — query DB per request
+    for (const src of tableSources) {
+      preamble += `${innerPad}{ const _recs = db.findAll ? await db.findAll('${src.value}', {}) : [];\n`;
+      preamble += `${innerPad}  for (const _rec of _recs) { const _text = Object.values(_rec).join(' ').toLowerCase(); const _score = _query.filter(w => _text.includes(w)).length; if (_score > 0) _ragContext.push({ source: '${src.value}', data: _rec, score: _score }); } }\n`;
+    }
+    // URL sources — search against cached page text
+    for (const src of urlSources) {
+      preamble += `${innerPad}_ragContext.push(..._searchText(_knowledge_url_${urlSources.indexOf(src)}, _query, '${src.value}'));\n`;
+    }
+    // File sources — search against cached file text
+    for (const src of fileSources) {
+      preamble += `${innerPad}_ragContext.push(..._searchText(_knowledge_file_${fileSources.indexOf(src)}, _query, '${src.value}'));\n`;
     }
     preamble += `${innerPad}_ragContext.sort((a, b) => b.score - a.score);\n`;
     preamble += `${innerPad}const _ragStr = _ragContext.slice(0, 5).length ? '\\n\\nRelevant context:\\n' + _ragContext.slice(0, 5).map(r => JSON.stringify(r.data)).join('\\n') : '';\n`;
@@ -2387,9 +2575,9 @@ function compileAgent(node, ctx, pad) {
     ? (param ? `${param}, _userId` : '_userId')
     : param;
   if (ctx.lang === 'python') {
-    return `${pad}async def ${fnName}(${finalParam}):\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}`;
+    return `${startupCode}${pad}async def ${fnName}(${finalParam}):\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}`;
   }
-  return `${pad}async function${genStar} ${fnName}(${finalParam}) {\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}\n${pad}}`;
+  return `${startupCode}${pad}async function${genStar} ${fnName}(${finalParam}) {\n${preamble}${bodyCode}${postamble ? '\n' + postamble : ''}\n${pad}}`;
 }
 
 // Workflow compiler — Phases 85-90
@@ -3906,10 +4094,14 @@ ${pad}}`;
         if (!v) return '""';
         return exprToCode(v, ctx);
       };
+      // Inline recipient from "send email to X:" takes precedence over config block "to"
+      const toCode = node.config._inlineRecipient
+        ? exprToCode(node.config._inlineRecipient, ctx)
+        : exprVal('to');
       if (ctx.lang === 'python') {
-        return `${pad}_msg = MIMEText(str(${exprVal('body')}))\n${pad}_msg["Subject"] = str(${exprVal('subject')})\n${pad}_msg["To"] = str(${exprVal('to')})\n${pad}_msg["From"] = _email_config["user"]\n${pad}with smtplib.SMTP_SSL("smtp.gmail.com", 465) as _server:\n${pad}    _server.login(_email_config["user"], _email_config["password"])\n${pad}    _server.send_message(_msg)`;
+        return `${pad}_msg = MIMEText(str(${exprVal('body')}))\n${pad}_msg["Subject"] = str(${exprVal('subject')})\n${pad}_msg["To"] = str(${toCode})\n${pad}_msg["From"] = _email_config["user"]\n${pad}with smtplib.SMTP_SSL("smtp.gmail.com", 465) as _server:\n${pad}    _server.login(_email_config["user"], _email_config["password"])\n${pad}    _server.send_message(_msg)`;
       }
-      return `${pad}await _emailTransport.sendMail({ to: ${exprVal('to')}, subject: ${exprVal('subject')}, text: String(${exprVal('body')}) });`;
+      return `${pad}await _emailTransport.sendMail({ to: ${toCode}, subject: ${exprVal('subject')}, text: String(${exprVal('body')}) });`;
     }
 
     // Phase 45: External API calls
@@ -4091,7 +4283,7 @@ ${pad}}`;
         code += `${pad}});`;
         return code;
       }
-      return `${pad}test(${JSON.stringify(node.name)}, () => {\n${bodyCode}\n${pad}});`;
+      return `${pad}test(${JSON.stringify(node.name)}, async () => {\n${bodyCode}\n${pad}});`;
     }
 
     case NodeType.EXPECT: {
@@ -5106,7 +5298,18 @@ export function exprToCode(expr, ctx) {
 
     case NodeType.ASK_AI: {
       const prompt = exprToCode(expr.prompt, ctx);
-      const context = expr.context ? exprToCode(expr.context, ctx) : null;
+      // Multi-context: merge comma-separated vars into JSON object
+      let context;
+      if (expr.context && expr.context.type === 'multi_context') {
+        const entries = expr.context.contexts.map(c => {
+          const code = exprToCode(c, ctx);
+          const key = c.name || c.value || code.replace(/[^a-zA-Z0-9_]/g, '_');
+          return `${JSON.stringify(key)}: ${code}`;
+        });
+        context = `JSON.stringify({ ${entries.join(', ')} })`;
+      } else {
+        context = expr.context ? exprToCode(expr.context, ctx) : null;
+      }
       const schema = expr.schema ? JSON.stringify(expr.schema) : null;
       const model = expr.model ? JSON.stringify(expr.model) : null;
       // Streaming mode: use _askAIStream async generator
@@ -5119,6 +5322,12 @@ export function exprToCode(expr, ctx) {
       }
       if (schema || model) return `await _askAI(${prompt}, ${context || 'null'}, ${schema || 'null'}, ${model || 'null'})`;
       return context ? `await _askAI(${prompt}, ${context})` : `await _askAI(${prompt})`;
+    }
+
+    case NodeType.CLASSIFY: {
+      const inputCode = exprToCode(expr.input, ctx);
+      const cats = expr.categories.map(c => JSON.stringify(c)).join(', ');
+      return `await _classifyIntent(${inputCode}, [${cats}])`;
     }
 
     case NodeType.RUN_AGENT: {
@@ -5279,6 +5488,10 @@ export function exprToCode(expr, ctx) {
     }
 
     case NodeType.CURRENT_TIME: {
+      if (expr.subtype === 'today') {
+        if (ctx.lang === 'python') return 'datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)';
+        return 'new Date(new Date().setHours(0,0,0,0))';
+      }
       if (ctx.lang === 'python') return 'datetime.datetime.now()';
       return 'new Date()';
     }
@@ -7286,7 +7499,8 @@ ${options}
               } else if (inLandingCard) {
                 _pc(`    <a class="link link-primary text-sm font-medium" href="${ui.href || '#'}">${formatted}</a>`);
               } else {
-                _pc(`    <a class="link link-primary text-sm" href="${ui.href || '#'}">${formatted}</a>`);
+                const linkHref = ui.href ? (ui.href.startsWith('/') ? '#' + ui.href : ui.href) : '#';
+                _pc(`    <a class="link link-primary text-sm" href="${linkHref}">${formatted}</a>`);
               }
               break;
             case 'code': {
@@ -7879,6 +8093,16 @@ function compileToJSBackend(body, errors, sourceMap = false) {
   const declared = new Set();
   const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, _astBody: body, _allNodes: body };
   for (const node of body) {
+    // Skip test blocks in server output when running as a server (not test mode)
+    // Tests are compiled into the server output for `compileProgram()` consumers
+    // but excluded from `clear serve` via the CLI's test runner
+    // For now: keep them in serverJS so tests can verify compilation, but guard with runtime check
+    if (node.type === NodeType.TEST_DEF) {
+      // Wrap test blocks in a runtime guard so they don't crash when `test` is undefined
+      const testCode = compileNode(node, ctx);
+      if (testCode) bodyLines.push(`if (typeof test === 'function') {\n${testCode}\n}`);
+      continue;
+    }
     const result = compileNode(node, ctx);
     if (result !== null) {
       bodyLines.push(result);
@@ -9137,6 +9361,19 @@ function _clear_env(name) {
 // =============================================================================
 // NAME & OPERATOR MAPPING
 // =============================================================================
+
+// Convert time string like '9:00 AM' to cron expression
+function _timeToCron(timeStr, intervalValue, intervalUnit) {
+  const match = timeStr.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)?$/);
+  if (!match) return '0 9 * * *'; // fallback: 9 AM daily
+  let hour = parseInt(match[1]);
+  const minute = match[2] ? parseInt(match[2]) : 0;
+  const ampm = (match[3] || '').toUpperCase();
+  if (ampm === 'PM' && hour < 12) hour += 12;
+  if (ampm === 'AM' && hour === 12) hour = 0;
+  // For daily schedules, use * * * for day/month/dow
+  return `${minute} ${hour} * * *`;
+}
 
 function sanitizeName(name) {
   if (name == null) return '_unnamed';

@@ -14,20 +14,35 @@ description: Ship a Clear feature: update all docs, commit, merge to main, push.
 
 Ship the current feature branch. This is a comprehensive ship process for the Clear language project — not just a git merge, but a full documentation update.
 
-### Step 0: Update documentation files
+### Step 0: Documentation Gate (MANDATORY — blocks ship if incomplete)
 
-Review every changed file and update these docs as needed:
+**THE RULE: If a feature exists in the compiler but not in the docs, it doesn't exist for anyone but us. Every feature ships with documentation or it doesn't ship.**
 
-- **`learnings.md`** — Add lessons learned: tricky bugs, compiler gotchas, design decisions, things that didn't work
-- **`ROADMAP.md`** — Mark completed items, update line counts, add new phases if needed
-- **`PHILOSOPHY.md`** — Add new design principles if any emerged
-- **`SYNTAX.md`** — Document any new or changed syntax with examples
-- **`design-system-v2.md`** — Reflect theme color changes, new presets, updated component patterns
-- **`AI-INSTRUCTIONS.md`** — Add new coding conventions, update examples
-- **`HANDOFF.md`** — Rewrite: what was done, what's next, key decisions, known issues, resume prompt
-- **`CLAUDE.md`** — Verify new rules are present, update test count if tests were added
-- **`.claude/skills/write-clear/SKILL.md`** — Update the write-clear skill if new syntax was added, canonical forms changed, or new features need examples
-- **`USER-GUIDE.md`** — Update if new syntax, features, or app patterns were added. Add examples for new features. Test all code examples compile.
+For EVERY new or changed feature on this branch, verify it appears in ALL FIVE documentation surfaces:
+
+| # | File | What to check | If missing |
+|---|------|--------------|------------|
+| 1 | **`intent.md`** | Node type in spec table, syntax, compilation target | Add row to the appropriate table. Update the node count in the header. |
+| 2 | **`SYNTAX.md`** | Complete syntax reference with example code block | Add a section with canonical syntax + at least one example |
+| 3 | **`AI-INSTRUCTIONS.md`** | Coding conventions, when to use this feature, gotchas | Add to the appropriate section with a "do this / don't do this" example |
+| 4 | **`USER-GUIDE.md`** | Tutorial coverage with a worked example | Add to an existing chapter or create a new section. Must be teachable. |
+| 5 | **`.claude/skills/write-clear/SKILL.md`** | Meph knows how to use this feature | Add syntax pattern and example if it's something Meph would write |
+
+**How to audit:** For each `.js` file changed on this branch:
+1. `git diff main -- parser.js | grep "+.*NodeType\."` — find new node types
+2. `git diff main -- parser.js | grep "+.*canonical =\|+.*CANONICAL_DISPATCH"` — find new dispatch entries
+3. `git diff main -- compiler.js | grep "+.*case NodeType\."` — find new compiler cases
+4. `git diff main -- synonyms.js | grep "+.*Object.freeze"` — find new synonyms
+5. For EACH finding, grep all 5 doc files. If missing from any, add it.
+
+| 6 | **`ROADMAP.md`** | Completed phases marked, line counts updated, new phases added | ALWAYS update — this is the SOURCE OF TRUTH for what Clear can do. If it's not in the roadmap, future sessions won't know it exists. Mark what was built, what phase it falls under, update test/line counts. |
+
+**Also update these as needed:**
+- **`learnings.md`** — Tricky bugs, compiler gotchas, design decisions
+- **`PHILOSOPHY.md`** — New design principles if any emerged
+- **`design-system.md`** — Theme changes, new presets, component patterns
+- **`HANDOFF.md`** — Rewrite: what was done, what's next, key decisions, resume prompt
+- **`CLAUDE.md`** — New rules, update test count if tests were added
 
 ### Step 1: Rebuild playground bundle
 
