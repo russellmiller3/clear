@@ -174,6 +174,101 @@ app.get('/api/terminal-log', (req, res) => {
   res.json({ lines: terminalBuffer.slice(-100), frontendErrors: frontendErrors.slice(-20) });
 });
 
+// =============================================================================
+// TEST RUNNER — parse test output into structured results
+// =============================================================================
+function parseTestOutput(stdout, type) {
+  const results = [];
+  const lines = (stdout || '').split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (type === 'compiler') {
+      // clear.test.js format: "✅ test name" or "❌ test name" then "   error msg" on next line
+      if (trimmed.startsWith('✅')) {
+        results.push({ name: trimmed.replace(/^✅\s*/, ''), status: 'pass' });
+      } else if (trimmed.startsWith('❌')) {
+        results.push({ name: trimmed.replace(/^❌\s*/, ''), status: 'fail', error: '' });
+      } else if (trimmed.startsWith('📦')) {
+        // describe block header — skip
+      } else if (results.length > 0 && results[results.length - 1].status === 'fail' && !results[results.length - 1].error) {
+        results[results.length - 1].error = trimmed;
+      }
+    } else {
+      // clear test format: "  PASS: test name" or "  FAIL: test name -- error"
+      const passMatch = trimmed.match(/^PASS:\s*(.+)/);
+      const failMatch = trimmed.match(/^FAIL:\s*(.+?)(?:\s*--\s*(.+))?$/);
+      if (passMatch) {
+        results.push({ name: passMatch[1], status: 'pass' });
+      } else if (failMatch) {
+        results.push({ name: failMatch[1], status: 'fail', error: failMatch[2] || '' });
+      }
+    }
+  }
+
+  const passed = results.filter(r => r.status === 'pass').length;
+  const failed = results.filter(r => r.status === 'fail').length;
+  return { passed, failed, results };
+}
+
+function runTestProcess(type, source) {
+  const start = Date.now();
+
+  if (type === 'compiler') {
+    try {
+      const stdout = execSync('node clear.test.js', { cwd: ROOT_DIR, encoding: 'utf8', timeout: 60000, maxBuffer: 10 * 1024 * 1024 });
+      const parsed = parseTestOutput(stdout, 'compiler');
+      return { ok: true, ...parsed, duration: Date.now() - start };
+    } catch (err) {
+      const parsed = parseTestOutput(err.stdout || '', 'compiler');
+      return { ok: parsed.failed === 0, ...parsed, duration: Date.now() - start, stderr: (err.stderr || '').slice(0, 2000) };
+    }
+  }
+
+  if (type === 'app') {
+    if (!source || !source.trim()) {
+      return { ok: false, error: 'No source code. Load or write a .clear file first.' };
+    }
+    const tmpPath = join(BUILD_DIR, '_test-source.clear');
+    mkdirSync(BUILD_DIR, { recursive: true });
+    writeFileSync(tmpPath, source);
+    try {
+      const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: 30000, maxBuffer: 5 * 1024 * 1024 });
+      const parsed = parseTestOutput(stdout, 'app');
+      return { ok: true, ...parsed, duration: Date.now() - start };
+    } catch (err) {
+      if (err.status === 4) {
+        const parsed = parseTestOutput(err.stdout || '', 'app');
+        return { ok: false, ...parsed, duration: Date.now() - start };
+      }
+      if (err.status === 1) {
+        try {
+          const errData = JSON.parse(err.stdout);
+          return { ok: false, error: 'Compile errors', errors: errData.errors || [], duration: Date.now() - start };
+        } catch {
+          return { ok: false, error: (err.stdout || err.stderr || err.message).slice(0, 2000), duration: Date.now() - start };
+        }
+      }
+      return { ok: false, error: (err.stderr || err.message || 'Test runner failed').slice(0, 2000), duration: Date.now() - start };
+    } finally {
+      try { unlinkSync(tmpPath); } catch {}
+    }
+  }
+
+  return { ok: false, error: `Unknown test type: ${type}. Use 'app' or 'compiler'.` };
+}
+
+app.post('/api/run-tests', (req, res) => {
+  const { type, source } = req.body;
+  if (!type || !['app', 'compiler'].includes(type)) {
+    return res.status(400).json({ ok: false, error: "type must be 'app' or 'compiler'" });
+  }
+  const result = runTestProcess(type, source);
+  res.json(result);
+});
+
 // Store API key server-side so child processes (compiled apps with agents) can use it
 let storedApiKey = process.env.ANTHROPIC_API_KEY || '';
 app.post('/api/set-key', (req, res) => {
@@ -500,6 +595,17 @@ You can modify .clear files and requests.md. You can create new files of any all
         message: { type: 'string', description: 'Short message to show the user, e.g. "Here is the bug" or "I added this section".' },
       },
       required: ['start_line'],
+    },
+  },
+  {
+    name: 'run_tests',
+    description: 'Run tests and see results. type="app" runs test blocks in the current Clear source code. type="compiler" runs all compiler tests. Returns pass/fail counts and failure details.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['app', 'compiler'], description: 'Which tests to run' },
+      },
+      required: ['type'],
     },
   },
   {
@@ -910,6 +1016,13 @@ app.post('/api/chat', async (req, res) => {
         });
       }
 
+      case 'run_tests': {
+        const testResult = runTestProcess(input.type, currentSource);
+        send({ type: 'switch_tab', tab: 'tests' });
+        send({ type: 'test_results', testType: input.type, ...testResult });
+        return JSON.stringify(testResult);
+      }
+
       case 'browse_templates': {
         const TEMPLATE_DIR = join(ROOT_DIR, 'apps');
         if (input.action === 'list') {
@@ -1118,6 +1231,7 @@ app.post('/api/chat', async (req, res) => {
             case 'read_terminal': return 'Checking terminal output';
             case 'screenshot_output': return 'Taking screenshot';
             case 'highlight_code': return `Highlighting lines ${input.start_line || ''}–${input.end_line || ''}`;
+            case 'run_tests': return `Running ${input.type} tests...`;
             case 'source_map': return input.clear_line ? `Looking up Clear line ${input.clear_line}` : 'Getting full source map';
             case 'patch_code': return `Patching ${input.operations?.length || 0} operations`;
             case 'browse_templates': return input.action === 'read' ? `Reading template: ${input.name}` : 'Browsing templates';
@@ -1145,6 +1259,9 @@ app.post('/api/chat', async (req, res) => {
         }
         if (tb.name === 'read_terminal') {
           send({ type: 'switch_tab', tab: 'terminal' });
+        }
+        if (tb.name === 'run_tests') {
+          send({ type: 'switch_tab', tab: 'tests' });
         }
 
         let result;
@@ -1216,6 +1333,11 @@ app.post('/api/chat', async (req, res) => {
               return `[tool] screenshot — ${Array.isArray(result) ? 'captured' : 'failed'}`;
             case 'highlight_code':
               return `[tool] highlight lines ${input.start_line}–${input.end_line || input.start_line}${input.message ? ': ' + input.message : ''}`;
+            case 'run_tests': {
+              if (err) return `[tool] ❌ run_tests — ${err.slice(0, 150)}`;
+              const tr = JSON.parse(result);
+              return `[tool] ✓ ${input.type} tests — ${tr.passed || 0} passed, ${tr.failed || 0} failed`;
+            }
             case 'source_map':
               return `[tool] ✓ source_map`;
             case 'patch_code':

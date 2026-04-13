@@ -139,6 +139,30 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .term-tool { color: var(--tx2); font-size: 11px; display: block; padding: 2px 0 2px 12px; border-left: 2px solid var(--accent); margin: 2px 0 2px 4px; }
 .term-tool-err { color: var(--red); font-size: 11px; display: block; padding: 2px 8px; margin: 2px 0 2px 4px; background: color-mix(in oklch, var(--red) 6%, transparent); border-left: 2px solid var(--red); }
 .term-tool-ok { color: var(--green); font-size: 11px; display: block; padding: 2px 0 2px 12px; border-left: 2px solid var(--green); margin: 2px 0 2px 4px; }
+/* Tests tab */
+#tests-panel { height: 100%; overflow: auto; padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--tx2); display: flex; flex-direction: column; gap: 12px; }
+.test-toolbar { display: flex; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+.test-btn { padding: 6px 14px; font-size: 12px; font-family: var(--font); font-weight: 500; border: 1px solid var(--bd); border-radius: 6px; background: var(--bg2); color: var(--tx2); cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px; }
+.test-btn:hover { background: var(--bg3); color: var(--tx); border-color: var(--accent); }
+.test-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.test-btn:disabled:hover { background: var(--bg2); color: var(--tx2); border-color: var(--bd); }
+.test-section { border: 1px solid var(--bd); border-radius: 8px; overflow: hidden; }
+.test-section-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg2); font-weight: 500; font-size: 12px; cursor: pointer; user-select: none; }
+.test-section-header:hover { background: var(--bg3); }
+.test-section-body { max-height: 400px; overflow: auto; }
+.test-pass { display: flex; align-items: baseline; gap: 6px; padding: 3px 12px; color: var(--green); }
+.test-pass::before { content: '✓'; font-weight: 700; }
+.test-fail { padding: 3px 12px; color: var(--red); }
+.test-fail-name { display: flex; align-items: baseline; gap: 6px; }
+.test-fail-name::before { content: '✗'; font-weight: 700; }
+.test-fail-error { padding: 2px 12px 2px 24px; font-size: 11px; color: var(--red); opacity: 0.8; background: color-mix(in oklch, var(--red) 6%, transparent); border-radius: 4px; margin: 2px 12px 4px 18px; }
+.test-summary { font-size: 11px; color: var(--tx3); }
+.test-summary .pass-count { color: var(--green); font-weight: 600; }
+.test-summary .fail-count { color: var(--red); font-weight: 600; }
+.test-empty { color: var(--tx3); font-size: 12px; text-align: center; padding: 40px 20px; }
+.test-error-banner { padding: 8px 12px; background: color-mix(in oklch, var(--red) 10%, transparent); border: 1px solid var(--red); border-radius: 6px; color: var(--red); font-size: 12px; white-space: pre-wrap; }
+.test-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--bd); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .code-tabs { display: flex; gap: 2px; padding: 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
 .code-tab { background: none; border: none; padding: 4px 12px; border-radius: 4px; color: var(--tx3); font-size: 11px; font-family: var(--font); font-weight: 500; cursor: pointer; transition: all .15s; }
 .code-tab:hover { background: var(--bg3); color: var(--tx); }
@@ -413,6 +437,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
       <button class="prev-tab" onclick="showTab('data')" id="data-tab-btn" style="display:none">Data</button>
       <button class="prev-tab" onclick="showTab('api')" id="api-tab-btn" style="display:none">API</button>
       <button class="prev-tab" onclick="showTab('terminal')">Terminal</button>
+      <button class="prev-tab" onclick="showTab('tests')">Tests</button>
       <button class="prev-tab" onclick="clearTerminal()" title="Clear terminal output" style="font-size:10px;padding:2px 6px;opacity:0.6;">Clear Terminal</button>
     </div>
     <div id="meta-chips"></div>
@@ -1385,7 +1410,120 @@ window.showTab = function(tab) {
   else if (tab === 'terminal') showTerminal();
   else if (tab === 'data') showData();
   else if (tab === 'api') showApiTab();
+  else if (tab === 'tests') showTests();
 };
+
+// ==========================================================================
+// TESTS TAB — run and display compiler + app test results
+// ==========================================================================
+let testResults = { app: null, compiler: null };
+let testRunning = { app: false, compiler: false };
+try { testResults = JSON.parse(localStorage.getItem('clear_test_results') || '{}'); } catch { testResults = { app: null, compiler: null }; }
+
+function showTests() {
+  const el = document.getElementById('preview-content');
+  const parts = ['<div id="tests-panel">'];
+
+  // Toolbar
+  parts.push('<div class="test-toolbar">');
+  parts.push(`<button class="test-btn" onclick="runTests('app')" ${testRunning.app ? 'disabled' : ''}>
+    ${testRunning.app ? '<span class="test-spinner"></span> Running...' : '&#9654; Run App Tests'}
+  </button>`);
+  parts.push(`<button class="test-btn" onclick="runTests('compiler')" ${testRunning.compiler ? 'disabled' : ''}>
+    ${testRunning.compiler ? '<span class="test-spinner"></span> Running...' : '&#9654; Run Compiler Tests'}
+  </button>`);
+  parts.push('</div>');
+
+  // Results sections
+  if (!testResults.app && !testResults.compiler) {
+    parts.push('<div class="test-empty">No test results yet. Click a button above to run tests.</div>');
+  }
+
+  if (testResults.app) parts.push(renderTestSection('App Tests', testResults.app, 'app'));
+  if (testResults.compiler) parts.push(renderTestSection('Compiler Tests', testResults.compiler, 'compiler'));
+
+  parts.push('</div>');
+  el.innerHTML = parts.join('');
+}
+
+function renderTestSection(title, data, type) {
+  if (data.error && !data.results) {
+    return `<div class="test-section">
+      <div class="test-section-header">${escHtml(title)}<span class="test-summary">${data.duration ? (data.duration / 1000).toFixed(1) + 's' : ''}</span></div>
+      <div class="test-error-banner">${escHtml(data.error)}${data.errors ? '\n' + data.errors.map(e => escHtml(e.message || String(e))).join('\n') : ''}</div>
+    </div>`;
+  }
+
+  const passed = data.passed || 0;
+  const failed = data.failed || 0;
+  const duration = data.duration ? (data.duration / 1000).toFixed(1) + 's' : '';
+  const results = data.results || [];
+  const failures = results.filter(r => r.status === 'fail');
+  const passes = results.filter(r => r.status === 'pass');
+
+  // For compiler tests, collapse passes by default (too many)
+  const showAllPasses = type !== 'compiler' || passes.length <= 20;
+
+  let body = '';
+  // Show failures first (always expanded)
+  for (const r of failures) {
+    body += `<div class="test-fail"><div class="test-fail-name">${escHtml(r.name)}</div>`;
+    if (r.error) body += `<div class="test-fail-error">${escHtml(r.error)}</div>`;
+    body += '</div>';
+  }
+  // Show passes
+  if (showAllPasses) {
+    for (const r of passes) {
+      body += `<div class="test-pass">${escHtml(r.name)}</div>`;
+    }
+  } else if (passes.length > 0) {
+    for (const r of passes.slice(0, 5)) {
+      body += `<div class="test-pass">${escHtml(r.name)}</div>`;
+    }
+    body += `<div class="test-pass" style="color:var(--tx3);cursor:pointer;" onclick="this.parentElement.querySelectorAll('.test-hidden').forEach(e=>e.style.display='');this.style.display='none';">+ ${passes.length - 5} more passed tests (click to expand)</div>`;
+    for (const r of passes.slice(5)) {
+      body += `<div class="test-pass test-hidden" style="display:none;">${escHtml(r.name)}</div>`;
+    }
+  }
+
+  if (results.length === 0 && !data.error) {
+    body = `<div class="test-empty" style="padding:12px;">No test blocks found. Add <code>test 'name':</code> blocks to your Clear code.</div>`;
+  }
+
+  const summaryHtml = `<span class="test-summary"><span class="pass-count">${passed} passed</span>, <span class="fail-count">${failed} failed</span>${duration ? ' &mdash; ' + duration : ''}</span>`;
+
+  return `<div class="test-section">
+    <div class="test-section-header">${escHtml(title)} ${summaryHtml}</div>
+    <div class="test-section-body">${body}</div>
+  </div>`;
+}
+
+async function runTests(type) {
+  testRunning[type] = true;
+  if (activeTab === 'tests') showTests();
+
+  try {
+    const body = { type };
+    if (type === 'app') {
+      body.source = editor.state.doc.toString();
+    }
+    const resp = await fetch('/api/run-tests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    testResults[type] = data;
+    try { localStorage.setItem('clear_test_results', JSON.stringify(testResults)); } catch {}
+  } catch (err) {
+    testResults[type] = { ok: false, error: err.message || 'Network error', duration: 0 };
+  } finally {
+    testRunning[type] = false;
+    if (activeTab === 'tests') showTests();
+  }
+}
+
+window.runTests = runTests;
 
 // ==========================================================================
 // SOURCE PARSER — extract tables, endpoints, agents from Clear source
@@ -2487,6 +2625,9 @@ window.sendChat = async function() {
             appendTerminal(`<span class="term-cmd">${escHtml(ev.text)}</span>\n`);
           }
           if (activeTab !== 'terminal') showToast(ev.text.slice(0, 60));
+        } else if (ev.type === 'test_results') {
+          testResults[ev.testType] = ev;
+          if (activeTab === 'tests') showTests();
         } else if (ev.type === 'undo') {
           if (undoCmd) undoCmd(editor);
           autoCompile();
