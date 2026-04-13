@@ -20,6 +20,8 @@ database is local memory
 allow signup and login
 log every request
 
+# JUMP TO: Database | Tools | Skills | Agent | Scheduled Tasks | Endpoints | Seed Data | Tests | Frontend
+
 # Database
 
 create a Products table:

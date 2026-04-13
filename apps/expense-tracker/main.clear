@@ -1,16 +1,24 @@
+/*
+Expense Tracker — personal spending with categories, charts, and aggregates
+
+  ┌──────────┐   GET/POST/DELETE   ┌──────────┐   CRUD    ┌────────────┐
+  │ Browser  │ ─────────────────►  │  Server  │ ────────► │ Categories │
+  │ (page)   │ ◄─────────────────  │ (Express)│           └────────────┘
+  └──────────┘    JSON + HTML      │          │   CRUD    ┌────────────┐
+       │                           │          │ ────────► │  Expenses  │
+       │ pie chart ◄───────────    └──────────┘           └────────────┘
+       │ total_spent ◄─────────         │                      │
+       │                           sum(amount)            belongs to
+       │                           Search (keyword)       Categories
+       └── computed: total, chart    Auth (JWT)
+*/
+
+# JUMP TO: Database | Backend | Middleware | Endpoints | Seed Data | Frontend
+
 build for web and javascript backend
 
-# DATAFLOW:
-# ┌──────────┐  POST /api/expenses     ┌──────────┐  save   ┌────────┐
-# │ Frontend │ ─────────────────────> │ Backend  │ ──────> │   DB   │
-# │  (form)  │ <───────────────────── │ (server) │ <────── │(memory)│
-# └──────────┘  GET /api/expenses     └──────────┘  query  └────────┘
-#      │                                    │
-#      │  page load --> GET --> table        │  DELETE /api/expenses/:id
-#      │  form submit --> POST --> refresh   │  GET /api/expenses/total
-#      │  search --> GET /api/search?q=      │  POST /api/seed
-
 # Database
+
 database is local memory
 
 create a Categories table:
@@ -24,9 +32,13 @@ create a Expenses table:
   category belongs to Categories
 
 # Backend
+# Middleware
+
 allow server to accept requests from frontend
 allow signup and login
 log every request
+
+# Endpoints
 
 when user requests data from /api/expenses:
   all_expenses = get all Expenses
@@ -57,6 +69,8 @@ when user requests data from /api/expenses/total:
   all_expenses = get all Expenses
   total = sum of amount in all_expenses
   send back total
+
+# Seed Data
 
 when user sends data to /api/seed:
   create c1:
@@ -104,6 +118,7 @@ when user sends data to /api/seed:
   send back 'seeded' with success message
 
 # Frontend
+
 page 'Expense Tracker':
   on page load get expenses from '/api/expenses'
 
