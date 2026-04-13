@@ -122,7 +122,7 @@ button 'Send':
   get messages from '/api/messages'
   user_message is ''
 ```
-The compiler folds the input+button into the chat widget automatically. You get: message bubbles, markdown rendering, typing dots, Enter-to-send, New button, scroll-to-bottom — all built in. The `showing` clause maps role field first, content field second.
+The compiler folds the input+button into the chat widget automatically. You get: message bubbles, markdown rendering, typing dots, Enter-to-send, New button, scroll-to-bottom — all built in. The `showing` clause maps role field first, content field second. If the agent has `stream response`, the chat auto-streams tokens in real-time (no extra code needed).
 
 ### Layout (inline modifiers)
 ```

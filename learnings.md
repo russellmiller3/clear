@@ -848,3 +848,20 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Gotcha:** Studio's `markdownToHtml()` has 3 phases of SVG handling (extraction, sanitization, rendering). These are deeply interleaved with the code block extraction regex state machine.
 - **Fix:** Don't surgically remove SVG. Instead, port only Phase 1 (fenced code block extraction) + `renderInline` + `renderText`. Skip Phases 2-3 entirely.
 - **Lesson:** When porting complex functions, identify the phases and only port the ones you need. Don't try to remove unwanted features from the middle of a state machine.
+
+## SSE Streaming for Chat (2026-04-12)
+
+### Compilation Order Is NOT Guaranteed
+- **Bug:** Plan assumed agents compile before endpoints (so `streamingAgents` set would be populated). Wrong — `compileToJSBackend()` iterates AST nodes in SOURCE order. If the endpoint appears before the agent in the .clear file, the set is empty when checked.
+- **Fix:** Pre-scan AST for streaming agents at `compileProgram()` level BEFORE any compilation starts. Same pattern as `_findAsyncFunctions`.
+- **Lesson:** Never assume compilation order. If feature A needs to know about feature B, pre-scan the AST in a separate pass.
+
+### Frontend and Backend Compile in Separate Functions
+- **Bug:** `streamingAgentNames` was populated during `compileToJSBackend()` but needed in `compileToReactiveJS()` (frontend). These are completely separate functions called at different times.
+- **Fix:** Pre-scan at `compileProgram()` level and pass results to both compilers.
+- **Lesson:** Any cross-compiler state must be computed at the `compileProgram()` level and passed down to both `compileToJSBackend()` and `compileToReactiveJS()`.
+
+### SSE Headers Break Express Error Handling
+- **Bug:** Once `res.writeHead(200, { 'Content-Type': 'text/event-stream' })` is sent, you can't call `res.status(500).json(...)` in the catch block — headers already sent.
+- **Fix:** Streaming endpoints write errors as SSE events: `res.write('data: ' + JSON.stringify({ error: msg }) + '\\n\\n'); res.end();`
+- **Lesson:** SSE endpoints need their own error handling pattern. The standard Express try/catch with JSON error response doesn't work after headers are sent.

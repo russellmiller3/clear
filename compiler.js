@@ -593,6 +593,74 @@ export const UTILITY_FUNCTIONS = [
       if (onDone) onDone();
     });
 }`, deps: ['_chatMdInline'] },
+  { name: '_chatSendStream', code: `function _chatSendStream(inputId, msgsId, typingId, url, field, onDone) {
+  var input = document.getElementById(inputId);
+  if (!input) return;
+  var msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  var msgsEl = document.getElementById(msgsId);
+  if (msgsEl) {
+    var bubble = document.createElement('div');
+    bubble.className = 'clear-chat-msg user';
+    bubble.innerHTML = '<div class="clear-chat-msg-label">You</div>' + _chatMdInline(msg);
+    msgsEl.appendChild(bubble);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  var assistBubble = document.createElement('div');
+  assistBubble.className = 'clear-chat-msg assistant';
+  assistBubble.innerHTML = '<div class="clear-chat-msg-label">Assistant</div>';
+  var contentSpan = document.createElement('span');
+  assistBubble.appendChild(contentSpan);
+  if (msgsEl) {
+    msgsEl.appendChild(assistBubble);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  var body = {};
+  body[field] = msg;
+  var fullText = '';
+  fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r) {
+      var reader = r.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      function read() {
+        reader.read().then(function(result) {
+          if (result.done) {
+            contentSpan.innerHTML = _chatMd(fullText);
+            if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+            if (onDone) onDone();
+            return;
+          }
+          buffer += decoder.decode(result.value, { stream: true });
+          var lines = buffer.split('\\n');
+          buffer = lines.pop();
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            if (line.startsWith('data: ')) {
+              var data = line.slice(6);
+              if (data === '[DONE]') continue;
+              try {
+                var evt = JSON.parse(data);
+                if (evt.text) {
+                  fullText += evt.text;
+                  contentSpan.textContent = fullText;
+                  if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+                }
+              } catch(e) {}
+            }
+          }
+          read();
+        });
+      }
+      read();
+    })
+    .catch(function(err) {
+      contentSpan.textContent = 'Error: ' + err.message;
+      if (typeof _toast === 'function') _toast('Send failed: ' + err.message, 'error');
+      if (onDone) onDone();
+    });
+}`, deps: ['_chatMdInline', '_chatMd'] },
   { name: '_chatClear', code: `function _chatClear(url, msgsId) {
   var el = document.getElementById(msgsId);
   if (el) el.innerHTML = '<p style="text-align:center;opacity:0.4;padding:2rem 0;font-size:14px">No messages yet</p>';
@@ -829,8 +897,53 @@ export function compile(ast, options = {}) {
   const needsJSBackend = ['backend', 'both', 'web_and_js_backend', 'js_backend'].includes(target);
   const needsPythonBackend = ['backend', 'both', 'web_and_python_backend', 'python_backend'].includes(target);
 
+  // Pre-scan: identify which agents will stream (async function* generators).
+  // This runs BEFORE compilation so both backend (SSE endpoints) and frontend
+  // (_chatSendStream vs _chatSend) can use it regardless of compilation order.
+  const streamingAgentNames = new Set();
+  for (const node of ast.body) {
+    if (node.type === NodeType.AGENT) {
+      let willStream = node.streamResponse === true;
+      if (willStream) {
+        // Auto-disable for structured output — can't stream partial JSON
+        let hasStructured = false;
+        (function check(nodes) {
+          for (const n of nodes) {
+            if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI && n.expression.schema?.length > 0) hasStructured = true;
+            if (n.body) check(n.body);
+            if (n.thenBranch) check(n.thenBranch);
+            if (n.otherwiseBranch) check(n.otherwiseBranch);
+          }
+        })(node.body);
+        if (hasStructured) willStream = false;
+      }
+      if (node.schedule) willStream = false;
+      if (node.tools && node.tools.length > 0) willStream = false;
+      if (node.skills && node.skills.length > 0) {
+        for (const skillName of node.skills) {
+          const skillNode = ast.body.find(n => n.type === NodeType.SKILL && n.name === skillName);
+          if (skillNode?.tools?.length > 0) { willStream = false; break; }
+        }
+      }
+      // Must have ask_ai calls in body to actually stream
+      if (willStream) {
+        let hasAskAI = false;
+        (function checkAI(nodes) {
+          for (const n of nodes) {
+            if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI) hasAskAI = true;
+            if (n.type === NodeType.ASK_AI) hasAskAI = true;
+            if (n.body) checkAI(n.body);
+            if (n.thenBranch) checkAI(n.thenBranch);
+          }
+        })(node.body);
+        if (!hasAskAI) willStream = false;
+      }
+      if (willStream) streamingAgentNames.add(node.name);
+    }
+  }
+
   if (needsWeb) {
-    result.javascript = compileToJS(ast.body, errors, sourceMap);
+    result.javascript = compileToJS(ast.body, errors, sourceMap, streamingAgentNames);
     const htmlResult = compileToHTML(ast.body, result.javascript);
     result.html = htmlResult.html;
     result.css = htmlResult.css;
@@ -838,11 +951,11 @@ export function compile(ast, options = {}) {
   if (needsJSBackend) {
     // If we already have web JS, backend JS is a separate output
     if (needsWeb) {
-      result.serverJS = compileToJSBackend(ast.body, errors, sourceMap);
+      result.serverJS = compileToJSBackend(ast.body, errors, sourceMap, streamingAgentNames);
       // Also generate browser-compatible server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
     } else {
-      result.javascript = compileToJSBackend(ast.body, errors, sourceMap);
+      result.javascript = compileToJSBackend(ast.body, errors, sourceMap, streamingAgentNames);
       // Backend-only apps also get a browser server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
     }
@@ -5770,10 +5883,10 @@ function compileRLSPolicy(policy, tableName) {
 // JAVASCRIPT COMPILER
 // =============================================================================
 
-function compileToJS(body, errors, sourceMap = false) {
+function compileToJS(body, errors, sourceMap = false, streamingAgentNames = new Set()) {
   // Check if this is a reactive web app (has page with ask_for or button nodes)
   if (isReactiveApp(body)) {
-    return compileToReactiveJS(body, errors, sourceMap);
+    return compileToReactiveJS(body, errors, sourceMap, streamingAgentNames);
   }
 
   const lines = [];
@@ -5851,7 +5964,7 @@ function isReactiveApp(body) {
  *   3. Event listeners (inputs update state, buttons run actions)
  *   4. Initial _recompute() call
  */
-function compileToReactiveJS(body, errors, sourceMap = false) {
+function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentNames = new Set()) {
   const lines = [];
 
   // Collect all nodes from page/section bodies (flatten wrappers)
@@ -6538,8 +6651,35 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       const refreshCode = refreshUrl && refreshVar
         ? `_state.${refreshVar} = await fetch('${refreshUrl}', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } }).then(function(r) { return r.json(); }); _recompute();`
         : '_recompute();';
+
+      // Detect if the target endpoint calls a streaming agent
+      let isStreamingEndpoint = false;
+      if (streamingAgentNames.size > 0) {
+        // Find the POST endpoint in the AST matching this URL
+        const matchingEndpoint = body.find(n =>
+          n.type === NodeType.ENDPOINT &&
+          n.method.toUpperCase() === 'POST' &&
+          n.path === postUrl
+        );
+        if (matchingEndpoint) {
+          // Walk the endpoint body for RUN_AGENT nodes calling a streaming agent
+          (function findStreamingCall(nodes) {
+            if (!Array.isArray(nodes)) return;
+            for (const n of nodes) {
+              if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_AGENT && streamingAgentNames.has(n.expression.agentName)) {
+                isStreamingEndpoint = true;
+              }
+              if (Array.isArray(n.body)) findStreamingCall(n.body);
+              if (Array.isArray(n.thenBranch)) findStreamingCall(n.thenBranch);
+              if (Array.isArray(n.otherwiseBranch)) findStreamingCall(n.otherwiseBranch);
+            }
+          })(matchingEndpoint.body || []);
+        }
+      }
+
+      const sendFn = isStreamingEndpoint ? '_chatSendStream' : '_chatSend';
       lines.push(`document.getElementById('${outputId}_send').addEventListener('click', async function() {`);
-      lines.push(`  _chatSend('${outputId}_input', '${outputId}_msgs', '${outputId}_typing', '${postUrl}', '${postField}', async function() {`);
+      lines.push(`  ${sendFn}('${outputId}_input', '${outputId}_msgs', '${outputId}_typing', '${postUrl}', '${postField}', async function() {`);
       lines.push(`    ${refreshCode}`);
       lines.push(`  });`);
       lines.push(`});`);
@@ -8049,11 +8189,17 @@ ${htmlBody.includes('data-nav-item') ? `  <script>
  * Generate an ASCII architecture diagram from the AST.
  * Embedded in compiled output so AI agents understand the app structure at a glance.
  */
-function generateDiagram(body, commentPrefix = '//') {
+function generateDiagram(body, commentPrefix = '//', streamingAgentNames = new Set()) {
   const tables = [];
   const endpoints = [];
   const pages = [];
   const agents = [];
+
+  // Build set of streaming agent function names for endpoint tagging
+  const streamingFnNames = new Set();
+  for (const agentName of streamingAgentNames) {
+    streamingFnNames.add(agentName);
+  }
 
   for (const node of body) {
     if (node.type === NodeType.DATA_SHAPE) {
@@ -8067,7 +8213,22 @@ function generateDiagram(body, commentPrefix = '//') {
     }
     if (node.type === NodeType.ENDPOINT) {
       const auth = node.body && node.body.some(b => b.type === NodeType.REQUIRES_AUTH);
-      endpoints.push({ method: node.method.toUpperCase(), path: node.path, auth, line: node.line, file: node._sourceFile });
+      // Detect if endpoint calls a streaming agent
+      let streaming = false;
+      if (streamingAgentNames.size > 0) {
+        (function findStreamingCall(nodes) {
+          if (!Array.isArray(nodes)) return;
+          for (const n of nodes) {
+            if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_AGENT && streamingAgentNames.has(n.expression.agentName)) {
+              streaming = true;
+            }
+            if (Array.isArray(n.body)) findStreamingCall(n.body);
+            if (Array.isArray(n.thenBranch)) findStreamingCall(n.thenBranch);
+            if (Array.isArray(n.otherwiseBranch)) findStreamingCall(n.otherwiseBranch);
+          }
+        })(node.body || []);
+      }
+      endpoints.push({ method: node.method.toUpperCase(), path: node.path, auth, streaming, line: node.line, file: node._sourceFile });
     }
     if (node.type === NodeType.PAGE) {
       pages.push({ title: node.title, route: node.route || '/', line: node.line, file: node._sourceFile });
@@ -8105,9 +8266,10 @@ function generateDiagram(body, commentPrefix = '//') {
     lines.push(`${p} ENDPOINTS:`);
     for (const e of endpoints) {
       const lock = e.auth ? ' [auth]' : '';
+      const stream = e.streaming ? ' [streaming]' : '';
       const src = e.file ? ` (${e.file}:${e.line})` : e.line ? ` (line ${e.line})` : '';
       const displayPath = commentPrefix === '#' ? e.path.replace(/:(\w+)/g, '{$1}') : e.path;
-      lines.push(`${p}   ${e.method} ${displayPath}${lock}${src}`);
+      lines.push(`${p}   ${e.method} ${displayPath}${lock}${stream}${src}`);
     }
   }
 
@@ -8324,7 +8486,7 @@ function _bodyCallsAny(nodes, fnSet) {
 /**
  * Compile to a complete, runnable Express.js server.
  */
-function compileToJSBackend(body, errors, sourceMap = false) {
+function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames = new Set()) {
   // Detect feature usage for auto-imports
   const hasAuthScaffold = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
   const usesAuth = hasAuthScaffold || body.some(n =>
@@ -8340,7 +8502,7 @@ function compileToJSBackend(body, errors, sourceMap = false) {
 
   const lines = [];
   lines.push(`// Generated by Clear v${CLEAR_VERSION}`);
-  const diagram = generateDiagram(body, '//');
+  const diagram = generateDiagram(body, '//', streamingAgentNames);
   if (diagram) lines.push(diagram);
   lines.push("const express = require('express');");
   if (isSupabase) {
@@ -8511,6 +8673,89 @@ function compileToJSBackend(body, errors, sourceMap = false) {
     const result = compileNode(node, ctx);
     if (result !== null) {
       bodyLines.push(result);
+    }
+  }
+
+  // Post-process: transform endpoints that call streaming agents into SSE endpoints.
+  // A streaming agent compiles to an async generator (async function*), so the endpoint
+  // can't just `await` it — it needs to iterate the generator and write SSE events.
+  if (streamingAgentNames.size > 0) {
+    // Build a map of streaming agent names → compiled function names
+    const streamingFnNames = new Set();
+    for (const agentName of streamingAgentNames) {
+      const fnName = 'agent_' + sanitizeName(agentName.toLowerCase().replace(/\s+/g, '_'));
+      streamingFnNames.add(fnName);
+    }
+
+    for (let i = 0; i < bodyLines.length; i++) {
+      const code = bodyLines[i];
+      // Only process POST endpoints (app.post(...))
+      if (!code.includes('app.post(')) continue;
+
+      // Check if the endpoint body calls any streaming agent
+      let matchedFnName = null;
+      for (const fnName of streamingFnNames) {
+        if (code.includes(`await ${fnName}(`)) {
+          matchedFnName = fnName;
+          break;
+        }
+      }
+      if (!matchedFnName) continue;
+
+      // Found a POST endpoint calling a streaming agent.
+      // Extract the variable assignment: `let VARNAME = await agent_xxx(ARGS)`
+      const assignRegex = new RegExp(`let (\\w+) = await ${matchedFnName}\\(([^)]*?)\\)`);
+      const assignMatch = code.match(assignRegex);
+      if (!assignMatch) continue;
+
+      const varName = assignMatch[1];
+      const callArgs = assignMatch[2];
+
+      let transformed = code;
+
+      // 1. Replace the agent call with SSE iteration
+      const oldAssign = `let ${varName} = await ${matchedFnName}(${callArgs})`;
+      const newIteration = `let _fullResponse = '';\n    for await (const _chunk of ${matchedFnName}(${callArgs})) {\n      _fullResponse += _chunk;\n      res.write('data: ' + JSON.stringify({ text: _chunk }) + '\\n\\n');\n    }`;
+      transformed = transformed.replace(oldAssign, newIteration);
+
+      // 2. Replace subsequent references to the variable with _fullResponse
+      // Use word-boundary matching to avoid replacing partial names
+      transformed = transformed.replace(new RegExp(`\\b${varName}\\b`, 'g'), (match, offset) => {
+        // Don't replace the variable inside the old assignment (already gone) or in the iteration
+        // The old assignment is already replaced, so all remaining refs should be _fullResponse
+        return '_fullResponse';
+      });
+
+      // 3. Replace res.json(...) responses with SSE DONE + res.end()
+      transformed = transformed.replace(
+        /return res\.json\([^)]*\);/g,
+        "res.write('data: [DONE]\\n\\n');\n    res.end();\n    return;"
+      );
+      // Also handle res.status(N).json(...) — success responses
+      transformed = transformed.replace(
+        /return res\.status\(\d+\)\.json\([^)]*\);/g,
+        "res.write('data: [DONE]\\n\\n');\n    res.end();\n    return;"
+      );
+      // Also handle bare res.json(...) (without return) at end of try block
+      transformed = transformed.replace(
+        /res\.json\([^)]*\);\n(\s*\} catch)/g,
+        "res.write('data: [DONE]\\n\\n');\n    res.end();\n$1"
+      );
+
+      // 4. Inject SSE headers after the handler opening
+      // Find `async (req, res) => {\n  try {` and inject headers between handler open and try
+      transformed = transformed.replace(
+        /(async \(req, res\) => \{\n)/,
+        "$1  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });\n"
+      );
+
+      // 5. Replace the catch block's error response with SSE error format
+      transformed = transformed.replace(
+        /const _info = _clearError\(err, _ctx\);\n\s*res\.status\(_info\.status\)\.json\(_info\.response\);/,
+        "res.write('data: ' + JSON.stringify({ error: err.message }) + '\\n\\n');\n    res.end();"
+      );
+
+      bodyLines[i] = transformed;
     }
   }
 

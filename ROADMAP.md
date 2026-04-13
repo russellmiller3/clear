@@ -415,7 +415,7 @@ Clear's deterministic compiler, structured errors, constrained action space, and
 | Metric | Value |
 |--------|-------|
 | Node types | 124 |
-| Compiler tests | 1808 (0 failures) |
+| Compiler tests | 1827 (0 failures) |
 | Sandbox tests | 9 |
 | E2E tests | 80 (core 7 templates, CRUD, curriculum) |
 | Playground tests | ~127 (server, IDE, agent) |

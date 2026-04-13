@@ -1,58 +1,45 @@
-# Handoff — 2026-04-12 (Standard Chat Shipped)
+# Handoff — 2026-04-12 (SSE Streaming Shipped)
 
-## What Was Done
+## What Was Done (This Session — Two Features)
 
-`display as chat` is now a proper compilation target — same architecture as `display as table`. The previous approach (inline JS string hacks, no tests, no utility functions) was thrown away entirely.
+### Feature 1: Standard Chat (display as chat)
+Made `display as chat` a proper compilation target with utility functions (`_chatRender`, `_chatMd`, `_chatSend`, `_chatClear`), HTML scaffold, CSS component, reactive wiring, and input+button absorption. 46 new tests.
 
-### What Was Built
+### Feature 2: SSE Streaming for Chat
+Auto-detects when a POST endpoint calls a streaming agent and transforms both sides:
+- **Backend:** POST endpoint becomes SSE — iterates the agent generator, writes `data: {"text":"..."}` events, ends with `[DONE]`
+- **Frontend:** `_chatSendStream` reads the response body stream, appends tokens to the assistant bubble in real-time, renders full markdown on completion
 
-1. **6 utility functions** in UTILITY_FUNCTIONS (tree-shaken, only included when app uses chat):
-   - `_chatMdInline` — inline markdown (bold, italic, code)
-   - `_chatMdBlock` — block markdown (headings, lists, tables)
-   - `_chatMd` — full markdown with fenced code blocks
-   - `_chatRender` — renders message array as chat bubbles
-   - `_chatSend` — optimistic send with typing indicator
-   - `_chatClear` — clear messages + optional DELETE
-
-2. **HTML scaffold** — full chat component: header, messages container, typing dots, scroll-to-bottom, textarea, Send button
-
-3. **CSS component** — DaisyUI v5 themed (`--color-*` variables), added to CSS_COMPONENTS for tree-shaking
-
-4. **Reactive wiring** — `_recompute()` calls `_chatRender()` instead of inline rendering. Event listeners for New, Enter-to-send, scroll-to-bottom.
-
-5. **Input absorption** — compiler detects `display as chat` + input + Send button pattern and folds them into the chat component's built-in controls. No duplicate UI elements.
-
-## Key Design Decisions
-
-- **No stream cursor `|`** — typing dots only
-- **Markdown: ported from Studio** — code blocks, tables, lists, headings. No SVG rendering.
-- **CSS uses DaisyUI v5 names** — `--color-primary`, not `--p`
-- **All utility calls in reactive JS bodyLines** — so tree-shaker finds them (P0 from red-team)
-- **Input absorption is conservative** — only detects same-level adjacent siblings
+The detection is automatic: if the agent has `stream response` (and no tools/schedule), the compiler wires streaming. Tool-using agents fall back to `_chatSend`. 19 new tests.
 
 ## Current State
 
-- **Branch:** merged to main
-- **Tests:** 1808 passing (46 new tests for chat)
-- **Store-ops:** compiles, passes syntax check, passes app tests, single unified chat UI
+- **Branch:** main (both features merged)
+- **Tests:** 1827 passing, 0 failures
+- **Store-ops:** compiles cleanly, uses `_chatSend` (tool-using agent, non-streaming)
 
-## What's Next (Priority Order)
+## Key Design Decisions
 
-1. **SSE Streaming for chat** — compiler detects POST→agent→display-as-chat flow and emits SSE endpoint. Tokens stream into the assistant bubble in real-time instead of showing typing dots then full response.
+- **Pre-scan at compileProgram() level** — streaming agent detection runs BEFORE any compilation, solving the ordering dependency between agent and endpoint compilation
+- **Plain text during streaming, markdown on completion** — avoids flicker from partial markdown rendering mid-stream
+- **SSE error handling** — streaming endpoints write errors as SSE events (`data: {"error":"..."}`) instead of HTTP status codes (headers already sent)
+- **Same function signature** — `_chatSendStream` has identical params to `_chatSend`, making the choice a simple conditional
 
-2. **GAN Frontend Verification** — the chat component hasn't been visually verified in a real browser yet. Need to open Chrome, screenshot, verify layout, test Send, test New, test markdown rendering, test scroll button.
+## What's Next
 
-3. **Core 7 Templates** — add `live-chat` template that showcases `display as chat` with a real agent. This becomes template #4 in the core 7.
+1. **GAN Frontend Verification** — both features need visual browser testing. Compile store-ops, open Chrome, screenshot chat, test Send, test streaming if possible.
 
-4. **Chat personality/memory/web-search options** — future syntax: `display as chat with web search, memory`. These are flags that enable extra capabilities.
+2. **Core 7 Template: live-chat** — update template #4 to showcase `display as chat` with `stream response` agent.
+
+3. **Tool-using agent streaming** — currently blocked by tool loop needing full responses. Future: stream only the FINAL text response after all tool calls complete.
 
 ## Resume Prompt
 
 ```
 Read HANDOFF.md then PHILOSOPHY.md then CLAUDE.md.
 
-Standard chat is shipped. Next priority: GAN verify the chat UI in a real
-browser (Chrome). Compile store-ops, run it, navigate to port 4030,
-screenshot the chat page, type a message, click Send, verify it all works
-visually. Then start on SSE streaming for real-time token display.
+Two features shipped today: standard chat + SSE streaming. Next: GAN
+verify the chat UI in Chrome. Compile store-ops, run it, navigate to
+the chat page, screenshot, test Send. Then update the live-chat template
+to use display-as-chat with a streaming agent.
 ```
