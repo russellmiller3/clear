@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clear — Business Apps That Can't Ship Bugs</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
+.gradient-text { background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.card { background: #18181b; border: 1px solid #27272a; border-radius: 12px; }
+.card-green { border-left: 3px solid #22c55e; }
+.card-red { border-left: 3px solid #ef4444; }
+.card-amber { border-left: 3px solid #f59e0b; }
+.glow { box-shadow: 0 0 60px rgba(129, 140, 248, 0.08); }
+.code-block { background: #0c0c0e; border: 1px solid #27272a; border-radius: 8px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.7; }
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+.tag-green { background: rgba(34,197,94,.12); color: #4ade80; border: 1px solid rgba(34,197,94,.2); }
+.tag-red { background: rgba(239,68,68,.1); color: #f87171; border: 1px solid rgba(239,68,68,.15); }
+.tag-blue { background: rgba(96,165,250,.1); color: #93c5fd; border: 1px solid rgba(96,165,250,.15); }
+.hero-grid { background-image: radial-gradient(rgba(129,140,248,.07) 1px, transparent 1px); background-size: 24px 24px; }
+</style>
+</head>
+<body>
+<!-- Nav -->
+<nav class="border-b border-zinc-800 px-6 py-4">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div class="text-xl font-bold tracking-tight">Clear</div>
+    <div class="flex items-center gap-8 text-sm text-zinc-400">
+      <a href="#guarantees" class="hover:text-white transition">Guarantees</a>
+      <a href="#how" class="hover:text-white transition">How It Works</a>
+      <a href="#compare" class="hover:text-white transition">Compare</a>
+      <a class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-500 transition">Try Studio</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero-grid relative overflow-hidden">
+  <div class="max-w-4xl mx-auto px-6 pt-24 pb-20 text-center">
+    <div class="tag tag-green mb-6 mx-auto w-fit">27 bug classes eliminated at compile time</div>
+    <h1 class="text-5xl md:text-6xl font-extrabold leading-tight tracking-tight mb-6">
+      Business apps that<br><span class="gradient-text">can't ship security bugs</span>
+    </h1>
+    <p class="text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+      Tell Meph what to build. Get a working app with SQL injection prevention, auth enforcement, and input validation baked in. Not by code review. By the compiler.
+    </p>
+    <div class="flex gap-4 justify-center">
+      <a class="bg-indigo-600 text-white px-8 py-3 rounded-xl font-semibold text-lg hover:bg-indigo-500 transition">Open Studio</a>
+      <a class="border border-zinc-700 text-zinc-300 px-8 py-3 rounded-xl font-semibold text-lg hover:border-zinc-500 hover:text-white transition">See Guarantees</a>
+    </div>
+  </div>
+</section>
+
+<!-- Social proof strip -->
+<div class="border-y border-zinc-800 py-4">
+  <div class="max-w-4xl mx-auto px-6 flex items-center justify-center gap-8 text-sm text-zinc-500">
+    <span>1,840 compiler tests</span>
+    <span class="text-zinc-700">|</span>
+    <span>0 npm dependencies</span>
+    <span class="text-zinc-700">|</span>
+    <span>8 production templates</span>
+    <span class="text-zinc-700">|</span>
+    <span>30-line average app</span>
+  </div>
+</div>
+
+<!-- The Problem -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">Your internal tools have these bugs right now</h2>
+    <p class="text-zinc-400 text-lg">Every one of these is in production code your team wrote. Or that AI wrote for you.</p>
+  </div>
+  <div class="grid md:grid-cols-3 gap-4">
+    <div class="card card-red p-5">
+      <div class="text-red-400 font-semibold text-sm mb-2">SQL Injection</div>
+      <div class="text-zinc-400 text-sm">User input concatenated into queries. One malicious input drops your database.</div>
+    </div>
+    <div class="card card-red p-5">
+      <div class="text-red-400 font-semibold text-sm mb-2">Auth Bypass</div>
+      <div class="text-zinc-400 text-sm">DELETE endpoint with no login check. Anyone with the URL can delete records.</div>
+    </div>
+    <div class="card card-red p-5">
+      <div class="text-red-400 font-semibold text-sm mb-2">Mass Assignment</div>
+      <div class="text-zinc-400 text-sm">POST body with <code class="text-red-300">is_admin: true</code>. User promotes themselves to admin.</div>
+    </div>
+    <div class="card card-red p-5">
+      <div class="text-red-400 font-semibold text-sm mb-2">PII in Error Logs</div>
+      <div class="text-zinc-400 text-sm">Stack trace includes password field. Now it's in Datadog for anyone to read.</div>
+    </div>
+    <div class="card card-red p-5">
+      <div class="text-red-400 font-semibold text-sm mb-2">Missing Validation</div>
+      <div class="text-zinc-400 text-sm">Empty string saved to required field. Null cascades through three downstream services.</div>
+    </div>
+    <div class="card card-red p-5">
+      <div class="text-red-400 font-semibold text-sm mb-2">Frontend-Backend Mismatch</div>
+      <div class="text-zinc-400 text-sm">Frontend calls <code class="text-red-300">/api/user</code>. Backend has <code class="text-red-300">/api/users</code>. Silent 404.</div>
+    </div>
+  </div>
+</section>
+
+<!-- The Fix -->
+<section id="guarantees" class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">Clear makes these bugs <span class="gradient-text">impossible to compile</span></h2>
+    <p class="text-zinc-400 text-lg">Not warnings. Not lint rules. Compile errors. The app doesn't build until the bug is fixed.</p>
+  </div>
+
+  <!-- Security guarantees -->
+  <div class="mb-8">
+    <div class="text-sm font-semibold text-emerald-400 uppercase tracking-wider mb-4">Security &mdash; compile errors</div>
+    <div class="grid md:grid-cols-2 gap-3">
+      <div class="card card-green p-4 flex items-start gap-3">
+        <span class="text-emerald-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">SQL injection</div>
+          <div class="text-zinc-500 text-xs">All queries parameterized. Always. No exceptions.</div>
+        </div>
+      </div>
+      <div class="card card-green p-4 flex items-start gap-3">
+        <span class="text-emerald-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Auth bypass</div>
+          <div class="text-zinc-500 text-xs">DELETE/PUT without <code>requires login</code> = won't compile.</div>
+        </div>
+      </div>
+      <div class="card card-green p-4 flex items-start gap-3">
+        <span class="text-emerald-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Mass assignment</div>
+          <div class="text-zinc-500 text-xs">Request body auto-filtered to schema fields only.</div>
+        </div>
+      </div>
+      <div class="card card-green p-4 flex items-start gap-3">
+        <span class="text-emerald-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">CSRF protection</div>
+          <div class="text-zinc-500 text-xs">Data-mutating endpoints without auth = compile error.</div>
+        </div>
+      </div>
+      <div class="card card-green p-4 flex items-start gap-3">
+        <span class="text-emerald-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">PII redaction</div>
+          <div class="text-zinc-500 text-xs">Passwords, tokens, keys auto-stripped from all error responses.</div>
+        </div>
+      </div>
+      <div class="card card-green p-4 flex items-start gap-3">
+        <span class="text-emerald-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Path traversal</div>
+          <div class="text-zinc-500 text-xs">File operations with variable paths flagged at compile time.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Correctness guarantees -->
+  <div class="mb-8">
+    <div class="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-4">Correctness &mdash; compile warnings</div>
+    <div class="grid md:grid-cols-2 gap-3">
+      <div class="card p-4 flex items-start gap-3" style="border-left:3px solid #60a5fa">
+        <span class="text-blue-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Undefined variables</div>
+          <div class="text-zinc-500 text-xs">Forward reference check with typo suggestions.</div>
+        </div>
+      </div>
+      <div class="card p-4 flex items-start gap-3" style="border-left:3px solid #60a5fa">
+        <span class="text-blue-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">URL mismatches</div>
+          <div class="text-zinc-500 text-xs">Frontend fetch URL vs backend endpoint = auto-checked.</div>
+        </div>
+      </div>
+      <div class="card p-4 flex items-start gap-3" style="border-left:3px solid #60a5fa">
+        <span class="text-blue-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Missing responses</div>
+          <div class="text-zinc-500 text-xs">Endpoint without <code>send back</code> = caught.</div>
+        </div>
+      </div>
+      <div class="card p-4 flex items-start gap-3" style="border-left:3px solid #60a5fa">
+        <span class="text-blue-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Schema mismatches</div>
+          <div class="text-zinc-500 text-xs">Sending wrong field names to database = caught.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Business logic -->
+  <div>
+    <div class="text-sm font-semibold text-amber-400 uppercase tracking-wider mb-4">Business logic &mdash; smart warnings</div>
+    <div class="grid md:grid-cols-3 gap-3">
+      <div class="card card-amber p-4 flex items-start gap-3">
+        <span class="text-amber-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Negative balance</div>
+          <div class="text-zinc-500 text-xs">Subtracting without guard = warning.</div>
+        </div>
+      </div>
+      <div class="card card-amber p-4 flex items-start gap-3">
+        <span class="text-amber-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Overbooking</div>
+          <div class="text-zinc-500 text-xs">Insert without capacity check = warning.</div>
+        </div>
+      </div>
+      <div class="card card-amber p-4 flex items-start gap-3">
+        <span class="text-amber-400 mt-0.5 text-lg">&#10003;</span>
+        <div>
+          <div class="font-medium text-sm">Brute force</div>
+          <div class="text-zinc-500 text-xs">Login without rate limit = warning.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how" class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-bold mb-4">Describe it. Ship it. Read it.</h2>
+      <p class="text-zinc-400 text-lg">Three steps. No JavaScript. No debugging AI output.</p>
+    </div>
+    <div class="grid md:grid-cols-3 gap-8">
+      <div class="text-center">
+        <div class="text-4xl mb-4">💬</div>
+        <div class="font-semibold text-lg mb-2">1. Tell Meph what to build</div>
+        <p class="text-zinc-400 text-sm">"Build me an expense tracker with categories, approval workflow, and CSV export."</p>
+      </div>
+      <div class="text-center">
+        <div class="text-4xl mb-4">&#9889;</div>
+        <div class="font-semibold text-lg mb-2">2. Meph writes, compiles, tests</div>
+        <p class="text-zinc-400 text-sm">Writes Clear source. Compiler catches bugs. Tests run automatically. Fixes its own errors.</p>
+      </div>
+      <div class="text-center">
+        <div class="text-4xl mb-4">&#128064;</div>
+        <div class="font-semibold text-lg mb-2">3. You read 40 lines</div>
+        <p class="text-zinc-400 text-sm">Not JavaScript. Not Python. 40 lines of English that say exactly what the app does. You verify in 2 minutes.</p>
+      </div>
+    </div>
+
+    <!-- Code example -->
+    <div class="mt-16 code-block p-6 glow max-w-2xl mx-auto">
+      <div class="text-zinc-500 text-xs mb-4 uppercase tracking-wider">What you read (the entire app)</div>
+      <pre class="text-zinc-300"><span class="text-zinc-600"># Expense Tracker</span>
+<span class="text-indigo-400">build for</span> web and javascript backend
+<span class="text-indigo-400">database is</span> local memory
+
+<span class="text-indigo-400">create a</span> Expenses <span class="text-indigo-400">table:</span>
+  description, required
+  amount (number), required
+  category, default <span class="text-emerald-400">'General'</span>
+  approved, default false
+
+<span class="text-indigo-400">allow</span> signup and login
+
+<span class="text-indigo-400">when user sends</span> data <span class="text-indigo-400">to</span> /api/expenses:
+  <span class="text-amber-400">requires login</span>          <span class="text-zinc-600"># &#8592; without this = won't compile</span>
+  <span class="text-amber-400">validate</span> data:
+    description is text, required, min 1
+    amount is number, required, min 0
+  save data as new Expense
+  send back data with success message</pre>
+    </div>
+  </div>
+</section>
+
+<!-- Compound quality -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <div class="grid md:grid-cols-2 gap-16 items-center">
+    <div>
+      <h2 class="text-3xl font-bold mb-4">Fix a bug once.<br>Every app gets the fix.</h2>
+      <p class="text-zinc-400 text-lg mb-6">
+        When you fix the Stripe error handling in the compiler, every app that uses Stripe gets the fix on recompile. Your 50th app is more secure than your first.
+      </p>
+      <p class="text-zinc-400 mb-6">
+        Traditional development: every app starts from zero. Same auth bugs. Same validation holes. Same SQL mistakes. Each one fixed independently, if at all.
+      </p>
+      <p class="text-zinc-400">
+        Clear: the compiler is a shared library of production-hardened patterns. It gets better with every app you build.
+      </p>
+    </div>
+    <div class="card p-6 glow">
+      <div class="text-sm font-semibold text-zinc-400 mb-4">Bug fix propagation</div>
+      <div class="space-y-3">
+        <div class="flex items-center gap-3">
+          <div class="w-2 h-2 rounded-full bg-indigo-400"></div>
+          <div class="text-sm">Fix auth token refresh in compiler</div>
+        </div>
+        <div class="border-l-2 border-zinc-700 ml-1 pl-6 space-y-2 py-2">
+          <div class="flex items-center gap-2 text-sm text-emerald-400">
+            <span>&#10003;</span> Expense Tracker &mdash; recompile, fixed
+          </div>
+          <div class="flex items-center gap-2 text-sm text-emerald-400">
+            <span>&#10003;</span> CRM Dashboard &mdash; recompile, fixed
+          </div>
+          <div class="flex items-center gap-2 text-sm text-emerald-400">
+            <span>&#10003;</span> Booking System &mdash; recompile, fixed
+          </div>
+          <div class="flex items-center gap-2 text-sm text-emerald-400">
+            <span>&#10003;</span> Helpdesk Portal &mdash; recompile, fixed
+          </div>
+          <div class="flex items-center gap-2 text-sm text-emerald-400">
+            <span>&#10003;</span> 46 other apps &mdash; recompile, fixed
+          </div>
+        </div>
+        <div class="text-xs text-zinc-500 pl-8">1 fix &times; 50 apps = 50 bugs killed</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Deploy -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">One command to production</h2>
+    <p class="text-zinc-400 text-lg">SQLite on your laptop. Postgres in the cloud. Same code.</p>
+  </div>
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="card p-6 text-center">
+      <div class="text-3xl mb-3">&#128187;</div>
+      <div class="font-semibold text-lg mb-2">Develop locally</div>
+      <div class="code-block px-4 py-2 text-xs text-indigo-300 mb-3 mx-auto w-fit">database is local memory</div>
+      <p class="text-zinc-400 text-sm">SQLite. Zero config. No database server. Just run <code class="text-zinc-300">clear serve app.clear</code> and it works.</p>
+    </div>
+    <div class="card p-6 text-center">
+      <div class="text-3xl mb-3">&#9729;&#65039;</div>
+      <div class="font-semibold text-lg mb-2">Deploy to cloud</div>
+      <div class="code-block px-4 py-2 text-xs text-indigo-300 mb-3 mx-auto w-fit">clear deploy app.clear</div>
+      <p class="text-zinc-400 text-sm">One command. Packages your app, deploys to Railway, prints your live URL. Done.</p>
+    </div>
+    <div class="card p-6 text-center">
+      <div class="text-3xl mb-3">&#128024;</div>
+      <div class="font-semibold text-lg mb-2">Scale with Postgres</div>
+      <div class="code-block px-4 py-2 text-xs text-indigo-300 mb-3 mx-auto w-fit">database is PostgreSQL</div>
+      <p class="text-zinc-400 text-sm">Change one line. Same app, same guarantees. Persistent data, connection pooling, production-grade.</p>
+    </div>
+  </div>
+  <div class="text-center mt-8">
+    <p class="text-zinc-500 text-sm">Railway auto-injects <code class="text-zinc-400">DATABASE_URL</code> and <code class="text-zinc-400">PORT</code>. No config files. No DevOps.</p>
+  </div>
+</section>
+
+<!-- Compare -->
+<section id="compare" class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <h2 class="text-3xl font-bold text-center mb-12">How does AI-generated code compare?</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-zinc-400 border-b border-zinc-800">
+            <th class="py-3 pr-4 font-medium">Bug class</th>
+            <th class="py-3 px-4 font-medium">Cursor / Copilot</th>
+            <th class="py-3 px-4 font-medium">Bolt / Lovable</th>
+            <th class="py-3 px-4 font-medium">Retool</th>
+            <th class="py-3 px-4 font-medium text-indigo-400">Clear</th>
+          </tr>
+        </thead>
+        <tbody class="text-zinc-300">
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">SQL injection</td>
+            <td class="py-3 px-4 text-red-400">Hope the AI remembers</td>
+            <td class="py-3 px-4 text-red-400">Hope the AI remembers</td>
+            <td class="py-3 px-4 text-amber-400">Platform handles</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Compile error</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Auth bypass</td>
+            <td class="py-3 px-4 text-red-400">Code review</td>
+            <td class="py-3 px-4 text-red-400">Code review</td>
+            <td class="py-3 px-4 text-amber-400">Config-based</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Compile error</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Mass assignment</td>
+            <td class="py-3 px-4 text-red-400">Hope the AI remembers</td>
+            <td class="py-3 px-4 text-red-400">Hope the AI remembers</td>
+            <td class="py-3 px-4 text-red-400">Not covered</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Auto-filtered</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">PII in errors</td>
+            <td class="py-3 px-4 text-red-400">Not covered</td>
+            <td class="py-3 px-4 text-red-400">Not covered</td>
+            <td class="py-3 px-4 text-red-400">Not covered</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Auto-redacted</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Bug fix propagation</td>
+            <td class="py-3 px-4 text-red-400">Per-file</td>
+            <td class="py-3 px-4 text-red-400">Per-app</td>
+            <td class="py-3 px-4 text-amber-400">Platform updates</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Recompile all</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Deploy to production</td>
+            <td class="py-3 px-4 text-red-400">Your problem</td>
+            <td class="py-3 px-4 text-amber-400">Platform lock-in</td>
+            <td class="py-3 px-4 text-amber-400">Platform lock-in</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">One command</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4">Source readability</td>
+            <td class="py-3 px-4 text-amber-400">It's JavaScript</td>
+            <td class="py-3 px-4 text-red-400">Can't read output</td>
+            <td class="py-3 px-4 text-amber-400">Low-code UI</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">40 lines of English</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="max-w-3xl mx-auto px-6 py-24 text-center">
+  <h2 class="text-4xl font-bold mb-4">Build internal tools that pass security review<br><span class="gradient-text">on the first try</span></h2>
+  <p class="text-zinc-400 text-lg mb-10">Tell Meph what you need. Ship in an hour. Sleep at night.</p>
+  <a class="bg-indigo-600 text-white px-10 py-4 rounded-xl font-semibold text-lg hover:bg-indigo-500 transition inline-block">Open Studio</a>
+</section>
+
+<footer class="border-t border-zinc-800 py-8 text-center text-zinc-600 text-sm">
+  Clear &mdash; AI that builds apps you can read.
+</footer>
+</body>
+</html>

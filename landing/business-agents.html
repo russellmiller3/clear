@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clear — The Easiest Way to Build Business Agents</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
+.gradient-text { background: linear-gradient(135deg, #f59e0b, #f97316, #ef4444); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.gradient-text-purple { background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.card { background: #18181b; border: 1px solid #27272a; border-radius: 12px; }
+.glow { box-shadow: 0 0 60px rgba(245, 158, 11, 0.06); }
+.glow-purple { box-shadow: 0 0 60px rgba(129, 140, 248, 0.06); }
+.code-block { background: #0c0c0e; border: 1px solid #27272a; border-radius: 8px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.7; }
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+.tag-amber { background: rgba(245,158,11,.12); color: #fbbf24; border: 1px solid rgba(245,158,11,.2); }
+.tag-green { background: rgba(34,197,94,.12); color: #4ade80; border: 1px solid rgba(34,197,94,.2); }
+.hero-grid { background-image: radial-gradient(rgba(245,158,11,.05) 1px, transparent 1px); background-size: 24px 24px; }
+.step-num { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.guard-card { background: linear-gradient(135deg, #18181b, #1c1917); border: 1px solid #292524; }
+</style>
+</head>
+<body>
+<!-- Nav -->
+<nav class="border-b border-zinc-800 px-6 py-4">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div class="text-xl font-bold tracking-tight">Clear</div>
+    <div class="flex items-center gap-8 text-sm text-zinc-400">
+      <a href="#agents" class="hover:text-white transition">Agents</a>
+      <a href="#guardrails" class="hover:text-white transition">Guardrails</a>
+      <a href="#examples" class="hover:text-white transition">Examples</a>
+      <a class="bg-amber-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-amber-500 transition">Try Studio</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero-grid relative overflow-hidden">
+  <div class="max-w-4xl mx-auto px-6 pt-24 pb-20 text-center">
+    <div class="tag tag-amber mb-6 mx-auto w-fit">10 lines to a production agent</div>
+    <h1 class="text-5xl md:text-6xl font-extrabold leading-tight tracking-tight mb-6">
+      Build business agents<br><span class="gradient-text">in plain English</span>
+    </h1>
+    <p class="text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+      Define tools, guardrails, and memory in words. The compiler handles the API calls, prompt engineering, and safety checks. Ship agents that can't go rogue.
+    </p>
+    <div class="flex gap-4 justify-center">
+      <a class="bg-amber-600 text-white px-8 py-3 rounded-xl font-semibold text-lg hover:bg-amber-500 transition">Build an Agent</a>
+      <a class="border border-zinc-700 text-zinc-300 px-8 py-3 rounded-xl font-semibold text-lg hover:border-zinc-500 hover:text-white transition">See Examples</a>
+    </div>
+  </div>
+</section>
+
+<!-- The 10-line agent -->
+<section id="agents" class="max-w-5xl mx-auto px-6 py-20">
+  <div class="grid md:grid-cols-2 gap-12 items-start">
+    <div>
+      <h2 class="text-3xl font-bold mb-4">This is an entire agent</h2>
+      <p class="text-zinc-400 text-lg mb-6">
+        Not pseudocode. Not a framework tutorial. This compiles to a working Express server with Claude tool_use, conversation memory, and content filtering.
+      </p>
+      <div class="space-y-4">
+        <div class="flex items-start gap-3">
+          <div class="step-num bg-amber-600/20 text-amber-400">1</div>
+          <div>
+            <div class="font-medium">Define what it receives</div>
+            <div class="text-zinc-500 text-sm">Named variable, not magic <code>req.body</code></div>
+          </div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="step-num bg-amber-600/20 text-amber-400">2</div>
+          <div>
+            <div class="font-medium">Give it tools</div>
+            <div class="text-zinc-500 text-sm">Functions it can call. Compiler validates they exist.</div>
+          </div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="step-num bg-amber-600/20 text-amber-400">3</div>
+          <div>
+            <div class="font-medium">Set guardrails</div>
+            <div class="text-zinc-500 text-sm">What it must not do. Enforced at compile time + runtime.</div>
+          </div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="step-num bg-amber-600/20 text-amber-400">4</div>
+          <div>
+            <div class="font-medium">Add memory</div>
+            <div class="text-zinc-500 text-sm">One line. DB-backed conversation context.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="code-block p-6 glow">
+      <div class="text-zinc-500 text-xs mb-4 uppercase tracking-wider">helpdesk-agent.clear</div>
+      <pre class="text-zinc-300"><span class="text-amber-400">agent</span> <span class="text-amber-200">'Support Agent'</span> receives question:
+
+  <span class="text-zinc-500"># What it can do</span>
+  <span class="text-amber-400">can use:</span> look_up_order, check_inventory,
+           create_ticket, send_email
+
+  <span class="text-zinc-500"># What it knows</span>
+  <span class="text-amber-400">knows about:</span> Products, FAQs, Policies
+
+  <span class="text-zinc-500"># What it must not do</span>
+  <span class="text-red-400">must not:</span> delete Orders
+  <span class="text-red-400">must not:</span> modify pricing
+  <span class="text-red-400">block arguments matching</span> <span class="text-amber-200">'drop|truncate|delete from'</span>
+
+  <span class="text-zinc-500"># Memory</span>
+  <span class="text-amber-400">remember</span> conversation context
+  <span class="text-amber-400">remember</span> user's preferences
+
+  <span class="text-zinc-500"># Observability</span>
+  <span class="text-amber-400">track</span> agent decisions
+
+  ask claude question with Products, FAQs
+  send back response</pre>
+    </div>
+  </div>
+</section>
+
+<!-- Guardrails -->
+<section id="guardrails" class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-bold mb-4">Agents that <span class="gradient-text">can't go rogue</span></h2>
+      <p class="text-zinc-400 text-lg">Three layers of protection. Compile-time, runtime, and audit trail.</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6">
+      <!-- Layer 1: Compile-time -->
+      <div class="guard-card rounded-xl p-6">
+        <div class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-4">Layer 1: Compile-time</div>
+        <div class="text-zinc-300 font-medium mb-3">Before the agent exists</div>
+        <ul class="space-y-3 text-sm text-zinc-400">
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Tool validation</strong> &mdash; <code>can use: delete_order</code> but no function named <code>delete_order</code> exists? Compile error.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Policy enforcement</strong> &mdash; <code>must not: delete Orders</code> checked against every tool the agent can call. Contradiction = compile error.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Undefined agent calls</strong> &mdash; calling an agent that doesn't exist = compile error.</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Layer 2: Runtime -->
+      <div class="guard-card rounded-xl p-6">
+        <div class="text-red-400 font-semibold text-sm uppercase tracking-wider mb-4">Layer 2: Runtime</div>
+        <div class="text-zinc-300 font-medium mb-3">While the agent runs</div>
+        <ul class="space-y-3 text-sm text-zinc-400">
+          <li class="flex items-start gap-2">
+            <span class="text-red-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Input filtering</strong> &mdash; <code>block arguments matching 'drop|truncate'</code> = regex guard on every tool input. Prompt injection blocked.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-red-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Tool restrictions</strong> &mdash; agent can only call tools listed in <code>can use:</code>. No surprise API calls.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-red-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Human approval</strong> &mdash; <code>ask user to confirm</code> pauses the agent and waits for human yes/no.</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Layer 3: Observability -->
+      <div class="guard-card rounded-xl p-6">
+        <div class="text-indigo-400 font-semibold text-sm uppercase tracking-wider mb-4">Layer 3: Observability</div>
+        <div class="text-zinc-300 font-medium mb-3">After the agent acts</div>
+        <ul class="space-y-3 text-sm text-zinc-400">
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Decision logging</strong> &mdash; <code>track agent decisions</code> logs every AI call with timing, tokens, tool choices.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Conversation memory</strong> &mdash; DB-backed history. See every conversation the agent had.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-0.5">&#9632;</span>
+            <span><strong class="text-zinc-300">Source maps</strong> &mdash; runtime errors map back to Clear line numbers. Debug in 40 lines, not 2,000.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Feature grid -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">Everything agents need, in one line each</h2>
+  </div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="card p-5 flex items-start gap-4">
+      <div class="text-2xl">&#128269;</div>
+      <div>
+        <div class="font-semibold mb-1">RAG (knowledge base)</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">knows about: Products, FAQs, Policies</div>
+        <div class="text-zinc-500 text-xs mt-2">Keyword search across tables before prompting Claude. One line.</div>
+      </div>
+    </div>
+    <div class="card p-5 flex items-start gap-4">
+      <div class="text-2xl">&#128736;</div>
+      <div>
+        <div class="font-semibold mb-1">Tool use</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">can use: search_orders, create_ticket, send_email</div>
+        <div class="text-zinc-500 text-xs mt-2">Compiles to Anthropic tool_use API. Tools validated at compile time.</div>
+      </div>
+    </div>
+    <div class="card p-5 flex items-start gap-4">
+      <div class="text-2xl">&#128101;</div>
+      <div>
+        <div class="font-semibold mb-1">Skills (reusable tool bundles)</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">uses skills: 'Order Lookup', 'Email Support'</div>
+        <div class="text-zinc-500 text-xs mt-2">Package tools + instructions. Share across agents. Compose like Lego.</div>
+      </div>
+    </div>
+    <div class="card p-5 flex items-start gap-4">
+      <div class="text-2xl">&#128279;</div>
+      <div>
+        <div class="font-semibold mb-1">Pipelines (agent chains)</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">pipeline 'Review' with data: 'Analyze', 'Score', 'Decide'</div>
+        <div class="text-zinc-500 text-xs mt-2">Sequential agent chains. Output of one feeds into the next.</div>
+      </div>
+    </div>
+    <div class="card p-5 flex items-start gap-4">
+      <div class="text-2xl">&#129504;</div>
+      <div>
+        <div class="font-semibold mb-1">Memory (conversation + preferences)</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">remember conversation context</div>
+        <div class="text-zinc-500 text-xs mt-2">DB-backed. Agent remembers past conversations and user preferences.</div>
+      </div>
+    </div>
+    <div class="card p-5 flex items-start gap-4">
+      <div class="text-2xl">&#128302;</div>
+      <div>
+        <div class="font-semibold mb-1">Structured output</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">ask claude 'analyze' with data returning JSON text:</div>
+        <div class="text-zinc-500 text-xs mt-2">Schema-enforced JSON responses. No parsing, no hallucinated fields.</div>
+      </div>
+    </div>
+    <div class="card p-5 flex items-start gap-4">
+      <div class="text-2xl">&#9200;</div>
+      <div>
+        <div class="font-semibold mb-1">Scheduled agents</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">agent 'Daily Report' runs every 1 day:</div>
+        <div class="text-zinc-500 text-xs mt-2">Cron-style scheduling. Agent runs on a timer, no user input needed.</div>
+      </div>
+    </div>
+    <div class="card p-5 flex items-start gap-4">
+      <div class="text-2xl">&#9878;</div>
+      <div>
+        <div class="font-semibold mb-1">Classification</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">classify question as 'billing', 'technical', 'general'</div>
+        <div class="text-zinc-500 text-xs mt-2">Route to the right agent. One line. Claude Haiku call.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Examples -->
+<section id="examples" class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <h2 class="text-3xl font-bold text-center mb-12">Agents you can build today</h2>
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="card p-6">
+        <div class="text-2xl mb-3">&#127919;</div>
+        <div class="font-semibold text-lg mb-2">Support Agent</div>
+        <p class="text-zinc-400 text-sm mb-4">Answers customer questions from your knowledge base. Creates tickets. Escalates when unsure.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="tag tag-amber">RAG</span>
+          <span class="tag tag-amber">Tools</span>
+          <span class="tag tag-amber">Memory</span>
+        </div>
+      </div>
+      <div class="card p-6">
+        <div class="text-2xl mb-3">&#128200;</div>
+        <div class="font-semibold text-lg mb-2">Sales Qualifier</div>
+        <p class="text-zinc-400 text-sm mb-4">Scores inbound leads. Looks up company data. Routes hot leads to the right rep.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="tag tag-amber">Pipeline</span>
+          <span class="tag tag-amber">Classification</span>
+          <span class="tag tag-amber">Structured Output</span>
+        </div>
+      </div>
+      <div class="card p-6">
+        <div class="text-2xl mb-3">&#128221;</div>
+        <div class="font-semibold text-lg mb-2">Expense Approver</div>
+        <p class="text-zinc-400 text-sm mb-4">Reviews expense reports against policy. Auto-approves under threshold. Flags anomalies.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="tag tag-amber">Guardrails</span>
+          <span class="tag tag-amber">Human Approval</span>
+          <span class="tag tag-amber">Scheduled</span>
+        </div>
+      </div>
+      <div class="card p-6">
+        <div class="text-2xl mb-3">&#128230;</div>
+        <div class="font-semibold text-lg mb-2">Inventory Manager</div>
+        <p class="text-zinc-400 text-sm mb-4">Monitors stock levels. Auto-reorders when low. Sends alerts for anomalies.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="tag tag-amber">Scheduled</span>
+          <span class="tag tag-amber">Tools</span>
+          <span class="tag tag-amber">Email</span>
+        </div>
+      </div>
+      <div class="card p-6">
+        <div class="text-2xl mb-3">&#128218;</div>
+        <div class="font-semibold text-lg mb-2">Onboarding Guide</div>
+        <p class="text-zinc-400 text-sm mb-4">Walks new hires through setup. Answers policy questions. Tracks completion.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="tag tag-amber">RAG</span>
+          <span class="tag tag-amber">Memory</span>
+          <span class="tag tag-amber">Decisions</span>
+        </div>
+      </div>
+      <div class="card p-6">
+        <div class="text-2xl mb-3">&#128202;</div>
+        <div class="font-semibold text-lg mb-2">Daily Report Builder</div>
+        <p class="text-zinc-400 text-sm mb-4">Runs every morning. Pulls metrics from your database. Emails a summary to the team.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="tag tag-amber">Scheduled</span>
+          <span class="tag tag-amber">Structured Output</span>
+          <span class="tag tag-amber">Email</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Comparison: how agents are built elsewhere -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <h2 class="text-3xl font-bold text-center mb-4">How you build agents today</h2>
+  <p class="text-zinc-400 text-center text-lg mb-12">vs. how it should work</p>
+  <div class="grid md:grid-cols-2 gap-8">
+    <div class="card p-6" style="border-color: #dc2626;">
+      <div class="text-red-400 font-semibold text-sm uppercase tracking-wider mb-4">The hard way (LangChain / raw API)</div>
+      <div class="code-block p-4 text-xs text-zinc-400 mb-4" style="max-height:200px;overflow:auto">
+<pre>from langchain.agents import create_tool_calling_agent
+from langchain_anthropic import ChatAnthropic
+from langchain.tools import tool
+from langchain.memory import ConversationBufferMemory
+
+@tool
+def look_up_order(order_id: str) -> str:
+    """Look up order by ID"""
+    # 20 lines of DB code...
+    pass
+
+llm = ChatAnthropic(model="claude-sonnet-4-20250514")
+memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages=True
+)
+tools = [look_up_order, check_inventory, ...]
+agent = create_tool_calling_agent(llm, tools, prompt)
+# Still need: guardrails, logging, error handling,
+# deployment, rate limiting, prompt injection defense...</pre>
+      </div>
+      <div class="text-zinc-500 text-sm">50+ lines before you handle a single request. No guardrails. No memory persistence. No observability.</div>
+    </div>
+    <div class="card p-6 glow" style="border-color: #f59e0b;">
+      <div class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-4">The Clear way</div>
+      <div class="code-block p-4 text-xs text-amber-300 mb-4">
+<pre>agent 'Support' receives question:
+  can use: look_up_order, check_inventory
+  knows about: Products, FAQs
+  must not: delete Orders
+  block arguments matching 'drop|truncate'
+  remember conversation context
+  track agent decisions
+  ask claude question with Products
+  send back response</pre>
+      </div>
+      <div class="text-zinc-500 text-sm">10 lines. Guardrails, memory, RAG, observability, and prompt injection defense included. Compiles to production Express server.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Deploy -->
+<section class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-bold mb-4">From chat to production in <span class="gradient-text">one command</span></h2>
+      <p class="text-zinc-400 text-lg">Build locally with SQLite. Deploy to cloud with Postgres. Same agent, same guardrails.</p>
+    </div>
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="card p-6">
+        <div class="font-semibold mb-2 text-amber-400">1. Build</div>
+        <div class="code-block px-3 py-2 text-xs text-zinc-300 mb-3"><pre>Tell Meph: "Build me a support
+agent that looks up orders and
+creates tickets"</pre></div>
+        <p class="text-zinc-500 text-sm">Meph writes Clear, compiles, tests, fixes errors. You read 10 lines.</p>
+      </div>
+      <div class="card p-6">
+        <div class="font-semibold mb-2 text-amber-400">2. Test locally</div>
+        <div class="code-block px-3 py-2 text-xs text-zinc-300 mb-3"><pre>$ clear serve agent.clear
+  Server running on port 3000
+
+$ clear test agent.clear
+  4 passed, 0 failed</pre></div>
+        <p class="text-zinc-500 text-sm">SQLite database. Zero infrastructure. Works on your laptop.</p>
+      </div>
+      <div class="card p-6">
+        <div class="font-semibold mb-2 text-amber-400">3. Ship</div>
+        <div class="code-block px-3 py-2 text-xs text-zinc-300 mb-3"><pre>$ clear deploy agent.clear
+  Packaging...
+  Deploying to Railway...
+  Deployed!
+  https://support-agent.up.railway.app</pre></div>
+        <p class="text-zinc-500 text-sm">One command. Postgres auto-provisioned. Live URL in 60 seconds.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="max-w-3xl mx-auto px-6 py-24 text-center">
+  <h2 class="text-4xl font-bold mb-4">Build your first agent<br><span class="gradient-text">in 5 minutes</span></h2>
+  <p class="text-zinc-400 text-lg mb-10">Open Studio. Tell Meph what agent you need. It writes the Clear code, compiles it, runs it, and tests it. You read 10 lines and ship.</p>
+  <a class="bg-amber-600 text-white px-10 py-4 rounded-xl font-semibold text-lg hover:bg-amber-500 transition inline-block">Open Studio</a>
+</section>
+
+<footer class="border-t border-zinc-800 py-8 text-center text-zinc-600 text-sm">
+  Clear &mdash; the easiest platform for building business agents.
+</footer>
+</body>
+</html>
