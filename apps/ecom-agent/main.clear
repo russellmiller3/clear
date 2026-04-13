@@ -362,9 +362,10 @@ test 'low stock detection finds items below threshold':
   result = get_low_stock_items()
   expect length of result is greater than 0
 
-# TODO: add expect-to-fail test when TEST_EXPECT_ERROR is implemented
-# test 'process_return rejects non-delivered orders':
-#   expect calling process_return(test_order's id, 'Wrong size') to fail with 'Only delivered orders'
+/* TODO: add expect-to-fail test when TEST_EXPECT_ERROR is implemented
+test 'process_return rejects non-delivered orders':
+  expect calling process_return(test_order's id, 'Wrong size') to fail with 'Only delivered orders'
+*/
 
 # Frontend
 
