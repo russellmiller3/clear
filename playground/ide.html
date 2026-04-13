@@ -1022,15 +1022,15 @@ async function autoCompile() {
       if (dot) dot.className = 'dot';
       setStatus('ok', `OK${lastCompiled.warnings?.length ? ` (${lastCompiled.warnings.length} warnings)` : ''}`);
       // Show compile stats
-      const clearLines = source.split('\n').filter(l => l.trim()).length;
+      const clearWords = source.split(/\s+/).filter(w => w && !w.startsWith('#') && !w.startsWith('//')).length;
       const outCode = [lastCompiled.html, lastCompiled.serverJS, lastCompiled.javascript, lastCompiled.python].filter(Boolean).join('\n');
-      const codeLines = outCode.split('\n').filter(l => l.trim()).length;
+      const codeWords = outCode.split(/\s+/).filter(w => w).length;
       const statsEl = document.getElementById('sb-compile-stats');
-      if (statsEl) { statsEl.textContent = `${clearLines} → ${codeLines} lines · ${elapsed}ms`; statsEl.style.display = ''; }
+      if (statsEl) { statsEl.textContent = `${clearWords} → ${codeWords} words · ${elapsed}ms`; statsEl.style.display = ''; }
       // Prominent badge in toolbar
       const badge = document.getElementById('compile-stats-badge');
       if (badge) {
-        badge.textContent = `${clearLines} → ${codeLines} lines · ${elapsed}ms`;
+        badge.textContent = `${clearWords} → ${codeWords} words · ${elapsed}ms`;
         badge.classList.remove('visible');
         void badge.offsetWidth; // force reflow for re-animation
         badge.classList.add('visible');
