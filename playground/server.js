@@ -28,8 +28,12 @@ app.use(express.json({ limit: '1mb' }));
 // STATIC FILES
 // =============================================================================
 // Route ide.html BEFORE static (otherwise index.html wins)
-app.get('/', (req, res) => res.sendFile(join(__dirname, 'ide.html')));
-app.use(express.static(__dirname));
+// No-cache headers so edits show on browser refresh without server restart
+app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(join(__dirname, 'ide.html'));
+});
+app.use(express.static(__dirname, { etag: false, lastModified: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 
 // =============================================================================
 // COMPILE
