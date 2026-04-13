@@ -903,7 +903,7 @@ export function compile(ast, options = {}) {
   const streamingAgentNames = new Set();
   for (const node of ast.body) {
     if (node.type === NodeType.AGENT) {
-      let willStream = node.streamResponse === true;
+      let willStream = node.streamResponse !== false; // stream by default, opt out with 'do not stream'
       if (willStream) {
         // Auto-disable for structured output — can't stream partial JSON
         let hasStructured = false;
@@ -2488,8 +2488,9 @@ function compileAgent(node, ctx, pad) {
   //   Default (null)      → stream text, don't stream structured (returning:)
   //   `do not stream`     → never stream (for pipeline steps)
   //   `stream response`   → force stream (redundant for text, documents intent)
+  //   `do not stream`     → opt out explicitly
   //   Structured output   → never stream (JSON must be complete)
-  let shouldStream = node.streamResponse === true; // only stream when explicitly requested
+  let shouldStream = node.streamResponse !== false; // stream by default, opt out with 'do not stream'
   if (shouldStream) {
     // Auto-disable for structured output — can't stream partial JSON
     let hasStructuredOutput = false;
