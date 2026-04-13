@@ -107,6 +107,8 @@ function compileProgram(source, options = {}) {
   result.errors = [...moduleErrors, ...validationErrors, ...result.errors];
   result.warnings = [...(result.warnings || []), ...warnings];
   result.ast = ast;
+  // Expose database backend so CLI commands (package, deploy) can pick the right adapter
+  result.dbBackend = ast.body.find(n => n.type === NodeType.DATABASE_DECL)?.backend || 'local memory';
   // Structured eval stats for RL + observability
   const stats = computeStats(ast, source, result.warnings);
   stats.ok = result.errors.length === 0;

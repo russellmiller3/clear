@@ -870,11 +870,19 @@ async function packageCommand(args) {
     files.push('test.js');
   }
 
-  // Runtime
+  // Runtime — copy the correct db adapter based on database backend
   const runtimeDir = resolve(outDir, 'clear-runtime');
   mkdirSync(runtimeDir, { recursive: true });
   const runtimeSrc = resolve(__dirname, '..', 'runtime');
-  for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
+  const isPostgres = (result.dbBackend || '').includes('postgres');
+
+  // Copy db adapter — Postgres gets db-postgres.js renamed to db.js
+  if (isPostgres) {
+    copyFileSync(resolve(runtimeSrc, 'db-postgres.js'), resolve(runtimeDir, 'db.js'));
+  } else {
+    copyFileSync(resolve(runtimeSrc, 'db.js'), resolve(runtimeDir, 'db.js'));
+  }
+  for (const f of ['auth.js', 'rateLimit.js']) {
     const src = resolve(runtimeSrc, f);
     if (existsSync(src)) copyFileSync(src, resolve(runtimeDir, f));
   }
@@ -894,31 +902,112 @@ async function packageCommand(args) {
   };
   collectNpm(result.ast?.body || []);
   const appName = basename(file, extname(file)).replace(/[^a-z0-9-]/g, '-');
+  const dbDep = isPostgres ? { pg: '^8.13.0' } : { 'better-sqlite3': '^12.8.0' };
   const pkg = {
     name: `clear-${appName}`,
     version: '1.0.0',
     description: 'Built with Clear language',
     main: 'server.js',
     scripts: { start: 'node server.js', test: 'node test.js' },
-    dependencies: { express: '^4.18.0', 'better-sqlite3': '^12.8.0', ...npmDeps },
+    dependencies: { express: '^4.18.0', ...dbDep, ...npmDeps },
   };
   writeFileSync(resolve(outDir, 'package.json'), JSON.stringify(pkg, null, 2));
   files.push('package.json');
 
-  // Dockerfile
-  writeFileSync(resolve(outDir, 'Dockerfile'), `FROM node:20-alpine
-WORKDIR /app
-COPY package.json .
-RUN npm install --production
-COPY . .
-EXPOSE 3000
-CMD ["node", "server.js"]`);
+  // Dockerfile — Postgres apps use node:20-slim (no native deps), SQLite uses alpine
+  const dockerfile = isPostgres
+    ? 'FROM node:20-slim\nWORKDIR /app\nCOPY package.json .\nRUN npm install --production\nCOPY . .\nEXPOSE 3000\nCMD ["node", "server.js"]'
+    : 'FROM node:20-alpine\nWORKDIR /app\nCOPY package.json .\nRUN npm install --production\nCOPY . .\nEXPOSE 3000\nCMD ["node", "server.js"]';
+  writeFileSync(resolve(outDir, 'Dockerfile'), dockerfile);
   files.push('Dockerfile');
 
   writeFileSync(resolve(outDir, '.dockerignore'), 'node_modules\nclear-data.db\nclear-data.db-wal\nclear-data.db-shm\n');
   files.push('.dockerignore');
 
   output({ ok: true, files, outDir, message: `Packaged ${files.length} files to ${outDir}/` }, flags);
+}
+
+async function deployCommand(args) {
+  const flags = parseFlags(args);
+  const file = flags.positional[0];
+  if (!file) {
+    output({ error: 'Usage: clear deploy <file.clear>\n\nDeploys to Railway. Requires: npm install -g @railway/cli' }, flags);
+    process.exit(1);
+  }
+
+  // Check Railway CLI is installed
+  try {
+    execSync('railway version', { stdio: 'pipe', timeout: 5000 });
+  } catch {
+    console.log('\n  Railway CLI not found.\n');
+    console.log('  Install:  npm install -g @railway/cli');
+    console.log('  Login:    railway login');
+    console.log('  Init:     railway init\n');
+    process.exit(1);
+  }
+
+  // Check logged in
+  try {
+    execSync('railway whoami', { stdio: 'pipe', timeout: 5000 });
+  } catch {
+    console.log('\n  Not logged into Railway.\n');
+    console.log('  Run:  railway login\n');
+    process.exit(1);
+  }
+
+  const deployDir = resolve(dirname(resolve(file)), 'deploy');
+
+  // Package first
+  if (!flags.quiet) console.log('  Packaging...');
+  await packageCommand([file, '--out', deployDir, '--quiet']);
+
+  // Deploy
+  if (!flags.quiet) console.log('  Deploying to Railway...');
+  try {
+    const stdout = execSync('railway up --detach', {
+      cwd: deployDir,
+      encoding: 'utf8',
+      timeout: 120000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    console.log('  Deployed!');
+    if (stdout.trim()) console.log('  ' + stdout.trim());
+  } catch (err) {
+    const msg = (err.stderr || err.stdout || err.message || '').trim();
+    if (msg.includes('no project') || msg.includes('No project') || msg.includes('not linked')) {
+      console.log('\n  No Railway project linked.\n');
+      console.log('  Run:  cd ' + deployDir + ' && railway init\n');
+      process.exit(1);
+    }
+    console.error('  Deploy failed: ' + msg.slice(0, 300));
+    process.exit(2);
+  }
+
+  // Post-deploy guidance
+  const loaded = loadSource(file);
+  if (!loaded.error) {
+    const { compileProgram } = await getCompiler();
+    const r = compileProgram(loaded.source);
+    const isPg = (r.dbBackend || '').includes('postgres');
+    const hasAuth = loaded.source.includes('signup and login') || loaded.source.includes('requires login');
+    const hasAgent = loaded.source.includes('ask claude') || loaded.source.includes('ask ai');
+
+    console.log('');
+    if (!isPg) {
+      console.log('  Note: Using SQLite. Data resets on redeploy.');
+      console.log('  For persistent data, use: database is PostgreSQL');
+    }
+    if (isPg) {
+      console.log('  Add Postgres in Railway dashboard. DATABASE_URL is set automatically.');
+    }
+    if (hasAuth) {
+      console.log('  Set JWT_SECRET in Railway > Variables.');
+    }
+    if (hasAgent) {
+      console.log('  Set ANTHROPIC_API_KEY in Railway > Variables.');
+    }
+    console.log('');
+  }
 }
 
 function helpCommand(flags = {}) {
@@ -950,6 +1039,7 @@ Commands:
   dev <file>       Watch + rebuild on changes
   init [dir]       Scaffold new project
   package <file>   Bundle for deployment
+  deploy <file>    Package and deploy to Railway
 
 Flags:
   --json           Machine-readable JSON output
@@ -986,8 +1076,8 @@ switch (command) {
   case 'init':     await initCommand(commandArgs); break;
   case 'agent':    await agentCommand(commandArgs); break;
   case 'eval':     await evalCommand(commandArgs); break;
-  case 'package':
-  case 'deploy':   await packageCommand(commandArgs); break;
+  case 'package':   await packageCommand(commandArgs); break;
+  case 'deploy':    await deployCommand(commandArgs); break;
   case 'help':
   case '--help':
   case '-h':

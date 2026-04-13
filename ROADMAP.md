@@ -283,6 +283,9 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Finally blocks | `try:` ... `finally:` / `always do:` / `after everything:` | Done — P2 |
 | First-class functions | Pass function refs as arguments | Done — P3, works natively |
 | Async function await | User-defined async fns auto-get `await` at call sites | Done — pre-scan + transitive |
+| Postgres adapter | `database is PostgreSQL` → `pg.Pool` runtime adapter | Done — `runtime/db-postgres.js`, same API as SQLite |
+| Railway deploy | `clear deploy app.clear` → package + `railway up` | Done — auto-detects db backend, correct deps |
+| Studio Test Runner | Tests tab in IDE with Run App/Compiler buttons | Done — `/api/run-tests`, Meph `run_tests` tool |
 
 ---
 
@@ -306,7 +309,7 @@ Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it com
 
 | Priority | Feature | Notes |
 |----------|---------|-------|
-| P6 | Studio Test button | "Test" button in toolbar runs `clear test` on the current app. Shows pass/fail results + error messages in Terminal tab. Meph can see results too (via tool). Both human and AI get the same test output. |
+| P6 | Studio Test button | **Done.** Tests tab in preview pane. Run App Tests + Run Compiler Tests buttons. Meph `run_tests` tool. Structured pass/fail with error details. |
 | P7 | ClearMan (API tester) | "Try it" button per endpoint in API tab. Postman built into Studio. |
 | P8 | Compiler-generated tests | Auto-generate happy-path tests from AST. Free test coverage. |
 | P9 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
@@ -494,7 +497,7 @@ Every app compiled from Clear ships with these protections. Fix a pattern once, 
 | Metric | Value |
 |--------|-------|
 | Node types | 124 |
-| Compiler tests | 1840 (0 failures) |
+| Compiler tests | 1844 (0 failures) |
 | Sandbox tests | 9 |
 | E2E tests | 80 (core 7 templates, CRUD, curriculum) |
 | Playground tests | ~127 (server, IDE, agent) |

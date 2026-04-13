@@ -21711,5 +21711,31 @@ page 'App':
   });
 });
 
+// =============================================================================
+// DATABASE BACKEND DETECTION
+// =============================================================================
+
+describe('Database Backend Detection', () => {
+  it('exposes dbBackend in compileProgram result', () => {
+    const r = compileProgram("build for javascript backend\ndatabase is local memory\n");
+    expect(r.dbBackend).toBe('local memory');
+  });
+
+  it('detects PostgreSQL backend', () => {
+    const r = compileProgram("build for javascript backend\ndatabase is PostgreSQL\n");
+    expect(r.dbBackend).toContain('postgres');
+  });
+
+  it('defaults to local memory when no database declaration', () => {
+    const r = compileProgram("build for web\nx = 5\n");
+    expect(r.dbBackend).toBe('local memory');
+  });
+
+  it('detects SQLite backend', () => {
+    const r = compileProgram("build for javascript backend\ndatabase is SQLite at 'data.db'\n");
+    expect(r.dbBackend).toContain('sqlite');
+  });
+});
+
 run();
 
