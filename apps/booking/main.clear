@@ -29,9 +29,10 @@ create a Bookings table:
 
 # Backend
 allow cross-origin requests
+allow signup and login
 log every request
 
-when user calls POST /api/seed:
+when user sends data to /api/seed:
   create r1:
     name is 'Conference A'
     capacity = 10
@@ -73,11 +74,12 @@ when user calls POST /api/seed:
   save b4 as new Booking
   send back 'seeded' with success message
 
-when user calls GET /api/rooms:
+when user requests data from /api/rooms:
   all_rooms = get all Rooms
   send back all_rooms
 
-when user calls POST /api/rooms sending room_data:
+when user sends room_data to /api/rooms:
+  requires login
   validate room_data:
     name is text, required
     capacity is number
@@ -85,16 +87,17 @@ when user calls POST /api/rooms sending room_data:
   new_room = save room_data as new Room
   send back new_room with success message
 
-when user calls DELETE /api/rooms/:id:
+when user deletes room at /api/rooms/:id:
   requires login
   delete the Room with this id
   send back 'deleted' with success message
 
-when user calls GET /api/bookings:
+when user requests data from /api/bookings:
   all_bookings = get all Bookings
   send back all_bookings
 
-when user calls POST /api/bookings sending booking_data:
+when user sends booking_data to /api/bookings:
+  requires login
   validate booking_data:
     guest_name is text, required
     date is text, required
@@ -103,13 +106,13 @@ when user calls POST /api/bookings sending booking_data:
   new_booking = save booking_data as new Booking
   send back new_booking with success message
 
-when user calls DELETE /api/bookings/:id:
+when user deletes booking at /api/bookings/:id:
   requires login
   delete the Booking with this id
   send back 'deleted' with success message
 
-when user calls GET /api/bookings/search sending params:
-  search_term = params's q
+when user requests data from /api/bookings/search:
+  search_term = incoming's q
   results = search Bookings for search_term
   send back results
 

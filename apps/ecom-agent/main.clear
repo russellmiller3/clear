@@ -18,6 +18,7 @@ DATAFLOW:
 build for web and javascript backend
 database is local memory
 allow signup and login
+log every request
 
 # Database
 
@@ -159,40 +160,36 @@ background 'Daily Report':
 
 # Endpoints
 
-when user calls POST /api/chat sending data:
-
+when user sends data to /api/chat:
+  requires login
   create user_msg:
     role is 'user'
-    content is data's user_message
+    content is data's message
   save user_msg as new Message
-  result = call 'Customer Support' with data's user_message
+  result = call 'Customer Support' with data's message
   create bot_msg:
     role is 'assistant'
     content is result
   save bot_msg as new Message
   send back result
 
-when user calls GET /api/messages:
-
+when user requests data from /api/messages:
   messages = get all Messages
   send back messages
 
-when user calls GET /api/orders:
-
+when user requests data from /api/orders:
   orders = get all Orders
   send back orders
 
-when user calls GET /api/products:
+when user requests data from /api/products:
   products = get all Products
   send back products
 
-when user calls GET /api/inventory/low:
-
+when user requests data from /api/inventory/low:
   low_items = get_low_stock_items()
   send back low_items
 
-when user calls GET /api/stats:
-
+when user requests data from /api/stats:
   orders = get all Orders
   all_returns = get all Returns
   products = get all Products
@@ -208,13 +205,13 @@ when user calls GET /api/stats:
 
 # Seed Data — realistic e-commerce store
 
-when user calls DELETE /api/messages:
+when user deletes messages at /api/messages:
   requires login
   script:
     await db.deleteAll('messages')
   send back 'cleared'
 
-when user calls POST /api/seed:
+when user sends data to /api/seed:
   create p1:
     name is 'Wireless Keyboard'
     sku is 'KB-001'
@@ -389,12 +386,12 @@ page 'Support Chat' at '/':
 
         display messages as chat showing role, content
 
-        'Type your message...' is a text input saved as user_message
+        'Type your message...' is a text input saved as message
 
         button 'Send':
-          send user_message to '/api/chat'
+          send message to '/api/chat'
           get messages from '/api/messages'
-          user_message is ''
+          message is ''
 
 page 'Orders' at '/orders':
   section 'Layout' with style app_layout:

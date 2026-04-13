@@ -371,7 +371,6 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <select id="template-picker"><option value="">Templates...</option></select>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
-    <span id="compile-stats-badge" class="compile-stats-badge"></span>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
     <span class="toolbar-sep"></span>
@@ -380,6 +379,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <button class="toolbar-btn" onclick="openDocs('syntax')" title="Syntax reference">Syntax</button>
     <button class="toolbar-btn" onclick="openDocs('user-guide')" title="User guide">Guide</button>
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
+    <span id="compile-stats-badge" class="compile-stats-badge"></span>
     <span id="status" class="status-ok">Ready</span>
     <button id="chat-toggle-btn" onclick="toggleChat()" title="Toggle Claude panel">Hide Chat ◀</button>
     <div id="compile-bar"></div>
@@ -1015,6 +1015,7 @@ async function autoCompile() {
     else if (lastCompiled.javascript) { sourceMapData = buildSourceMap(lastCompiled.javascript); sourceMapTab = 'javascript'; }
     else if (lastCompiled.python) { sourceMapData = buildSourceMap(lastCompiled.python); sourceMapTab = 'python'; }
     else { sourceMapData = null; sourceMapTab = null; }
+    // Show clickable errors below editor (compact) — full detail in Code pane
     showErrors(lastCompiled.errors, lastCompiled.warnings);
     // Update compile dot
     const dot = document.getElementById('compile-dot');
@@ -1051,7 +1052,7 @@ async function autoCompile() {
       // Compiler animation — show line-by-line mapping if we have source markers
       compileAnimCancel = true; // cancel any in-progress pre-scan
       const animTarget = lastCompiled.serverJS || lastCompiled.javascript;
-      if (animTarget && animTarget.includes('// clear:') && clearLines <= 150) {
+      if (animTarget && animTarget.includes('// clear:') && clearWords <= 150) {
         runCompileAnimation(source, animTarget);
       }
 
@@ -1075,9 +1076,36 @@ async function autoCompile() {
     } else {
       if (dot) dot.className = 'dot err';
       setStatus('err', `${lastCompiled.errors.length} error${lastCompiled.errors.length > 1 ? 's' : ''}`);
+      // Show errors in the Code pane so they're impossible to miss
+      showTab('compiled');
+      const el = document.getElementById('preview-content');
+      el.innerHTML = '<div style="padding:24px;font-family:var(--mono);font-size:13px;line-height:1.8;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--red);margin-bottom:16px;">' +
+        lastCompiled.errors.length + ' error' + (lastCompiled.errors.length > 1 ? 's' : '') + '</div>' +
+        lastCompiled.errors.map(e =>
+          '<div style="cursor:pointer;padding:8px 12px;margin:4px 0;border-radius:8px;background:color-mix(in oklch,var(--red) 8%,transparent);border:1px solid color-mix(in oklch,var(--red) 20%,transparent);" onclick="jumpToLine(' + (e.line || 1) + ')">' +
+          '<span style="color:var(--red);font-weight:600;">Line ' + (e.line || '?') + ':</span> ' +
+          '<span style="color:var(--tx);">' + escHtml(e.message) + '</span></div>'
+        ).join('') +
+        (lastCompiled.warnings?.length ? '<div style="margin-top:16px;font-size:14px;font-weight:600;color:var(--amber);margin-bottom:8px;">' + lastCompiled.warnings.length + ' warning' + (lastCompiled.warnings.length > 1 ? 's' : '') + '</div>' +
+          lastCompiled.warnings.map(w => {
+            const msg = typeof w === 'string' ? w : w.message || '';
+            return '<div style="padding:6px 12px;margin:4px 0;color:var(--amber);font-size:12px;">' + escHtml(msg) + '</div>';
+          }).join('') : '') +
+        '</div>';
     }
   } catch (err) {
-    setStatus('err', 'Compile failed');
+    console.error('Compile error:', err);
+    setStatus('err', err.message || 'Compile failed');
+    // Show crash errors in Code pane too
+    showTab('compiled');
+    const el = document.getElementById('preview-content');
+    el.innerHTML = '<div style="padding:24px;font-family:var(--mono);font-size:13px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--red);margin-bottom:16px;">Compile crashed</div>' +
+      '<div style="padding:8px 12px;border-radius:8px;background:color-mix(in oklch,var(--red) 8%,transparent);border:1px solid color-mix(in oklch,var(--red) 20%,transparent);color:var(--tx);">' +
+      escHtml(err.message || 'Unknown error') + '</div>' +
+      (err.stack ? '<pre style="margin-top:12px;font-size:11px;color:var(--tx3);white-space:pre-wrap;">' + escHtml(err.stack) + '</pre>' : '') +
+      '</div>';
   }
 }
 window.doCompile = autoCompile;

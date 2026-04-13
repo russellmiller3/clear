@@ -25,38 +25,40 @@ create a Expenses table:
 
 # Backend
 allow server to accept requests from frontend
+allow signup and login
 log every request
 
-when user calls GET /api/expenses:
+when user requests data from /api/expenses:
   all_expenses = get all Expenses
   send back all_expenses
 
-when user calls POST /api/expenses sending expense_data:
+when user sends expense_data to /api/expenses:
+  requires login
   validate expense_data:
     description is text, required, min 1, max 200
     amount is number, required
   new_expense = save expense_data as new Expense
   send back new_expense with success message
 
-when user calls DELETE /api/expenses/:id:
+when user deletes expense at /api/expenses/:id:
   requires login
   delete the Expense with this id
   send back 'deleted' with success message
 
-when user calls GET /api/categories:
+when user requests data from /api/categories:
   all_categories = get all Categories
   send back all_categories
 
-when user calls GET /api/search sending params:
-  results = search Expenses for params's q
+when user requests data from /api/search:
+  results = search Expenses for incoming's q
   send back results
 
-when user calls GET /api/expenses/total:
+when user requests data from /api/expenses/total:
   all_expenses = get all Expenses
   total = sum of amount in all_expenses
   send back total
 
-when user calls POST /api/seed:
+when user sends data to /api/seed:
   create c1:
     name is 'Food'
   save c1 as new Category

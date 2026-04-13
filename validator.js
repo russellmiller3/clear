@@ -1139,11 +1139,17 @@ function validateFieldMismatch(body, warnings) {
     if (ep.type !== NodeType.ENDPOINT || !ep.body) continue;
     const crud = ep.body.find(n => n.type === NodeType.CRUD && n.operation === 'save');
     if (crud && crud.target) {
-      const key = `${ep.method} ${ep.path}`;
-      // Try both singular and plural forms
-      const target = crud.target.toLowerCase();
-      endpointTables.set(key, target);
-      endpointTables.set(key + ':plural', target + (target.endsWith('s') ? '' : 's'));
+      // Only map endpoint→table when the save target is the receivingVar (direct passthrough).
+      // If the endpoint manually constructs a record before saving, the frontend field
+      // names don't need to match the table columns.
+      const receivingVar = ep.receivingVar || 'data';
+      const saveSource = crud.expression?.name || crud.variable || '';
+      if (saveSource === receivingVar || !saveSource) {
+        const key = `${ep.method} ${ep.path}`;
+        const target = crud.target.toLowerCase();
+        endpointTables.set(key, target);
+        endpointTables.set(key + ':plural', target + (target.endsWith('s') ? '' : 's'));
+      }
     }
   }
   // Check frontend API calls
