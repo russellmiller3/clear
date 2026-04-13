@@ -6136,6 +6136,13 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`    const _chatEl = document.getElementById('${outputId}_chat');`);
       lines.push(`    const _data = ${val};`);
       lines.push(`    if (_chatEl && Array.isArray(_data) && _data.length > 0) {`);
+      lines.push('      function _md(s) {');
+      lines.push('        return _esc(s)');
+      lines.push("          .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')");
+      lines.push("          .replace(/\\*(.+?)\\*/g, '<em>$1</em>')");
+      lines.push("          .replace(/`([^`]+)`/g, '<code style=\"background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px;font-size:12px\">$1</code>')");
+      lines.push("          .replace(/\\n/g, '<br>');");
+      lines.push('      }');
       lines.push(`      _chatEl.innerHTML = _data.map(msg => {`);
       lines.push(`        const role = String(msg[${roleField}] || 'user').toLowerCase();`);
       lines.push(`        const content = String(msg[${contentField}] || '');`);
@@ -6144,7 +6151,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`        const cls = isUser ? 'user' : 'assistant';`);
       lines.push(`        return '<div class="clear-msg ' + cls + '">' +`);
       lines.push(`          '<div class="clear-msg-label">' + _esc(label) + '</div>' +`);
-      lines.push(`          _esc(content) +`);
+      lines.push(`          _md(content) +`);
       lines.push(`        '</div>';`);
       lines.push(`      }).join('');`);
       lines.push(`      _chatEl.scrollTop = _chatEl.scrollHeight;`);

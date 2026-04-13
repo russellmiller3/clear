@@ -240,6 +240,9 @@ UI controls must say what they do in plain words. Never use a bare arrow, icon, 
 Always create a new branch for features and fixes. Never commit directly to main.
 Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
 
+## GAN Frontend Directly (MANDATORY)
+When working on a .clear app's frontend, always compile, run, and verify the output yourself in the browser. Navigate to the page, screenshot it, test buttons and inputs, check for errors. Never declare a frontend change "done" based on compiler tests alone — compiler tests don't catch field mismatches, broken layouts, missing data, or dead buttons. If you'd tell Russell "it should work," you didn't test it.
+
 ## Known Issues
 - Browser server may 404 on some routes (untested in real browser)
 - Playground styling needs visual verification
@@ -259,3 +262,6 @@ Narrate your work as you build — not after. Think David Attenborough watching 
 **Never:** "I'll now update compiler.js to fix the FAQ issue." That's nothing. Say what the FAQ issue IS, why it matters, and what fixing it enables.
 
 That's it. The compiler has no build step, no config files, no framework. `node clear.test.js` runs everything.
+
+## GAN Frontend Directly (MANDATORY)
+When working on a .clear app's frontend, always compile, run, and verify the output yourself in the browser. Navigate to the page, screenshot it, test buttons and inputs, check for errors. Never declare a frontend change "done" based on compiler tests alone — compiler tests don't catch field mismatches, broken layouts, missing data, or dead buttons. If you'd tell Russell "it should work," you didn't test it.
