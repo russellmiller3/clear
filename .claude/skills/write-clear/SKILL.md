@@ -34,7 +34,7 @@ create a Todos table:
 allow cross-origin requests
 log every request
 
-when user calls GET /api/todos:
+when user requests data from /api/todos:
   ...
 
 # Frontend
@@ -80,11 +80,11 @@ name is "Alice"           # works but don't write this
 
 ### API Endpoints
 ```
-when user calls GET /api/users:
+when user requests data from /api/users:
   all_users = get all Users
   send back all_users
 
-when user calls POST /api/users sending user_data:
+when user sends user_data to /api/users:
   requires login
   validate user_data:
     name is text, required, min 1, max 100
@@ -92,7 +92,7 @@ when user calls POST /api/users sending user_data:
   new_user = save user_data as new User
   send back new_user with success message
 
-when user calls DELETE /api/users/:id:
+when user deletes user at /api/users/:id:
   requires login
   requires role 'admin'
   delete the User with this id
@@ -263,17 +263,17 @@ create a Todos table:
 allow cross-origin requests
 log every request
 
-when user calls GET /api/todos:
+when user requests data from /api/todos:
   all_todos = get all Todos
   send back all_todos
 
-when user calls POST /api/todos sending post_data:
+when user sends post_data to /api/todos:
   validate post_data:
     todo is text, required, min 1, max 500
   new_todo = save post_data as new Todo
   send back new_todo with success message
 
-when user calls DELETE /api/todos/:id:
+when user deletes todo at /api/todos/:id:
   requires login
   delete the Todo with this id
   send back 'deleted' with success message
@@ -296,7 +296,7 @@ page 'Todo App':
 
 ### Status machine with guards
 ```clear
-when user calls PUT /api/invoices/:id/send:
+when user updates invoice at /api/invoices/:id/send:
   requires login
   define invoice as: look up records in Invoices table where id is incoming's id
   guard invoice is not nothing or 'Invoice not found'

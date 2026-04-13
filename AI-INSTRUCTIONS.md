@@ -391,7 +391,7 @@ create a Todos table:
 # Backend
 log every request
 allow cross-origin requests
-when user calls GET /api/todos:
+when user requests data from /api/todos:
   ...
 
 # Frontend
@@ -447,7 +447,7 @@ my-app/
    in `backend.clear`. Multiple agents go in `agents.clear`.
 
 5. **Never split a table definition from its endpoints.** If `backend.clear`
-   has `when user calls GET /api/users`, then `main.clear` must have
+   has `when user requests data from /api/users`, then `main.clear` must have
    `create a Users table`. The reader finds the schema in main, the
    logic in backend.
 
@@ -633,26 +633,53 @@ download report as 'data.csv'  # trigger browser file download
 
 ## Endpoints
 
-**Canonical: when user calls METHOD /path:**
+**Canonical: plain English verbs describe the HTTP method:**
 ```
-when user calls GET /api/users:
+when user requests data from /api/users:
   all_users = get all Users
   send back all_users
 
-when user calls POST /api/users sending user_data:
+when user sends user_data to /api/users:
   requires login
   validate user_data:
     name is text, required
     email is text, required, matches email
   new_user = save user_data as new User
   send back new_user with success message
+
+when user updates user_data at /api/users/:id:
+  requires login
+  save user_data to Users
+  send back 'updated'
+
+when user deletes user at /api/users/:id:
+  requires login
+  requires role 'admin'
+  delete the User with this id
+  send back 'deleted' with success message
 ```
 
-Use `sending` (not `receiving`) -- from the user's perspective, they send data.
+> **Synonym:** `when user calls GET/POST/PUT/DELETE /path:` still works but is no longer canonical.
+
+**Do this:**
+```
+when user requests data from /api/todos:       # GET
+when user sends todo_data to /api/todos:       # POST
+when user updates todo_data at /api/todos/:id: # PUT
+when user deletes todo at /api/todos/:id:      # DELETE
+```
+
+**Don't do this (old syntax, still compiles but not canonical):**
+```
+when user calls GET /api/todos:
+when user calls POST /api/todos sending todo_data:
+when user calls PUT /api/todos/:id sending todo_data:
+when user calls DELETE /api/todos/:id:
+```
 
 **Auth goes at the top. Check before doing work:**
 ```
-when user calls DELETE /api/users/:id:
+when user deletes user at /api/users/:id:
   requires login
   requires role 'admin'
   delete the User with this id
@@ -1258,11 +1285,11 @@ allow cross-origin requests
 # Print every request to the console for debugging
 log every request
 
-when user calls GET /api/contacts:
+when user requests data from /api/contacts:
   all_contacts = get all Contacts
   send back all_contacts
 
-when user calls POST /api/contacts sending contact_data:
+when user sends contact_data to /api/contacts:
   validate contact_data:
     name is text, required
     email is text, required, matches email
@@ -1296,7 +1323,7 @@ api_key is env('API_KEY')
 
 ### Always require auth on write endpoints
 ```
-when user calls DELETE /api/users/:id:
+when user deletes user at /api/users/:id:
   requires login
   requires role 'admin'
   delete the User with this id
@@ -1309,7 +1336,7 @@ without filtering by user.
 
 ### Rate limit public endpoints
 ```
-when user calls POST /api/contact:
+when user sends contact_data to /api/contact:
   rate limit 5 per minute
   validate incoming:
     message is text, required
@@ -1697,7 +1724,7 @@ Always prefer the type-first canonical form in new code.
 **Always pair charts with seed data** so the chart has something to show on first load:
 
 ```
-when user calls POST /api/seed:
+when user sends seed_request to /api/seed:
   create jan:
     month is 'Jan'
     revenue = 31200
@@ -1752,7 +1779,7 @@ every keystroke fires a network request.
 or all fail.** E-commerce checkouts, bank transfers, inventory updates:
 
 ```
-when user calls POST /api/checkout sending order:
+when user sends order to /api/checkout:
   requires login
   as one operation:
     decrease product's stock by order's quantity
@@ -1964,7 +1991,7 @@ build for javascript backend
 
 use npm 'stripe' as stripe_pkg
 
-when user calls POST /api/charge sending params:
+when user sends params to /api/charge:
   amount = params's amount
   script:
     const stripe = stripe_pkg(process.env.STRIPE_SECRET_KEY);
@@ -1990,7 +2017,7 @@ Compiles to:
 
 Use inside endpoints:
 ```
-when user calls POST /api/deploy:
+when user sends deploy_request to /api/deploy:
   run command 'git pull'
   run command 'npm run build'
   send back 'Deployed successfully'

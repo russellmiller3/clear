@@ -1138,16 +1138,16 @@ create a Users table:
   created_at_date, auto
 
 # Backend
-when user calls GET /api/users:
+when user requests data from /api/users:
   all_users = get all Users
   send back all_users
 
-when user calls GET /api/users/:id:
+when user requests data from /api/users/:id:
   define user as: look up records in Users table where id is incoming's id
   if user is nothing then send back 'Not found' status 404
   send back user
 
-when user calls POST /api/users sending user_data:
+when user sends user_data to /api/users:
   requires login
   validate user_data:
     name is text, required, min 1, max 100
@@ -1158,17 +1158,19 @@ when user calls POST /api/users sending user_data:
   new_user = save user_data as new User
   send back new_user with success message
 
-when user calls PUT /api/users/:id sending update_data:
+when user updates update_data at /api/users/:id:
   requires login
   save update_data to Users
   send back 'updated'
 
-when user calls DELETE /api/users/:id:
+when user deletes user at /api/users/:id:
   requires login
   requires role 'admin'
   delete the User with this id
   send back 'deleted' with success message
 ```
+
+> **Synonym:** `when user calls GET /api/users:`, `when user calls POST /api/users sending data:`, etc. still work. The English forms above are canonical.
 
 ## Auth Scaffolding
 
@@ -1713,7 +1715,7 @@ use npm 'stripe' as Stripe
 use npm 'nodemailer' as mailer
 use npm '@sendgrid/mail' as sendgrid   # scoped packages work too
 
-when user calls POST /api/charge sending params:
+when user sends params to /api/charge:
   client = Stripe(env('STRIPE_SECRET'))
   script:
     const charge = await client.charges.create({ amount: params.amount, currency: 'usd' });
@@ -1729,7 +1731,7 @@ when user calls POST /api/charge sending params:
 Run shell commands from backend endpoints:
 
 ```clear
-when user calls POST /api/deploy:
+when user sends deploy_request to /api/deploy:
   run command 'git pull origin main'
   run command 'npm run build'
   send back 'Deployed'
@@ -1743,7 +1745,7 @@ when user calls POST /api/deploy:
 Assign a run command to a variable to capture stdout as a string:
 
 ```clear
-when user calls GET /api/version:
+when user requests data from /api/version:
   version = run command 'node --version'
   send back version
 ```
@@ -1756,7 +1758,7 @@ when user calls GET /api/version:
 Use `run command:` with an indented block for complex shell operations:
 
 ```clear
-when user calls POST /api/deploy:
+when user sends deploy_request to /api/deploy:
   run command:
     git pull origin main
     npm run build
@@ -2237,7 +2239,7 @@ workflow 'Support' with state:
 
 ### Running a Workflow
 ```clear
-when user calls POST /api/support sending data:
+when user sends data to /api/support:
   result = run workflow 'Support' with data
   send back result
 ```
@@ -2310,7 +2312,7 @@ expect response body length is greater than 0  # array/object length check
 Stream AI responses directly to the client as Server-Sent Events:
 
 ```clear
-when user calls POST /api/chat receiving data:
+when user sends data to /api/chat:
   stream ask claude 'Help the user' with data's message
 ```
 
@@ -2323,7 +2325,7 @@ when user calls POST /api/chat receiving data:
 ### Without context
 
 ```clear
-when user calls POST /api/generate receiving data:
+when user sends data to /api/generate:
   stream ask ai 'Write a haiku about coding'
 ```
 

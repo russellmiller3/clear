@@ -369,17 +369,17 @@ create a Todos table:
 accept requests from any website
 log every request
 
-when user calls GET /api/todos:
+when user requests data from /api/todos:
   all_todos = get all Todos
   send back all_todos
 
-when user calls POST /api/todos sending todo_data:
+when user sends todo_data to /api/todos:
   validate todo_data:
     task is text, required, min 1, max 500
   new_todo = save todo_data as new Todo
   send back new_todo with success message
 
-when user calls DELETE /api/todos/:id:
+when user deletes todo at /api/todos/:id:
   requires login
   delete the Todo with this id
   send back 'deleted' with success message
@@ -432,7 +432,7 @@ create a Todos table:
 ### The Backend Section
 
 ```clear
-when user calls GET /api/todos:
+when user requests data from /api/todos:
   all_todos = get all Todos
   send back all_todos
 ```
@@ -442,7 +442,7 @@ This creates an API endpoint. When someone visits `/api/todos`, it:
 2. Sends them back as JSON
 
 ```clear
-when user calls POST /api/todos sending todo_data:
+when user sends todo_data to /api/todos:
   validate todo_data:
     task is text, required, min 1, max 500
   new_todo = save todo_data as new Todo
@@ -455,8 +455,10 @@ This creates a POST endpoint that:
 3. Saves it to the Todos table
 4. Sends back the new record with a success message
 
+> **Note:** The old syntax `when user calls POST /api/todos sending todo_data:` also works.
+
 ```clear
-when user calls DELETE /api/todos/:id:
+when user deletes todo at /api/todos/:id:
   requires login
   delete the Todo with this id
   send back 'deleted' with success message
@@ -516,11 +518,11 @@ create an Expenses table:
 accept requests from any website
 log every request
 
-when user calls GET /api/expenses:
+when user requests data from /api/expenses:
   all_expenses = get all Expenses
   send back all_expenses
 
-when user calls POST /api/expenses sending expense_data:
+when user sends expense_data to /api/expenses:
   validate expense_data:
     description is text, required, min 1, max 200
     amount is number, required
@@ -528,7 +530,7 @@ when user calls POST /api/expenses sending expense_data:
   new_expense = save expense_data as new Expense
   send back new_expense with success message
 
-when user calls DELETE /api/expenses/:id:
+when user deletes expense at /api/expenses/:id:
   requires login
   delete the Expense with this id
   send back 'deleted' with success message
@@ -758,7 +760,7 @@ create a Messages table:
   role, required
   content, required
 
-when user calls POST /api/chat sending data:
+when user sends data to /api/chat:
   create user_msg:
     role is 'user'
     content is data's user_message
@@ -769,11 +771,11 @@ when user calls POST /api/chat sending data:
   save bot_msg as new Message
   send back bot_msg
 
-when user calls GET /api/messages:
+when user requests data from /api/messages:
   messages = get all Messages
   send back messages
 
-when user calls DELETE /api/messages:
+when user deletes messages at /api/messages:
   script:
     await db.deleteAll('messages')
   send back 'cleared'

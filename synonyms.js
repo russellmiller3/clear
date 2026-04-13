@@ -196,7 +196,7 @@ const SYNONYM_TABLE = Object.freeze({
   // Backend features (Phase 5)
   // CANONICAL: when user calls GET /api/users: / send back data
   // ---------------------------------------------------------------------------
-  when_user_calls: Object.freeze(['when user calls']),
+  when_user_calls: Object.freeze(['when user calls', 'when user requests', 'when user sends', 'when user updates', 'when user deletes', 'when someone requests', 'when someone sends', 'when someone updates', 'when someone deletes']),
   on_method: Object.freeze(['on']),
   send_back: Object.freeze(['send back', 'respond with', 'reply with']),
   send_error: Object.freeze(['send error', 'throw error', 'fail with', 'raise error']),
@@ -443,6 +443,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.20.0';
+const SYNONYM_VERSION = '0.22.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };
