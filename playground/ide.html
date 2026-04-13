@@ -341,7 +341,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 #preview-content pre { counter-reset: compiled-line; padding: 0; }
 #preview-content pre .cl { counter-increment: compiled-line; display: flex; min-height: 1.5em; }
 #preview-content pre .cl::before { content: counter(compiled-line); min-width: 44px; padding: 0 12px 0 16px; color: var(--tx4); font-size: 11px; text-align: right; user-select: none; flex-shrink: 0; border-right: 1px solid var(--bd); margin-right: 12px; line-height: 1.5em; }
-#preview-content pre .cl-code { flex: 1; white-space: pre-wrap; word-break: break-word; max-width: 50ch; }
+#preview-content pre .cl-code { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
