@@ -317,8 +317,8 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 .cm-compile-highlight { background: rgba(108,140,255,.12); transition: background .4s ease; }
 
 /* Jump-to highlight — flash a line in the editor */
-@keyframes lineFlash { 0%,100% { background: transparent; } 15%,70% { background: rgba(251,191,36,.5); } }
-.cm-jump-line { animation: lineFlash 1.2s ease; }
+@keyframes lineFlash { 0% { background: rgba(251,191,36,.6); } 70% { background: rgba(251,191,36,.6); } 100% { background: transparent; } }
+.cm-jump-line { animation: lineFlash 2s ease-out; }
 
 /* Source map highlight — steady glow on mapped compiled lines */
 .cm-source-map-highlight { background: rgba(108,140,255,.25); transition: background .15s; border-left: 3px solid var(--accent); }
