@@ -159,3 +159,21 @@ page 'Helpdesk':
   on page load get products from '/api/products'
 
   display products as cards showing name, description, price
+
+# Tests
+
+test 'list products returns 200':
+  call GET /api/products
+  expect response status is 200
+
+test 'create product requires auth':
+  call POST /api/products with name is 'Test Widget'
+  expect response status is 401
+
+test 'list tickets returns 200':
+  call GET /api/tickets
+  expect response status is 200
+
+test 'search products returns 200':
+  call GET /api/products/search
+  expect response status is 200

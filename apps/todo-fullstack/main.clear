@@ -132,3 +132,26 @@ page 'Todo App' at '/':
       get todos from '/api/todos'
 
   display todos as table showing title, completed, category with delete
+
+# Tests
+
+test 'list todos returns 200':
+  call GET /api/todos
+  expect response status is 200
+
+test 'create todo with valid data':
+  call POST /api/todos with title is 'Write tests'
+  expect response status is 201
+  expect response body has id
+
+test 'create todo rejects empty title':
+  call POST /api/todos with title is ''
+  expect response status is 400
+
+test 'delete todo requires auth':
+  call DELETE /api/todos/1
+  expect response status is 401
+
+test 'list categories returns 200':
+  call GET /api/categories
+  expect response status is 200

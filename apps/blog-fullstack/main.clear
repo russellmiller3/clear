@@ -153,3 +153,26 @@ page 'Blog' at '/':
       get posts from '/api/search'
   section 'Posts' with style blog_grid:
     display posts as cards showing image_url, category, title, excerpt, author
+
+# Tests
+
+test 'list posts returns 200':
+  call GET /api/posts
+  expect response status is 200
+
+test 'create post with valid data':
+  call POST /api/posts with title is 'Test Post' and body is 'Test body content'
+  expect response status is 201
+  expect response body has id
+
+test 'create post rejects empty title':
+  call POST /api/posts with title is '' and body is 'Some body'
+  expect response status is 400
+
+test 'delete post requires auth':
+  call DELETE /api/posts/1
+  expect response status is 401
+
+test 'list authors returns 200':
+  call GET /api/authors
+  expect response status is 200

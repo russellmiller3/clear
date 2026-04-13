@@ -76,3 +76,22 @@ page 'Live Chat' at '/':
 
   section 'Messages':
     display messages as table showing sender, content, created_at
+
+# Tests
+
+test 'list messages returns 200':
+  call GET /api/messages
+  expect response status is 200
+
+test 'create message with valid data':
+  call POST /api/messages with sender is 'Alice' and content is 'Hello world'
+  expect response status is 201
+  expect response body has id
+
+test 'create message rejects empty content':
+  call POST /api/messages with sender is 'Alice' and content is ''
+  expect response status is 400
+
+test 'delete message requires auth':
+  call DELETE /api/messages/1
+  expect response status is 401

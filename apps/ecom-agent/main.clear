@@ -367,6 +367,22 @@ test 'process_return rejects non-delivered orders':
   expect calling process_return(test_order's id, 'Wrong size') to fail with 'Only delivered orders'
 */
 
+test 'list products returns 200':
+  call GET /api/products
+  expect response status is 200
+
+test 'list orders returns 200':
+  call GET /api/orders
+  expect response status is 200
+
+test 'stats endpoint returns 200':
+  call GET /api/stats
+  expect response status is 200
+
+test 'low inventory endpoint returns 200':
+  call GET /api/inventory/low
+  expect response status is 200
+
 # Frontend
 
 page 'Support Chat' at '/':

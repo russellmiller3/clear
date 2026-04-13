@@ -161,3 +161,25 @@ page 'Room Booking' at '/':
   section 'Bookings' with style page_section:
     heading 'All Bookings'
     display bookings as table showing guest_name, date, time, room, notes with delete
+
+# Tests
+
+test 'list rooms returns 200':
+  call GET /api/rooms
+  expect response status is 200
+
+test 'create room requires auth':
+  call POST /api/rooms with name is 'Test Room'
+  expect response status is 401
+
+test 'list bookings returns 200':
+  call GET /api/bookings
+  expect response status is 200
+
+test 'create booking requires auth':
+  call POST /api/bookings with guest_name is 'Test Guest' and date is '2026-05-01' and time is '10:00'
+  expect response status is 401
+
+test 'delete room requires auth':
+  call DELETE /api/rooms/1
+  expect response status is 401

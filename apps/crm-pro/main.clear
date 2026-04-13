@@ -234,3 +234,25 @@ page 'CRM Pro' at '/':
         section 'Deals' with style app_card:
           subheading 'Deals'
           display deals as table showing title, value, stage
+
+# Tests
+
+test 'list companies returns 200':
+  call GET /api/companies
+  expect response status is 200
+
+test 'create company requires auth':
+  call POST /api/companies with name is 'Test Corp'
+  expect response status is 401
+
+test 'list contacts returns 200':
+  call GET /api/contacts
+  expect response status is 200
+
+test 'list deals returns 200':
+  call GET /api/deals
+  expect response status is 200
+
+test 'deals total returns aggregate':
+  call GET /api/deals/total
+  expect response status is 200

@@ -149,3 +149,26 @@ page 'Expense Tracker':
 
   section 'Spending by Category':
     pie chart 'Spending by Category' showing expenses by category
+
+# Tests
+
+test 'list expenses returns 200':
+  call GET /api/expenses
+  expect response status is 200
+
+test 'create expense with valid data':
+  call POST /api/expenses with description is 'Test expense' and amount is 42
+  expect response status is 201
+  expect response body has id
+
+test 'create expense rejects missing amount':
+  call POST /api/expenses with description is 'No amount'
+  expect response status is 400
+
+test 'delete expense requires auth':
+  call DELETE /api/expenses/1
+  expect response status is 401
+
+test 'expense total returns aggregate':
+  call GET /api/expenses/total
+  expect response status is 200
