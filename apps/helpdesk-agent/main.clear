@@ -12,6 +12,7 @@ POST /api/ask
 build for javascript backend
 database is local memory
 allow signup and login
+log every request
 
 # === DATABASE ===
 
@@ -28,46 +29,48 @@ create a Tickets table:
 
 # === CRUD ===
 
-when user calls POST /api/products sending data:
+when user sends data to /api/products:
+  requires login
   new_product = save data as new Product
   send back new_product with success message
 
-when user calls GET /api/products:
+when user requests data from /api/products:
   products = get all Products
   send back products
 
-when user calls PUT /api/products:id sending data:
+when user updates data at /api/products/:id:
   requires login
   save data to Products
   send back 'updated' with success message
 
-when user calls DELETE /api/products:id:
+when user deletes product at /api/products/:id:
   requires login
   delete the Product with this id
   send back 'deleted' with success message
 
-when user calls POST /api/tickets sending data:
+when user sends data to /api/tickets:
+  requires login
   new_ticket = save data as new Ticket
   send back new_ticket with success message
 
-when user calls GET /api/tickets:
+when user requests data from /api/tickets:
   tickets = get all Tickets
   send back tickets
 
-when user calls PUT /api/tickets:id sending data:
+when user updates data at /api/tickets/:id:
   requires login
   save data to Tickets
   send back 'updated' with success message
 
-when user calls DELETE /api/tickets:id:
+when user deletes ticket at /api/tickets/:id:
   requires login
   delete the Ticket with this id
   send back 'deleted' with success message
 
 # === SEARCH ===
 
-when user calls GET /api/products/search sending query:
-  results = search Products for query
+when user requests data from /api/products/search:
+  results = search Products for incoming's q
   send back results
 
 # === AGENT TOOLS ===
@@ -93,13 +96,14 @@ agent 'Helpdesk' receives question:
   response = ask claude 'You are a helpful customer support agent. Help the customer with their question about our products. You can look up products and create support tickets.' with question
   send back response
 
-when user calls POST /api/ask sending data:
+when user sends data to /api/ask:
+  requires login
   result = call 'Helpdesk' with data's question
   send back result
 
 # === SEED ===
 
-when user calls POST /api/seed:
+when user sends data to /api/seed:
   create p1:
     name is 'Wireless Keyboard'
     description is 'Ergonomic bluetooth keyboard with backlit keys'

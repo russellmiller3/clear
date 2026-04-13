@@ -14,36 +14,39 @@ create a Todos table:
   category belongs to Categories
 
 allow cross-origin requests
+allow signup and login
+log every request
 
-when user calls GET /api/todos:
+when user requests data from /api/todos:
   all_todos = get all Todos
   send back all_todos
 
-when user calls POST /api/todos sending todo_data:
+when user sends todo_data to /api/todos:
+  requires login
   validate todo_data:
     title is text, required, min 1, max 500
   new_todo = save todo_data as new Todo
   send back new_todo with success message
 
-when user calls PUT /api/todos/:id sending update_data:
+when user updates update_data at /api/todos/:id:
   requires login
   save update_data to Todos
   send back 'updated' with success message
 
-when user calls DELETE /api/todos/:id:
+when user deletes todo at /api/todos/:id:
   requires login
   delete the Todo with this id
   send back 'deleted' with success message
 
-when user calls GET /api/categories:
+when user requests data from /api/categories:
   all_categories = get all Categories
   send back all_categories
 
-when user calls GET /api/search sending params:
-  results = search Todos for params's q
+when user requests data from /api/search:
+  results = search Todos for incoming's q
   send back results
 
-when user calls POST /api/seed:
+when user sends data to /api/seed:
   create c1:
     name is 'Work'
   save c1 as new Category

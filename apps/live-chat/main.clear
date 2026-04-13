@@ -22,13 +22,15 @@ create a Messages table:
 
 # Backend
 allow server to accept requests from frontend
+allow signup and login
 log every request
 
-when user calls GET /api/messages:
+when user requests data from /api/messages:
   all_messages = get all Messages
   send back all_messages
 
-when user calls POST /api/messages sending message_data:
+when user sends message_data to /api/messages:
+  requires login
   validate message_data:
     sender is text, required, min 1, max 50
     content is text, required, min 1, max 1000
@@ -36,7 +38,7 @@ when user calls POST /api/messages sending message_data:
   new_message = save message_data as new Message
   send back new_message with success message
 
-when user calls DELETE /api/messages/:id:
+when user deletes message at /api/messages/:id:
   requires login
   delete the Message with this id
   send back 'deleted' with success message

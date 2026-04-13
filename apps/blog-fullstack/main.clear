@@ -30,42 +30,44 @@ create a Posts table:
 
 # ── Backend ───────────────────────────────────────────────────────────────────
 allow cross-origin requests
+allow signup and login
 log every request
 
-when user calls GET /api/authors:
+when user requests data from /api/authors:
   all_authors = get all Authors
   send back all_authors
 
-when user calls GET /api/categories:
+when user requests data from /api/categories:
   all_categories = get all Categories
   send back all_categories
 
-when user calls GET /api/posts:
+when user requests data from /api/posts:
   all_posts = get all Posts
   send back all_posts
 
-when user calls GET /api/posts/:id:
+when user requests data from /api/posts/:id:
   post = look up records in Posts table where id is incoming's id
   if post is nothing then send back 'Post not found' status 404
   send back post
 
-when user calls POST /api/posts sending post_data:
+when user sends post_data to /api/posts:
+  requires login
   validate post_data:
     title is text, required, min 1, max 200
     body is text, required, min 1
   new_post = save post_data as new Post
   send back new_post
 
-when user calls DELETE /api/posts/:id:
+when user deletes post at /api/posts/:id:
   requires login
   delete the Post with this id
   send back 'deleted'
 
-when user calls GET /api/search sending params:
-  results = search Posts for params's q
+when user requests data from /api/search:
+  results = search Posts for incoming's q
   send back results
 
-when user calls POST /api/seed:
+when user sends data to /api/seed:
   create a1:
     name is 'Lindsay Walton'
     email is 'lindsay@example.com'

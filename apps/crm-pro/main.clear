@@ -45,7 +45,7 @@ allow cross-origin requests
 log every request
 
 # Seed
-when user calls POST /api/seed:
+when user sends data to /api/seed:
   create co1:
     name is 'Acme Corp'
     industry is 'Technology'
@@ -111,11 +111,11 @@ when user calls POST /api/seed:
   send back 'seeded' with success message
 
 # Companies CRUD
-when user calls GET /api/companies:
+when user requests data from /api/companies:
   all_companies = get all Companies
   send back all_companies
 
-when user calls POST /api/companies sending data:
+when user sends data to /api/companies:
   requires login
   validate data:
     name is text, required
@@ -124,17 +124,17 @@ when user calls POST /api/companies sending data:
   new_company = save data as new Company
   send back new_company with success message
 
-when user calls DELETE /api/companies/:id:
+when user deletes company at /api/companies/:id:
   requires login
   delete the Company with this id
   send back 'deleted' with success message
 
 # Contacts CRUD
-when user calls GET /api/contacts:
+when user requests data from /api/contacts:
   all_contacts = get all Contacts
   send back all_contacts
 
-when user calls POST /api/contacts sending data:
+when user sends data to /api/contacts:
   requires login
   validate data:
     name is text, required
@@ -144,17 +144,17 @@ when user calls POST /api/contacts sending data:
   new_contact = save data as new Contact
   send back new_contact with success message
 
-when user calls DELETE /api/contacts/:id:
+when user deletes contact at /api/contacts/:id:
   requires login
   delete the Contact with this id
   send back 'deleted' with success message
 
 # Deals CRUD
-when user calls GET /api/deals:
+when user requests data from /api/deals:
   all_deals = get all Deals
   send back all_deals
 
-when user calls POST /api/deals sending data:
+when user sends data to /api/deals:
   requires login
   validate data:
     title is text, required
@@ -164,19 +164,19 @@ when user calls POST /api/deals sending data:
   new_deal = save data as new Deal
   send back new_deal with success message
 
-when user calls DELETE /api/deals/:id:
+when user deletes deal at /api/deals/:id:
   requires login
   delete the Deal with this id
   send back 'deleted' with success message
 
 # Search contacts
-when user calls GET /api/search/contacts sending params:
-  search_term = params's q
+when user requests data from /api/search/contacts:
+  search_term = incoming's q
   results = search Contacts for search_term
   send back results
 
 # Aggregate
-when user calls GET /api/deals/total:
+when user requests data from /api/deals/total:
   all_deals = get all Deals
   total = sum of value in all_deals
   send back total
