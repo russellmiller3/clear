@@ -249,6 +249,12 @@ Branch naming: `feature/[name]` or `fix/[name]`. Merge to main when done.
 ## GAN Frontend Directly (MANDATORY)
 When working on a .clear app's frontend, always compile, run, and verify the output yourself in the browser. Navigate to the page, screenshot it, test buttons and inputs, check for errors. Never declare a frontend change "done" based on compiler tests alone — compiler tests don't catch field mismatches, broken layouts, missing data, or dead buttons. If you'd tell Russell "it should work," you didn't test it.
 
+## Template Smoke Test on New Syntax (MANDATORY)
+When introducing new syntax or synonyms, ALWAYS compile all 8 core templates to verify 0 errors before committing. New syntax that passes unit tests but breaks real apps is a shipped bug — the templates ARE the acceptance test. Run this after any parser/synonym change:
+```
+node -e "import { compileProgram } from './index.js'; import fs from 'fs'; ['todo-fullstack','crm-pro','blog-fullstack','live-chat','helpdesk-agent','booking','expense-tracker','ecom-agent'].forEach(a => { const r = compileProgram(fs.readFileSync('apps/'+a+'/main.clear','utf8')); console.log(a+': '+r.errors.length+' errors, '+r.warnings.length+' warnings'); });"
+```
+
 ## Known Issues
 - Browser server may 404 on some routes (untested in real browser)
 - Playground styling needs visual verification
