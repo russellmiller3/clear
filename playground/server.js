@@ -187,6 +187,9 @@ function parseTestOutput(stdout, type) {
 
     if (type === 'compiler') {
       // clear.test.js format: "✅ test name" or "❌ test name" then "   error msg" on next line
+      // Skip summary lines like "✅ Passed: 1841" and "❌ Failed: 0" and "===="
+      if (trimmed.startsWith('=')) continue;
+      if (trimmed.startsWith('✅ Passed:') || trimmed.startsWith('❌ Failed:')) continue;
       if (trimmed.startsWith('✅')) {
         results.push({ name: trimmed.replace(/^✅\s*/, ''), status: 'pass' });
       } else if (trimmed.startsWith('❌')) {
