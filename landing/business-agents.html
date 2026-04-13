@@ -384,6 +384,74 @@ agent = create_tool_calling_agent(llm, tools, prompt)
   </div>
 </section>
 
+<!-- Why not just use X -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <h2 class="text-3xl font-bold text-center mb-4">How does Clear compare?</h2>
+  <p class="text-zinc-400 text-center text-lg mb-12">"Why not just use Claude directly?" &mdash; here's why.</p>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-zinc-400 border-b border-zinc-800">
+          <th class="py-3 pr-4 font-medium">Capability</th>
+          <th class="py-3 px-4 font-medium">Claude Managed Agents</th>
+          <th class="py-3 px-4 font-medium">LangChain / CrewAI</th>
+          <th class="py-3 px-4 font-medium text-amber-400">Clear</th>
+        </tr>
+      </thead>
+      <tbody class="text-zinc-300">
+        <tr class="border-b border-zinc-800/50">
+          <td class="py-3 pr-4">Who writes agent code?</td>
+          <td class="py-3 px-4 text-amber-400">Developer (Python/JS)</td>
+          <td class="py-3 px-4 text-amber-400">Developer (Python)</td>
+          <td class="py-3 px-4 text-emerald-400 font-medium">Compiler (from 10 lines)</td>
+        </tr>
+        <tr class="border-b border-zinc-800/50">
+          <td class="py-3 pr-4">Guardrails</td>
+          <td class="py-3 px-4 text-red-400">Prompt-based (hope it listens)</td>
+          <td class="py-3 px-4 text-red-400">Prompt-based</td>
+          <td class="py-3 px-4 text-emerald-400 font-medium">Compile-time enforced</td>
+        </tr>
+        <tr class="border-b border-zinc-800/50">
+          <td class="py-3 pr-4">Tool validation</td>
+          <td class="py-3 px-4 text-red-400">Runtime (crashes)</td>
+          <td class="py-3 px-4 text-red-400">Runtime (crashes)</td>
+          <td class="py-3 px-4 text-emerald-400 font-medium">Compile error</td>
+        </tr>
+        <tr class="border-b border-zinc-800/50">
+          <td class="py-3 pr-4">Prompt injection defense</td>
+          <td class="py-3 px-4 text-red-400">Your problem</td>
+          <td class="py-3 px-4 text-red-400">Your problem</td>
+          <td class="py-3 px-4 text-emerald-400 font-medium">Built in</td>
+        </tr>
+        <tr class="border-b border-zinc-800/50">
+          <td class="py-3 pr-4">Scheduled agents</td>
+          <td class="py-3 px-4 text-red-400">Not supported</td>
+          <td class="py-3 px-4 text-amber-400">Manual setup</td>
+          <td class="py-3 px-4 text-emerald-400 font-medium">One line</td>
+        </tr>
+        <tr class="border-b border-zinc-800/50">
+          <td class="py-3 pr-4">Vendor lock-in</td>
+          <td class="py-3 px-4 text-red-400">Anthropic only</td>
+          <td class="py-3 px-4 text-amber-400">Framework lock-in</td>
+          <td class="py-3 px-4 text-emerald-400 font-medium">Standard Express</td>
+        </tr>
+        <tr class="border-b border-zinc-800/50">
+          <td class="py-3 pr-4">Time to production</td>
+          <td class="py-3 px-4 text-amber-400">Days</td>
+          <td class="py-3 px-4 text-red-400">Weeks</td>
+          <td class="py-3 px-4 text-emerald-400 font-medium">Minutes</td>
+        </tr>
+        <tr>
+          <td class="py-3 pr-4">Readable source</td>
+          <td class="py-3 px-4 text-red-400">Python/JS</td>
+          <td class="py-3 px-4 text-red-400">Python</td>
+          <td class="py-3 px-4 text-emerald-400 font-medium">10 lines of English</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <!-- Deploy -->
 <section class="border-y border-zinc-800 bg-zinc-950">
   <div class="max-w-5xl mx-auto px-6 py-20">
