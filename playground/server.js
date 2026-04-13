@@ -1290,13 +1290,13 @@ app.post('/api/chat', async (req, res) => {
         }
         if (tb.name === 'run_command') {
           send({ type: 'switch_tab', tab: 'terminal' });
-          send({ type: 'terminal_append', text: `[Claude] $ ${input.command}` });
+          send({ type: 'terminal_append', text: `[Meph] $ ${input.command}` });
         }
         if (tb.name === 'run_app') {
           send({ type: 'switch_tab', tab: 'terminal' });
         }
         if (tb.name === 'http_request') {
-          send({ type: 'terminal_append', text: `[Claude] ${input.method} ${input.path}` });
+          send({ type: 'terminal_append', text: `[Meph] ${input.method} ${input.path}` });
         }
         if (tb.name === 'screenshot_output') {
           send({ type: 'switch_tab', tab: 'output' });

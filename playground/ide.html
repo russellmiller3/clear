@@ -416,7 +416,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
     <span id="compile-stats-badge" class="compile-stats-badge"></span>
     <span id="status" class="status-ok">Ready</span>
-    <button id="chat-toggle-btn" onclick="toggleChat()" title="Toggle Claude panel">Hide Chat ▶</button>
+    <button id="chat-toggle-btn" onclick="toggleChat()" title="Toggle Meph panel">Hide Chat ▶</button>
     <div id="compile-bar"></div>
   </div>
 
@@ -433,7 +433,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
       <div style="display:flex;gap:4px;">
         <button class="toolbar-btn" onclick="newChat()" style="font-size:11px;padding:2px 8px;" title="Clear chat history">New</button>
         <button class="toolbar-btn" onclick="showMemory()" style="font-size:11px;padding:2px 8px;" title="Meph's persistent memory">Memory</button>
-        <button class="toolbar-btn" onclick="showPersonality()" style="font-size:11px;padding:2px 8px;" title="Custom instructions for Claude">Personality</button>
+        <button class="toolbar-btn" onclick="showPersonality()" style="font-size:11px;padding:2px 8px;" title="Custom instructions for Meph">Personality</button>
         <button class="toolbar-btn" onclick="showKeySetup()" style="font-size:11px;padding:2px 8px;">API Key</button>
       </div>
     </div>
@@ -447,12 +447,12 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <div id="chat-messages"></div>
     <button id="chat-scroll-btn" onclick="scrollChatToBottom()" title="Scroll to bottom">↓ Latest</button>
     <div id="chat-input-area">
-      <textarea id="chat-input" rows="2" placeholder="Ask Claude to build something... (Enter to send)"></textarea>
+      <textarea id="chat-input" rows="2" placeholder="Ask Meph to build something... (Enter to send)"></textarea>
       <button id="chat-send" onclick="sendChat()">Send</button>
       <button id="chat-stop" onclick="stopChat()" style="display:none">Stop</button>
     </div>
     <div style="padding:6px 16px 8px;border-top:1px solid var(--bd);background:var(--bg2);display:flex;align-items:center;gap:6px;">
-      <label id="web-toggle-label" title="Enable web search + fetch — Claude can search the web and read any URL" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
+      <label id="web-toggle-label" title="Enable web search + fetch — Meph can search the web and read any URL" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
         <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
         🌐 Web search + fetch
       </label>
@@ -468,7 +468,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
       <span><span class="dot" id="compile-dot"></span> <span id="editor-label">main.clear</span></span>
       <div style="display:flex;gap:4px;align-items:center;">
         <button class="toolbar-btn" onclick="doUndo()" title="Undo last change (Ctrl+Z)" style="font-size:11px;padding:2px 8px;">↩ Undo</button>
-        <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Claude chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
+        <button id="quote-btn" class="toolbar-btn" onclick="quoteSelectionInChat()" title="Quote selection in Meph chat (Ctrl+Shift+C)" style="display:none;font-size:11px;padding:2px 8px;">Quote in Chat</button>
       </div>
     </div>
     <div id="editor-toc"></div>
@@ -1939,7 +1939,7 @@ window.showPersonality = function() {
   const escaped = personality.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   el.innerHTML = `<div id="personality-setup">
     <div style="font-size:14px;font-weight:600;color:var(--tx);">Custom Instructions</div>
-    <div style="font-size:12px;">Tell Claude how to behave — tone, focus areas, things to avoid. Saved locally.</div>
+    <div style="font-size:12px;">Tell Meph how to behave — tone, focus areas, things to avoid. Saved locally.</div>
     <textarea id="personality-input" placeholder="e.g. Always use ivory theme. Keep code minimal. Explain your reasoning.">${escaped}</textarea>
     <div class="btn-row">
       <button onclick="savePersonality()">Save</button>
@@ -2006,9 +2006,9 @@ window.closeMemory = function() {
 window.showKeySetup = function() {
   showingKeySetup = true;
   const el = document.getElementById('chat-messages');
-  const hint = serverHasKey ? 'Server has a key configured. Enter a new one below to override it.' : 'Enter your Anthropic API key to chat with Claude.';
+  const hint = serverHasKey ? 'Server has a key configured. Enter a new one below to override it.' : 'Enter your Anthropic API key to chat with Meph.';
   el.innerHTML = `<div id="api-key-setup">
-    <div style="font-size:16px;margin-bottom:8px;">Set up Claude</div>
+    <div style="font-size:16px;margin-bottom:8px;">Set up Meph</div>
     <div style="margin-bottom:12px;">${hint}</div>
     <input type="password" id="key-input" placeholder="sk-ant-..." value="${apiKey}">
     <button onclick="saveKey()">Save</button>
@@ -2754,7 +2754,7 @@ window.highlightEditorLines = function(startLine, endLine, msg) {
       setTimeout(() => el?.classList.remove('cm-claude-line'), 2000);
     }
   }
-  if (msg) showToast('Claude: ' + msg);
+  if (msg) showToast('Meph: ' + msg);
 };
 
 // ==========================================================================
@@ -3027,7 +3027,7 @@ window.toggleChat = function() {
   const btn = document.getElementById('chat-toggle-btn');
   const collapsed = pane.classList.toggle('collapsed');
   btn.textContent = collapsed ? 'Show Chat ◀' : 'Hide Chat ▶';
-  btn.title = collapsed ? 'Show Claude panel' : 'Hide Claude panel';
+  btn.title = collapsed ? 'Show Meph panel' : 'Hide Meph panel';
 };
 
 // ==========================================================================
