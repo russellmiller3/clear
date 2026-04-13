@@ -553,13 +553,9 @@ export const UTILITY_FUNCTIONS = [
     var role = String(msg[roleField] || 'user').toLowerCase();
     var content = String(msg[contentField] || '');
     var isUser = role === 'user';
-    var label = isUser ? 'You' : 'Assistant';
     var cls = isUser ? 'user' : 'assistant';
     var rendered = isUser ? _chatMdInline(content) : _chatMd(content);
-    return '<div class="clear-chat-msg ' + cls + '">' +
-      '<div class="clear-chat-msg-label">' + label + '</div>' +
-      rendered +
-    '</div>';
+    return '<div class="clear-chat-msg ' + cls + '">' + rendered + '</div>';
   }).join('');
   el.scrollTop = el.scrollHeight;
 }`, deps: ['_chatMd', '_chatMdInline'] },
@@ -573,7 +569,7 @@ export const UTILITY_FUNCTIONS = [
   if (msgsEl) {
     var bubble = document.createElement('div');
     bubble.className = 'clear-chat-msg user';
-    bubble.innerHTML = '<div class="clear-chat-msg-label">You</div>' + _chatMdInline(msg);
+    bubble.innerHTML = _chatMdInline(msg);
     msgsEl.appendChild(bubble);
     msgsEl.scrollTop = msgsEl.scrollHeight;
   }
@@ -603,13 +599,12 @@ export const UTILITY_FUNCTIONS = [
   if (msgsEl) {
     var bubble = document.createElement('div');
     bubble.className = 'clear-chat-msg user';
-    bubble.innerHTML = '<div class="clear-chat-msg-label">You</div>' + _chatMdInline(msg);
+    bubble.innerHTML = _chatMdInline(msg);
     msgsEl.appendChild(bubble);
     msgsEl.scrollTop = msgsEl.scrollHeight;
   }
   var assistBubble = document.createElement('div');
   assistBubble.className = 'clear-chat-msg assistant';
-  assistBubble.innerHTML = '<div class="clear-chat-msg-label">Assistant</div>';
   var contentSpan = document.createElement('span');
   assistBubble.appendChild(contentSpan);
   if (msgsEl) {
@@ -9940,11 +9935,11 @@ const CSS_COMPONENTS = [
 .clear-chat-title { font-size: 13px; font-weight: 600; color: oklch(var(--color-base-content) / 0.6); }
 .clear-chat-new { font-size: 11px; padding: 2px 10px; border-radius: 6px; border: 1px solid oklch(var(--color-base-content) / 0.15); background: transparent; color: oklch(var(--color-base-content) / 0.5); cursor: pointer; }
 .clear-chat-new:hover { background: oklch(var(--color-base-content) / 0.05); }
-.clear-chat-msgs { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.clear-chat-msgs { flex: 1; overflow-y: auto; padding: 16px 24px; display: flex; flex-direction: column; gap: 14px; max-width: 768px; width: 100%; margin: 0 auto; }
 .clear-chat-msg { padding: 10px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.6; max-width: 50ch; white-space: pre-wrap; word-wrap: break-word; animation: _clearMsgIn 0.2s ease; }
 @keyframes _clearMsgIn { from { opacity: 0; transform: translateY(6px); } }
 .clear-chat-msg.user { background: oklch(var(--color-primary)); color: oklch(var(--color-primary-content)); align-self: flex-end; border-bottom-right-radius: 4px; }
-.clear-chat-msg.assistant { background: oklch(var(--color-base-200)); color: oklch(var(--color-base-content)); align-self: flex-start; border: 1px solid oklch(var(--color-base-content) / 0.1); border-bottom-left-radius: 4px; }
+.clear-chat-msg.assistant { background: transparent; color: oklch(var(--color-base-content)); align-self: flex-start; }
 .clear-chat-msg-label { font-size: 11px; opacity: 0.5; margin-bottom: 2px; }
 .clear-chat-msg pre { background: oklch(var(--color-base-100)); padding: 10px 12px; border-radius: 6px; margin: 8px 0; font-size: 12px; line-height: 1.5; overflow-x: auto; border: 1px solid oklch(var(--color-base-content) / 0.1); white-space: pre-wrap; }
 .clear-chat-msg code { background: oklch(var(--color-base-100)); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
