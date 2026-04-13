@@ -723,6 +723,122 @@ agents from accidentally passing sensitive data to external tools.
 
 ---
 
+## Chapter 10b: Chat Interfaces (Making Your App Talk)
+
+Clear can build chat interfaces that look like iMessage or ChatGPT --
+message bubbles, typing indicators, and a text box to send messages.
+One line does the heavy lifting.
+
+### Basic Chat Display
+
+```clear
+display messages as chat showing role, content
+```
+
+That single line gives you:
+- **Your** messages on the right (blue bubbles)
+- **Assistant** messages on the left (light bubbles)
+- Markdown formatting in responses (bold, code blocks, lists, tables)
+- A built-in Send button and text area
+
+The `showing` clause maps two fields from your data: the first is the
+message role (`'user'` or `'assistant'`), the second is the message text.
+These must match the fields in your Messages table.
+
+### Complete Chat App
+
+Here's a minimal chat app that echoes what you type. It's a full
+working server -- backend, database, and frontend in one file:
+
+```clear
+build for web and javascript backend
+database is local memory
+
+create a Messages table:
+  role, required
+  content, required
+
+when user calls POST /api/chat sending data:
+  create user_msg:
+    role is 'user'
+    content is data's user_message
+  save user_msg as new Message
+  create bot_msg:
+    role is 'assistant'
+    content is 'Echo: ' + data's user_message
+  save bot_msg as new Message
+  send back bot_msg
+
+when user calls GET /api/messages:
+  messages = get all Messages
+  send back messages
+
+when user calls DELETE /api/messages:
+  script:
+    await db.deleteAll('messages')
+  send back 'cleared'
+
+page 'Chat' at '/':
+  on page load get messages from '/api/messages'
+  display messages as chat showing role, content
+  'Type a message...' is a text input saved as user_message
+  button 'Send':
+    send user_message to '/api/chat'
+    get messages from '/api/messages'
+    user_message is ''
+```
+
+Walk through it from top to bottom:
+
+1. **Database** -- a Messages table with `role` and `content` columns.
+2. **POST /api/chat** -- saves the user's message, creates a bot reply,
+   sends back the reply.
+3. **GET /api/messages** -- returns all messages (for loading history).
+4. **DELETE /api/messages** -- clears the conversation.
+5. **The page** -- loads messages, displays them as chat, and has a text
+   input + Send button to post new messages.
+
+### What You Get Automatically
+
+The compiler sees the `display as chat` followed by a text input and
+Send button, and folds everything into one polished chat widget:
+
+- **Enter sends the message**, Shift+Enter adds a newline
+- **A "New" button** appears to clear the conversation
+- **Typing dots** animate while waiting for a response
+- **Messages scroll to the bottom** automatically
+- **A scroll-to-bottom button** appears when you scroll up
+- **No duplicates** -- the input and button are absorbed into the chat,
+  not rendered twice
+
+You don't need to build any of this by hand. The compiler generates a
+production-quality chat component from those few lines.
+
+### Connecting to a Real AI
+
+Swap the echo reply for an actual AI call using an agent:
+
+```clear
+agent 'Assistant' receives message:
+  response = ask claude 'Help this user' with message
+  send back response
+```
+
+Then change the POST endpoint to call the agent instead of echoing.
+See Chapter 10 for the full agent syntax.
+
+### When to Use `display as chat`
+
+Any app with a conversational interface -- AI assistants, customer
+support bots, helpdesk agents, or even a simple echo bot for testing.
+It pairs naturally with `agent` and `ask claude`.
+
+**Don't build chat UIs by hand.** Never use `for each` loops with
+conditional role checks to render message bubbles. The compiler
+generates all the bubble styling, scrolling, and input handling for you.
+
+---
+
 ## Chapter 11: Making It Pretty (Styling and Layout)
 
 Clear apps automatically use DaisyUI and Tailwind CSS, so they look

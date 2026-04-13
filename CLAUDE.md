@@ -3,6 +3,13 @@
 Clear is a programming language designed for AI to write and humans to read.
 Compiles plain English to JavaScript, Python, and HTML.
 
+## On Startup -- Session Bootstrap (MANDATORY)
+Every new session starts the same way, in this order:
+1. Read `HANDOFF.md` — know where the last session left off
+2. Read `PHILOSOPHY.md` — internalize the design rules before touching code
+3. Read `CLAUDE.md` — load project instructions and constraints
+Then load tools and read the rest of the startup files below.
+
 ## On Startup -- Load These Tools First
 Run ToolSearch for these before doing anything else:
 `mcp__computer-use__screenshot`, `mcp__computer-use__zoom`, `mcp__Claude_in_Chrome__computer`, `mcp__Claude_in_Chrome__tabs_context_mcp`, `mcp__Claude_in_Chrome__navigate`, `mcp__Claude_in_Chrome__get_page_text`
@@ -19,14 +26,14 @@ Run ToolSearch for these before doing anything else:
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1762 compiler tests)
+- Run all tests: `node clear.test.js` (1808 compiler tests)
 - Run sandbox tests: `node sandbox.test.js` (9 integration tests — spins up real servers)
 - Run playground tests (each is a separate file):
   - `node playground/server.test.js` (~85 server API tests)
   - `node playground/e2e.test.js` (~80 template compile + endpoint + CRUD + curriculum tests)
   - `node playground/ide.test.js` (~46 Playwright IDE UI tests)
   - `node playground/agent.test.js` (~50 Claude agent tool tests, needs ANTHROPIC_API_KEY)
-- Total: 1762 compiler + 9 sandbox + ~257 playground tests
+- Total: 1808 compiler + 9 sandbox + ~257 playground tests
 - **Husky hooks:** pre-commit runs compiler tests, pre-push runs full suite (compiler + e2e + curriculum)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils

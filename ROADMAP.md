@@ -386,6 +386,7 @@ Clear's deterministic compiler, structured errors, constrained action space, and
 | AI agents | RAG, tool use, memory, pipelines, guardrails, structured output |
 | SaaS MVPs | Auth, validation, email, scheduling, webhooks |
 | Data apps | CSV import, filter, chart, export |
+| Chat apps | `display as chat` with markdown, typing dots, scroll, input absorption |
 
 ### Tier 2 — 90%+ Clear, minor `script:` for edge cases
 
@@ -393,7 +394,7 @@ Clear's deterministic compiler, structured errors, constrained action space, and
 |-----|---------------------|
 | Project management | Drag-and-drop kanban |
 | Blog / CMS | Rich text editing |
-| Chat apps | Scroll-to-bottom, typing indicators |
+| Chat apps | ~~Scroll-to-bottom, typing indicators~~ **Moved to Tier 1** — `display as chat` now includes scroll, typing dots, markdown rendering, input absorption |
 | E-commerce | Stripe checkout flow |
 | Monitoring | Slack/PagerDuty webhook format |
 
@@ -414,7 +415,7 @@ Clear's deterministic compiler, structured errors, constrained action space, and
 | Metric | Value |
 |--------|-------|
 | Node types | 124 |
-| Compiler tests | 1730 (0 failures) |
+| Compiler tests | 1808 (0 failures) |
 | Sandbox tests | 9 |
 | E2E tests | 80 (core 7 templates, CRUD, curriculum) |
 | Playground tests | ~127 (server, IDE, agent) |

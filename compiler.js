@@ -70,6 +70,10 @@
 //   │  _toast ....... UI toast notifications
 //   │  _askAI ....... Anthropic API call with structured output
 //   │  _clear_* ..... string/array/number utilities
+//   │  _chatMd ..... markdown-to-HTML for chat messages
+//   │  _chatRender . render message array as chat bubbles
+//   │  _chatSend ... optimistic send with typing indicator
+//   │  _chatClear .. clear messages + optional DELETE
 //   └─ Only emitted when actually used (tree-shaking via _getUsedUtilities)
 //
 // 5 TOP-LEVEL OUTPUT PATHS:
@@ -97,6 +101,7 @@
 //   RLS POLICY COMPILER .............. compileRLSPolicy()
 //   JAVASCRIPT COMPILER .............. compileToJS(), isReactiveApp()
 //   REACTIVE JS COMPILER ............. compileToReactiveJS() — state, _recompute,
+//                                     chat input absorption pre-scan,
 //                                     inputs, buttons, table action buttons,
 //                                     event delegation, on-page-load
 //   PYTHON COMPILER .................. compileToPython()
@@ -128,7 +133,7 @@ const CLEAR_VERSION = '1.0';
  * @returns {{ javascript?: string, python?: string, errors: Array<{line, message}> }}
  */
 // All available utility functions -- used for tree-shaking
-const UTILITY_FUNCTIONS = [
+export const UTILITY_FUNCTIONS = [
   { name: '_clear_sum', code: 'function _clear_sum(arr) { return Array.isArray(arr) ? arr.reduce((a, b) => a + b, 0) : 0; }', deps: [] },
   { name: '_clear_avg', code: 'function _clear_avg(arr) { return Array.isArray(arr) && arr.length ? _clear_sum(arr) / arr.length : 0; }', deps: ['_clear_sum'] },
   { name: '_clear_sum_field', code: 'function _clear_sum_field(arr, f) { if (!Array.isArray(arr)) return 0; return arr.reduce(function(a, item) { return a + Number(item[f] || 0); }, 0); }', deps: [] },
@@ -461,6 +466,139 @@ const UTILITY_FUNCTIONS = [
     if (score > 0) results.push({ source: sourceName, data: chunk.trim(), score });
   }
   return results.sort((a, b) => b.score - a.score).slice(0, 3);
+}`, deps: [] },
+  // Chat utilities: markdown rendering, message display, send/clear
+  { name: '_chatMdInline', code: `function _chatMdInline(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
+    .replace(/\\*(.+?)\\*/g, '<em>$1</em>')
+    .replace(/\\\`([^\\\`]+)\\\`/g, '<code>$1</code>');
+}`, deps: [] },
+  { name: '_chatMdBlock', code: `function _chatMdBlock(s) {
+  var lines = s.split('\\n');
+  var out = '';
+  var inList = false;
+  var inTable = false;
+  var i = 0;
+  while (i < lines.length) {
+    var line = lines[i];
+    if (/^\\|(.+)\\|/.test(line.trim())) {
+      if (inList) { out += inList === 'ol' ? '</ol>' : '</ul>'; inList = false; }
+      if (!inTable) {
+        out += '<table>';
+        inTable = true;
+        var cells = line.trim().split('|').filter(function(c) { return c.trim() !== ''; });
+        out += '<thead><tr>' + cells.map(function(c) { return '<th>' + _chatMdInline(c.trim()) + '</th>'; }).join('') + '</tr></thead><tbody>';
+        if (i + 1 < lines.length && /^\\|[\\s\\-:|]+\\|/.test(lines[i + 1].trim())) i++;
+        i++;
+        continue;
+      } else {
+        var cells = line.trim().split('|').filter(function(c) { return c.trim() !== ''; });
+        out += '<tr>' + cells.map(function(c) { return '<td>' + _chatMdInline(c.trim()) + '</td>'; }).join('') + '</tr>';
+        i++;
+        continue;
+      }
+    } else if (inTable) {
+      out += '</tbody></table>';
+      inTable = false;
+    }
+    if (/^#{1,3} (.+)/.test(line)) {
+      if (inList) { out += inList === 'ol' ? '</ol>' : '</ul>'; inList = false; }
+      var lvl = line.match(/^(#+)/)[1].length;
+      out += '<h' + (lvl + 2) + ' style="margin:.5em 0 .2em;font-weight:600">' + _chatMdInline(line.replace(/^#+\\s+/, '')) + '</h' + (lvl + 2) + '>';
+    } else if (/^[-*] (.+)/.test(line)) {
+      if (inList !== 'ul') { if (inList) out += '</ol>'; out += '<ul style="margin:.3em 0 .3em 1.2em;padding:0">'; inList = 'ul'; }
+      out += '<li>' + _chatMdInline(line.replace(/^[-*] /, '')) + '</li>';
+    } else if (/^\\d+\\.\\s+(.+)/.test(line)) {
+      if (inList !== 'ol') { if (inList) out += '</ul>'; out += '<ol style="margin:.3em 0 .3em 1.2em;padding:0">'; inList = 'ol'; }
+      out += '<li>' + _chatMdInline(line.replace(/^\\d+\\.\\s+/, '')) + '</li>';
+    } else if (line.trim() === '') {
+      if (inList) { out += inList === 'ol' ? '</ol>' : '</ul>'; inList = false; }
+      out += '<br>';
+    } else {
+      if (inList) { out += inList === 'ol' ? '</ol>' : '</ul>'; inList = false; }
+      out += '<span>' + _chatMdInline(line) + '</span><br>';
+    }
+    i++;
+  }
+  if (inList) out += inList === 'ol' ? '</ol>' : '</ul>';
+  if (inTable) out += '</tbody></table>';
+  return out;
+}`, deps: ['_chatMdInline'] },
+  { name: '_chatMd', code: `function _chatMd(text) {
+  var parts = [];
+  var codeRe = /\\\`\\\`\\\`(\\w*)\\n?([\\s\\S]*?)\\\`\\\`\\\`/g;
+  var last = 0, m;
+  while ((m = codeRe.exec(text)) !== null) {
+    if (m.index > last) parts.push({ type: 'text', s: text.slice(last, m.index) });
+    parts.push({ type: 'code', lang: m[1], s: m[2] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ type: 'text', s: text.slice(last) });
+  return parts.map(function(p) {
+    if (p.type === 'code') {
+      return '<pre style="background:var(--color-base-200,#1e1e2e);color:var(--color-base-content,#cdd6f4);padding:.75rem;border-radius:.5rem;overflow-x:auto;font-size:13px;margin:.5em 0"><code>' +
+        p.s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code></pre>';
+    }
+    return _chatMdBlock(p.s);
+  }).join('');
+}`, deps: ['_chatMdInline', '_chatMdBlock'] },
+  { name: '_chatRender', code: `function _chatRender(el, messages, roleField, contentField) {
+  if (!el) return;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    el.innerHTML = '<p style="text-align:center;opacity:0.4;padding:2rem 0;font-size:14px">No messages yet</p>';
+    return;
+  }
+  el.innerHTML = messages.map(function(msg) {
+    var role = String(msg[roleField] || 'user').toLowerCase();
+    var content = String(msg[contentField] || '');
+    var isUser = role === 'user';
+    var label = isUser ? 'You' : 'Assistant';
+    var cls = isUser ? 'user' : 'assistant';
+    var rendered = isUser ? _chatMdInline(content) : _chatMd(content);
+    return '<div class="clear-chat-msg ' + cls + '">' +
+      '<div class="clear-chat-msg-label">' + label + '</div>' +
+      rendered +
+    '</div>';
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}`, deps: ['_chatMd', '_chatMdInline'] },
+  { name: '_chatSend', code: `function _chatSend(inputId, msgsId, typingId, url, field, onDone) {
+  var input = document.getElementById(inputId);
+  if (!input) return;
+  var msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  var msgsEl = document.getElementById(msgsId);
+  if (msgsEl) {
+    var bubble = document.createElement('div');
+    bubble.className = 'clear-chat-msg user';
+    bubble.innerHTML = '<div class="clear-chat-msg-label">You</div>' + _chatMdInline(msg);
+    msgsEl.appendChild(bubble);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  var typingEl = document.getElementById(typingId);
+  if (typingEl) typingEl.style.display = 'flex';
+  var body = {};
+  body[field] = msg;
+  fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      if (typingEl) typingEl.style.display = 'none';
+      if (onDone) onDone();
+    })
+    .catch(function(err) {
+      if (typingEl) typingEl.style.display = 'none';
+      if (typeof _toast === 'function') _toast('Send failed: ' + err.message, 'error');
+      if (onDone) onDone();
+    });
+}`, deps: ['_chatMdInline'] },
+  { name: '_chatClear', code: `function _chatClear(url, msgsId) {
+  var el = document.getElementById(msgsId);
+  if (el) el.innerHTML = '<p style="text-align:center;opacity:0.4;padding:2rem 0;font-size:14px">No messages yet</p>';
+  if (url) {
+    fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }).catch(function() {});
+  }
 }`, deps: [] },
 ];
 
@@ -5733,6 +5871,40 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   }
   flatten(body);
 
+  // --- Chat input absorption pre-scan ---
+  // When `display X as chat` is immediately followed by a text input + Send button
+  // at the same level, absorb those controls into the chat component's built-in UI
+  // so the compiled output doesn't render duplicate input/button elements.
+  for (let i = 0; i < flatNodes.length - 2; i++) {
+    const disp = flatNodes[i];
+    if (disp.type !== NodeType.DISPLAY || disp.format !== 'chat') continue;
+    const inp = flatNodes[i + 1];
+    if (inp.type !== NodeType.ASK_FOR) continue;
+    const btn = flatNodes[i + 2];
+    if (btn.type !== NodeType.BUTTON || !btn.body || btn.body.length === 0) continue;
+    // Button body must contain a POST API_CALL (the send action)
+    const postNode = btn.body.find(n => n.type === NodeType.API_CALL && n.method === 'POST');
+    if (!postNode) continue;
+    // Found the triple — mark for absorption
+    inp._chatAbsorbed = true;
+    btn._chatAbsorbed = true;
+    // Record absorption info on the display node for Send button wiring
+    disp._chatAbsorbedInput = { variable: inp.variable, placeholder: inp.label || '' };
+    const getNode = btn.body.find(n => n.type === NodeType.API_CALL && n.method === 'GET');
+    const clearNode = btn.body.find(n =>
+      n.type === NodeType.ASSIGN && n.expression &&
+      (n.expression.type === NodeType.LITERAL_STRING && n.expression.value === '')
+    );
+    disp._chatAbsorbedButton = {
+      buttonNode: btn,
+      postUrl: postNode.url,
+      postField: postNode.fields?.[0] || inp.variable,
+      refreshUrl: getNode ? getNode.url : null,
+      refreshVar: getNode ? (getNode.targetVar || null) : null,
+      clearVar: clearNode ? clearNode.name : null,
+    };
+  }
+
   // Categorize nodes
   const inputNodes = [];     // ask_for nodes
   const displayNodes = [];   // display nodes
@@ -5742,10 +5914,10 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
 
   for (const node of flatNodes) {
     switch (node.type) {
-      case NodeType.ASK_FOR: inputNodes.push(node); break;
+      case NodeType.ASK_FOR: if (!node._chatAbsorbed) inputNodes.push(node); break;
       case NodeType.DISPLAY: displayNodes.push(node); break;
       case NodeType.CHART: break; // Chart nodes handled separately below
-      case NodeType.BUTTON: buttonNodes.push(node); break;
+      case NodeType.BUTTON: if (!node._chatAbsorbed) buttonNodes.push(node); break;
       case NodeType.COMMENT:
       case NodeType.TARGET:
       case NodeType.THEME:
@@ -6014,6 +6186,7 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   // Display updates
   // Dedup IDs to match buildHTML's dedup (buildHTML runs after this, so _resolvedId isn't set yet)
   const _dispUsedIds = new Set();
+  const _chatDisplays = []; // Track chat displays for event listener wiring
   const displayCtx = { lang: 'js', indent: 0, declared: recomputeDeclared, stateVars: stateVarNames, mode: 'web', sourceMap };
   for (const disp of displayNodes) {
     let outputId = disp.ui._resolvedId || disp.ui.id;
@@ -6128,37 +6301,14 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
       lines.push(`    }`);
       lines.push(`  }`);
     } else if (disp.format === 'chat') {
-      // Chat rendering: Studio-style message bubbles
+      // Chat rendering: delegate to _chatRender utility function
       const chatCols = disp.columns || ['role', 'content'];
       const roleField = JSON.stringify(chatCols[0] || 'role');
       const contentField = JSON.stringify(chatCols[1] || 'content');
-      lines.push(`  {`);
-      lines.push(`    const _chatEl = document.getElementById('${outputId}_chat');`);
-      lines.push(`    const _data = ${val};`);
-      lines.push(`    if (_chatEl && Array.isArray(_data) && _data.length > 0) {`);
-      lines.push('      function _md(s) {');
-      lines.push('        return _esc(s)');
-      lines.push("          .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')");
-      lines.push("          .replace(/\\*(.+?)\\*/g, '<em>$1</em>')");
-      lines.push("          .replace(/`([^`]+)`/g, '<code style=\"background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px;font-size:12px\">$1</code>')");
-      lines.push("          .replace(/\\n/g, '<br>');");
-      lines.push('      }');
-      lines.push(`      _chatEl.innerHTML = _data.map(msg => {`);
-      lines.push(`        const role = String(msg[${roleField}] || 'user').toLowerCase();`);
-      lines.push(`        const content = String(msg[${contentField}] || '');`);
-      lines.push(`        const isUser = role === 'user';`);
-      lines.push(`        const label = isUser ? 'You' : 'Assistant';`);
-      lines.push(`        const cls = isUser ? 'user' : 'assistant';`);
-      lines.push(`        return '<div class="clear-msg ' + cls + '">' +`);
-      lines.push(`          '<div class="clear-msg-label">' + _esc(label) + '</div>' +`);
-      lines.push(`          _md(content) +`);
-      lines.push(`        '</div>';`);
-      lines.push(`      }).join('');`);
-      lines.push(`      _chatEl.scrollTop = _chatEl.scrollHeight;`);
-      lines.push(`    } else if (_chatEl) {`);
-      lines.push(`      _chatEl.innerHTML = '<p style="text-align:center;opacity:0.4;padding:2rem 0;font-size:14px">No messages yet</p>';`);
-      lines.push(`    }`);
-      lines.push(`  }`);
+      lines.push(`  _chatRender(document.getElementById('${outputId}_msgs'), ${val}, ${roleField}, ${contentField});`);
+      // Track for event listener wiring after _recompute
+      const varName = disp.expression.name ? sanitizeName(disp.expression.name) : '';
+      _chatDisplays.push({ outputId, varName, dispNode: disp });
     } else if (disp.format === 'gallery') {
       // Gallery rendering: iterate over array and create image grid
       lines.push(`  {`);
@@ -6340,6 +6490,61 @@ function compileToReactiveJS(body, errors, sourceMap = false) {
   }
 
   lines.push('}');
+
+  // 4b. Chat component event listeners
+  for (const chatDisp of _chatDisplays) {
+    const { outputId, varName } = chatDisp;
+    // Determine DELETE endpoint for New button (convention: DELETE /api/{resource})
+    const resourceKey = varName.toLowerCase();
+    const deleteUrl = deleteEndpoints[resourceKey] || null;
+    const deleteUrlStr = deleteUrl ? `'${deleteUrl}'` : 'null';
+
+    lines.push('');
+    lines.push(`// --- Chat component: ${outputId} ---`);
+
+    // New button — clears messages
+    lines.push(`document.getElementById('${outputId}_new').addEventListener('click', function() {`);
+    lines.push(`  _chatClear(${deleteUrlStr}, '${outputId}_msgs');`);
+    if (varName) {
+      lines.push(`  _state.${varName} = [];`);
+      lines.push(`  _recompute();`);
+    }
+    lines.push(`});`);
+
+    // Enter to send on textarea
+    lines.push(`document.getElementById('${outputId}_input').addEventListener('keydown', function(e) {`);
+    lines.push(`  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('${outputId}_send').click(); }`);
+    lines.push(`});`);
+
+    // Scroll-to-bottom visibility toggle
+    lines.push(`(function() {`);
+    lines.push(`  var _msgsEl = document.getElementById('${outputId}_msgs');`);
+    lines.push(`  var _scrollBtn = document.getElementById('${outputId}_scroll');`);
+    lines.push(`  if (_msgsEl && _scrollBtn) {`);
+    lines.push(`    _msgsEl.addEventListener('scroll', function() {`);
+    lines.push(`      var atBottom = _msgsEl.scrollTop + _msgsEl.clientHeight >= _msgsEl.scrollHeight - 100;`);
+    lines.push(`      _scrollBtn.style.display = atBottom ? 'none' : 'flex';`);
+    lines.push(`    });`);
+    lines.push(`    _scrollBtn.addEventListener('click', function() {`);
+    lines.push(`      _msgsEl.scrollTo({ top: _msgsEl.scrollHeight, behavior: 'smooth' });`);
+    lines.push(`    });`);
+    lines.push(`  }`);
+    lines.push(`})();`);
+
+    // Send button — wire to absorbed button's actions (if chat absorbed an input+button)
+    const dispNode = chatDisp.dispNode;
+    if (dispNode && dispNode._chatAbsorbedButton) {
+      const { postUrl, postField, refreshUrl, refreshVar } = dispNode._chatAbsorbedButton;
+      const refreshCode = refreshUrl && refreshVar
+        ? `_state.${refreshVar} = await fetch('${refreshUrl}', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } }).then(function(r) { return r.json(); }); _recompute();`
+        : '_recompute();';
+      lines.push(`document.getElementById('${outputId}_send').addEventListener('click', async function() {`);
+      lines.push(`  _chatSend('${outputId}_input', '${outputId}_msgs', '${outputId}_typing', '${postUrl}', '${postField}', async function() {`);
+      lines.push(`    ${refreshCode}`);
+      lines.push(`  });`);
+      lines.push(`});`);
+    }
+  }
 
   // 5. Input event listeners
   lines.push('');
@@ -6605,6 +6810,7 @@ function buildHTML(body) {
   let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
   let hasMap = false;   // Track if any map display nodes exist (for Leaflet CDN)
   let hasQR = false;    // Track if any QR display nodes exist (for QRCode CDN)
+  let hasChat = false;  // Track if any chat display nodes exist (for chat CSS)
   const pages = [];
   const sectionStack = []; // Track parent section presets for context-aware rendering
 
@@ -7204,6 +7410,8 @@ function buildHTML(body) {
         }
 
         case NodeType.ASK_FOR: {
+          // Skip nodes absorbed into a chat component's built-in UI
+          if (node._chatAbsorbed) break;
           const ui = node.ui;
           // Inside flex containers (card, form), gap handles spacing — no margin needed
           const inputParent = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
@@ -7272,16 +7480,24 @@ ${options}
           } else if (ui.tag === 'list') {
             parts.push(`    <ul class="list-disc pl-6 space-y-1" id="${displayId}_list"></ul>`);
           } else if (ui.tag === 'chat') {
-            parts.push(`    <style>
-      .clear-chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; max-height: 60vh; }
-      .clear-msg { padding: 10px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.6; max-width: 50ch; white-space: pre-wrap; word-wrap: break-word; }
-      .clear-msg.user { background: oklch(0.5 0.15 264); color: #dde4ff; align-self: flex-end; border-bottom-right-radius: 4px; }
-      .clear-msg.assistant { background: oklch(0.93 0.005 264); color: oklch(0.25 0.01 264); align-self: flex-start; border: 1px solid oklch(0.88 0.01 264); border-bottom-left-radius: 4px; font-family: Georgia, serif; }
-      .clear-msg-label { font-size: 11px; opacity: 0.5; margin-bottom: 2px; }
-      .clear-msg.user .clear-msg-label { text-align: right; color: oklch(0.7 0.05 264); }
-      .clear-msg.assistant .clear-msg-label { color: oklch(0.5 0.02 264); }
-    </style>
-    <div class="clear-chat" id="${displayId}_chat"></div>`);
+            hasChat = true;
+            parts.push(`    <div class="clear-chat-wrap" id="${displayId}">
+      <div class="clear-chat-head">
+        <span class="clear-chat-title">${ui.label || 'Chat'}</span>
+        <button class="clear-chat-new" id="${displayId}_new">New</button>
+      </div>
+      <div class="clear-chat-msgs" id="${displayId}_msgs"></div>
+      <div class="clear-chat-typing" id="${displayId}_typing" style="display:none">
+        <div class="clear-typing-dot"></div>
+        <div class="clear-typing-dot"></div>
+        <div class="clear-typing-dot"></div>
+      </div>
+      <button class="clear-chat-scroll" id="${displayId}_scroll">&#8595;</button>
+      <div class="clear-chat-input">
+        <textarea id="${displayId}_input" placeholder="Type a message..." rows="1"></textarea>
+        <button id="${displayId}_send" class="clear-chat-send-btn">Send</button>
+      </div>
+    </div>`);
           } else if (ui.tag === 'gallery') {
             parts.push(`    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="${displayId}_gallery"></div>`);
           } else if (ui.tag === 'map') {
@@ -7333,6 +7549,8 @@ ${options}
         }
 
         case NodeType.BUTTON: {
+          // Skip nodes absorbed into a chat component's built-in UI
+          if (node._chatAbsorbed) break;
           const btnPreset = sectionStack.length > 0 ? sectionStack[sectionStack.length - 1] : '';
           const btnInHeader = btnPreset === 'app_header';
           const btnInCta = btnPreset === 'page_cta';
@@ -9471,6 +9689,34 @@ const CSS_COMPONENTS = [
   { class: 'clear-conditional', css: '.clear-conditional { }' },
   { class: 'clear-component', css: '.clear-component { }' },
   { class: 'clear-nav-item', css: `.clear-nav-item.active { background: oklch(var(--color-base-content) / 0.1); color: oklch(var(--color-base-content)); font-weight: 500; }` },
+  { class: 'clear-chat-wrap', css: `.clear-chat-wrap { display: flex; flex-direction: column; height: 100%; min-height: 400px; position: relative; border: 1px solid oklch(var(--color-base-content) / 0.15); border-radius: 1rem; overflow: hidden; background: oklch(var(--color-base-100)); }
+.clear-chat-head { padding: 12px 16px; border-bottom: 1px solid oklch(var(--color-base-content) / 0.1); display: flex; align-items: center; justify-content: space-between; }
+.clear-chat-title { font-size: 13px; font-weight: 600; color: oklch(var(--color-base-content) / 0.6); }
+.clear-chat-new { font-size: 11px; padding: 2px 10px; border-radius: 6px; border: 1px solid oklch(var(--color-base-content) / 0.15); background: transparent; color: oklch(var(--color-base-content) / 0.5); cursor: pointer; }
+.clear-chat-new:hover { background: oklch(var(--color-base-content) / 0.05); }
+.clear-chat-msgs { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.clear-chat-msg { padding: 10px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.6; max-width: 50ch; white-space: pre-wrap; word-wrap: break-word; animation: _clearMsgIn 0.2s ease; }
+@keyframes _clearMsgIn { from { opacity: 0; transform: translateY(6px); } }
+.clear-chat-msg.user { background: oklch(var(--color-primary)); color: oklch(var(--color-primary-content)); align-self: flex-end; border-bottom-right-radius: 4px; }
+.clear-chat-msg.assistant { background: oklch(var(--color-base-200)); color: oklch(var(--color-base-content)); align-self: flex-start; border: 1px solid oklch(var(--color-base-content) / 0.1); border-bottom-left-radius: 4px; }
+.clear-chat-msg-label { font-size: 11px; opacity: 0.5; margin-bottom: 2px; }
+.clear-chat-msg pre { background: oklch(var(--color-base-100)); padding: 10px 12px; border-radius: 6px; margin: 8px 0; font-size: 12px; line-height: 1.5; overflow-x: auto; border: 1px solid oklch(var(--color-base-content) / 0.1); white-space: pre-wrap; }
+.clear-chat-msg code { background: oklch(var(--color-base-100)); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+.clear-chat-msg pre code { background: none; padding: 0; border: none; }
+.clear-chat-msg table { border-collapse: collapse; margin: 8px 0; font-size: 12px; width: 100%; }
+.clear-chat-msg th, .clear-chat-msg td { border: 1px solid oklch(var(--color-base-content) / 0.15); padding: 5px 10px; text-align: left; }
+.clear-chat-msg th { background: oklch(var(--color-base-200)); font-weight: 600; }
+.clear-chat-typing { display: none; gap: 4px; padding: 0 20px 8px; align-self: flex-start; }
+.clear-typing-dot { width: 8px; height: 8px; border-radius: 50%; background: oklch(var(--color-base-content) / 0.3); animation: _clearDot 1.4s infinite ease-in-out; }
+.clear-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.clear-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes _clearDot { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+.clear-chat-scroll { position: absolute; bottom: 70px; right: 20px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid oklch(var(--color-base-content) / 0.15); background: oklch(var(--color-base-100)); color: oklch(var(--color-base-content) / 0.6); cursor: pointer; font-size: 16px; display: none; align-items: center; justify-content: center; box-shadow: 0 2px 8px oklch(0 0 0 / 0.1); z-index: 10; }
+.clear-chat-input { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid oklch(var(--color-base-content) / 0.1); background: oklch(var(--color-base-200)); }
+.clear-chat-input textarea { flex: 1; resize: none; border: 1px solid oklch(var(--color-base-content) / 0.15); border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit; background: oklch(var(--color-base-100)); color: oklch(var(--color-base-content)); outline: none; }
+.clear-chat-input textarea:focus { border-color: oklch(var(--color-primary) / 0.5); }
+.clear-chat-send-btn { padding: 8px 16px; border-radius: 8px; border: none; background: oklch(var(--color-primary)); color: oklch(var(--color-primary-content)); font-weight: 600; font-size: 14px; cursor: pointer; }
+.clear-chat-send-btn:hover { opacity: 0.9; }` },
 ];
 
 // Tree-shake CSS: scan HTML for used classes, return base + used component CSS
