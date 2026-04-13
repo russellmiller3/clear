@@ -801,6 +801,11 @@ agent apps, support chat, AI assistants. Pairs naturally with `agent` + `ask cla
 role checks to render message bubbles. The compiler generates a production-quality
 chat component with proper styling, scrolling, and input handling.
 
+**Streaming is automatic.** If the agent has `stream response`, the chat component
+auto-detects it and streams tokens in real-time. No extra syntax or wiring needed.
+Tool-using agents don't stream (tool loops need full responses), so the compiler
+falls back to the normal send-and-wait pattern for those.
+
 ## Components
 
 **Name what you're receiving:**

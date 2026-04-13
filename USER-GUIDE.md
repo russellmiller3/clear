@@ -837,6 +837,19 @@ It pairs naturally with `agent` and `ask claude`.
 conditional role checks to render message bubbles. The compiler
 generates all the bubble styling, scrolling, and input handling for you.
 
+### Real-Time Streaming
+
+If your agent uses `stream response`, the chat component automatically streams text in real-time — you'll see the assistant's response appear token by token, just like ChatGPT. No extra code needed:
+
+```clear
+agent 'Bot' receives message:
+  stream response
+  response = ask claude 'Help the user.' with message
+  send back response
+```
+
+The compiler detects that the POST endpoint calls a streaming agent and wires everything automatically: the backend sends SSE events, the frontend reads the stream and appends text as it arrives.
+
 ---
 
 ## Chapter 11: Making It Pretty (Styling and Layout)

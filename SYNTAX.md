@@ -461,6 +461,8 @@ This compiles to a single chat component — no duplicate controls.
 
 **The `showing` clause** maps fields: first field is the role field, second is the content field. Default: `role, content`.
 
+**Streaming:** When the POST endpoint calls a streaming agent (one with `stream response`), the chat component automatically switches to real-time token streaming — text appears character-by-character in the assistant bubble as the AI generates it. No extra syntax needed; the compiler detects the connection and wires it automatically.
+
 ## Reactive Input Handlers
 
 ```clear

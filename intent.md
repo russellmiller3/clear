@@ -345,7 +345,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | `sending post_data` | `receiving post_data` | User perspective canonical |
 | `saved as a todo` | `saves to todo` | With optional article |
 | `display X showing col1, col2` | `display X as table` | Column whitelist |
-| `display X as chat showing role, content` | Chat bubble UI | Full chat component: header, messages, typing indicator, scroll-to-bottom, textarea + Send button. Uses `_chatRender`, `_chatMd`, `_chatSend`, `_chatClear`. DaisyUI `.clear-chat-*` classes. Absorbs following text input + Send button into built-in UI. `showing` maps fields to role/content (defaults: `role, content`). Reactive: `_recompute()` calls `_chatRender()`. |
+| `display X as chat showing role, content` | Chat bubble UI | Full chat component: header, messages, typing indicator, scroll-to-bottom, textarea + Send button. Uses `_chatRender`, `_chatMd`, `_chatSend`/`_chatSendStream`, `_chatClear`. DaisyUI `.clear-chat-*` classes. Absorbs following text input + Send button into built-in UI. `showing` maps fields to role/content (defaults: `role, content`). Reactive: `_recompute()` calls `_chatRender()`. Auto-detects streaming agents: if POST endpoint calls a streaming agent, uses `_chatSendStream` (SSE token streaming) instead of `_chatSend`. |
 | `send X as a new Y to URL` | `send X to URL` | Decorative clause ignored |
 | `'Hello, {name}!'` | `'Hello, ' + name + '!'` | String interpolation |
 

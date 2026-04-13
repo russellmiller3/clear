@@ -26,14 +26,13 @@ Run ToolSearch for these before doing anything else:
 9. **`USER-GUIDE.md`** -- friendly tutorial with tested examples. Rails Tutorial style. Update when adding features.
 
 ## Testing
-- Run all tests: `node clear.test.js` (1808 compiler tests)
-- Run sandbox tests: `node sandbox.test.js` (9 integration tests — spins up real servers)
+- Run all tests: `node clear.test.js`
+- Run sandbox tests: `node sandbox.test.js` (integration tests — spins up real servers)
 - Run playground tests (each is a separate file):
-  - `node playground/server.test.js` (~85 server API tests)
-  - `node playground/e2e.test.js` (~80 template compile + endpoint + CRUD + curriculum tests)
-  - `node playground/ide.test.js` (~46 Playwright IDE UI tests)
-  - `node playground/agent.test.js` (~50 Claude agent tool tests, needs ANTHROPIC_API_KEY)
-- Total: 1808 compiler + 9 sandbox + ~257 playground tests
+  - `node playground/server.test.js` (server API tests)
+  - `node playground/e2e.test.js` (template compile + endpoint + CRUD + curriculum tests)
+  - `node playground/ide.test.js` (Playwright IDE UI tests)
+  - `node playground/agent.test.js` (Claude agent tool tests, needs ANTHROPIC_API_KEY)
 - **Husky hooks:** pre-commit runs compiler tests, pre-push runs full suite (compiler + e2e + curriculum)
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils

@@ -21394,5 +21394,184 @@ page 'App':
   });
 });
 
+// =============================================================================
+// SSE STREAMING FOR CHAT
+// =============================================================================
+
+describe('SSE streaming for chat', () => {
+  const streamingSrc = `build for web and javascript backend
+database is local memory
+
+create a Messages table:
+  role, required
+  content, required
+
+agent 'Bot' receives message:
+  stream response
+  response = ask claude 'Help: ' with message
+  send back response
+
+when user calls POST /api/chat sending data:
+  result = call 'Bot' with data's user_message
+  send back result
+
+when user calls GET /api/messages:
+  messages = get all Messages
+  send back messages
+
+page 'App':
+  on page load get messages from '/api/messages'
+  display messages as chat showing role, content
+  'Message' is a text input saved as a user_message
+  button 'Send':
+    send user_message as a new user_message to '/api/chat'
+    get messages from '/api/messages'
+    user_message is ''`;
+
+  const nonStreamingSrc = `build for web and javascript backend
+database is local memory
+
+create a Messages table:
+  role, required
+  content, required
+
+agent 'Bot' receives message:
+  can use: some_tool
+  response = ask claude 'Help: ' with message
+  send back response
+
+define function some_tool(x):
+  return x
+
+when user calls POST /api/chat sending data:
+  result = call 'Bot' with data's user_message
+  send back result
+
+when user calls GET /api/messages:
+  messages = get all Messages
+  send back messages
+
+page 'App':
+  on page load get messages from '/api/messages'
+  display messages as chat showing role, content
+  'Message' is a text input saved as a user_message
+  button 'Send':
+    send user_message as a new user_message to '/api/chat'
+    get messages from '/api/messages'
+    user_message is ''`;
+
+  // Phase 1: Backend streaming endpoint tests
+  it('T1: streaming agent endpoint emits SSE headers', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.serverJS).toContain("'Content-Type': 'text/event-stream'");
+  });
+
+  it('T2: streaming agent endpoint iterates generator', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.serverJS).toContain('for await');
+    expect(r.serverJS).toContain('_chunk');
+  });
+
+  it('T3: streaming agent endpoint accumulates _fullResponse', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.serverJS).toContain('_fullResponse');
+  });
+
+  it('T4: streaming agent endpoint ends with res.end', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.serverJS).toContain('[DONE]');
+    expect(r.serverJS).toContain('res.end()');
+  });
+
+  it('T5: non-streaming agent uses await + res.json (no regression)', () => {
+    const r = compileProgram(nonStreamingSrc);
+    expect(r.serverJS).not.toContain("'Content-Type': 'text/event-stream'");
+    expect(r.serverJS).toContain('res.json(');
+  });
+
+  it('T6: streaming agent diagram shows [streaming] tag', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.serverJS).toContain('[streaming]');
+  });
+
+  // Phase 2: _chatSendStream utility tests
+  it('T7: UTILITY_FUNCTIONS includes _chatSendStream', () => {
+    const util = UTILITY_FUNCTIONS.find(u => u.name === '_chatSendStream');
+    expect(util).toBeDefined();
+    expect(util.code).toContain('function _chatSendStream');
+  });
+
+  it('T8: _chatSendStream reads response body stream', () => {
+    const util = UTILITY_FUNCTIONS.find(u => u.name === '_chatSendStream');
+    expect(util.code).toContain('getReader');
+  });
+
+  it('T9: _chatSendStream parses SSE format', () => {
+    const util = UTILITY_FUNCTIONS.find(u => u.name === '_chatSendStream');
+    expect(util.code).toContain("data: ");
+    expect(util.code).toContain('[DONE]');
+  });
+
+  it('T10: _chatSendStream renders final markdown', () => {
+    const util = UTILITY_FUNCTIONS.find(u => u.name === '_chatSendStream');
+    expect(util.code).toContain('_chatMd(');
+  });
+
+  it('T11: _chatSendStream has same signature as _chatSend', () => {
+    const chatSend = UTILITY_FUNCTIONS.find(u => u.name === '_chatSend');
+    const chatSendStream = UTILITY_FUNCTIONS.find(u => u.name === '_chatSendStream');
+    const sig1 = chatSend.code.match(/function \w+\(([^)]+)\)/)[1];
+    const sig2 = chatSendStream.code.match(/function \w+\(([^)]+)\)/)[1];
+    expect(sig1).toBe(sig2);
+  });
+
+  // Phase 3: Chat wiring tests
+  it('T12: chat with streaming agent uses _chatSendStream', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.javascript).toContain('_chatSendStream(');
+  });
+
+  it('T13: chat with non-streaming agent uses _chatSend', () => {
+    const r = compileProgram(nonStreamingSrc);
+    expect(r.javascript).toContain('_chatSend(');
+    expect(r.javascript).not.toContain('_chatSendStream(');
+  });
+
+  it('T14: streaming chat includes _chatSendStream utility', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.html).toContain('function _chatSendStream(');
+  });
+
+  it('T15: streaming chat includes _chatMd utility', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.html).toContain('function _chatMd(');
+  });
+
+  // Phase 4: Integration tests
+  it('T16: full streaming chat app compiles with 0 errors', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('T17: streaming backend has SSE headers', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.serverJS).toContain('text/event-stream');
+  });
+
+  it('T18: streaming frontend has _chatSendStream', () => {
+    const r = compileProgram(streamingSrc);
+    expect(r.html).toContain('_chatSendStream');
+  });
+
+  it('T19: store-ops (tool-using) still uses _chatSend', async () => {
+    const fs = await import('fs');
+    const src = fs.readFileSync('apps/store-ops/main.clear', 'utf8');
+    const r = compileProgram(src);
+    expect(r.javascript).toContain('_chatSend(');
+    expect(r.javascript).not.toContain('_chatSendStream(');
+    expect(r.serverJS).not.toContain('text/event-stream');
+  });
+});
+
 run();
 
