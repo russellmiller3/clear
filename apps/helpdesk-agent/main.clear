@@ -1,20 +1,29 @@
 /*
-Helpdesk Agent -- AI support bot with tools, RAG, memory, and guardrails
+Helpdesk Agent — AI support bot with tools, RAG, memory, and guardrails
 
-DATAFLOW:
-POST /api/ask
-+----------+  question   +------------------+  ask ai  +-------+
-|  Client  | ---------> |  Helpdesk Agent  | -------> | Claude |
-+----------+            |  [tools, RAG,    | <------- |        |
-                        |   memory, guard] |          +-------+
-                        +------------------+
+  ┌──────────┐  POST /api/ask   ┌──────────────┐  ask claude  ┌─────────┐
+  │ Browser  │ ───────────────► │   Helpdesk   │ ───────────► │  Claude │
+  │ (page)   │ ◄─────────────── │    Agent     │ ◄─────────── │   API   │
+  └──────────┘    response      └──────┬───────┘              └─────────┘
+                                       │
+                                  tools │ RAG    memory    guardrails
+                                       │
+                          ┌─────────────┼─────────────┐
+                          ▼             ▼             ▼
+                    ┌──────────┐  ┌──────────┐  block: delete
+                    │ Products │  │ Tickets  │  drop, truncate
+                    │  (RAG)   │  │ (create) │
+                    └──────────┘  └──────────┘
 */
+
+# JUMP TO: Database | Backend | CRUD | Search | Tools | Agent | Seed Data | Frontend
+
 build for javascript backend
 database is local memory
 allow signup and login
 log every request
 
-# === DATABASE ===
+# Database
 
 create a Products table:
   name, required
@@ -27,7 +36,9 @@ create a Tickets table:
   customer_email
   created_at (timestamp), auto
 
-# === CRUD ===
+# Backend
+
+## CRUD
 
 when user sends data to /api/products:
   requires login
@@ -67,13 +78,13 @@ when user deletes ticket at /api/tickets/:id:
   delete the Ticket with this id
   send back 'deleted' with success message
 
-# === SEARCH ===
+## Search
 
 when user requests data from /api/products/search:
   results = search Products for incoming's q
   send back results
 
-# === AGENT TOOLS ===
+## Tools
 
 define function lookup_product(query):
   results = search Products for query
@@ -86,7 +97,7 @@ define function create_ticket(title, email_address):
   created_ticket = save new_ticket as new Ticket
   return created_ticket
 
-# === AGENT ===
+## Agent
 
 agent 'Helpdesk' receives question:
   can use: lookup_product, create_ticket
@@ -101,7 +112,7 @@ when user sends data to /api/ask:
   result = call 'Helpdesk' with data's question
   send back result
 
-# === SEED ===
+## Seed Data
 
 when user sends data to /api/seed:
   create p1:
@@ -131,7 +142,7 @@ when user sends data to /api/seed:
   save p5 as new Product
   send back 'Seeded 5 products' with success message
 
-# === FRONTEND ===
+# Frontend
 
 page 'Helpdesk':
   heading 'Product Support Chat'

@@ -1,23 +1,33 @@
-# CRM Pro -- companies, contacts, deals, pipeline tracking
-# ┌──────────────────────────────────────────────────┐
-# │  Pipeline: $142,300 total  |  18 deals           │
-# ├──────────────────────────────────────────────────┤
-# │  Companies (cards)   │  Contacts (table+search)  │
-# │  ┌──────┐ ┌──────┐  │  [Search________]          │
-# │  │ Acme │ │Globex│  │  Name | Email | Company    │
-# │  └──────┘ └──────┘  │                            │
-# ├──────────────────────────────────────────────────┤
-# │  Deals (table): Title | Value | Stage | Contact  │
-# └──────────────────────────────────────────────────┘
-#
-# DATAFLOW:
-# Frontend --> POST /api/companies, /api/contacts, /api/deals --> DB
-# Frontend --> GET /api/search/contacts?q=... --> filtered contacts
-# Frontend --> GET /api/deals/total --> sum of deal values
+/*
+CRM Pro — sales pipeline with companies, contacts, and deal tracking
+
+  ┌──────────┐                     ┌──────────┐
+  │ Browser  │ ── CRUD ──────────► │  Server  │
+  │ (page)   │ ◄── JSON ────────── │ (Express)│
+  └──────────┘                     └─────┬────┘
+       │                                 │
+       │ search, aggregates              │ CRUD + relationships
+       │                                 │
+       │                           ┌─────▼──────┐
+       │                           │ Companies  │──┐ has many
+       │                           └────────────┘  │
+       │                           ┌────────────┐  │
+       │                           │  Contacts  │◄─┘ belongs to
+       │                           └─────┬──────┘──┐ has many
+       │                           ┌─────▼──────┐  │
+       │                           │   Deals    │◄─┘ belongs to
+       │                           └────────────┘
+       │                                 │
+       └── GET /deals/total ◄── sum(value)
+*/
+
+# JUMP TO: Database | Backend | Seed Data | Companies | Contacts | Deals | Search | Frontend
 
 build for web and javascript backend
 
 theme 'midnight'
+
+# Database
 
 database is local memory
 
@@ -40,11 +50,16 @@ create a Deals table:
   stage, default 'lead'
   contact belongs to Contacts
 
+# Backend
+
+## Middleware
+
 allow signup and login
 allow cross-origin requests
 log every request
 
-# Seed
+## Seed Data
+
 when user sends data to /api/seed:
   create co1:
     name is 'Acme Corp'
@@ -110,7 +125,8 @@ when user sends data to /api/seed:
   save d5 as new Deal
   send back 'seeded' with success message
 
-# Companies CRUD
+## Companies CRUD
+
 when user requests data from /api/companies:
   all_companies = get all Companies
   send back all_companies
@@ -129,7 +145,8 @@ when user deletes company at /api/companies/:id:
   delete the Company with this id
   send back 'deleted' with success message
 
-# Contacts CRUD
+## Contacts CRUD
+
 when user requests data from /api/contacts:
   all_contacts = get all Contacts
   send back all_contacts
@@ -149,7 +166,8 @@ when user deletes contact at /api/contacts/:id:
   delete the Contact with this id
   send back 'deleted' with success message
 
-# Deals CRUD
+## Deals CRUD
+
 when user requests data from /api/deals:
   all_deals = get all Deals
   send back all_deals
@@ -169,19 +187,20 @@ when user deletes deal at /api/deals/:id:
   delete the Deal with this id
   send back 'deleted' with success message
 
-# Search contacts
+## Search + Aggregates
+
 when user requests data from /api/search/contacts:
   search_term = incoming's q
   results = search Contacts for search_term
   send back results
 
-# Aggregate
 when user requests data from /api/deals/total:
   all_deals = get all Deals
   total = sum of value in all_deals
   send back total
 
 # Frontend
+
 page 'CRM Pro' at '/':
 
   on page load:

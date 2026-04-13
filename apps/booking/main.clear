@@ -1,16 +1,25 @@
-# DATAFLOW:
-# ┌──────────┐  POST /api/rooms      ┌──────────┐  save   ┌────────┐
-# │ Frontend │  POST /api/bookings   │ Backend  │ ──────> │  DB    │
-# │  (page)  │ ───────────────────> │ (server) │         │(memory)│
-# │          │ <─────────────────── │          │ <────── │        │
-# └──────────┘  GET /api/rooms       └──────────┘  query  └────────┘
-#      │         GET /api/bookings        │
-#      │  page load --> GET --> display   │  DELETE requires login
-#      │  form submit --> POST --> refresh│  GET /api/rooms/:id/bookings
+/*
+Booking — room reservation system with multi-step workflow
+
+  ┌──────────┐   GET/POST/DELETE   ┌──────────┐   CRUD    ┌─────────┐
+  │ Browser  │ ─────────────────►  │  Server  │ ────────► │  Rooms  │
+  │ (page)   │ ◄─────────────────  │ (Express)│           └─────────┘
+  └──────────┘    JSON + HTML      │          │   CRUD    ┌──────────┐
+       │                           │          │ ────────► │ Bookings │
+       │ select room ──► pick      └──────────┘           └──────────┘
+       │ date/time ──► book             │                      │
+       │                           Validation             belongs to
+       │                           Auth (JWT)             Rooms
+       │                           Search
+       └── workflow: room ► date ► time ► confirm
+*/
+
+# JUMP TO: Database | Backend | Seed Data | Endpoints | Frontend
 
 build for web and javascript backend
 
 # Database
+
 database is local memory
 
 create a Rooms table:
@@ -28,9 +37,14 @@ create a Bookings table:
   room belongs to Rooms
 
 # Backend
+
+## Middleware
+
 allow cross-origin requests
 allow signup and login
 log every request
+
+## Seed Data
 
 when user sends data to /api/seed:
   create r1:
@@ -73,6 +87,8 @@ when user sends data to /api/seed:
     room_id = 3
   save b4 as new Booking
   send back 'seeded' with success message
+
+## Endpoints
 
 when user requests data from /api/rooms:
   all_rooms = get all Rooms
@@ -117,6 +133,7 @@ when user requests data from /api/bookings/search:
   send back results
 
 # Frontend
+
 page 'Room Booking' at '/':
 
   on page load:

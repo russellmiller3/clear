@@ -1,18 +1,24 @@
+/*
+Live Chat — real-time messaging with WebSocket broadcast
+
+  ┌──────────┐   POST/GET/DELETE   ┌──────────┐   CRUD    ┌──────────┐
+  │ Browser  │ ─────────────────►  │  Server  │ ────────► │ Messages │
+  │ (page)   │ ◄─────────────────  │ (Express)│ ◄──────── │ (table)  │
+  └──────────┘                     └─────┬────┘           └──────────┘
+       ▲                                 │
+       │         WebSocket 'chat'        │
+       └─────────── broadcast ◄──────────┘
+                  to all clients
+
+  Auth (JWT) — signup + login, mutations require login
+*/
+
+# JUMP TO: Database | Backend | Endpoints | WebSocket | Frontend
+
 build for web and javascript backend
 
-# Live Chat -- real-time messaging with WebSockets
-#
-# DATAFLOW:
-# ┌──────────┐    POST /api/messages     ┌──────────┐    save    ┌────────┐
-# │ Frontend │ ───────────────────────> │ Backend  │ ────────> │   DB   │
-# │  (form)  │ <─────────────────────── │ (server) │ <──────── │(memory)│
-# └──────────┘    GET /api/messages     └──────────┘   query   └────────┘
-#      │                                     │
-#      │  on page load --> GET --> table      │  WS 'chat' channel
-#      │  button click --> POST --> refresh   │  broadcast to all clients
-#      │  WebSocket --> live updates          │  DELETE requires login
-
 # Database
+
 database is local memory
 create a Messages table:
   sender, required
@@ -21,9 +27,14 @@ create a Messages table:
   created_at, auto
 
 # Backend
+
+## Middleware
+
 allow server to accept requests from frontend
 allow signup and login
 log every request
+
+## Endpoints
 
 when user requests data from /api/messages:
   all_messages = get all Messages
@@ -43,11 +54,13 @@ when user deletes message at /api/messages/:id:
   delete the Message with this id
   send back 'deleted' with success message
 
-# WebSocket -- broadcast every incoming message to all clients
+## WebSocket
+
 subscribe to 'chat':
   broadcast to all message
 
 # Frontend
+
 page 'Live Chat' at '/':
   on page load get messages from '/api/messages'
 

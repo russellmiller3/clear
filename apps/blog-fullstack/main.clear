@@ -1,13 +1,31 @@
-# Blog — authors, categories, full CRUD, search
-# DATAFLOW:
-# ┌──────────┐  GET/POST /api/posts   ┌──────────┐   save    ┌────────┐
-# │ Frontend │ ─────────────────────> │ Backend  │ ────────> │   DB   │
-# │ (cards)  │ <───────────────────── │ (server) │ <──────── │(memory)│
-# └──────────┘  search, seed, delete  └──────────┘   query   └────────┘
+/*
+Blog Fullstack — content publishing with authors, categories, and search
+
+  ┌──────────┐   GET/POST/DELETE   ┌──────────┐
+  │ Browser  │ ─────────────────►  │  Server  │
+  │ (blog)   │ ◄─────────────────  │ (Express)│
+  └──────────┘    JSON + HTML      └─────┬────┘
+                                         │
+                                    ┌────▼─────┐
+                                    │ Authors  │──┐ has many
+                                    └──────────┘  │
+                                    ┌──────────┐  │  ┌────────────┐
+                                    │  Posts   │◄─┘  │ Categories │
+                                    │          │◄────┘ has many
+                                    └──────────┘
+                                         │
+                                    Auth (JWT)
+                                    Search (keyword)
+                                    Seed (demo data)
+*/
+
+# JUMP TO: Database | Backend | Endpoints | Seed Data | Frontend
+
 build for web and javascript backend
 theme 'ivory'
 
-# ── Database ──────────────────────────────────────────────────────────────────
+# Database
+
 database is local memory
 
 create an Authors table:
@@ -28,10 +46,15 @@ create a Posts table:
   author belongs to Authors
   category belongs to Categories
 
-# ── Backend ───────────────────────────────────────────────────────────────────
+# Backend
+
+## Middleware
+
 allow cross-origin requests
 allow signup and login
 log every request
+
+## Endpoints
 
 when user requests data from /api/authors:
   all_authors = get all Authors
@@ -66,6 +89,8 @@ when user deletes post at /api/posts/:id:
 when user requests data from /api/search:
   results = search Posts for incoming's q
   send back results
+
+## Seed Data
 
 when user sends data to /api/seed:
   create a1:
@@ -111,7 +136,8 @@ when user sends data to /api/seed:
   save p3 as new Post
   send back 'seeded'
 
-# ── Frontend ──────────────────────────────────────────────────────────────────
+# Frontend
+
 page 'Blog' at '/':
   posts = []
   query = ''

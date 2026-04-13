@@ -1,7 +1,24 @@
-# Todo App — categories, CRUD, search, has-many
+/*
+Todo Fullstack — CRUD task manager with categories, search, and auth
+
+  ┌──────────┐   GET/POST/DELETE   ┌──────────┐   CRUD    ┌────────────┐
+  │ Browser  │ ─────────────────►  │  Server  │ ────────► │ Categories │
+  │ (page)   │ ◄─────────────────  │ (Express)│           └────────────┘
+  └──────────┘    JSON + HTML      │          │   CRUD    ┌────────────┐
+                                   │          │ ────────► │   Todos    │
+                                   └──────────┘           └────────────┘
+                                        │
+                                   Auth (JWT)
+                                   Validation
+                                   Search (keyword)
+*/
+
+# JUMP TO: Database | Backend | Endpoints | Seed Data | Frontend
 
 build for web and javascript backend
 database is local memory
+
+# Database
 
 create a Categories table:
   name, required
@@ -13,9 +30,15 @@ create a Todos table:
   created_at_date, auto
   category belongs to Categories
 
+# Backend
+
+## Middleware
+
 allow cross-origin requests
 allow signup and login
 log every request
+
+## Endpoints
 
 when user requests data from /api/todos:
   all_todos = get all Todos
@@ -45,6 +68,8 @@ when user requests data from /api/categories:
 when user requests data from /api/search:
   results = search Todos for incoming's q
   send back results
+
+## Seed Data
 
 when user sends data to /api/seed:
   create c1:
@@ -78,6 +103,8 @@ when user sends data to /api/seed:
     category is c2's id
   save t5 as new Todo
   send back 'seeded' with success message
+
+# Frontend
 
 page 'Todo App' at '/':
   on page load:
