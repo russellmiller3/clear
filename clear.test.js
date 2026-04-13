@@ -7,7 +7,7 @@
 import { describe, it, expect, run } from './lib/testUtils.js';
 import { tokenizeLine, TokenType } from './tokenizer.js';
 import { parse, NodeType } from './parser.js';
-import { compile, compileNode, exprToCode } from './compiler.js';
+import { compile, compileNode, exprToCode, UTILITY_FUNCTIONS } from './compiler.js';
 import { validate } from './validator.js';
 import { compileProgram, SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './index.js';
 
@@ -21165,6 +21165,232 @@ agent 'Bot' receives data:
     expect(r.errors).toHaveLength(0);
     // Single context should compile to _askAI("Help", data) — no multi-context merge
     expect(r.javascript).toContain('_askAI("Help", data)');
+  });
+});
+
+// =============================================================================
+// DISPLAY AS CHAT — UTILITY FUNCTIONS (Phase 1)
+// =============================================================================
+describe('display as chat - utility functions', () => {
+  const findUtil = (name) => UTILITY_FUNCTIONS.find(u => u.name === name);
+
+  it('T1: UTILITY_FUNCTIONS includes _chatMdInline', () => {
+    const util = findUtil('_chatMdInline');
+    expect(util).toBeDefined();
+    expect(util.code).toContain('function _chatMdInline');
+  });
+
+  it('T2: UTILITY_FUNCTIONS includes _chatMd', () => {
+    const util = findUtil('_chatMd');
+    expect(util).toBeDefined();
+    expect(util.code).toContain('function _chatMd');
+  });
+
+  it('T3: UTILITY_FUNCTIONS includes _chatRender', () => {
+    const util = findUtil('_chatRender');
+    expect(util).toBeDefined();
+    expect(util.code).toContain('function _chatRender');
+  });
+
+  it('T4: _chatMdInline renders **bold** as <strong>', () => {
+    const util = findUtil('_chatMdInline');
+    expect(util.code).toContain('<strong>$1</strong>');
+  });
+
+  it('T5: _chatMdInline renders *italic* as <em>', () => {
+    const util = findUtil('_chatMdInline');
+    expect(util.code).toContain('<em>$1</em>');
+  });
+
+  it('T6: _chatMdInline renders `code` as <code>', () => {
+    const util = findUtil('_chatMdInline');
+    expect(util.code).toContain('<code>$1</code>');
+  });
+
+  it('T7: _chatMdInline escapes HTML entities', () => {
+    const util = findUtil('_chatMdInline');
+    expect(util.code).toContain("replace(/&/g,'&amp;')");
+    expect(util.code).toContain("replace(/</g,'&lt;')");
+  });
+
+  it('T8: _chatMd renders fenced code blocks', () => {
+    const util = findUtil('_chatMd');
+    // The regex for fenced code extraction uses backticks and produces <pre> blocks
+    expect(util.code).toContain('codeRe');
+    expect(util.code).toContain('<pre');
+  });
+
+  it('T9: _chatMdBlock renders headings', () => {
+    const util = findUtil('_chatMdBlock');
+    expect(util).toBeDefined();
+    expect(util.code).toContain('/^#{1,3} (.+)/');
+  });
+
+  it('T10: _chatRender shows empty placeholder', () => {
+    const util = findUtil('_chatRender');
+    expect(util.code).toContain('No messages yet');
+  });
+
+  it('T11: UTILITY_FUNCTIONS includes _chatSend', () => {
+    const util = findUtil('_chatSend');
+    expect(util).toBeDefined();
+    expect(util.code).toContain('function _chatSend');
+    expect(util.code).toContain('fetch(url');
+  });
+
+  it('T12: UTILITY_FUNCTIONS includes _chatClear', () => {
+    const util = findUtil('_chatClear');
+    expect(util).toBeDefined();
+    expect(util.code).toContain('function _chatClear');
+    expect(util.code).toContain("method: 'DELETE'");
+  });
+});
+
+describe('display as chat - HTML scaffold', () => {
+  const src = `build for web
+page 'App':
+  on page load get messages from '/api/messages'
+  display messages as chat showing role, content`;
+  const result = compileProgram(src);
+
+  it('T13: emits clear-chat-wrap container', () => {
+    expect(result.html).toContain('clear-chat-wrap');
+  });
+
+  it('T14: emits textarea with _input suffix', () => {
+    expect(result.html).toContain('_input');
+    expect(result.html).toContain('textarea');
+  });
+
+  it('T15: emits Send button with _send suffix', () => {
+    expect(result.html).toContain('_send');
+    expect(result.html).toContain('clear-chat-send-btn');
+  });
+
+  it('T16: emits messages container with _msgs suffix', () => {
+    expect(result.html).toContain('_msgs');
+    expect(result.html).toContain('clear-chat-msgs');
+  });
+
+  it('T17: emits typing indicator with _typing suffix', () => {
+    expect(result.html).toContain('_typing');
+    expect(result.html).toContain('clear-chat-typing');
+    expect(result.html).toContain('clear-typing-dot');
+  });
+
+  it('T18: emits New button with _new suffix', () => {
+    expect(result.html).toContain('_new');
+    expect(result.html).toContain('clear-chat-new');
+  });
+
+  it('T19: emits scroll-to-bottom button with _scroll suffix', () => {
+    expect(result.html).toContain('_scroll');
+    expect(result.html).toContain('clear-chat-scroll');
+  });
+});
+
+describe('display as chat - CSS', () => {
+  const src = `build for web
+page 'App':
+  on page load get messages from '/api/messages'
+  display messages as chat showing role, content`;
+  const result = compileProgram(src);
+
+  it('T20: emits chat CSS with clear-chat classes', () => {
+    expect(result.html).toContain('.clear-chat-wrap');
+    expect(result.html).toContain('.clear-chat-msg');
+  });
+
+  it('T21: chat CSS uses DaisyUI v5 variable names (--color-*)', () => {
+    expect(result.html).toContain('--color-primary');
+    expect(result.html).toContain('--color-base-content');
+  });
+
+  it('T22: chat CSS includes typing dot animation', () => {
+    expect(result.html).toContain('@keyframes _clearDot');
+    expect(result.html).toContain('clear-typing-dot');
+  });
+});
+
+describe('display as chat - reactive wiring', () => {
+  const src = `build for web
+page 'App':
+  on page load get messages from '/api/messages'
+  display messages as chat showing role, content`;
+  const result = compileProgram(src);
+  const js = result.javascript;
+
+  it('T23: _recompute calls _chatRender', () => {
+    expect(js).toContain('_chatRender(');
+  });
+
+  it('T24: HTML includes tree-shaken chat utility functions', () => {
+    expect(result.html).toContain('function _chatRender(');
+    expect(result.html).toContain('function _chatMd(');
+    expect(result.html).toContain('function _chatMdInline(');
+  });
+
+  it('T25: chat textarea has Enter-to-send keydown listener', () => {
+    expect(js).toContain("e.key === 'Enter'");
+    expect(js).toContain('!e.shiftKey');
+  });
+
+  it('T26: chat New button has click listener calling _chatClear', () => {
+    expect(js).toContain('_chatClear(');
+  });
+
+  it('T27: chat scroll button has visibility toggle', () => {
+    expect(js).toContain('_scroll');
+    expect(js).toContain('scrollHeight');
+  });
+});
+
+describe('display as chat - input/button absorption', () => {
+  const chatWithControls = `build for web
+page 'Chat':
+  on page load get messages from '/api/messages'
+  display messages as chat showing role, content
+  'Type your message...' is a text input saved as user_message
+  button 'Send':
+    send user_message to '/api/chat'
+    get messages from '/api/messages'
+    user_message is ''`;
+  const result = compileProgram(chatWithControls);
+  const html = result.html;
+  const js = result.javascript;
+
+  it('T28: display-as-chat followed by input+button suppresses standalone input HTML', () => {
+    // The absorbed text input should NOT appear as a standalone fieldset/input element
+    expect(html).not.toContain('input_user_message');
+  });
+
+  it('T29: display-as-chat followed by input+button suppresses standalone button HTML', () => {
+    // The absorbed button should NOT appear as a standalone <button> with btn_Send id
+    expect(html).not.toContain('btn_Send');
+    expect(html).not.toContain('id="btn_send"');
+  });
+
+  it('T30: chat Send button executes absorbed actions via _chatSend', () => {
+    expect(js).toContain('_chatSend(');
+    expect(js).toContain('/api/chat');
+    expect(js).toContain('/api/messages');
+  });
+
+  it('T31: absorbed input does not get standalone event listener', () => {
+    // No standalone input listener for user_message — the chat component handles it
+    expect(js).not.toContain("getElementById('input_user_message')");
+  });
+
+  it('T32: non-chat displays still emit standalone input+button normally', () => {
+    const nonChatSrc = `build for web
+page 'App':
+  display total as dollars
+  'Amount' is a number input saved as amount
+  button 'Add':
+    send amount to '/api/add'`;
+    const r = compileProgram(nonChatSrc);
+    expect(r.html).toContain('input_amount');
+    expect(r.html).toContain('btn_Add');
   });
 });
 

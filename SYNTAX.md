@@ -431,6 +431,36 @@ The compiler auto-detects field roles by name:
 
 Renders as a responsive 3-column grid with hover lift effect.
 
+## Display as Chat
+
+```clear
+display messages as chat showing role, content
+```
+
+Renders messages as a chat interface with:
+- User/assistant message bubbles
+- Full markdown rendering in assistant messages (code blocks, tables, lists, headings)
+- Built-in textarea and Send button
+- New button to clear chat history
+- Scroll-to-bottom button
+- Typing indicator (animated dots)
+- Enter to send, Shift+Enter for newline
+
+**Input absorption:** When `display as chat` is immediately followed by a text input and Send button, the compiler folds them into the chat component's built-in controls:
+
+```clear
+display messages as chat showing role, content
+'Type your message...' is a text input saved as user_message
+button 'Send':
+  send user_message to '/api/chat'
+  get messages from '/api/messages'
+  user_message is ''
+```
+
+This compiles to a single chat component — no duplicate controls.
+
+**The `showing` clause** maps fields: first field is the role field, second is the content field. Default: `role, content`.
+
 ## Reactive Input Handlers
 
 ```clear

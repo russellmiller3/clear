@@ -106,7 +106,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 |-----------|--------|-------------|
 | `PAGE` | `page 'Title' at '/route':` | `<title>` + hash router |
 | `ASK_FOR` | `'Label' is a text input that saves to var` | `<input>` with label |
-| `DISPLAY` | `display x as dollars called 'Label'` / `display x as table showing a, b with delete` | `<output>` or `<table>` with action buttons |
+| `DISPLAY` | `display x as dollars called 'Label'` / `display x as table showing a, b with delete` / `display x as chat showing role, content` | `<output>` or `<table>` with action buttons, or chat bubble component |
 | `CHART` | `chart 'Title' as line showing data` / `chart 'Status' as pie showing data by field` | ECharts `<div>` with auto-configured option |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |
 | `SECTION` | `section 'Name' with style card:` | `<div>` with CSS class |
@@ -345,6 +345,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | `sending post_data` | `receiving post_data` | User perspective canonical |
 | `saved as a todo` | `saves to todo` | With optional article |
 | `display X showing col1, col2` | `display X as table` | Column whitelist |
+| `display X as chat showing role, content` | Chat bubble UI | Full chat component: header, messages, typing indicator, scroll-to-bottom, textarea + Send button. Uses `_chatRender`, `_chatMd`, `_chatSend`, `_chatClear`. DaisyUI `.clear-chat-*` classes. Absorbs following text input + Send button into built-in UI. `showing` maps fields to role/content (defaults: `role, content`). Reactive: `_recompute()` calls `_chatRender()`. |
 | `send X as a new Y to URL` | `send X to URL` | Decorative clause ignored |
 | `'Hello, {name}!'` | `'Hello, ' + name + '!'` | String interpolation |
 

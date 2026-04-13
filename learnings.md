@@ -28,6 +28,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 17: Pareto 20 + IDE Chat v2](#session-17-pareto-20--ide-chat-v2-2026-04-10) | Context array checklist is MANDATORY for new presets, historyKeymap extraction for undo, Array.isArray guard for image+text messages, SVG sanitization strips scripts |
 | [Session 18: ECharts Analytics Dashboard + Chart Syntax Upgrade](#session-18-echarts-analytics-dashboard--chart-syntax-upgrade-2026-04-10) | overflow-hidden collapses flex children, flex-col vs space-y-6 for scrollable content, ECharts init needs visible container, chart groupBy for all types, type-first chart syntax, removing `area` synonym from section, metric_card trend detection |
 | [Session 19: Tests, Charts, Blog, Images](#session-19-tests-charts-blog-images-2026-04-10) | Component test fixes (4 distinct bugs), `photo`/`picture` synonym collisions, image element `ui` object shape, seed auto-dedup at compiler level, `db.findAll()` not `db.getAll()`, chart subtitle/stacked modifiers |
+| [Standard Chat Compilation Target](#standard-chat-compilation-target-2026-04-12) | Tree-shaker only scans bodyLines not HTML, DaisyUI v5 uses `--color-*` not `--p`/`--b1`, utility backtick strings for multi-line UTILITY_FUNCTIONS, input absorption requires same-nesting-level siblings |
 | [Session 19b: Display as Cards](#session-19b-display-as-cards-2026-04-10) | `author` field must match before `name`/`title` in heuristics, `ui.tag = 'cards'` is third option, smart field detection by column name |
 | [Session 19c: Component Stress Test](#session-19c-component-stress-test-2026-04-10) | Component names collide with content types, reserved name validator in `parseComponentDef()`, 8 edge case patterns all passing |
 | [Session 20: GP Language Features](#session-20-general-purpose-language-features-2026-04-10) | `of`→`in` canonical, `using`→`with`, `returns`→`responds_with`, `exists in` is compound token `key_exists`, `parsePrimary` has no errors array, `run()` exits immediately, params are `{name,type}` objects, TRY_HANDLE uses `handlers` array, typed handler body indent math, Edit tool fails on large files with template literals |
@@ -822,3 +823,28 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **`.cm-content` matched both the editor and the compiled view (two CodeMirror instances).** Playwright crashed with "strict mode violation: resolved to 2 elements."
 - **Fix:** Use `#editor-mount .cm-content` to scope to the editor's CodeMirror.
 - **Lesson:** In multi-pane IDEs with multiple CodeMirror instances, always scope selectors to the specific pane container. Never use bare `.cm-*` selectors.
+
+## Standard Chat Compilation Target (2026-04-12)
+
+### Tree-Shaker Only Scans bodyLines, Not HTML
+- **Bug:** Utility functions called from `onclick` attributes in the HTML scaffold were never included in compiled output. The tree-shaker at `_getUsedUtilities()` scans `compiledJS + routerJS` — it never sees HTML.
+- **Fix:** All utility calls must go in the reactive JS bodyLines (event listeners via `addEventListener`), not as inline `onclick` in HTML.
+- **Lesson:** When adding new utility functions, verify the call site is in bodyLines. HTML `onclick` is invisible to tree-shaking.
+
+### DaisyUI v5 Uses --color-* Variable Names
+- **Bug:** Plan used DaisyUI v4 variable names (`--p`, `--pc`, `--b1`, `--b2`, `--bc`). These resolve to nothing in v5.
+- **Fix:** Use `--color-primary`, `--color-primary-content`, `--color-base-100`, `--color-base-200`, `--color-base-content`.
+- **Lesson:** Check the compiler's own theme definitions (line 9289+) for correct variable names. Don't assume CSS variable naming from memory.
+
+### Multi-Line UTILITY_FUNCTIONS Use Backtick Strings
+- **Pattern:** `_toast` (line 157) is the precedent for multi-line utility functions stored as backtick template literals. `_chatMd` is ~80 lines — too large for a single-line string.
+- **Lesson:** For complex utility functions, split into sub-functions with deps (e.g., `_chatMdInline` + `_chatMdBlock` + `_chatMd`). Each has its own entry in UTILITY_FUNCTIONS with declared dependencies.
+
+### Input Absorption Pattern Detection Is Fragile
+- **Constraint:** The compiler detects `DISPLAY(chat) → ASK_FOR → BUTTON(with POST)` as adjacent siblings at the same nesting level. If they're wrapped in different sections, absorption fails silently (duplicate controls appear).
+- **Lesson:** Document this limitation. The pattern works for the standard chat layout but breaks if someone nests the input in a subsection.
+
+### Porting Studio markdownToHtml: Skip SVG, Keep Code Blocks
+- **Gotcha:** Studio's `markdownToHtml()` has 3 phases of SVG handling (extraction, sanitization, rendering). These are deeply interleaved with the code block extraction regex state machine.
+- **Fix:** Don't surgically remove SVG. Instead, port only Phase 1 (fenced code block extraction) + `renderInline` + `renderText`. Skip Phases 2-3 entirely.
+- **Lesson:** When porting complex functions, identify the phases and only port the ones you need. Don't try to remove unwanted features from the middle of a state machine.

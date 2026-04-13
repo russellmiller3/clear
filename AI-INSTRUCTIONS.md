@@ -778,6 +778,29 @@ display posts as cards showing image_url, category, title, excerpt, author_name
 ```
 Auto-detects field roles by name: `image_url` → hero image, `category` → badge, `title` → heading, `excerpt` → body, `author` → meta row. Renders as responsive 3-column grid.
 
+**Display as chat (conversational UI):**
+```
+display messages as chat showing role, content
+'Type your message...' is a text input saved as user_message
+button 'Send':
+  send user_message to '/api/chat'
+  get messages from '/api/messages'
+  user_message is ''
+```
+The compiler automatically folds the input and button into the chat widget.
+You get: message bubbles, markdown rendering, typing dots, Enter-to-send,
+New button, scroll-to-bottom — all from the compiler. No manual assembly needed.
+
+The `showing` clause maps the first field to message role, the second to message
+content. These must match your Messages table fields (e.g., `role` and `content`).
+
+**When to use `display as chat`:** Any app with a conversational interface —
+agent apps, support chat, AI assistants. Pairs naturally with `agent` + `ask claude`.
+
+**Don't manually build chat UIs.** Never use `for each` loops with conditional
+role checks to render message bubbles. The compiler generates a production-quality
+chat component with proper styling, scrolling, and input handling.
+
 ## Components
 
 **Name what you're receiving:**

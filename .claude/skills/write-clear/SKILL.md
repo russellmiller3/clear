@@ -112,6 +112,18 @@ page 'My App':
   display todos as table showing task, completed
 ```
 
+### Chat Interface
+```
+on page load get messages from '/api/messages'
+display messages as chat showing role, content
+'Type your message...' is a text input saved as user_message
+button 'Send':
+  send user_message to '/api/chat'
+  get messages from '/api/messages'
+  user_message is ''
+```
+The compiler folds the input+button into the chat widget automatically. You get: message bubbles, markdown rendering, typing dots, Enter-to-send, New button, scroll-to-bottom — all built in. The `showing` clause maps role field first, content field second.
+
 ### Layout (inline modifiers)
 ```
 section 'App' full height, side by side:
