@@ -410,6 +410,85 @@ Clear's deterministic compiler, structured errors, constrained action space, and
 
 ---
 
+## Compiler Guarantees — Bug Classes Eliminated at Compile Time
+
+Every app compiled from Clear ships with these protections. Fix a pattern once, every app gets the fix on recompile.
+
+### Security (compile errors — can't ship these bugs)
+
+| Bug Class | How It's Prevented | Validator/Compiler |
+|-----------|-------------------|-------------------|
+| SQL injection | All CRUD uses parameterized queries, always | `compiler.js` — `db.insert()`, `db.query()` with param binding |
+| Auth bypass | DELETE/PUT without `requires login` = compile ERROR | `validateSecurity()` — line 742 |
+| Mass assignment | `_pick()` strips unknown fields from request body | `compiler.js` — generated `_pick()` helper |
+| CSRF | Data-mutating endpoints without auth = error | `validateOWASP()` — line 1262 |
+| Path traversal | File ops with variable paths = warning | `validateOWASP()` — line 1221 |
+| PII in errors | Passwords/tokens/keys auto-redacted from error responses | `_clearError()` — `redact()` function |
+| Sensitive field exposure | Schema has `password`/`secret`/`api_key` = warning | `validateSecurity()` — line 857 |
+| Brute force | Login/signup without rate limiting = warning | `validateSecurity()` — line 836 |
+| Overly permissive CORS | CORS enabled + no auth on endpoints = warning | `validateSecurity()` — line 876 |
+
+### Correctness (compile errors or warnings — caught before runtime)
+
+| Bug Class | How It's Prevented | Validator |
+|-----------|-------------------|-----------|
+| Undefined variables | Forward reference check with typo suggestions | `validateForwardReferences()` — line 122 |
+| Type mismatches in math | String used in arithmetic = error | `validateInferredTypes()` — line 1597 |
+| Frontend-backend URL mismatch | Fetching `/api/user` when endpoint is `/api/users` = warning | `validateFetchURLsMatchEndpoints()` — line 993 |
+| Missing responses | Endpoint without `send back` = warning | `validateEndpointResponses()` — line 964 |
+| Schema-frontend field mismatch | Sending `username` to table with `user_name` = warning | `validateFieldMismatch()` — line 1125 |
+| Duplicate endpoints | Same method+path declared twice = warning | `validateDuplicateEndpoints()` — line 894 |
+| Undefined function/agent calls | Calling undefined agent or pipeline = error | `validateCallTargets()` — line 1401 |
+| Type errors in function calls | Literal arg doesn't match typed param = error | `validateTypedCallArgs()` — line 1506 |
+| Member access on primitives | `score's name` where score is a number = warning | `validateMemberAccessTypes()` — line 1454 |
+| Agent tool mismatches | Agent references undefined function as tool = error | `validateAgentTools()` — line 1307 |
+
+### Business Logic (warnings — common mistakes caught)
+
+| Bug Class | How It's Prevented | Validator |
+|-----------|-------------------|-----------|
+| Negative balance/stock | Subtracting without guard = warning | `validateArithmetic()` — line 1055 |
+| Overbooking | Inserting without capacity check = warning | `validateCapacity()` — line 1083 |
+| Deep property chains | 4+ levels of possessive access = warning | `validateChainDepth()` — line 1715 |
+| Complex expressions | 3+ operators in one expression = warning | `validateExprComplexity()` — line 1761 |
+| Invalid classification | Classify with < 2 categories = error | `validateClassify()` — line 1808 |
+
+### Generated Code Protections (always in compiled output)
+
+| Protection | What It Does |
+|-----------|-------------|
+| Input validation | `_validate()` checks required fields, types, min/max/pattern on every POST/PUT |
+| Mass assignment filter | `_pick()` only allows schema-defined fields through |
+| PII redaction | `_clearError()` strips sensitive fields from all error responses |
+| Source maps | `_clearLineMap` maps runtime errors back to Clear line numbers |
+| XSS escaping | `_esc()` escapes user input in all display/template contexts |
+
+### Not Yet Prevented (known gaps)
+
+| Bug Class | Status | Notes |
+|-----------|--------|-------|
+| Race conditions | Not prevented | Two users updating same record simultaneously |
+| Null reference chains | Partial | Optional chaining exists but not enforced |
+| Infinite loops / runaway agents | Not prevented | No static termination analysis |
+| Cross-tenant data leakage | Not prevented | Row-level security not auto-enforced |
+| Type safety on external returns | Not prevented | `ask ai` returns untyped string |
+| Sensitive data in logs | Partial | `_clearError()` redacts, but `log every request` logs full bodies |
+| Promise rejection handling | Not prevented | Async without error handler swallows errors |
+
+### Type System Assessment
+
+**Current state:** Limited inference (literals + function params). Catches type mismatches in arithmetic and function calls.
+
+**What a full type system would add:**
+- Return type mismatches (function returns string, caller expects number)
+- Array element type consistency
+- Agent/API response shape validation
+- Optional/nullable type tracking
+
+**Recommendation:** Not needed yet for enterprise internal tools market. The 27 security/correctness guarantees matter more than type safety for CRUD apps. Revisit when targeting engineering teams who compare to TypeScript.
+
+---
+
 ## Stats
 
 | Metric | Value |
