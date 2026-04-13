@@ -178,11 +178,11 @@ when user calls POST /api/posts:
 
 **Good:**
 ```clear
-when user calls POST /api/posts receiving post_data:
+when user sends post_data to /api/posts:
   define new_post as: save post_data as record in Posts table
 ```
 
-`receiving post_data` explicitly names what the endpoint gets.
+`post_data` is named right in the verb phrase — "sends post_data to."
 Every variable on every line was either defined with `define` or received with `receiving`.
 
 ### 5b. Every Statement Needs a Subject
@@ -558,17 +558,17 @@ allow server to accept requests from frontend
 # Print every request to the console for debugging
 log every request
 
-when user calls GET /api/todos:
+when user requests data from /api/todos:
   all_todos = get all Todos
   send back all_todos
 
-when user calls POST /api/todos sending post_data:
+when user sends post_data to /api/todos:
   validate post_data:
     todo is text, required, min 1, max 500
   new_todo = save post_data as new Todo
   send back new_todo with success message
 
-when user calls DELETE /api/todos/:id:
+when user deletes todo at /api/todos/:id:
   requires auth
   delete the Todo with this id
   send back 'deleted' with success message
@@ -668,8 +668,10 @@ The reader knows what data exists, what the API does, and what the user sees.
 ### Backend & Data
 | Concept | Canonical Syntax |
 |---------|-----------------|
-| API endpoint | `when user calls GET /api/health:` |
-| Endpoint with data | `when user calls POST /api/todos sending post_data:` |
+| API endpoint (GET) | `when user requests data from /api/health:` |
+| Endpoint with data (POST) | `when user sends post_data to /api/todos:` |
+| Update endpoint (PUT) | `when user updates data at /api/todos/:id:` |
+| Delete endpoint | `when user deletes todo at /api/todos/:id:` |
 | API response | `send back all_todos` |
 | Success response | `send back new_todo with success message` |
 | Database | `database is local memory` |

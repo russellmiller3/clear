@@ -126,7 +126,7 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 
 | Node Type | Syntax | Express / FastAPI |
 |-----------|--------|-------------------|
-| `ENDPOINT` | `when user calls GET /api/path:` | `app.get('/api/path', ...)` |
+| `ENDPOINT` | `when user requests data from /api/path:` (GET), `when user sends data to /api/path:` (POST), `when user updates data at /api/path/:id:` (PUT), `when user deletes data at /api/path/:id:` (DELETE) | `app.get('/api/path', ...)` / `app.post(...)` / `app.put(...)` / `app.delete(...)`. Old syntax `when user calls METHOD /path:` still works as synonym. |
 | `RESPOND` | `send back data` / `send back data status 201` | `res.json(data)` |
 | `REQUIRES_AUTH` | `this endpoint requires auth` | JWT middleware check |
 | `REQUIRES_ROLE` | `this endpoint requires role 'admin'` | Role check middleware |

@@ -6180,29 +6180,82 @@ function parseRateLimit(tokens, line) {
 function parseEndpoint(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
+  const rawLine = (lines[startIdx].raw || '').trim().replace(/:$/, '');
+
+  // -----------------------------------------------------------------------
+  // English verb patterns — check raw line FIRST, return early if matched.
+  // These bypass the HTTP-method token logic entirely.
+  // -----------------------------------------------------------------------
+  const getMatch = rawLine.match(/^when (?:user|someone) requests data from\s+(\/\S+)/i);
+  if (getMatch) {
+    const path = getMatch[1].replace(/:$/, '');
+    const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+    if (body.length === 0) {
+      errors.push({ line, message: `The GET ${path} endpoint is empty — add code inside it. Example:\n  when user requests data from ${path}:\n    send back "OK"` });
+    }
+    return { node: endpointNode('GET', path, body, line), endIdx };
+  }
+
+  const postMatch = rawLine.match(/^when (?:user|someone) sends\s+(\w+)\s+to\s+(\/\S+)/i);
+  if (postMatch) {
+    const path = postMatch[2].replace(/:$/, '');
+    const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+    if (body.length === 0) {
+      errors.push({ line, message: `The POST ${path} endpoint is empty — add code inside it.` });
+    }
+    const node = endpointNode('POST', path, body, line);
+    node.receivingVar = postMatch[1];
+    return { node, endIdx };
+  }
+
+  const putMatch = rawLine.match(/^when (?:user|someone) updates\s+(\w+)\s+at\s+(\/\S+)/i);
+  if (putMatch) {
+    const path = putMatch[2].replace(/:$/, '');
+    const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+    if (body.length === 0) {
+      errors.push({ line, message: `The PUT ${path} endpoint is empty — add code inside it.` });
+    }
+    const node = endpointNode('PUT', path, body, line);
+    node.receivingVar = putMatch[1];
+    return { node, endIdx };
+  }
+
+  const delMatch = rawLine.match(/^when (?:user|someone) deletes\s+\w+\s+at\s+(\/\S+)/i);
+  if (delMatch) {
+    const path = delMatch[1].replace(/:$/, '');
+    const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+    if (body.length === 0) {
+      errors.push({ line, message: `The DELETE ${path} endpoint is empty — add code inside it.` });
+    }
+    return { node: endpointNode('DELETE', path, body, line), endIdx };
+  }
+
+  // -----------------------------------------------------------------------
+  // Fallback: existing HTTP-method token parsing (when user calls GET ...)
+  // -----------------------------------------------------------------------
   let pos = 1; // skip "on"
 
   // Parse HTTP method
   if (pos >= tokens.length) {
-    errors.push({ line, message: 'The endpoint needs an HTTP method — use GET, POST, PUT, or DELETE. Example: when user calls GET /api/users' });
+    errors.push({ line, message: "The endpoint needs a verb — use 'requests data from', 'sends X to', 'updates X at', or 'deletes X at'. Example: when user requests data from /api/users" });
     return { node: null, endIdx: startIdx + 1 };
   }
   const methodToken = tokens[pos];
   const method = methodToken.value.toUpperCase();
   if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-    errors.push({ line, message: `"${methodToken.value}" isn't an HTTP method Clear recognizes — use GET, POST, PUT, or DELETE. Example: when user calls GET /api/users` });
+    errors.push({ line, message: `"${methodToken.value}" isn't a verb Clear recognizes — use 'requests data from', 'sends X to', 'updates X at', or 'deletes X at'. Example: when user requests data from /api/users` });
     return { node: null, endIdx: startIdx + 1 };
   }
   pos++;
 
   // Extract path from raw source line to preserve :param syntax
   // Tokens lose the colon in :id, so we extract from raw text instead
-  const rawLine = lines[startIdx].raw || '';
-  const methodIdx = rawLine.toUpperCase().indexOf(method);
+  const rawLineFull = lines[startIdx].raw || '';
+  const methodIdx = rawLineFull.toUpperCase().indexOf(method);
   let path = '';
   if (methodIdx >= 0) {
     // Everything after the method name is the path
-    path = rawLine.slice(methodIdx + method.length).trim();
+    path = rawLineFull.slice(methodIdx + method.length).trim();
     // Remove trailing colon (block opener) if present
     if (path.endsWith(':')) path = path.slice(0, -1).trim();
   } else {

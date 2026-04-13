@@ -2104,6 +2104,142 @@ describe('endpoint declaration (canonical: when user calls)', () => {
   });
 });
 
+describe('English endpoint syntax', () => {
+  it('requests data from parses as GET', () => {
+    const ast = parse("when user requests data from /api/todos:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    const ep = ast.body[0];
+    expect(ep.type).toBe(NodeType.ENDPOINT);
+    expect(ep.method).toBe('GET');
+    expect(ep.path).toBe('/api/todos');
+  });
+
+  it('sends VAR to parses as POST with receivingVar', () => {
+    const ast = parse("when user sends new_post to /api/todos:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    const ep = ast.body[0];
+    expect(ep.method).toBe('POST');
+    expect(ep.path).toBe('/api/todos');
+    expect(ep.receivingVar).toBe('new_post');
+  });
+
+  it('updates VAR at parses as PUT with receivingVar', () => {
+    const ast = parse("when user updates post at /api/todos/:id:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    const ep = ast.body[0];
+    expect(ep.method).toBe('PUT');
+    expect(ep.path).toBe('/api/todos/:id');
+    expect(ep.receivingVar).toBe('post');
+  });
+
+  it('deletes WORD at parses as DELETE (no receivingVar)', () => {
+    const ast = parse("when user deletes post at /api/todos/:id:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    const ep = ast.body[0];
+    expect(ep.method).toBe('DELETE');
+    expect(ep.path).toBe('/api/todos/:id');
+    expect(ep.receivingVar).toBeUndefined();
+  });
+
+  it('old syntax still works (GET)', () => {
+    const ast = parse("when user calls GET /api/todos:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].method).toBe('GET');
+  });
+
+  it('old syntax still works (POST with sending)', () => {
+    const ast = parse("when user calls POST /api/todos sending d:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].method).toBe('POST');
+    expect(ast.body[0].receivingVar).toBe('d');
+  });
+
+  it('full app with new syntax compiles with 0 errors', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  task, required
+
+when user requests data from /api/todos:
+  todos = get all Todos
+  send back todos
+
+when user sends new_todo to /api/todos:
+  validate new_todo:
+    task is text, required
+  saved = save new_todo as new Todo
+  send back saved with success message
+
+when user updates todo_data at /api/todos/:id:
+  requires login
+  save todo_data to Todos
+  send back 'updated'
+
+when user deletes todo at /api/todos/:id:
+  requires login
+  delete the Todo with this id
+  send back 'deleted'
+
+page 'App':
+  heading 'Todos'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.serverJS).toContain("app.get('/api/todos'");
+    expect(r.serverJS).toContain("app.post('/api/todos'");
+    expect(r.serverJS).toContain("app.put('/api/todos/:id'");
+    expect(r.serverJS).toContain("app.delete('/api/todos/:id'");
+  });
+
+  it('path with multiple params works', () => {
+    const ast = parse("when user requests data from /api/users/:userId/posts:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].path).toBe('/api/users/:userId/posts');
+  });
+
+  it('new syntax produces correct compiled server.js', () => {
+    const src = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  task, required
+when user requests data from /api/todos:
+  todos = get all Todos
+  send back todos
+when user sends new_todo to /api/todos:
+  saved = save new_todo as new Todo
+  send back saved`;
+    const result = compileProgram(src);
+    expect(result.serverJS).toContain("app.get('/api/todos'");
+    expect(result.serverJS).toContain("app.post('/api/todos'");
+  });
+
+  it('"when someone sends" works as synonym', () => {
+    const ast = parse("when someone sends data to /api/todos:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].method).toBe('POST');
+    expect(ast.body[0].receivingVar).toBe('data');
+  });
+
+  it('"when someone requests" works as synonym', () => {
+    const ast = parse("when someone requests data from /api/items:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].method).toBe('GET');
+    expect(ast.body[0].path).toBe('/api/items');
+  });
+
+  it('"when someone updates" works as synonym', () => {
+    const ast = parse("when someone updates item at /api/items/:id:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].method).toBe('PUT');
+    expect(ast.body[0].receivingVar).toBe('item');
+  });
+
+  it('"when someone deletes" works as synonym', () => {
+    const ast = parse("when someone deletes item at /api/items/:id:\n  send back 'ok'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].method).toBe('DELETE');
+  });
+});
+
 describe('send back statement', () => {
   it('parses send back expression', () => {
     const source = `when user calls GET /api/test:\n  send back "hello"`;
