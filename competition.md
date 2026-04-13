@@ -8,12 +8,19 @@ Clear doesn't compete with AI platforms. It competes with "hire a developer" and
 
 ## Direct Competitors (same buyer)
 
-### Retool / Internal Tool Builders
-**What they are:** Low-code platforms for building internal CRUD apps.
-**Their pitch:** "Drag and drop your internal tools."
-**Our advantage:** Compiler guarantees. Retool apps have no compile-time security checks — SQL injection, auth bypass, mass assignment are all possible. Clear eliminates 27 bug classes at compile time. Also: their apps are locked to their platform. Clear compiles to standard Express — you own the output.
-**Their advantage:** Visual builder, more integrations, established enterprise sales team.
-**When we lose:** Customer wants drag-and-drop, not text-based. Customer needs 50+ third-party integrations.
+### Retool / Enterprise AppGen (CLOSEST COMPETITOR)
+**What they are:** Low-code platform + AI app generator for internal tools. Enterprise AppGen (April 2025) added "Assist" — an AI agent that builds Retool apps from natural language. Same pitch as us: "domain experts build production apps without engineers."
+**Their pitch:** "AI creativity fused with enterprise systems, data, and safeguards."
+**What they have that we don't (yet):** SSO/RBAC built in, 50+ database connectors, visual component library, Fortune 500 customer base, SOC 2 certification, established sales team, audit logging, CI/CD testing (beta).
+**Our genuine advantages:**
+1. **Readable source** — Retool generates proprietary component configs. Clear generates 40 lines of English. Compliance team reads Clear. Nobody reads Retool configs.
+2. **Structural security** — Their security is "inherited from org policies" (gaps in policies = gaps in apps). Our compiler catches SQL injection, auth bypass, mass assignment regardless of policies. Their security is organizational. Ours is structural.
+3. **No lock-in** — Retool apps only run on Retool. Clear compiles to standard Express. Customer owns the output.
+4. **Bug fix propagation** — Retool fixes per-component on their timeline. We fix per-pattern and customer controls when to recompile.
+5. **Agent guardrails** — `must not: delete Orders` as a compile-time check. Retool has no equivalent.
+6. **Price** — Retool is $10-80/user/month ($24k-192k/year for 200 people). We can massively undercut.
+**When we lose:** Customer wants visual drag-and-drop. Customer needs 50+ third-party integrations. Customer already uses Retool. Customer prioritizes speed over security guarantees.
+**Positioning:** Don't compete head-on. "Retool is great for visual builders. Clear is for teams that need to prove their apps are secure." The compliance angle is the wedge — a bank can't deploy without security review. Our compiler guarantees shortcut that review.
 
 ### Zapier / Make / n8n (for agent workflows)
 **What they are:** Workflow automation with AI steps.
@@ -67,7 +74,7 @@ Clear doesn't compete with AI platforms. It competes with "hire a developer" and
 "You can. You'll get JavaScript you can't read, with no security guarantees, that you'll need a developer to debug when it breaks at 2am. Clear gives you 40 lines of English that say exactly what the app does, with SQL injection and auth bypass impossible by construction."
 
 ### "Why not use Retool?"
-"Retool is great if you want drag-and-drop. But when the compliance team asks 'prove this app can't leak PII in error messages' — Retool can't answer that. Our compiler auto-redacts sensitive fields from every error response. It's not a setting you remember to turn on. It's built into the compiled output."
+"Retool is great if you want drag-and-drop. They even have AI generation now. But there are two differences that matter for regulated industries. First: when the compliance team asks 'prove this app can't leak PII in error messages' — Retool can't answer that. Our compiler auto-redacts sensitive fields from every error response. It's structural, not a setting. Second: Retool apps only run on Retool. If they raise prices or go down, every app is hostage. Our apps compile to standard Node.js — you own the output forever."
 
 ### "Why not use Bolt/Lovable?"
 "They generate code. We generate guaranteed-safe code. When Bolt ships an app, you're trusting the AI remembered to add auth checks. When Clear ships an app, auth bypass is a compile error — the app literally won't build without it."
