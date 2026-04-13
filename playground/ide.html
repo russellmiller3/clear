@@ -99,11 +99,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #editor-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--bd); font-size: 11px; font-weight: 600; font-family: var(--font); color: var(--tx3); text-transform: uppercase; letter-spacing: .05em; }
 #editor-header .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
 #editor-header .dot.err { background: var(--red); }
-#editor-toc { display: flex; align-items: center; gap: 2px; padding: 3px 10px; background: var(--bg); border-bottom: 1px solid var(--bd); flex-wrap: wrap; min-height: 0; }
+#editor-toc { display: flex; align-items: center; gap: 0; padding: 4px 12px; background: var(--bg); border-bottom: 1px solid var(--bd); min-height: 0; overflow-x: auto; scrollbar-width: none; }
+#editor-toc::-webkit-scrollbar { display: none; }
 #editor-toc:empty { display: none; }
-.toc-btn { background: none; border: 1px solid transparent; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-family: var(--mono); color: var(--tx3); cursor: pointer; transition: all .12s; white-space: nowrap; }
-.toc-btn:hover { background: var(--bg3); border-color: var(--bd2); color: var(--accent); }
-.toc-btn.toc-sub { font-size: 10px; opacity: .75; padding-left: 6px; }
+.toc-sep { color: var(--tx4); font-size: 9px; padding: 0 2px; flex-shrink: 0; }
+.toc-btn { background: none; border: none; padding: 3px 8px; font-size: 11px; font-family: var(--font); color: var(--tx3); cursor: pointer; transition: all .12s; white-space: nowrap; border-radius: 4px; }
+.toc-btn:hover { background: var(--bg3); color: var(--accent); }
+.toc-btn.toc-sub { font-size: 10px; color: var(--tx4); padding-left: 4px; }
 #errors { padding: 10px 14px; background: var(--bg2); border-top: 1px solid var(--bd); max-height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 11px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
 #errors:empty { display: none; }
 .error-line { color: var(--red); padding: 3px 0; cursor: pointer; transition: opacity .1s; display: flex; align-items: baseline; gap: 6px; }
@@ -791,9 +793,10 @@ function updateEditorTOC(source) {
   });
   if (!sections.length) { tocEl.innerHTML = ''; return; }
   tocEl.innerHTML =
-    `<span style="font-size:10px;color:var(--tx4);font-family:var(--font);text-transform:uppercase;letter-spacing:.06em;padding-right:4px;flex-shrink:0">Jump to</span>` +
-    sections.map(s =>
-      `<button class="toc-btn${s.level === 2 ? ' toc-sub' : ''}" onclick="jumpToLine(${s.lineNum})" title="Jump to line ${s.lineNum}: ${escHtml(s.label)}">⌗ ${escHtml(s.label)}</button>`
+    `<span style="font-size:10px;color:var(--tx4);font-family:var(--font);text-transform:uppercase;letter-spacing:.06em;padding-right:4px;flex-shrink:0">JUMP TO</span>` +
+    sections.map((s, i) =>
+      (i > 0 ? '<span class="toc-sep">·</span>' : '') +
+      `<button class="toc-btn${s.level === 2 ? ' toc-sub' : ''}" onclick="jumpToLine(${s.lineNum})" title="Line ${s.lineNum}">${escHtml(s.label)}</button>`
     ).join('');
 }
 
@@ -1704,8 +1707,7 @@ window.doRun = async function() {
       runningPort = data.port;
       // Show output — but don't switch tabs if compile animation is playing
       if (!compileAnimRunning) {
-        if (lastCompiled.html && getTableNames().length > 0) showTab('data');
-        else showTab('output');
+        showTab('compiled');
       }
     }
   } catch (err) {
