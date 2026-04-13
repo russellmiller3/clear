@@ -274,6 +274,7 @@ app.post('/api/run-tests', (req, res) => {
 
 // Store API key server-side so child processes (compiled apps with agents) can use it
 let storedApiKey = process.env.ANTHROPIC_API_KEY || '';
+let mephTodos = [];
 app.post('/api/set-key', (req, res) => {
   storedApiKey = req.body.key || '';
   res.json({ ok: true });
@@ -609,6 +610,33 @@ You can modify .clear files and requests.md. You can create new files of any all
         type: { type: 'string', enum: ['app', 'compiler'], description: 'Which tests to run' },
       },
       required: ['type'],
+    },
+  },
+  {
+    name: 'todo',
+    description: `Track your tasks as you work. Helps you plan multi-step work and show the user your progress.
+- "set": Replace your entire todo list with a new set of tasks. Each task has content (what to do), status (pending/in_progress/completed), and activeForm (present tense, e.g. "Adding validation").
+- "get": Read the current todo list.
+Rules: Only ONE task should be in_progress at a time. Mark tasks completed immediately when done. Use short, specific task descriptions.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['set', 'get'], description: 'set = replace todo list, get = read current list' },
+        todos: {
+          type: 'array',
+          description: 'The full todo list (only for action=set). Each item: { content, status, activeForm }',
+          items: {
+            type: 'object',
+            properties: {
+              content: { type: 'string', description: 'What to do (imperative form)' },
+              status: { type: 'string', enum: ['pending', 'in_progress', 'completed'], description: 'Task state' },
+              activeForm: { type: 'string', description: 'Present continuous form shown during execution' },
+            },
+            required: ['content', 'status', 'activeForm'],
+          },
+        },
+      },
+      required: ['action'],
     },
   },
   {
@@ -1026,6 +1054,18 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify(testResult);
       }
 
+      case 'todo': {
+        if (input.action === 'get') {
+          return JSON.stringify({ todos: mephTodos });
+        }
+        if (input.action === 'set') {
+          mephTodos = input.todos || [];
+          send({ type: 'todo_update', todos: mephTodos });
+          return JSON.stringify({ ok: true, count: mephTodos.length });
+        }
+        return JSON.stringify({ error: 'action must be "set" or "get"' });
+      }
+
       case 'browse_templates': {
         const TEMPLATE_DIR = join(ROOT_DIR, 'apps');
         if (input.action === 'list') {
@@ -1235,6 +1275,7 @@ app.post('/api/chat', async (req, res) => {
             case 'screenshot_output': return 'Taking screenshot';
             case 'highlight_code': return `Highlighting lines ${input.start_line || ''}–${input.end_line || ''}`;
             case 'run_tests': return `Running ${input.type} tests...`;
+            case 'todo': return input.action === 'set' ? 'Updating task list' : 'Reading task list';
             case 'source_map': return input.clear_line ? `Looking up Clear line ${input.clear_line}` : 'Getting full source map';
             case 'patch_code': return `Patching ${input.operations?.length || 0} operations`;
             case 'browse_templates': return input.action === 'read' ? `Reading template: ${input.name}` : 'Browsing templates';
@@ -1340,6 +1381,13 @@ app.post('/api/chat', async (req, res) => {
               if (err) return `[tool] ❌ run_tests — ${err.slice(0, 150)}`;
               const tr = JSON.parse(result);
               return `[tool] ✓ ${input.type} tests — ${tr.passed || 0} passed, ${tr.failed || 0} failed`;
+            }
+            case 'todo': {
+              if (input.action === 'set') {
+                const inProg = (mephTodos || []).find(t => t.status === 'in_progress');
+                return `[tool] ✓ todo — ${inProg ? inProg.activeForm : 'updated'}`;
+              }
+              return `[tool] todo — ${(mephTodos || []).length} tasks`;
             }
             case 'source_map':
               return `[tool] ✓ source_map`;
