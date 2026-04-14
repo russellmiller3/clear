@@ -11,9 +11,25 @@ import { chromium } from 'playwright';
 import { spawn } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { createHmac } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASE = 'http://localhost:3459';
+
+// Sign a JWT (HS256) without the `jsonwebtoken` package (not installed at repo
+// root — it's a dep of the compiled apps, not the e2e harness). Compiled apps
+// verify with process.env.JWT_SECRET || 'clear-test-secret', so we sign with
+// the same fallback and `requires login` endpoints accept our calls.
+function b64url(buf) { return Buffer.from(buf).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_'); }
+function signJWT(payload, secret) {
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const body = b64url(JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + 3600 }));
+  const sig = b64url(createHmac('sha256', secret).update(`${header}.${body}`).digest());
+  return `${header}.${body}.${sig}`;
+}
+const TEST_JWT_SECRET = process.env.JWT_SECRET || 'clear-test-secret';
+const TEST_AUTH_TOKEN = signJWT({ id: 1, email: 'test@e2e.com', role: 'admin' }, TEST_JWT_SECRET);
+const AUTH_HEADER = { Authorization: `Bearer ${TEST_AUTH_TOKEN}` };
 
 let passed = 0, failed = 0, total = 0;
 
@@ -43,11 +59,14 @@ async function apiGet(path) {
   return { status: r.status, data };
 }
 
-// Hit a proxied endpoint on the running app
-async function appPost(path, body) { return apiPost('/api/fetch', { method: 'POST', path, body }); }
-async function appGet(path) { return apiPost('/api/fetch', { method: 'GET', path }); }
-async function appDel(path) { return apiPost('/api/fetch', { method: 'DELETE', path }); }
-async function appPut(path, body) { return apiPost('/api/fetch', { method: 'PUT', path, body }); }
+// Hit a proxied endpoint on the running app. Authed variants send a JWT so
+// endpoints that `requires login` accept the test. The proxy forwards headers.
+async function appPost(path, body) { return apiPost('/api/fetch', { method: 'POST', path, body, headers: AUTH_HEADER }); }
+async function appGet(path) { return apiPost('/api/fetch', { method: 'GET', path, headers: AUTH_HEADER }); }
+async function appDel(path) { return apiPost('/api/fetch', { method: 'DELETE', path, headers: AUTH_HEADER }); }
+async function appPut(path, body) { return apiPost('/api/fetch', { method: 'PUT', path, body, headers: AUTH_HEADER }); }
+// Unauthed for explicit 401 assertions
+async function appDelNoAuth(path) { return apiPost('/api/fetch', { method: 'DELETE', path }); }
 
 async function stopApp() { await apiPost('/api/stop', {}); }
 
@@ -316,9 +335,9 @@ async function compileTemplate(name) {
   const { data: cats } = await appGet('/api/categories');
   assert(cats.status === 200 && Array.isArray(cats.data), 'GET /api/categories returns array');
 
-  // Delete (requires auth — should 401)
+  // Delete (requires auth — should 401 when no token sent)
   if (found?.id) {
-    const { data: del } = await appDel(`/api/todos/${found.id}`);
+    const { data: del } = await appDelNoAuth(`/api/todos/${found.id}`);
     assert(del.status === 401, 'DELETE requires login (401 without auth)');
   }
 
