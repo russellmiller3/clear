@@ -1381,7 +1381,7 @@ Write tests that read like user stories. The compiler figures out which endpoint
 
 ```clear
 test 'todo workflow':
-  can user create a new todo with title is 'Buy groceries'
+  can user create a new todo with title: 'Buy groceries'
   expect it succeeds
   can user view all todos
   expect it succeeds
@@ -1393,23 +1393,23 @@ test 'validation works':
   expect it is rejected
 
 test 'auth required':
-  does deleting a todo require login
+  deleting a todo should require login
 
 test 'display shows data':
   does the todos list show 'Buy groceries'
 
 test 'agent smoke test':
-  can user ask agent 'Support' with message is 'hello'
+  can user ask agent 'Support' with message: 'hello'
   expect it succeeds
 ```
 
 **Intent verbs:** `create` (POST), `view` (GET), `delete` (DELETE), `update` (PUT).
 
-**With fields:** `can user create a todo with title is 'Buy milk' and priority is 'high'`
+**With fields:** `can user create a todo with title: 'Buy milk' and priority: 'high'` (colon or `is` both work)
 
 **Without fields:** `can user create a todo without a title` — sends request missing the field, expects rejection.
 
-**Auth checks:** `does deleting/creating/updating/viewing a todo require login` — sends unauthenticated request, asserts 401.
+**Auth checks:** `deleting/creating/updating/viewing a todo should require login` — sends unauthenticated request, asserts 401. (`should` is canonical, `does` also works.)
 
 **Display checks:** `does the todos list show 'Buy groceries'` — fetches list and checks response body contains text.
 
@@ -2359,7 +2359,7 @@ Instead of writing raw HTTP calls, describe what you want to test in English:
 
 ```clear
 test 'todo CRUD':
-  can user create a new todo with title is 'Buy groceries'
+  can user create a new todo with title: 'Buy groceries'
   expect it succeeds
   can user view all todos
   expect it succeeds
@@ -2371,10 +2371,10 @@ test 'validation':
   expect it is rejected
 
 test 'security':
-  does deleting a todo require login
+  deleting a todo should require login
 
 test 'agent works':
-  can user ask agent 'Support' with message is 'hello'
+  can user ask agent 'Support' with message: 'hello'
   expect it succeeds
 ```
 
@@ -2383,14 +2383,14 @@ test 'agent works':
 ```clear
 # The first body line becomes the test name automatically
 test:
-  can user create a new todo with title is 'Buy groceries'
+  can user create a new todo with title: 'Buy groceries'
 
 test:
-  does deleting a todo require login
+  deleting a todo should require login
 
 # Multi-step — first line is the name, all lines execute
 test:
-  can user create a new todo with title is 'Buy groceries'
+  can user create a new todo with title: 'Buy groceries'
   does the todos list show 'Buy groceries'
 ```
 

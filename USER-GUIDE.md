@@ -1580,7 +1580,7 @@ Instead of writing raw HTTP calls, describe what you want to test in English:
 
 ```clear
 test 'todo workflow':
-  can user create a new todo with title is 'Buy groceries'
+  can user create a new todo with title: 'Buy groceries'
   expect it succeeds
   can user view all todos
   expect it succeeds
@@ -1592,10 +1592,10 @@ test 'validation catches missing fields':
   expect it is rejected
 
 test 'security':
-  does deleting a todo require login
+  deleting a todo should require login
 
 test 'agent smoke test':
-  can user ask agent 'Helpdesk' with message is 'hello'
+  can user ask agent 'Helpdesk' with message: 'hello'
   expect it succeeds
 
 test 'display works':
@@ -2660,7 +2660,7 @@ that read like user stories:
 
 ```clear
 test 'todo workflow':
-  can user create a new todo with title is 'Buy groceries'
+  can user create a new todo with title: 'Buy groceries'
   expect it succeeds
   can user view all todos
   expect it succeeds
@@ -2672,10 +2672,10 @@ test 'validation':
   expect it is rejected
 
 test 'security':
-  does deleting a todo require login
+  deleting a todo should require login
 
 test 'agent works':
-  can user ask agent 'Support' with message is 'hello'
+  can user ask agent 'Support' with message: 'hello'
   expect it succeeds
 ```
 

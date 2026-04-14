@@ -335,15 +335,15 @@ Workflow step types (inside workflow body):
 | `EXPECT_RESPONSE` | `expect response has field` | Field exists in response body |
 | `EXPECT_RESPONSE` | `expect variable has 'text'` | Variable contains substring |
 | `MOCK_AI` | `mock claude responding:` + fields | `_askAI` override with mock |
-| `TEST_INTENT` | `can user create a todo with title is 'Buy milk'` | HTTP POST + success assertion |
+| `TEST_INTENT` | `can user create a todo with title: 'Buy milk'` | HTTP POST + success assertion |
 | `TEST_INTENT` | `can user view all todos` | HTTP GET + success assertion |
 | `TEST_INTENT` | `can user delete a todo` | HTTP DELETE + success assertion |
 | `TEST_INTENT` | `can user create a todo without a title` | HTTP POST without field + expects rejection |
-| `TEST_INTENT` | `does deleting a todo require login` | HTTP DELETE without auth + 401 assertion |
+| `TEST_INTENT` | `deleting a todo should require login` | HTTP DELETE without auth + 401 assertion |
 | `TEST_INTENT` | `does the todos list show 'Buy groceries'` | GET + body contains assertion |
-| `TEST_INTENT` | `can user ask agent 'Support' with message is 'hello'` | POST to agent endpoint + success assertion |
+| `TEST_INTENT` | `can user ask agent 'Support' with message: 'hello'` | POST to agent endpoint + success assertion |
 
-`TEST_INTENT` compiles to HTTP calls based on intent: `create` → POST, `view` → GET, `delete` → DELETE, `update` → PUT. The compiler auto-discovers endpoints and tables from the AST. `without a field` sets `expectFailure: true`. `does X require login` compiles to an unauthenticated request asserting 401.
+`TEST_INTENT` compiles to HTTP calls based on intent: `create` → POST, `view` → GET, `delete` → DELETE, `update` → PUT. The compiler auto-discovers endpoints and tables from the AST. `without a field` sets `expectFailure: true`. `X should require login` compiles to an unauthenticated request asserting 401.
 
 Auto-generated tests use English names: "Creating a new todo succeeds" (not "POST /api/todos returns 201"), "Deleting a todo requires login" (not "DELETE /api/todos/:id without auth returns 401"), "User can create a todo and see it in the list" (CRUD flow), "The Helpdesk agent responds to messages" (agent smoke test).
 

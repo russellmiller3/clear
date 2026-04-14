@@ -1546,42 +1546,45 @@ Multiple mocks are consumed in order (first AI call gets first mock, second gets
 ### Writing Intent-Based Tests (Preferred)
 
 Prefer intent-based tests over raw HTTP calls. They read like user stories and the compiler
-figures out which endpoints to hit:
+figures out which endpoints to hit.
+
+**Use nameless `test:` blocks** — the first body line becomes the test name automatically. No redundancy.
 
 ```clear
-test 'todo workflow':
-  can user create a new todo with title is 'Buy groceries'
-  expect it succeeds
-  can user view all todos
-  expect it succeeds
-  can user delete a todo
-  expect it succeeds
+# Nameless tests — body IS the name (preferred)
+test:
+  can user create a new todo with title: 'Buy groceries'
 
-test 'validation catches missing fields':
+test:
   can user create a todo without a title
-  expect it is rejected
 
-test 'auth protects deletion':
-  does deleting a todo require login
+test:
+  deleting a todo should require login
 
-test 'agent responds':
-  can user ask agent 'Support' with message is 'hello'
-  expect it succeeds
+test:
+  can user ask agent 'Support' with message: 'hello'
+
+# Named test — for multi-step workflows
+test 'full todo workflow':
+  can user create a new todo with title: 'Buy groceries'
+  can user view all todos
+  deleting a todo should require login
 ```
 
-**When to use `can user` vs `call GET` vs `expect`:**
-- `can user create/view/delete/update` — intent-based, reads like a user story. Use this for CRUD tests.
-- `call GET /api/path` — raw HTTP call. Use when testing specific endpoints or edge cases.
-- `expect it succeeds/fails/requires login` — semantic assertion after an intent. Use after `can user`.
-- `expect response status is 200` — exact status code. Use after `call GET/POST`.
+**Syntax rules:**
+- `can user create/view/delete/update` — intent-based CRUD tests. Compiler resolves to the right endpoint.
+- `X should require login` — auth guard test. `should` is canonical, `does` also works.
+- `with field: 'value'` — colon works as field separator (same as `field is 'value'`).
+- `without a field` — validation test (expects rejection).
+- `expect it succeeds/fails/requires login` — semantic assertions after intent.
+- `call GET /api/path` — raw HTTP fallback for edge cases.
 
 **Best practices:**
-- Test names should read like user stories: "todo workflow", "validation catches missing fields"
-- Group related assertions in one test block
-- Use `without a field` to test validation: `can user create a todo without a title`
-- Use `does X require login` to test auth guards
-- Auto-generated tests already cover basic CRUD — write intent tests for workflows and edge cases
-- Auto-generated tests use English names: "Creating a new todo succeeds", "Deleting a todo requires login", "User can create a todo and see it in the list" (CRUD flow), "The Helpdesk agent responds to messages" (agent smoke test). Never use API paths or HTTP methods in test names.
+- Use nameless `test:` blocks — no need to repeat the assertion as a name
+- Use `should` not `does`: `deleting a todo should require login` reads better
+- Use colon for fields: `with title: 'Buy groceries'` reads better than `with title is 'Buy groceries'`
+- Auto-generated tests already cover basic CRUD, validation, auth, security, agents, and CRUD flows — only write custom tests for business logic beyond basic CRUD
+- Never use API paths or HTTP methods in test names
 
 ### Agent Tables (Required Infrastructure)
 
