@@ -1002,7 +1002,108 @@ when user calls POST /api/orders sending order_data:
   send back new_order with success message
 ```
 
-Guards check a condition and return an error if it fails.
+Guards check a business rule and return a 400 error if it fails. The message
+after `or` is what the user sees. **Write helpful messages** — not "Invalid
+request" but "Upgrade to Pro to place orders." The user needs to know what
+to do.
+
+### Rate Limiting
+
+Block brute force attacks on auth endpoints and prevent expensive endpoints
+from being abused:
+
+```clear
+when user calls POST /auth/login sending credentials:
+  rate limit 10 per minute
+  ...
+
+when user calls POST /api/ask-agent sending question:
+  requires login
+  rate limit 20 per hour   # agents are expensive — cap usage
+  ...
+```
+
+### Agent Guardrails
+
+Agents are the most dangerous thing in your app — they can call tools, read
+data, and follow instructions from users. Lock them down:
+
+```clear
+agent 'Support Agent' receives question:
+  can use: look_up_order, create_ticket
+
+  # Policies — compile-time checks that the agent's tools can't violate
+  must not: delete Orders
+  must not: modify pricing
+  must not: refund more than 500 dollars
+
+  # Prompt injection defense — regex filter on tool inputs
+  block arguments matching 'drop|truncate|delete from'
+
+  ask claude question with Products, FAQs
+  send back response
+```
+
+- **`must not:`** — checked at compile time. If the agent has a tool that
+  could delete Orders, and you wrote `must not: delete Orders`, the compiler
+  refuses to build.
+- **`block arguments matching 'regex'`** — checked at runtime. Every tool
+  call's arguments are run through the regex. If any match, the call is
+  blocked. This catches prompt injection where a user tries to trick the
+  agent into running dangerous SQL.
+
+### App-Level Policies
+
+Set once at the top of the file, applies to the whole app. Use these for
+production apps that need compliance guarantees:
+
+```clear
+build for web and javascript backend
+
+# App-level policies (before any endpoints)
+block schema changes               # No ALTER TABLE ever
+block deletes without filter       # Compiler errors on bulk DELETE
+protect tables: Users, Orders      # Whitelist — only named endpoints can access
+require role 'admin' for deletes   # Global role gate on DELETE endpoints
+no mass emails                     # Block send email with 2+ recipients
+```
+
+These become compile-time checks. If you write an endpoint that violates any
+of them, the compiler refuses to build.
+
+### The Five Guard Types (summary)
+
+Clear has five different kinds of guards. Each one protects something
+different. **Use them together, not instead of each other.**
+
+| What you're protecting | Use this |
+|------------------------|----------|
+| Endpoint from anonymous users | `requires login` |
+| Endpoint from wrong role | `requires role 'admin'` |
+| Business rule (stock, plan, etc.) | `guard X or 'message'` |
+| Input shape (required fields, format) | `validate data:` + rules |
+| Agent from doing bad things | `must not:` + `block arguments matching` |
+| Whole app from dangerous patterns | App-level policies at top |
+| Endpoint from brute force | `rate limit N per minute` |
+
+A real production endpoint layers multiple guards:
+
+```clear
+when user calls POST /api/orders sending order_data:
+  requires login                                        # 1. auth
+  requires role 'customer'                              # 2. role
+  rate limit 30 per minute                              # 3. brute force
+  validate order_data:                                  # 4. input shape
+    product_id is number, required
+    quantity is number, required, min 1, max 100
+  guard user's plan is not 'free' or 'Upgrade to Pro'  # 5. business rule
+  guard product's stock > 0 or 'Out of stock'          # 5. business rule
+  new_order = save order_data as new Order
+  send back new_order with success message
+```
+
+That's six guards on one endpoint. Sounds like a lot — but each catches a
+different attack. Skip any one and your app has a hole.
 
 ---
 

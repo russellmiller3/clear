@@ -6,10 +6,17 @@ quote styles, but always write the canonical form for maximum readability.
 
 ## ASCII Diagrams First (MANDATORY — Source of Truth)
 
-**Every Clear program must start with an ASCII diagram.** No exceptions.
-The diagram is the source of truth for the app's structure. When changing
-an app's layout or logic, update the diagram FIRST, then change the code
-to match. If the code disagrees with the diagram, the diagram wins.
+**Every Clear program MUST start with an ASCII architecture diagram.** Not
+sometimes. Not for big apps. ALWAYS. A 30-line todo app gets a diagram. A
+landing page gets a diagram. If you write `build for` before you write a
+diagram, you're already wrong.
+
+**Why:** the diagram is the source of truth for the app's structure. When
+changing an app's layout or logic, update the diagram FIRST, then change the
+code to match. If the code disagrees with the diagram, the diagram wins.
+
+**The check:** before you call `compile`, scroll to the top of your file. If
+you don't see a `/* ... */` block with boxes and arrows, STOP and add one.
 
 **USE `/* */` FOR DIAGRAMS, NOT `#`.** Single-line `#` comments become TOC
 entries in the Studio IDE. Architecture diagrams pollute the TOC with
@@ -263,26 +270,69 @@ field they'll be stored in.** Use `title` not `subject`, `email_address` not
 `customer_email`, `amount` not `total`. The reader should instantly see which
 side is the source and which is the destination.
 
-## Name Intermediates After What They Are
+## Naming (MANDATORY — variables and functions must be self-documenting)
 
-**No dummy variable names.** `saved`, `result`, `tmp`, `data`, `res` tell the reader
-nothing. Name intermediates after what they contain:
+**Every variable and function name must describe what it IS, not just satisfy
+the parser.** A non-programmer should be able to read a line and understand
+what's happening without checking what the variable means.
 
-**Bad — what is "saved"?**
-```
-saved = save data as new Ticket
-send back saved with success message
+### Banned names
+
+| Banned | Why |
+|--------|-----|
+| `x`, `y`, `n`, `i`, `a`, `b`, `r`, `s` | Single letters tell the reader nothing |
+| `result`, `res`, `data`, `tmp`, `temp`, `val`, `value`, `obj`, `item` | Generic placeholders that work for anything = describe nothing |
+| `foo`, `bar`, `baz`, `thing`, `stuff` | Programmer joke names. Not for production. |
+| `saved`, `loaded`, `processed`, `done` | Past-tense verbs that don't say what was saved/loaded/processed |
+
+### Required pattern: name = what it contains
+
+| Bad | Good |
+|-----|------|
+| `x = 5` | `total_items = 5` |
+| `r = save data as new Order` | `new_order = save data as new Order` |
+| `t = current time` | `started_at = current time` |
+| `n = count of users` | `user_count = count of users` |
+| `data = get all Todos` | `all_todos = get all Todos` |
+| `result = ask claude '...'` | `customer_summary = ask claude '...'` |
+| `define function calc(a, b):` | `define function calculate_tax(price, rate):` |
+
+### Function arguments: describe the value, not where it goes
+
+When a function argument will be stored in a field with the same name, name
+the argument differently so the reader sees source vs destination:
+
+```clear
+# BAD — which side is the argument and which is the field?
+define function create_ticket(subject, customer_email):
+  create new_ticket:
+    subject is subject
+    customer_email is customer_email
+
+# GOOD — argument names describe what's coming in
+define function create_ticket(title, email_address):
+  create new_ticket:
+    subject is title
+    customer_email is email_address
 ```
 
-**Good — it's a new ticket:**
-```
+### When you actually need an intermediate
+
+You need the variable when the save adds fields (like `id` or `created_at`)
+that you want to send back. `send back data` returns the input. `send back
+new_ticket` returns the full record with the auto-generated id.
+
+```clear
 new_ticket = save data as new Ticket
-send back new_ticket with success message
+send back new_ticket with success message    # includes id, created_at
 ```
 
-You need the intermediate when the save adds fields (like `id` or `created_at`)
-that you want to send back. If you `send back data`, you get the input without
-the auto-generated id. If you `send back new_ticket`, you get the full record.
+### The phone test
+
+Read the line out loud over the phone. If the listener can't picture what's
+happening, the names are wrong. "Save data as new ticket and send back saved"
+is unintelligible. "Save the form data as a new ticket and send back the new
+ticket" works because the names ARE the description.
 
 Visual hint for the human reader: `=` lines are formulas to check,
 `is` lines are values to note. The compiler doesn't care.
@@ -762,13 +812,154 @@ when user deletes user at /api/users/:id:
 **`broadcast to all message`** inside a WebSocket handler sends the value to all connected clients.
 **`block arguments matching 'pattern'`** in an agent adds a regex guard on tool inputs — rejects matching arguments before execution.
 
-## Guards
+## Guards (All Five Kinds)
 
-**Use custom messages that tell the user what happened:**
+Clear has **five different kinds of guards**. Each one protects a different thing. Use them together — they're complementary, not alternatives.
+
+### 1. `requires login` — Who can call this endpoint
+
+**Purpose:** Block anonymous access. The user must have a valid JWT.
+**Scope:** Per endpoint.
+**Use on:** Every endpoint that modifies data (POST/PUT/DELETE) and any endpoint that returns user-specific data.
+
+```clear
+when user sends data to /api/todos:
+  requires login                    # <-- blocks unauthenticated requests with 401
+  save data as new Todo
+  send back data with success message
+
+when user deletes todo at /api/todos/:id:
+  requires login                    # <-- MANDATORY — compiler errors if missing
+  delete the Todo with this id
+  send back 'deleted'
 ```
-guard product's stock is greater than 0 or 'Out of stock'
-guard user's plan is not 'free' or 'Upgrade to Pro to use this feature'
+
+**When you forget it on a DELETE or PUT endpoint, the compiler refuses to build.** That's not a warning — it's a compile error. Security is not optional.
+
+### 2. `requires role 'name'` — Which logged-in users can call this
+
+**Purpose:** Beyond login, restrict to specific user roles (admin, editor, etc.).
+**Scope:** Per endpoint.
+**Use on:** Admin endpoints, moderator actions, anything role-gated.
+
+```clear
+when user sends data to /api/admin/users:
+  requires role 'admin'             # <-- must be logged in AND have role='admin'
+  all_users = get all Users
+  send back all_users
 ```
+
+Pair with `define role 'editor':` to declare custom roles with specific permissions.
+
+### 3. `guard <condition> or 'message'` — Business rule checks
+
+**Purpose:** Enforce business logic that isn't auth or validation. Like "can't buy out-of-stock items" or "can't cancel a shipped order."
+**Scope:** Per endpoint (inside the handler).
+**Use on:** Any precondition that depends on data state.
+
+```clear
+when user sends order_data to /api/orders:
+  requires login
+  guard product's stock is greater than 0 or 'Out of stock'
+  guard order_data's total is less than 10000 or 'Orders over $10k need manual approval'
+  guard user's plan is not 'free' or 'Upgrade to Pro to place orders'
+  save order_data as new Order
+```
+
+**Write custom messages that tell the user exactly what's wrong.** Don't say "Invalid request" — say "Upgrade to Pro to use this feature." The message is what the user sees on a 400 response.
+
+### 4. `validate <var>:` + field rules — Input shape checking
+
+**Purpose:** Reject malformed or malicious input before it hits the database. Catches empty required fields, bad email formats, numbers out of range, etc.
+**Scope:** Per endpoint (inside the handler, before save).
+**Use on:** Every POST/PUT endpoint that accepts user data.
+
+```clear
+when user sends todo_data to /api/todos:
+  requires login
+  validate todo_data:
+    title is text, required, min 1, max 500
+    category is text, required, oneOf ['Work', 'Personal', 'Shopping']
+    priority is number, min 1, max 5
+    email is text, required, matches email
+    phone is text, matches phone
+  save todo_data as new Todo
+```
+
+**Validation rules:**
+- `required` — field must be present and non-empty
+- `min N` / `max N` — length for text, value for numbers
+- `matches email|phone|url|time` — format check
+- `oneOf [...]` — enum-like whitelist
+
+### 5. Agent Guardrails — What an AI agent can and can't do
+
+**Purpose:** Restrict what an agent can do, block prompt injection, enforce policies the LLM might ignore.
+**Scope:** Per agent.
+**Use on:** Every agent. Especially ones with tools or guardrail-sensitive domains.
+
+```clear
+agent 'Support Agent' receives question:
+  can use: look_up_order, create_ticket, send_email
+  knows about: Products, FAQs
+
+  # What the agent must not do (compile-time + runtime checks)
+  must not: delete Orders
+  must not: modify pricing
+  must not: refund without manager approval
+
+  # Prompt injection defense — regex filter on tool inputs
+  block arguments matching 'drop|truncate|delete from'
+
+  remember conversation context
+  ask claude question with Products, FAQs
+  send back response
+```
+
+- **`must not:`** — compile-time check that the agent's tools can't do the forbidden thing
+- **`block arguments matching 'regex'`** — runtime regex filter on every tool call argument
+
+### 6. App-Level Policies — Global safety rules
+
+**Purpose:** Enforce rules across the whole app. Set once at the top, applies everywhere.
+**Scope:** Whole app.
+**Use on:** Production apps with compliance needs.
+
+```clear
+# At the top of the file, after build for
+block schema changes              # No ALTER TABLE in generated code
+block deletes without filter      # Compiler errors on DELETE without WHERE
+protect tables: Users, Orders     # Whitelist — no access except named endpoints
+block prompt injection            # Sanitize all user input before passing to AI
+require role 'admin' for deletes  # Global role gate on destructive ops
+no mass emails                    # Block send email to [...] with 2+ recipients
+block file types: '.env', '.pem'  # Reject dangerous file uploads
+code freeze active                # Block all writes (maintenance mode)
+```
+
+### Rate Limiting (orthogonal to guards)
+
+```clear
+when user sends login_data to /auth/login:
+  rate limit 10 per minute        # Block brute force
+  ...
+```
+
+Not technically a guard (it doesn't reject based on data), but serves the same purpose — stops abuse. Use on auth endpoints, expensive endpoints, agent endpoints.
+
+### Quick Reference
+
+| What you're protecting | Use this |
+|------------------------|----------|
+| Endpoint from anonymous users | `requires login` |
+| Endpoint from wrong role | `requires role 'admin'` |
+| Business rule (stock, plan, etc.) | `guard X or 'message'` |
+| Input shape (missing/malformed fields) | `validate data:` + rules |
+| Agent from doing bad things | `must not:` + `block arguments matching` |
+| Whole app from dangerous patterns | App-level policies at top of file |
+| Endpoint from brute force | `rate limit N per minute` |
+
+**Layer them.** A real endpoint has `requires login` + `validate` + `guard` + the app has `protect tables:`. Security isn't one check — it's defense in depth.
 
 ## Database Declaration
 
