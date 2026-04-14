@@ -1533,6 +1533,38 @@ async function runTests(type) {
 
 window.runTests = runTests;
 
+// Auto-run tests after server starts. If any fail, switch to Tests tab.
+async function autoRunTests() {
+  testRunning.app = true;
+  try {
+    const body = { source: editor.state.doc.toString() };
+    const resp = await fetch('/api/run-tests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    testResults.app = data;
+    try { localStorage.setItem('clear_test_results', JSON.stringify(testResults)); } catch {}
+    // If any tests failed, switch to Tests tab so user sees them
+    if (data.failed > 0) {
+      showTab('tests');
+      setStatus('err', data.failed + ' test' + (data.failed === 1 ? '' : 's') + ' failed');
+    } else if (data.passed > 0) {
+      // Update status to show test count but stay on current tab
+      const currentStatus = document.getElementById('status').textContent;
+      if (currentStatus.startsWith('Running')) {
+        setStatus('ok', currentStatus + ' · ' + data.passed + ' tests passed');
+      }
+    }
+  } catch (err) {
+    testResults.app = { ok: false, error: err.message || 'Test run failed', duration: 0 };
+  } finally {
+    testRunning.app = false;
+    if (activeTab === 'tests') showTests();
+  }
+}
+
 // ==========================================================================
 // SOURCE PARSER — extract tables, endpoints, agents from Clear source
 // ==========================================================================
@@ -1853,6 +1885,8 @@ window.doRun = async function() {
       if (!compileAnimRunning) {
         showTab('compiled');
       }
+      // Auto-run tests after server starts — switch to Tests tab if any fail
+      autoRunTests();
     }
   } catch (err) {
     appendTerminal('<span class="term-err">' + escHtml(err.message) + '</span>\n');
