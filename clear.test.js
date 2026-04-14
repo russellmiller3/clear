@@ -21738,5 +21738,79 @@ describe('Database Backend Detection', () => {
   });
 });
 
+// =============================================================================
+// INTENT-BASED TEST SYNTAX (CFG)
+// =============================================================================
+
+describe('Intent-based test syntax', () => {
+  const baseSrc = `build for web and javascript backend
+database is local memory
+create a Todos table:
+  title, required
+when user sends data to /api/todos:
+  requires login
+  validate data:
+    title is text, required
+  save data as new Todo
+  send back data with success message
+when user requests data from /api/todos:
+  all_todos = get all Todos
+  send back all_todos
+when user deletes todo at /api/todos/:id:
+  requires login
+  delete the Todo with this id
+  send back 'deleted' with success message
+page 'App' at '/':
+  heading 'Hello'
+`;
+
+  it('parses "can user create a new todo with title is ..."', () => {
+    const src = baseSrc + "\ntest 'create':\n  can user create a new todo with title is 'Test'\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('POST');
+    expect(r.tests).toContain('/api/todos');
+    expect(r.tests).toContain('Test');
+  });
+
+  it('parses "can user create a todo without a title" (expects failure)', () => {
+    const src = baseSrc + "\ntest 'reject':\n  can user create a todo without a title\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('reject incomplete data');
+  });
+
+  it('parses "does deleting a todo require login"', () => {
+    const src = baseSrc + "\ntest 'auth':\n  does deleting a todo require login\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('401');
+  });
+
+  it('parses "does the todos list show value"', () => {
+    const src = baseSrc + "\ntest 'display':\n  does the todos list show 'Buy milk'\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('Buy milk');
+  });
+
+  it('parses "can user view all todos"', () => {
+    const src = baseSrc + "\ntest 'view':\n  can user view all todos\n";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('/api/todos');
+    expect(r.tests).toContain('View should return 200');
+  });
+
+  it('auto-generated test names are English readable', () => {
+    const r = compileProgram(baseSrc);
+    expect(r.tests).toContain('Creating a new todo succeeds');
+    expect(r.tests).toContain('Viewing all todos returns data');
+    expect(r.tests).toContain('Deleting a todo requires login');
+    expect(r.tests).not.toContain('POST /api/todos');
+    expect(r.tests).not.toContain('GET /api/todos returns');
+  });
+});
+
 run();
 

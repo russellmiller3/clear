@@ -227,6 +227,7 @@ export const NodeType = Object.freeze({
   EXPECT: 'expect',
   HTTP_TEST_CALL: 'http_test_call',
   EXPECT_RESPONSE: 'expect_response',
+  TEST_INTENT: 'test_intent',  // Intent-based test: "can user create a todo", "does it require login"
   STYLE_DEF: 'style_def',
   THEME: 'theme',
 
@@ -1184,9 +1185,59 @@ const CANONICAL_DISPATCH = new Map([
     return ctx.i + 1;
   }],
   ['expect', (ctx) => {
-    // Check for "expect response status/body" — HTTP test assertion
+    // --- English-readable test assertion CFG ---
+    // "expect it succeeds"         → status 200 or 201
+    // "expect it fails"            → status >= 400
+    // "expect it requires login"   → status 401
+    // "expect it is rejected"      → status 400
+    // "expect it is not found"     → status 404
+    // "expect response has X"      → body has field X
+    // "expect response contains X" → body includes string X
+    // "expect X has Y"             → variable X contains item matching Y
+    if (ctx.tokens.length >= 3 && ctx.tokens[1].value === 'it') {
+      const verb = ctx.tokens[2].value;
+      if (verb === 'succeeds' || verb === 'works') {
+        ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'status', check: 'success', value: null, field: null, line: ctx.line });
+        return ctx.i + 1;
+      }
+      if (verb === 'fails') {
+        ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'status', check: 'failure', value: null, field: null, line: ctx.line });
+        return ctx.i + 1;
+      }
+      // "expect it requires login"
+      if (verb === 'requires' && ctx.tokens.length >= 4 && ctx.tokens[3].value === 'login') {
+        ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'status', check: 'equals', value: 401, field: null, line: ctx.line });
+        return ctx.i + 1;
+      }
+      // "expect it is rejected"
+      if ((verb === 'is' || ctx.tokens[2].canonical === 'is') && ctx.tokens.length >= 4) {
+        const w = ctx.tokens[3].value;
+        if (w === 'rejected') {
+          ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'status', check: 'equals', value: 400, field: null, line: ctx.line });
+          return ctx.i + 1;
+        }
+        if (w === 'not' && ctx.tokens.length >= 5 && ctx.tokens[4].value === 'found') {
+          ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'status', check: 'equals', value: 404, field: null, line: ctx.line });
+          return ctx.i + 1;
+        }
+      }
+    }
+
+    // "expect response has X" / "expect response contains 'text'"
     if (ctx.tokens.length >= 3 && ctx.tokens[1].value === 'response') {
-      const prop = ctx.tokens[2].value; // status, body, header
+      const prop = ctx.tokens[2].value; // status, body, has, contains
+      // "expect response has field_name"
+      if (prop === 'has' && ctx.tokens.length >= 4) {
+        const field = ctx.tokens[3].type === TokenType.STRING ? ctx.tokens[3].value : ctx.tokens[3].value;
+        ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'body', check: 'has_field', value: null, field, line: ctx.line });
+        return ctx.i + 1;
+      }
+      // "expect response contains 'text'"
+      if (prop === 'contains' && ctx.tokens.length >= 4) {
+        const text = ctx.tokens[3].type === TokenType.STRING ? ctx.tokens[3].value : ctx.tokens[3].value;
+        ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'body', check: 'contains', value: text, field: null, line: ctx.line });
+        return ctx.i + 1;
+      }
       if (prop === 'status' || prop === 'body') {
         let check = 'exists', value = null, field = null;
         let pos = 3;
@@ -1206,7 +1257,7 @@ const CANONICAL_DISPATCH = new Map([
             check = 'length';
             if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) pos++;
             if (pos < ctx.tokens.length && ctx.tokens[pos].value === 'greater') {
-              pos++; // skip 'greater'
+              pos++;
               if (pos < ctx.tokens.length && ctx.tokens[pos].value === 'than') pos++;
               if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.NUMBER) value = ctx.tokens[pos].value;
             } else if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.NUMBER) {
@@ -1218,6 +1269,15 @@ const CANONICAL_DISPATCH = new Map([
         return ctx.i + 1;
       }
     }
+
+    // "expect todos has 'Buy groceries'" — variable contains matching item
+    if (ctx.tokens.length >= 4 && ctx.tokens[2].value === 'has') {
+      const varName = ctx.tokens[1].value;
+      const searchVal = ctx.tokens[3].type === TokenType.STRING ? ctx.tokens[3].value : ctx.tokens[3].value;
+      ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'variable', check: 'contains', value: searchVal, field: varName, line: ctx.line });
+      return ctx.i + 1;
+    }
+
     const parsed = parseExpect(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
@@ -2330,6 +2390,91 @@ CANONICAL_DISPATCH.set('call', (ctx) => {
   }
   ctx.body.push({ type: NodeType.HTTP_TEST_CALL, method, path, bodyFields, line: ctx.line });
   return ctx.i + 1;
+});
+
+// Intent-based test assertions:
+//   "can user create a new todo with title is 'Buy groceries'"
+//   "can user create a todo without a title"   (expects failure)
+//   "can user view all todos"
+//   "can user delete a todo"
+CANONICAL_DISPATCH.set('can', (ctx) => {
+  // "can user ACTION [a|an|the] [new] RESOURCE [with FIELDS] [without FIELD]"
+  if (ctx.tokens.length < 4) return undefined;
+  if (ctx.tokens[1].value !== 'user') return undefined;
+  const action = ctx.tokens[2].value; // create, view, delete, update
+  if (!['create', 'view', 'delete', 'update'].includes(action)) return undefined;
+  let pos = 3;
+  // skip articles: a, an, the, new
+  while (pos < ctx.tokens.length && ['a', 'an', 'the', 'new', 'all'].includes(ctx.tokens[pos].value)) pos++;
+  if (pos >= ctx.tokens.length) return undefined;
+  const resource = ctx.tokens[pos].value;
+  pos++;
+  // "with field is value, field is value" or "without field"
+  let fields = [];
+  let expectFailure = false;
+  if (pos < ctx.tokens.length && ctx.tokens[pos].value === 'without') {
+    pos++;
+    expectFailure = true; // "can user create a todo without a title" → should fail (validation)
+    if (pos < ctx.tokens.length) fields.push({ name: ctx.tokens[pos].value, value: null, missing: true });
+  } else if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
+    pos++;
+    while (pos < ctx.tokens.length) {
+      if (ctx.tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+      if (ctx.tokens[pos].canonical === 'and') { pos++; continue; }
+      const fieldName = ctx.tokens[pos].value;
+      pos++;
+      if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) {
+        pos++;
+        if (pos < ctx.tokens.length) {
+          const valExpr = parseExpression(ctx.tokens, pos, ctx.line);
+          if (!valExpr.error) {
+            fields.push({ name: fieldName, value: valExpr.node });
+            pos = valExpr.pos || pos + 1;
+          } else pos++;
+        }
+      }
+    }
+  }
+  ctx.body.push({ type: NodeType.TEST_INTENT, intent: action, resource, fields, expectFailure, line: ctx.line });
+  return ctx.i + 1;
+});
+
+// "does creating a todo require login"
+// "does the todo list show 'Buy groceries'"
+// "does deleting a todo require login"
+CANONICAL_DISPATCH.set('does', (ctx) => {
+  if (ctx.tokens.length < 4) return undefined;
+  const tokens = ctx.tokens;
+  // "does creating/deleting/updating a RESOURCE require login"
+  const action = tokens[1].value;
+  if (['creating', 'deleting', 'updating', 'viewing'].includes(action)) {
+    let pos = 2;
+    while (pos < tokens.length && ['a', 'an', 'the', 'new'].includes(tokens[pos].value)) pos++;
+    if (pos >= tokens.length) return undefined;
+    const resource = tokens[pos].value;
+    pos++;
+    if (pos < tokens.length && tokens[pos].value === 'require' && pos + 1 < tokens.length && tokens[pos + 1].value === 'login') {
+      const actionMap = { creating: 'create', deleting: 'delete', updating: 'update', viewing: 'view' };
+      ctx.body.push({ type: NodeType.TEST_INTENT, intent: 'require_login', resource, action: actionMap[action], fields: [], expectFailure: false, line: ctx.line });
+      return ctx.i + 1;
+    }
+  }
+  // "does the DISPLAY show VALUE"
+  if (tokens[1].value === 'the' && tokens.length >= 5) {
+    const display = tokens[2].value;
+    let pos = 3;
+    // skip "list", "table", "page", etc.
+    if (pos < tokens.length && ['list', 'table', 'page', 'display'].includes(tokens[pos].value)) pos++;
+    if (pos < tokens.length && tokens[pos].value === 'show') {
+      pos++;
+      if (pos < tokens.length) {
+        const val = tokens[pos].type === TokenType.STRING ? tokens[pos].value : tokens[pos].value;
+        ctx.body.push({ type: NodeType.TEST_INTENT, intent: 'shows', resource: display, value: val, fields: [], expectFailure: false, line: ctx.line });
+        return ctx.i + 1;
+      }
+    }
+  }
+  return undefined;
 });
 
 // ── Dispatch table validation (runs once at module load) ──────────────────────

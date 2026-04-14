@@ -4701,8 +4701,17 @@ ${pad}}`;
       if (node.property === 'status' && node.check === 'equals') {
         return `${pad}expect(_response.status).toBe(${node.value});`;
       }
+      if (node.property === 'status' && node.check === 'success') {
+        return `${pad}assert(_response.status >= 200 && _response.status < 300, "Expected success, got " + _response.status);`;
+      }
+      if (node.property === 'status' && node.check === 'failure') {
+        return `${pad}assert(_response.status >= 400, "Expected failure, got " + _response.status);`;
+      }
       if (node.property === 'body' && node.check === 'has_field') {
         return `${pad}expect(_responseBody).toHaveProperty(${JSON.stringify(node.field)});`;
+      }
+      if (node.property === 'body' && node.check === 'contains') {
+        return `${pad}assert(JSON.stringify(_responseBody).includes(${JSON.stringify(node.value)}), "Response should contain " + ${JSON.stringify(node.value)});`;
       }
       if (node.property === 'body' && node.check === 'length') {
         if (node.value != null) {
@@ -4710,7 +4719,114 @@ ${pad}}`;
         }
         return `${pad}expect(_responseBody).toBeTruthy();`;
       }
+      // "expect todos has 'Buy groceries'" → check variable contains value
+      if (node.property === 'variable' && node.check === 'contains') {
+        return `${pad}assert(JSON.stringify(_state?.${sanitizeName(node.field)} || _responseBody).includes(${JSON.stringify(node.value)}), "${node.field} should contain " + ${JSON.stringify(node.value)});`;
+      }
       return `${pad}expect(_response.ok).toBeTruthy();`;
+    }
+
+    case NodeType.TEST_INTENT: {
+      // Intent-based test steps: "can user create a todo", "does deleting require login"
+      // The compiler resolves resource names to endpoints using the AST context.
+      const astBody = ctx._astBody || [];
+      const endpoints = astBody.filter(n => n.type === NodeType.ENDPOINT);
+      const res = node.resource.toLowerCase();
+
+      // Find the matching endpoint by resource name in the path
+      function findEndpoint(method) {
+        return endpoints.find(ep => {
+          if (method && ep.method !== method) return false;
+          const pathParts = ep.path.split('/').filter(Boolean);
+          const last = pathParts[pathParts.length - 1].replace(/^:/, '').toLowerCase();
+          // Match singular or plural: "todo" matches "todos"
+          return last === res || last === res + 's' || last.replace(/s$/, '') === res || last.replace(/ies$/, 'y') === res;
+        });
+      }
+
+      if (node.intent === 'create') {
+        const ep = findEndpoint('POST');
+        if (!ep) return `${pad}// Could not find POST endpoint for ${node.resource}`;
+        const path = JSON.stringify(ep.path);
+        const headers = ep.body?.some(n => n.type === NodeType.REQUIRES_AUTH)
+          ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
+        if (node.expectFailure) {
+          // "can user create a todo without a title" → send incomplete data, expect 400
+          let code = `${pad}_response = await fetch(_baseUrl + ${path}, {\n`;
+          code += `${pad}  method: "POST", headers: ${headers},\n`;
+          code += `${pad}  body: JSON.stringify({})\n`;
+          code += `${pad}});\n`;
+          code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+          code += `${pad}assert(_response.status === 400, "Should reject incomplete data, got " + _response.status);`;
+          return code;
+        }
+        // Build payload from fields or validation rules
+        let payload = '{}';
+        if (node.fields.length > 0) {
+          const entries = node.fields.map(f => `${JSON.stringify(f.name)}: ${exprToCode(f.value, ctx)}`).join(', ');
+          payload = `{ ${entries} }`;
+        }
+        let code = `${pad}_response = await fetch(_baseUrl + ${path}, {\n`;
+        code += `${pad}  method: "POST", headers: ${headers},\n`;
+        code += `${pad}  body: JSON.stringify(${payload})\n`;
+        code += `${pad}});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}assert(_response.status >= 200 && _response.status < 300, "Create should succeed, got " + _response.status);`;
+        return code;
+      }
+
+      if (node.intent === 'view') {
+        const ep = findEndpoint('GET');
+        if (!ep) return `${pad}// Could not find GET endpoint for ${node.resource}`;
+        const path = JSON.stringify(ep.path);
+        const opts = ep.body?.some(n => n.type === NodeType.REQUIRES_AUTH) ? ', { headers: AUTH_HEADERS }' : '';
+        let code = `${pad}_response = await fetch(_baseUrl + ${path}${opts});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}assert(_response.status === 200, "View should return 200, got " + _response.status);`;
+        return code;
+      }
+
+      if (node.intent === 'delete') {
+        const ep = findEndpoint('DELETE');
+        if (!ep) return `${pad}// Could not find DELETE endpoint for ${node.resource}`;
+        const path = ep.path.replace(/:(\w+)/g, '1');
+        const opts = ep.body?.some(n => n.type === NodeType.REQUIRES_AUTH) ? ', { method: "DELETE", headers: AUTH_HEADERS }' : ', { method: "DELETE" }';
+        let code = `${pad}_response = await fetch(_baseUrl + "${path}"${opts});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);`;
+        return code;
+      }
+
+      if (node.intent === 'require_login') {
+        // "does creating a todo require login" → POST without auth, expect 401
+        const methodMap = { create: 'POST', delete: 'DELETE', update: 'PUT', view: 'GET' };
+        const method = methodMap[node.action] || 'POST';
+        const ep = findEndpoint(method);
+        if (!ep) return `${pad}// Could not find ${method} endpoint for ${node.resource}`;
+        const path = ep.path.replace(/:(\w+)/g, '1');
+        let code = `${pad}_response = await fetch(_baseUrl + "${path}", {\n`;
+        code += `${pad}  method: "${method}",\n`;
+        if (method === 'POST' || method === 'PUT') {
+          code += `${pad}  headers: { "Content-Type": "application/json" },\n`;
+          code += `${pad}  body: JSON.stringify({ test: true })\n`;
+        }
+        code += `${pad}});\n`;
+        code += `${pad}assert(_response.status === 401, "Should require login, got " + _response.status);`;
+        return code;
+      }
+
+      if (node.intent === 'shows') {
+        // "does the todo list show 'Buy groceries'" → GET + check response
+        const ep = findEndpoint('GET');
+        if (!ep) return `${pad}// Could not find GET endpoint for ${node.resource}`;
+        const path = JSON.stringify(ep.path);
+        const opts = ep.body?.some(n => n.type === NodeType.REQUIRES_AUTH) ? ', { headers: AUTH_HEADERS }' : '';
+        let code = `${pad}_response = await fetch(_baseUrl + ${path}${opts});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}assert(JSON.stringify(_responseBody).includes(${JSON.stringify(node.value)}), "${node.resource} should show ${node.value}");`;
+        return code;
+      }
+
+      return `${pad}// Unknown test intent: ${node.intent} ${node.resource}`;
     }
 
     // P13: Native AI streaming in endpoints
