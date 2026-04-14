@@ -1,45 +1,63 @@
-# Handoff — 2026-04-12 (SSE Streaming Shipped)
-
-## What Was Done (This Session — Two Features)
-
-### Feature 1: Standard Chat (display as chat)
-Made `display as chat` a proper compilation target with utility functions (`_chatRender`, `_chatMd`, `_chatSend`, `_chatClear`), HTML scaffold, CSS component, reactive wiring, and input+button absorption. 46 new tests.
-
-### Feature 2: SSE Streaming for Chat
-Auto-detects when a POST endpoint calls a streaming agent and transforms both sides:
-- **Backend:** POST endpoint becomes SSE — iterates the agent generator, writes `data: {"text":"..."}` events, ends with `[DONE]`
-- **Frontend:** `_chatSendStream` reads the response body stream, appends tokens to the assistant bubble in real-time, renders full markdown on completion
-
-The detection is automatic: if the agent has `stream response` (and no tools/schedule), the compiler wires streaming. Tool-using agents fall back to `_chatSend`. 19 new tests.
+# Handoff — 2026-04-13 (Shipped: Tests + Deploy + GTM)
 
 ## Current State
+- **Branch:** main (everything merged)
+- **Tests:** 1850 compiler tests, 0 failures. 164 app tests across 8 templates.
+- **Working tree:** clean after this commit
 
-- **Branch:** main (both features merged)
-- **Tests:** 1827 passing, 0 failures
-- **Store-ops:** compiles cleanly, uses `_chatSend` (tool-using agent, non-streaming)
+## What Was Done This Session (40+ commits)
 
-## Key Design Decisions
+### Product Infrastructure
+- **Studio Test Runner** — Tests tab with "Run Tests" button. Auto-runs on Run click. Switches to Tests tab on failure. Status bar shows pass/fail count.
+- **Postgres adapter** — `runtime/db-postgres.js`. Same API as SQLite. Lazy table creation. SQL injection hardened (table/column name sanitization).
+- **Railway deploy** — `clear deploy <file>`. Packages, detects db backend, deploys.
+- **Meph layout** — Chat on left. Todo tool. All "Claude" → "Meph" rebranding.
 
-- **Pre-scan at compileProgram() level** — streaming agent detection runs BEFORE any compilation, solving the ordering dependency between agent and endpoint compilation
-- **Plain text during streaming, markdown on completion** — avoids flicker from partial markdown rendering mid-stream
-- **SSE error handling** — streaming endpoints write errors as SSE events (`data: {"error":"..."}`) instead of HTTP status codes (headers already sent)
-- **Same function signature** — `_chatSendStream` has identical params to `_chatSend`, making the choice a simple conditional
+### Test Generation (the big one)
+- **English test names** — "Creating a new todo succeeds" not "POST /api/todos returns 201"
+- **CRUD flow tests** — "User can create a todo and see it in the list"
+- **Agent tests** — smoke test, auth test, guardrail test for every agent
+- **Nameless test blocks** — `test:` with body as name (zero redundancy)
+- **Intent syntax** — `can user create/view/delete/search`, `X should require login`, `should fail with error 'msg'`
+- **Colon field separator** — `with title: 'Buy groceries'`
+- **`should` canonical** — not `does`. Mid-sentence position works.
+- **`user` shorthand** — `user's id` = `req.user.id` in endpoints
+- **`search` intent** — `can user search todos`
+- **Test runner rewrite** — starts real server, installs deps, shares JWT secret
+- **Auto-test on Run** — tests run automatically, switch to Tests tab on failure
 
-## What's Next
+### Security
+- **5 P0s fixed** from red-team: SQL injection in Postgres adapter, TLS bypass, process.exit at module load
+- **27 compiler guarantees** documented in ROADMAP.md
 
-1. **GAN Frontend Verification** — both features need visual browser testing. Compile store-ops, open Chrome, screenshot chat, test Send, test streaming if possible.
+### Business
+- **Two landing pages** — business apps + agents
+- **GTM.md** — $4k/mo RPA replacement, 90-day plan
+- **competition.md** — Retool, Managed Agents, LangChain positioning
+- **PHILOSOPHY.md** — Rule 15 (compiler tests everything) + Rule 16 (smart compiler, forgetful AI)
 
-2. **Core 7 Template: live-chat** — update template #4 to showcase `display as chat` with `stream response` agent.
+### Haiku Validation
+- Ran 3 rounds of Haiku writing Clear apps against AI-INSTRUCTIONS.md
+- Each round: found mistakes → updated instructions → Haiku got better
+- Instructions now battle-tested against the dumbest viable LLM
 
-3. **Tool-using agent streaming** — currently blocked by tool loop needing full responses. Future: stream only the FINAL text response after all tool calls complete.
+## Next Steps
+
+1. **Deploy todo-fullstack to Railway** — prove the pipeline end-to-end
+2. **Record 60-second Loom demo** — for cold outreach emails
+3. **Find 3 pilot companies** — Axial network, FinServ/insurance
+4. **Fix P1 bugs** — hardcoded delete ID in tests, `can`/`does` synonym fragility
+5. **Add `as user` context switching** for multi-user tests
 
 ## Resume Prompt
 
 ```
 Read HANDOFF.md then PHILOSOPHY.md then CLAUDE.md.
 
-Two features shipped today: standard chat + SSE streaming. Next: GAN
-verify the chat UI in Chrome. Compile store-ops, run it, navigate to
-the chat page, screenshot, test Send. Then update the live-chat template
-to use display-as-chat with a streaming agent.
+Massive session shipped. 40+ commits. Test generation engine with
+English names, intent syntax, agent tests, nameless blocks. Postgres
+adapter + Railway deploy. GTM plan for $4k/mo contracts. Haiku
+validated Rule 16. 1850 compiler tests, 164 app tests, all green.
+
+Next: deploy todo-fullstack to Railway, record Loom, find pilots.
 ```

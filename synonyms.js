@@ -418,7 +418,6 @@ const SYNONYM_TABLE = Object.freeze({
   refresh: Object.freeze(['refresh', 'reload']),
   ask: Object.freeze(['ask']),
   call: Object.freeze(['call']),
-  can: Object.freeze(['can']),
   should: Object.freeze(['should', 'does']),
   search: Object.freeze(['search']),
   block_arguments: Object.freeze(['block arguments matching', 'block arguments that match']),

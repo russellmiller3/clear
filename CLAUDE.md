@@ -275,5 +275,5 @@ Narrate your work as you build — not after. Think David Attenborough watching 
 
 That's it. The compiler has no build step, no config files, no framework. `node clear.test.js` runs everything.
 
-## GAN Frontend Directly (MANDATORY)
-When working on a .clear app's frontend, always compile, run, and verify the output yourself in the browser. Navigate to the page, screenshot it, test buttons and inputs, check for errors. Never declare a frontend change "done" based on compiler tests alone — compiler tests don't catch field mismatches, broken layouts, missing data, or dead buttons. If you'd tell Russell "it should work," you didn't test it.
+## No Invisible Agent Work (MANDATORY)
+Do code changes and accuracy-sensitive doc updates directly in the main conversation where Russell can see every edit. Don't delegate these to background agents — their output is invisible and unverifiable. Background agents are fine for read-only exploration, parallel grunt work, and tasks where wrong = harmless. But anything that ships (code, docs, compiler changes) happens in-conversation.

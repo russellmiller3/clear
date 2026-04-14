@@ -1,6 +1,6 @@
 ---
 name: docs
-description: Update all documentation files to match current compiler state. Ensures intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, and ROADMAP.md all reflect what's actually implemented.
+description: Update all documentation files to match current compiler state. Narrates what was built and why it matters, then ensures intent.md, SYNTAX.md, AI-INSTRUCTIONS.md, USER-GUIDE.md, ROADMAP.md, and PHILOSOPHY.md all reflect what's actually implemented.
 user_invocable: true
 ---
 
@@ -10,7 +10,21 @@ user_invocable: true
 
 ## What This Skill Does
 
-Ensures every feature in the compiler is documented across ALL required files. The documentation rule is: **if a feature exists in the compiler but not in the docs, it doesn't exist.**
+Two things:
+1. **Narrate** — explain what was built this session and why it matters (Science Documentary Rule)
+2. **Sync** — ensure every feature in the compiler is documented across ALL doc files
+
+The documentation rule is: **if a feature exists in the compiler but not in the docs, it doesn't exist.**
+
+## Step 0: Narrate what was built
+
+Before touching any files, write a brief narrative (in chat, not in files) of:
+- What was built this session (check `git log --oneline -15`)
+- Why each piece matters for the product and the user
+- What design decisions were made and why
+- What's different now vs before this session
+
+This is the Science Documentary Rule — explain significance, not just changelog. "The compiler now generates English-readable tests for every surface of every app" not "updated generateE2ETests function."
 
 ## Step 1: Scan for undocumented features
 
@@ -27,8 +41,9 @@ Then read each doc file and identify gaps:
 2. **`SYNTAX.md`** — complete syntax reference. Every feature needs syntax + example.
 3. **`AI-INSTRUCTIONS.md`** — conventions for AI writing Clear. When to use each feature, gotchas.
 4. **`USER-GUIDE.md`** — tutorial-style coverage. Worked examples for every major feature.
-5. **`ROADMAP.md`** — completion status. New features marked as done.
-6. **`PHILOSOPHY.md`** — design rules. Update if a new principle is established (e.g., compiler-generated tests, security by default).
+5. **`ROADMAP.md`** — completion status. New features marked as done. Stats current.
+6. **`PHILOSOPHY.md`** — design rules. Update if a new principle is established.
+7. **`learnings.md`** — engineering lessons. Add if new gotchas or patterns discovered.
 
 ## Step 2: Update each file
 

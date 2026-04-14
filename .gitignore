@@ -16,3 +16,6 @@ clear-data.db-shm
 playground/.playground-build/
 test-save/
 test-save-compiled/
+.clear-test-build/
+.clear-test-runner.cjs
+.clear-test-server.cjs
