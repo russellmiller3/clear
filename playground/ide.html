@@ -160,6 +160,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .test-fail-name::before { content: '✗'; font-weight: 700; }
 .test-fail-line { font-size: 10px; color: var(--tx3); font-family: var(--font-mono, ui-monospace, monospace); margin-left: auto; opacity: 0.7; }
 .test-fail[onclick]:hover .test-fail-line { opacity: 1; color: var(--ac); }
+.test-fail-fix { margin-left: 8px; font-size: 10px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--red); background: transparent; color: var(--red); cursor: pointer; font-weight: 600; transition: all 0.1s; }
+.test-fail-fix:hover { background: var(--red); color: white; }
 .test-fail-error { padding: 2px 12px 2px 24px; font-size: 11px; color: var(--red); opacity: 0.8; background: color-mix(in oklch, var(--red) 6%, transparent); border-radius: 4px; margin: 2px 12px 4px 18px; }
 .test-summary { font-size: 11px; color: var(--tx3); }
 .test-summary .pass-count { color: var(--green); font-weight: 600; }
@@ -1572,14 +1574,18 @@ function renderTestSection(title, data, type) {
   const showAllPasses = type !== 'compiler' || passes.length <= 20;
 
   let body = '';
-  // Show failures first (always expanded). If the compiler emitted a [clear:N]
-  // source-line tag, make the row clickable — jumpToLine scrolls the editor to the
-  // offending call so the user doesn't have to hunt for it.
+  // Show failures first (always expanded). Clicking the row jumps to source;
+  // clicking "Fix with Meph" hands the error + surrounding code to Meph for an auto-fix.
   for (const r of failures) {
     const jumpAttrs = r.sourceLine
       ? ` style="cursor:pointer" onclick="jumpToTestSource(${r.sourceLine})" title="Jump to source line ${r.sourceLine}"`
       : '';
-    body += `<div class="test-fail"${jumpAttrs}><div class="test-fail-name">${escHtml(r.name)}${r.sourceLine ? ` <span class="test-fail-line">clear:${r.sourceLine} →</span>` : ''}</div>`;
+    const nameEscaped = JSON.stringify(r.name);
+    const errEscaped = JSON.stringify(r.error || '');
+    const fixBtn = r.sourceLine
+      ? `<button class="test-fail-fix" onclick="event.stopPropagation(); fixWithMeph(${nameEscaped}, ${errEscaped}, ${r.sourceLine})">Fix with Meph</button>`
+      : '';
+    body += `<div class="test-fail"${jumpAttrs}><div class="test-fail-name">${escHtml(r.name)}${r.sourceLine ? ` <span class="test-fail-line">clear:${r.sourceLine} →</span>` : ''}${fixBtn}</div>`;
     if (r.error) body += `<div class="test-fail-error">${escHtml(r.error)}</div>`;
     body += '</div>';
   }
@@ -2024,6 +2030,44 @@ function showErrors(errors, warnings) {
   });
   el.innerHTML = html;
 }
+
+// "Fix with Meph" button — hand the failure context to Meph and let him propose an edit.
+// Meph already has read_file/edit_code tools, so we just give him the exact what/where/why.
+window.fixWithMeph = async function(testName, errorMsg, sourceLine) {
+  const doc = _editor.state.doc;
+  const total = doc.lines;
+  const from = Math.max(1, sourceLine - 6);
+  const to = Math.min(total, sourceLine + 6);
+  const snippet = [];
+  for (let i = from; i <= to; i++) {
+    const ln = doc.line(i);
+    snippet.push((i === sourceLine ? '> ' : '  ') + i.toString().padStart(3) + ' | ' + ln.text);
+  }
+  const prompt = [
+    'A user test failed. Fix the bug.',
+    '',
+    'Test: ' + testName,
+    'Error: ' + errorMsg,
+    'File: main.clear, line ' + sourceLine,
+    '',
+    'Code around the failing line:',
+    '```',
+    snippet.join('\n'),
+    '```',
+    '',
+    'Read the whole file if you need more context, then make the smallest edit that fixes the failure. Re-run tests after.'
+  ].join('\n');
+  // Stuff the prompt into the chat input and submit
+  const input = document.getElementById('chat-input');
+  if (!input) return;
+  input.value = prompt;
+  // Ensure chat is visible
+  if (typeof toggleChat === 'function') {
+    const chat = document.getElementById('chat');
+    if (chat && chat.classList.contains('collapsed')) toggleChat();
+  }
+  await window.sendChat();
+};
 
 // Clicking a failed test jumps the editor to the source line the compiler tagged.
 // Flash-highlight the line so the user's eye lands on it.

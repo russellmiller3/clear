@@ -1753,20 +1753,51 @@ function generateE2ETests(body) {
     lines.push('  };');
     lines.push('}');
     lines.push('');
-    // Friendly status assertion: turns "Expected 201, got 404" into a human message that
-    // names the endpoint and carries a [clear:N] tag the Studio UI uses to jump to source.
+    // Friendly status assertion. Philosophy: no HTTP jargon — a 14-year-old reading
+    // the test failure should understand exactly what went wrong and how to fix it.
+    // Every message explains the code in plain English and suggests a concrete fix.
     lines.push('function _expectStatus(response, expected) {');
     lines.push('  const actual = response.status;');
     lines.push('  if (actual === expected) return;');
     lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
-    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "request";');
-    lines.push('  let hint = "";');
-    lines.push('  if (actual === 404) hint = " — that endpoint doesn\'t exist on the server. Check the path.";');
-    lines.push('  else if (actual === 401) hint = expected >= 400 ? "" : " — the endpoint requires auth but the test didn\'t send a token.";');
-    lines.push('  else if (actual === 400) hint = expected === 201 ? " — the server rejected the request body. Check required fields and validation rules." : "";');
-    lines.push('  else if (actual === 500) hint = " — the server threw an error. Check the app logs for the stack trace.";');
-    lines.push('  else if (actual >= 500) hint = " — the server failed. Check the app logs.";');
-    lines.push('  throw new Error(call + " returned " + actual + " but the test expected " + expected + hint + where);');
+    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "the request";');
+    lines.push('  const bodyHint = _responseBody && _responseBody.error ? " Server said: \\"" + String(_responseBody.error).slice(0, 120) + "\\"." : "";');
+    lines.push('  // Translate each status code into plain English. The hint names the problem');
+    lines.push('  // AND points at the Clear code that needs to change.');
+    lines.push('  let why = "";');
+    lines.push('  if (actual === 404) {');
+    lines.push('    why = "404 means \\"there is no endpoint at that URL.\\" Either the path in your test is wrong, or you forgot to write `when user calls " + _lastCall.method + " " + _lastCall.path + ":` in your Clear file.";');
+    lines.push('  } else if (actual === 401) {');
+    lines.push('    why = "401 means \\"you have to be logged in to do this.\\" The endpoint has `requires login` but the test didn\'t send an auth token.";');
+    lines.push('  } else if (actual === 403) {');
+    lines.push('    why = "403 means \\"you\'re logged in but not allowed to do this.\\" The endpoint has `requires role \'admin\'` (or similar) and the test user doesn\'t have that role.";');
+    lines.push('  } else if (actual === 400) {');
+    lines.push('    why = "400 means \\"the server didn\'t like the data you sent.\\" Usually a `validate` rule rejected it — a required field is missing, empty, or the wrong type.";');
+    lines.push('  } else if (actual === 409) {');
+    lines.push('    why = "409 means \\"something already exists with that value.\\" A field marked `unique` (like email) already has a record with that value — use a different value or delete the old record first.";');
+    lines.push('  } else if (actual === 422) {');
+    lines.push('    why = "422 means \\"the data was the right shape but failed a rule.\\" A `validate` block rejected it (wrong format, out of range, etc).";');
+    lines.push('  } else if (actual === 429) {');
+    lines.push('    why = "429 means \\"too many requests.\\" A `rate limit` rule is throttling the test. Wait, or raise the limit in your Clear code.";');
+    lines.push('  } else if (actual >= 500 && actual < 600) {');
+    lines.push('    why = "5xx means \\"the server crashed trying to handle this.\\" Check the app logs for a stack trace — usually an unhandled error in the endpoint body.";');
+    lines.push('  } else if (expected === 201 && actual === 200) {');
+    lines.push('    why = "200 vs 201: your endpoint returned success but without a \'created\' status. Add `with status 201` to the `send back` line.";');
+    lines.push('  } else if (actual >= 200 && actual < 300 && expected >= 400) {');
+    lines.push('    why = "The test expected this to fail, but the server accepted it. Either the validation rule you want is missing, or the test data is actually valid.";');
+    lines.push('  } else {');
+    lines.push('    why = "The server returned " + actual + " but the test expected " + expected + ".";');
+    lines.push('  }');
+    lines.push('  throw new Error(call + " returned " + actual + " (expected " + expected + "). " + why + bodyHint + where);');
+    lines.push('}');
+    lines.push('');
+    // Friendly has-property assertion: when a response body should have a field
+    lines.push('function _expectBodyHas(body, key) {');
+    lines.push('  if (body && typeof body === "object" && key in body) return;');
+    lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
+    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "the endpoint";');
+    lines.push('  const got = body === null || body === undefined ? "nothing" : "{ " + Object.keys(body).slice(0, 5).join(", ") + " }";');
+    lines.push('  throw new Error(call + " didn\'t return a \\"" + key + "\\" field — got " + got + ". Your endpoint\'s `send back` line needs to include \\"" + key + "\\"." + where);');
     lines.push('}');
     lines.push('');
   }
@@ -4781,7 +4812,7 @@ ${pad}}`;
         return `${pad}assert(_response.status >= 400, "Expected failure, got " + _response.status);`;
       }
       if (node.property === 'body' && node.check === 'has_field') {
-        return `${pad}expect(_responseBody).toHaveProperty(${JSON.stringify(node.field)});`;
+        return `${pad}_expectBodyHas(_responseBody, ${JSON.stringify(node.field)});`;
       }
       if (node.property === 'body' && node.check === 'contains') {
         return `${pad}assert(JSON.stringify(_responseBody).includes(${JSON.stringify(node.value)}), "Response should contain " + ${JSON.stringify(node.value)});`;
