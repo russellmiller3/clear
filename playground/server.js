@@ -269,6 +269,21 @@ app.post('/api/meph-actions', (req, res) => {
   if (!action.action) return res.status(400).json({ error: 'Missing action field' });
   mephActionsBuffer.push({ ...action, recorded_at: Date.now() });
   if (mephActionsBuffer.length > 200) mephActionsBuffer.shift();
+  // Mirror to terminal so the user sees their own clicks/input in the terminal pane.
+  // Format: "[user] click → #save-btn" or "[user] input → title = 'Hello'"
+  try {
+    const parts = [`[user] ${action.action}`];
+    if (action.selector) parts.push(action.selector);
+    if (action.value !== undefined && action.value !== null) {
+      const v = String(action.value).slice(0, 60);
+      parts.push(`= ${JSON.stringify(v)}`);
+    }
+    if (action.text && action.action === 'click') {
+      const t = String(action.text).slice(0, 40);
+      if (t) parts.push(`"${t}"`);
+    }
+    termLog(parts.join(' '));
+  } catch {}
   res.json({ ok: true });
 });
 app.get('/api/meph-actions', (req, res) => {
@@ -970,7 +985,39 @@ app.post('/api/chat', async (req, res) => {
   let lastCompileResult = null;
 
   // Tool execution
+  // Mirror every Meph tool call to the terminal pane so the user can watch
+  // exactly what Meph is doing — no hidden actions.
+  function describeMephTool(name, input) {
+    switch (name) {
+      case 'edit_code': return input.action === 'write' ? `edit_code (write, ${(input.code || '').length} chars)` : `edit_code (${input.action})`;
+      case 'run_command': return `run_command: ${String(input.command || '').slice(0, 120)}`;
+      case 'compile': return 'compile';
+      case 'run_app': return 'run_app';
+      case 'stop_app': return 'stop_app';
+      case 'http_request': return `http_request ${input.method || 'GET'} ${input.path || ''}`;
+      case 'read_file': return `read_file ${input.path || ''}`;
+      case 'write_file': return `write_file ${input.path || ''}`;
+      case 'run_tests': return 'run_tests';
+      case 'click_element': return `click_element → ${input.selector || ''}`;
+      case 'fill_input': return `fill_input → ${input.selector || ''} = ${JSON.stringify(String(input.value || '').slice(0, 60))}`;
+      case 'screenshot_output': return 'screenshot_output';
+      case 'highlight_code': return `highlight_code ${input.start_line || ''}-${input.end_line || ''}`;
+      case 'browse_templates': return `browse_templates ${input.template || ''}`;
+      case 'source_map': return `source_map`;
+      case 'read_actions': return 'read_actions';
+      case 'read_dom': return 'read_dom';
+      case 'read_network': return `read_network ${input.filter || ''}`;
+      case 'read_storage': return `read_storage ${input.key || ''}`;
+      case 'websocket_log': return 'websocket_log';
+      case 'db_inspect': return `db_inspect ${input.table || ''}`;
+      case 'inspect_element': return `inspect_element ${input.selector || ''}`;
+      case 'todo': return `todo (${input.action || 'set'})`;
+      default: return name;
+    }
+  }
+  const _origExecuteTool = null; // placeholder — wrap below
   async function executeTool(name, input) {
+    termLog(`[meph] ${describeMephTool(name, input)}`);
     switch (name) {
       case 'edit_code':
         if (input.action === 'read') {
