@@ -256,6 +256,29 @@ app.get('/api/terminal-log', (req, res) => {
 });
 
 // =============================================================================
+// MEPH ACTIONS — user interaction recorder for shared session debugging
+// =============================================================================
+// The Studio bridge in compiled HTML posts user actions (click, input, submit)
+// to the parent window. ide.html relays them here. Meph reads them via the
+// `read_actions` tool to know what the user did, so "fix this bug" doesn't
+// require the user to list every step they took.
+const mephActionsBuffer = []; // last 200 user actions
+app.post('/api/meph-actions', (req, res) => {
+  const action = req.body || {};
+  if (!action.action) return res.status(400).json({ error: 'Missing action field' });
+  mephActionsBuffer.push({ ...action, recorded_at: Date.now() });
+  if (mephActionsBuffer.length > 200) mephActionsBuffer.shift();
+  res.json({ ok: true });
+});
+app.get('/api/meph-actions', (req, res) => {
+  res.json({ actions: mephActionsBuffer.slice(-100) });
+});
+app.post('/api/meph-actions/clear', (req, res) => {
+  mephActionsBuffer.length = 0;
+  res.json({ ok: true });
+});
+
+// =============================================================================
 // TEST RUNNER — parse test output into structured results
 // =============================================================================
 function parseTestOutput(stdout) {
