@@ -208,7 +208,9 @@ function runTestProcess(source) {
   mkdirSync(BUILD_DIR, { recursive: true });
   writeFileSync(tmpPath, source);
   try {
-    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: 30000, maxBuffer: 5 * 1024 * 1024 });
+    // Pass API key from Meph config so agent tests can call Claude
+    const testEnv = { ...process.env, ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
+    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: 30000, maxBuffer: 5 * 1024 * 1024, env: testEnv });
     const parsed = parseTestOutput(stdout);
     return { ok: true, ...parsed, duration: Date.now() - start };
   } catch (err) {
