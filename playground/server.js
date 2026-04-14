@@ -232,8 +232,9 @@ async function getPage() {
 async function closeBrowser() {
   if (_browser) { try { await _browser.close(); } catch {} _browser = null; _page = null; _pageConnectedTo = null; }
 }
-process.on('SIGTERM', closeBrowser);
-process.on('SIGINT', closeBrowser);
+// NOTE: SIGTERM/SIGINT cleanup is consolidated below into a single handler so
+// closeBrowser finishes BEFORE process.exit — otherwise libuv hits
+// "UV_HANDLE_CLOSING" on Windows when Playwright's async handles are still open.
 
 // Terminal ring buffer — last 500 lines from running app stdout/stderr
 const terminalBuffer = [];
@@ -915,8 +916,37 @@ app.post('/api/write-file', (req, res) => {
   res.json({ written: true });
 });
 
+// Build the system message with live context Meph should see every turn:
+// - Personality override (if user set one)
+// - The main system prompt
+// - Latest test-run results (so when the user clicks Run Tests and asks Meph to fix,
+//   he already knows which tests failed + the plain-English error + the source line)
+function buildSystemWithContext(baseSystem, personality, testSnapshot) {
+  let context = '';
+  if (testSnapshot && (testSnapshot.failed > 0 || testSnapshot.passed > 0)) {
+    const parts = [];
+    parts.push(`## Latest Test Run (user clicked Run Tests in Studio)\n`);
+    parts.push(`Passed: ${testSnapshot.passed}, Failed: ${testSnapshot.failed}\n`);
+    if (testSnapshot.failures && testSnapshot.failures.length) {
+      parts.push(`\nFailures:\n`);
+      for (const f of testSnapshot.failures.slice(0, 10)) {
+        const at = f.sourceLine ? ` (clear:${f.sourceLine})` : '';
+        parts.push(`- **${f.name}**${at}\n  ${f.error}\n`);
+      }
+      parts.push(`\nWhen the user asks you to fix a test, use this context — don't re-run tests just to see them. The sourceLine tells you exactly which line to edit; the error tells you what the fix is. After editing, re-run tests once to confirm the fix.\n`);
+    } else if (testSnapshot.passed > 0) {
+      parts.push(`All tests passing.\n`);
+    }
+    context = '\n\n---\n\n' + parts.join('');
+  }
+  const head = personality
+    ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n'
+    : '';
+  return head + baseSystem + context;
+}
+
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, webTools: enableWebTools } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools } = req.body;
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
   if (!resolvedKey) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
@@ -1418,9 +1448,7 @@ app.post('/api/chat', async (req, res) => {
         model: 'claude-sonnet-4-6',
         max_tokens: 16000,
         thinking: { type: 'enabled', budget_tokens: 8000 },
-        system: personality
-          ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n' + systemPrompt
-          : systemPrompt,
+        system: buildSystemWithContext(systemPrompt, personality, testSnapshot),
         tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
         stream: true,
         messages: currentMessages,
@@ -1753,14 +1781,20 @@ app.post('/api/chat', async (req, res) => {
 // =============================================================================
 // CLEANUP
 // =============================================================================
-process.on('SIGTERM', () => {
-  if (runningChild) try { runningChild.kill(); } catch {}
-  process.exit(0);
-});
-process.on('SIGINT', () => {
-  if (runningChild) try { runningChild.kill(); } catch {}
-  process.exit(0);
-});
+// Single consolidated shutdown — kill child, AWAIT browser close, then exit.
+// Without awaiting, Playwright's async handles fire in the middle of process.exit
+// and Windows' libuv trips "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)".
+let _shuttingDown = false;
+async function shutdown(signal) {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  if (runningChild) { try { runningChild.kill(); } catch {} runningChild = null; }
+  try { await closeBrowser(); } catch {}
+  // Give pending stdio flushes a tick to finish before the loop tears down
+  setImmediate(() => process.exit(0));
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 // =============================================================================
 // START

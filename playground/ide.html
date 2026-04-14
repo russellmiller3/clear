@@ -2712,12 +2712,25 @@ window.sendChat = async function() {
       content: m.content,
     }));
 
+    // Include latest test results so Meph sees what happened when the user clicked Run Tests
+    // (without this, Meph only knows test state from his own run_tests tool calls)
+    let testSnapshot = null;
+    if (testResults.app && testResults.app.results) {
+      const fails = testResults.app.results.filter(r => r.status === 'fail');
+      testSnapshot = {
+        passed: testResults.app.passed || 0,
+        failed: testResults.app.failed || 0,
+        failures: fails.map(f => ({ name: f.name, error: f.error, sourceLine: f.sourceLine || null })),
+      };
+    }
+
     const chatBody = JSON.stringify({
       messages: apiMessages,
       apiKey,
       personality,
       editorContent: editor.state.doc.toString(),
       errors: lastCompiled?.errors || [],
+      testResults: testSnapshot,
       webTools: document.getElementById('web-tools-toggle')?.checked || false,
     });
 
