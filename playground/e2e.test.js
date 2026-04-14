@@ -398,7 +398,7 @@ async function compileTemplate(name) {
   // Posts
   const { data: posts } = await appGet('/api/posts');
   assert(posts.status === 200 && Array.isArray(posts.data), 'GET /api/posts returns array');
-  assert(posts.data.length >= 3, `seeded ${posts.data?.length || 0} posts`);
+  assert(Array.isArray(posts.data) && posts.data.length >= 3, `seeded ${posts.data?.length || 0} posts`);
 
   // Create
   const { data: newPost } = await appPost('/api/posts', { title: 'E2E Post', body: 'Test content' });

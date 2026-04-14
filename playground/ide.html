@@ -2394,6 +2394,9 @@ function markdownToHtml(text) {
   }).join('');
 }
 
+// Hoist for debugging + eval scripts to test the JSON lint without going through chat
+window.markdownToHtml = markdownToHtml;
+
 function restoreChatOrWelcome() {
   const saved = localStorage.getItem('clear_chat_messages');
   if (saved) {
