@@ -1,8 +1,8 @@
-# Handoff — 2026-04-14 (Shipped: Studio Bridge + Friendly Tests + Unified Terminal)
+# Handoff — 2026-04-14 (Shipped: Bridge + Friendly Tests + Terminal + Eval)
 
 ## Current State
-- **Branch:** main (everything merged, 50+ unpushed commits about to go)
-- **Tests:** 1850 compiler tests, 0 failures. 108 server tests passing (16 pre-existing UI failures unrelated).
+- **Branch:** main, pushed to origin (was 50+ commits behind, now caught up)
+- **Tests:** 1852 compiler tests, **77/77 e2e**, 15/15 Meph tool eval verified
 - **Working tree:** clean after this commit
 
 ## What Was Done This Session (9 commits)
@@ -38,6 +38,15 @@ When a bug happens, scroll the terminal up — that IS the repro. `read_terminal
 
 ### Windows libuv shutdown fix
 Two competing SIGTERM handlers (one closing Playwright async, one synchronous `process.exit`) caused `UV_HANDLE_CLOSING` assertions on Ctrl-C. Consolidated into a single `shutdown()` that awaits `closeBrowser()` before exit.
+
+### Post-ship: tightening pass
+After the main 9 commits shipped, fixed compounding gaps that the eval + e2e push surfaced:
+
+- **`incoming` binding for search endpoints** — `bodyUsesIncoming` scanner missed wrapper nodes (SEARCH/FILTER), so `results = search Todos for incoming's q` compiled to a referencing `incoming?.q` with no binding above it. Added fall-through scan + GET-without-receiving binds to `req.query`.
+- **JWT helper for e2e tests** — 5 POST tests failed because templates were hardened to `requires login` but tests didn't send auth. Added HS256 helper using node `crypto` (no jsonwebtoken dep) + pinned `JWT_SECRET=clear-test-secret` when playground spawns child apps. Result: 77/77.
+- **`highlight_code` missing executeTool case** — Meph's eval self-report caught it: tool returned `Unknown tool: highlight_code`. One-line fix.
+- **User-test HTTP path bug** — tokenizer split `/api/todos` into `/`, `api`, `/`, `todos`. Parser only took the first token, so every user-test call recorded path=`/`. Friendly errors said `POST / returned 404` instead of the real endpoint. Reassemble path tokens until `with`/EOL.
+- **Meph tool eval** — 16-scenario script that calls each tool and asks Meph to self-report whether it worked. 15/15 verified, 0 issues open. Pattern is single-turn (multi-turn breaks because SSE stream doesn't echo tool_use blocks back, leading to gaslit history).
 
 ## What This Unlocks
 
