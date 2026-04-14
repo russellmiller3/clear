@@ -2378,6 +2378,22 @@ test 'agent works':
   expect it succeeds
 ```
 
+#### Nameless Tests (preferred — zero redundancy)
+
+```clear
+# The first body line becomes the test name automatically
+test:
+  can user create a new todo with title is 'Buy groceries'
+
+test:
+  does deleting a todo require login
+
+# Multi-step — first line is the name, all lines execute
+test:
+  can user create a new todo with title is 'Buy groceries'
+  does the todos list show 'Buy groceries'
+```
+
 The compiler maps intents to HTTP calls: `create` = POST, `view` = GET, `delete` = DELETE, `update` = PUT. It auto-discovers the right endpoints from your table and endpoint definitions.
 
 ### Available Assertions

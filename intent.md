@@ -321,6 +321,7 @@ Workflow step types (inside workflow body):
 | Node Type | Syntax | Compiles To |
 |-----------|--------|-------------|
 | `TEST_DEF` | `test 'name':` + body | Named test function in E2E test file |
+| `TEST_DEF` | `test:` + body | Nameless test — first body line becomes test name |
 | `EXPECT` | `expect result is 42` | Equality assertion |
 | `HTTP_TEST_CALL` | `call POST /api/users with name is 'Alice'` | `fetch()` call with JSON body |
 | `EXPECT_RESPONSE` | `expect response status is 201` | Status code assertion |

@@ -232,7 +232,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 
 | Feature | Syntax | Notes |
 |---------|--------|-------|
-| Test block | `test 'name':` + body | |
+| Test block | `test 'name':` + body | Named test |
+| Nameless test | `test:` + body | First body line becomes the test name — zero redundancy |
 | Expect | `expect result is 42` | Equality assertion |
 | HTTP test call | `call POST /api/users with name is 'Alice'` | |
 | Expect response | `expect response status 201` | Also `expect response body has id` |
@@ -294,6 +295,9 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | English test names | Auto-generated tests use readable names ("Creating a todo succeeds") | Done — `generateE2ETests` rewrite |
 | CRUD flow tests | "User can create a todo and see it in the list" | Done — auto-generated from table + endpoint AST |
 | `dbBackend` field | `compileProgram()` exposes `result.dbBackend` | Done — used by CLI deploy/package |
+| Nameless test blocks | `test:` + body (first line = name) | Done — zero-redundancy test syntax |
+| Auto-test on Run | Tests auto-run when Run clicked, switch to Tests tab on failure | Done — Studio IDE integration |
+| Test runner rewrite | `clear test` starts server, installs deps, shares JWT | Done — replaces legacy test extraction |
 
 ---
 
