@@ -1581,6 +1581,7 @@ test 'agent responds':
 - Use `without a field` to test validation: `can user create a todo without a title`
 - Use `does X require login` to test auth guards
 - Auto-generated tests already cover basic CRUD — write intent tests for workflows and edge cases
+- Auto-generated tests use English names: "Creating a new todo succeeds", "Deleting a todo requires login", "User can create a todo and see it in the list" (CRUD flow), "The Helpdesk agent responds to messages" (agent smoke test). Never use API paths or HTTP methods in test names.
 
 ### Agent Tables (Required Infrastructure)
 

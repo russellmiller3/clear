@@ -2697,6 +2697,15 @@ test 'list all todos':
 
 These tests run alongside the auto-generated tests when you use `clear test`.
 
+**What gets auto-generated:** The compiler automatically generates tests for every endpoint and table in your app, with human-readable English names:
+- "Creating a new todo succeeds" (not "POST /api/todos returns 201")
+- "Viewing all todos returns data"
+- "Deleting a todo requires login" (if the endpoint has auth)
+- "User can create a todo and see it in the list" (CRUD flow test)
+- "The Helpdesk agent responds to messages" (agent smoke test)
+
+You only need to write custom tests for business logic, validation edge cases, and workflows that go beyond basic CRUD.
+
 ### What You Can Check
 
 ```clear
