@@ -277,3 +277,9 @@ That's it. The compiler has no build step, no config files, no framework. `node 
 
 ## No Invisible Agent Work (MANDATORY)
 Do code changes and accuracy-sensitive doc updates directly in the main conversation where Russell can see every edit. Don't delegate these to background agents — their output is invisible and unverifiable. Background agents are fine for read-only exploration, parallel grunt work, and tasks where wrong = harmless. But anything that ships (code, docs, compiler changes) happens in-conversation.
+
+## No Emoji in Landing Pages (MANDATORY)
+Landing pages (`landing/*.html`) must never use emoji characters. Use Lucide icons (SVG) instead — they're sharper, scale properly, and look professional. Emoji render differently across OS/browser and look amateurish on marketing pages.
+
+## Rich Chat Output (MANDATORY)
+Studio chat (Meph) should support SVG diagrams and markdown rendering as standard output. When Meph explains architecture, data flow, or relationships, render them as inline SVG diagrams in the chat — not ASCII art. Markdown formatting (headers, bold, code blocks, lists) should render properly in chat bubbles.
