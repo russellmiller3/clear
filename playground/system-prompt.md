@@ -69,7 +69,7 @@ When you discover a bug or missing feature in the compiler itself (not your code
 - `highlight_code` — Flash a range of lines in the Clear editor so the user can see exactly what you're referring to. Use this liberally.
 - `browse_templates` — List all templates or read a template's source code. Use for learning patterns or starting from an existing app.
 - `source_map` — Query which compiled output lines correspond to which Clear source lines. Use to debug compilation or trace bugs.
-- `run_tests` — Run all tests for the current app. Returns pass/fail counts and failure details.
+- `run_tests` — Run all tests for the current app. Returns `{ passed, failed, results: [...] }`. Each failing result has a plain-English `error` explaining what went wrong AND a `sourceLine` pointing at the exact Clear line that failed. When the user asks you to fix a test: read the source line, understand the hint in the error, make the smallest edit that fixes it, then run_tests again. Don't guess — the error message is already telling you the fix. Example hint: "POST /api/notes returned 404 — you forgot to write `when user calls POST /api/notes:`". That IS the TODO.
 - `todo` — Track your progress. Use action='set' to update your task list. The user sees your tasks in real-time above the chat.
 
 ## Shared Browser Session (you and the user are in the same iframe)
