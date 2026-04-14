@@ -135,19 +135,19 @@ page 'Todo App' at '/':
 
 # Tests
 
-test 'user can view all todos':
+test:
   can user view all todos
 
-test 'user can create a new todo':
+test:
   can user create a new todo with title is 'Write tests'
   expect it succeeds
   expect response has id
 
-test 'creating a todo without a title is rejected':
+test:
   can user create a todo without a title
 
-test 'deleting a todo requires login':
+test:
   does deleting a todo require login
 
-test 'user can view all categories':
+test:
   can user view all categories

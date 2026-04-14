@@ -152,19 +152,19 @@ page 'Expense Tracker':
 
 # Tests
 
-test 'user can view all expenses':
+test:
   can user view all expenses
 
-test 'user can create a new expense':
+test:
   can user create a new expense with description is 'Test expense' and amount is 42
   expect it succeeds
   expect response has id
 
-test 'creating an expense without an amount is rejected':
+test:
   can user create an expense without a amount
 
-test 'deleting an expense requires login':
+test:
   does deleting an expense require login
 
-test 'user can view expense totals':
+test:
   can user view all total

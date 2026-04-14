@@ -156,19 +156,19 @@ page 'Blog' at '/':
 
 # Tests
 
-test 'user can view all posts':
+test:
   can user view all posts
 
-test 'user can create a new post':
+test:
   can user create a new post with title is 'Test Post' and body is 'Test body content'
   expect it succeeds
   expect response has id
 
-test 'creating a post without a title is rejected':
+test:
   can user create a post without a title
 
-test 'deleting a post requires login':
+test:
   does deleting a post require login
 
-test 'user can view all authors':
+test:
   can user view all authors

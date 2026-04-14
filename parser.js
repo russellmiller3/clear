@@ -5276,16 +5276,29 @@ function parseTestDef(lines, startIdx, blockIndent, errors) {
   const line = tokens[0].line;
   let pos = 1; // skip "test"
 
-  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
-    errors.push({ line, message: 'The test needs a name in quotes. Example: test \'addition works\':' });
-    return { node: null, endIdx: startIdx + 1 };
+  let name = null;
+  // Named test: test 'name':
+  // Nameless test: test:  (first body line becomes the name)
+  if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+    name = tokens[pos].value;
   }
-  const name = tokens[pos].value;
 
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
 
   if (body.length === 0) {
-    errors.push({ line, message: `The test "${name}" is empty — add assertions inside.` });
+    errors.push({ line, message: 'Test block is empty — add assertions inside. Example: test:\n  can user view all todos' });
+    return { node: null, endIdx };
+  }
+
+  // If no name given, derive it from the first body line's raw text
+  if (!name) {
+    // Reconstruct readable text from the first body node's tokens
+    const firstLine = lines[startIdx + 1];
+    if (firstLine) {
+      name = firstLine.tokens.map(t => t.type === TokenType.STRING ? "'" + t.value + "'" : t.value).join(' ');
+    } else {
+      name = 'unnamed test';
+    }
   }
 
   return { node: testDefNode(name, body, line), endIdx };

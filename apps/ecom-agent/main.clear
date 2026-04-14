@@ -339,19 +339,19 @@ when user sends data to /api/seed:
 
 # Tests
 
-test 'customer support routes order questions':
+test:
   mock claude responding:
     text is 'Your order #1 has been delivered. Tracking: TRK-20260401-001'
   result = call 'Customer Support' with 'Where is my order 1?'
   expect result contains 'order'
 
-test 'customer support routes return requests':
+test:
   mock claude responding:
     text is 'I can help you with that return. Processing now.'
   result = call 'Customer Support' with 'I want to return my purchase'
   expect result contains 'return'
 
-test 'low stock detection finds items below threshold':
+test:
   create low_item:
     name is 'Test Widget'
     sku is 'TW-001'
@@ -363,20 +363,20 @@ test 'low stock detection finds items below threshold':
   expect length of result is greater than 0
 
 /* TODO: add expect-to-fail test when TEST_EXPECT_ERROR is implemented
-test 'process_return rejects non-delivered orders':
+test:
   expect calling process_return(test_order's id, 'Wrong size') to fail with 'Only delivered orders'
 */
 
-test 'user can view all products':
+test:
   can user view all products
 
-test 'user can view all orders':
+test:
   can user view all orders
 
-test 'user can view store stats':
+test:
   can user view all stats
 
-test 'user can check low inventory':
+test:
   can user view all inventory
 
 # Frontend

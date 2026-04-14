@@ -162,14 +162,14 @@ page 'Helpdesk':
 
 # Tests
 
-test 'user can view all products':
+test:
   can user view all products
 
-test 'creating a product requires login':
+test:
   does creating a product require login
 
-test 'user can view all tickets':
+test:
   can user view all tickets
 
-test 'the helpdesk agent endpoint requires login':
+test:
   does creating a ask require login

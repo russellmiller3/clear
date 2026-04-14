@@ -164,17 +164,17 @@ page 'Room Booking' at '/':
 
 # Tests
 
-test 'user can view all rooms':
+test:
   can user view all rooms
 
-test 'creating a room requires login':
+test:
   does creating a room require login
 
-test 'user can view all bookings':
+test:
   can user view all bookings
 
-test 'creating a booking requires login':
+test:
   does creating a booking require login
 
-test 'deleting a room requires login':
+test:
   does deleting a room require login

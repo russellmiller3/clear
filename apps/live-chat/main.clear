@@ -79,16 +79,16 @@ page 'Live Chat' at '/':
 
 # Tests
 
-test 'user can view all messages':
+test:
   can user view all messages
 
-test 'user can send a new message':
+test:
   can user create a new message with sender is 'Alice' and content is 'Hello world'
   expect it succeeds
   expect response has id
 
-test 'sending a message without content is rejected':
+test:
   can user create a message without a content
 
-test 'deleting a message requires login':
+test:
   does deleting a message require login

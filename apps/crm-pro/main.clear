@@ -237,17 +237,17 @@ page 'CRM Pro' at '/':
 
 # Tests
 
-test 'user can view all companies':
+test:
   can user view all companies
 
-test 'creating a company requires login':
+test:
   does creating a company require login
 
-test 'user can view all contacts':
+test:
   can user view all contacts
 
-test 'user can view all deals':
+test:
   can user view all deals
 
-test 'user can view deal totals':
+test:
   can user view all total
