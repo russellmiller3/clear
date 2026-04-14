@@ -384,6 +384,46 @@ define remaining as rest of items
 `where`, `sum of` are English. The compiler generates the same code either way,
 but the Clear source reads like instructions, not code.
 
+### 15. The Compiler Tests Everything -- Users Don't Secure Themselves
+
+If the compiler can think of a test, it generates it. Every endpoint gets a
+happy-path test, a validation test, and an auth test. Every button, input, and
+display gets a presence test. Every CRUD resource gets a create-then-view flow
+test and a create-then-delete flow test. Every agent gets a smoke test, an auth
+test, and a guardrail test.
+
+**The user never writes security tests.** The compiler knows every endpoint,
+every table, every validation rule, every auth guard, every agent restriction.
+It generates tests for all of them automatically. If a DELETE endpoint requires
+login, the compiler generates "Deleting a todo requires login" without being
+asked. If an agent has `block arguments matching 'drop|truncate'`, the compiler
+generates a guardrail test.
+
+**Test names read like English.** Not `POST /api/todos returns 201` -- that's
+HTTP, not English. `Creating a new todo succeeds` -- that's what a human would
+say. The compiler translates HTTP methods to verbs (POST = "Creating", GET =
+"Viewing", DELETE = "Deleting") and endpoint paths to resource names
+(`/api/todos` = "todo").
+
+**Users can write tests too, in the same English:**
+```clear
+test 'full todo workflow':
+  can user create a new todo with title is 'Buy groceries'
+  does the todos list show 'Buy groceries'
+  does deleting a todo require login
+  can user create a todo without a title
+```
+
+The user never mentions an API path, an HTTP method, or a status code. They
+describe what should happen in plain English, and the compiler resolves the
+intent to the right endpoint.
+
+**Why this matters:** Security is not optional. It's not a feature you remember
+to add. It's not a checkbox in a dashboard. When the compiler generates a test
+that says "Deleting a todo requires login" and that test passes, the app is
+secure. When it fails, the app won't ship. The user doesn't have to think about
+security -- the compiler thinks about it for them.
+
 ## Productive Disagreement
 
 Claude should push back when a syntax suggestion has a readability or consistency
