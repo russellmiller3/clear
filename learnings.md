@@ -39,6 +39,44 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 23: Agent Bug Fixes + Extended Thinking](#session-23-agent-bug-fixes--extended-thinking-2026-04-11) | SVG innerHTML namespace loss, `to_json` synonym collision in 3 places, Python dict keys must be quoted, Anthropic thinking signature for multi-turn, `toLocaleString` for display formats, CRUD auto-inject `:id`, multer module-scope, Python cron lifespan |
 | [Session 25: Roadmap 5-12 + Click-to-Highlight](#session-25-roadmap-5-12--click-to-highlight-2026-04-12) | CM6 virtual rendering, param format normalization, postamble injection order, compile animation timing, `sourceMap: true` for frontend markers |
 | [Session 25b: Core 7 Templates + E2E Testing](#session-25b-core-7-templates--e2e-testing-2026-04-12) | GET req.query vs req.body, one-op-per-line enforcement, npm dep auto-install, synonym propagation, typo suggestion guards, Playwright selector scoping |
+| [Session 27: Studio Bridge + Friendly Tests + Unified Terminal](#session-27-studio-bridge--friendly-tests--unified-terminal-2026-04-14) | postMessage bridge gate needs dual check (`?param` AND `<meta>` for srcdoc iframes), helpers compiled outside `run()` can't see `let`s inside it (module-scope or bust), friendly errors need `_lastCall` tracker, `[clear:N]` tag in error string round-trips through stdout parser into IDE click handler, two competing SIGTERM handlers on Windows = `UV_HANDLE_CLOSING` libuv assertion, `_response`/`_responseBody`/`_lastCall` must be module-scope for `_expectStatus` shim |
+
+---
+
+## Session 27: Studio Bridge + Friendly Tests + Unified Terminal (2026-04-14)
+
+### Studio Bridge — shared iframe between user and Meph
+
+The natural thing would be to give Meph his own Playwright browser. Wrong. The user doesn't see Meph's actions, Meph doesn't see the user's, and two browsers means two sessions, two cookies, two states. The right architecture is SHARED: same iframe, same DOM, same storage, same everything.
+
+The bridge is ~90 lines of JS the compiler injects before `</body>`. It:
+- Captures click/input/submit and posts them to the parent window
+- Listens for commands (click/fill/inspect/read-dom/read-storage) and replies
+
+**Gate needs BOTH `?clear-bridge=1` query param AND `<meta name="clear-bridge">` meta tag.** srcdoc iframes have no URL, so the query param alone fails silently. Lesson: for iframe-injected scripts, dual gate or die.
+
+### Friendly test failures
+
+Compiler-generated test.js used raw `expect(_response.status).toBe(201)` → "Expected 201, got 404." Useless. Replaced with `_expectStatus(_response, 201)` which reads `_lastCall` (tracker set before every fetch) and throws a plain-English error ending in `[clear:N]`.
+
+**Trap: helpers compiled OUTSIDE the `run()` function can't see `let`s declared INSIDE it.** First pass put `_lastCall` inside run(), `_expectStatus` outside — `ReferenceError` at runtime. Fix: move `_response`/`_responseBody`/`_lastCall` to module scope.
+
+**The `[clear:N]` tag round-trips through three layers:**
+1. Compiler emits it at the end of the error string
+2. `parseTestOutput` regex strips it into a `sourceLine` field on the result
+3. IDE renders row with `onclick="jumpToTestSource(N)"` — CodeMirror scrolls + selects
+
+One tag, three owners, zero special-case types. That pattern scales.
+
+### Windows libuv shutdown
+
+Two competing SIGTERM handlers: one async-closing Playwright, one synchronous `process.exit(0)`. Playwright's async handles were still open when `process.exit` tore down the loop → Windows libuv: `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`. Fix: ONE handler, AWAIT closeBrowser before exit, `setImmediate(exit)` to let stdio flush.
+
+**Lesson:** if you have async cleanup and `process.exit`, await before exit or the async handles fire mid-teardown.
+
+### Terminal as unified timeline
+
+User actions, Meph tool calls, browser console errors all mirrored into `terminalBuffer`. The insight: it's not 5 separate buffers shown 5 ways — it's ONE chronological log with a source tag per line. The tag (`[user]`, `[meph]`, `[browser error]`, `[stdout]`, `[stderr]`) makes the story obvious without schema gymnastics.
 
 ---
 
