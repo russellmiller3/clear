@@ -4759,6 +4759,10 @@ ${pad}}`;
       if (node.property === 'body' && node.check === 'contains') {
         return `${pad}assert(JSON.stringify(_responseBody).includes(${JSON.stringify(node.value)}), "Response should contain " + ${JSON.stringify(node.value)});`;
       }
+      if (node.property === 'body' && node.check === 'error_contains') {
+        // "X should fail with error 'message'" — assert error response contains the message
+        return `${pad}assert(_response.status >= 400, "Should fail, got " + _response.status);\n${pad}assert(JSON.stringify(_responseBody).includes(${JSON.stringify(node.value)}), "Error should contain " + ${JSON.stringify(node.value)});`;
+      }
       if (node.property === 'body' && node.check === 'length') {
         if (node.value != null) {
           return `${pad}expect(Array.isArray(_responseBody) ? _responseBody.length : Object.keys(_responseBody || {}).length).toBeGreaterThan(${node.value});`;
@@ -4829,6 +4833,18 @@ ${pad}}`;
         let code = `${pad}_response = await fetch(_baseUrl + ${path}${opts});\n`;
         code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
         code += `${pad}assert(_response.status === 200, "View should return 200, got " + _response.status);`;
+        return code;
+      }
+
+      if (node.intent === 'search') {
+        // "can user search todos" → find GET endpoint with 'search' in path
+        const searchEp = endpoints.find(ep => ep.method === 'GET' && ep.path.includes('search'));
+        if (!searchEp) return `${pad}// Could not find search endpoint`;
+        const path = JSON.stringify(searchEp.path);
+        const opts = searchEp.body?.some(n => n.type === NodeType.REQUIRES_AUTH) ? ', { headers: AUTH_HEADERS }' : '';
+        let code = `${pad}_response = await fetch(_baseUrl + ${path}${opts});\n`;
+        code += `${pad}_responseBody = await _response.json().catch(() => null);\n`;
+        code += `${pad}assert(_response.status === 200, "Search should return 200, got " + _response.status);`;
         return code;
       }
 
@@ -5766,8 +5782,8 @@ export function exprToCode(expr, ctx) {
 
     case NodeType.VARIABLE_REF: {
       const name = sanitizeName(expr.name);
-      // "current user" compiles to req.user (JS) / request.user (Python)
-      if (name === '_current_user') {
+      // "current user" or bare "user" in backend context compiles to req.user
+      if (name === '_current_user' || (name === 'user' && ctx.mode === 'backend')) {
         return ctx.lang === 'python' ? 'request.user' : 'req.user';
       }
       if (ctx.stateVars && ctx.stateVars.has(name)) return `_state.${name}`;

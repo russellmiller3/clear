@@ -2436,7 +2436,7 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
     return ctx.i + 1;
   }
 
-  if (!['create', 'view', 'delete', 'update'].includes(action)) return undefined;
+  if (!['create', 'view', 'delete', 'update', 'search'].includes(action)) return undefined;
   let pos = 3;
   // skip articles: a, an, the, new
   while (pos < ctx.tokens.length && ['a', 'an', 'the', 'new', 'all'].includes(ctx.tokens[pos].value)) pos++;
@@ -2502,6 +2502,20 @@ CANONICAL_DISPATCH.set('should', (ctx) => {
       return ctx.i + 1;
     }
   }
+  // "X should fail with error 'message'" or "X should fail with 'message'"
+  // Tokenizer merges "fail with" into canonical "send_error"
+  const failIdx = tokens.findIndex(t => t.canonical === 'send_error' || t.value === 'fail');
+  if (failIdx > 0) {
+    let pos = failIdx + 1;
+    if (pos < tokens.length && tokens[pos].value === 'with') pos++; // in case not merged
+    if (pos < tokens.length && tokens[pos].value === 'error') pos++;
+    if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+      const errorMessage = tokens[pos].value;
+      ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'body', check: 'error_contains', value: errorMessage, field: null, line: ctx.line });
+      return ctx.i + 1;
+    }
+  }
+
   // "does the DISPLAY show VALUE"
   if (tokens[1].value === 'the' && tokens.length >= 5) {
     const display = tokens[2].value;
