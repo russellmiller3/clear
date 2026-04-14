@@ -1543,6 +1543,45 @@ test 'support agent escalates billing issues':
 
 Multiple mocks are consumed in order (first AI call gets first mock, second gets second).
 
+### Writing Intent-Based Tests (Preferred)
+
+Prefer intent-based tests over raw HTTP calls. They read like user stories and the compiler
+figures out which endpoints to hit:
+
+```clear
+test 'todo workflow':
+  can user create a new todo with title is 'Buy groceries'
+  expect it succeeds
+  can user view all todos
+  expect it succeeds
+  can user delete a todo
+  expect it succeeds
+
+test 'validation catches missing fields':
+  can user create a todo without a title
+  expect it is rejected
+
+test 'auth protects deletion':
+  does deleting a todo require login
+
+test 'agent responds':
+  can user ask agent 'Support' with message is 'hello'
+  expect it succeeds
+```
+
+**When to use `can user` vs `call GET` vs `expect`:**
+- `can user create/view/delete/update` — intent-based, reads like a user story. Use this for CRUD tests.
+- `call GET /api/path` — raw HTTP call. Use when testing specific endpoints or edge cases.
+- `expect it succeeds/fails/requires login` — semantic assertion after an intent. Use after `can user`.
+- `expect response status is 200` — exact status code. Use after `call GET/POST`.
+
+**Best practices:**
+- Test names should read like user stories: "todo workflow", "validation catches missing fields"
+- Group related assertions in one test block
+- Use `without a field` to test validation: `can user create a todo without a title`
+- Use `does X require login` to test auth guards
+- Auto-generated tests already cover basic CRUD — write intent tests for workflows and edge cases
+
 ### Agent Tables (Required Infrastructure)
 
 Production agents need these tables. Create them before the agent definition:
@@ -1675,6 +1714,9 @@ clear serve main.clear --port 3000
 
 # 9. Package for deployment
 clear package main.clear --out deploy/
+
+# 10. Deploy to Railway (package + railway up)
+clear deploy main.clear
 ```
 
 **Always use `--json` when the agent is parsing output.** Human-readable output is
@@ -1843,19 +1885,24 @@ style card:
 The compiler auto-adds `transition: all 0.2s` when hover/focus props exist
 but no explicit transition is set. Use `for_screen is 'small'` for responsive.
 
-## Database: Local Memory vs Supabase
+## Database: Local Memory vs Supabase vs PostgreSQL
 
 ```
 # Development (default) — data persists to JSON file
 database is local memory
 
-# Production — real Postgres via Supabase
+# Production — real Postgres via Supabase SDK
 database is supabase
+
+# Production — raw PostgreSQL (Railway, Render, etc.)
+database is PostgreSQL
 ```
 
-**Start with `local memory`.** Switch to `supabase` when deploying. It's a
-one-line change — all CRUD operations compile to Supabase SDK calls
-automatically. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars.
+**Start with `local memory`.** Switch to `supabase` or `PostgreSQL` when deploying. It's a
+one-line change — all CRUD operations compile to the right adapter automatically.
+
+- **Supabase:** Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` env vars. Uses Supabase SDK.
+- **PostgreSQL:** Set `DATABASE_URL` env var. Uses `runtime/db-postgres.js` — same API as SQLite adapter with lazy table creation. Best for Railway deploys (`clear deploy`).
 
 ## Retry, Timeout, and Race (Production Resilience)
 

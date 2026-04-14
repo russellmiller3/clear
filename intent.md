@@ -23,7 +23,7 @@
 
 Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, streamMode }`
 
-## Node Types (124 total)
+## Node Types (126 total)
 
 ### Core Language
 
@@ -316,6 +316,36 @@ Workflow step types (inside workflow body):
 | Repeat | `repeat until condition, max N times:` + steps | `for (_iter < N) { if (cond) break; ... }` |
 | Parallel | `at the same time:` + steps | `Promise.all([...])` |
 
+### Testing (Phases 46b, 84)
+
+| Node Type | Syntax | Compiles To |
+|-----------|--------|-------------|
+| `TEST_DEF` | `test 'name':` + body | Named test function in E2E test file |
+| `EXPECT` | `expect result is 42` | Equality assertion |
+| `HTTP_TEST_CALL` | `call POST /api/users with name is 'Alice'` | `fetch()` call with JSON body |
+| `EXPECT_RESPONSE` | `expect response status is 201` | Status code assertion |
+| `EXPECT_RESPONSE` | `expect response body has id` | Field existence check |
+| `EXPECT_RESPONSE` | `expect response contains 'success'` | Body text search |
+| `EXPECT_RESPONSE` | `expect it succeeds` | Assert 2xx status |
+| `EXPECT_RESPONSE` | `expect it fails` | Assert non-2xx status |
+| `EXPECT_RESPONSE` | `expect it requires login` | Assert 401 |
+| `EXPECT_RESPONSE` | `expect it is rejected` | Assert 400 |
+| `EXPECT_RESPONSE` | `expect it is not found` | Assert 404 |
+| `EXPECT_RESPONSE` | `expect response has field` | Field exists in response body |
+| `EXPECT_RESPONSE` | `expect variable has 'text'` | Variable contains substring |
+| `MOCK_AI` | `mock claude responding:` + fields | `_askAI` override with mock |
+| `TEST_INTENT` | `can user create a todo with title is 'Buy milk'` | HTTP POST + success assertion |
+| `TEST_INTENT` | `can user view all todos` | HTTP GET + success assertion |
+| `TEST_INTENT` | `can user delete a todo` | HTTP DELETE + success assertion |
+| `TEST_INTENT` | `can user create a todo without a title` | HTTP POST without field + expects rejection |
+| `TEST_INTENT` | `does deleting a todo require login` | HTTP DELETE without auth + 401 assertion |
+| `TEST_INTENT` | `does the todos list show 'Buy groceries'` | GET + body contains assertion |
+| `TEST_INTENT` | `can user ask agent 'Support' with message is 'hello'` | POST to agent endpoint + success assertion |
+
+`TEST_INTENT` compiles to HTTP calls based on intent: `create` → POST, `view` → GET, `delete` → DELETE, `update` → PUT. The compiler auto-discovers endpoints and tables from the AST. `without a field` sets `expectFailure: true`. `does X require login` compiles to an unauthenticated request asserting 401.
+
+Auto-generated tests use English names: "Creating a new todo succeeds" (not "POST /api/todos returns 201"), "Deleting a todo requires login" (not "DELETE /api/todos/:id without auth returns 401"), "User can create a todo and see it in the list" (CRUD flow), "The Helpdesk agent responds to messages" (agent smoke test).
+
 `missing` is a synonym for `nothing` (null). Both work everywhere.
 
 **Structured AI output:** Add `returning JSON text:` after the `ask ai` call with an indented block of fields.
@@ -355,7 +385,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 |-----------|--------|-------|
 | `DATABASE_DECL` | `database is local memory` | Comment only (default) |
 | `DATABASE_DECL` | `database is supabase` | @supabase/supabase-js client (SUPABASE_URL + SUPABASE_ANON_KEY) |
-| `DATABASE_DECL` | `database is PostgreSQL at env('URL')` | pg.Pool / asyncpg |
+| `DATABASE_DECL` | `database is PostgreSQL` / `database is PostgreSQL at env('URL')` | `runtime/db-postgres.js` — same API as SQLite, lazy table creation, uses `DATABASE_URL` env var |
 | `DATABASE_DECL` | `database is SQLite at 'file.db'` | sqlite3 connection |
 
 ### Interactive Layout Patterns
@@ -474,8 +504,9 @@ Multi-word keywords that can shadow variable names: `page` (page declaration), `
 | `compiler.js` | Code generation (5 paths) | ~2500 |
 | `validator.js` | AST validation (3 passes) | ~200 |
 | `clear.test.js` | 1089 tests | ~11500 |
-| `cli/clear.js` | CLI for AI agents: build, check, info, fix, lint, serve | ~500 |
+| `cli/clear.js` | CLI for AI agents: build, check, info, fix, lint, serve, test, deploy | ~600 |
 | `runtime/db.js` | In-memory DB with JSON persistence | ~300 |
+| `runtime/db-postgres.js` | Postgres adapter (same API as SQLite, lazy table creation) | ~200 |
 | `runtime/auth.js` | JWT auth + middleware | ~120 |
 | `runtime/rateLimit.js` | Request rate limiting | ~50 |
 

@@ -1058,7 +1058,10 @@ database is local memory                        # default: in-memory with JSON b
 database is supabase                            # production: Supabase (set SUPABASE_URL + SUPABASE_ANON_KEY)
 database is SQLite at 'todos.db'                # file-based
 database is PostgreSQL at env('DATABASE_URL')   # raw PostgreSQL
+database is PostgreSQL                          # shorthand (uses DATABASE_URL env var)
 ```
+
+PostgreSQL uses `runtime/db-postgres.js` — same API as the SQLite adapter. Tables are created lazily on first query. Deploy with `clear deploy` to Railway.
 
 When using Supabase, CRUD operations compile to Supabase SDK calls:
 - `get all Contacts` → `supabase.from('contacts').select('*')`
@@ -1372,6 +1375,56 @@ test 'function works':
   expect result is 10
 ```
 
+### Intent-Based Test Assertions
+
+Write tests that read like user stories. The compiler figures out which endpoints to call:
+
+```clear
+test 'todo workflow':
+  can user create a new todo with title is 'Buy groceries'
+  expect it succeeds
+  can user view all todos
+  expect it succeeds
+  can user delete a todo
+  expect it succeeds
+
+test 'validation works':
+  can user create a todo without a title
+  expect it is rejected
+
+test 'auth required':
+  does deleting a todo require login
+
+test 'display shows data':
+  does the todos list show 'Buy groceries'
+
+test 'agent smoke test':
+  can user ask agent 'Support' with message is 'hello'
+  expect it succeeds
+```
+
+**Intent verbs:** `create` (POST), `view` (GET), `delete` (DELETE), `update` (PUT).
+
+**With fields:** `can user create a todo with title is 'Buy milk' and priority is 'high'`
+
+**Without fields:** `can user create a todo without a title` — sends request missing the field, expects rejection.
+
+**Auth checks:** `does deleting/creating/updating/viewing a todo require login` — sends unauthenticated request, asserts 401.
+
+**Display checks:** `does the todos list show 'Buy groceries'` — fetches list and checks response body contains text.
+
+### Response Expectations
+
+```clear
+expect it succeeds          # 2xx status
+expect it fails             # non-2xx status
+expect it requires login    # 401
+expect it is rejected       # 400
+expect it is not found      # 404
+expect response has id      # field exists in response body
+expect response contains 'success'  # body contains text
+```
+
 ---
 
 ## File I/O
@@ -1668,6 +1721,9 @@ clear dev app.clear
 # Bundle for deployment (Dockerfile + package.json)
 clear package app.clear --out deploy/
 
+# Deploy to Railway (package + railway up)
+clear deploy app.clear
+
 # Scaffold new project
 clear init my-app
 ```
@@ -1704,6 +1760,11 @@ node cli/clear.js package app.clear --out deploy/
 # Docker
 docker build -t myapp deploy/
 docker run -p 3000:3000 myapp
+
+# Deploy to Railway (one command)
+node cli/clear.js deploy app.clear
+# Auto-detects database backend, packages with correct adapter,
+# runs `railway up`, prints env var guidance
 ```
 
 ## npm Package Imports
@@ -2292,18 +2353,64 @@ test 'list users':
   expect response body length is greater than 0
 ```
 
+### Intent-Based Tests (Recommended)
+
+Instead of writing raw HTTP calls, describe what you want to test in English:
+
+```clear
+test 'todo CRUD':
+  can user create a new todo with title is 'Buy groceries'
+  expect it succeeds
+  can user view all todos
+  expect it succeeds
+  can user delete a todo
+  expect it succeeds
+
+test 'validation':
+  can user create a todo without a title
+  expect it is rejected
+
+test 'security':
+  does deleting a todo require login
+
+test 'agent works':
+  can user ask agent 'Support' with message is 'hello'
+  expect it succeeds
+```
+
+The compiler maps intents to HTTP calls: `create` = POST, `view` = GET, `delete` = DELETE, `update` = PUT. It auto-discovers the right endpoints from your table and endpoint definitions.
+
 ### Available Assertions
 
 ```clear
-expect response status is 200          # exact status code match
-expect response body has 'field_name'  # field exists in response body
-expect response body length is greater than 0  # array/object length check
+# Exact status code
+expect response status is 200
+
+# Field existence
+expect response body has 'field_name'
+expect response has id
+
+# Body content
+expect response body length is greater than 0
+expect response contains 'success'
+
+# Semantic checks (for intent-based tests)
+expect it succeeds                     # 2xx status
+expect it fails                        # non-2xx status
+expect it requires login               # 401
+expect it is rejected                  # 400
+expect it is not found                 # 404
+
+# Variable checks
+expect todos has 'Buy groceries'       # variable contains text
 ```
 
 - Test blocks compile into the auto-generated E2E test file
 - Run alongside auto-generated endpoint tests
 - `call METHOD /path` supports `with field is value` for request body
+- Intent-based tests and raw HTTP tests can be mixed in the same test block
 - User-written tests appear after auto-generated tests in the test output
+- Auto-generated tests now have English names: "Creating a new todo succeeds", "User can create a todo and see it in the list"
 
 ---
 

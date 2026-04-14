@@ -1574,6 +1574,45 @@ test 'classifier returns sentiment':
   expect result's sentiment is 'positive'
 ```
 
+### Intent-Based Tests (The Easy Way)
+
+Instead of writing raw HTTP calls, describe what you want to test in English:
+
+```clear
+test 'todo workflow':
+  can user create a new todo with title is 'Buy groceries'
+  expect it succeeds
+  can user view all todos
+  expect it succeeds
+  can user delete a todo
+  expect it succeeds
+
+test 'validation catches missing fields':
+  can user create a todo without a title
+  expect it is rejected
+
+test 'security':
+  does deleting a todo require login
+
+test 'agent smoke test':
+  can user ask agent 'Helpdesk' with message is 'hello'
+  expect it succeeds
+
+test 'display works':
+  does the todos list show 'Buy groceries'
+```
+
+The compiler figures out which endpoints to call based on your tables and
+endpoints. `create` becomes POST, `view` becomes GET, `delete` becomes DELETE.
+
+**Available expectations:**
+- `expect it succeeds` — status 200-299
+- `expect it fails` — non-success status
+- `expect it requires login` — status 401
+- `expect it is rejected` — status 400
+- `expect response has id` — field exists
+- `expect response contains 'text'` — body contains text
+
 ### Running Agent Evals
 
 For more thorough agent testing, use evals:
@@ -1625,9 +1664,24 @@ docker build -t my-app .
 docker run -p 3000:3000 my-app
 ```
 
-**Option B: Any Node.js host**
+**Option B: Railway (One Command)**
 
-Upload the `build/` directory to Vercel, Railway, Render, Fly.io, or any
+```bash
+clear deploy main.clear
+```
+
+This packages your app with the correct database adapter, runs `railway up`,
+and prints environment variable guidance. If your app uses `database is PostgreSQL`,
+the Postgres adapter is bundled automatically.
+
+Requirements:
+- Install Railway CLI: `npm install -g @railway/cli`
+- Log in: `railway login`
+- Create a project: `railway init`
+
+**Option C: Any Node.js host**
+
+Upload the `build/` directory to Vercel, Render, Fly.io, or any
 Node.js hosting. The entry point is `server.js`.
 
 ### Environment Variables
@@ -2601,7 +2655,34 @@ Supports times like `9am`, `2:30pm`, `12:00am` (midnight).
 
 ## Chapter 23: Writing Tests (Proving Your API Works)
 
-You can write tests right in your Clear file that make real HTTP calls to your app:
+You can write tests right in your Clear file. The easiest way is intent-based tests
+that read like user stories:
+
+```clear
+test 'todo workflow':
+  can user create a new todo with title is 'Buy groceries'
+  expect it succeeds
+  can user view all todos
+  expect it succeeds
+  can user delete a todo
+  expect it succeeds
+
+test 'validation':
+  can user create a todo without a title
+  expect it is rejected
+
+test 'security':
+  does deleting a todo require login
+
+test 'agent works':
+  can user ask agent 'Support' with message is 'hello'
+  expect it succeeds
+```
+
+The compiler knows your tables and endpoints, so `can user create a todo` becomes
+a POST to `/api/todos` automatically.
+
+You can also write raw HTTP calls for more control:
 
 ```clear
 test 'create a todo':
@@ -2619,6 +2700,15 @@ These tests run alongside the auto-generated tests when you use `clear test`.
 ### What You Can Check
 
 ```clear
+# After intent-based tests (can user / does)
+expect it succeeds                     # 2xx status
+expect it fails                        # non-2xx
+expect it requires login               # 401
+expect it is rejected                  # 400
+expect response has id                 # field exists in response
+expect response contains 'success'     # body contains text
+
+# After raw HTTP calls
 expect response status is 200          # check the status code
 expect response body has name          # check a field exists
 expect response body length is greater than 0  # check there's data

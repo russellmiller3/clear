@@ -10,7 +10,7 @@
 
 ## What's Built
 
-124 node types. 1730 compiler tests. Zero npm dependencies in the compiler.
+126 node types. 1850 compiler tests. Zero npm dependencies in the compiler.
 Targets: JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4).
 
 ### Core Language
@@ -236,6 +236,10 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Expect | `expect result is 42` | Equality assertion |
 | HTTP test call | `call POST /api/users with name is 'Alice'` | |
 | Expect response | `expect response status 201` | Also `expect response body has id` |
+| Intent-based test | `can user create a todo with title is 'Buy milk'` | English-readable, auto-discovers endpoints |
+| Auth intent test | `does deleting a todo require login` | Asserts 401 without auth |
+| Agent intent test | `can user ask agent 'Support' with message is 'hello'` | Agent smoke test |
+| Semantic expects | `expect it succeeds` / `fails` / `requires login` / `is rejected` | Status code assertions |
 | Mock AI | `mock claude responding:` + fields | Override `_askAI` |
 
 ### Policies (App-Level Guards)
@@ -286,6 +290,10 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Postgres adapter | `database is PostgreSQL` → `pg.Pool` runtime adapter | Done — `runtime/db-postgres.js`, same API as SQLite |
 | Railway deploy | `clear deploy app.clear` → package + `railway up` | Done — auto-detects db backend, correct deps |
 | Studio Test Runner | Tests tab in IDE with Run App/Compiler buttons | Done — `/api/run-tests`, Meph `run_tests` tool |
+| Intent-based tests | `can user create/view/delete`, `does X require login`, `expect it succeeds` | Done — `TEST_INTENT` + extended `EXPECT_RESPONSE` |
+| English test names | Auto-generated tests use readable names ("Creating a todo succeeds") | Done — `generateE2ETests` rewrite |
+| CRUD flow tests | "User can create a todo and see it in the list" | Done — auto-generated from table + endpoint AST |
+| `dbBackend` field | `compileProgram()` exposes `result.dbBackend` | Done — used by CLI deploy/package |
 
 ---
 
@@ -311,7 +319,7 @@ Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it com
 |----------|---------|-------|
 | P6 | Studio Test button | **Done.** Tests tab in preview pane. Run App Tests + Run Compiler Tests buttons. Meph `run_tests` tool. Structured pass/fail with error details. |
 | P7 | ClearMan (API tester) | "Try it" button per endpoint in API tab. Postman built into Studio. |
-| P8 | Compiler-generated tests | Auto-generate happy-path tests from AST. Free test coverage. |
+| P8 | Compiler-generated tests | **Done.** Auto-generated E2E tests with English names, CRUD flow tests, agent smoke tests. |
 | P9 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
 | P10 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
 
@@ -496,8 +504,8 @@ Every app compiled from Clear ships with these protections. Fix a pattern once, 
 
 | Metric | Value |
 |--------|-------|
-| Node types | 124 |
-| Compiler tests | 1844 (0 failures) |
+| Node types | 126 |
+| Compiler tests | 1850 (0 failures) |
 | Sandbox tests | 9 |
 | E2E tests | 80 (core 7 templates, CRUD, curriculum) |
 | Playground tests | ~127 (server, IDE, agent) |
