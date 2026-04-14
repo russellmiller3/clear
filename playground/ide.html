@@ -1439,20 +1439,16 @@ function showTests() {
   // Toolbar
   parts.push('<div class="test-toolbar">');
   parts.push(`<button class="test-btn" onclick="runTests('app')" ${testRunning.app ? 'disabled' : ''}>
-    ${testRunning.app ? '<span class="test-spinner"></span> Running...' : '&#9654; Run App Tests'}
-  </button>`);
-  parts.push(`<button class="test-btn" onclick="runTests('compiler')" ${testRunning.compiler ? 'disabled' : ''}>
-    ${testRunning.compiler ? '<span class="test-spinner"></span> Running...' : '&#9654; Run Compiler Tests'}
+    ${testRunning.app ? '<span class="test-spinner"></span> Running...' : '&#9654; Run Tests'}
   </button>`);
   parts.push('</div>');
 
   // Results sections
-  if (!testResults.app && !testResults.compiler) {
-    parts.push('<div class="test-empty">No test results yet. Click a button above to run tests.</div>');
+  if (!testResults.app) {
+    parts.push('<div class="test-empty">No test results yet. Click Run Tests above.</div>');
+  } else {
+    parts.push(renderTestSection('Tests', testResults.app, 'app'));
   }
-
-  if (testResults.app) parts.push(renderTestSection('App Tests', testResults.app, 'app'));
-  if (testResults.compiler) parts.push(renderTestSection('Compiler Tests', testResults.compiler, 'compiler'));
 
   parts.push('</div>');
   el.innerHTML = parts.join('');

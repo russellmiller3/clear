@@ -1011,6 +1011,29 @@ function generateE2ETests(body) {
 
   if (endpoints.length === 0) return null;
 
+  // --- English test name helper ---
+  // Converts endpoint metadata into human-readable test names like
+  // "Creating a new todo succeeds" instead of "POST /api/todos with valid data returns 201"
+  function resourceName(path) {
+    // Skip URL params like :id to find the actual resource name
+    const parts = path.split('/').filter(p => p && !p.startsWith(':'));
+    const last = parts[parts.length - 1] || 'item';
+    // Singularize: 'todos' → 'todo', 'categories' → 'category'
+    if (last.endsWith('ies')) return last.slice(0, -3) + 'y';
+    if (last.endsWith('s') && !last.endsWith('ss')) return last.slice(0, -1);
+    return last;
+  }
+  function resourcePlural(path) {
+    const parts = path.split('/').filter(p => p && !p.startsWith(':'));
+    return parts[parts.length - 1] || 'items';
+  }
+  function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function article(word) {
+    // English exceptions: "u" making "yoo" sound gets "a" not "an"
+    if (/^uni|^user|^use|^util/i.test(word)) return 'a';
+    return /^[aeiou]/i.test(word) ? 'an' : 'a';
+  }
+
   // --- FK dependency analysis ---
   // Detect fields ending in _id that reference another table's POST endpoint.
   // Example: Orders has product_id -> Products table -> POST /api/products
@@ -1150,7 +1173,7 @@ function generateE2ETests(body) {
       const parentHasEmail = parentEp.rules.some(r => r.constraints?.matches === 'email');
 
       lines.push(`  // Setup: create a ${parentKey} so dependent tests have a valid ${parentKey}_id`);
-      lines.push(`  await test("SETUP: create ${parentKey} for FK dependencies", async () => {`);
+      lines.push(`  await test("Setup: create ${article(parentKey)} ${parentKey} for related records", async () => {`);
       if (parentHasEmail) {
         lines.push(`    const payload = ${JSON.stringify(parentPayload)};`);
         for (const rule of parentEp.rules) {
@@ -1182,8 +1205,11 @@ function generateE2ETests(body) {
       const testPath = ep.path.replace(/:(\w+)/g, '1');
       const fetchOpts = ep.hasAuth ? ', { headers: AUTH_HEADERS }' : '';
       const hasParam = ep.path.includes(':');
-      const expectedStatus = hasParam ? '200 or 404' : '200';
-      lines.push(`  await test("GET ${ep.path} returns ${expectedStatus}", async () => {`);
+      const res = resourcePlural(ep.path);
+      const testName = hasParam
+        ? `Looking up ${article(resourceName(ep.path))} ${resourceName(ep.path)} by ID works`
+        : `Viewing all ${res} returns data`;
+      lines.push(`  await test("${testName}", async () => {`);
       lines.push(`    const r = await fetch(BASE + "${testPath}"${fetchOpts});`);
       if (hasParam) {
         lines.push(`    assert(r.status === 200 || r.status === 404, "Expected 200 or 404, got " + r.status);`);
@@ -1210,7 +1236,8 @@ function generateE2ETests(body) {
       const deps = depMap[ep.path] || [];
       const postHeaders = ep.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
       const expectedPostStatus = ep.returns201 ? 201 : 200;
-      lines.push(`  await test("POST ${ep.path} with valid data returns ${expectedPostStatus}", async () => {`);
+      const rn = resourceName(ep.path);
+      lines.push(`  await test("Creating a new ${rn} succeeds", async () => {`);
       const fkFields = new Set(deps.map(d => d.field));
       lines.push(`    const payload = ${JSON.stringify(validPayload)};`);
       for (const dep of deps) {
@@ -1240,12 +1267,12 @@ function generateE2ETests(body) {
 
       // Test empty body -- auth-protected endpoints need auth headers to reach body check
       if (ep.hasAuth) {
-        lines.push(`  await test("POST ${ep.path} with no body returns 400", async () => {`);
+        lines.push(`  await test("Creating ${article(resourceName(ep.path))} ${resourceName(ep.path)} without any data is rejected", async () => {`);
         lines.push(`    const r = await fetch(BASE + "${ep.path}", { method: "POST", headers: { "Authorization": "Bearer " + TEST_TOKEN } });`);
         lines.push(`    assert(r.status === 400, "Expected 400, got " + r.status);`);
         lines.push(`  });`);
       } else {
-        lines.push(`  await test("POST ${ep.path} with no body returns 400", async () => {`);
+        lines.push(`  await test("Creating ${article(resourceName(ep.path))} ${resourceName(ep.path)} without any data is rejected", async () => {`);
         lines.push(`    const r = await fetch(BASE + "${ep.path}", { method: "POST" });`);
         lines.push(`    assert(r.status === 400, "Expected 400, got " + r.status);`);
         lines.push(`  });`);
@@ -1256,7 +1283,7 @@ function generateE2ETests(body) {
       const requiredFields = ep.rules.filter(r => r.constraints?.required);
       if (requiredFields.length > 0) {
         const emptyHeaders = ep.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
-        lines.push(`  await test("POST ${ep.path} with empty required field returns 400", async () => {`);
+        lines.push(`  await test("Creating ${article(resourceName(ep.path))} ${resourceName(ep.path)} with a blank ${requiredFields[0].name} is rejected", async () => {`);
         lines.push(`    const r = await fetch(BASE + "${ep.path}", {`);
         lines.push(`      method: "POST", headers: ${emptyHeaders},`);
         lines.push(`      body: JSON.stringify({ ${requiredFields[0].name}: "" })`);
@@ -1272,7 +1299,7 @@ function generateE2ETests(body) {
   for (const ep of endpoints) {
     if (ep.method === 'DELETE' && ep.hasAuth) {
       const testPath = ep.path.replace(/:(\w+)/g, '999');
-      lines.push(`  await test("DELETE ${ep.path} without auth returns 401", async () => {`);
+      lines.push(`  await test("Deleting ${article(resourceName(ep.path))} ${resourceName(ep.path)} requires login", async () => {`);
       lines.push(`    const r = await fetch(BASE + "${testPath}", { method: "DELETE" });`);
       lines.push(`    assert(r.status === 401, "Expected 401, got " + r.status);`);
       lines.push(`  });`);
@@ -1287,7 +1314,7 @@ function generateE2ETests(body) {
         if (rule.constraints?.max && rule.fieldType === 'text') {
           const longVal = 'x'.repeat(rule.constraints.max + 1);
           const maxHeaders = ep.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
-          lines.push(`  await test("POST ${ep.path} with ${rule.name} over max length returns 400", async () => {`);
+          lines.push(`  await test("Creating ${article(resourceName(ep.path))} ${resourceName(ep.path)} with a ${rule.name} that's too long is rejected", async () => {`);
           lines.push(`    const r = await fetch(BASE + "${ep.path}", {`);
           lines.push(`      method: "POST", headers: ${maxHeaders},`);
           lines.push(`      body: JSON.stringify({ ${rule.name}: "${longVal}" })`);
@@ -1307,7 +1334,9 @@ function generateE2ETests(body) {
       const hasRole = ep.body?.some(n => n.type === NodeType.REQUIRES_ROLE);
       if (hasRole) {
         const testPath = ep.path.replace(/:(\w+)/g, '999');
-        lines.push(`  await test("${ep.method} ${ep.path} with wrong role returns 403", async () => {`);
+        const rn2 = resourceName(ep.path);
+        const action2 = { GET: 'Viewing', POST: 'Creating', PUT: 'Updating', DELETE: 'Deleting' }[ep.method] || ep.method;
+        lines.push(`  await test("${action2} ${article(rn2)} ${rn2} requires the right role", async () => {`);
         lines.push(`    // Note: this test requires a way to send a valid JWT with wrong role`);
         lines.push(`    // For now, just verify the endpoint exists and rejects unauthenticated`);
         lines.push(`    const r = await fetch(BASE + "${testPath}", { method: "${ep.method}" });`);
@@ -1334,7 +1363,7 @@ function generateE2ETests(body) {
       if (Object.keys(validPayload).length > 0) {
         const maHeaders = ep.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
         const maExpected = ep.returns201 ? 201 : 200;
-        lines.push(`  await test("POST ${ep.path} strips unknown fields (mass assignment protection)", async () => {`);
+        lines.push(`  await test("Extra fields are stripped when creating ${article(resourceName(ep.path))} ${resourceName(ep.path)}", async () => {`);
         // Always use dynamic payload to avoid unique constraint collisions
         lines.push(`    const payload = { ...${JSON.stringify(validPayload)}, admin: true, role: "superuser" };`);
         for (const rule of ep.rules) {
@@ -1365,7 +1394,7 @@ function generateE2ETests(body) {
   const matchingGet = endpoints.find(e => e.method === 'GET' && !e.path.includes(':') && postPaths.includes(e.path));
   if (matchingGet) {
     const fetchOpts = matchingGet.hasAuth ? ', { headers: AUTH_HEADERS }' : '';
-    lines.push(`  await test("GET ${matchingGet.path} returns created records after POST", async () => {`);
+    lines.push(`  await test("${capitalize(resourcePlural(matchingGet.path))} appear in the list after being created", async () => {`);
     lines.push(`    const r = await fetch(BASE + "${matchingGet.path}"${fetchOpts});`);
     lines.push(`    const data = await r.json();`);
     lines.push(`    assert(Array.isArray(data), "Expected array");`);
@@ -1377,13 +1406,95 @@ function generateE2ETests(body) {
   // Test HTML serves
   const hasPages = body.some(n => n.type === NodeType.PAGE);
   if (hasPages) {
-    lines.push(`  await test("GET / serves HTML", async () => {`);
+    lines.push(`  await test("The app loads in the browser", async () => {`);
     lines.push(`    const r = await fetch(BASE + "/");`);
     lines.push(`    assert(r.status === 200, "Expected 200, got " + r.status);`);
     lines.push(`    const html = await r.text();`);
     lines.push(`    assert(html.includes("<!DOCTYPE html>"), "Expected HTML document");`);
     lines.push(`  });`);
     lines.push('');
+  }
+
+  // === CRUD FLOW TESTS (happy-path user journeys) ===
+  // For each resource with POST + GET endpoints, test the full create-then-view flow.
+  // For resources with POST + GET + DELETE, also test create-then-delete.
+  for (const postEp of endpoints) {
+    if (postEp.method !== 'POST' || !postEp.hasValidation) continue;
+    const res = resourcePlural(postEp.path);
+    const rn = resourceName(postEp.path);
+    const getEp = endpoints.find(e => e.method === 'GET' && e.path === postEp.path && !e.path.includes(':'));
+    const deleteEp = endpoints.find(e => e.method === 'DELETE' && e.path.startsWith(postEp.path.replace(/\/$/, '') + '/:'));
+
+    if (getEp) {
+      const postHeaders = postEp.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
+      const getOpts = getEp.hasAuth ? ', { headers: AUTH_HEADERS }' : '';
+      const expectedStatus = postEp.returns201 ? 201 : 200;
+
+      lines.push(`  // --- Happy-path flow: create and view ${rn} ---`);
+      lines.push(`  await test("User can create ${article(rn)} ${rn} and see it in the list", async () => {`);
+      // Build payload
+      lines.push(`    const payload = ${JSON.stringify(buildPayload(postEp))};`);
+      const deps = depMap[postEp.path] || [];
+      for (const dep of deps) {
+        lines.push(`    payload["${dep.field}"] = createdIds["${dep.parentTable}"];`);
+      }
+      for (const rule of postEp.rules) {
+        if (deps.some(d => d.field === rule.name)) continue;
+        if (rule.constraints?.matches === 'email') {
+          lines.push(`    payload["${rule.name}"] = _uniqueEmail();`);
+        } else if (rule.fieldType === 'text' && rule.constraints?.required) {
+          lines.push(`    payload["${rule.name}"] = _uniqueText("flow_${rule.name}");`);
+        }
+      }
+      lines.push(`    // Create`);
+      lines.push(`    const createResp = await fetch(BASE + "${postEp.path}", {`);
+      lines.push(`      method: "POST", headers: ${postHeaders},`);
+      lines.push(`      body: JSON.stringify(payload)`);
+      lines.push(`    });`);
+      lines.push(`    assert(createResp.status === ${expectedStatus}, "Create failed: " + createResp.status);`);
+      lines.push(`    const created = await createResp.json();`);
+      lines.push(`    // View all and check it's there`);
+      lines.push(`    const listResp = await fetch(BASE + "${getEp.path}"${getOpts});`);
+      lines.push(`    const list = await listResp.json();`);
+      lines.push(`    assert(Array.isArray(list), "Expected array of ${res}");`);
+      lines.push(`    assert(list.some(item => item.id === created.id), "Created ${rn} should appear in the list");`);
+      lines.push(`  });`);
+      lines.push('');
+
+      // Create-then-delete flow (if DELETE endpoint exists)
+      if (deleteEp && deleteEp.hasAuth) {
+        lines.push(`  await test("User can create ${article(rn)} ${rn} then delete it", async () => {`);
+        lines.push(`    const payload = ${JSON.stringify(buildPayload(postEp))};`);
+        for (const dep of deps) {
+          lines.push(`    payload["${dep.field}"] = createdIds["${dep.parentTable}"];`);
+        }
+        for (const rule of postEp.rules) {
+          if (deps.some(d => d.field === rule.name)) continue;
+          if (rule.constraints?.matches === 'email') {
+            lines.push(`    payload["${rule.name}"] = _uniqueEmail();`);
+          } else if (rule.fieldType === 'text' && rule.constraints?.required) {
+            lines.push(`    payload["${rule.name}"] = _uniqueText("del_${rule.name}");`);
+          }
+        }
+        lines.push(`    // Create`);
+        lines.push(`    const createResp = await fetch(BASE + "${postEp.path}", {`);
+        lines.push(`      method: "POST", headers: ${postHeaders},`);
+        lines.push(`      body: JSON.stringify(payload)`);
+        lines.push(`    });`);
+        lines.push(`    const created = await createResp.json();`);
+        lines.push(`    assert(created.id, "Should have an id");`);
+        lines.push(`    // Delete`);
+        const deletePath = deleteEp.path.replace(/:(\w+)/g, '" + created.id + "');
+        lines.push(`    const delResp = await fetch(BASE + "${deletePath}", { method: "DELETE", headers: AUTH_HEADERS });`);
+        lines.push(`    assert(delResp.status === 200, "Delete failed: " + delResp.status);`);
+        lines.push(`    // Verify it's gone`);
+        lines.push(`    const listResp = await fetch(BASE + "${getEp.path}"${getOpts});`);
+        lines.push(`    const list = await listResp.json();`);
+        lines.push(`    assert(!list.some(item => item.id === created.id), "Deleted ${rn} should not appear in the list");`);
+        lines.push(`  });`);
+        lines.push('');
+      }
+    }
   }
 
   // === AUTO-GENERATED FRONTEND ELEMENT TESTS ===
@@ -1428,7 +1539,7 @@ function generateE2ETests(body) {
     // Test: each page renders (route exists and returns HTML content)
     for (const page of pages) {
       const route = page.route || '/';
-      lines.push(`  await test("Page '${page.title || page.name}' renders at ${route}", async () => {`);
+      lines.push(`  await test("The ${page.title || page.name} page renders", async () => {`);
       lines.push(`    const r = await fetch(BASE + "/");`);
       lines.push(`    const html = await r.text();`);
       lines.push(`    assert(html.includes("${page.title || page.name}"), "Page should contain title '${page.title || page.name}'");`);
@@ -1438,7 +1549,7 @@ function generateE2ETests(body) {
 
     // Test: each link has a valid href (not just "#")
     for (const link of allElements.links) {
-      lines.push(`  await test("Link '${link.text}' navigates to ${link.href}", async () => {`);
+      lines.push(`  await test("The ${link.text} link goes to the right page", async () => {`);
       lines.push(`    const r = await fetch(BASE + "/");`);
       lines.push(`    const html = await r.text();`);
       lines.push(`    assert(html.includes('href="#${link.href}"') || html.includes('href="${link.href}"'), "Link '${link.text}' should have href to '${link.href}', not '#'");`);
@@ -1448,7 +1559,7 @@ function generateE2ETests(body) {
 
     // Test: each button exists in the HTML
     for (const btn of allElements.buttons) {
-      lines.push(`  await test("Button '${btn.text}' exists on page '${btn.page}'", async () => {`);
+      lines.push(`  await test("The ${btn.text} button is on the page", async () => {`);
       lines.push(`    const r = await fetch(BASE + "/");`);
       lines.push(`    const html = await r.text();`);
       lines.push(`    assert(html.includes("${btn.text}"), "Button '${btn.text}' should exist in HTML");`);
@@ -1458,7 +1569,7 @@ function generateE2ETests(body) {
 
     // Test: each display element is present (not showing "OUTPUT" placeholder)
     for (const disp of allElements.displays) {
-      lines.push(`  await test("Display '${disp.name}' element exists on page '${disp.page}'", async () => {`);
+      lines.push(`  await test("The ${disp.name} section is visible on the page", async () => {`);
       lines.push(`    const r = await fetch(BASE + "/");`);
       lines.push(`    const html = await r.text();`);
       lines.push(`    assert(html.includes("${disp.name}") || html.includes("output_"), "Display element for '${disp.name}' should exist");`);
@@ -1491,7 +1602,7 @@ function generateE2ETests(body) {
 
       if (callingEp) {
         const epHeaders = callingEp.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
-        lines.push(`  await test("Agent '${agentName}' endpoint POST ${callingEp.path} responds", async () => {`);
+        lines.push(`  await test("The ${agentName} agent responds to messages", async () => {`);
         lines.push(`    const r = await fetch(BASE + "${callingEp.path}", {`);
         lines.push(`      method: "POST", headers: ${epHeaders},`);
         lines.push(`      body: JSON.stringify({ message: "test input" })`);
@@ -1533,7 +1644,7 @@ function generateE2ETests(body) {
 
       if (callingEp) {
         const epHeaders = callingEp.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
-        lines.push(`  await test("Pipeline '${pipeline.name}' endpoint POST ${callingEp.path} responds", async () => {`);
+        lines.push(`  await test("The ${pipeline.name} pipeline processes requests", async () => {`);
         lines.push(`    const r = await fetch(BASE + "${callingEp.path}", {`);
         lines.push(`      method: "POST", headers: ${epHeaders},`);
         lines.push(`      body: JSON.stringify({ candidate_id: 1 })`);

@@ -10094,7 +10094,7 @@ when user calls POST /api/orders sending order_data:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const tests = result.tests;
-    expect(tests).toContain('SETUP: create product for FK dependencies');
+    expect(tests).toContain('Setup: create a product for related records');
     expect(tests).toContain('createdIds["product"]');
     expect(tests).toContain('payload["product_id"] = createdIds["product"]');
   });
@@ -10153,8 +10153,9 @@ when user calls POST /api/orders sending data:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const tests = result.tests;
-    expect(tests).toContain('SETUP: create product for FK dependencies');
-    expect(tests).toContain('SETUP: create user for FK dependencies');
+    expect(tests).toContain('Setup: create a product for related records');
+    expect(tests).toContain('Setup: create a user for related records')
+    // Verify "a user" not "an user" — English exception for "u" making "yoo" sound
     expect(tests).toContain('payload["product_id"] = createdIds["product"]');
     expect(tests).toContain('payload["user_id"] = createdIds["user"]');
   });
@@ -10207,8 +10208,8 @@ when user calls POST /api/orders sending data:
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
     const tests = result.tests;
-    const setupIdx = tests.indexOf('SETUP');
-    const getIdx = tests.indexOf('GET /api/orders');
+    const setupIdx = tests.indexOf('Setup:');
+    const getIdx = tests.indexOf('Viewing all orders');
     expect(setupIdx).toBeLessThan(getIdx);
   });
 });
@@ -20025,7 +20026,7 @@ test 'my custom test':
 `;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    const autoIdx = r.tests.indexOf('POST /api/notes with valid data');
+    const autoIdx = r.tests.indexOf('Creating a new note succeeds');
     const userIdx = r.tests.indexOf('my custom test');
     expect(autoIdx).toBeGreaterThan(-1);
     expect(userIdx).toBeGreaterThan(-1);
