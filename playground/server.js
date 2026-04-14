@@ -514,6 +514,40 @@ app.post('/api/screenshot-data', express.json({ limit: '15mb' }), (req, res) => 
   res.json({ ok: true });
 });
 
+// =============================================================================
+// BRIDGE — Meph commands relay to/from the preview iframe via the IDE
+// =============================================================================
+// Flow:
+//   1. Meph tool calls sendBridgeCommand(cmd, payload) — returns a Promise
+//   2. Server stores the resolver in _bridgePending[id]
+//   3. Server emits SSE { type: 'bridge_command', id, cmd, payload } to the IDE
+//   4. IDE forwards via postMessage to the iframe (clear-bridge handler)
+//   5. iframe replies via postMessage to the IDE
+//   6. IDE POSTs to /api/bridge-reply with { id, result }
+//   7. Server resolves the pending promise
+const _bridgePending = {};
+function sendBridgeCommandFromServer(send, cmd, payload, timeoutMs) {
+  return new Promise((resolve) => {
+    const id = 'bc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    _bridgePending[id] = resolve;
+    send({ type: 'bridge_command', id, cmd, payload });
+    setTimeout(() => {
+      if (_bridgePending[id]) {
+        delete _bridgePending[id];
+        resolve({ error: 'Bridge command timed out: ' + cmd });
+      }
+    }, timeoutMs || 5000);
+  });
+}
+app.post('/api/bridge-reply', (req, res) => {
+  const { id, result } = req.body || {};
+  if (id && _bridgePending[id]) {
+    _bridgePending[id](result || {});
+    delete _bridgePending[id];
+  }
+  res.json({ ok: true });
+});
+
 // FETCH — proxy requests to running app
 // =============================================================================
 app.post('/api/fetch', async (req, res) => {
@@ -728,6 +762,21 @@ You can modify .clear files and requests.md. You can create new files of any all
   {
     name: 'read_storage',
     description: 'Read localStorage and sessionStorage from the running app. Use to debug auth flows (is the JWT stored?), persistent state, or saved preferences.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'read_actions',
+    description: 'Read the user\'s recent interactions with the running app — clicks, inputs, form submissions. Use this when the user says "fix this bug" or "what just happened" — you get the exact sequence of actions they took, with selectors and values. The buffer auto-clears when the app restarts.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max recent actions to return (default 50, max 100)' },
+      },
+    },
+  },
+  {
+    name: 'read_dom',
+    description: 'Snapshot the running app\'s current state — full HTML body, the reactive _state object, current URL. Use to see exactly what the user is looking at right now. Pairs with read_actions: read_actions tells you HOW they got here, read_dom tells you WHERE they are.',
     input_schema: { type: 'object', properties: {} },
   },
   {
@@ -1194,29 +1243,16 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'click_element': {
+        // Click via the bridge — acts on the user's visible iframe so they SEE Meph clicking.
         if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        try {
-          const page = await getPage();
-          const sel = input.selector;
-          await page.click(sel, { timeout: 3000 });
-          await page.waitForTimeout(300); // let reactive updates settle
-          const html = (await page.content()).slice(0, 4000);
-          return JSON.stringify({ ok: true, clicked: sel, html });
-        } catch (err) {
-          return JSON.stringify({ error: err.message.slice(0, 300) });
-        }
+        const result = await sendBridgeCommandFromServer(send, 'click', { selector: input.selector }, 4000);
+        return JSON.stringify(result);
       }
 
       case 'fill_input': {
         if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        try {
-          const page = await getPage();
-          await page.fill(input.selector, input.value, { timeout: 3000 });
-          await page.waitForTimeout(200);
-          return JSON.stringify({ ok: true, filled: input.selector, value: input.value });
-        } catch (err) {
-          return JSON.stringify({ error: err.message.slice(0, 300) });
-        }
+        const result = await sendBridgeCommandFromServer(send, 'fill', { selector: input.selector, value: input.value }, 4000);
+        return JSON.stringify(result);
       }
 
       case 'read_network': {
@@ -1232,63 +1268,32 @@ app.post('/api/chat', async (req, res) => {
 
       case 'inspect_element': {
         if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+        const result = await sendBridgeCommandFromServer(send, 'inspect', { selector: input.selector }, 4000);
+        return JSON.stringify(result);
+      }
+
+      case 'read_storage': {
+        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+        const result = await sendBridgeCommandFromServer(send, 'read-storage', {}, 4000);
+        return JSON.stringify(result);
+      }
+
+      case 'read_actions': {
+        // Fetch user-action history from our recorder buffer
         try {
-          const page = await getPage();
-          const sel = input.selector;
-          const info = await page.evaluate((s) => {
-            const el = document.querySelector(s);
-            if (!el) return null;
-            const cs = window.getComputedStyle(el);
-            const rect = el.getBoundingClientRect();
-            return {
-              tag: el.tagName.toLowerCase(),
-              text: el.textContent?.slice(0, 200) || '',
-              attributes: Array.from(el.attributes).reduce((o, a) => { o[a.name] = a.value; return o; }, {}),
-              styles: {
-                color: cs.color,
-                backgroundColor: cs.backgroundColor,
-                fontSize: cs.fontSize,
-                fontFamily: cs.fontFamily,
-                fontWeight: cs.fontWeight,
-                padding: cs.padding,
-                margin: cs.margin,
-                border: cs.border,
-                borderRadius: cs.borderRadius,
-                display: cs.display,
-                visibility: cs.visibility,
-                width: cs.width,
-                height: cs.height,
-              },
-              box: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
-            };
-          }, sel);
-          if (!info) return JSON.stringify({ error: 'Element not found: ' + sel });
-          return JSON.stringify({ ok: true, selector: sel, ...info });
+          const limit = Math.min(input.limit || 50, 100);
+          const r = await fetch('http://localhost:' + (process.env.PORT || 3456) + '/api/meph-actions');
+          const data = await r.json();
+          return JSON.stringify({ count: Math.min(data.actions.length, limit), actions: data.actions.slice(-limit) });
         } catch (err) {
           return JSON.stringify({ error: err.message.slice(0, 300) });
         }
       }
 
-      case 'read_storage': {
+      case 'read_dom': {
         if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        try {
-          const page = await getPage();
-          const storage = await page.evaluate(() => {
-            const ls = {}, ss = {};
-            for (let i = 0; i < localStorage.length; i++) {
-              const k = localStorage.key(i);
-              ls[k] = localStorage.getItem(k);
-            }
-            for (let i = 0; i < sessionStorage.length; i++) {
-              const k = sessionStorage.key(i);
-              ss[k] = sessionStorage.getItem(k);
-            }
-            return { localStorage: ls, sessionStorage: ss };
-          });
-          return JSON.stringify({ ok: true, ...storage });
-        } catch (err) {
-          return JSON.stringify({ error: err.message.slice(0, 300) });
-        }
+        const result = await sendBridgeCommandFromServer(send, 'read-dom', {}, 4000);
+        return JSON.stringify(result);
       }
 
       case 'websocket_log': {
@@ -1545,6 +1550,8 @@ app.post('/api/chat', async (req, res) => {
             case 'read_network': return 'Reading network requests';
             case 'inspect_element': return `Inspecting ${input.selector || ''}`;
             case 'read_storage': return 'Reading browser storage';
+            case 'read_actions': return 'Reading user actions';
+            case 'read_dom': return 'Reading current DOM';
             case 'websocket_log': return 'Reading WebSocket messages';
             case 'db_inspect': return `DB query: ${(input.query || '').slice(0, 50)}`;
             case 'todo': return input.action === 'set' ? 'Updating task list' : 'Reading task list';
@@ -1669,6 +1676,13 @@ app.post('/api/chat', async (req, res) => {
               return err ? `[tool] ❌ inspect ${input.selector} — ${err.slice(0, 120)}` : `[tool] ✓ inspected ${input.selector}`;
             case 'read_storage':
               return err ? `[tool] ❌ read_storage — ${err.slice(0, 120)}` : `[tool] ✓ read storage`;
+            case 'read_actions': {
+              if (err) return `[tool] ❌ read_actions — ${err.slice(0, 120)}`;
+              const r = JSON.parse(result);
+              return `[tool] user actions — ${r.count || 0} recorded`;
+            }
+            case 'read_dom':
+              return err ? `[tool] ❌ read_dom — ${err.slice(0, 120)}` : `[tool] ✓ read DOM snapshot`;
             case 'websocket_log': {
               if (err) return `[tool] ❌ websocket_log — ${err.slice(0, 120)}`;
               const r = JSON.parse(result);

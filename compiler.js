@@ -8498,7 +8498,11 @@ ${htmlBody.includes('data-nav-item') ? `  <script>
   <script>
   (function() {
     if (window === window.parent) return;
-    if (!location.search.includes('clear-bridge=1')) return;
+    // Activate when EITHER ?clear-bridge=1 is in URL OR <meta name="clear-bridge" content="1"> is present.
+    // The query param works for src= iframes (full-stack apps); the meta tag works for srcdoc iframes (web-only apps).
+    var __hasQuery = location.search.indexOf('clear-bridge=1') !== -1;
+    var __hasMeta = !!document.querySelector('meta[name="clear-bridge"]');
+    if (!__hasQuery && !__hasMeta) return;
     var __clearOrigin = '*'; // Studio loads from localhost:3456, app from localhost:4xxx
     function __selectorFor(el) {
       if (!el || el === document) return null;

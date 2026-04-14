@@ -1241,12 +1241,15 @@ document.addEventListener('click', function(e) {
   }
 }, true);
 <\/script>`;
-    html = html.replace('</head>', errorCapture + sourceMapCapture + '</head>');
+    // Inject meta tag so the compiled bridge activates inside srcdoc iframes (no URL → no query param)
+    const bridgeMeta = '<meta name="clear-bridge" content="1">';
+    html = html.replace('</head>', bridgeMeta + errorCapture + sourceMapCapture + '</head>');
     el.innerHTML = '<iframe sandbox="allow-scripts allow-same-origin"></iframe>';
     el.querySelector('iframe').srcdoc = html;
   } else if (lastCompiled.serverJS || lastCompiled.javascript || lastCompiled.python) {
     if (runningPort) {
-      el.innerHTML = `<iframe src="http://localhost:${runningPort}" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>`;
+      // Add ?clear-bridge=1 to activate the postMessage bridge in the running app
+      el.innerHTML = `<iframe src="http://localhost:${runningPort}/?clear-bridge=1" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>`;
     } else {
       const lang = lastCompiled.python ? 'Python' : 'Node.js';
       el.innerHTML = '<div class="empty-state"><div class="icon" style="font-size:1.8rem">⚙</div><div class="title">Starting ' + lang + ' server…</div><div class="hint">This happens automatically. Check Terminal for logs.</div></div>';
@@ -1370,7 +1373,60 @@ window.addEventListener('message', (e) => {
     // Switch to editor panel if needed
     if (activeTab !== 'output') showTab('output');
   }
+
+  // Studio bridge — relay user actions to /api/meph-actions so Meph can read them
+  if (e.data?.source === 'clear-bridge') {
+    if (e.data.type === 'user-action') {
+      // Fire-and-forget; we don't block the iframe waiting for the recorder
+      fetch('/api/meph-actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: e.data.action,
+          selector: e.data.selector,
+          value: e.data.value,
+          text: e.data.text,
+          ts: e.data.ts || Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    if (e.data.type === 'bridge-ready') {
+      // Clear the previous session's actions when the bridge connects
+      fetch('/api/meph-actions/clear', { method: 'POST' }).catch(() => {});
+    }
+    // Replies to commands from Meph (click/fill/inspect/etc.) are handled per-call below.
+    if (e.data.replyTo && _bridgePending[e.data.replyTo]) {
+      _bridgePending[e.data.replyTo](e.data);
+      delete _bridgePending[e.data.replyTo];
+    }
+  }
 });
+
+// Per-call reply registry for bridge commands sent from Studio to the iframe.
+// The IDE acts as a relay: the server posts a command via SSE, the IDE forwards
+// to the iframe via postMessage, the iframe replies via postMessage, the IDE
+// posts the reply back to the server.
+const _bridgePending = {};
+window._bridgePending = _bridgePending;
+function sendBridgeCommand(cmd, payload, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const iframe = document.querySelector('#preview-content iframe');
+    if (!iframe || !iframe.contentWindow) {
+      reject(new Error('No preview iframe — start the app first'));
+      return;
+    }
+    const id = 'bc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    _bridgePending[id] = resolve;
+    iframe.contentWindow.postMessage({ target: 'clear-bridge', id, cmd, ...payload }, '*');
+    setTimeout(() => {
+      if (_bridgePending[id]) {
+        delete _bridgePending[id];
+        reject(new Error('Bridge command timed out: ' + cmd));
+      }
+    }, timeoutMs || 5000);
+  });
+}
+window.sendBridgeCommand = sendBridgeCommand;
 
 window.switchCodeTab = function(key) {
   compiledTab = key;
@@ -2717,6 +2773,25 @@ window.sendChat = async function() {
           autoCompile();
         } else if (ev.type === 'screenshot_request') {
           captureOutputScreenshot();
+        } else if (ev.type === 'bridge_command') {
+          // Server is asking us to forward a command to the iframe.
+          // Send via postMessage, then POST the reply back to /api/bridge-reply.
+          (async () => {
+            try {
+              const result = await sendBridgeCommand(ev.cmd, ev.payload || {}, 5000);
+              await fetch('/api/bridge-reply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: ev.id, result }),
+              });
+            } catch (err) {
+              await fetch('/api/bridge-reply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: ev.id, result: { error: err.message } }),
+              });
+            }
+          })();
         } else if (ev.type === 'context_usage') {
           updateContextMeter(ev.percent, ev.used, ev.max);
         } else if (ev.type === 'done') {
