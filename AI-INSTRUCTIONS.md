@@ -382,6 +382,8 @@ test:
 - "User can create a todo and see it in the list" — CRUD flow
 - "The Helpdesk agent responds to messages" — agent smoke test
 
+**When a test fails, read the error message — it's plain English and names the fix.** The compiler emits friendly errors like `"POST /api/notes returned 404 — that endpoint doesn't exist on the server. Check the path."` for every status mismatch (200/201/204/400/401/403/404/409/422/429/5xx). Each carries `[clear:N]` pointing at the exact line. Don't re-run tests just to "see" them — the snapshot Meph gets in his context already contains the failures. Read the error, make the smallest edit that fixes it, run once to confirm.
+
 ## Common Mistakes (read this before writing Clear)
 
 | Wrong | Right | Why |

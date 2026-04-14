@@ -1633,6 +1633,19 @@ Output:
 2 passed, 0 failed
 ```
 
+**When a test fails**, Clear tells you what went wrong in plain English:
+
+```
+✗ posting a note works
+  POST /api/notes returned 404 (expected 201).
+  404 means "there is no endpoint at that URL." Either the path
+  in your test is wrong, or you forgot to write
+  `when user calls POST /api/notes:` in your Clear file.
+  [clear:12]
+```
+
+Every status code gets a real explanation — 200, 201, 204, 400, 401, 403, 404, 409, 422, 429, 5xx. The `[clear:N]` tag points at the exact source line that failed. In **Clear Studio**, clicking a failing test row jumps the editor to that line. There's also a **Fix with Meph** button that hands the error + surrounding code to Meph for an auto-fix.
+
 ### What You Can Test
 
 **Values:**

@@ -229,6 +229,19 @@ cd dist/ && npm install express && node server.js
 node test.js
 ```
 
+## When Tests Fail
+
+Test failures speak plain English and name the fix. Don't guess — read the error:
+
+```
+POST /api/notes returned 404 (expected 201).
+404 means "there is no endpoint at that URL." Either the path in your
+test is wrong, or you forgot to write `when user calls POST /api/notes:`
+in your Clear file. [clear:12]
+```
+
+The `[clear:N]` tag is the source line. Every status code (200, 201, 204, 400, 401, 403, 404, 409, 422, 429, 5xx) has its own plain-English hint. When fixing a failing test, the error message already tells you what to change — go straight to the named line and make the smallest edit.
+
 ## Available Features (all implemented)
 
 **Core:** variables, math, strings, functions, loops, conditionals, pattern matching, objects, lists, maps, error handling, modules, comments
