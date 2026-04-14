@@ -407,122 +407,111 @@ async function testCommand(args) {
   const loaded = loadSource(file);
   if (loaded.error) { output(loaded, flags); process.exit(loaded.code); }
 
-  const { parse, NodeType, compileProgram } = await getCompiler();
-  const ast = parse(loaded.source);
-  const tests = [];
-  function findTests(nodes) {
-    for (const n of nodes) {
-      if (n.type === NodeType.TEST_DEF) tests.push(n);
-      if (n.body) findTests(n.body);
-    }
-  }
-  findTests(ast.body);
-
-  if (tests.length === 0) {
-    output({ ok: true, passed: 0, failed: 0, message: 'No test blocks found.' }, flags);
-    process.exit(0);
-  }
-
+  const { compileProgram } = await getCompiler();
   const result = compileProgram(loaded.source, { moduleResolver: makeModuleResolver(loaded.filePath) });
   if (result.errors.length > 0) {
     output({ ok: false, errors: result.errors }, flags);
     process.exit(1);
   }
 
-  // Build test JS: combine server code with test blocks
-  // Sources of tests:
-  //   1. result.tests — auto-generated e2e tests from generateE2ETests()
-  //   2. serverJS — user-written test blocks (wrapped in typeof test guard)
-  //   3. javascript/browserServer — frontend tests
-  let js = '';
-  let testBlocks = '';
+  // Use the auto-generated test file (result.tests) which includes BOTH
+  // compiler-generated E2E tests AND user-written test blocks, all with
+  // proper variable scoping (_baseUrl, _response, _responseBody, etc.)
+  if (result.tests) {
+    // Build in a temp directory with all deps installed
+    const buildDir = resolve(dirname(resolve(file)), '.clear-test-build');
+    mkdirSync(buildDir, { recursive: true });
+    const rtDir = resolve(buildDir, 'clear-runtime');
+    mkdirSync(rtDir, { recursive: true });
 
-  if (result.browserServer) {
-    js = result.browserServer;
-    // Extract test blocks from frontend JS
-    const frontendJs = result.javascript || '';
-    const testStart = frontendJs.indexOf('test("');
-    if (testStart > 0) {
-      let testEnd = frontendJs.length;
-      const serverIdx = frontendJs.indexOf('const server', testStart);
-      const appListenIdx = frontendJs.indexOf('app.listen', testStart);
-      const portIdx = frontendJs.indexOf('const PORT', testStart);
-      if (serverIdx > 0) testEnd = Math.min(testEnd, serverIdx);
-      if (appListenIdx > 0) testEnd = Math.min(testEnd, appListenIdx);
-      if (portIdx > 0) testEnd = Math.min(testEnd, portIdx);
-      testBlocks = frontendJs.substring(testStart, testEnd);
+    // Copy runtime files
+    const runtimeSrc = resolve(__dirname, '..', 'runtime');
+    for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
+      const src = resolve(runtimeSrc, f);
+      if (existsSync(src)) copyFileSync(src, resolve(rtDir, f));
     }
-  } else {
-    js = result.serverJS || result.javascript || '';
-  }
 
-  // Also extract user-written test blocks from serverJS
-  // They're wrapped in: if (typeof test === 'function') { test(...) }
-  // The test runner defines test(), so the guard passes — include the blocks as-is
-  const serverJs = result.serverJS || '';
-  const guardMarker = "if (typeof test === 'function') {";
-  let searchPos = 0;
-  while (true) {
-    const idx = serverJs.indexOf(guardMarker, searchPos);
-    if (idx < 0) break;
-    // Find matching closing brace by counting depth
-    let depth = 1, i = idx + guardMarker.length;
-    while (i < serverJs.length && depth > 0) {
-      if (serverJs[i] === '{') depth++;
-      else if (serverJs[i] === '}') depth--;
-      i++;
+    // Write server + test files
+    const serverCode = result.serverJS || result.javascript || '';
+    const testFile = resolve(buildDir, 'test.js');
+    writeFileSync(testFile, result.tests);
+
+    if (serverCode) {
+      writeFileSync(resolve(buildDir, 'server.js'), serverCode);
+      if (result.html) writeFileSync(resolve(buildDir, 'index.html'), result.html);
+      if (result.css) writeFileSync(resolve(buildDir, 'style.css'), result.css);
+
+      // Install npm dependencies (bcryptjs, jsonwebtoken, ws, etc.)
+      const deps = { express: '*', ws: '*' };
+      if (serverCode.includes("require('bcryptjs')")) deps.bcryptjs = '*';
+      if (serverCode.includes("require('jsonwebtoken')")) deps.jsonwebtoken = '*';
+      if (serverCode.includes("require('nodemailer')")) deps.nodemailer = '*';
+      if (serverCode.includes("require('multer')")) deps.multer = '*';
+      writeFileSync(resolve(buildDir, 'package.json'), JSON.stringify({ dependencies: deps }));
+      const needInstall = Object.keys(deps).some(d => !existsSync(resolve(buildDir, 'node_modules', d)));
+      if (needInstall) {
+        if (!flags.quiet) console.log('  Installing dependencies...');
+        try { execSync('npm install --production --silent', { cwd: buildDir, timeout: 30000, stdio: 'pipe' }); } catch {}
+      }
+
+      // Start server
+      const port = 3099 + Math.floor(Math.random() * 900);
+      // Set a known JWT_SECRET so the server and test runner share the same secret
+      // Without this, the server generates a random secret and auth tokens from
+      // the test harness (via auth.createToken) won't verify.
+      const testJwtSecret = 'clear-test-secret-' + Date.now();
+      const env = { ...process.env, PORT: String(port), NODE_ENV: 'test', JWT_SECRET: testJwtSecret, CLEAR_AUTH_SECRET: testJwtSecret };
+      if (!flags.quiet) console.log('  Starting server on port ' + port + '...');
+      const server = spawn('node', ['server.js'], { cwd: buildDir, env, stdio: 'pipe' });
+
+      // Wait for server to be ready (poll TCP, max 8s)
+      let serverReady = false;
+      server.stdout.on('data', (d) => {
+        const s = d.toString();
+        if (s.includes('port') || s.includes('listening') || s.includes('running')) serverReady = true;
+      });
+      server.stderr.on('data', (d) => {
+        const s = d.toString();
+        if (s.includes('WARNING')) return; // ignore auth warnings
+        if (!flags.quiet) process.stderr.write('  [server] ' + s);
+      });
+      await new Promise(res => {
+        let attempts = 0;
+        const check = setInterval(async () => {
+          attempts++;
+          if (serverReady || attempts > 3) {
+            try {
+              const r = await fetch(`http://localhost:${port}/`);
+              if (r.ok || r.status < 500) { clearInterval(check); res(); return; }
+            } catch {}
+          }
+          if (attempts > 40) { clearInterval(check); res(); }
+        }, 200);
+      });
+
+      // Run tests
+      if (!flags.quiet) console.log('  Running tests...\n');
+      try {
+        const testEnv = { ...process.env, TEST_URL: `http://localhost:${port}`, JWT_SECRET: testJwtSecret, CLEAR_AUTH_SECRET: testJwtSecret };
+        const stdout = execSync(`node test.js`, { cwd: buildDir, encoding: 'utf8', timeout: 30000, env: testEnv });
+        process.stdout.write(stdout);
+      } catch (e) {
+        if (e.stdout) process.stdout.write(e.stdout);
+        if (e.status === 4) process.exit(4);
+        if (e.stderr) process.stderr.write(e.stderr);
+      } finally {
+        server.kill('SIGTERM');
+      }
+    } else {
+      // Frontend-only app — run tests without server
+      execSync(`node test.js`, { cwd: buildDir, stdio: 'inherit', timeout: 30000 });
     }
-    // Extract the full guarded block (including the if wrapper — test() is defined)
-    testBlocks += '\n' + serverJs.substring(idx, i);
-    searchPos = i;
+    return;
   }
 
-  // Strip browser-specific code for Node test runner
-  if (js.includes('// --- Clear Browser Server')) {
-    js = js.replace(/^[^\n]*\n\(function\(\)\s*\{/, '');
-    const fetchIdx = js.indexOf('const _origFetch');
-    if (fetchIdx > 0) js = js.substring(0, fetchIdx);
-    js = js.trimEnd().replace(/\}\)\(\);?\s*$/, '');
-    js = 'var window = {};\nasync function _askAI() { throw new Error("Set ANTHROPIC_API_KEY"); }\nasync function _askAIWithTools() { throw new Error("Set ANTHROPIC_API_KEY"); }\n' + js;
-  }
-
-  // Append extracted test blocks
-  if (testBlocks) js += '\n' + testBlocks;
-
-  // Write test runner to temp file and execute with Node
-  const tmpFile = resolve(dirname(resolve(file)), '.clear-test-runner.cjs');
-  const wrappedRunner = [
-    '"use strict";',
-    '(async () => {',
-    'const _tests = [];',
-    'let _passed = 0, _failed = 0;',
-    'function test(n, f) { _tests.push({ name: n, fn: f }); }',
-    'function expect(v) {',
-    '  return {',
-    '    toBeTruthy() { if (!v) throw new Error("Expected truthy, got " + v); },',
-    '    toBe(expected) { if (v !== expected) throw new Error("Expected " + JSON.stringify(expected) + ", got " + JSON.stringify(v)); },',
-    '  };',
-    '}',
-    js,
-    'for (const t of _tests) {',
-    '  try { await t.fn(); _passed++; console.log("  PASS:", t.name); }',
-    '  catch(e) { _failed++; console.log("  FAIL:", t.name, "--", e.message); }',
-    '}',
-    'console.log("");',
-    'console.log("  " + _passed + " passed, " + _failed + " failed");',
-    'if (_failed > 0) process.exit(4);',
-    '})().catch(e => { console.error(e.message); process.exit(2); });',
-  ].join('\n');
-  writeFileSync(tmpFile, wrappedRunner);
-  try {
-    execSync(`node ${tmpFile}`, { stdio: 'inherit', timeout: 30000 });
-  } catch (e) {
-    if (e.status === 4) process.exit(4);
-    output({ ok: false, error: e.message?.split('\n')[0] || 'Test runner failed' }, flags);
-    process.exit(2);
-  } finally {
-    try { require('fs').unlinkSync(tmpFile); } catch {}
-  }
+  // Fallback: no auto-generated tests and no user tests
+  output({ ok: true, passed: 0, failed: 0, message: 'No tests found. Add test blocks to your Clear source.' }, flags);
+  process.exit(0);
 }
 
 // =============================================================================

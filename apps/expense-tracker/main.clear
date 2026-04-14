@@ -152,23 +152,19 @@ page 'Expense Tracker':
 
 # Tests
 
-test 'list expenses returns 200':
-  call GET /api/expenses
-  expect response status is 200
+test 'user can view all expenses':
+  can user view all expenses
 
-test 'create expense with valid data':
-  call POST /api/expenses with description is 'Test expense' and amount is 42
-  expect response status is 201
-  expect response body has id
+test 'user can create a new expense':
+  can user create a new expense with description is 'Test expense' and amount is 42
+  expect it succeeds
+  expect response has id
 
-test 'create expense rejects missing amount':
-  call POST /api/expenses with description is 'No amount'
-  expect response status is 400
+test 'creating an expense without an amount is rejected':
+  can user create an expense without a amount
 
-test 'delete expense requires auth':
-  call DELETE /api/expenses/1
-  expect response status is 401
+test 'deleting an expense requires login':
+  does deleting an expense require login
 
-test 'expense total returns aggregate':
-  call GET /api/expenses/total
-  expect response status is 200
+test 'user can view expense totals':
+  can user view all total

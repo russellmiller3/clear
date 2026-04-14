@@ -1128,9 +1128,11 @@ function generateE2ETests(body) {
   const anyAuth = endpoints.some(ep => ep.hasAuth);
   if (anyAuth) {
     lines.push('');
-    lines.push('// Generate a test auth token using the same runtime as the server');
-    lines.push('const auth = require("./clear-runtime/auth");');
-    lines.push('const TEST_TOKEN = auth.createToken({ id: 1, role: "admin", email: "test@test.com" });');
+    lines.push('// Generate a test auth token compatible with the server\'s JWT verification');
+    lines.push('// Uses jsonwebtoken (same library as compiled server) with JWT_SECRET env var');
+    lines.push('const jwt = require("jsonwebtoken");');
+    lines.push('const _testSecret = process.env.JWT_SECRET || "clear-test-secret";');
+    lines.push('const TEST_TOKEN = jwt.sign({ id: 1, role: "admin", email: "test@test.com" }, _testSecret, { expiresIn: "1h" });');
     lines.push('const AUTH_HEADERS = { "Authorization": "Bearer " + TEST_TOKEN, "Content-Type": "application/json" };');
   }
 

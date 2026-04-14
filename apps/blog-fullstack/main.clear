@@ -156,23 +156,19 @@ page 'Blog' at '/':
 
 # Tests
 
-test 'list posts returns 200':
-  call GET /api/posts
-  expect response status is 200
+test 'user can view all posts':
+  can user view all posts
 
-test 'create post with valid data':
-  call POST /api/posts with title is 'Test Post' and body is 'Test body content'
-  expect response status is 201
-  expect response body has id
+test 'user can create a new post':
+  can user create a new post with title is 'Test Post' and body is 'Test body content'
+  expect it succeeds
+  expect response has id
 
-test 'create post rejects empty title':
-  call POST /api/posts with title is '' and body is 'Some body'
-  expect response status is 400
+test 'creating a post without a title is rejected':
+  can user create a post without a title
 
-test 'delete post requires auth':
-  call DELETE /api/posts/1
-  expect response status is 401
+test 'deleting a post requires login':
+  does deleting a post require login
 
-test 'list authors returns 200':
-  call GET /api/authors
-  expect response status is 200
+test 'user can view all authors':
+  can user view all authors

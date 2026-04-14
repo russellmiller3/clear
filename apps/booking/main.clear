@@ -164,22 +164,17 @@ page 'Room Booking' at '/':
 
 # Tests
 
-test 'list rooms returns 200':
-  call GET /api/rooms
-  expect response status is 200
+test 'user can view all rooms':
+  can user view all rooms
 
-test 'create room requires auth':
-  call POST /api/rooms with name is 'Test Room'
-  expect response status is 401
+test 'creating a room requires login':
+  does creating a room require login
 
-test 'list bookings returns 200':
-  call GET /api/bookings
-  expect response status is 200
+test 'user can view all bookings':
+  can user view all bookings
 
-test 'create booking requires auth':
-  call POST /api/bookings with guest_name is 'Test Guest' and date is '2026-05-01' and time is '10:00'
-  expect response status is 401
+test 'creating a booking requires login':
+  does creating a booking require login
 
-test 'delete room requires auth':
-  call DELETE /api/rooms/1
-  expect response status is 401
+test 'deleting a room requires login':
+  does deleting a room require login

@@ -162,18 +162,14 @@ page 'Helpdesk':
 
 # Tests
 
-test 'list products returns 200':
-  call GET /api/products
-  expect response status is 200
+test 'user can view all products':
+  can user view all products
 
-test 'create product requires auth':
-  call POST /api/products with name is 'Test Widget'
-  expect response status is 401
+test 'creating a product requires login':
+  does creating a product require login
 
-test 'list tickets returns 200':
-  call GET /api/tickets
-  expect response status is 200
+test 'user can view all tickets':
+  can user view all tickets
 
-test 'search products returns 200':
-  call GET /api/products/search
-  expect response status is 200
+test 'user can ask the helpdesk agent':
+  can user ask agent 'Helpdesk' with message is 'What products do you have?'

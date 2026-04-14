@@ -237,22 +237,17 @@ page 'CRM Pro' at '/':
 
 # Tests
 
-test 'list companies returns 200':
-  call GET /api/companies
-  expect response status is 200
+test 'user can view all companies':
+  can user view all companies
 
-test 'create company requires auth':
-  call POST /api/companies with name is 'Test Corp'
-  expect response status is 401
+test 'creating a company requires login':
+  does creating a company require login
 
-test 'list contacts returns 200':
-  call GET /api/contacts
-  expect response status is 200
+test 'user can view all contacts':
+  can user view all contacts
 
-test 'list deals returns 200':
-  call GET /api/deals
-  expect response status is 200
+test 'user can view all deals':
+  can user view all deals
 
-test 'deals total returns aggregate':
-  call GET /api/deals/total
-  expect response status is 200
+test 'user can view deal totals':
+  can user view all total

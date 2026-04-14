@@ -79,19 +79,16 @@ page 'Live Chat' at '/':
 
 # Tests
 
-test 'list messages returns 200':
-  call GET /api/messages
-  expect response status is 200
+test 'user can view all messages':
+  can user view all messages
 
-test 'create message with valid data':
-  call POST /api/messages with sender is 'Alice' and content is 'Hello world'
-  expect response status is 201
-  expect response body has id
+test 'user can send a new message':
+  can user create a new message with sender is 'Alice' and content is 'Hello world'
+  expect it succeeds
+  expect response has id
 
-test 'create message rejects empty content':
-  call POST /api/messages with sender is 'Alice' and content is ''
-  expect response status is 400
+test 'sending a message without content is rejected':
+  can user create a message without a content
 
-test 'delete message requires auth':
-  call DELETE /api/messages/1
-  expect response status is 401
+test 'deleting a message requires login':
+  does deleting a message require login

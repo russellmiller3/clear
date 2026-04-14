@@ -135,23 +135,19 @@ page 'Todo App' at '/':
 
 # Tests
 
-test 'list todos returns 200':
-  call GET /api/todos
-  expect response status is 200
+test 'user can view all todos':
+  can user view all todos
 
-test 'create todo with valid data':
-  call POST /api/todos with title is 'Write tests'
-  expect response status is 201
-  expect response body has id
+test 'user can create a new todo':
+  can user create a new todo with title is 'Write tests'
+  expect it succeeds
+  expect response has id
 
-test 'create todo rejects empty title':
-  call POST /api/todos with title is ''
-  expect response status is 400
+test 'creating a todo without a title is rejected':
+  can user create a todo without a title
 
-test 'delete todo requires auth':
-  call DELETE /api/todos/1
-  expect response status is 401
+test 'deleting a todo requires login':
+  does deleting a todo require login
 
-test 'list categories returns 200':
-  call GET /api/categories
-  expect response status is 200
+test 'user can view all categories':
+  can user view all categories

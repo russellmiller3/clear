@@ -2450,6 +2450,8 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
     if (pos < ctx.tokens.length) fields.push({ name: ctx.tokens[pos].value, value: null, missing: true });
   } else if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
     pos++;
+    // Parse field-value pairs: "field is value, field is value" or "field is value and field is value"
+    // Don't use parseExpression — it consumes 'and' as logical operator
     while (pos < ctx.tokens.length) {
       if (ctx.tokens[pos].type === TokenType.COMMA) { pos++; continue; }
       if (ctx.tokens[pos].canonical === 'and') { pos++; continue; }
@@ -2458,11 +2460,16 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
       if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) {
         pos++;
         if (pos < ctx.tokens.length) {
-          const valExpr = parseExpression(ctx.tokens, pos, ctx.line);
-          if (!valExpr.error) {
-            fields.push({ name: fieldName, value: valExpr.node });
-            pos = valExpr.pos || pos + 1;
-          } else pos++;
+          // Grab the value directly — string literal, number, or identifier
+          const valToken = ctx.tokens[pos];
+          if (valToken.type === TokenType.STRING) {
+            fields.push({ name: fieldName, value: { type: 'literal_string', value: valToken.value, line: ctx.line } });
+          } else if (valToken.type === TokenType.NUMBER) {
+            fields.push({ name: fieldName, value: { type: 'literal_number', value: valToken.value, line: ctx.line } });
+          } else {
+            fields.push({ name: fieldName, value: { type: 'variable_ref', name: valToken.value, line: ctx.line } });
+          }
+          pos++;
         }
       }
     }
