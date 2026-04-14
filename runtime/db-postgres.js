@@ -30,16 +30,21 @@
 
 const { Pool } = require('pg');
 
-if (!process.env.DATABASE_URL) {
-  console.error('[clear:db] DATABASE_URL not set. Add a Postgres database in your Railway dashboard.');
-  process.exit(1);
+// Defer DATABASE_URL check to first query — don't crash on require() for health-check-only servers
+var pool = null;
+function getPool() {
+  if (pool) return pool;
+  if (!process.env.DATABASE_URL) {
+    throw new Error('[clear:db] DATABASE_URL not set. Add a Postgres database in your Railway dashboard.');
+  }
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    // SSL for cloud Postgres (Railway, Render, etc.)
+    ssl: process.env.DATABASE_URL.includes('sslmode=') ? undefined : { rejectUnauthorized: true },
+  });
+  process.on('SIGTERM', function() { pool.end(); });
+  return pool;
 }
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  // Railway and most cloud Postgres require SSL
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
 
 // Schema registry — populated synchronously by createTable(), used by lazy init
 const _schemas = {};
@@ -162,10 +167,10 @@ async function ensureTable(tableName) {
     // Quote column names to handle Postgres reserved words (e.g. "order", "user")
     cols.push('"' + field + '" ' + toPgType(schema[field]) + toPgDefault(schema[field]));
   }
-  await pool.query('CREATE TABLE IF NOT EXISTS ' + tableName + ' (' + cols.join(', ') + ')');
+  await getPool().query('CREATE TABLE IF NOT EXISTS ' + tableName + ' (' + cols.join(', ') + ')');
 
   // Schema evolution: add columns that exist in schema but not in table
-  var res = await pool.query(
+  var res = await getPool().query(
     "SELECT column_name FROM information_schema.columns WHERE table_name = $1",
     [tableName]
   );
@@ -173,7 +178,7 @@ async function ensureTable(tableName) {
   for (var field2 in schema) {
     if (!schema.hasOwnProperty(field2)) continue;
     if (!existing.has(field2)) {
-      await pool.query('ALTER TABLE ' + tableName + ' ADD COLUMN IF NOT EXISTS "' + field2 + '" ' + toPgType(schema[field2]) + toPgDefault(schema[field2]));
+      await getPool().query('ALTER TABLE ' + tableName + ' ADD COLUMN IF NOT EXISTS "' + field2 + '" ' + toPgType(schema[field2]) + toPgDefault(schema[field2]));
     }
   }
   _tablesCreated.add(tableName);
@@ -185,8 +190,10 @@ async function ensureTable(tableName) {
 
 // Synchronous — just registers the schema. Called at module load time.
 // Actual table creation happens lazily in ensureTable() on first query.
+// Table name is sanitized to prevent SQL injection from malicious Clear source.
 function createTable(name, schema) {
-  var tableName = name.toLowerCase();
+  var tableName = name.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  if (!tableName) throw new Error('Invalid table name: ' + name);
   _schemas[tableName] = schema || {};
 }
 
@@ -204,6 +211,8 @@ function buildWhere(filter) {
   var i = 1;
   for (var key in filter) {
     if (!filter.hasOwnProperty(key)) continue;
+    // Validate column name to prevent SQL injection via filter keys
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) continue;
     conditions.push('"' + key + '" = $' + i);
     params.push(filter[key]);
     i++;
@@ -219,7 +228,7 @@ async function findAll(table, filter) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
   var w = buildWhere(filter);
-  var res = await pool.query('SELECT * FROM ' + tableName + ' ' + w.clause, w.params);
+  var res = await getPool().query('SELECT * FROM ' + tableName + ' ' + w.clause, w.params);
   return res.rows;
 }
 
@@ -227,7 +236,7 @@ async function findOne(table, filter) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
   var w = buildWhere(filter);
-  var res = await pool.query('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
+  var res = await getPool().query('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
   return res.rows[0] || null;
 }
 
@@ -246,7 +255,7 @@ async function insert(table, record) {
   for (var field in schema) {
     if (!schema.hasOwnProperty(field)) continue;
     if (!schema[field].unique || record[field] === undefined) continue;
-    var check = await pool.query(
+    var check = await getPool().query(
       'SELECT 1 FROM ' + tableName + ' WHERE "' + field + '" = $1 LIMIT 1', [record[field]]
     );
     if (check.rows.length > 0) throw new Error(field + " must be unique -- '" + record[field] + "' already exists");
@@ -262,7 +271,7 @@ async function insert(table, record) {
     if (!refTable) continue;
     if (!refTable.endsWith('s')) refTable += 's';
     await ensureTable(refTable);
-    var fkCheck = await pool.query('SELECT 1 FROM ' + refTable + ' WHERE id = $1 LIMIT 1', [value]);
+    var fkCheck = await getPool().query('SELECT 1 FROM ' + refTable + ' WHERE id = $1 LIMIT 1', [value]);
     if (fkCheck.rows.length === 0) throw new Error(fkField + ' references non-existent record (id ' + value + ' not found in ' + refTable + ')');
   }
 
@@ -270,14 +279,14 @@ async function insert(table, record) {
   var fields = Object.keys(withDefaults).filter(function(k) { return k !== 'id'; });
 
   if (fields.length === 0) {
-    var res = await pool.query('INSERT INTO ' + tableName + ' DEFAULT VALUES RETURNING *');
+    var res = await getPool().query('INSERT INTO ' + tableName + ' DEFAULT VALUES RETURNING *');
     return res.rows[0];
   }
 
   var placeholders = fields.map(function(_, idx) { return '$' + (idx + 1); });
   var values = fields.map(function(f) { return withDefaults[f]; });
   var quotedFields = fields.map(function(f) { return '"' + f + '"'; });
-  var res2 = await pool.query(
+  var res2 = await getPool().query(
     'INSERT INTO ' + tableName + ' (' + quotedFields.join(', ') + ') VALUES (' + placeholders.join(', ') + ') RETURNING *',
     values
   );
@@ -313,7 +322,7 @@ async function update(table, filterOrRecord, data) {
 
   // Guard: throw 404 when updating by id but record doesn't exist
   if (filter.id !== undefined) {
-    var exists = await pool.query('SELECT 1 FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
+    var exists = await getPool().query('SELECT 1 FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
     if (exists.rows.length === 0) {
       var err = new Error('No record found with id ' + filter.id);
       err.status = 404;
@@ -329,7 +338,7 @@ async function update(table, filterOrRecord, data) {
   var setValues = setCols.map(function(k) { return updateData[k]; });
 
   var sql = 'UPDATE ' + tableName + ' SET ' + setEntries.join(', ') + ' ' + w.clause;
-  var result = await pool.query(sql, w.params.concat(setValues));
+  var result = await getPool().query(sql, w.params.concat(setValues));
   return result.rowCount;
 }
 
@@ -337,7 +346,7 @@ async function remove(table, filter) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
   var w = buildWhere(filter);
-  var result = await pool.query('DELETE FROM ' + tableName + ' ' + w.clause, w.params);
+  var result = await getPool().query('DELETE FROM ' + tableName + ' ' + w.clause, w.params);
   return result.rowCount;
 }
 
@@ -346,7 +355,7 @@ async function remove(table, filter) {
 // =============================================================================
 
 async function run(sql) {
-  await pool.query(sql);
+  await getPool().query(sql);
 }
 
 async function execute(sql) {
@@ -364,7 +373,7 @@ async function reset() {
   for (var tableName in _schemas) {
     if (!_schemas.hasOwnProperty(tableName)) continue;
     try {
-      await pool.query('TRUNCATE TABLE ' + tableName + ' RESTART IDENTITY CASCADE');
+      await getPool().query('TRUNCATE TABLE ' + tableName + ' RESTART IDENTITY CASCADE');
     } catch (e) {
       // Table might not exist yet — ignore
     }

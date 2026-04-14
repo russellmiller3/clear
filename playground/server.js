@@ -204,7 +204,7 @@ function runTestProcess(source) {
   if (!source || !source.trim()) {
     return { ok: false, error: 'No source code. Load or write a .clear file first.' };
   }
-  const tmpPath = join(BUILD_DIR, '_test-source.clear');
+  const tmpPath = join(BUILD_DIR, '_test-source-' + Date.now() + '.clear');
   mkdirSync(BUILD_DIR, { recursive: true });
   writeFileSync(tmpPath, source);
   try {

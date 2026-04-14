@@ -518,45 +518,24 @@ try {
   // =============================================================================
   console.log('\n--- Test Runner ---');
 
-  // Test: run-tests with missing type
+  // Test: run-tests with no source
   {
-    const { status, data } = await post('/api/run-tests', {});
-    assert(status === 400 && data.error, 'run-tests rejects missing type');
+    const { data } = await post('/api/run-tests', {});
+    assert(data.ok === false && data.error, 'run-tests with no source returns error');
   }
 
-  // Test: run-tests with invalid type
-  {
-    const { status, data } = await post('/api/run-tests', { type: 'invalid' });
-    assert(status === 400 && data.error, 'run-tests rejects invalid type');
-  }
-
-  // Test: run-tests compiler type returns results
-  {
-    const { data } = await post('/api/run-tests', { type: 'compiler' });
-    assert(typeof data.passed === 'number' && data.passed > 0, 'compiler tests return passed count > 0');
-    assert(typeof data.failed === 'number', 'compiler tests return failed count');
-    assert(typeof data.duration === 'number', 'compiler tests return duration');
-    assert(Array.isArray(data.results), 'compiler tests return results array');
-  }
-
-  // Test: run-tests app type with no source
-  {
-    const { data } = await post('/api/run-tests', { type: 'app' });
-    assert(data.ok === false && data.error, 'app tests with no source returns error');
-  }
-
-  // Test: run-tests app type with source that has test blocks
+  // Test: run-tests with source that has test blocks
   {
     const source = "build for web\nx = 5\ntest 'x is five':\n  expect x is 5\n";
-    const { data } = await post('/api/run-tests', { type: 'app', source });
+    const { data } = await post('/api/run-tests', { source });
     assert(typeof data.passed === 'number', 'app tests with test blocks return passed count');
     assert(typeof data.duration === 'number', 'app tests return duration');
   }
 
-  // Test: run-tests app type with source that has no test blocks
+  // Test: run-tests with source that has no test blocks
   {
     const source = "build for web\nx = 5\n";
-    const { data } = await post('/api/run-tests', { type: 'app', source });
+    const { data } = await post('/api/run-tests', { source });
     assert(data.passed === 0 && data.failed === 0, 'app tests with no test blocks returns 0/0');
   }
 
