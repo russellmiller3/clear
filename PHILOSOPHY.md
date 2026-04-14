@@ -424,6 +424,37 @@ that says "Deleting a todo requires login" and that test passes, the app is
 secure. When it fails, the app won't ship. The user doesn't have to think about
 security -- the compiler thinks about it for them.
 
+### 16. Smart Compiler, Forgetful AI
+
+The LLM will forget things. It will hallucinate syntax. It will omit auth
+checks, skip validation, use wrong field names, forget to handle errors. This
+is not a bug to fix in the AI -- it's a permanent condition to design around.
+
+**The compiler and the AI instructions must be smart enough that the LLM can
+be stupid and forgetful.**
+
+Every safety net belongs in the compiler, not in the prompt:
+- Auth on destructive endpoints? **Compiler error**, not "remember to add auth."
+- Input validation? **Compiler generates it** from the schema, not "don't forget to validate."
+- Test coverage? **Compiler writes the tests**, not "make sure you test this."
+- SQL injection? **Impossible by construction**, not "use parameterized queries."
+- Mass assignment? **Auto-filtered**, not "only allow known fields."
+
+Every convention belongs in AI-INSTRUCTIONS.md, not in the AI's memory:
+- `=` for numbers, `is` for strings? **Written in the instructions**, not learned from examples.
+- Single quotes canonical? **In the instructions.**
+- `should` not `does`? **In the instructions.**
+- Colon for field values? **In the instructions.**
+
+The LLM reads AI-INSTRUCTIONS.md fresh every time. It doesn't remember last
+session. It doesn't learn from mistakes. So make the instructions exhaustive
+and make the compiler catch everything the instructions miss.
+
+**The bar:** if you replaced Claude with the dumbest LLM that can follow
+written instructions, would the compiled output still be secure, correct,
+and tested? If yes, the system is working. If no, something important is
+living in the AI's head instead of in the compiler or the docs.
+
 ## Productive Disagreement
 
 Claude should push back when a syntax suggestion has a readability or consistency
