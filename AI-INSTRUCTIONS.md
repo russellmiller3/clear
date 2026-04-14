@@ -287,6 +287,70 @@ the auto-generated id. If you `send back new_ticket`, you get the full record.
 Visual hint for the human reader: `=` lines are formulas to check,
 `is` lines are values to note. The compiler doesn't care.
 
+## Testing (MANDATORY — every app gets tests)
+
+The compiler auto-generates tests for every endpoint, button, page, agent,
+and CRUD flow. You don't need to write these. But you SHOULD add custom tests
+for business logic. Use nameless `test:` blocks — the body IS the name:
+
+```clear
+test:
+  can user create a new todo with title: 'Buy groceries'
+
+test:
+  can user view all todos
+
+test:
+  deleting a todo should require login
+
+test:
+  can user create a todo without a title
+
+test:
+  can user ask agent 'Support' with message: 'hello'
+```
+
+**Syntax rules:**
+- `test:` with no name — first body line becomes the test name (preferred)
+- `test 'name':` — explicit name for multi-step workflows
+- `can user create/view/delete/update a <resource>` — CRUD intent (ONLY these 4 verbs)
+- `X should require login` — auth check (`should` is canonical, not `does`)
+- `with field: 'value'` — colon field separator (preferred over `field is 'value'`)
+- `without a <field>` — validation test (expects rejection)
+- `expect it succeeds` / `expect it fails` — after intent assertions
+
+**NOT supported in test intent syntax (use raw `call` instead):**
+- `can user search X` — use `can user view all search` or `call GET /api/search`
+- `users should only see their own X` — custom logic, use `call GET` + `expect`
+- `X should fail with error 'msg'` — not yet supported, use `call` + `expect response`
+- Free-form English sentences — only the patterns above are parsed
+
+**What the compiler generates automatically (no code needed):**
+- "Creating a new todo succeeds" — happy path for every POST endpoint
+- "Creating a todo with a blank title is rejected" — validation for required fields
+- "Deleting a todo requires login" — auth for every protected endpoint
+- "User can create a todo and see it in the list" — CRUD flow
+- "The Helpdesk agent responds to messages" — agent smoke test
+
+## Common Mistakes (read this before writing Clear)
+
+| Wrong | Right | Why |
+|-------|-------|-----|
+| `show heading 'Title'` | `heading 'Title'` | `heading` is the keyword, `show` is for variables |
+| `button 'Save'` (no body) | `button 'Save':` + indented action | Empty buttons are a compile error |
+| `→` in diagrams | `>` or `-->` | Unicode arrows break monospace alignment |
+| `does X require login` | `X should require login` | `should` is canonical |
+| `with title is 'X'` | `with title: 'X'` | Colon is cleaner (both work) |
+| `show text 'Hello'` | `text 'Hello'` | Content elements don't need `show` |
+| `show heading 'X'` | `heading 'X'` | Same — `heading` is the keyword, not `show heading` |
+| `get 'q' from request` | `incoming's q` in endpoint | Request params via receiving var |
+| `display X as table` (no columns) | `display X as table showing col1, col2` | Always specify which columns |
+| `can user search todos` | `can user view all search` | Only create/view/delete/update are valid intents |
+| `'Label' is a dropdown ... saved as x` (two lines) | `'Label' is a dropdown ... saved as x` (one line) | The `saved as` must be on the same line as the input |
+| `section 'X' side by side:` | `section 'X' with style row:` | Use preset or style for layout |
+| `user's id` in endpoint | `current user's id` | `user` is undefined — use `current user's id` for logged-in user |
+| `result = for each X in Y:` | Use `filter` or loop + `add to` | Can't assign a for-each loop to a variable |
+
 ## Design System
 
 Clear is a **DaisyUI v5 + Tailwind CSS v4 design system**. The compiler emits
