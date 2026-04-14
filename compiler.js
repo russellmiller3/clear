@@ -1118,6 +1118,9 @@ function generateE2ETests(body) {
   lines.push('let passed = 0, failed = 0;');
   lines.push('let _emailCounter = 0;');
   lines.push('let _uniqueCounter = 0;');
+  // Module-level so both user tests and the _expectStatus helper can see them
+  lines.push('let _response, _responseBody;');
+  lines.push('let _lastCall = { method: "", path: "", line: 0 };');
   lines.push('function _uniqueEmail() { return "test" + (++_emailCounter) + "@example.com"; }');
   lines.push('function _uniqueText(base) { return base + "_" + (++_uniqueCounter); }');
   lines.push('');
@@ -1708,7 +1711,7 @@ function generateE2ETests(body) {
   if (testDefs.length > 0) {
     lines.push('  // --- User-Written Tests (from test blocks in .clear source) ---');
     lines.push('  const _baseUrl = BASE;');
-    lines.push('  let _response, _responseBody;');
+    lines.push('  // _response / _responseBody are globals (declared at top) so helpers can see them');
     lines.push('');
 
     const testCtx = {
@@ -1748,6 +1751,22 @@ function generateE2ETests(body) {
     lines.push('    toHaveProperty(key) { if (!(key in (val || {}))) throw new Error("Expected property " + key); },');
     lines.push('    toBeGreaterThan(n) { if (!(val > n)) throw new Error("Expected > " + n + ", got " + val); }');
     lines.push('  };');
+    lines.push('}');
+    lines.push('');
+    // Friendly status assertion: turns "Expected 201, got 404" into a human message that
+    // names the endpoint and carries a [clear:N] tag the Studio UI uses to jump to source.
+    lines.push('function _expectStatus(response, expected) {');
+    lines.push('  const actual = response.status;');
+    lines.push('  if (actual === expected) return;');
+    lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
+    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "request";');
+    lines.push('  let hint = "";');
+    lines.push('  if (actual === 404) hint = " — that endpoint doesn\'t exist on the server. Check the path.";');
+    lines.push('  else if (actual === 401) hint = expected >= 400 ? "" : " — the endpoint requires auth but the test didn\'t send a token.";');
+    lines.push('  else if (actual === 400) hint = expected === 201 ? " — the server rejected the request body. Check required fields and validation rules." : "";');
+    lines.push('  else if (actual === 500) hint = " — the server threw an error. Check the app logs for the stack trace.";');
+    lines.push('  else if (actual >= 500) hint = " — the server failed. Check the app logs.";');
+    lines.push('  throw new Error(call + " returned " + actual + " but the test expected " + expected + hint + where);');
     lines.push('}');
     lines.push('');
   }
@@ -4726,11 +4745,16 @@ ${pad}}`;
 
     case NodeType.HTTP_TEST_CALL: {
       // Compiles to: _response = await fetch(baseUrl + path, { method, body })
+      // Also records _lastCall = {method, path, line} so the next status assertion
+      // can produce a friendly error like "POST /api/todos returned 404 — no such endpoint"
       const method = JSON.stringify(node.method);
       const path = JSON.stringify(node.path);
+      const line = node.line || 0;
+      const record = `${pad}_lastCall = { method: ${method}, path: ${path}, line: ${line} };\n`;
       if (node.bodyFields && node.bodyFields.length > 0) {
         const bodyObj = node.bodyFields.map(f => `${JSON.stringify(f.name)}: ${exprToCode(f.value, ctx)}`).join(', ');
-        let code = `${pad}_response = await fetch(_baseUrl + ${path}, {\n`;
+        let code = record;
+        code += `${pad}_response = await fetch(_baseUrl + ${path}, {\n`;
         code += `${pad}  method: ${method},\n`;
         code += `${pad}  headers: { 'Content-Type': 'application/json' },\n`;
         code += `${pad}  body: JSON.stringify({ ${bodyObj} })\n`;
@@ -4738,14 +4762,17 @@ ${pad}}`;
         code += `${pad}_responseBody = await _response.json().catch(() => null);`;
         return code;
       }
-      let code = `${pad}_response = await fetch(_baseUrl + ${path}, { method: ${method} });\n`;
+      let code = record;
+      code += `${pad}_response = await fetch(_baseUrl + ${path}, { method: ${method} });\n`;
       code += `${pad}_responseBody = await _response.json().catch(() => null);`;
       return code;
     }
 
     case NodeType.EXPECT_RESPONSE: {
       if (node.property === 'status' && node.check === 'equals') {
-        return `${pad}expect(_response.status).toBe(${node.value});`;
+        // _expectStatus produces a human-readable error like:
+        //   "POST /api/notes returned 404 — that endpoint doesn't exist on the server [clear:87]"
+        return `${pad}_expectStatus(_response, ${node.value});`;
       }
       if (node.property === 'status' && node.check === 'success') {
         return `${pad}assert(_response.status >= 200 && _response.status < 300, "Expected success, got " + _response.status);`;

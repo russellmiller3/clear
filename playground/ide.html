@@ -154,9 +154,12 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .test-section-body { max-height: 400px; overflow: auto; }
 .test-pass { display: flex; align-items: baseline; gap: 6px; padding: 3px 12px; color: var(--green); }
 .test-pass::before { content: '✓'; font-weight: 700; }
-.test-fail { padding: 3px 12px; color: var(--red); }
+.test-fail { padding: 3px 12px; color: var(--red); border-radius: 4px; transition: background 0.1s; }
+.test-fail[onclick]:hover { background: color-mix(in oklch, var(--red) 10%, transparent); }
 .test-fail-name { display: flex; align-items: baseline; gap: 6px; }
 .test-fail-name::before { content: '✗'; font-weight: 700; }
+.test-fail-line { font-size: 10px; color: var(--tx3); font-family: var(--font-mono, ui-monospace, monospace); margin-left: auto; opacity: 0.7; }
+.test-fail[onclick]:hover .test-fail-line { opacity: 1; color: var(--ac); }
 .test-fail-error { padding: 2px 12px 2px 24px; font-size: 11px; color: var(--red); opacity: 0.8; background: color-mix(in oklch, var(--red) 6%, transparent); border-radius: 4px; margin: 2px 12px 4px 18px; }
 .test-summary { font-size: 11px; color: var(--tx3); }
 .test-summary .pass-count { color: var(--green); font-weight: 600; }
@@ -1569,9 +1572,14 @@ function renderTestSection(title, data, type) {
   const showAllPasses = type !== 'compiler' || passes.length <= 20;
 
   let body = '';
-  // Show failures first (always expanded)
+  // Show failures first (always expanded). If the compiler emitted a [clear:N]
+  // source-line tag, make the row clickable — jumpToLine scrolls the editor to the
+  // offending call so the user doesn't have to hunt for it.
   for (const r of failures) {
-    body += `<div class="test-fail"><div class="test-fail-name">${escHtml(r.name)}</div>`;
+    const jumpAttrs = r.sourceLine
+      ? ` style="cursor:pointer" onclick="jumpToTestSource(${r.sourceLine})" title="Jump to source line ${r.sourceLine}"`
+      : '';
+    body += `<div class="test-fail"${jumpAttrs}><div class="test-fail-name">${escHtml(r.name)}${r.sourceLine ? ` <span class="test-fail-line">clear:${r.sourceLine} →</span>` : ''}</div>`;
     if (r.error) body += `<div class="test-fail-error">${escHtml(r.error)}</div>`;
     body += '</div>';
   }
@@ -2016,6 +2024,18 @@ function showErrors(errors, warnings) {
   });
   el.innerHTML = html;
 }
+
+// Clicking a failed test jumps the editor to the source line the compiler tagged.
+// Flash-highlight the line so the user's eye lands on it.
+window.jumpToTestSource = function(line) {
+  if (!line || line < 1) return;
+  window.jumpToLine(line);
+  // Flash the line: select the full line briefly so CodeMirror highlights it
+  try {
+    const lineObj = editor.state.doc.line(Math.min(line, editor.state.doc.lines));
+    editor.dispatch({ selection: { anchor: lineObj.from, head: lineObj.to } });
+  } catch {}
+};
 
 window.jumpToLine = function(line) {
   const lineObj = editor.state.doc.line(Math.min(line, editor.state.doc.lines));

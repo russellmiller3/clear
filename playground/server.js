@@ -288,13 +288,22 @@ function parseTestOutput(stdout) {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    // Test output format: "  PASS: test name" or "  FAIL: test name -- error"
+    // Test output format: "PASS: test name" or "FAIL: test name - error [clear:N]"
+    // Older runs used " -- " as the separator; accept both.
     const passMatch = trimmed.match(/^PASS:\s*(.+)/);
-    const failMatch = trimmed.match(/^FAIL:\s*(.+?)(?:\s*--\s*(.+))?$/);
+    const failMatch = trimmed.match(/^FAIL:\s*(.+?)(?:\s*-{1,2}\s*(.+))?$/);
     if (passMatch) {
       results.push({ name: passMatch[1], status: 'pass' });
     } else if (failMatch) {
-      results.push({ name: failMatch[1], status: 'fail', error: failMatch[2] || '' });
+      let err = failMatch[2] || '';
+      // Extract the [clear:N] tag the compiler emits so the Studio UI can jump to source
+      let sourceLine = null;
+      const tagMatch = err.match(/\s*\[clear:(\d+)\]\s*$/);
+      if (tagMatch) {
+        sourceLine = parseInt(tagMatch[1], 10);
+        err = err.slice(0, tagMatch.index).trim();
+      }
+      results.push({ name: failMatch[1], status: 'fail', error: err, sourceLine });
     }
   }
 
@@ -302,6 +311,9 @@ function parseTestOutput(stdout) {
   const failed = results.filter(r => r.status === 'fail').length;
   return { passed, failed, results };
 }
+
+// Exported for testing
+export { parseTestOutput };
 
 function runTestProcess(source) {
   const start = Date.now();

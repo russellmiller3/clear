@@ -19960,8 +19960,8 @@ test 'items returns 200':
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.tests).toContain('items returns 200');
-    expect(r.tests).toContain('_response.status');
-    expect(r.tests).toContain('toBe(200)');
+    // Status assertions go through _expectStatus for friendly error messages
+    expect(r.tests).toContain('_expectStatus(_response, 200)');
   });
 
   it('compiles expect response body has field', () => {
@@ -20003,6 +20003,50 @@ test 'basic check':
     expect(r.tests).toContain('toBe');
     expect(r.tests).toContain('toBeTruthy');
     expect(r.tests).toContain('toHaveProperty');
+  });
+
+  it('friendly error: status mismatch includes method + path + line tag', () => {
+    const src = `build for javascript backend
+create a Notes table:
+  body, required
+
+when user calls POST /api/notes receiving data:
+  validate data:
+    body must not be empty
+  save data to Notes
+  send back data with status 201
+
+test 'posting a note works':
+  call POST /api/notes
+  expect response status is 201
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Compiled test should call a friendly status helper (not raw expect.toBe for response.status)
+    expect(r.tests).toContain('_expectStatus');
+    // The helper must be defined
+    expect(r.tests).toContain('function _expectStatus');
+    // And must include the source line in error output
+    expect(r.tests).toContain('[clear:');
+  });
+
+  it('friendly error: HTTP call records method/path/line for next assertion', () => {
+    const src = `build for javascript backend
+create a Items table:
+  name, required
+
+when user calls GET /api/items:
+  items = look up all Items
+  send back items
+
+test 'list works':
+  call GET /api/items
+  expect response status is 200
+`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Every HTTP call in user tests records its method + path + source line for error messages
+    expect(r.tests).toMatch(/_lastCall\s*=\s*\{\s*method:\s*"GET",\s*path:\s*"[^"]*",\s*line:\s*[1-9]\d*/);
   });
 
   it('user tests appear after auto-generated tests', () => {
