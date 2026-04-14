@@ -168,7 +168,7 @@ test:
   can user create a post without a title
 
 test:
-  does deleting a post require login
+  deleting a post should require login
 
 test:
   can user view all authors

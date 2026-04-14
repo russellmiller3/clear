@@ -164,7 +164,7 @@ test:
   can user create an expense without a amount
 
 test:
-  does deleting an expense require login
+  deleting an expense should require login
 
 test:
   can user view all total

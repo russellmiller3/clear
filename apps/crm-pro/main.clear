@@ -241,7 +241,7 @@ test:
   can user view all companies
 
 test:
-  does creating a company require login
+  creating a company should require login
 
 test:
   can user view all contacts

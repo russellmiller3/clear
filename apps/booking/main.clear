@@ -168,13 +168,13 @@ test:
   can user view all rooms
 
 test:
-  does creating a room require login
+  creating a room should require login
 
 test:
   can user view all bookings
 
 test:
-  does creating a booking require login
+  creating a booking should require login
 
 test:
-  does deleting a room require login
+  deleting a room should require login

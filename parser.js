@@ -2376,7 +2376,8 @@ CANONICAL_DISPATCH.set('call', (ctx) => {
       if (ctx.tokens[pos].canonical === 'and') { pos++; continue; }
       const fieldName = ctx.tokens[pos].value;
       pos++;
-      if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) {
+      // Accept "is", "=", or ":" as field-value separator
+      if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN || ctx.tokens[pos].type === TokenType.COLON)) {
         pos++;
         if (pos < ctx.tokens.length) {
           const valExpr = parseExpression(ctx.tokens, pos, ctx.line);
@@ -2418,7 +2419,8 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
         if (ctx.tokens[pos].canonical === 'and') { pos++; continue; }
         const fieldName = ctx.tokens[pos].value;
         pos++;
-        if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) {
+        // Accept "is", "=", or ":" as field-value separator
+        if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN || ctx.tokens[pos].type === TokenType.COLON)) {
           pos++;
           if (pos < ctx.tokens.length) {
             const valExpr = parseExpression(ctx.tokens, pos, ctx.line);
@@ -2457,10 +2459,10 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
       if (ctx.tokens[pos].canonical === 'and') { pos++; continue; }
       const fieldName = ctx.tokens[pos].value;
       pos++;
-      if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) {
+      // Accept "is", "=", or ":" as field-value separator: title is 'X', title: 'X', title = 'X'
+      if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN || ctx.tokens[pos].type === TokenType.COLON)) {
         pos++;
         if (pos < ctx.tokens.length) {
-          // Grab the value directly — string literal, number, or identifier
           const valToken = ctx.tokens[pos];
           if (valToken.type === TokenType.STRING) {
             fields.push({ name: fieldName, value: { type: 'literal_string', value: valToken.value, line: ctx.line } });
@@ -2478,10 +2480,12 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
   return ctx.i + 1;
 });
 
-// "does creating a todo require login"
-// "does the todo list show 'Buy groceries'"
-// "does deleting a todo require login"
-CANONICAL_DISPATCH.set('does', (ctx) => {
+// "should" — declarative test assertions
+// "deleting a todo should require login"
+// "creating a todo without a title should be rejected"
+// "the todo list should show 'Buy groceries'"
+// Also accepts "does" as synonym (backward compat)
+CANONICAL_DISPATCH.set('should', (ctx) => {
   if (ctx.tokens.length < 4) return undefined;
   const tokens = ctx.tokens;
   // "does creating/deleting/updating a RESOURCE require login"
@@ -2531,7 +2535,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
   let i = startIdx;
 
   while (i < lines.length) {
-    const { tokens, indent } = lines[i];
+    let { tokens, indent } = lines[i];
 
     // If this line is at or below the parent's indent, the block is done
     if (parentIndent >= 0 && indent <= parentIndent) {
@@ -2540,7 +2544,7 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
 
     if (tokens.length === 0) { i++; continue; }
 
-    const firstToken = tokens[0];
+    let firstToken = tokens[0];
     const line = firstToken.line;
 
     try {
@@ -2556,6 +2560,15 @@ function parseBlock(lines, startIdx, parentIndent, errors) {
       // (either from a synonym or a self-synonym like database → database).
       // Handlers return undefined to fall through to pattern matchers/assignment.
       {
+        // "X should Y" rewrite: if 'should' appears mid-line, move it to front
+        // so "deleting a todo should require login" dispatches as "should deleting a todo require login"
+        // Don't mutate the original tokens array — create a reordered copy
+        const shouldIdx = tokens.findIndex(t => t.canonical === 'should' && t !== tokens[0]);
+        if (shouldIdx > 0) {
+          const shouldToken = tokens[shouldIdx];
+          tokens = [shouldToken, ...tokens.slice(0, shouldIdx), ...tokens.slice(shouldIdx + 1)];
+          firstToken = tokens[0];
+        }
         const key = firstToken.canonical || firstToken.value;
         const handler = typeof key === 'string' ? CANONICAL_DISPATCH.get(key) : null;
         if (handler) {

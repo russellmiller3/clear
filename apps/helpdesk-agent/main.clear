@@ -166,10 +166,10 @@ test:
   can user view all products
 
 test:
-  does creating a product require login
+  creating a product should require login
 
 test:
   can user view all tickets
 
 test:
-  does creating a ask require login
+  creating a ask should require login

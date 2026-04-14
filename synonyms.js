@@ -419,7 +419,7 @@ const SYNONYM_TABLE = Object.freeze({
   ask: Object.freeze(['ask']),
   call: Object.freeze(['call']),
   can: Object.freeze(['can']),
-  does: Object.freeze(['does']),
+  should: Object.freeze(['should', 'does']),
   search: Object.freeze(['search']),
   block_arguments: Object.freeze(['block arguments matching', 'block arguments that match']),
 });
@@ -445,6 +445,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.23.0';
+const SYNONYM_VERSION = '0.24.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

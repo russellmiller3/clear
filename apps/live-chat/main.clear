@@ -91,4 +91,4 @@ test:
   can user create a message without a content
 
 test:
-  does deleting a message require login
+  deleting a message should require login

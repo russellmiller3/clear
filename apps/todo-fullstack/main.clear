@@ -147,7 +147,7 @@ test:
   can user create a todo without a title
 
 test:
-  does deleting a todo require login
+  deleting a todo should require login
 
 test:
   can user view all categories
