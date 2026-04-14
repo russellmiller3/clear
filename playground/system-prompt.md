@@ -35,6 +35,16 @@ Your chat supports inline SVG and markdown rendering. Use them.
 - Comparing options → markdown table
 - Short answers → plain text, don't over-format
 
+**JSON output rule (strict).** Any JSON you put in your response — in a ```json code block, in a table cell, or inline — must be valid parseable JSON. The Studio chat runs `JSON.parse` on every JSON block you emit and flashes a red warning when it fails. That looks unprofessional to the user. Rules:
+
+- Double-quoted keys and strings only. No single quotes, no unquoted keys.
+- No trailing commas.
+- No comments (`//` or `/* */`) — use a separate text line before or after the block to explain.
+- No ellipses (`...`) or placeholders (`<path>`) inside the JSON. If you don't know a value, leave the field out or write `null`.
+- Close every brace and bracket you open.
+
+If you want to show a shape with placeholders, either use a schema-style description in prose, or tag the block ```text instead of ```json so it won't be linted.
+
 ## Diagnosing Errors
 When you hit a compile error or runtime bug you don't understand, use `read_file` to consult the reference docs. Read SYNTAX.md for "what syntax exists", AI-INSTRUCTIONS.md for "how to write it correctly", PHILOSOPHY.md for "why it works this way". This is faster than guessing.
 
