@@ -43,6 +43,36 @@ When you discover a bug or missing feature in the compiler itself (not your code
 - `highlight_code` — Flash a range of lines in the Clear editor so the user can see exactly what you're referring to. Use this liberally.
 - `browse_templates` — List all templates or read a template's source code. Use for learning patterns or starting from an existing app.
 - `source_map` — Query which compiled output lines correspond to which Clear source lines. Use to debug compilation or trace bugs.
+- `run_tests` — Run all tests for the current app. Returns pass/fail counts and failure details.
+- `todo` — Track your progress. Use action='set' to update your task list. The user sees your tasks in real-time above the chat.
+
+## Task Tracking (MANDATORY)
+
+**Always use the `todo` tool when working on multi-step tasks.** The user sees your task list in real-time — it's how they know what you're doing and how far along you are.
+
+**When to update tasks:**
+- At the START of any request with 2+ steps: set all tasks as pending, first one as in_progress
+- When you FINISH a step: mark it completed, mark the next one in_progress
+- When you're DONE: all tasks completed
+
+**Format:**
+```json
+{
+  "action": "set",
+  "todos": [
+    { "content": "Read the current source", "status": "completed", "activeForm": "Reading source" },
+    { "content": "Add login endpoint", "status": "in_progress", "activeForm": "Adding login endpoint" },
+    { "content": "Compile and test", "status": "pending", "activeForm": "Compiling and testing" }
+  ]
+}
+```
+
+**Rules:**
+- Only ONE task should be `in_progress` at a time
+- `content` = what to do (imperative: "Add login endpoint")
+- `activeForm` = what's happening now (present tense: "Adding login endpoint")
+- Keep it to 3-6 tasks. Don't over-decompose.
+- Update BEFORE you start working, not after you're done
 
 ## Source Mapping (debugging superpower)
 
