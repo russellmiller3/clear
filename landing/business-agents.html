@@ -384,6 +384,50 @@ agent = create_tool_calling_agent(llm, tools, prompt)
   </div>
 </section>
 
+<!-- Tests that write themselves -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">Tests that <span class="gradient-text">write themselves</span></h2>
+    <p class="text-zinc-400 text-lg">The compiler generates English-readable tests for every surface of your agent. You don't write them. They just exist.</p>
+  </div>
+  <div class="grid md:grid-cols-2 gap-8">
+    <div>
+      <div class="text-sm font-semibold text-amber-400 uppercase tracking-wider mb-4">What the compiler generates automatically</div>
+      <div class="space-y-2">
+        <div class="flex items-center gap-2 text-sm"><span class="text-emerald-400">&#10003;</span> <span class="text-zinc-300">The Helpdesk agent responds to messages</span></div>
+        <div class="flex items-center gap-2 text-sm"><span class="text-emerald-400">&#10003;</span> <span class="text-zinc-300">The Helpdesk agent requires login</span></div>
+        <div class="flex items-center gap-2 text-sm"><span class="text-emerald-400">&#10003;</span> <span class="text-zinc-300">The Helpdesk agent blocks 'delete' in tool arguments</span></div>
+        <div class="flex items-center gap-2 text-sm"><span class="text-emerald-400">&#10003;</span> <span class="text-zinc-300">Creating a new ticket succeeds</span></div>
+        <div class="flex items-center gap-2 text-sm"><span class="text-emerald-400">&#10003;</span> <span class="text-zinc-300">Creating a ticket with a blank subject is rejected</span></div>
+        <div class="flex items-center gap-2 text-sm"><span class="text-emerald-400">&#10003;</span> <span class="text-zinc-300">Deleting a ticket requires login</span></div>
+        <div class="flex items-center gap-2 text-sm"><span class="text-emerald-400">&#10003;</span> <span class="text-zinc-300">User can create a ticket and see it in the list</span></div>
+        <div class="flex items-center gap-2 text-sm"><span class="text-emerald-400">&#10003;</span> <span class="text-zinc-300">Extra fields are stripped when creating a ticket</span></div>
+      </div>
+      <p class="text-zinc-500 text-xs mt-4">Zero test code written. The compiler reads your schema, endpoints, auth rules, and agent guardrails — then generates tests for all of them.</p>
+    </div>
+    <div>
+      <div class="text-sm font-semibold text-amber-400 uppercase tracking-wider mb-4">Write custom tests in plain English</div>
+      <div class="code-block p-4 text-xs text-amber-300">
+<pre>test:
+  can user create a new ticket with title: 'Broken login'
+
+test:
+  deleting a ticket should require login
+
+test:
+  can user ask agent 'Helpdesk' with message: 'hello'
+
+test:
+  can user search tickets
+
+test:
+  can user create a ticket without a title</pre>
+      </div>
+      <p class="text-zinc-500 text-xs mt-4">No API paths. No HTTP methods. No status codes. Just describe what should happen — the compiler resolves it to the right endpoint.</p>
+    </div>
+  </div>
+</section>
+
 <!-- Why not just use X -->
 <section class="max-w-5xl mx-auto px-6 py-20">
   <h2 class="text-3xl font-bold text-center mb-4">How does Clear compare?</h2>

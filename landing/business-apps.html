@@ -316,6 +316,48 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
   </div>
 </section>
 
+<!-- Auto-generated tests -->
+<section class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-bold mb-4">Every app ships with <span class="gradient-text">English-readable tests</span></h2>
+      <p class="text-zinc-400 text-lg">The compiler generates tests for every endpoint, every button, every agent, every auth rule. You don't write them.</p>
+    </div>
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="card p-5">
+        <div class="text-emerald-400 font-semibold text-sm mb-3">Happy Path</div>
+        <div class="space-y-1.5 text-xs text-zinc-400">
+          <div>&#10003; Creating a new todo succeeds</div>
+          <div>&#10003; Viewing all todos returns data</div>
+          <div>&#10003; User can create a todo and see it in the list</div>
+          <div>&#10003; User can create a todo then delete it</div>
+        </div>
+      </div>
+      <div class="card p-5">
+        <div class="text-amber-400 font-semibold text-sm mb-3">Validation &amp; Security</div>
+        <div class="space-y-1.5 text-xs text-zinc-400">
+          <div>&#10003; Creating a todo with a blank title is rejected</div>
+          <div>&#10003; Deleting a todo requires login</div>
+          <div>&#10003; Extra fields are stripped when creating a todo</div>
+          <div>&#10003; Creating a todo with a title that's too long is rejected</div>
+        </div>
+      </div>
+      <div class="card p-5">
+        <div class="text-indigo-400 font-semibold text-sm mb-3">Agent Guardrails</div>
+        <div class="space-y-1.5 text-xs text-zinc-400">
+          <div>&#10003; The Support agent responds to messages</div>
+          <div>&#10003; The Support agent requires login</div>
+          <div>&#10003; The Support agent blocks 'delete' in tool arguments</div>
+          <div>&#10003; The app loads in the browser</div>
+        </div>
+      </div>
+    </div>
+    <div class="text-center mt-8">
+      <p class="text-zinc-500 text-sm">Tests run automatically when you click Run. If any fail, you see them immediately. No test code to write, maintain, or debug.</p>
+    </div>
+  </div>
+</section>
+
 <!-- Deploy -->
 <section class="max-w-5xl mx-auto px-6 py-20">
   <div class="text-center mb-12">
