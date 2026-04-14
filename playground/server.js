@@ -424,8 +424,10 @@ app.post('/api/run', (req, res) => {
   runningPort++;
   if (runningPort > 4100) runningPort = 4001;
 
-  // Start child
-  const env = { ...process.env, PORT: String(runningPort), ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
+  // Start child. JWT_SECRET pinned so the e2e test harness can sign tokens that
+  // the compiled app accepts. Without this, the app generates a random secret
+  // on every startup and auth tests can't send a valid token.
+  const env = { ...process.env, PORT: String(runningPort), JWT_SECRET: process.env.JWT_SECRET || 'clear-test-secret', ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
   const child = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
   runningChild = child;
 
@@ -1312,6 +1314,12 @@ app.post('/api/chat', async (req, res) => {
           .join('\n');
         return JSON.stringify({ result: summary });
       }
+
+      // highlight_code is a UI-only tool — the actual highlight effect is sent
+      // via `send({type:'highlight',...})` in the post-execution block below.
+      // This case just acknowledges success so Meph doesn't see "Unknown tool".
+      case 'highlight_code':
+        return JSON.stringify({ ok: true, message: `Highlighted lines ${input.start_line}–${input.end_line || input.start_line}` });
 
       case 'patch_code': {
         if (!currentSource) return JSON.stringify({ error: 'No code in editor. Write code first.' });
