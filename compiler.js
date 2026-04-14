@@ -2211,12 +2211,29 @@ function endpointBodyUsesIncoming(bodyNodes) {
     if (expr.type === NodeType.CALL) return (expr.args || []).some(checkExpr);
     if (expr.type === NodeType.LITERAL_LIST) return (expr.elements || []).some(checkExpr);
     if (expr.type === NodeType.LITERAL_RECORD) return (expr.entries || []).some(e => checkExpr(e.value));
+    // Fall-through scan for wrapper expression nodes (SEARCH, FILTER, LOOKUP, AGGREGATE, etc).
+    // Any sub-field that looks like an expression gets checked. Without this, `search Todos
+    // for incoming's q` slipped past — ASSIGN.expression = SEARCH{query: member_access(incoming)},
+    // but SEARCH wasn't in the type list above so checkExpr returned false for the wrapper.
+    if (expr.query && checkExpr(expr.query)) return true;
+    if (expr.value && checkExpr(expr.value)) return true;
+    if (expr.condition && checkExpr(expr.condition)) return true;
+    if (expr.expression && checkExpr(expr.expression)) return true;
+    if (expr.args && Array.isArray(expr.args) && expr.args.some(checkExpr)) return true;
     return false;
   }
   function checkNode(node) {
     if (!node) return false;
     if (node.expression && checkExpr(node.expression)) return true;
     if (node.condition && checkExpr(node.condition)) return true;
+    // ASSIGN and other nodes carry the RHS on .value — must check this too,
+    // otherwise `results = search Todos for incoming's q` misses and the
+    // compiled endpoint emits `incoming?.q` with no `const incoming = ...`
+    // binding above it.
+    if (node.value && checkExpr(node.value)) return true;
+    // SEARCH / FILTER nodes carry an inline query expression worth scanning
+    if (node.query && checkExpr(node.query)) return true;
+    if (node.args && Array.isArray(node.args) && node.args.some(a => checkExpr(a))) return true;
     if (node.variable === 'incoming') return true;
     // Check CRUD nodes that reference incoming
     if (node.type === NodeType.CRUD && node.variable === 'incoming') return true;
@@ -2415,7 +2432,14 @@ function compileEndpoint(node, ctx, pad) {
         epCode += `${pad}    const incoming = req.params;\n`;
       }
     } else {
-      epCode += `${pad}    const ${sanitizeName(dataVar)} = req.params;\n`;
+      // No receiving clause — security posture for POST/PUT/DELETE is req.params ONLY
+      // (prevents body-injected fields from reaching the handler unvalidated). GET
+      // endpoints have no body at all, so bare `incoming` on a GET means query params
+      // when the path has no URL param, URL params when it does.
+      const isGet = (node.method || '').toUpperCase() === 'GET';
+      const hasUrlParam = /\/:/.test(node.path || '');
+      const source = isGet && !hasUrlParam ? 'req.query' : 'req.params';
+      epCode += `${pad}    const ${sanitizeName(dataVar)} = ${source};\n`;
     }
   }
   epCode += bodyCode + '\n';
