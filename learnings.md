@@ -28,6 +28,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 17: Pareto 20 + IDE Chat v2](#session-17-pareto-20--ide-chat-v2-2026-04-10) | Context array checklist is MANDATORY for new presets, historyKeymap extraction for undo, Array.isArray guard for image+text messages, SVG sanitization strips scripts |
 | [Session 18: ECharts Analytics Dashboard + Chart Syntax Upgrade](#session-18-echarts-analytics-dashboard--chart-syntax-upgrade-2026-04-10) | overflow-hidden collapses flex children, flex-col vs space-y-6 for scrollable content, ECharts init needs visible container, chart groupBy for all types, type-first chart syntax, removing `area` synonym from section, metric_card trend detection |
 | [Session 19: Tests, Charts, Blog, Images](#session-19-tests-charts-blog-images-2026-04-10) | Component test fixes (4 distinct bugs), `photo`/`picture` synonym collisions, image element `ui` object shape, seed auto-dedup at compiler level, `db.findAll()` not `db.getAll()`, chart subtitle/stacked modifiers |
+| [Session 26: Test Rewrite + Postgres + Railway](#session-26-test-rewrite--postgres--railway-2026-04-13) | Lazy table creation for CJS/async, SQL injection via table/column names, `can`/`does` synonym collision with RBAC, PRES overkill for small features, compiler-tests-everything principle |
 | [Standard Chat Compilation Target](#standard-chat-compilation-target-2026-04-12) | Tree-shaker only scans bodyLines not HTML, DaisyUI v5 uses `--color-*` not `--p`/`--b1`, utility backtick strings for multi-line UTILITY_FUNCTIONS, input absorption requires same-nesting-level siblings |
 | [Session 19b: Display as Cards](#session-19b-display-as-cards-2026-04-10) | `author` field must match before `name`/`title` in heuristics, `ui.tag = 'cards'` is third option, smart field detection by column name |
 | [Session 19c: Component Stress Test](#session-19c-component-stress-test-2026-04-10) | Component names collide with content types, reserved name validator in `parseComponentDef()`, 8 edge case patterns all passing |
@@ -865,3 +866,31 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 - **Bug:** Once `res.writeHead(200, { 'Content-Type': 'text/event-stream' })` is sent, you can't call `res.status(500).json(...)` in the catch block — headers already sent.
 - **Fix:** Streaming endpoints write errors as SSE events: `res.write('data: ' + JSON.stringify({ error: msg }) + '\\n\\n'); res.end();`
 - **Lesson:** SSE endpoints need their own error handling pattern. The standard Express try/catch with JSON error response doesn't work after headers are sent.
+
+---
+
+## Session 26: Test Rewrite + Postgres + Railway (2026-04-13)
+
+### Test Generation Architecture
+
+- **Lazy table creation solves CJS/async mismatch.** `db.createTable()` is called at module top-level (synchronous, no `await` possible in CJS). Postgres adapter is async. Fix: `createTable()` stores schema synchronously, `ensureTable()` runs DDL on first actual query. Every query function already has `await`, so the lazy init works transparently.
+- **English test names require resource name extraction from URL paths.** `/api/todos/:id` → resource "todo", action "Deleting". Pluralization is tricky: `categories` → `category` needs `ies→y` rule, not just strip `s`. Also need English article exceptions: "a user" not "an user" (`/^uni|^user|^use|^util/` → always "a").
+- **Intent-based test syntax maps user intent to endpoints.** "can user create a todo" → find POST endpoint whose path contains pluralized table name. The mapping already existed in `generateE2ETests()` (FK dependency analysis). Same `postByTable` pattern reused for TEST_INTENT compilation.
+- **`body` field was missing from endpoint collector.** `generateE2ETests()` stripped endpoint body when building its internal `endpoints` array. Agent test generation needed `ep.body` to find `RUN_AGENT` nodes. Fix: pass `body: node.body || []` through.
+
+### Security (Red Team Findings)
+
+- **SQL injection via table names in db-postgres.js.** Table names from Clear source flow into `CREATE TABLE tableName`. If malicious Clear source names a table `users; DROP TABLE users--`, it's injection. Fix: `name.replace(/[^a-z0-9_]/g, '')` in `createTable()`. Same issue in `buildWhere()` for column names from `req.body` — fix: validate against `/^[a-zA-Z_]\w*$/`.
+- **`rejectUnauthorized: false` is a real vulnerability.** Was set for Railway compatibility, but Railway uses publicly trusted certs. Disabling TLS verification enables MITM attacks on the database connection. Fix: set to `true`.
+- **`process.exit(1)` at module load kills the entire server.** If `DATABASE_URL` isn't set, the `require('./clear-runtime/db')` call exits the process — even if the endpoint being hit doesn't use the database. Fix: defer to `getPool()` function called on first actual query.
+- **`db.run(sql)` is a raw SQL execution hole.** No parameterization, no validation. If any compiled Clear code passes user input to `db.run()`, the database is owned. Currently only used for migrations and transactions — but worth flagging.
+
+### Synonym & Parser Gotchas
+
+- **`can` and `does` self-synonyms collide with existing RBAC usage.** `can` was already used in `define role 'editor': can read, can update`. Adding it to `CANONICAL_DISPATCH` means the dispatch fires on every `can` token. Works by accident because the handler returns `undefined` when second token isn't `user`, falling through to the correct RBAC handler. Fragile — any change to dispatch logic could break role definitions.
+- **PRES workflow is overkill for features under ~500 lines.** The test runner pane was ~300 lines of code. The PRES plan was 250 lines. Red-team was another full pass. We spent more time documenting than building. For small features with clear patterns, just build it directly. Save PRES for genuinely complex architecture (like the Postgres adapter).
+
+### Design Principles
+
+- **Rule 15: The compiler tests everything — users don't secure themselves.** If the compiler can think of a test, it generates it. Every endpoint, button, input, display, agent, and CRUD flow gets auto-tested. Security tests are not optional features the user remembers to add — they're structural guarantees that ship with every app. Added to PHILOSOPHY.md.
+- **Test names must read like English, not HTTP.** "Creating a new todo succeeds" not "POST /api/todos with valid data returns 201". The compiler translates methods to verbs and paths to resource names. Users writing tests never mention API paths or status codes.
