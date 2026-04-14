@@ -2399,9 +2399,41 @@ CANONICAL_DISPATCH.set('call', (ctx) => {
 //   "can user delete a todo"
 CANONICAL_DISPATCH.set('can', (ctx) => {
   // "can user ACTION [a|an|the] [new] RESOURCE [with FIELDS] [without FIELD]"
+  // "can user ask agent 'Name' with message is 'text'"
   if (ctx.tokens.length < 4) return undefined;
   if (ctx.tokens[1].value !== 'user') return undefined;
-  const action = ctx.tokens[2].value; // create, view, delete, update
+  const action = ctx.tokens[2].value;
+
+  // "can user ask agent 'Name' with message is '...'"
+  if (action === 'ask' && ctx.tokens.length >= 5 && ctx.tokens[3].value === 'agent') {
+    let pos = 4;
+    if (pos >= ctx.tokens.length || ctx.tokens[pos].type !== TokenType.STRING) return undefined;
+    const agentName = ctx.tokens[pos].value;
+    pos++;
+    let fields = [];
+    if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
+      pos++;
+      while (pos < ctx.tokens.length) {
+        if (ctx.tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+        if (ctx.tokens[pos].canonical === 'and') { pos++; continue; }
+        const fieldName = ctx.tokens[pos].value;
+        pos++;
+        if (pos < ctx.tokens.length && (ctx.tokens[pos].canonical === 'is' || ctx.tokens[pos].type === TokenType.ASSIGN)) {
+          pos++;
+          if (pos < ctx.tokens.length) {
+            const valExpr = parseExpression(ctx.tokens, pos, ctx.line);
+            if (!valExpr.error) {
+              fields.push({ name: fieldName, value: valExpr.node });
+              pos = valExpr.pos || pos + 1;
+            } else pos++;
+          }
+        }
+      }
+    }
+    ctx.body.push({ type: NodeType.TEST_INTENT, intent: 'ask_agent', resource: agentName, fields, expectFailure: false, line: ctx.line });
+    return ctx.i + 1;
+  }
+
   if (!['create', 'view', 'delete', 'update'].includes(action)) return undefined;
   let pos = 3;
   // skip articles: a, an, the, new
