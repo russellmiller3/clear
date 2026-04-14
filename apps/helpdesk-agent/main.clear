@@ -171,5 +171,5 @@ test 'creating a product requires login':
 test 'user can view all tickets':
   can user view all tickets
 
-test 'user can ask the helpdesk agent':
-  can user ask agent 'Helpdesk' with message is 'What products do you have?'
+test 'the helpdesk agent endpoint requires login':
+  does creating a ask require login

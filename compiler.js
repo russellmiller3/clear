@@ -1405,8 +1405,11 @@ function generateE2ETests(body) {
     lines.push('');
   }
 
-  // Test HTML serves
-  const hasPages = body.some(n => n.type === NodeType.PAGE);
+  // Test HTML serves — only for apps that compile to HTML (web or full-stack targets)
+  const targetNode = body.find(n => n.type === NodeType.TARGET);
+  const targetVal = targetNode?.value || '';
+  const hasWebTarget = targetVal.includes('web') || targetVal.includes('both');
+  const hasPages = hasWebTarget && body.some(n => n.type === NodeType.PAGE);
   if (hasPages) {
     lines.push(`  await test("The app loads in the browser", async () => {`);
     lines.push(`    const r = await fetch(BASE + "/");`);
@@ -1500,8 +1503,8 @@ function generateE2ETests(body) {
   }
 
   // === AUTO-GENERATED FRONTEND ELEMENT TESTS ===
-  // Walk the AST to find pages, links, buttons, inputs, and displays
-  const pages = body.filter(n => n.type === NodeType.PAGE);
+  // Only for apps that compile to HTML (web or full-stack targets)
+  const pages = hasWebTarget ? body.filter(n => n.type === NodeType.PAGE) : [];
   if (pages.length > 0) {
     lines.push('  // --- Frontend Element Tests (auto-generated) ---');
     lines.push('');
