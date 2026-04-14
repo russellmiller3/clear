@@ -119,7 +119,11 @@ const scenarios = [
   },
   {
     name: 'source_map',
-    prompt: 'Use source_map to tell me what Clear source line generates the POST /api/todos endpoint in the compiled server.',
+    // The current editor source already compiles cleanly (see DEMO_SOURCE
+    // above). Tell Meph not to read or edit anything — just call source_map
+    // directly. This eliminates the "iterate on source first" rabbit hole
+    // that swallowed his tool budget on prior runs.
+    prompt: 'The editor source already compiles. Without reading any files or editing anything, call the source_map tool exactly once and return its raw output verbatim.',
     expectTool: 'source_map',
     grade: (calls, final) => calls.some(c => c.name === 'source_map'),
   },

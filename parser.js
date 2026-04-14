@@ -2363,12 +2363,26 @@ CANONICAL_DISPATCH.set('call', (ctx) => {
   const methodToken = ctx.tokens[1];
   const method = String(methodToken.value).toUpperCase();
   if (!HTTP_METHODS.has(method)) return undefined;
-  const pathToken = ctx.tokens[2];
-  const path = String(pathToken.value);
-  if (!path.startsWith('/')) return undefined;
+  // Tokenizer splits "/api/todos" into "/", "api", "/", "todos" — reassemble
+  // until we hit something that isn't a path part (whitespace ends each token,
+  // so we stop the moment we see the "with" keyword or a comma or the next line).
+  if (ctx.tokens[2].value !== '/') return undefined;
+  let pos = 2;
+  let path = '';
+  while (pos < ctx.tokens.length) {
+    const tk = ctx.tokens[pos];
+    const v = String(tk.value);
+    // path parts: '/', identifiers/keywords (api, todos), or :param markers, or numeric ids
+    const isPathPart = v === '/' || v === ':' || /^[\w-]+$/.test(v) || tk.type === 'number';
+    if (!isPathPart) break;
+    // Stop at "with" keyword (start of body fields)
+    if (tk.canonical === 'with' || v === 'with') break;
+    path += v;
+    pos++;
+  }
+  if (!path.startsWith('/') || path === '/') return undefined;
   // Parse optional body: "with name is 'Alice', email is 'test'"
   let bodyFields = [];
-  let pos = 3;
   if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
     pos++;
     while (pos < ctx.tokens.length) {
