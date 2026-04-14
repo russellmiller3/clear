@@ -272,8 +272,64 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
   </div>
 </section>
 
-<!-- Compound quality -->
+<!-- Not-blind advantage -->
 <section class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">We made the AI <span class="gradient-text">not-blind</span></h2>
+    <p class="text-zinc-400 text-lg max-w-2xl mx-auto">Every other AI dev tool makes you the narrator. You hit a bug, describe what happened, paste the error, explain the repro. Meph reads the room instead.</p>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-8 mb-12">
+    <div class="card p-6">
+      <div class="flex items-center gap-3 mb-3">
+        <i data-lucide="eye-off" class="w-5 h-5 text-red-400"></i>
+        <div class="font-semibold text-red-400">Cursor, Lovable, v0, Copilot</div>
+      </div>
+      <p class="text-zinc-400 text-sm mb-4">"OK so I clicked the Save button, then I saw an error flash in red, I think it said something about undefined, let me re-check, yeah it's a 500, and when I refresh the page it's still broken, here's the stack trace..."</p>
+      <div class="text-xs text-zinc-500 border-t border-zinc-800 pt-3">You type three paragraphs every time something breaks. The AI sees only what you paste.</div>
+    </div>
+    <div class="card p-6 border-indigo-500/30">
+      <div class="flex items-center gap-3 mb-3">
+        <i data-lucide="eye" class="w-5 h-5 text-indigo-400"></i>
+        <div class="font-semibold text-indigo-400">Clear Studio</div>
+      </div>
+      <p class="text-zinc-400 text-sm mb-4">"Fix it."</p>
+      <div class="text-xs text-zinc-500 border-t border-zinc-800 pt-3">Meph has the full timeline: your clicks, the browser error, the server response, the failing test with source line — all from a shared terminal he reads himself.</div>
+    </div>
+  </div>
+
+  <div class="code-block p-6">
+    <div class="text-zinc-500 text-xs mb-4 uppercase tracking-wider">The Studio terminal — one chronological log of everything</div>
+    <pre class="text-xs text-zinc-300"><span class="text-zinc-500">[stdout]</span> Server listening on port 5175
+<span class="text-emerald-400">[user]</span>   click #save-btn "Save"
+<span class="text-amber-400">[browser]</span> <span class="text-red-400">error</span> ReferenceError: todos is not defined (app.js:42)
+<span class="text-zinc-500">[stderr]</span> 500 at POST /api/todos
+<span class="text-zinc-500">User:</span> <span class="text-zinc-400">fix it</span>
+<span class="text-indigo-400">[meph]</span>  read_terminal
+<span class="text-indigo-400">[meph]</span>  edit_code (write, 1310 chars)
+<span class="text-indigo-400">[meph]</span>  compile
+<span class="text-indigo-400">[meph]</span>  run_tests
+<span class="text-zinc-500">[stdout]</span> Tests: 23 passed, 0 failed ✓</pre>
+  </div>
+
+  <div class="grid md:grid-cols-3 gap-6 mt-12">
+    <div class="text-center">
+      <div class="text-2xl font-bold text-indigo-400 mb-2">Shared browser</div>
+      <p class="text-zinc-400 text-sm">You and Meph are in the same iframe. Your clicks are his context. His clicks happen in front of you.</p>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl font-bold text-indigo-400 mb-2">English errors</div>
+      <p class="text-zinc-400 text-sm">"404 means there is no endpoint at that URL. You forgot to write <code class="text-amber-400">when user calls POST /api/notes:</code>" — with the exact source line tagged.</p>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl font-bold text-indigo-400 mb-2">Click to fix</div>
+      <p class="text-zinc-400 text-sm">Every failing test has a <span class="text-indigo-300">Fix with Meph</span> button. One click, he reads, edits, re-runs, done.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Compound quality -->
+<section class="max-w-5xl mx-auto px-6 py-20 border-t border-zinc-800">
   <div class="grid md:grid-cols-2 gap-16 items-center">
     <div>
       <h2 class="text-3xl font-bold mb-4">Fix a bug once.<br>Every app gets the fix.</h2>

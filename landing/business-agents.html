@@ -385,6 +385,61 @@ agent = create_tool_calling_agent(llm, tools, prompt)
   </div>
 </section>
 
+<!-- Not-blind advantage -->
+<section class="max-w-5xl mx-auto px-6 py-20 border-t border-zinc-800">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">We made the agent builder <span class="gradient-text">not-blind</span></h2>
+    <p class="text-zinc-400 text-lg max-w-2xl mx-auto">Every other agent platform makes you the narrator. You trace a bad tool call, describe what you saw, paste the prompt, paste the response. Meph reads the room instead.</p>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-8 mb-12">
+    <div class="card p-6">
+      <div class="flex items-center gap-3 mb-3">
+        <i data-lucide="eye-off" class="w-5 h-5 text-red-400"></i>
+        <div class="font-semibold text-red-400">LangChain, Managed Agents, raw API</div>
+      </div>
+      <p class="text-zinc-400 text-sm mb-4">"The agent kept calling the wrong tool. I turned on tracing, exported the transcript, pasted three runs into ChatGPT, asked it to compare — one of the runs had a slightly different system prompt because I had edited it, let me re-check..."</p>
+      <div class="text-xs text-zinc-500 border-t border-zinc-800 pt-3">You assemble the evidence yourself every time something goes wrong. No shared context.</div>
+    </div>
+    <div class="card p-6 border-indigo-500/30">
+      <div class="flex items-center gap-3 mb-3">
+        <i data-lucide="eye" class="w-5 h-5 text-indigo-400"></i>
+        <div class="font-semibold text-indigo-400">Clear Studio</div>
+      </div>
+      <p class="text-zinc-400 text-sm mb-4">"Why did Support pick refund instead of escalate?"</p>
+      <div class="text-xs text-zinc-500 border-t border-zinc-800 pt-3">Meph reads the unified terminal: agent decision log, tool calls, guardrail hits, classify-intent outputs, user message history — all in one chronological stream he can scroll.</div>
+    </div>
+  </div>
+
+  <div class="code-block p-6">
+    <div class="text-zinc-500 text-xs mb-4 uppercase tracking-wider">The Studio terminal — one timeline across user, app, agent, and builder</div>
+    <pre class="text-xs text-zinc-300"><span class="text-emerald-400">[user]</span>    input #chat "can you refund my last order"
+<span class="text-zinc-500">[stdout]</span>  Support agent classified intent: refund (0.82)
+<span class="text-zinc-500">[stdout]</span>  Support agent called: look_up_order(id=12)
+<span class="text-zinc-500">[stdout]</span>  Support agent blocked argument: "drop" matches 'drop|truncate'
+<span class="text-amber-400">[browser]</span> error: 500 at POST /api/support
+<span class="text-zinc-500">User:</span>    <span class="text-zinc-400">why did it block that?</span>
+<span class="text-indigo-400">[meph]</span>   read_terminal
+<span class="text-indigo-400">[meph]</span>   read_file main.clear (line 47: block arguments matching...)
+<span class="text-zinc-300">Meph:</span>   <span class="text-zinc-400">The guardrail matched "drop" in the refund reason text. That's a false positive — the user literally wrote "drop off location." Tightening the regex.</span></pre>
+  </div>
+
+  <div class="grid md:grid-cols-3 gap-6 mt-12">
+    <div class="text-center">
+      <div class="text-2xl font-bold text-indigo-400 mb-2">Guardrail audit trail</div>
+      <p class="text-zinc-400 text-sm">Every blocked tool call, every intent classification, every memory write — in the same terminal as the user's clicks.</p>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl font-bold text-indigo-400 mb-2">Tests with English names</div>
+      <p class="text-zinc-400 text-sm">"The Support agent blocks 'delete' in tool arguments" — not <code class="text-xs">POST /api/support with body returns 403</code>. Fails show the exact .clear line.</p>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl font-bold text-indigo-400 mb-2">Click to fix</div>
+      <p class="text-zinc-400 text-sm">Failing test → <span class="text-indigo-300">Fix with Meph</span> button → he edits the guardrail, re-runs, shows green.</p>
+    </div>
+  </div>
+</section>
+
 <!-- Tests that write themselves -->
 <section class="max-w-5xl mx-auto px-6 py-20">
   <div class="text-center mb-12">
