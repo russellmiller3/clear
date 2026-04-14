@@ -1561,23 +1561,25 @@ app.post('/api/chat', async (req, res) => {
         if (tb.name === 'http_request') {
           result = await executeHttpRequest(input);
         } else if (tb.name === 'screenshot_output') {
-          // Request screenshot from client via SSE, then wait for callback
-          send({ type: 'screenshot_request' });
-          const imageBase64 = await new Promise((resolve, reject) => {
-            pendingScreenshotResolve = resolve;
-            setTimeout(() => {
-              pendingScreenshotResolve = null;
-              reject(new Error('Screenshot timed out — no response from client'));
-            }, 12000);
-          }).catch(err => null);
-          // Store as array content so Anthropic receives the image
-          if (imageBase64) {
-            result = [
-              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
-              { type: 'text', text: 'Screenshot of the output panel. Inspect visually to verify layout, colours, and content.' },
-            ];
+          // Use the Playwright browser — it's already pointing at the running app's port.
+          // This captures the ACTUAL rendered app, not the Studio wrapper or a blank iframe.
+          if (!runningChild) {
+            result = JSON.stringify({ error: 'No app running. Start with run_app first.' });
           } else {
-            result = JSON.stringify({ error: 'Screenshot capture failed or timed out.' });
+            try {
+              const page = await getPage();
+              // Force a navigation if the app restarted on a new port (getPage handles this)
+              // Wait for any reactive updates to settle
+              await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+              const buffer = await page.screenshot({ fullPage: false, type: 'png' });
+              const imageBase64 = buffer.toString('base64');
+              result = [
+                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+                { type: 'text', text: `Screenshot of the running app at localhost:${runningPort}. This is the actual rendered output — verify layout, colors, and content.` },
+              ];
+            } catch (err) {
+              result = JSON.stringify({ error: 'Screenshot failed: ' + err.message.slice(0, 200) });
+            }
           }
         } else {
           result = await executeTool(tb.name, input);
