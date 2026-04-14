@@ -5,6 +5,7 @@ import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSy
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
+import { chromium } from 'playwright';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -153,6 +154,86 @@ app.post('/api/exec', (req, res) => {
 // =============================================================================
 let runningChild = null;
 let runningPort = 4000;
+
+// =============================================================================
+// BROWSER AUTOMATION — Playwright-backed page for Meph's UI testing tools
+// =============================================================================
+// A single headless browser instance is reused across all tool calls.
+// The page navigates to the running app's port. Network requests and
+// WebSocket messages are captured in ring buffers so Meph can query them.
+let _browser = null;
+let _page = null;
+let _pageConnectedTo = null; // port number the page is currently on
+const _networkBuffer = []; // last 100 network requests
+const _websocketBuffer = []; // last 100 WebSocket messages
+
+async function getPage() {
+  // Lazy-launch browser on first use
+  if (!_browser) {
+    _browser = await chromium.launch({ headless: true });
+    const context = await _browser.newContext();
+    _page = await context.newPage();
+
+    // Capture every network request/response
+    _page.on('requestfinished', async (req) => {
+      try {
+        const res = await req.response();
+        let body = null;
+        try {
+          const contentType = res?.headers()?.['content-type'] || '';
+          if (contentType.includes('json') || contentType.includes('text')) {
+            body = (await res.text()).slice(0, 2000);
+          }
+        } catch {}
+        _networkBuffer.push({
+          url: req.url(),
+          method: req.method(),
+          status: res?.status() || 0,
+          body,
+          ts: Date.now(),
+        });
+        if (_networkBuffer.length > 100) _networkBuffer.shift();
+      } catch {}
+    });
+    _page.on('requestfailed', (req) => {
+      _networkBuffer.push({
+        url: req.url(),
+        method: req.method(),
+        status: 0,
+        error: req.failure()?.errorText || 'request failed',
+        ts: Date.now(),
+      });
+      if (_networkBuffer.length > 100) _networkBuffer.shift();
+    });
+
+    // Capture WebSocket messages (both directions)
+    _page.on('websocket', (ws) => {
+      ws.on('framesent', (f) => {
+        _websocketBuffer.push({ direction: 'sent', url: ws.url(), payload: String(f.payload).slice(0, 500), ts: Date.now() });
+        if (_websocketBuffer.length > 100) _websocketBuffer.shift();
+      });
+      ws.on('framereceived', (f) => {
+        _websocketBuffer.push({ direction: 'received', url: ws.url(), payload: String(f.payload).slice(0, 500), ts: Date.now() });
+        if (_websocketBuffer.length > 100) _websocketBuffer.shift();
+      });
+    });
+  }
+
+  // Navigate to the running app if not already there
+  if (runningPort && _pageConnectedTo !== runningPort) {
+    _networkBuffer.length = 0;
+    _websocketBuffer.length = 0;
+    await _page.goto('http://localhost:' + runningPort, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
+    _pageConnectedTo = runningPort;
+  }
+  return _page;
+}
+
+async function closeBrowser() {
+  if (_browser) { try { await _browser.close(); } catch {} _browser = null; _page = null; _pageConnectedTo = null; }
+}
+process.on('SIGTERM', closeBrowser);
+process.on('SIGINT', closeBrowser);
 
 // Terminal ring buffer — last 500 lines from running app stdout/stderr
 const terminalBuffer = [];
@@ -337,6 +418,10 @@ app.post('/api/stop', (req, res) => {
     try { runningChild.kill('SIGTERM'); } catch {}
     runningChild = null;
   }
+  // Force browser to reconnect on next tool call (app might restart on different port)
+  _pageConnectedTo = null;
+  _networkBuffer.length = 0;
+  _websocketBuffer.length = 0;
   res.json({ stopped: true });
 });
 
@@ -573,6 +658,77 @@ You can modify .clear files and requests.md. You can create new files of any all
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'click_element',
+    description: 'Click an element in the running app (headless browser). Pass a CSS selector or visible text. Returns updated HTML and any errors. Use this to test buttons, links, tabs. Requires app to be running.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector (#submit-btn) or visible text (button:has-text("Save"))' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'fill_input',
+    description: 'Type a value into an input element in the running app. Pass a CSS selector and the text to type. Triggers input events so reactive state updates. Use to test form flows. Requires app to be running.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector for the input, e.g. #email or input[name="title"]' },
+        value: { type: 'string', description: 'The text to type into the input' },
+      },
+      required: ['selector', 'value'],
+    },
+  },
+  {
+    name: 'read_network',
+    description: 'Read the last N network requests made by the running app (client-side POV). Returns URL, method, status, response body, errors. Catches silent 404s, CORS errors, bad fetch URLs that the server never logs.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max requests to return (default 20, max 100)' },
+        filter: { type: 'string', description: 'Optional URL substring filter, e.g. "/api/" to only show API calls' },
+      },
+    },
+  },
+  {
+    name: 'inspect_element',
+    description: 'Inspect a DOM element in the running app. Returns computed styles (color, font, padding), bounding box, text content, and attributes. Use to verify visual properties — is the button actually red, is the text actually large, etc.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector for the element to inspect' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'read_storage',
+    description: 'Read localStorage and sessionStorage from the running app. Use to debug auth flows (is the JWT stored?), persistent state, or saved preferences.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'websocket_log',
+    description: 'Read WebSocket messages (both directions) from the running app. Use to debug live-chat, real-time updates, and anything using subscribe to / broadcast to all.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max messages to return (default 20)' },
+      },
+    },
+  },
+  {
+    name: 'db_inspect',
+    description: 'Query the running app\'s SQLite database directly. Pass an SQL SELECT query. Use when "POST succeeded but GET returns nothing" — check if data actually saved.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'SQL SELECT query, e.g. "SELECT * FROM todos LIMIT 10"' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'todo',
     description: `Track your tasks as you work. Helps you plan multi-step work and show the user your progress.
 - "set": Replace your entire todo list with a new set of tasks. Each task has content (what to do), status (pending/in_progress/completed), and activeForm (present tense, e.g. "Adding validation").
@@ -700,7 +856,7 @@ app.post('/api/chat', async (req, res) => {
   let lastCompileResult = null;
 
   // Tool execution
-  function executeTool(name, input) {
+  async function executeTool(name, input) {
     switch (name) {
       case 'edit_code':
         if (input.action === 'read') {
@@ -1014,6 +1170,132 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify(testResult);
       }
 
+      case 'click_element': {
+        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+        try {
+          const page = await getPage();
+          const sel = input.selector;
+          await page.click(sel, { timeout: 3000 });
+          await page.waitForTimeout(300); // let reactive updates settle
+          const html = (await page.content()).slice(0, 4000);
+          return JSON.stringify({ ok: true, clicked: sel, html });
+        } catch (err) {
+          return JSON.stringify({ error: err.message.slice(0, 300) });
+        }
+      }
+
+      case 'fill_input': {
+        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+        try {
+          const page = await getPage();
+          await page.fill(input.selector, input.value, { timeout: 3000 });
+          await page.waitForTimeout(200);
+          return JSON.stringify({ ok: true, filled: input.selector, value: input.value });
+        } catch (err) {
+          return JSON.stringify({ error: err.message.slice(0, 300) });
+        }
+      }
+
+      case 'read_network': {
+        if (!runningChild) return JSON.stringify({ error: 'No app running. Network capture starts when the app runs.' });
+        await getPage(); // ensure browser is connected
+        const limit = Math.min(input.limit || 20, 100);
+        let requests = _networkBuffer.slice(-limit);
+        if (input.filter) {
+          requests = requests.filter(r => r.url.includes(input.filter));
+        }
+        return JSON.stringify({ count: requests.length, requests });
+      }
+
+      case 'inspect_element': {
+        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+        try {
+          const page = await getPage();
+          const sel = input.selector;
+          const info = await page.evaluate((s) => {
+            const el = document.querySelector(s);
+            if (!el) return null;
+            const cs = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            return {
+              tag: el.tagName.toLowerCase(),
+              text: el.textContent?.slice(0, 200) || '',
+              attributes: Array.from(el.attributes).reduce((o, a) => { o[a.name] = a.value; return o; }, {}),
+              styles: {
+                color: cs.color,
+                backgroundColor: cs.backgroundColor,
+                fontSize: cs.fontSize,
+                fontFamily: cs.fontFamily,
+                fontWeight: cs.fontWeight,
+                padding: cs.padding,
+                margin: cs.margin,
+                border: cs.border,
+                borderRadius: cs.borderRadius,
+                display: cs.display,
+                visibility: cs.visibility,
+                width: cs.width,
+                height: cs.height,
+              },
+              box: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+            };
+          }, sel);
+          if (!info) return JSON.stringify({ error: 'Element not found: ' + sel });
+          return JSON.stringify({ ok: true, selector: sel, ...info });
+        } catch (err) {
+          return JSON.stringify({ error: err.message.slice(0, 300) });
+        }
+      }
+
+      case 'read_storage': {
+        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+        try {
+          const page = await getPage();
+          const storage = await page.evaluate(() => {
+            const ls = {}, ss = {};
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              ls[k] = localStorage.getItem(k);
+            }
+            for (let i = 0; i < sessionStorage.length; i++) {
+              const k = sessionStorage.key(i);
+              ss[k] = sessionStorage.getItem(k);
+            }
+            return { localStorage: ls, sessionStorage: ss };
+          });
+          return JSON.stringify({ ok: true, ...storage });
+        } catch (err) {
+          return JSON.stringify({ error: err.message.slice(0, 300) });
+        }
+      }
+
+      case 'websocket_log': {
+        if (!runningChild) return JSON.stringify({ error: 'No app running. WebSocket capture starts when the app runs.' });
+        await getPage();
+        const limit = Math.min(input.limit || 20, 100);
+        const messages = _websocketBuffer.slice(-limit);
+        return JSON.stringify({ count: messages.length, messages });
+      }
+
+      case 'db_inspect': {
+        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+        const q = String(input.query || '').trim();
+        if (!q) return JSON.stringify({ error: 'Missing query' });
+        // Security: only allow SELECT queries
+        if (!/^select\s/i.test(q)) return JSON.stringify({ error: 'Only SELECT queries allowed. Use db_inspect for reads, not writes.' });
+        try {
+          // The running app has its SQLite DB in BUILD_DIR/clear-data.db
+          const Database = (await import('better-sqlite3')).default;
+          const dbPath = join(BUILD_DIR, 'clear-data.db');
+          if (!existsSync(dbPath)) return JSON.stringify({ error: 'No database file yet. Make a request that writes data first.' });
+          const db = new Database(dbPath, { readonly: true });
+          const rows = db.prepare(q).all();
+          db.close();
+          return JSON.stringify({ ok: true, rowCount: rows.length, rows: rows.slice(0, 100) });
+        } catch (err) {
+          return JSON.stringify({ error: err.message.slice(0, 300) });
+        }
+      }
+
       case 'todo': {
         if (input.action === 'get') {
           return JSON.stringify({ todos: mephTodos });
@@ -1235,6 +1517,13 @@ app.post('/api/chat', async (req, res) => {
             case 'screenshot_output': return 'Taking screenshot';
             case 'highlight_code': return `Highlighting lines ${input.start_line || ''}–${input.end_line || ''}`;
             case 'run_tests': return 'Running tests...';
+            case 'click_element': return `Clicking ${input.selector || ''}`;
+            case 'fill_input': return `Typing into ${input.selector || ''}`;
+            case 'read_network': return 'Reading network requests';
+            case 'inspect_element': return `Inspecting ${input.selector || ''}`;
+            case 'read_storage': return 'Reading browser storage';
+            case 'websocket_log': return 'Reading WebSocket messages';
+            case 'db_inspect': return `DB query: ${(input.query || '').slice(0, 50)}`;
             case 'todo': return input.action === 'set' ? 'Updating task list' : 'Reading task list';
             case 'source_map': return input.clear_line ? `Looking up Clear line ${input.clear_line}` : 'Getting full source map';
             case 'patch_code': return `Patching ${input.operations?.length || 0} operations`;
@@ -1291,7 +1580,7 @@ app.post('/api/chat', async (req, res) => {
             result = JSON.stringify({ error: 'Screenshot capture failed or timed out.' });
           }
         } else {
-          result = executeTool(tb.name, input);
+          result = await executeTool(tb.name, input);
         }
 
         // Log every tool call to terminal so the user can see what's happening
@@ -1341,6 +1630,29 @@ app.post('/api/chat', async (req, res) => {
               if (err) return `[tool] ❌ tests — ${err.slice(0, 150)}`;
               const tr = JSON.parse(result);
               return `[tool] ✓ tests — ${tr.passed || 0} passed, ${tr.failed || 0} failed`;
+            }
+            case 'click_element':
+              return err ? `[tool] ❌ click ${input.selector} — ${err.slice(0, 120)}` : `[tool] ✓ clicked ${input.selector}`;
+            case 'fill_input':
+              return err ? `[tool] ❌ fill ${input.selector} — ${err.slice(0, 120)}` : `[tool] ✓ filled ${input.selector}`;
+            case 'read_network': {
+              if (err) return `[tool] ❌ read_network — ${err.slice(0, 120)}`;
+              const r = JSON.parse(result);
+              return `[tool] network — ${r.count || 0} requests`;
+            }
+            case 'inspect_element':
+              return err ? `[tool] ❌ inspect ${input.selector} — ${err.slice(0, 120)}` : `[tool] ✓ inspected ${input.selector}`;
+            case 'read_storage':
+              return err ? `[tool] ❌ read_storage — ${err.slice(0, 120)}` : `[tool] ✓ read storage`;
+            case 'websocket_log': {
+              if (err) return `[tool] ❌ websocket_log — ${err.slice(0, 120)}`;
+              const r = JSON.parse(result);
+              return `[tool] websocket — ${r.count || 0} messages`;
+            }
+            case 'db_inspect': {
+              if (err) return `[tool] ❌ db_inspect — ${err.slice(0, 120)}`;
+              const r = JSON.parse(result);
+              return `[tool] ✓ db — ${r.rowCount || 0} rows`;
             }
             case 'todo': {
               if (input.action === 'set') {

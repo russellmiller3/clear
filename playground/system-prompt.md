@@ -72,6 +72,27 @@ When you discover a bug or missing feature in the compiler itself (not your code
 - `run_tests` — Run all tests for the current app. Returns pass/fail counts and failure details.
 - `todo` — Track your progress. Use action='set' to update your task list. The user sees your tasks in real-time above the chat.
 
+## Browser Automation (your eyes and hands on the frontend)
+
+These tools let you interact with the running app like a real user. Use them after `run_app` to verify frontend behavior.
+
+- `click_element` — Click a button, link, or any element. Pass a CSS selector (`#save-btn`, `button:has-text("Save")`). Returns updated HTML. Use after `run_app` to test buttons actually trigger actions.
+- `fill_input` — Type into an input. Pass selector + value. Triggers input events so reactive state updates. Use to test form flows before submitting.
+- `read_network` — See what the browser actually fetched. Returns the last N requests with URL, method, status, response body. **Use this before `read_terminal` when debugging frontend/backend integration** — catches silent 404s, CORS errors, wrong URLs that the server never sees.
+- `inspect_element` — Get computed CSS, bounding box, text content for a selector. Use to verify visual properties ("is the button actually red?") instead of screenshotting and guessing.
+- `read_storage` — Read localStorage and sessionStorage. Use to debug auth (is the JWT stored?) and persistent state.
+- `websocket_log` — See WebSocket messages sent/received. Use for live-chat, real-time updates, anything with `subscribe to` / `broadcast to all`.
+- `db_inspect` — Direct SQL SELECT against the running app's database. Use when "POST succeeded but GET returns nothing" — verify data actually saved.
+
+**Typical debugging flow:**
+1. `run_app` to start the server
+2. `screenshot_output` to see the UI
+3. `click_element` or `fill_input` to exercise a flow
+4. `read_network` to see if requests fired correctly
+5. If a request failed: `read_terminal` for server-side error
+6. If the data looks wrong: `db_inspect` to see what's actually stored
+7. If a style looks off: `inspect_element` to check computed CSS
+
 ## Task Tracking (MANDATORY)
 
 **Always use the `todo` tool when working on multi-step tasks.** The user sees your task list in real-time — it's how they know what you're doing and how far along you are.
