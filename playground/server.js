@@ -1050,8 +1050,12 @@ app.post('/api/chat', async (req, res) => {
         if (!str(input.path)) return `http_request requires a "path" string (e.g. "/api/todos").`;
         return null;
       }
-      case 'read_file': return str(input.path) ? null : `read_file requires a "path" string.`;
-      case 'write_file': return str(input.path) && str(input.content) ? null : `write_file requires "path" and "content" strings.`;
+      case 'read_file': return str(input.filename) ? null : `read_file requires a "filename" string (e.g. SYNTAX.md, AI-INSTRUCTIONS.md).`;
+      case 'edit_file': {
+        if (!str(input.filename)) return `edit_file requires a "filename" string.`;
+        if (!inEnum(input.action, ['append', 'insert', 'replace', 'overwrite', 'read'])) return `edit_file.action must be one of: append, insert, replace, overwrite, read.`;
+        return null;
+      }
       case 'click_element': return str(input.selector) ? null : `click_element requires a "selector" string (CSS selector).`;
       case 'fill_input': return str(input.selector) && (str(input.value) || num(input.value)) ? null : `fill_input requires "selector" (string) and "value" (string or number).`;
       case 'highlight_code': {
@@ -1094,8 +1098,25 @@ app.post('/api/chat', async (req, res) => {
       }
       // Tools with empty schemas (no required fields): compile, run_app, stop_app,
       // read_terminal, screenshot_output, run_tests, read_dom, read_actions,
-      // read_storage, source_map, browse_templates, websocket_log — nothing to validate.
-      default: return null;
+      // read_storage, source_map, browse_templates, websocket_log — pass through.
+      case 'compile':
+      case 'run_app':
+      case 'stop_app':
+      case 'read_terminal':
+      case 'screenshot_output':
+      case 'run_tests':
+      case 'read_dom':
+      case 'read_actions':
+      case 'read_storage':
+      case 'source_map':
+      case 'browse_templates':
+      case 'websocket_log':
+        return null;
+      // Reject any tool we don't recognize so Meph stops hallucinating
+      // names like "run_file" or "write_file" (neither exists). Earlier
+      // the default case returned null which silently allowed unknown calls.
+      default:
+        return `Unknown tool "${name}". Valid tools: edit_code, read_file, edit_file, run_command, http_request, compile, run_app, stop_app, run_tests, click_element, fill_input, highlight_code, inspect_element, read_network, read_storage, read_terminal, read_actions, read_dom, screenshot_output, browse_templates, source_map, websocket_log, db_inspect, todo, patch_code.`;
     }
   }
 
@@ -1598,11 +1619,27 @@ app.post('/api/chat', async (req, res) => {
       // Retry with exponential backoff on transient failures
       let r;
       const MAX_RETRIES = 5;
+      // Per-request abort controller. We DON'T use AbortSignal.timeout here
+      // because that aborts the entire stream at the wall-clock limit — for
+      // multi-tool Meph turns, a single Anthropic stream can run 60–180s and
+      // still be making forward progress. Instead: idle-watchdog — abort only
+      // if NO data arrives for IDLE_TIMEOUT_MS. Reset the watchdog every chunk.
+      const IDLE_TIMEOUT_MS = 90000;
+      const FIRST_TOKEN_TIMEOUT_MS = 60000; // initial connection; reset after first byte
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
+          const ctrl = new AbortController();
+          let firstByteSeen = false;
+          let watchdog = setTimeout(() => ctrl.abort(new Error('first-token timeout')), FIRST_TOKEN_TIMEOUT_MS);
+          // Resetting helper used by the read loop below
+          var resetIdleWatchdog = () => {
+            clearTimeout(watchdog);
+            watchdog = setTimeout(() => ctrl.abort(new Error('idle timeout: no data for ' + (IDLE_TIMEOUT_MS / 1000) + 's')), IDLE_TIMEOUT_MS);
+            firstByteSeen = true;
+          };
           r = await fetch(endpoint, {
             method: 'POST', headers, body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(60000), // 60s timeout — Anthropic can be slow on first token
+            signal: ctrl.signal,
           });
           if (r.ok) break;
           // Retry on 429 (rate limit), 500, 502, 503, 529 (overloaded)
@@ -1648,6 +1685,8 @@ app.post('/api/chat', async (req, res) => {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        // Reset idle watchdog on every chunk — we're making progress.
+        if (typeof resetIdleWatchdog === 'function') resetIdleWatchdog();
         buf += decoder.decode(value, { stream: true });
         const lines = buf.split('\n');
         buf = lines.pop();
@@ -1691,6 +1730,8 @@ app.post('/api/chat', async (req, res) => {
           }
         }
       }
+      // Stream ended naturally — clear the watchdog so it doesn't fire later
+      if (typeof watchdog !== 'undefined') clearTimeout(watchdog);
 
       // Build assistant content block for next iteration
       // Thinking blocks must come first in the assistant content for multi-turn
@@ -1903,7 +1944,14 @@ app.post('/api/chat', async (req, res) => {
         }
         send({ type: 'tool_done', name: tb.name });
 
-        toolResultBlocks.push({ type: 'tool_result', tool_use_id: tb.id, content: result });
+        // Anthropic's tool_result.content must be a string OR an array of
+        // content blocks. If executeTool ever returns a bare object (bug),
+        // JSON-stringify it so we don't send `[object Object]` to the API.
+        const safeContent =
+          typeof result === 'string' ? result :
+          Array.isArray(result) ? result :
+          JSON.stringify(result);
+        toolResultBlocks.push({ type: 'tool_result', tool_use_id: tb.id, content: safeContent });
       }
 
       currentMessages.push({ role: 'assistant', content: assistantContent });
