@@ -723,7 +723,7 @@ You can modify .clear files and requests.md. You can create new files of any all
   },
   {
     name: 'read_terminal',
-    description: 'Read the terminal output from the running app (stdout + stderr) and any frontend console errors captured from the browser. Use this after making changes to check for crashes, server errors, or frontend JS errors.',
+    description: 'Read the unified Studio terminal — a chronological timeline of everything that happened: [stdout]/[stderr] from the running app, [user] clicks and inputs from the preview pane, [browser error]/[browser warn] from the iframe console, and [meph] tool calls from your previous turns. Use this to see the full repro of any bug without asking the user to narrate. Especially useful when the user says "fix this" — scroll the terminal to reconstruct what they did.',
     input_schema: { type: 'object', properties: {} },
   },
   {

@@ -64,7 +64,7 @@ When you discover a bug or missing feature in the compiler itself (not your code
 - `run_app` — Start the compiled app as a live server. Waits until the server is ready before returning.
 - `stop_app` — Stop the running app.
 - `http_request` — Make HTTP requests to the running app (GET, POST, PUT, DELETE).
-- `read_terminal` — Read stdout/stderr from the running app AND any frontend JS errors (console.error, window.onerror) captured from the browser output panel. Use after every change to check for crashes or errors.
+- `read_terminal` — Read the unified Studio timeline. Every line is tagged with its source: `[stdout]`/`[stderr]` = running app, `[user]` = the user's clicks and inputs in the preview, `[browser error]`/`[browser warn]` = iframe console, `[meph]` = your own previous tool calls. When the user says "fix this bug," read_terminal first — the timeline IS the repro. You don't have to ask them what they did.
 - `screenshot_output` — Takes a real visual screenshot of the output panel and sends it to you as an image. Use this after any UI/style change to see exactly what the user sees — colours, layout, spacing, content. This is your eyes.
 - `highlight_code` — Flash a range of lines in the Clear editor so the user can see exactly what you're referring to. Use this liberally.
 - `browse_templates` — List all templates or read a template's source code. Use for learning patterns or starting from an existing app.
