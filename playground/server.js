@@ -243,12 +243,19 @@ function termLog(line) {
   if (terminalBuffer.length > 500) terminalBuffer.shift();
 }
 
-// Frontend error log — captured via injected script in compiled app
+// Frontend error log — captured via injected script in compiled app.
+// Mirrored to the main terminal so the user sees one honest timeline (stdout,
+// stderr, user clicks, Meph tools, AND browser console errors all interleaved).
 const frontendErrors = [];
 app.post('/api/frontend-log', (req, res) => {
   const { type, message, source, lineno } = req.body || {};
   frontendErrors.push({ type: type || 'error', message, source, lineno, ts: Date.now() });
   if (frontendErrors.length > 100) frontendErrors.shift();
+  try {
+    const tag = type === 'warn' ? '[browser warn]' : type === 'log' || type === 'info' ? '[browser]' : '[browser error]';
+    const loc = source && lineno ? ` (${String(source).split('/').pop()}:${lineno})` : '';
+    termLog(`${tag} ${String(message || '').slice(0, 500)}${loc}`);
+  } catch {}
   res.json({ ok: true });
 });
 
