@@ -430,12 +430,12 @@ async function compileTemplate(name) {
 
   // Send a message
   const { data: sent } = await appPost('/api/messages', { sender: 'E2E', content: 'Hello from Playwright' });
-  assert(sent.status === 200 || sent.status === 201, 'POST /api/messages works');
+  assert(sent.status === 200 || sent.status === 201, `POST /api/messages works (got ${sent.status}: ${JSON.stringify(sent.data).slice(0,80)})`);
 
   // Read messages
   const { data: msgs } = await appGet('/api/messages');
   assert(msgs.status === 200 && Array.isArray(msgs.data), 'GET /api/messages returns array');
-  const found = msgs.data?.find(m => m.content === 'Hello from Playwright');
+  const found = Array.isArray(msgs.data) ? msgs.data.find(m => m.content === 'Hello from Playwright') : null;
   assert(!!found, 'sent message appears in list');
 
   await stopApp();
@@ -469,8 +469,8 @@ async function compileTemplate(name) {
 
   // Rooms
   const { data: rooms } = await appGet('/api/rooms');
-  assert(rooms.status === 200 && Array.isArray(rooms.data), 'GET /api/rooms returns array');
-  assert(rooms.data.length >= 3, `seeded ${rooms.data?.length || 0} rooms`);
+  assert(rooms.status === 200 && Array.isArray(rooms.data), `GET /api/rooms returns array (got ${rooms.status}: ${JSON.stringify(rooms.data || {}).slice(0,80)})`);
+  assert(Array.isArray(rooms.data) && rooms.data.length >= 3, `seeded ${rooms.data?.length || 0} rooms`);
 
   // Create booking
   const roomId = rooms.data[0]?.id;
@@ -511,8 +511,8 @@ async function compileTemplate(name) {
 
   // Expenses
   const { data: expenses } = await appGet('/api/expenses');
-  assert(expenses.status === 200 && Array.isArray(expenses.data), 'GET /api/expenses returns array');
-  assert(expenses.data.length >= 1, `has expenses after seed (${expenses.data?.length || 0})`);
+  assert(expenses.status === 200 && Array.isArray(expenses.data), `GET /api/expenses returns array (got ${expenses.status}: ${JSON.stringify(expenses.data || {}).slice(0,80)})`);
+  assert(Array.isArray(expenses.data) && expenses.data.length >= 1, `has expenses after seed (${expenses.data?.length || 0})`);
 
   // Create
   const { data: created } = await appPost('/api/expenses', { description: 'E2E Coffee', amount: 4.50 });

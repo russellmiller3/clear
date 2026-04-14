@@ -385,19 +385,50 @@ app.post('/api/set-key', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/run', (req, res) => {
+// Poll the child app's port until it accepts a connection or we time out.
+// Used to defeat the race where the child prints "running on port N" but
+// Express's route handlers haven't mounted yet — without this, the very
+// next /api/fetch from the e2e suite hits ECONNREFUSED.
+async function probeUntilReady(port, timeoutMs) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const r = await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(500) });
+      // Any HTTP response (even 404) means the server is up
+      if (r.status > 0) return;
+    } catch {}
+    await new Promise(ok => setTimeout(ok, 50));
+  }
+  throw new Error('probe timeout');
+}
+
+app.post('/api/run', async (req, res) => {
   const { serverJS, html, css } = req.body;
   if (!serverJS) return res.status(400).json({ error: 'No server code to run' });
 
-  // Kill previous
+  // Kill previous and wait for actual exit before reusing BUILD_DIR / DB.
   if (runningChild) {
-    try { runningChild.kill('SIGTERM'); } catch {}
+    const prev = runningChild;
     runningChild = null;
+    try { prev.kill('SIGTERM'); } catch {}
+    await new Promise(resolve => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      prev.once('exit', finish);
+      setTimeout(() => { try { prev.kill('SIGKILL'); } catch {} finish(); }, 2000);
+    });
   }
 
   // Write build files
   const rtDir = join(BUILD_DIR, 'clear-runtime');
   mkdirSync(rtDir, { recursive: true });
+  // Wipe ALL persistent state between runs — different apps share BUILD_DIR
+  // but their schemas don't, so leftover tables from a prior app cause the
+  // next one's seed/queries to fail unpredictably. Includes SQLite + JSON
+  // fallback + journal file. Errors swallowed (file may not exist).
+  for (const f of ['clear-data.db', 'clear-data.db-wal', 'clear-data.db-shm', 'clear-data.db-journal', 'clear-data.json']) {
+    try { unlinkSync(join(BUILD_DIR, f)); } catch {}
+  }
   writeFileSync(join(BUILD_DIR, 'server.js'), serverJS);
   // Build deps based on what the compiled code needs
   const deps = { ws: '*' };
@@ -440,7 +471,13 @@ app.post('/api/run', (req, res) => {
     termLog('[stdout] ' + msg.trimEnd());
     if (msg.includes('running on port') && !responded) {
       responded = true;
-      res.json({ port: runningPort, logs });
+      // Probe the port before responding — the log line fires inside
+      // app.listen's callback, but Express route binding can lag the socket
+      // bind by a tick or two on Windows. Without this the e2e suite hits
+      // the proxy before handlers are mounted and gets ECONNREFUSED.
+      probeUntilReady(runningPort, 2000)
+        .then(() => res.json({ port: runningPort, logs }))
+        .catch(() => res.json({ port: runningPort, logs })); // respond anyway after timeout
     }
   });
 
@@ -473,12 +510,22 @@ app.post('/api/run', (req, res) => {
   }, 5000);
 });
 
-app.post('/api/stop', (req, res) => {
+app.post('/api/stop', async (req, res) => {
   if (runningChild) {
-    try { runningChild.kill('SIGTERM'); } catch {}
+    const child = runningChild;
     runningChild = null;
+    try { child.kill('SIGTERM'); } catch {}
+    // AWAIT actual exit before responding — otherwise the next test starts
+    // before the OS releases the port and the file handle on clear-data.db,
+    // causing flaky GET requests that come back with no status.
+    await new Promise(resolve => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      child.once('exit', finish);
+      // Hard cap: 2s SIGKILL fallback for stubborn children
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch {} finish(); }, 2000);
+    });
   }
-  // Force browser to reconnect on next tool call (app might restart on different port)
   _pageConnectedTo = null;
   _networkBuffer.length = 0;
   _websocketBuffer.length = 0;
@@ -591,22 +638,35 @@ app.post('/api/fetch', async (req, res) => {
   const { method, path, body, headers } = req.body;
   if (!runningChild) return res.status(400).json({ error: 'No app running. Click Run first.' });
 
-  try {
-    const url = `http://localhost:${runningPort}${path || '/'}`;
-    const opts = {
-      method: method || 'GET',
-      headers: { 'Content-Type': 'application/json', ...(headers || {}) },
-    };
-    if (body && method !== 'GET') opts.body = JSON.stringify(body);
+  const url = `http://localhost:${runningPort}${path || '/'}`;
+  const opts = {
+    method: method || 'GET',
+    headers: { 'Content-Type': 'application/json', ...(headers || {}) },
+  };
+  if (body && method !== 'GET') opts.body = JSON.stringify(body);
 
-    const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(10000) });
-    const text = await r.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = text; }
-    res.json({ status: r.status, data });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  // Retry on ECONNREFUSED — child server may have just printed "running on
+  // port" but its route handlers can take a few extra ms to bind on Windows.
+  // This was the root cause of e2e flakiness on the crm-pro template:
+  // /api/run responded as soon as the port log appeared, e2e immediately
+  // hit /api/fetch, and on a slow tick the connect refused before the test
+  // got a real response — making `data.status` come back undefined.
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(10000) });
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = text; }
+      return res.json({ status: r.status, data });
+    } catch (err) {
+      lastErr = err;
+      // Only retry connection-refused — other errors (timeout, abort) are real
+      if (err.code !== 'ECONNREFUSED' && !/ECONNREFUSED|fetch failed/i.test(err.message || '')) break;
+      await new Promise(ok => setTimeout(ok, 150 * (attempt + 1)));
+    }
   }
+  res.status(500).json({ error: lastErr?.message || 'fetch failed' });
 });
 
 // =============================================================================
