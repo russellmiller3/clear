@@ -1808,6 +1808,51 @@ function generateE2ETests(body) {
     lines.push('  throw new Error(call + " didn\'t return a \\"" + key + "\\" field — got " + got + ". Your endpoint\'s `send back` line needs to include \\"" + key + "\\"." + where);');
     lines.push('}');
     lines.push('');
+    // Friendly success/failure + body-contains/length helpers
+    lines.push('function _expectSuccess(response) {');
+    lines.push('  if (response.status >= 200 && response.status < 300) return;');
+    lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
+    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "the request";');
+    lines.push('  throw new Error(call + " returned " + response.status + " but the test expected any 2xx success." + where);');
+    lines.push('}');
+    lines.push('');
+    lines.push('function _expectFailure(response) {');
+    lines.push('  if (response.status >= 400) return;');
+    lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
+    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "the request";');
+    lines.push('  throw new Error(call + " returned " + response.status + " (success) but the test expected it to fail with a 4xx or 5xx. Add a `validate` or `requires login` rule to the endpoint, or change the test data so the validation actually rejects it." + where);');
+    lines.push('}');
+    lines.push('');
+    lines.push('function _expectBodyContains(body, value) {');
+    lines.push('  const as = JSON.stringify(body);');
+    lines.push('  if (as && as.includes(value)) return;');
+    lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
+    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "the endpoint";');
+    lines.push('  throw new Error(call + " response didn\'t contain \\"" + value + "\\". Got: " + (as || "nothing") + "." + where);');
+    lines.push('}');
+    lines.push('');
+    lines.push('function _expectBodyLength(body, min) {');
+    lines.push('  const len = Array.isArray(body) ? body.length : (body && typeof body === "object" ? Object.keys(body).length : 0);');
+    lines.push('  if (len > min) return;');
+    lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
+    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "the endpoint";');
+    lines.push('  throw new Error(call + " returned " + len + " item(s) but the test expected more than " + min + ". Either the endpoint isn\'t reading from the table you think, or the test data hasn\'t been created yet." + where);');
+    lines.push('}');
+    lines.push('');
+    lines.push('function _expectBodyTruthy(body) {');
+    lines.push('  if (body) return;');
+    lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
+    lines.push('  const call = _lastCall && _lastCall.method ? _lastCall.method + " " + _lastCall.path : "the endpoint";');
+    lines.push('  throw new Error(call + " returned an empty body. Your endpoint should `send back` something." + where);');
+    lines.push('}');
+    lines.push('');
+    lines.push('function _expectErrorContains(body, value) {');
+    lines.push('  const as = JSON.stringify(body);');
+    lines.push('  if (as && as.includes(value)) return;');
+    lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
+    lines.push('  throw new Error("Error response didn\'t mention \\"" + value + "\\". Got: " + (as || "nothing") + ". Check the `fail with error \'...\'` or `validate` message in your endpoint." + where);');
+    lines.push('}');
+    lines.push('');
   }
 
   lines.push('run();');
@@ -4814,26 +4859,26 @@ ${pad}}`;
         return `${pad}_expectStatus(_response, ${node.value});`;
       }
       if (node.property === 'status' && node.check === 'success') {
-        return `${pad}assert(_response.status >= 200 && _response.status < 300, "Expected success, got " + _response.status);`;
+        return `${pad}_expectSuccess(_response);`;
       }
       if (node.property === 'status' && node.check === 'failure') {
-        return `${pad}assert(_response.status >= 400, "Expected failure, got " + _response.status);`;
+        return `${pad}_expectFailure(_response);`;
       }
       if (node.property === 'body' && node.check === 'has_field') {
         return `${pad}_expectBodyHas(_responseBody, ${JSON.stringify(node.field)});`;
       }
       if (node.property === 'body' && node.check === 'contains') {
-        return `${pad}assert(JSON.stringify(_responseBody).includes(${JSON.stringify(node.value)}), "Response should contain " + ${JSON.stringify(node.value)});`;
+        return `${pad}_expectBodyContains(_responseBody, ${JSON.stringify(node.value)});`;
       }
       if (node.property === 'body' && node.check === 'error_contains') {
         // "X should fail with error 'message'" — assert error response contains the message
-        return `${pad}assert(_response.status >= 400, "Should fail, got " + _response.status);\n${pad}assert(JSON.stringify(_responseBody).includes(${JSON.stringify(node.value)}), "Error should contain " + ${JSON.stringify(node.value)});`;
+        return `${pad}_expectFailure(_response);\n${pad}_expectErrorContains(_responseBody, ${JSON.stringify(node.value)});`;
       }
       if (node.property === 'body' && node.check === 'length') {
         if (node.value != null) {
-          return `${pad}expect(Array.isArray(_responseBody) ? _responseBody.length : Object.keys(_responseBody || {}).length).toBeGreaterThan(${node.value});`;
+          return `${pad}_expectBodyLength(_responseBody, ${node.value});`;
         }
-        return `${pad}expect(_responseBody).toBeTruthy();`;
+        return `${pad}_expectBodyTruthy(_responseBody);`;
       }
       // "expect todos has 'Buy groceries'" → check variable contains value
       if (node.property === 'variable' && node.check === 'contains') {
