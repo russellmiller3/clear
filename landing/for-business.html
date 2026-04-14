@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Custom internal tools + AI agents, built for your business</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
+.gradient-text { background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.card { background: #18181b; border: 1px solid #27272a; border-radius: 12px; }
+.card-green { border-left: 3px solid #22c55e; }
+.card-red { border-left: 3px solid #ef4444; }
+.card-amber { border-left: 3px solid #f59e0b; }
+.glow { box-shadow: 0 0 60px rgba(129, 140, 248, 0.08); }
+.code-block { background: #0c0c0e; border: 1px solid #27272a; border-radius: 8px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.7; }
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+.tag-green { background: rgba(34,197,94,.12); color: #4ade80; border: 1px solid rgba(34,197,94,.2); }
+.tag-red { background: rgba(239,68,68,.1); color: #f87171; border: 1px solid rgba(239,68,68,.15); }
+.tag-blue { background: rgba(96,165,250,.1); color: #93c5fd; border: 1px solid rgba(96,165,250,.15); }
+.tag-indigo { background: rgba(129,140,248,.1); color: #a5b4fc; border: 1px solid rgba(129,140,248,.15); }
+.hero-grid { background-image: radial-gradient(rgba(129,140,248,.07) 1px, transparent 1px); background-size: 24px 24px; }
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="border-b border-zinc-800 px-6 py-4">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div class="text-xl font-bold tracking-tight">Built with Clear</div>
+    <div class="flex items-center gap-8 text-sm text-zinc-400">
+      <a href="#what" class="hover:text-white transition">What I Build</a>
+      <a href="#how" class="hover:text-white transition">How It Works</a>
+      <a href="#why" class="hover:text-white transition">Why It's Different</a>
+      <a href="#pricing" class="hover:text-white transition">Pricing</a>
+      <a href="#contact" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-500 transition">Book a Call</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero-grid relative overflow-hidden">
+  <div class="max-w-4xl mx-auto px-6 pt-24 pb-20 text-center">
+    <div class="tag tag-indigo mb-6 mx-auto w-fit">For businesses that need it built — not a SaaS tool, not a 6-month project</div>
+    <h1 class="text-5xl md:text-6xl font-extrabold leading-tight tracking-tight mb-6">
+      Internal tools &amp; AI agents,<br><span class="gradient-text">built for your business in two weeks</span>
+    </h1>
+    <p class="text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+      Tell me the problem. Get a working app with your logo, your data, your workflow. Source code in English you can read. Deployed to your cloud. Yours to keep.
+    </p>
+    <div class="flex gap-4 justify-center">
+      <a href="#contact" class="bg-indigo-600 text-white px-8 py-3 rounded-xl font-semibold text-lg hover:bg-indigo-500 transition">Book a 30-min Call</a>
+      <a href="#what" class="border border-zinc-700 text-zinc-300 px-8 py-3 rounded-xl font-semibold text-lg hover:border-zinc-500 hover:text-white transition">See What I Build</a>
+    </div>
+  </div>
+</section>
+
+<!-- Stats strip -->
+<div class="border-y border-zinc-800 py-4">
+  <div class="max-w-4xl mx-auto px-6 flex items-center justify-center gap-8 text-sm text-zinc-500 flex-wrap">
+    <span>Two-week builds</span>
+    <span class="text-zinc-700">|</span>
+    <span>Source code yours to own</span>
+    <span class="text-zinc-700">|</span>
+    <span>Deploys to your cloud</span>
+    <span class="text-zinc-700">|</span>
+    <span>No vendor lock-in</span>
+  </div>
+</div>
+
+<!-- The Problem -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">Your ops is held together with duct tape</h2>
+    <p class="text-zinc-400 text-lg">And nobody wants to tell you.</p>
+  </div>
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="card p-6 card-red">
+      <div class="text-red-400 font-semibold mb-2">Off-the-shelf SaaS</div>
+      <p class="text-zinc-400 text-sm">Fits 70% of your workflow. The other 30% is three spreadsheets and a Slack channel called <span class="text-zinc-300">#workaround</span>.</p>
+    </div>
+    <div class="card p-6 card-red">
+      <div class="text-red-400 font-semibold mb-2">RPA bots (UiPath, Automation Anywhere)</div>
+      <p class="text-zinc-400 text-sm">$60k/year, six months to stand up, break silently every time a vendor changes a button. You pay a consultant to fix them.</p>
+    </div>
+    <div class="card p-6 card-red">
+      <div class="text-red-400 font-semibold mb-2">Hiring a dev</div>
+      <p class="text-zinc-400 text-sm">$150k salary + benefits + managing them + they leave in 18 months + the code only they understand.</p>
+    </div>
+  </div>
+</section>
+
+<!-- What I build -->
+<section id="what" class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-bold mb-4">What I build for you</h2>
+      <p class="text-zinc-400 text-lg">Real internal tools and AI agents. Your data, your brand, your workflow.</p>
+    </div>
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="card p-6">
+        <div class="flex items-center gap-3 mb-3"><i data-lucide="layout-dashboard" class="w-5 h-5 text-indigo-400"></i><div class="font-semibold">Internal CRMs &amp; dashboards</div></div>
+        <p class="text-zinc-400 text-sm">Customer list, deal pipeline, activity log. Charts, filters, exports. Role-based access for your team.</p>
+      </div>
+      <div class="card p-6">
+        <div class="flex items-center gap-3 mb-3"><i data-lucide="clipboard-check" class="w-5 h-5 text-indigo-400"></i><div class="font-semibold">Approval workflows</div></div>
+        <p class="text-zinc-400 text-sm">Expense reports, PTO requests, purchase orders. Submit → route → approve → notify → log. All in one place.</p>
+      </div>
+      <div class="card p-6">
+        <div class="flex items-center gap-3 mb-3"><i data-lucide="message-circle" class="w-5 h-5 text-indigo-400"></i><div class="font-semibold">AI customer-support agents</div></div>
+        <p class="text-zinc-400 text-sm">Trained on your docs and order history. Handles Tier-1 questions. Escalates to humans with full context. Logs every decision.</p>
+      </div>
+      <div class="card p-6">
+        <div class="flex items-center gap-3 mb-3"><i data-lucide="file-search" class="w-5 h-5 text-indigo-400"></i><div class="font-semibold">Document &amp; data extraction</div></div>
+        <p class="text-zinc-400 text-sm">Read contracts, invoices, or forms. Pull out the fields you care about. Route them to your ERP or accounting system.</p>
+      </div>
+      <div class="card p-6">
+        <div class="flex items-center gap-3 mb-3"><i data-lucide="calendar" class="w-5 h-5 text-indigo-400"></i><div class="font-semibold">Scheduling &amp; booking tools</div></div>
+        <p class="text-zinc-400 text-sm">Resource calendars, room/equipment booking, client appointments. Tied to your existing systems, not a separate island.</p>
+      </div>
+      <div class="card p-6">
+        <div class="flex items-center gap-3 mb-3"><i data-lucide="zap" class="w-5 h-5 text-indigo-400"></i><div class="font-semibold">RPA replacements</div></div>
+        <p class="text-zinc-400 text-sm">Replace brittle UI-scripting bots with proper API integrations and AI agents that understand intent instead of matching pixels.</p>
+      </div>
+    </div>
+    <div class="text-center mt-8">
+      <p class="text-zinc-500 text-sm">If it's internal software and you can describe the workflow, I can build it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how" class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">How an engagement works</h2>
+    <p class="text-zinc-400 text-lg">Four steps. Two weeks. No mystery.</p>
+  </div>
+  <div class="grid md:grid-cols-4 gap-6">
+    <div class="text-center">
+      <div class="mb-3 inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30"><span class="text-indigo-300 font-bold">1</span></div>
+      <div class="font-semibold mb-2">Discovery call</div>
+      <p class="text-zinc-400 text-sm">30 minutes. You describe the problem. I ask the questions nobody asks. You get a one-page brief and a fixed quote.</p>
+    </div>
+    <div class="text-center">
+      <div class="mb-3 inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30"><span class="text-indigo-300 font-bold">2</span></div>
+      <div class="font-semibold mb-2">Build (week 1)</div>
+      <p class="text-zinc-400 text-sm">I build in Clear + Studio. You see progress daily. Every feature has English-readable source and auto-generated tests.</p>
+    </div>
+    <div class="text-center">
+      <div class="mb-3 inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30"><span class="text-indigo-300 font-bold">3</span></div>
+      <div class="font-semibold mb-2">Review &amp; polish (week 2)</div>
+      <p class="text-zinc-400 text-sm">You use it, I fix rough edges. Any change you request gets made in hours, not sprints, because the source is 40 lines per feature.</p>
+    </div>
+    <div class="text-center">
+      <div class="mb-3 inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30"><span class="text-indigo-300 font-bold">4</span></div>
+      <div class="font-semibold mb-2">Ship &amp; support</div>
+      <p class="text-zinc-400 text-sm">Deploys to your AWS, Azure, GCP, or Railway. Source goes into your git. Optional monthly retainer for changes.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Why it's different -->
+<section id="why" class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-bold mb-4">Why you can trust what I ship</h2>
+      <p class="text-zinc-400 text-lg">Most custom software is a black box. This isn't.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8 items-center">
+      <div>
+        <div class="text-zinc-500 text-xs mb-3 uppercase tracking-wider">Source code you can actually read</div>
+        <div class="code-block p-5">
+<pre class="text-zinc-300"><span class="text-zinc-600"># Expense approval workflow</span>
+<span class="text-indigo-400">create a</span> Expense <span class="text-indigo-400">table:</span>
+  description, required
+  amount (number), required
+  submitter, required
+  approved, default false
+
+<span class="text-indigo-400">when user sends</span> data <span class="text-indigo-400">to</span> /api/expenses:
+  <span class="text-amber-400">requires login</span>
+  <span class="text-amber-400">validate</span> data:
+    description, required
+    amount, between 0 and 100000
+  save data as new Expense
+  email manager: 'New expense to review'
+
+<span class="text-indigo-400">test:</span>
+  can user submit an expense
+  submitting without amount should be rejected
+  creating an expense should require login</pre>
+        </div>
+      </div>
+      <div class="space-y-6">
+        <div>
+          <div class="flex items-center gap-3 mb-2"><i data-lucide="book-open" class="w-5 h-5 text-emerald-400"></i><div class="font-semibold text-emerald-400">Not JavaScript. Not Python. English.</div></div>
+          <p class="text-zinc-400 text-sm">Your IT team can read the source file and know exactly what the app does. No reverse-engineering. No tribal knowledge.</p>
+        </div>
+        <div>
+          <div class="flex items-center gap-3 mb-2"><i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i><div class="font-semibold text-emerald-400">Security bugs are compile errors</div></div>
+          <p class="text-zinc-400 text-sm">SQL injection, auth bypass, mass assignment, PII in error logs — the compiler refuses to build if any are present. Not "best effort." Mathematically impossible to ship.</p>
+        </div>
+        <div>
+          <div class="flex items-center gap-3 mb-2"><i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i><div class="font-semibold text-emerald-400">Tests prove it works</div></div>
+          <p class="text-zinc-400 text-sm">Every endpoint, every button, every agent guardrail gets an auto-generated test with an English name. I don't mark a feature "done" until the tests are green.</p>
+        </div>
+        <div>
+          <div class="flex items-center gap-3 mb-2"><i data-lucide="key" class="w-5 h-5 text-emerald-400"></i><div class="font-semibold text-emerald-400">You own it forever</div></div>
+          <p class="text-zinc-400 text-sm">Source in your git. Runs on your cloud. If we part ways, the app keeps running. Any competent engineer can maintain it — the source is English.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- The not-blind advantage -->
+<section class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">Why I ship in two weeks instead of six months</h2>
+    <p class="text-zinc-400 text-lg max-w-2xl mx-auto">I use a custom build environment (Clear Studio) where the AI assistant shares my browser, reads my terminal, and sees every test failure in plain English with the exact line number to fix.</p>
+  </div>
+  <div class="grid md:grid-cols-2 gap-8">
+    <div class="card p-6 card-red">
+      <div class="text-red-400 font-semibold text-sm uppercase tracking-wider mb-3">The normal way</div>
+      <ul class="space-y-2 text-zinc-400 text-sm">
+        <li class="flex gap-2"><span class="text-red-500">×</span> Dev writes code, hits a bug, narrates repro to AI</li>
+        <li class="flex gap-2"><span class="text-red-500">×</span> AI guesses, dev tests, AI guesses again</li>
+        <li class="flex gap-2"><span class="text-red-500">×</span> Three paragraphs of context per round trip</li>
+        <li class="flex gap-2"><span class="text-red-500">×</span> Every bug fix is a meeting with yourself</li>
+      </ul>
+    </div>
+    <div class="card p-6 glow" style="border-color: rgba(129,140,248,0.3);">
+      <div class="text-indigo-400 font-semibold text-sm uppercase tracking-wider mb-3">The Studio way</div>
+      <ul class="space-y-2 text-zinc-400 text-sm">
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> The AI sees my clicks, errors, test results directly</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> I say "fix it" — it reads the repro itself</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Tests write themselves; compile catches security bugs</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> More build, less explaining</li>
+      </ul>
+    </div>
+  </div>
+  <p class="text-center text-zinc-500 text-sm mt-8 max-w-2xl mx-auto">You don't see any of this. You just get a working app faster and cheaper than anyone quoting you a traditional build.</p>
+</section>
+
+<!-- Compare -->
+<section class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <h2 class="text-3xl font-bold text-center mb-12">How does this compare to your options?</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-zinc-400 border-b border-zinc-800">
+            <th class="py-3 pr-4 font-medium"></th>
+            <th class="py-3 px-4 font-medium">Off-shelf SaaS</th>
+            <th class="py-3 px-4 font-medium">RPA vendor</th>
+            <th class="py-3 px-4 font-medium">FTE developer</th>
+            <th class="py-3 px-4 font-medium text-indigo-400">This</th>
+          </tr>
+        </thead>
+        <tbody class="text-zinc-300">
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Time to first working version</td>
+            <td class="py-3 px-4 text-emerald-400">Hours (but misfit)</td>
+            <td class="py-3 px-4 text-red-400">3–6 months</td>
+            <td class="py-3 px-4 text-amber-400">2–3 months</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Two weeks</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Fits your exact workflow</td>
+            <td class="py-3 px-4 text-red-400">70%</td>
+            <td class="py-3 px-4 text-amber-400">Close, if spec'd right</td>
+            <td class="py-3 px-4 text-emerald-400">Yes</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Yes</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">You own the source code</td>
+            <td class="py-3 px-4 text-red-400">No</td>
+            <td class="py-3 px-4 text-red-400">No (platform lock)</td>
+            <td class="py-3 px-4 text-emerald-400">Yes</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Yes</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Your IT team can read it</td>
+            <td class="py-3 px-4 text-red-400">N/A</td>
+            <td class="py-3 px-4 text-red-400">Proprietary</td>
+            <td class="py-3 px-4 text-amber-400">If they know JS/Python</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Plain English</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Security review passes</td>
+            <td class="py-3 px-4 text-amber-400">Vendor's problem</td>
+            <td class="py-3 px-4 text-amber-400">Vendor's problem</td>
+            <td class="py-3 px-4 text-red-400">Their code, their bugs</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Compiler-enforced</td>
+          </tr>
+          <tr class="border-b border-zinc-800/50">
+            <td class="py-3 pr-4">Change requests after launch</td>
+            <td class="py-3 px-4 text-red-400">Feature request → 18 months</td>
+            <td class="py-3 px-4 text-red-400">Consultant hours</td>
+            <td class="py-3 px-4 text-amber-400">If they're still there</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">Hours, not sprints</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4">Total first-year cost</td>
+            <td class="py-3 px-4 text-amber-400">$20–60k subscription</td>
+            <td class="py-3 px-4 text-red-400">$80–200k + services</td>
+            <td class="py-3 px-4 text-red-400">$180k+ fully loaded</td>
+            <td class="py-3 px-4 text-emerald-400 font-medium">$25–75k per build</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section id="pricing" class="max-w-5xl mx-auto px-6 py-20">
+  <div class="text-center mb-12">
+    <h2 class="text-3xl font-bold mb-4">Pricing</h2>
+    <p class="text-zinc-400 text-lg">Fixed fee, no hourly games, no scope surprises.</p>
+  </div>
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="card p-6">
+      <div class="text-indigo-400 font-semibold text-sm uppercase tracking-wider mb-2">Focused build</div>
+      <div class="text-4xl font-bold mb-1">$15k</div>
+      <div class="text-zinc-500 text-sm mb-4">One-time · two weeks</div>
+      <ul class="space-y-2 text-sm text-zinc-300">
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> One internal tool or agent</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Auth + role-based access</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Auto-generated tests</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Deploy to your cloud</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Source code handoff</li>
+      </ul>
+    </div>
+    <div class="card p-6 glow" style="border-color: rgba(129,140,248,0.3);">
+      <div class="flex items-center gap-2 mb-2"><div class="text-indigo-400 font-semibold text-sm uppercase tracking-wider">Standard build</div><span class="tag tag-indigo">Most common</span></div>
+      <div class="text-4xl font-bold mb-1">$35k</div>
+      <div class="text-zinc-500 text-sm mb-4">One-time · three to four weeks</div>
+      <ul class="space-y-2 text-sm text-zinc-300">
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Multi-feature internal tool (CRM, workflow, dashboard)</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> OR AI agent with tools + guardrails + memory</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Integrations with 2–3 existing systems</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Custom branding + polished UI</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> 30-day post-launch support</li>
+      </ul>
+    </div>
+    <div class="card p-6">
+      <div class="text-indigo-400 font-semibold text-sm uppercase tracking-wider mb-2">Retainer</div>
+      <div class="text-4xl font-bold mb-1">$3k<span class="text-lg text-zinc-500">/mo</span></div>
+      <div class="text-zinc-500 text-sm mb-4">Ongoing · month-to-month</div>
+      <ul class="space-y-2 text-sm text-zinc-300">
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Change requests handled in days</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Bug fixes and tweaks included</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Minor new features (under a day)</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Hosting + deployment management</li>
+        <li class="flex gap-2"><span class="text-emerald-500">✓</span> Cancel any time</li>
+      </ul>
+    </div>
+  </div>
+  <p class="text-zinc-500 text-sm text-center mt-6">Larger or more complex scope priced on the discovery call. No surprise invoices — every quote is fixed.</p>
+</section>
+
+<!-- FAQ -->
+<section class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-3xl mx-auto px-6 py-20">
+    <h2 class="text-3xl font-bold text-center mb-12">Common questions</h2>
+    <div class="space-y-6">
+      <div class="card p-6">
+        <div class="font-semibold mb-2">What happens if you're not available or something happens to you?</div>
+        <p class="text-zinc-400 text-sm">The source is in your git repo in plain English. Any competent developer (or AI assistant) can read and modify it. You're not buying access to me — you're buying a working system you understand and own.</p>
+      </div>
+      <div class="card p-6">
+        <div class="font-semibold mb-2">Do you do on-prem deployments for compliance reasons?</div>
+        <p class="text-zinc-400 text-sm">Yes. The compiled output is standard Node.js or Python. It runs anywhere — your AWS VPC, Azure tenant, on-prem kubernetes, wherever your InfoSec team approves. No external call-home.</p>
+      </div>
+      <div class="card p-6">
+        <div class="font-semibold mb-2">Can I see an example before committing?</div>
+        <p class="text-zinc-400 text-sm">Absolutely. On the discovery call I'll walk you through a live build — compile, tests, deploy — in under 10 minutes. You see exactly what the source looks like and what you'd own at the end.</p>
+      </div>
+      <div class="card p-6">
+        <div class="font-semibold mb-2">What about AI safety / hallucinations in the agent tools?</div>
+        <p class="text-zinc-400 text-sm">Agents have compiler-enforced guardrails: allowed tools, blocked arguments, role restrictions, validated inputs. Prompt injection attempts are logged. Every decision is auditable. This is not a wrapper around ChatGPT.</p>
+      </div>
+      <div class="card p-6">
+        <div class="font-semibold mb-2">Who owns the intellectual property?</div>
+        <p class="text-zinc-400 text-sm">You do — the source code I write for you is yours. I keep the right to use the Clear language and compiler (which are my own work) for other projects. Straightforward work-for-hire.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="contact" class="max-w-3xl mx-auto px-6 py-24 text-center">
+  <h2 class="text-4xl font-bold mb-4">Have a problem worth solving?<br><span class="gradient-text">Let's talk for 30 minutes.</span></h2>
+  <p class="text-zinc-400 text-lg mb-10 max-w-xl mx-auto">No sales pitch. I listen, ask the questions nobody asks, and tell you honestly whether a custom build makes sense — or whether you should buy something off the shelf.</p>
+  <div class="flex gap-4 justify-center flex-wrap">
+    <a href="mailto:russell@clear-apps.dev?subject=Discovery%20call" class="bg-indigo-600 text-white px-8 py-3 rounded-xl font-semibold text-lg hover:bg-indigo-500 transition">Email Russell</a>
+    <a href="https://cal.com/russellmiller" class="border border-zinc-700 text-zinc-300 px-8 py-3 rounded-xl font-semibold text-lg hover:border-zinc-500 hover:text-white transition">Book Directly</a>
+  </div>
+  <p class="text-zinc-600 text-xs mt-8">Russell Miller · Built with Clear · San Francisco</p>
+</section>
+
+<script>lucide.createIcons();</script>
+</body>
+</html>
