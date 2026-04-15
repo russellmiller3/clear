@@ -759,7 +759,12 @@ async function callEvalEndpoint(port, path, body) {
           'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(45_000)
+        // 90s budget. Single-LLM-call probes finish in 2-15s, but multi-
+        // step agents (repeat-until refinement, sub-agent orchestration)
+        // legitimately chain 4-8 Claude calls and land in the 30-60s range.
+        // Polished Report in multi-agent-research hit 45s and aborted under
+        // the previous budget; its timeouts surfaced as "Network error".
+        signal: AbortSignal.timeout(90_000)
       });
       const ct = r.headers.get('content-type') || '';
       if (ct.includes('text/event-stream')) {

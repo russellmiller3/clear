@@ -3467,14 +3467,37 @@ function compileAgent(node, ctx, pad) {
   } else if (shouldStream && ctx.lang !== 'python' && bodyCode.includes('_askAI(')) {
     // Track which variables hold stream results (so we know which returns to convert)
     const streamVars = new Set();
+    // Reassigned variables MUST stay non-streaming. If we converted
+    // `let draft = await _askAI(...)` to `_askAIStream(...)` but a later
+    // `draft = await _askAI('...', draft)` fed the generator back in as
+    // context, Claude would receive [object AsyncGenerator] instead of a
+    // string. Polished Report in multi-agent-research hit this — second
+    // call got no real draft text, produced nonsense. Scan for
+    // `<var> = ` (reassignment without `let`) and skip streaming for
+    // those vars. Only truly single-assignment vars get streamed.
+    const reassignedVars = new Set();
+    for (const m of bodyCode.matchAll(/(?:^|\n)\s*(\w+)\s*=(?!=)/g)) {
+      // Ignore declarations (`let`, `const`, `var`), keep bare reassignments only.
+      const before = bodyCode.slice(0, m.index + m[0].length - m[1].length - 1);
+      const lastWord = (before.match(/\b(let|const|var)\s*$/) || [])[1];
+      if (!lastWord) reassignedVars.add(m[1]);
+    }
     bodyCode = bodyCode.replace(
       /let (\w+) = await _askAI\(([^)]*)\)/g,
-      (m, varName, args) => { streamVars.add(varName); return `let ${varName} = _askAIStream(${args})`; }
+      (m, varName, args) => {
+        if (reassignedVars.has(varName)) return m; // keep awaited — need real string for next call
+        streamVars.add(varName);
+        return `let ${varName} = _askAIStream(${args})`;
+      }
     );
     // Also handle _askAIWithTools
     bodyCode = bodyCode.replace(
       /let (\w+) = await _askAIWithTools\(([^)]*)\)/g,
-      (m, varName, args) => { streamVars.add(varName); return `let ${varName} = _askAIStream(${args})`; }
+      (m, varName, args) => {
+        if (reassignedVars.has(varName)) return m;
+        streamVars.add(varName);
+        return `let ${varName} = _askAIStream(${args})`;
+      }
     );
     // Only convert returns of stream variables to yield
     if (streamVars.size > 0) {

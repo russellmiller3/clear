@@ -22584,6 +22584,36 @@ page 'App':
     expect(r.serverJS).toContain('res.end()');
   });
 
+  it('T4c: ask-claude var inside repeat-until stays non-streaming if reassigned', () => {
+    // Bug surfaced by Meph on multi-agent-research's Polished Report agent:
+    // \`let draft = await _askAI('Synthesize', findings)\` was converted to
+    // \`let draft = _askAIStream(...)\` (generator). Then the repeat-until
+    // reassigned \`draft = await _askAI('Improve', draft)\` — passing the
+    // generator as the "with" variable. Claude received [object AsyncGenerator]
+    // and produced nonsense. Only convert to streaming if the var is assigned
+    // exactly once — reassigned vars must stay as awaited strings so the
+    // next call gets a real value.
+    const srcRefinement = `build for javascript backend
+agent 'Refiner' receives findings:
+  draft = ask claude 'Synthesize' with findings
+  grade = 0
+  repeat until grade is greater than 7, max 2 times:
+    draft = ask claude 'Improve' with draft
+    grade = 5
+  send back draft`;
+    const r = compileProgram(srcRefinement);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // Find the first assignment — must be an awaited string, not a stream
+    // generator. If it's \`_askAIStream\`, the loop body will pass a
+    // generator as the \`with\` value and the second call gets garbage.
+    const firstAssign = js.match(/let draft\s*=\s*(await )?_(askAIStream|askAI)\(/);
+    expect(firstAssign).toBeTruthy();
+    // Either `await _askAI(...)` OR (if streaming was correctly skipped)
+    // anything that isn't `_askAIStream(` as the first call to that var.
+    expect(firstAssign[0]).not.toContain('_askAIStream');
+  });
+
   it('T4b: streaming endpoint wraps auth/validation early-return in braces', () => {
     // Without braces, `if (cond) res.write(...); res.end(); return;`
     // only protects the first statement — res.end() + return fire
