@@ -1425,6 +1425,37 @@ function generateEvalSuite(body) {
     });
   }
 
+  // User-defined evals from per-agent `evals:` subsections. Each scenario
+  // attached to `.evalScenarios` on an agent becomes a suite entry with
+  // source='user-agent'. The scenario's input overrides the auto-probe for
+  // that specific entry — other auto-generated rows for the agent stay.
+  for (const agent of agents) {
+    if (!Array.isArray(agent.evalScenarios) || agent.evalScenarios.length === 0) continue;
+    const userPath = endpointByAgent.get(agent.name);
+    const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
+    const path = userPath || `/_eval/${fnName}`;
+    const isSynthetic = !userPath;
+    const receivingVar = agent.receivingVar || 'input';
+    for (const sc of agent.evalScenarios) {
+      const input = isSynthetic ? { input: sc.input } : { [receivingVar]: sc.input };
+      const expected = sc.expectFields && sc.expectFields.length > 0
+        ? { kind: 'fields', fields: sc.expectFields.map(f => ({ name: f, type: 'text' })) }
+        : { kind: 'non-empty' };
+      suite.push({
+        id: `scenario-${sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'))}-${sanitizeName(sc.name.toLowerCase().replace(/\s+/g, '_'))}`,
+        kind: 'user',
+        label: `${agent.name} — ${sc.name}`,
+        source: 'user-agent',
+        agentName: agent.name,
+        endpointPath: path,
+        synthetic: isSynthetic,
+        input,
+        rubric: sc.rubric || null,
+        expected,
+      });
+    }
+  }
+
   // User-defined evals from top-level `eval 'name':` blocks. Each EVAL_DEF
   // node translates into exactly one suite entry. The translation maps:
   //   - scenarioKind='agent' → look up the agent's endpoint path (real or

@@ -3429,6 +3429,103 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
       }
       bodyStartIdx++; continue;
     }
+    // evals: — per-agent user-defined scenarios. Block form only.
+    //   evals:
+    //     scenario 'name':
+    //       input is X                (scalar) OR input is:   (block-object)
+    //       expect '<rubric>'         OR expect output has f1, f2
+    // Stored on the agent's .evalScenarios; compiler merges into evalSuite
+    // with source='user-agent'. This directive intentionally lives in the
+    // directive area (before the agent's executable body) so users can see
+    // the agent's test-cases at a glance.
+    if (dTokens.length === 1 && dTokens[0].value === 'evals') {
+      directives.evalScenarios = directives.evalScenarios || [];
+      const evalsHeaderIndent = lines[bodyStartIdx].indent;
+      bodyStartIdx++;
+      // Walk indented children — expected to be `scenario 'name':` blocks
+      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > evalsHeaderIndent) {
+        const sTokens = lines[bodyStartIdx].tokens;
+        if (sTokens.length === 0) { bodyStartIdx++; continue; }
+        if (sTokens[0].value !== 'scenario') {
+          errors.push({ line: sTokens[0].line, message: `Inside \`evals:\` only \`scenario 'name':\` blocks are allowed. Got: ${sTokens[0].value}` });
+          bodyStartIdx++; continue;
+        }
+        if (sTokens.length < 2 || sTokens[1].type !== TokenType.STRING) {
+          errors.push({ line: sTokens[0].line, message: `Each scenario needs a quoted name. Example: scenario 'warm greeting':` });
+          bodyStartIdx++; continue;
+        }
+        const scenarioName = sTokens[1].value;
+        const scenarioHeaderIndent = lines[bodyStartIdx].indent;
+        const scenario = { name: scenarioName, input: null, rubric: null, expectFields: null, line: sTokens[0].line };
+        bodyStartIdx++;
+        // Walk scenario body: `input is ...` and `expect ...`
+        while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > scenarioHeaderIndent) {
+          const iTokens = lines[bodyStartIdx].tokens;
+          if (iTokens.length === 0) { bodyStartIdx++; continue; }
+          const iFirst = iTokens[0].value;
+
+          if (iFirst === 'input') {
+            // Find `is`, then either inline value OR indented block (next line greater indent)
+            const isIdx = iTokens.findIndex((tok) => tok.canonical === 'is' || tok.value === 'is');
+            if (isIdx === -1) {
+              errors.push({ line: iTokens[0].line, message: "Scenario line needs `input is <value>` or `input is:` + indented fields." });
+              bodyStartIdx++; continue;
+            }
+            const afterIs = iTokens.slice(isIdx + 1);
+            const lineIndent = lines[bodyStartIdx].indent;
+            const isObjectBlock = afterIs.length === 0 && (bodyStartIdx + 1) < lines.length && lines[bodyStartIdx + 1].indent > lineIndent;
+            if (isObjectBlock) {
+              bodyStartIdx++;
+              const obj = {};
+              while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > lineIndent) {
+                const ft = lines[bodyStartIdx].tokens;
+                if (ft.length === 0) { bodyStartIdx++; continue; }
+                const fname = ft[0].value;
+                const fIsIdx = ft.findIndex((x) => x.canonical === 'is' || x.value === 'is');
+                if (fIsIdx <= 0) { bodyStartIdx++; continue; }
+                const expr = parseExpression(ft, fIsIdx + 1, ft[0].line);
+                if (!expr.error) obj[fname] = _literalFromExpr(expr.node);
+                bodyStartIdx++;
+              }
+              scenario.input = obj;
+              continue;
+            }
+            const expr = parseExpression(iTokens, isIdx + 1, iTokens[0].line);
+            if (!expr.error) scenario.input = _literalFromExpr(expr.node);
+            bodyStartIdx++;
+            continue;
+          }
+
+          if (iFirst === 'expect') {
+            // `expect output has <fields>` (deterministic) OR `expect '<rubric>'` (LLM-graded)
+            const outputIdx = iTokens.findIndex((tok, idx) => idx > 0 && tok.value === 'output');
+            const hasIdx = iTokens.findIndex((tok, idx) => outputIdx !== -1 && idx > outputIdx && tok.value === 'has');
+            if (outputIdx !== -1 && hasIdx !== -1) {
+              const fields = iTokens.slice(hasIdx + 1)
+                .filter((tok) => tok.type !== TokenType.COMMA)
+                .filter((tok) => tok.type === TokenType.IDENTIFIER || tok.type === TokenType.KEYWORD)
+                .map((tok) => tok.value);
+              scenario.expectFields = fields;
+              bodyStartIdx++;
+              continue;
+            }
+            if (iTokens.length >= 2 && iTokens[1].type === TokenType.STRING) {
+              scenario.rubric = iTokens[1].value;
+              bodyStartIdx++;
+              continue;
+            }
+            errors.push({ line: iTokens[0].line, message: "Scenario `expect` needs a rubric string or `output has field1, field2`." });
+            bodyStartIdx++;
+            continue;
+          }
+
+          errors.push({ line: iTokens[0].line, message: `Unexpected line inside scenario '${scenarioName}': ${iFirst}. Use \`input is ...\` and \`expect ...\`.` });
+          bodyStartIdx++;
+        }
+        directives.evalScenarios.push(scenario);
+      }
+      continue;
+    }
     // block arguments matching 'pattern1', 'pattern2'
     if (dTokens[0].canonical === 'block_arguments' || (dTokens[0].value === 'block' && dTokens.length >= 3 && dTokens[1].value === 'arguments')) {
       directives.argumentGuardrails = [];

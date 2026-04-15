@@ -16963,6 +16963,136 @@ when user calls POST /api/run sending data:
 });
 
 // =============================================================================
+// USER-DEFINED EVALS — per-agent `evals:` subsection. Scenarios attach to
+// the owning agent as .evalScenarios; compiler merges them into
+// result.evalSuite with source='user-agent'. Each scenario has its own
+// input + expect, overriding the agent's auto-probe for that entry.
+// =============================================================================
+
+describe('User eval: per-agent `evals:` subsection', () => {
+  it('parses a single scenario with inline input + rubric', () => {
+    const src = `build for javascript backend
+agent 'Support' receives message:
+  evals:
+    scenario 'responds warmly':
+      input is 'hi'
+      expect 'The agent greets the user warmly.'
+  r = ask claude 'help' with message
+  send back r`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === NodeType.AGENT && n.name === 'Support');
+    expect(agent).toBeDefined();
+    expect(Array.isArray(agent.evalScenarios)).toBe(true);
+    expect(agent.evalScenarios.length).toBe(1);
+    const sc = agent.evalScenarios[0];
+    expect(sc.name).toBe('responds warmly');
+    expect(sc.input).toBe('hi');
+    expect(sc.rubric).toBe('The agent greets the user warmly.');
+  });
+
+  it('parses multiple scenarios on one agent', () => {
+    const src = `build for javascript backend
+agent 'Support' receives message:
+  evals:
+    scenario 'warm greeting':
+      input is 'hi'
+      expect 'warm and professional'
+    scenario 'handles complaint':
+      input is 'my order is broken'
+      expect 'acknowledges the problem and offers next steps'
+  r = ask claude 'help' with message
+  send back r`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === NodeType.AGENT);
+    expect(agent.evalScenarios.length).toBe(2);
+    expect(agent.evalScenarios[0].name).toBe('warm greeting');
+    expect(agent.evalScenarios[1].name).toBe('handles complaint');
+  });
+
+  it('scenarios merge into evalSuite with source=user-agent', () => {
+    const src = `build for javascript backend
+agent 'Support' receives message:
+  evals:
+    scenario 'warm greeting':
+      input is 'hi'
+      expect 'warm greeting'
+  r = ask claude 'help' with message
+  send back r
+
+when user calls POST /api/ask sending data:
+  out = call 'Support' with data's message
+  send back out`;
+    const r = compileProgram(src);
+    const scenarios = r.evalSuite.filter(e => e.source === 'user-agent');
+    expect(scenarios.length).toBe(1);
+    expect(scenarios[0].agentName).toBe('Support');
+    expect(scenarios[0].label).toContain('warm greeting');
+  });
+
+  it('supports compound-object input inside a scenario', () => {
+    const src = `build for javascript backend
+agent 'Screener' receives candidate:
+  evals:
+    scenario 'preserves resume':
+      input is:
+        name is 'Jane Doe'
+        resume is 'Senior engineer, 8 years backend'
+      expect 'Output contains the same resume text unmodified.'
+  send back candidate`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === NodeType.AGENT);
+    const sc = agent.evalScenarios[0];
+    expect(typeof sc.input).toBe('object');
+    expect(sc.input.name).toBe('Jane Doe');
+    expect(sc.input.resume).toBe('Senior engineer, 8 years backend');
+  });
+
+  it('scenario with deterministic `expect output has` check', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receives text:
+  evals:
+    scenario 'returns shape':
+      input is 'billing question'
+      expect output has category, confidence
+  r = ask claude 'Classify' with text returning JSON text:
+    category
+    confidence (number)
+  send back r`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === NodeType.AGENT);
+    const sc = agent.evalScenarios[0];
+    expect(sc.expectFields).toEqual(['category', 'confidence']);
+    expect(sc.rubric).toBeNull();
+  });
+
+  it('scenario input overrides auto-probe for that suite entry', () => {
+    const src = `build for javascript backend
+agent 'Support' receives message:
+  evals:
+    scenario 'explicit input':
+      input is 'specific test string used only by this scenario'
+      expect 'ok'
+  r = ask claude 'help' with message
+  send back r
+
+when user calls POST /api/ask sending data:
+  out = call 'Support' with data's message
+  send back out`;
+    const r = compileProgram(src);
+    const scenario = r.evalSuite.find(e => e.source === 'user-agent');
+    // Input key is agent's receiving var (message) since Support IS exposed
+    expect(scenario.input.message).toBe('specific test string used only by this scenario');
+    // Auto-probe rows still exist for the agent — separate from user-agent scenarios
+    const autoRole = r.evalSuite.find(e => e.id === 'role-support');
+    expect(autoRole.input.message).not.toBe('specific test string used only by this scenario');
+  });
+});
+
+// =============================================================================
 // USER-DEFINED EVALS — top-level `eval 'name':` block. Mirrors `test 'name':`.
 // Produces EVAL_DEF AST nodes; compiler merges them into result.evalSuite
 // with source='user-top'. Body grammar: given/call + expect.
