@@ -399,6 +399,11 @@ let evalChildIdleTimer = null;
 const EVAL_PORT = 4999;
 const EVAL_IDLE_MS = 60_000;
 
+// Promise mutex — serializes eval suite runs so a Run-All and a Run-One-Eval
+// never interleave. Each `/api/run-eval` caller chains onto this promise and
+// awaits its ticket. Blocks nothing else in Studio; only eval runs are serial.
+let _evalMutex = Promise.resolve();
+
 function killEvalChild() {
   if (evalChildIdleTimer) { clearTimeout(evalChildIdleTimer); evalChildIdleTimer = null; }
   if (evalChild) {
@@ -409,12 +414,29 @@ function killEvalChild() {
   evalChildPort = null;
 }
 
+// Orphan-child cleanup on Studio shutdown. Without these, Ctrl-C or an
+// uncaught exception would leave the eval child running on port 4999,
+// blocking the next Studio restart.
+process.on('SIGINT', killEvalChild);
+process.on('SIGTERM', killEvalChild);
+process.on('exit', killEvalChild);
+
 function resetEvalIdleTimer() {
   if (evalChildIdleTimer) clearTimeout(evalChildIdleTimer);
   evalChildIdleTimer = setTimeout(() => {
     termLog('[eval] idle timeout — stopping eval child');
     killEvalChild();
   }, EVAL_IDLE_MS);
+}
+
+// Wipe any persistent DB state the eval child previously wrote. Runs at the
+// start of every FULL eval suite (no id), so Run-All always sees a clean
+// slate. Single-eval re-runs skip this for fast iteration on one agent.
+function wipeEvalChildDbFiles() {
+  for (const f of ['clear-data.db', 'clear-data.db-wal', 'clear-data.db-shm', 'clear-data.db-journal', 'clear-data.json']) {
+    try { unlinkSync(join(BUILD_DIR, f)); } catch {}
+  }
+  termLog('[eval] DB wiped before full suite run');
 }
 
 // Splice the auto-generated /_eval/* handlers into compiled serverJS right
@@ -526,7 +548,14 @@ function checkFormat(expected, output) {
   return { pass: true, feedback: 'No expectation specified; treated as pass.' };
 }
 
-// Hit an endpoint on the eval child and return { status, data }.
+// Hit an endpoint on the eval child and return { status, data, streamed? }.
+//
+// Streaming endpoints return content-type: text/event-stream. Naively
+// calling `r.json()` on them returns raw frame text like
+// `data: {"text":"partial"}\n\ndata: {"text":" more"}\n\n`, which is not
+// useful for grading. This function detects that case and drains the
+// stream, concatenating the `text` field from each `data:` frame into a
+// single string. The rest of the runner then grades the complete response.
 async function callEvalEndpoint(port, path, body) {
   try {
     const r = await fetch(`http://localhost:${port}${path}`, {
@@ -535,12 +564,68 @@ async function callEvalEndpoint(port, path, body) {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(45_000)
     });
+    const ct = r.headers.get('content-type') || '';
+    if (ct.includes('text/event-stream')) {
+      const drained = await _drainSSE(r);
+      return { status: r.status, data: drained, streamed: true };
+    }
     let data;
     try { data = await r.json(); }
     catch { data = await r.text(); }
     return { status: r.status, data };
   } catch (err) {
     return { status: 0, data: null, error: err.message };
+  }
+}
+
+// Read an SSE response body and concatenate all `data: ...` frames into
+// a single string. Each frame is either `data: {"text": "..."}` (our
+// streaming-agent format) or `data: [DONE]` (end sentinel). Non-JSON frames
+// are treated as raw text to preserve whatever the endpoint emitted.
+async function _drainSSE(response) {
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    // Fallback path when streams aren't available — read full text, parse frames.
+    const raw = await response.text();
+    return _parseSSEFrames(raw);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let out = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Split on SSE frame boundaries (\n\n); keep the last partial frame in the buffer
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop();
+    for (const frame of frames) out += _extractSSEFrameText(frame);
+  }
+  if (buffer) out += _extractSSEFrameText(buffer);
+  return out;
+}
+
+function _parseSSEFrames(rawText) {
+  let out = '';
+  for (const frame of rawText.split('\n\n')) {
+    out += _extractSSEFrameText(frame);
+  }
+  return out;
+}
+
+function _extractSSEFrameText(frame) {
+  const trimmed = frame.trim();
+  if (!trimmed || !trimmed.startsWith('data:')) return '';
+  const payload = trimmed.slice('data:'.length).trim();
+  if (payload === '[DONE]' || payload === '') return '';
+  try {
+    const parsed = JSON.parse(payload);
+    if (typeof parsed === 'string') return parsed;
+    if (parsed && typeof parsed.text === 'string') return parsed.text;
+    return '';
+  } catch {
+    // Non-JSON frame — treat as raw
+    return payload;
   }
 }
 
@@ -602,8 +687,19 @@ app.post('/api/eval-suite', (req, res) => {
 });
 
 // Shared runner used by both the HTTP endpoint and Meph's run_evals/run_eval
-// tools. Returns the same shape the UI expects.
+// tools. Serialized via `_evalMutex` so concurrent callers (e.g. Run-All +
+// per-row Run) never interleave on the same DB / child process. Returns the
+// same shape the UI expects.
 async function runEvalSuite(source, id) {
+  // Take a ticket on the mutex chain. The chain always ends in a resolved
+  // promise; we append our run after it and set the chain forward so the
+  // next caller waits for us.
+  const ticket = _evalMutex.then(() => _runEvalSuiteImpl(source, id));
+  _evalMutex = ticket.catch(() => undefined);
+  return ticket;
+}
+
+async function _runEvalSuiteImpl(source, id) {
   const start = Date.now();
   const compiled = compileForEval(source);
   if (!compiled.ok) return { ...compiled, duration: Date.now() - start };
@@ -615,6 +711,12 @@ async function runEvalSuite(source, id) {
     if (specs.length === 0) return { ok: false, error: `Unknown eval id: ${id}`, duration: Date.now() - start };
   }
   try {
+    // Full-suite runs wipe DB state to guarantee deterministic behavior.
+    // Single-eval re-runs keep the DB warm for fast iteration.
+    if (!id) {
+      killEvalChild();          // force respawn so the wipe is observed by the DB module
+      wipeEvalChildDbFiles();
+    }
     const port = await ensureEvalChild(compiled.serverJS, compiled.compiled.evalEndpointsJS || '');
     const results = [];
     for (const spec of specs) {

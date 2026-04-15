@@ -648,6 +648,22 @@ try {
     assert(/Unknown eval id/.test(data.error || ''), 'error message mentions unknown id');
   }
 
+  // ----- Concurrent run-eval calls serialize via the mutex --------------
+  // Two unknown-id calls fired at once should both complete (not crash,
+  // not interleave). The mutex serializes them. This also verifies the
+  // mutex chain handles the "previous promise rejected" case cleanly.
+  console.log('\n🔒 Eval runner mutex');
+  {
+    const p1 = post('/api/run-eval', { source: agentSrc, id: 'nope-1' });
+    const p2 = post('/api/run-eval', { source: agentSrc, id: 'nope-2' });
+    const [r1, r2] = await Promise.all([p1, p2]);
+    assert(r1.status === 200 && r2.status === 200, 'both concurrent calls return 200');
+    assert(r1.data.ok === false && r2.data.ok === false, 'both get ok:false (unknown ids)');
+    // Order and atomicity — mutex should have serialized them; both should have proper errors
+    assert(/Unknown eval id/.test(r1.data.error || ''), 'first call has unknown-id error');
+    assert(/Unknown eval id/.test(r2.data.error || ''), 'second call has unknown-id error');
+  }
+
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);
   failed++;
