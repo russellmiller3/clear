@@ -699,6 +699,91 @@ try {
     assert(data.ok === false, 'bad source returns ok:false');
   }
 
+  // ----- Export eval report ---------------------------------------------
+  // /api/export-eval-report takes current suite + results and returns
+  // downloadable markdown or CSV. Used by the Tests pane's Export ▾ menu.
+  console.log('\n📄 Export eval report');
+  const fakeSuite = [
+    { id: 'e2e-_api_x', kind: 'e2e', label: 'E2E happy path — POST /api/x', agentName: 'Top', endpointPath: '/api/x', input: { input: 'hi' }, rubric: 'Should return a non-empty response.' },
+    { id: 'role-top',   kind: 'role', label: 'Top — does its job', agentName: 'Top', endpointPath: '/api/x', input: { input: 'hi' }, rubric: 'Top must greet the user warmly.' },
+    { id: 'format-top', kind: 'format', label: 'Top — output format is correct', agentName: 'Top', endpointPath: '/api/x', input: { input: 'hi' }, expected: { kind: 'non-empty' } },
+  ];
+  const fakeResults = [
+    { id: 'e2e-_api_x', status: 'pass', duration: 1200, score: 8, feedback: 'Response looks on-topic.', output: 'Hi! How can I help?', usage: { inTok: 420, outTok: 95, costUSD: 0.002685, provider: 'anthropic', model: 'claude-sonnet-4-20250514' } },
+    { id: 'role-top',   status: 'fail', duration: 1350, score: 4, feedback: 'Output was curt and did not greet.', output: 'hi', usage: { inTok: 310, outTok: 70, costUSD: 0.00198, provider: 'anthropic', model: 'claude-sonnet-4-20250514' } },
+    { id: 'format-top', status: 'pass', duration: 180, feedback: 'Non-empty response.', output: 'hi' },
+  ];
+  {
+    const r = await fetch(BASE + '/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: agentSrc,
+        format: 'md',
+        suite: fakeSuite,
+        results: fakeResults,
+        meta: { total_cost_usd: 0.004665, passed: 2, failed: 1, skipped: 0, duration: 2730 },
+      }),
+    });
+    assert(r.status === 200, 'POST /api/export-eval-report (md) returns 200');
+    const ct = r.headers.get('content-type') || '';
+    assert(ct.includes('text/markdown') || ct.includes('markdown'), `content-type is markdown, got ${ct}`);
+    const cd = r.headers.get('content-disposition') || '';
+    assert(cd.includes('attachment'), 'content-disposition is attachment');
+    assert(/\.md/.test(cd), `filename ends in .md, got ${cd}`);
+    const body = await r.text();
+    // Must contain grouped headings, status, feedback, cost, source hash
+    assert(body.includes('# Eval Report'), 'markdown starts with title');
+    assert(body.includes('## Top'), 'agents grouped with ## heading');
+    assert(body.includes('**Status:**'), 'status rendered per row');
+    assert(body.includes('Output was curt'), 'failure feedback included verbatim');
+    assert(body.includes('$0.004665') || body.includes('$0.00'), 'total cost shown');
+    assert(body.includes('Source hash'), 'source hash shown');
+  }
+  {
+    const r = await fetch(BASE + '/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: agentSrc,
+        format: 'csv',
+        suite: fakeSuite,
+        results: fakeResults,
+        meta: { total_cost_usd: 0.004665 },
+      }),
+    });
+    assert(r.status === 200, 'POST /api/export-eval-report (csv) returns 200');
+    const ct = r.headers.get('content-type') || '';
+    assert(ct.includes('text/csv') || ct.includes('csv'), `content-type is csv, got ${ct}`);
+    const body = await r.text();
+    // CSV: header row + one data row per result
+    const rows = body.trim().split('\n');
+    assert(rows.length === 4, `csv has 4 rows (1 header + 3 data), got ${rows.length}`);
+    assert(rows[0].includes('id,kind,agent_name,status'), 'header row has expected columns');
+    assert(rows[1].includes('e2e-_api_x') && rows[1].includes('pass'), 'first data row is e2e pass');
+    assert(rows[2].includes('role-top') && rows[2].includes('fail'), 'second data row is role fail');
+  }
+  {
+    // Export with empty results → 400 with actionable error
+    const r = await fetch(BASE + '/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: agentSrc, format: 'md', suite: [], results: [] }),
+    });
+    assert(r.status === 400, 'empty export returns 400');
+    const body = await r.json();
+    assert(/no results/i.test(body.error || ''), 'error message mentions no results');
+  }
+  {
+    // Unknown format → 400
+    const r = await fetch(BASE + '/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: agentSrc, format: 'pdf', suite: fakeSuite, results: fakeResults }),
+    });
+    assert(r.status === 400, 'unknown format returns 400');
+  }
+
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);
   failed++;

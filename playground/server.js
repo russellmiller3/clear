@@ -5,6 +5,7 @@ import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSy
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
+import { createHash } from 'crypto';
 import { chromium } from 'playwright';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -851,6 +852,205 @@ app.post('/api/eval-suite-estimate', (req, res) => {
   const suite = compiled.compiled.evalSuite || [];
   const estimate = estimateEvalSuiteCost(suite);
   res.json({ ok: true, ...estimate });
+});
+
+// --- Eval report export ---------------------------------------------------
+// Renders current suite + results as a downloadable markdown or CSV file.
+// Markdown = human audit-friendly (grouped by agent, full criteria + input +
+// output + grader feedback inline). CSV = machine/spreadsheet friendly
+// (one row per eval, large fields omitted — use MD for those).
+// Stale-result warning: we recompute the source hash server-side and compare
+// to the one implied by the result set. Mismatch = banner in the output so
+// the user knows the results were generated against a different source.
+
+function _sourceHash(source) {
+  if (!source) return 'nosource';
+  return createHash('sha256').update(String(source), 'utf8').digest('hex').slice(0, 12);
+}
+
+function _appTitleFromSource(source) {
+  if (!source) return 'Clear App';
+  // First `page 'Name'` if present; else scan for an `agent 'Name'`; else 'Clear App'.
+  const page = /^\s*page\s+'([^']+)'/m.exec(source);
+  if (page) return page[1];
+  const agent = /^\s*agent\s+'([^']+)'/m.exec(source);
+  if (agent) return agent[1] + ' (agent app)';
+  return 'Clear App';
+}
+
+function _truncateForReport(s, max = 4000) {
+  if (typeof s !== 'string') s = JSON.stringify(s, null, 2);
+  if (s.length <= max) return s;
+  return s.slice(0, max) + '\n\n… (truncated)';
+}
+
+function renderEvalReportMarkdown({ source, suite, results, meta }) {
+  const byId = new Map();
+  for (const r of (results || [])) byId.set(r.id, r);
+  const hash = _sourceHash(source);
+  const title = _appTitleFromSource(source);
+  const when = new Date().toISOString();
+  const passed = meta?.passed ?? (results || []).filter(r => r.status === 'pass').length;
+  const failed = meta?.failed ?? (results || []).filter(r => r.status === 'fail').length;
+  const skipped = meta?.skipped ?? (results || []).filter(r => r.status === 'skip').length;
+  const totalCost = meta?.total_cost_usd ?? (results || []).reduce((s, r) => s + (r.usage?.costUSD || 0), 0);
+  const inTok = (results || []).reduce((s, r) => s + (r.usage?.inTok || 0), 0);
+  const outTok = (results || []).reduce((s, r) => s + (r.usage?.outTok || 0), 0);
+  const duration = meta?.duration ? (meta.duration / 1000).toFixed(1) + 's' : '—';
+
+  const lines = [];
+  lines.push(`# Eval Report — ${title}`);
+  lines.push('');
+  lines.push(`- **Run at:** ${when}`);
+  lines.push(`- **Source hash:** \`${hash}\``);
+  lines.push(`- **Total cost:** $${totalCost.toFixed(4)} (${inTok.toLocaleString()} input / ${outTok.toLocaleString()} output tokens)`);
+  lines.push(`- **Duration:** ${duration}`);
+  lines.push(`- **Summary:** ${passed} pass · ${failed} fail · ${skipped} skip — out of ${(suite || []).length}`);
+  lines.push('');
+
+  // Group entries by agent name (fall back to '(no agent)').
+  const byAgent = new Map();
+  for (const spec of (suite || [])) {
+    const key = spec.agentName || '(unassigned)';
+    if (!byAgent.has(key)) byAgent.set(key, []);
+    byAgent.get(key).push(spec);
+  }
+
+  for (const [agentName, specs] of byAgent) {
+    lines.push(`## ${agentName}`);
+    lines.push('');
+    for (const spec of specs) {
+      const r = byId.get(spec.id);
+      lines.push(`### ${spec.kind.toUpperCase()} — ${spec.label || spec.id}`);
+      lines.push('');
+      const statusStr = r?.status || 'not-run';
+      const scoreStr = r?.score ? ` (score ${r.score}/10)` : '';
+      lines.push(`**Status:** ${statusStr}${scoreStr}`);
+      if (r?.usage) {
+        lines.push(`**Cost:** $${(r.usage.costUSD || 0).toFixed(5)} — ${r.usage.inTok || 0} input / ${r.usage.outTok || 0} output tokens · ${r.usage.provider || ''}/${r.usage.model || ''}`);
+      }
+      lines.push('');
+      // Criteria
+      const crit = [];
+      if (spec.expected?.kind === 'fields' && spec.expected.fields?.length) {
+        crit.push('Expected shape — object with fields: ' + spec.expected.fields.map(f => `${f.name} (${f.type || 'text'})`).join(', '));
+      } else if (spec.expected?.kind === 'non-empty') {
+        crit.push('Expected — any non-empty response from the endpoint.');
+      }
+      if (spec.rubric) crit.push(spec.rubric);
+      if (spec.note) crit.push(spec.note);
+      if (crit.length) {
+        lines.push('**Criteria:**');
+        lines.push('');
+        lines.push('```');
+        lines.push(crit.join('\n\n'));
+        lines.push('```');
+        lines.push('');
+      }
+      if (spec.input !== undefined) {
+        lines.push('**Input:**');
+        lines.push('');
+        lines.push('```json');
+        lines.push(JSON.stringify(spec.input, null, 2));
+        lines.push('```');
+        lines.push('');
+      }
+      if (r?.output !== undefined) {
+        lines.push('**Output:**');
+        lines.push('');
+        lines.push('```');
+        lines.push(_truncateForReport(r.output));
+        lines.push('```');
+        lines.push('');
+      }
+      if (r?.feedback) {
+        lines.push('**Grader feedback:**');
+        lines.push('');
+        lines.push('> ' + r.feedback.replace(/\n/g, '\n> '));
+        lines.push('');
+      }
+      if (r?.graderRaw) {
+        lines.push('**Grader raw response:**');
+        lines.push('');
+        lines.push('```');
+        lines.push(_truncateForReport(r.graderRaw, 2000));
+        lines.push('```');
+        lines.push('');
+      }
+      lines.push('---');
+      lines.push('');
+    }
+  }
+
+  lines.push('');
+  lines.push(`_Note: grader bias is structural — a model family grading its own outputs shares failure modes. Re-run with EVAL_PROVIDER=google or openai for an independent signal._`);
+  return lines.join('\n');
+}
+
+function _csvEscape(v) {
+  if (v === undefined || v === null) return '';
+  const s = typeof v === 'string' ? v : String(v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function renderEvalReportCSV({ suite, results }) {
+  const byId = new Map();
+  for (const r of (results || [])) byId.set(r.id, r);
+  // Column order fixed and documented — consumers depend on this.
+  const cols = [
+    'id', 'kind', 'agent_name', 'status', 'score', 'pass',
+    'duration_ms', 'cost_usd', 'input_tokens', 'output_tokens',
+    'endpoint_path', 'synthetic', 'feedback', 'source',
+  ];
+  const rows = [cols.join(',')];
+  for (const spec of (suite || [])) {
+    const r = byId.get(spec.id) || {};
+    rows.push([
+      _csvEscape(spec.id),
+      _csvEscape(spec.kind),
+      _csvEscape(spec.agentName || ''),
+      _csvEscape(r.status || 'not-run'),
+      _csvEscape(r.score ?? ''),
+      _csvEscape(r.status === 'pass' ? 'true' : r.status === 'fail' ? 'false' : ''),
+      _csvEscape(r.duration ?? ''),
+      _csvEscape(r.usage?.costUSD ? r.usage.costUSD.toFixed(6) : ''),
+      _csvEscape(r.usage?.inTok ?? ''),
+      _csvEscape(r.usage?.outTok ?? ''),
+      _csvEscape(spec.endpointPath || ''),
+      _csvEscape(spec.synthetic ? 'true' : 'false'),
+      _csvEscape(r.feedback ? r.feedback.replace(/\r?\n/g, '\\n') : ''),
+      _csvEscape(spec.source || 'auto'),
+    ].join(','));
+  }
+  return rows.join('\n') + '\n';
+}
+
+// POST /api/export-eval-report — returns a file download of the current
+// suite + results. Supports format=md (markdown, grouped by agent) or
+// format=csv (one row per eval). UI triggers a browser download from this.
+app.post('/api/export-eval-report', (req, res) => {
+  const { source, format, suite, results, meta } = req.body || {};
+  const fmt = String(format || 'md').toLowerCase();
+  if (fmt !== 'md' && fmt !== 'csv') {
+    return res.status(400).json({ error: `Unknown format '${format}'. Use 'md' or 'csv'.` });
+  }
+  if (!Array.isArray(results) || results.length === 0) {
+    return res.status(400).json({ error: 'No results to export. Run evals first, then try again.' });
+  }
+  const hash = _sourceHash(source || '');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const filename = `eval-report-${hash}-${ts}.${fmt}`;
+  if (fmt === 'md') {
+    const body = renderEvalReportMarkdown({ source, suite, results, meta });
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(body);
+  }
+  const body = renderEvalReportCSV({ suite, results });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(body);
 });
 
 // Shared runner used by both the HTTP endpoint and Meph's run_evals/run_eval

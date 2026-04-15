@@ -1644,8 +1644,16 @@ function showTests() {
   parts.push(`<button class="test-btn" onclick="runTests('app')" ${testRunning.app ? 'disabled' : ''}>
     ${testRunning.app ? '<span class="test-spinner"></span> Running...' : '&#9654; Run Tests'}
   </button>`);
-  parts.push(`<button class="test-btn" onclick="runEvals()" ${testRunning.evals ? 'disabled' : ''} title="Agent evals — deterministic schema checks with mocked AI. Requires agents in source.">
+  parts.push(`<button class="test-btn" onclick="runEvals()" ${testRunning.evals ? 'disabled' : ''} title="Agent evals — cost-gated. Deterministic format checks + LLM-graded role/E2E checks. Gemini opt-in via EVAL_PROVIDER=google.">
     ${testRunning.evals ? '<span class="test-spinner"></span> Running...' : '&#9733; Run Evals'}
+  </button>`);
+  // Export dropdown — only enabled once there are results to export.
+  const hasEvalResults = testResults.evals && (testResults.evals.results?.length > 0);
+  parts.push(`<button class="test-btn" onclick="exportEvalReport('md')" ${hasEvalResults ? '' : 'disabled'} title="Download this eval run as a markdown report (grouped by agent, with full criteria + outputs + grader feedback).">
+    &darr; Export MD
+  </button>`);
+  parts.push(`<button class="test-btn" onclick="exportEvalReport('csv')" ${hasEvalResults ? '' : 'disabled'} title="Download as CSV — one row per eval. Good for spreadsheets or diffing runs over time.">
+    &darr; Export CSV
   </button>`);
   parts.push('</div>');
 
@@ -1971,9 +1979,58 @@ async function runEvalOne(id) {
   }
 }
 
+async function exportEvalReport(format) {
+  const evalData = testResults.evals;
+  if (!evalData || !evalData.results || evalData.results.length === 0) {
+    alert('No eval results to export. Click Run Evals first.');
+    return;
+  }
+  try {
+    const source = editor.state.doc.toString();
+    const resp = await fetch('/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source,
+        format,
+        suite: evalData.suite,
+        results: evalData.results,
+        meta: {
+          total_cost_usd: evalData.total_cost_usd,
+          passed: evalData.passed,
+          failed: evalData.failed,
+          skipped: evalData.skipped,
+          duration: evalData.duration,
+        },
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Export failed: ' + (err.error || resp.statusText));
+      return;
+    }
+    // Browser download: pull filename from Content-Disposition.
+    const cd = resp.headers.get('content-disposition') || '';
+    const match = /filename="([^"]+)"/.exec(cd);
+    const filename = match ? match[1] : `eval-report.${format}`;
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Export failed: ' + (err.message || 'Network error'));
+  }
+}
+
 window.runTests = runTests;
 window.runEvals = runEvals;
 window.runEvalOne = runEvalOne;
+window.exportEvalReport = exportEvalReport;
 
 // Populate the auto-generated-tests badge next to the compile badge.
 // Compiler generates tests for every endpoint, button, page, and flow — this
