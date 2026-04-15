@@ -2042,12 +2042,30 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['get_key', (ctx) => {
     // "get X from '/url'" — standalone named fetch
+    // "get X from '/url' with field1, field2" — fetch that SENDS input fields.
+    // When the target endpoint streams (ask claude), the compiler uses those
+    // fields as a POST body and reads the SSE stream into X. When the target
+    // is a regular JSON endpoint, the fields are currently ignored (plain GET).
     if (ctx.tokens.length >= 4 && ctx.tokens[1].type === TokenType.IDENTIFIER) {
       const fromIdx = ctx.tokens.findIndex((t, idx) => idx >= 2 && t.value === 'from');
       if (fromIdx > 0 && fromIdx + 1 < ctx.tokens.length && ctx.tokens[fromIdx + 1].type === TokenType.STRING) {
         const targetVar = ctx.tokens[1].value;
         const url = ctx.tokens[fromIdx + 1].value;
-        ctx.body.push({ type: NodeType.API_CALL, method: 'GET', url, targetVar, fields: [], line: ctx.line });
+        // Optional: "with field1, field2, ..." → collect input fields
+        const fields = [];
+        let withPos = -1;
+        for (let k = fromIdx + 2; k < ctx.tokens.length; k++) {
+          if (ctx.tokens[k].value === 'with' || ctx.tokens[k].canonical === 'with') { withPos = k; break; }
+        }
+        if (withPos > 0) {
+          for (let k = withPos + 1; k < ctx.tokens.length; k++) {
+            if (ctx.tokens[k].type === TokenType.COMMA || ctx.tokens[k].canonical === 'and') continue;
+            if (ctx.tokens[k].type === TokenType.IDENTIFIER || ctx.tokens[k].type === TokenType.KEYWORD) {
+              fields.push(ctx.tokens[k].value);
+            }
+          }
+        }
+        ctx.body.push({ type: NodeType.API_CALL, method: 'GET', url, targetVar, fields, line: ctx.line });
         return ctx.i + 1;
       }
     }
@@ -2380,23 +2398,39 @@ CANONICAL_DISPATCH.set('ask', (ctx) => {
 
   // P13: "ask ai/claude 'prompt' with context" — streams by default in endpoints
   if (second === 'ai' || second === 'claude') {
+    // Opt-out: scan for `without streaming` trailer and trim tokens before
+    // parsing the context expression (otherwise parseExpression would absorb
+    // `without` as a postfix operator or fail with a weird error). Default
+    // is streaming; `without streaming` gives a single-shot JSON response.
+    let endTokens = ctx.tokens.length;
+    let noStream = false;
+    for (let k = 2; k < ctx.tokens.length - 1; k++) {
+      if ((ctx.tokens[k].value === 'without' || ctx.tokens[k].canonical === 'without') &&
+          (ctx.tokens[k + 1].value === 'streaming' || ctx.tokens[k + 1].value === 'stream')) {
+        noStream = true;
+        endTokens = k;
+        break;
+      }
+    }
+    const tokens = noStream ? ctx.tokens.slice(0, endTokens) : ctx.tokens;
+
     let pos = 2;
     let prompt = null;
-    if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.STRING) {
-      prompt = { type: NodeType.LITERAL_STRING, value: ctx.tokens[pos].value, line: ctx.line };
+    if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+      prompt = { type: NodeType.LITERAL_STRING, value: tokens[pos].value, line: ctx.line };
       pos++;
-    } else if (pos < ctx.tokens.length) {
-      const pExpr = parseExpression(ctx.tokens, pos, ctx.line);
+    } else if (pos < tokens.length) {
+      const pExpr = parseExpression(tokens, pos, ctx.line);
       if (!pExpr.error) { prompt = pExpr.node; pos = pExpr.pos || pos + 1; }
     }
     if (!prompt) return undefined;
     let context = null;
-    if (pos < ctx.tokens.length && (ctx.tokens[pos].value === 'with' || ctx.tokens[pos].canonical === 'with')) {
+    if (pos < tokens.length && (tokens[pos].value === 'with' || tokens[pos].canonical === 'with')) {
       pos++;
-      const cExpr = parseExpression(ctx.tokens, pos, ctx.line);
+      const cExpr = parseExpression(tokens, pos, ctx.line);
       if (!cExpr.error) { context = cExpr.node; pos = cExpr.pos || pos + 1; }
     }
-    ctx.body.push({ type: NodeType.STREAM_AI, prompt, context, line: ctx.line });
+    ctx.body.push({ type: NodeType.STREAM_AI, prompt, context, noStream, line: ctx.line });
     return ctx.i + 1;
   }
 

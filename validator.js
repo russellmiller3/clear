@@ -700,13 +700,29 @@ function validateFieldNames(body, warnings) {
  * that no backend endpoint serves.
  */
 function validateEndpointURLs(body, errors, warnings) {
+  // Walk an endpoint body looking for STREAM_AI (any `ask claude`/stream call)
+  // — marks the endpoint as streaming so the frontend can auto-upgrade.
+  function bodyStreams(nodes) {
+    if (!nodes) return false;
+    for (const n of nodes) {
+      if (n.type === NodeType.STREAM_AI && !n.noStream) return true;
+      if (n.type === NodeType.ASSIGN && n.expression && n.expression.type === NodeType.STREAM_AI && !n.expression.noStream) return true;
+      if (n.body && bodyStreams(n.body)) return true;
+    }
+    return false;
+  }
   // Collect all backend endpoint method+URL pairs
-  const endpoints = []; // { method, path, pattern }
+  const endpoints = []; // { method, path, pattern, streams }
   function collectEndpoints(nodes) {
     for (const node of nodes) {
       if (node.type === NodeType.ENDPOINT) {
         const pattern = new RegExp('^' + node.path.replace(/:(\w+)/g, '[^/]+') + '$');
-        endpoints.push({ method: node.method.toUpperCase(), path: node.path, pattern });
+        endpoints.push({
+          method: node.method.toUpperCase(),
+          path: node.path,
+          pattern,
+          streams: bodyStreams(node.body)
+        });
       }
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         collectEndpoints(node.body);
@@ -728,7 +744,16 @@ function validateEndpointURLs(body, errors, warnings) {
         const matchMethod = method === 'STREAM' ? 'POST' : method;
         const url = node.url.split('?')[0]; // Strip query params — Express handles them automatically
         // Check if this method+URL matches any endpoint
-        const matches = endpoints.some(ep => ep.method === matchMethod && ep.pattern.test(url));
+        let matches = endpoints.some(ep => ep.method === matchMethod && ep.pattern.test(url));
+        // Auto-upgrade: a frontend `get X from '/url' with fields` targeting
+        // a POST endpoint is legal — the compiler will POST + parse the
+        // response (streaming OR JSON, depending on what the endpoint emits).
+        // This lets users write the natural "get answer from /api/ask with
+        // question" without thinking about HTTP verbs.
+        if (!matches && method === 'GET' && node.fields && node.fields.length > 0) {
+          const postEp = endpoints.find(ep => ep.method === 'POST' && ep.pattern.test(url));
+          if (postEp) matches = true;
+        }
         if (!matches) {
           // Check if URL matches on a different method (helpful suggestion)
           const urlMatches = endpoints.filter(ep => ep.pattern.test(url));

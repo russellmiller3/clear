@@ -5115,6 +5115,15 @@ ${pad}}`;
     case NodeType.STREAM_AI: {
       const prompt = exprToCode(node.prompt, ctx);
       const context = node.context ? exprToCode(node.context, ctx) : 'null';
+      // Opt-out: `ask claude '...' with X without streaming` → single JSON
+      // response (waits for the full answer, returns it once). Useful when
+      // downstream consumers need the complete text (summaries, validation).
+      if (node.noStream) {
+        if (ctx.lang === 'python') {
+          return `${pad}return { "text": await _ask_ai(${prompt}, ${context}) }`;
+        }
+        return `${pad}return res.json({ text: await _askAI(${prompt}, ${context}) });`;
+      }
       if (ctx.lang === 'python') {
         let code = `${pad}from starlette.responses import StreamingResponse\n`;
         code += `${pad}async def _ai_stream():\n`;
@@ -5580,18 +5589,45 @@ ${pad}}`;
     case NodeType.API_CALL: {
       const url = JSON.stringify(node.url);
       if (ctx.lang === 'python') return `${pad}# API call: ${node.method} ${node.url}`;
-      if (node.method === 'GET') {
+
+      // Auto-upgrade: if the endpoint streams, use the streaming reader
+      // regardless of whether the user wrote `stream ...` or `get ... from`.
+      // Streaming is the default for `ask claude` in endpoints — the client
+      // should Just Work without an extra keyword.
+      const streamsFromAst = ctx.streamingEndpoints && ctx.streamingEndpoints.has(node.url);
+      const isStreamMethod = node.method === 'STREAM' || streamsFromAst;
+      // If the user wrote `get X from '/url' with fields` and the endpoint is
+      // a POST (streaming or not), upgrade to POST so the fields are sent.
+      // For non-streaming POSTs this fetches once and stores JSON in _state[X].
+      const isSendAndReceive = node.method === 'GET' && node.fields && node.fields.length > 0 && !streamsFromAst;
+
+      if (node.method === 'GET' && !streamsFromAst && !isSendAndReceive) {
         const target = node.targetVar ? sanitizeName(node.targetVar) : 'response';
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
         return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
       }
-      if (node.method === 'STREAM') {
+      if (isSendAndReceive) {
+        // POST with fields, parse JSON response into _state[targetVar]
+        const target = sanitizeName(node.targetVar);
+        const fieldObj = '{ ' + node.fields.map(f => `${sanitizeName(f)}: _state.${sanitizeName(f)}`).join(', ') + ' }';
+        const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
+        const lines = [];
+        lines.push(`${pad}{ const _r = await fetch(${url}, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${fieldObj}) });`);
+        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.json().catch(() => ({})); console.error('[POST ${node.url}]${srcInfo}', _e.error || 'request failed'); throw new Error(_e.error || 'request failed'); }`);
+        lines.push(`${pad}  const _d = await _r.json();`);
+        lines.push(`${pad}  _state.${target} = (_d && typeof _d === 'object' && 'text' in _d) ? _d.text : _d;`);
+        lines.push(`${pad}}`);
+        return lines.join('\n');
+      }
+      if (isStreamMethod) {
         // Frontend streaming consumer: POST body, read response as SSE text
         // stream, append each `data:` payload's text to _state[targetVar] and
         // recompute so `display <var>` grows live as chunks arrive. Matches
-        // the backend emission from `stream ask claude` (which writes SSE
-        // frames with `{ text: "..." }` JSON payloads).
-        const target = sanitizeName(node.targetVar);
+        // the backend emission from `ask claude` / `stream ask claude`
+        // (which writes SSE frames with `{ text: "..." }` JSON payloads).
+        // Triggered by explicit `stream X from URL` OR by auto-detection
+        // when the target URL is a streaming endpoint in the same app.
+        const target = sanitizeName(node.targetVar || 'response');
         const fieldObj = (node.fields && node.fields.length > 0)
           ? '{ ' + node.fields.map(f => `${sanitizeName(f)}: _state.${sanitizeName(f)}`).join(', ') + ' }'
           : '_state';
@@ -6657,6 +6693,24 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
   const deleteEndpoints = {};
   const updateEndpoints = {};
   const getRefreshUrls = {};
+  // Endpoints whose response is an SSE stream. Any `ask claude`/`ask ai` or
+  // `stream ask claude` inside a POST endpoint emits text/event-stream, so the
+  // frontend should use a streaming reader (not a plain JSON fetch) when
+  // calling that URL. Streaming is the default — explicit `without streaming`
+  // is what downgrades to one-shot JSON.
+  const streamingEndpoints = new Set();
+  function hasStreamBody(body) {
+    if (!body) return false;
+    for (const n of body) {
+      if (n.type === NodeType.STREAM_AI && !n.noStream) return true;
+      // ASSIGN with RHS of ask/stream ask → streams
+      if (n.type === NodeType.ASSIGN && n.expression) {
+        if (n.expression.type === NodeType.STREAM_AI && !n.expression.noStream) return true;
+      }
+      if (n.body && hasStreamBody(n.body)) return true;
+    }
+    return false;
+  }
   function scanForEndpoints(nodes) {
     for (const n of nodes) {
       if (n.type === NodeType.ENDPOINT && n.path) {
@@ -6666,6 +6720,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
           if (n.method === 'DELETE') deleteEndpoints[resource] = n.path.replace('/:id', '/');
           if (n.method === 'PUT' || n.method === 'PATCH') updateEndpoints[resource] = { url: n.path.replace('/:id', '/'), method: n.method };
         }
+        if (hasStreamBody(n.body)) streamingEndpoints.add(n.path);
       }
       if (n.type === NodeType.API_CALL && n.method === 'GET' && n.targetVar) {
         getRefreshUrls[sanitizeName(n.targetVar).toLowerCase()] = { url: n.url, varName: sanitizeName(n.targetVar) };
@@ -7253,7 +7308,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     for (const btn of buttonNodes) {
       const btnId = `btn_${sanitizeName(btn.label.replace(/\s+/g, '_'))}`;
       const btnDeclared = new Set(recomputeDeclared);
-      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined };
+      const btnCtx = { lang: 'js', indent: 1, declared: btnDeclared, stateVars: stateVarNames, mode: 'web', updateEndpoints: hasEditAction ? updateEndpoints : undefined, streamingEndpoints };
       const bodyCode = btn.body.map(n => compileNode(n, btnCtx)).filter(Boolean).join('\n');
       const hasApiCall = btn.body.some(n => n.type === NodeType.API_CALL || (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.API_CALL));
       const asyncKw = hasApiCall ? 'async ' : '';
@@ -7359,7 +7414,7 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
     lines.push('(async () => {');
     lines.push('  try {');
     for (const loadNode of loadNodes) {
-      const loadCtx = { lang: 'js', indent: 2, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web' };
+      const loadCtx = { lang: 'js', indent: 2, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web', streamingEndpoints };
       for (const child of loadNode.body) {
         const compiled = compileNode(child, loadCtx);
         if (compiled) lines.push(compiled);
