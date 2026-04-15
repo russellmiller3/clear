@@ -62,6 +62,24 @@ node clear.test.js
 
 If tests fail, stop and fix them. Do not ship broken code.
 
+### Step 2b: Meph tool eval (GATE when Meph touched)
+
+If this branch changed any of:
+- `playground/server.js` (especially the TOOLS array, executeTool switch, validateToolInput, /api/chat handler)
+- `playground/system-prompt.md`
+- Any tool definition or schema
+
+…run the Meph eval BEFORE committing:
+```
+node playground/eval-meph.js
+```
+
+Cost: ~$0.10–0.30 per run. Time: ~90 seconds. Catches what compiler tests can't see — schema mismatches, hallucinated tools, malformed JSON outputs, broken tool dispatch. The pre-push hook also runs this (when `ANTHROPIC_API_KEY` is set), but running it during ship lets you fix issues before pushing rather than after the hook fails.
+
+If 1–2 scenarios fail because Meph chose a different valid tool path, that's grader noise — confirm by re-reading the run output. If a scenario fails with "Unknown tool" or schema-error log lines, that's a real bug — stop and fix.
+
+See `.claude/skills/eval-meph/SKILL.md` for the full guide.
+
 ### Step 3: Commit all changes
 
 Stage all modified files (prefer specific names over `git add -A`):

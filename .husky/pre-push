@@ -1,9 +1,20 @@
 #!/bin/sh
-# Pre-push: full test suite — compiler + e2e + curriculum
+# Pre-push: compiler + e2e + meph eval (when key set)
 echo "🔍 Running compiler tests..."
 node clear.test.js || exit 1
 
 echo "🎯 Running e2e tests (templates + curriculum)..."
 node playground/e2e.test.js || exit 1
+
+# Meph tool eval — runs only when ANTHROPIC_API_KEY is set. Catches
+# regressions in tools, schemas, or system prompt that compiler tests
+# don't see. Skips cleanly with exit 0 if no key. Costs ~$0.10–0.30
+# per push when it runs. Set SKIP_MEPH_EVAL=1 to bypass for one push.
+if [ -n "$ANTHROPIC_API_KEY" ] && [ "$SKIP_MEPH_EVAL" != "1" ]; then
+  echo "🤖 Running Meph tool eval (16 scenarios, ~90s, ~\$0.10–0.30)..."
+  node playground/eval-meph.js || exit 1
+else
+  echo "⏭  Skipping Meph eval (set ANTHROPIC_API_KEY to enable)"
+fi
 
 echo "✅ All tests passed — pushing."

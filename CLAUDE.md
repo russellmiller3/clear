@@ -33,9 +33,34 @@ Run ToolSearch for these before doing anything else:
   - `node playground/e2e.test.js` (template compile + endpoint + CRUD + curriculum tests)
   - `node playground/ide.test.js` (Playwright IDE UI tests)
   - `node playground/agent.test.js` (Claude agent tool tests, needs ANTHROPIC_API_KEY)
-- **Husky hooks:** pre-commit runs compiler tests, pre-push runs full suite (compiler + e2e + curriculum)
+  - `node playground/eval-meph.js` (Meph tool eval — 16 scenarios, real LLM, ~$0.10–0.30, ~90s)
+  - `node playground/eval-fullloop-suite.js` (Meph builds 3 complex apps end-to-end — heavier eval)
+- **Husky hooks:** pre-commit runs compiler tests, pre-push runs compiler + e2e + meph eval (when `ANTHROPIC_API_KEY` set; skips cleanly otherwise)
+- Bypass meph eval for one push: `SKIP_MEPH_EVAL=1 git push`
 - No vitest -- uses custom runner in `lib/testUtils.js`
 - Tests use `describe`, `it`, `expect` from testUtils
+
+## Meph Tool Eval (MANDATORY when changing Meph)
+**If you touch any of these, run `node playground/eval-meph.js` BEFORE shipping:**
+- `playground/server.js` — tool dispatch, schemas, validators, /api/chat handler
+- `playground/system-prompt.md` — Meph's instructions
+- The TOOLS array (tool definitions, descriptions, input_schemas)
+
+The eval drives Meph through 16 scenarios covering every tool he has, asks
+him to self-report whether each tool worked, and grades the result. Catches:
+- Schema mismatches (e.g. validator says `path`, real schema says `filename`)
+- Missing executeTool cases (Meph sees "Unknown tool")
+- Hallucinated tool names that the validator should reject
+- Bad JSON outputs (lint catches `{trailing: true,}`)
+- Server-side coercion bugs that produce `[object Object]`
+- Timeout regressions on long Meph turns
+
+The pre-push hook runs it automatically when your env has `ANTHROPIC_API_KEY`.
+For deeper integration testing (Meph builds full apps from scratch, ~3min,
+~$0.50–1.00), run `node playground/eval-fullloop-suite.js` manually — not
+in pre-push, because it's slower and more variable.
+
+See `.claude/skills/eval-meph/SKILL.md` for the full guide.
 
 ## App-Level Testing Rule (MANDATORY)
 **Compiler tests passing does NOT mean the app works.** When building or modifying a .clear app:
