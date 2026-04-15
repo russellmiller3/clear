@@ -1152,8 +1152,28 @@ async function _runEvalSuiteImpl(source, id, onProgress) {
       if (onProgress) {
         try { onProgress({ phase: 'start', id: spec.id, kind: spec.kind, agentName: spec.agentName, index: i, total }); } catch {}
       }
+      // Stream per-spec progress to the Studio terminal pane so the user can
+      // watch the whole suite unfold — not just in the Tests tab chips but in
+      // the actual terminal log, one line per start/end/output. Works for any
+      // caller: Meph's run_evals tool, the UI's Run Evals button, a direct
+      // POST to /api/run-eval, or the SSE streaming variant — they all get
+      // the same terminal trace for free.
+      termLog(`[eval] ${i + 1}/${total} ${spec.id} running…`);
       const result = await runOneEval(spec, port);
       results.push(result);
+      const tag = result.status === 'pass' ? '✓' : result.status === 'fail' ? '✗' : '~';
+      const cost = result.usage?.costUSD ? ` $${result.usage.costUSD.toFixed(4)}` : '';
+      const fb = (result.feedback || '').slice(0, 160).replace(/\s+/g, ' ').trim();
+      termLog(`[eval] ${i + 1}/${total} ${tag} ${spec.id} ${result.status}${cost}${fb ? ' — ' + fb : ''}`);
+      // On failure, show the agent's actual output so the user can see WHAT
+      // the agent said that got graded "fail" — otherwise the terminal trace
+      // says "fail: didn't follow instructions" with no way to verify. Cap
+      // at 240 chars per line; long outputs wrap badly in the terminal pane.
+      if (result.status === 'fail' && result.output != null) {
+        const out = (typeof result.output === 'string' ? result.output : JSON.stringify(result.output))
+          .slice(0, 240).replace(/\s+/g, ' ').trim();
+        if (out) termLog(`[eval] ${i + 1}/${total}   output: ${out}`);
+      }
       if (onProgress) {
         try { onProgress({ phase: 'end', index: i, total, ...result }); } catch {}
       }
@@ -2432,18 +2452,11 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'run_evals': {
-        // Forward per-spec progress to the user's terminal + Tests pane so
-        // they see the suite advance live instead of a silent 30-90s wait.
+        // Forward per-spec progress to the Tests pane. Terminal logging now
+        // lives inside runEvalSuite itself — every caller (Meph, UI, direct
+        // POST) gets the same terminal trace without duplicating it here.
         send({ type: 'switch_tab', tab: 'tests' });
-        const onProgress = (ev) => {
-          send({ type: 'eval_row', ...ev });
-          if (ev.phase === 'start') {
-            termLog(`[eval] ${ev.index + 1}/${ev.total} ${ev.id} running...`);
-          } else if (ev.phase === 'end') {
-            const tag = ev.status === 'pass' ? '✓' : ev.status === 'fail' ? '✗' : '~';
-            termLog(`[eval] ${ev.index + 1}/${ev.total} ${tag} ${ev.id} ${ev.status}${ev.usage?.costUSD ? ' $' + ev.usage.costUSD.toFixed(4) : ''}`);
-          }
-        };
+        const onProgress = (ev) => { send({ type: 'eval_row', ...ev }); };
         const evalResult = await runEvalSuite(currentSource, undefined, onProgress);
         send({ type: 'eval_results', ...evalResult });
         return JSON.stringify(evalResult);
@@ -2452,13 +2465,7 @@ app.post('/api/chat', async (req, res) => {
       case 'run_eval': {
         if (!input.id) return JSON.stringify({ ok: false, error: "Missing 'id' — use list_evals to see available ids." });
         send({ type: 'switch_tab', tab: 'tests' });
-        const onProgress = (ev) => {
-          send({ type: 'eval_row', ...ev });
-          if (ev.phase === 'end') {
-            const tag = ev.status === 'pass' ? '✓' : ev.status === 'fail' ? '✗' : '~';
-            termLog(`[eval] ${tag} ${ev.id} ${ev.status}${ev.usage?.costUSD ? ' $' + ev.usage.costUSD.toFixed(4) : ''}`);
-          }
-        };
+        const onProgress = (ev) => { send({ type: 'eval_row', ...ev }); };
         const evalResult = await runEvalSuite(currentSource, input.id, onProgress);
         send({ type: 'eval_results', ...evalResult });
         return JSON.stringify(evalResult);
