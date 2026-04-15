@@ -722,9 +722,13 @@ function validateEndpointURLs(body, errors, warnings) {
     for (const node of nodes) {
       if (node.type === NodeType.API_CALL && node.url) {
         const method = (node.method || 'GET').toUpperCase();
+        // STREAM is a frontend-only method for SSE-over-POST — match it
+        // against POST endpoints on the backend (the backend is a regular
+        // POST handler that happens to emit text/event-stream chunks).
+        const matchMethod = method === 'STREAM' ? 'POST' : method;
         const url = node.url.split('?')[0]; // Strip query params — Express handles them automatically
         // Check if this method+URL matches any endpoint
-        const matches = endpoints.some(ep => ep.method === method && ep.pattern.test(url));
+        const matches = endpoints.some(ep => ep.method === matchMethod && ep.pattern.test(url));
         if (!matches) {
           // Check if URL matches on a different method (helpful suggestion)
           const urlMatches = endpoints.filter(ep => ep.pattern.test(url));
@@ -739,7 +743,8 @@ function validateEndpointURLs(body, errors, warnings) {
             });
             if (closest) hint = ` Did you mean '${closest.path}'?`;
           }
-          errors.push({ line: node.line || 0, message: `frontend ${method}s '${url}' but no backend endpoint handles ${method} ${url}.${hint}` });
+          const verb = method === 'STREAM' ? 'streams from' : method + 's';
+          errors.push({ line: node.line || 0, message: `frontend ${verb} '${url}' but no backend endpoint handles ${matchMethod} ${url}.${hint}` });
         }
       }
       if (node.type === NodeType.BUTTON && node.body) checkFetchURLs(node.body);

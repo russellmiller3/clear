@@ -5585,6 +5585,45 @@ ${pad}}`;
         const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
         return `${pad}_state.${target} = await fetch(${url}).then(r => { if (!r.ok) throw new Error('Failed to load data'); return r.json(); }).catch(e => { console.error('[GET ${node.url}]${srcInfo}', e.message); return _state.${target}; });`;
       }
+      if (node.method === 'STREAM') {
+        // Frontend streaming consumer: POST body, read response as SSE text
+        // stream, append each `data:` payload's text to _state[targetVar] and
+        // recompute so `display <var>` grows live as chunks arrive. Matches
+        // the backend emission from `stream ask claude` (which writes SSE
+        // frames with `{ text: "..." }` JSON payloads).
+        const target = sanitizeName(node.targetVar);
+        const fieldObj = (node.fields && node.fields.length > 0)
+          ? '{ ' + node.fields.map(f => `${sanitizeName(f)}: _state.${sanitizeName(f)}`).join(', ') + ' }'
+          : '_state';
+        const srcInfo = node.line ? ` [clear:${node.line}${node._sourceFile ? ' ' + node._sourceFile : ''}]` : '';
+        const lines = [];
+        lines.push(`${pad}{ _state.${target} = ''; _recompute();`);
+        lines.push(`${pad}  const _r = await fetch(${url}, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${fieldObj}) });`);
+        lines.push(`${pad}  if (!_r.ok) { const _e = await _r.text().catch(() => ''); console.error('[STREAM ${node.url}]${srcInfo}', _e); throw new Error('Stream request failed: ' + _r.status); }`);
+        lines.push(`${pad}  const _reader = _r.body.getReader();`);
+        lines.push(`${pad}  const _dec = new TextDecoder();`);
+        lines.push(`${pad}  let _buf = '';`);
+        lines.push(`${pad}  while (true) {`);
+        lines.push(`${pad}    const { done: _done, value: _val } = await _reader.read();`);
+        lines.push(`${pad}    if (_done) break;`);
+        lines.push(`${pad}    _buf += _dec.decode(_val, { stream: true });`);
+        lines.push(`${pad}    const _frames = _buf.split('\\n\\n');`);
+        lines.push(`${pad}    _buf = _frames.pop();`);
+        lines.push(`${pad}    for (const _f of _frames) {`);
+        lines.push(`${pad}      const _line = _f.trim();`);
+        lines.push(`${pad}      if (!_line.startsWith('data:')) continue;`);
+        lines.push(`${pad}      const _payload = _line.slice(5).trim();`);
+        lines.push(`${pad}      if (_payload === '[DONE]') continue;`);
+        lines.push(`${pad}      try {`);
+        lines.push(`${pad}        const _evt = JSON.parse(_payload);`);
+        lines.push(`${pad}        if (typeof _evt.text === 'string') { _state.${target} += _evt.text; _recompute(); }`);
+        lines.push(`${pad}        else if (_evt.error) { _state.${target} += '[error: ' + _evt.error + ']'; _recompute(); }`);
+        lines.push(`${pad}      } catch (_e) { /* skip non-JSON frame */ }`);
+        lines.push(`${pad}    }`);
+        lines.push(`${pad}  }`);
+        lines.push(`${pad}}`);
+        return lines.join('\n');
+      }
       // POST/PUT/DELETE: send specific fields, form inputs, or full state
       let bodyExpr;
       if (node.fields && node.fields.length > 0) {

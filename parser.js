@@ -1367,6 +1367,43 @@ const CANONICAL_DISPATCH = new Map([
     return parsed.endIdx;
   }],
   ['stream', (ctx) => {
+    // Frontend consumer: `stream <var> from '/url'` or `stream <var> from '/url' with <input>`
+    // Opens a POST fetch, reads the response body as a text stream, and appends
+    // each chunk to _state[var] so `display <var>` updates live as the server
+    // writes `data: ...` frames. Backend-side `stream ask claude` writes those
+    // frames; this is the client that reads them.
+    {
+      const tks = ctx.tokens;
+      let fromIdx = -1;
+      for (let k = 1; k < tks.length; k++) {
+        if (tks[k].canonical === 'get_from' || (tks[k].value === 'from' && k + 1 < tks.length && tks[k + 1].type === TokenType.STRING)) {
+          fromIdx = k; break;
+        }
+      }
+      if (fromIdx > 1) {
+        // Variable name is token[1] (skip 'stream')
+        const variable = tks[1].value;
+        // URL is the string right after 'from' (or the get_from multi-word token)
+        const urlTok = tks[fromIdx].canonical === 'get_from' ? tks[fromIdx + 1] : tks[fromIdx + 1];
+        if (urlTok && urlTok.type === TokenType.STRING) {
+          const url = urlTok.value;
+          // Optional: with <field1>, <field2>, ...
+          let withPos = -1;
+          for (let k = fromIdx + 2; k < tks.length; k++) {
+            if (tks[k].value === 'with' || tks[k].canonical === 'with') { withPos = k; break; }
+          }
+          const fields = [];
+          if (withPos > 0) {
+            for (let k = withPos + 1; k < tks.length; k++) {
+              if (tks[k].type === TokenType.COMMA || tks[k].canonical === 'and') continue;
+              if (tks[k].type === TokenType.IDENTIFIER || tks[k].type === TokenType.KEYWORD) fields.push(tks[k].value);
+            }
+          }
+          ctx.body.push({ type: NodeType.API_CALL, method: 'STREAM', url, fields, targetVar: variable, line: ctx.line });
+          return ctx.i + 1;
+        }
+      }
+    }
     // P13: "stream ask claude 'prompt' with context" — native AI streaming in endpoints
     if (ctx.tokens.length > 1 && (ctx.tokens[1].value === 'ask' || ctx.tokens[1].canonical === 'ask_ai')) {
       let pos = 2; // skip 'stream ask'
@@ -1375,7 +1412,7 @@ const CANONICAL_DISPATCH = new Map([
       // Parse prompt
       let prompt = null;
       if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.STRING) {
-        prompt = { type: NodeType.STRING_LITERAL, value: ctx.tokens[pos].value, line: ctx.line };
+        prompt = { type: NodeType.LITERAL_STRING, value: ctx.tokens[pos].value, line: ctx.line };
         pos++;
       } else if (pos < ctx.tokens.length) {
         const pExpr = parseExpression(ctx.tokens, pos, ctx.line);
@@ -2346,7 +2383,7 @@ CANONICAL_DISPATCH.set('ask', (ctx) => {
     let pos = 2;
     let prompt = null;
     if (pos < ctx.tokens.length && ctx.tokens[pos].type === TokenType.STRING) {
-      prompt = { type: NodeType.STRING_LITERAL, value: ctx.tokens[pos].value, line: ctx.line };
+      prompt = { type: NodeType.LITERAL_STRING, value: ctx.tokens[pos].value, line: ctx.line };
       pos++;
     } else if (pos < ctx.tokens.length) {
       const pExpr = parseExpression(ctx.tokens, pos, ctx.line);
