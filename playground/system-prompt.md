@@ -427,12 +427,12 @@ agent runtime error). Removing auth to make evals pass is an anti-
 pattern — the eval system exists precisely to catch agent behavior,
 not to be circumvented.
 
-**Empty output on streaming agent endpoints.** Known issue: probes
-against agent endpoints that emit `text/event-stream` currently return
-an empty body because the eval runner's SSE drain has a bug. If an
-eval fails with `Output is empty` and the endpoint is a streaming
-agent, that's infrastructure, not the agent. Flag it to Russell —
-don't try to fix it in the `.clear` source.
+**Probe budget is 90s.** Multi-step agents (`repeat until` refinement,
+sub-agent orchestration chaining 4-8 Claude calls) legitimately run
+30-60s per probe. If you see `Network error: The operation was
+aborted due to timeout`, that's a truly slow agent — consider
+trimming the `ask claude` prompt or reducing `max N times`, don't
+just re-run hoping for better luck.
 
 **User-defined evals** — recommend these when the auto-rubric won't
 catch a specific behavior. Two syntaxes, both show up in the same

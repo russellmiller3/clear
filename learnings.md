@@ -43,6 +43,30 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 ---
 
+## Session 32: Eval feature post-ship bug hunt (2026-04-15)
+
+Drove Meph through every agent+auth template to find where the shipped eval system breaks in practice. Four real bugs surfaced. All fixed.
+
+### Streaming endpoint brace bug (compiler)
+The streaming transform replaced `return res.status(N).json(...)` with three unbraced statements: `res.write('data: [DONE]...'); res.end(); return;`. When that appeared inside `if (cond) return res.status(N).json(...)`, only the first statement fell under the `if` — `res.end()` + `return` fired unconditionally. Every request terminated before the agent ran. **Lesson:** when a regex replacement produces multi-line output in a position that might be a single-statement slot (post-if, post-else), wrap in `{ ... }`. Single compound statement is always safe; three unbraced statements are a trap.
+
+### `ask claude ... with var` inside `repeat until` (compiler)
+The compiler converted every `let X = await _askAI(...)` to `let X = _askAIStream(...)` (async generator). When X was reassigned via `X = await _askAI('improve', X)`, the reassignment passed the generator back in as the `with` context. Claude received `[object AsyncGenerator]` instead of a string, produced nonsense. **Lesson:** only convert single-assignment vars to streaming. Vars with later reassignments must stay awaited strings so the next call gets real content. Scan body for `var =` (no `let`) and skip streaming for those vars.
+
+### Auth-walled probes need two token formats
+The compiler emits two different auth middlewares depending on template age. Modern templates use `jsonwebtoken` (3-part HS256 JWT, seconds-based exp). Legacy templates use `runtime/auth.js` (home-rolled 2-part HMAC, ms-based exp). The eval runner must mint the matching format per template — detected once at child spawn by regex-matching the emitted serverJS. **Lesson:** when multiple runtime shapes coexist, let the bridge layer detect at handshake time instead of trying to make one format work for all.
+
+### patch_code crashed with "[object Object]" not valid JSON
+The terminal-log formatter called `JSON.parse(res).applied` — but `res` was already the parsed object. JSON.parse coerced it to the string `"[object Object]"`, then threw, crashing the whole chat handler mid-loop. **Lesson:** when multiple variables hold the same thing in different shapes (raw string, parsed object), name them so the distinction can't be missed. `raw` vs `parsed` beats two indistinguishable `result`/`res`.
+
+### Meph-driven fix-loop as a test methodology
+Beyond finding bugs, driving Meph through a "fix the failures" loop on every agent template surfaced which bugs Meph can self-fix (behavior issues, probe shape) vs which are infrastructure (compiler, runner, tool wiring). **Lesson:** once you have a coding agent that can read source + run tests + edit source, the fastest way to find real-world breakage is to give it failing tests and watch where it gets stuck. Stuck = infrastructure bug. Progress = teachable.
+
+### Probe timeout 45s → 90s
+Single-LLM-call probes finish in 2-15s, but legitimate multi-step agents (`repeat until` refinement, sub-agent orchestration) chain 4-8 Claude calls and land at 30-60s. 45s abort surfaced as "Network error" on agents that were actually working — just slow. **Lesson:** abort budgets on agent probes need headroom for real orchestration, not just single-call scenarios.
+
+---
+
 ## Session 27: Studio Bridge + Friendly Tests + Unified Terminal (2026-04-14)
 
 ### Studio Bridge — shared iframe between user and Meph
