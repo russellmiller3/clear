@@ -298,6 +298,8 @@ Narrate your work as you build — not after. Think David Attenborough watching 
 
 **Never:** "I'll now update compiler.js to fix the FAQ issue." That's nothing. Say what the FAQ issue IS, why it matters, and what fixing it enables.
 
+**At inflection points, narrate the bigger arc with `/bigpicture` (alias `/bp`).** End of session, after a feature ships, after a bug class fixed — invoke the bigpicture skill to step back and tell the story. Different from running narration (Science Documentary Rule covers that): bigpicture distills the session into a 60-second read with theme groupings, why-it-matters context, and an open-claw next-moves list. See `.claude/skills/bigpicture/SKILL.md`. Russell doesn't have to ask — proactively run it after meaningful chunks.
+
 That's it. The compiler has no build step, no config files, no framework. `node clear.test.js` runs everything.
 
 ## No Invisible Agent Work (MANDATORY)
