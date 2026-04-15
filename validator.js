@@ -113,7 +113,27 @@ export function validate(ast) {
   validateClassify(ast.body, errors);
   validateLayoutNesting(ast.body, warnings);
   validateEvalReferences(ast.body, warnings);
+  validateReservedEndpointPrefixes(ast.body, errors);
   return { errors, warnings };
+}
+
+/**
+ * Reject user-declared endpoints that collide with reserved synthetic
+ * paths (/_eval/*). The eval runner compiles the app in evalMode and
+ * injects those routes; if the user also declares one, route ordering
+ * is ambiguous and evals silently grade the wrong handler.
+ */
+function validateReservedEndpointPrefixes(body, errors) {
+  for (const n of body) {
+    if (n.type !== 'endpoint') continue;
+    const path = String(n.path || '');
+    if (path.startsWith('/_eval/')) {
+      errors.push({
+        line: n.line || 0,
+        message: `Endpoint path '${path}' collides with the reserved /_eval/* prefix (used by the agent eval harness). Rename it — e.g. '${path.replace('/_eval/', '/custom-eval/')}'.`
+      });
+    }
+  }
 }
 
 /**

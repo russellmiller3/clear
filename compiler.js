@@ -875,6 +875,22 @@ function compileNamespaceObject(useNode, ctx, pad) {
   return `${pad}${keyword}${ns} = { ${entries.join(', ')} };`;
 }
 
+// Insert /_eval/* Express handlers into compiled serverJS just before the
+// `app.listen(...)` / `const PORT = ...` preamble. Called during compile
+// when `evalMode: true` is set in compiler options. The alternative (a
+// server-side regex splice at eval-run time) was fragile — any change to
+// the compiled preamble would break the splice silently and every eval
+// would then 404. This puts the splice under the compiler's single-AST
+// invariant, so drift is impossible.
+function _spliceEvalEndpoints(serverJS, endpointsJS) {
+  if (!endpointsJS) return serverJS;
+  const marker = /const PORT = process\.env\.PORT/;
+  if (marker.test(serverJS)) {
+    return serverJS.replace(marker, endpointsJS + '\nconst PORT = process.env.PORT');
+  }
+  return serverJS.replace(/app\.listen\(/, endpointsJS + '\napp.listen(');
+}
+
 export function compile(ast, options = {}) {
   const errors = [...ast.errors];
   const warnings = [];
@@ -944,13 +960,23 @@ export function compile(ast, options = {}) {
     result.css = htmlResult.css;
   }
   if (needsJSBackend) {
-    // If we already have web JS, backend JS is a separate output
+    // evalMode is a compile-time flag that appends /_eval/agent_<name>
+    // Express handlers to the end of the serverJS so every agent is
+    // directly POST-able for grading. Off by default; the Studio eval
+    // runner flips it on for the child process it spawns, and user
+    // apps in prod compile without it. Safer than server-side regex
+    // splicing because the handlers are emitted from the same AST pass
+    // that generates the rest of the routes — no drift risk.
+    const evalEndpointsJS = options.evalMode === true ? generateEvalEndpoints(ast.body) : '';
+
     if (needsWeb) {
       result.serverJS = compileToJSBackend(ast.body, errors, sourceMap, streamingAgentNames);
+      if (evalEndpointsJS) result.serverJS = _spliceEvalEndpoints(result.serverJS, evalEndpointsJS);
       // Also generate browser-compatible server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
     } else {
       result.javascript = compileToJSBackend(ast.body, errors, sourceMap, streamingAgentNames);
+      if (evalEndpointsJS) result.javascript = _spliceEvalEndpoints(result.javascript, evalEndpointsJS);
       // Backend-only apps also get a browser server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
     }

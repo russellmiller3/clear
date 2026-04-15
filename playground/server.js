@@ -440,21 +440,12 @@ function wipeEvalChildDbFiles() {
   termLog('[eval] DB wiped before full suite run');
 }
 
-// Splice the auto-generated /_eval/* handlers into compiled serverJS right
-// before `app.listen(...)` so every agent is reachable via HTTP for grading.
-function injectEvalEndpoints(serverJS, endpointsJS) {
-  if (!endpointsJS) return serverJS;
-  // Insert above `const PORT = process.env.PORT` (the usual listen preamble).
-  const marker = /const PORT = process\.env\.PORT/;
-  if (marker.test(serverJS)) {
-    return serverJS.replace(marker, endpointsJS + '\nconst PORT = process.env.PORT');
-  }
-  // Fallback: prepend to `app.listen(` directly.
-  return serverJS.replace(/app\.listen\(/, endpointsJS + '\napp.listen(');
-}
-
-async function ensureEvalChild(serverJS, endpointsJS) {
-  const fullJS = injectEvalEndpoints(serverJS, endpointsJS || '');
+async function ensureEvalChild(serverJS) {
+  // serverJS must already include the /_eval/* synthetic handlers — the
+  // caller compiles with `{ evalMode: true }` to get them. Earlier versions
+  // spliced the handlers in here with regex; that was fragile. The compiler
+  // is now the single source of truth for the compiled serverJS shape.
+  const fullJS = serverJS;
   // If we already have a child for THIS exact source, reuse it.
   if (evalChild && evalChildPort && evalChild._lastServerJS === fullJS) {
     resetEvalIdleTimer();
@@ -820,15 +811,23 @@ async function runOneEval(spec, port) {
 // Compile the given source. Returns { ok, compiled?, error? }.
 function compileForEval(source) {
   if (!source || !source.trim()) return { ok: false, error: 'No source code. Load or write a .clear file first.' };
-  let compiled;
-  try { compiled = compileProgram(source); }
-  catch (err) { return { ok: false, error: 'Compile threw: ' + err.message }; }
+  let compiled, compiledEvalMode;
+  try {
+    // Regular compile — used to surface the suite shape (needed even for
+    // the estimate endpoint which doesn't spin up the child).
+    compiled = compileProgram(source);
+    // Eval-mode compile — serverJS includes the /_eval/* synthetic
+    // handlers. Used by the eval child runner.
+    compiledEvalMode = compileProgram(source, { evalMode: true });
+  } catch (err) {
+    return { ok: false, error: 'Compile threw: ' + err.message };
+  }
   if (compiled.errors && compiled.errors.length > 0) {
     return { ok: false, error: 'Source has compile errors — fix them before running evals.', errors: compiled.errors };
   }
   // `serverJS` exists when the app builds both web + backend. For a pure
   // backend-only app the code lives in `javascript` instead. Accept either.
-  const server = compiled.serverJS || compiled.javascript;
+  const server = compiledEvalMode.serverJS || compiledEvalMode.javascript;
   if (!server) return { ok: false, error: 'App has no backend to run evals against (need a javascript backend build target).' };
   return { ok: true, compiled, serverJS: server };
 }
@@ -1084,7 +1083,7 @@ async function _runEvalSuiteImpl(source, id) {
       killEvalChild();          // force respawn so the wipe is observed by the DB module
       wipeEvalChildDbFiles();
     }
-    const port = await ensureEvalChild(compiled.serverJS, compiled.compiled.evalEndpointsJS || '');
+    const port = await ensureEvalChild(compiled.serverJS);
     const results = [];
     for (const spec of specs) {
       results.push(await runOneEval(spec, port));

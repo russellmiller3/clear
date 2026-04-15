@@ -17356,6 +17356,60 @@ describe('Eval suite: probe quality — multi-agent-research smoke', () => {
   });
 });
 
+describe('Eval mode: compileProgram({evalMode:true}) emits /_eval/* natively', () => {
+  const src = `build for javascript backend
+agent 'Scorer' receives item:
+  n = ask claude 'Rate 1-10' with item
+  send back n
+agent 'Coordinator' receives topic:
+  s = call 'Scorer' with topic
+  send back s
+when user calls POST /api/run sending data:
+  o = call 'Coordinator' with data's topic
+  send back o`;
+
+  it('without evalMode, zero /_eval/ handlers leak into compiled serverJS', () => {
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js.includes('/_eval/agent_')).toBe(false);
+  });
+
+  it('with evalMode, emits /_eval/agent_<name> for every agent natively', () => {
+    const r = compileProgram(src, { evalMode: true });
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).toContain("app.post('/_eval/agent_scorer'");
+    expect(js).toContain("app.post('/_eval/agent_coordinator'");
+    // Synthetic handlers handle both streaming (generator) and plain (await)
+    expect(js).toContain('Symbol.asyncIterator');
+    expect(js).toContain('req.body.input');
+  });
+
+  it('all 8 core templates compile clean without evalMode and contain no /_eval/ leaks', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const templates = ['todo-fullstack', 'crm-pro', 'blog-fullstack', 'live-chat', 'helpdesk-agent', 'booking', 'expense-tracker', 'ecom-agent'];
+    for (const name of templates) {
+      const source = fs.readFileSync(path.join(process.cwd(), 'apps', name, 'main.clear'), 'utf8');
+      const r = compileProgram(source);
+      expect(r.errors).toHaveLength(0);
+      const js = r.javascript || r.serverJS || '';
+      expect(js.includes('/_eval/agent_')).toBe(false);
+    }
+  });
+
+  it('validator errors when source declares an endpoint starting with /_eval/', () => {
+    const r = compileProgram(`build for javascript backend
+when user calls POST /_eval/custom sending data:
+  send back 'hi'`);
+    // Error OR warning — either flags the collision
+    const signal = r.errors.length > 0 ||
+      (r.warnings && r.warnings.some(w => /_eval\/|reserved|collide/i.test(w.message || '')));
+    expect(signal).toBe(true);
+  });
+});
+
 describe('Eval suite: input probes are shaped for the endpoint', () => {
   it('synthetic endpoints always get { input: X } body', () => {
     const r = compileProgram(`build for javascript backend
