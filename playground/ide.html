@@ -1599,26 +1599,35 @@ window.showTab = function(tab) {
 // ==========================================================================
 // TESTS TAB — run and display compiler + app test results
 // ==========================================================================
-let testResults = { app: null, compiler: null };
-let testRunning = { app: false, compiler: false };
-try { testResults = JSON.parse(localStorage.getItem('clear_test_results') || '{}'); } catch { testResults = { app: null, compiler: null }; }
+let testResults = { app: null, compiler: null, evals: null };
+let testRunning = { app: false, compiler: false, evals: false };
+try { testResults = JSON.parse(localStorage.getItem('clear_test_results') || '{}'); } catch { testResults = { app: null, compiler: null, evals: null }; }
 
 function showTests() {
   const el = document.getElementById('preview-content');
   const parts = ['<div id="tests-panel">'];
 
-  // Toolbar
+  // Toolbar — unit tests + agent evals. Evals are separate because they can
+  // be slower (graded path calls the real API) and may be skipped on every
+  // save. Tests verify code correctness; evals verify agent behavior.
   parts.push('<div class="test-toolbar">');
   parts.push(`<button class="test-btn" onclick="runTests('app')" ${testRunning.app ? 'disabled' : ''}>
     ${testRunning.app ? '<span class="test-spinner"></span> Running...' : '&#9654; Run Tests'}
   </button>`);
+  parts.push(`<button class="test-btn" onclick="runEvals()" ${testRunning.evals ? 'disabled' : ''} title="Agent evals — deterministic schema checks with mocked AI. Requires agents in source.">
+    ${testRunning.evals ? '<span class="test-spinner"></span> Running...' : '&#9733; Run Evals'}
+  </button>`);
   parts.push('</div>');
 
   // Results sections
-  if (!testResults.app) {
-    parts.push('<div class="test-empty">No test results yet. Click Run Tests above.</div>');
-  } else {
+  if (!testResults.app && !testResults.evals) {
+    parts.push('<div class="test-empty">No results yet. Click Run Tests or Run Evals above.</div>');
+  }
+  if (testResults.app) {
     parts.push(renderTestSection('Tests', testResults.app, 'app'));
+  }
+  if (testResults.evals) {
+    parts.push(renderEvalSection(testResults.evals));
   }
 
   parts.push('</div>');
@@ -1712,7 +1721,70 @@ async function runTests(type) {
   }
 }
 
+// Render the eval results section. Evals are auto-generated from agent
+// definitions — no user-written test blocks needed. Each agent emits one
+// "output matches schema" check that verifies shape with a mocked AI response.
+function renderEvalSection(data) {
+  if (data.error && !data.results) {
+    return `<div class="test-section">
+      <div class="test-section-header">Agent Evals <span class="test-summary">${data.duration ? (data.duration / 1000).toFixed(1) + 's' : ''}</span></div>
+      <div class="test-error-banner">${escHtml(data.error)}</div>
+    </div>`;
+  }
+  if (data.empty) {
+    return `<div class="test-section">
+      <div class="test-section-header">Agent Evals <span class="test-summary" style="color:var(--tx3);">no agents found</span></div>
+      <div class="test-empty" style="padding:12px;">Add an <code>agent 'Name' receives X:</code> block to generate evals.</div>
+    </div>`;
+  }
+  const passed = data.passed || 0;
+  const failed = data.failed || 0;
+  const duration = data.duration ? (data.duration / 1000).toFixed(1) + 's' : '';
+  const results = data.results || [];
+  const failures = results.filter(r => r.status === 'fail');
+  const passes = results.filter(r => r.status === 'pass');
+  let body = '';
+  for (const r of failures) {
+    body += `<div class="test-fail"><div class="test-fail-name">${escHtml(r.name)}</div>`;
+    if (r.error) body += `<div class="test-fail-error">${escHtml(r.error)}</div>`;
+    body += '</div>';
+  }
+  for (const r of passes) {
+    body += `<div class="test-pass">${escHtml(r.name)}</div>`;
+  }
+  if (results.length === 0) {
+    body = `<div class="test-empty" style="padding:12px;">No eval results.</div>`;
+  }
+  const summaryHtml = `<span class="test-summary"><span class="pass-count">${passed} passed</span>, <span class="fail-count">${failed} failed</span>${duration ? ' &mdash; ' + duration : ''}</span>`;
+  return `<div class="test-section">
+    <div class="test-section-header">Agent Evals ${summaryHtml}</div>
+    <div class="test-section-body">${body}</div>
+  </div>`;
+}
+
+async function runEvals() {
+  testRunning.evals = true;
+  if (activeTab === 'tests') showTests();
+  try {
+    const source = editor.state.doc.toString();
+    const resp = await fetch('/api/run-evals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    });
+    const data = await resp.json();
+    testResults.evals = data;
+    try { localStorage.setItem('clear_test_results', JSON.stringify(testResults)); } catch {}
+  } catch (err) {
+    testResults.evals = { ok: false, error: err.message || 'Network error', duration: 0 };
+  } finally {
+    testRunning.evals = false;
+    if (activeTab === 'tests') showTests();
+  }
+}
+
 window.runTests = runTests;
+window.runEvals = runEvals;
 
 // Populate the auto-generated-tests badge next to the compile badge.
 // Compiler generates tests for every endpoint, button, page, and flow — this

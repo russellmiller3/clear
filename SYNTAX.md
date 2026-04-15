@@ -2058,23 +2058,87 @@ agent 'Bot' receives message:
   send back response
 ```
 
-### Pipelines
+### Multi-Agent Orchestration
+
+Agents can call other agents. Clear has four orchestration patterns; combine
+them freely inside any agent or endpoint body.
+
+**1. Sequential chain — a coordinator delegates in order.**
 ```clear
+agent 'Screener' receives candidate:
+  send back candidate
+
+agent 'Scorer' receives candidate:
+  score = ask claude 'Rate 1-10' with candidate
+  send back score
+
+# Coordinator agent calls specialists in sequence. The result of each
+# call flows into the next. Streaming specialists (text response) are
+# drained into strings automatically — the coordinator sees a value,
+# not a generator.
+agent 'Hiring' receives candidate:
+  screened = call 'Screener' with candidate
+  final = call 'Scorer' with screened
+  send back final
+```
+
+**2. Parallel fan-out — known arity, all run at once.**
+```clear
+agent 'Triage' receives text:
+  do these at the same time:
+    sentiment = call 'Sentiment' with text
+    topic = call 'Topic' with text
+    lang = call 'Language' with text
+  create summary:
+    sentiment is sentiment
+    topic is topic
+    lang is lang
+  send back summary
+```
+Compiles to `Promise.all([...])` in JS / `asyncio.gather(...)` in Python.
+
+**3. Dynamic fan-out — loop over a runtime-sized list, accumulate results.**
+```clear
+agent 'Researcher' receives question:
+  answer = ask claude 'Answer this' with question
+  send back answer
+
+agent 'Research All' receives questions:
+  findings is an empty list
+  for each question in questions:
+    answer = call 'Researcher' with question
+    add answer to findings
+  send back findings
+```
+Compiles to a real `for..of` loop. When the specialist is a streaming
+agent, each call is wrapped in an inline generator-drain IIFE that
+concatenates the stream into a string before pushing it to the list.
+Use this when the number of items is not known at compile time.
+
+**4. Pipeline — named linear chain, reusable.**
+```clear
+# Form A — bare agent names (steps get auto-named)
 pipeline 'Process Inbound' with text:
   'Classifier'
   'Scorer'
   'Router'
 
+# Form B — named steps (clearer when reading the compiled trace)
+pipeline 'Process Inbound' with text:
+  classify with 'Classifier'
+  score with 'Scorer'
+  route with 'Router'
+
 result = call pipeline 'Process Inbound' with data
 ```
+Same data flows through each step end-to-end. The `result` is whatever
+the last step returned.
 
-### Parallel Execution
-```clear
-do these at the same time:
-  sentiment = call 'Sentiment' with text
-  topic = call 'Topic' with text
-  lang = call 'Language' with text
-```
+### Legacy: Pipelines
+See **Multi-Agent Orchestration → Pattern 4 (Pipeline)** above.
+
+### Legacy: Parallel Execution
+See **Multi-Agent Orchestration → Pattern 2 (Parallel fan-out)** above.
 
 ### Human-in-the-Loop
 ```clear

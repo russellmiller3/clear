@@ -1768,6 +1768,68 @@ agent 'Returns' receives request:
   send back response
 ```
 
+### Multi-Agent Orchestration — Picking the Right Pattern
+
+When one agent isn't enough, compose several. Clear supports four patterns;
+pick based on the shape of the work, not the number of agents.
+
+| If you need… | Use | Why |
+|--------------|-----|-----|
+| One agent to feed results into the next (A → B → C) | **Sequential chain** — just `call 'A'` then `call 'B'` inside a coordinator | Dependencies make it serial anyway; no need for pipeline ceremony |
+| Several independent tasks on the same input (all needed, all different) | **Parallel fan-out** (`do these at the same time:`) | Known arity, all run at once, `Promise.all` under the hood |
+| A runtime list of items each needing the same work | **Dynamic fan-out** (`for each X: call 'Agent' with X; add result to list`) | List size isn't known until runtime; loops + accumulator |
+| A named, reusable A → B → C chain | **Pipeline** (`pipeline 'Name' with x:` + steps) | Name the chain, reuse it from many endpoints, compiler generates the linear chain for you |
+
+```clear
+# Coordinator pattern — one agent delegates to specialists
+agent 'Research' receives question:
+  uses skills: 'Citation Style'
+  draft = call 'Writer' with question
+  verdict = call 'Fact Checker' with draft
+  send back verdict
+
+# Dynamic fan-out — loop over a runtime-sized list
+agent 'Batch Score' receives items:
+  scores is an empty list
+  for each item in items:
+    score = call 'Scorer' with item
+    add score to scores
+  send back scores
+
+# Parallel fan-out — known arity, all concurrent
+agent 'Triage' receives ticket:
+  do these at the same time:
+    category = call 'Classifier' with ticket
+    priority = call 'Prioritizer' with ticket
+  create result:
+    category is category
+    priority is priority
+  send back result
+```
+
+**Streaming-aware:** text agents stream by default (the common case for
+AI responses). When a coordinator `call`s a streaming specialist, the
+compiler drains the generator into a string automatically — you never
+see an async iterator. `do not stream` on the specialist is only needed
+if you're layering non-standard post-processing.
+
+### Agent Evals Are Separate From Tests
+
+Unit tests verify the app's code. Evals verify the agent's behavior.
+Because evals can be slow (graded evals call real AI), Studio surfaces
+them behind a separate **Run Evals** button in the Tests tab.
+
+- `node cli/clear.js test app.clear` — runs user-authored `test` blocks
+  plus auto-generated UI/endpoint tests. Deterministic.
+- **Run Evals** button in Studio — compiles the app, injects the
+  auto-generated schema evals (mocked AI, shape checks per agent), and
+  shows one line per eval with pass/fail.
+- `node cli/clear.js eval app.clear --graded` (CLI only, not in Studio)
+  — LLM-graded scorecard against a live server. Slower, needs API key.
+
+Every agent emits at least one schema eval automatically. You don't need
+to write them by hand.
+
 ### Use Text Blocks for Long System Prompts
 
 Never cram instructions into a single-line string. Use text blocks with interpolation:

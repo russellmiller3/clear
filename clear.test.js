@@ -10889,8 +10889,12 @@ when user calls POST /api/evaluate sending data:
     const pipeStart = js.indexOf('async function agent_pipeline');
     const pipeEnd = js.indexOf('\n}', pipeStart);
     const pipeBody = js.substring(pipeStart, pipeEnd);
+    // Screener is non-streaming (no ask ai) — plain await
     expect(pipeBody).toContain('await agent_screener(candidate)');
-    expect(pipeBody).toContain('await agent_scorer(screened)');
+    // Scorer is a streaming agent (ask ai auto-streams). The coordinator's `call 'Scorer'`
+    // must drain the generator into a string, not receive the generator object.
+    expect(pipeBody).toContain('agent_scorer(screened)');
+    expect(pipeBody).toMatch(/for await \(const _c of agent_scorer\(screened\)\)/);
     // Screener is called before Scorer
     expect(pipeBody.indexOf('agent_screener')).toBeLessThan(pipeBody.indexOf('agent_scorer'));
   });
@@ -16546,6 +16550,119 @@ when user calls POST /api/inbound sending data:
     // Pipeline is sequential — NO Promise.all, uses let _pipe chain
     expect(result.javascript).toContain('let _pipe');
     expect(result.javascript).toContain('await pipeline_inbound(');
+  });
+});
+
+// =============================================================================
+// MULTI-AGENT ORCHESTRATION: dynamic fan-out with for-each + call 'Agent'
+// Coordinator agent loops over a list and calls a specialist agent for each
+// item, accumulating results. The specialist is a streaming agent (ask claude
+// defaults to streaming), so the coordinator must drain the generator per call.
+// =============================================================================
+
+describe('Multi-agent: dynamic fan-out via for-each + call', () => {
+  const src = `build for javascript backend
+agent 'Scorer' receives item:
+  score = ask claude 'Score 1-10' with item
+  send back score
+agent 'Batch' receives items:
+  results is an empty list
+  for each item in items:
+    s = call 'Scorer' with item
+    add s to results
+  send back results
+when user calls POST /api/batch sending data:
+  out = call 'Batch' with data's items
+  send back out`;
+
+  it('compiles with 0 errors and 0 warnings', () => {
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('streaming Scorer compiles as async generator', () => {
+    const js = compileProgram(src).javascript;
+    expect(js).toMatch(/async function\* agent_scorer/);
+  });
+
+  it('non-streaming Batch compiles as ordinary async function', () => {
+    const js = compileProgram(src).javascript;
+    expect(js).toMatch(/async function agent_batch\(items\)/);
+    // Crucially: not a generator
+    expect(/async function\* agent_batch/.test(js)).toBe(false);
+  });
+
+  it('for-each loop emits real for..of iteration in the coordinator body', () => {
+    const js = compileProgram(src).javascript;
+    const start = js.indexOf('async function agent_batch');
+    const end = js.indexOf('\n}', start);
+    const body = js.substring(start, end);
+    expect(body).toMatch(/for \(const item of items\)/);
+  });
+
+  it('call on a streaming agent drains its generator into a string', () => {
+    const js = compileProgram(src).javascript;
+    const start = js.indexOf('async function agent_batch');
+    const end = js.indexOf('\n}', start);
+    const body = js.substring(start, end);
+    // Generator-drain IIFE wraps the streaming call
+    expect(body).toMatch(/for await \(const _c of agent_scorer\(item\)\)/);
+    // Receiver variable still accumulates through `results.push`
+    expect(body).toContain('results.push(s)');
+  });
+
+  it('endpoint call to the coordinator stays a plain await (non-streaming result)', () => {
+    const js = compileProgram(src).javascript;
+    // Batch itself is non-streaming (no direct ask ai). The endpoint await is plain,
+    // not wrapped in a generator-drain IIFE.
+    expect(js).toContain('await agent_batch(data?.items)');
+    expect(/for await \(const _c of agent_batch/.test(js)).toBe(false);
+  });
+});
+
+// =============================================================================
+// MULTI-AGENT ORCHESTRATION: coordinator pattern — one agent delegates to many
+// =============================================================================
+
+describe('Multi-agent: coordinator delegates to specialists', () => {
+  const src = `build for javascript backend
+agent 'Classifier' receives text:
+  label = ask claude 'One-word category' with text
+  send back label
+agent 'Summarizer' receives text:
+  short = ask claude 'Summarize in one sentence' with text
+  send back short
+agent 'Coordinator' receives request:
+  label = call 'Classifier' with request
+  summary = call 'Summarizer' with request
+  create report:
+    category is label
+    summary is summary
+  send back report
+when user calls POST /api/triage sending data:
+  result = call 'Coordinator' with data's text
+  send back result`;
+
+  it('compiles with 0 errors', () => {
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('both specialists are streaming generators', () => {
+    const js = compileProgram(src).javascript;
+    expect(js).toMatch(/async function\* agent_classifier/);
+    expect(js).toMatch(/async function\* agent_summarizer/);
+  });
+
+  it('coordinator drains BOTH specialist generators into strings', () => {
+    const js = compileProgram(src).javascript;
+    const start = js.indexOf('async function agent_coordinator');
+    const end = js.indexOf('\n}', start);
+    const body = js.substring(start, end);
+    expect(body).toMatch(/for await \(const _c of agent_classifier\(request\)\)/);
+    expect(body).toMatch(/for await \(const _c of agent_summarizer\(request\)\)/);
+    // Order preserved — classifier before summarizer
+    expect(body.indexOf('agent_classifier')).toBeLessThan(body.indexOf('agent_summarizer'));
   });
 });
 

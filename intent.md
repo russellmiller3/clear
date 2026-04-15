@@ -260,7 +260,7 @@ Service calls use direct REST API calls via `fetch()`, not SDK imports. Auth via
 | `RUN_AGENT` | `set result to call 'Name' with data` | `result = call 'Name' with data` | `await agent_name(data)` |
 | `GUARD` | `check X is not missing, otherwise error 'msg'` | `guard X is not nothing or 'msg'` | `throw new Error("msg")` (in agent) / `res.status(403)` (in endpoint) |
 | `PARALLEL_AGENTS` | `do these at the same time:` + assignments | (same) | `const [a, b] = await Promise.all([...])` |
-| `PIPELINE` | `pipeline 'Name' with var:` + agent steps | (same) | `async function pipeline_name(var) { ... }` |
+| `PIPELINE` | `pipeline 'Name' with var:` + steps (`'Agent'` or `stepname with 'Agent'`) | (same) | `async function pipeline_name(var) { ... }` |
 | `RUN_PIPELINE` | `result = call pipeline 'Name' with data` | (same) | `await pipeline_name(data)` |
 | `SKILL` | `skill 'Name':` + `can:` + `instructions:` | (same) | Compile-time merge into agent |
 | `HUMAN_CONFIRM` | `ask user to confirm 'message'` | (same) | Approvals table insert + 202 response |
@@ -281,6 +281,17 @@ Agent directives (metadata on AGENT node, not separate nodes):
 | `knows about: Table1, Table2` | RAG — keyword search over DB tables before prompting |
 | `knows about: 'https://url'` | RAG — fetch page text at startup, keyword search |
 | `knows about: 'file.pdf'` | RAG — read PDF/DOCX/TXT/MD at startup, keyword search |
+
+**Multi-agent orchestration.** Four patterns compose the primitives above:
+1. **Sequential chain** — nest `RUN_AGENT` calls inside an `AGENT` body, each step consumes the prior.
+2. **Parallel fan-out** — `PARALLEL_AGENTS` (`do these at the same time:`). Known arity, all concurrent (`Promise.all`).
+3. **Dynamic fan-out** — `FOR_EACH` with `RUN_AGENT` inside + `LIST_PUSH` accumulator. Runtime-sized list, serial per item.
+4. **Pipeline** — `PIPELINE` + `RUN_PIPELINE`. Named reusable linear chain, same value threads through each step.
+
+Text agents stream by default (`async function*`). When a non-streaming caller
+uses `RUN_AGENT` against a streaming callee, the compiler wraps the call with
+an inline generator-drain IIFE so the caller receives the concatenated string,
+not the async iterator. Callers that themselves stream can chain streams directly.
 
 ### App-Level Policies (Enact Guards)
 

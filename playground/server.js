@@ -377,6 +377,60 @@ app.post('/api/run-tests', (req, res) => {
   res.json(result);
 });
 
+// Run agent evals: compile source → extract schema evals (Clear test blocks
+// with mocked AI responses) → append to source → run via `clear test`.
+// Deterministic, no API key needed. Graded evals (real AI) are separate
+// — they require a live server; not surfaced in the IDE yet.
+function runEvalProcess(source) {
+  const start = Date.now();
+  if (!source || !source.trim()) {
+    return { ok: false, error: 'No source code. Load or write a .clear file first.' };
+  }
+  let compiled;
+  try {
+    compiled = compileProgram(source);
+  } catch (err) {
+    return { ok: false, error: 'Compile failed: ' + err.message, duration: Date.now() - start };
+  }
+  if (compiled.errors && compiled.errors.length > 0) {
+    return { ok: false, error: 'Source has compile errors — fix them before running evals.', errors: compiled.errors, duration: Date.now() - start };
+  }
+  if (!compiled.evals || !compiled.evals.schema) {
+    return { ok: true, kind: 'evals', passed: 0, failed: 0, results: [], empty: true, duration: Date.now() - start };
+  }
+  const combined = source + '\n\n' + compiled.evals.schema;
+  const tmpPath = join(BUILD_DIR, '_eval-source-' + Date.now() + '.clear');
+  mkdirSync(BUILD_DIR, { recursive: true });
+  writeFileSync(tmpPath, combined);
+  try {
+    const evalEnv = { ...process.env, ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
+    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: 60000, maxBuffer: 5 * 1024 * 1024, env: evalEnv });
+    const parsed = parseTestOutput(stdout);
+    // Keep only eval-labeled results (generated test names contain ' — ')
+    const evalOnly = (parsed.results || []).filter(r => /—/.test(r.name));
+    const passed = evalOnly.filter(r => r.status === 'pass').length;
+    const failed = evalOnly.filter(r => r.status === 'fail').length;
+    return { ok: failed === 0, kind: 'evals', passed, failed, results: evalOnly, duration: Date.now() - start };
+  } catch (err) {
+    if (err.status === 4) {
+      const parsed = parseTestOutput(err.stdout || '');
+      const evalOnly = (parsed.results || []).filter(r => /—/.test(r.name));
+      const passed = evalOnly.filter(r => r.status === 'pass').length;
+      const failed = evalOnly.filter(r => r.status === 'fail').length;
+      return { ok: false, kind: 'evals', passed, failed, results: evalOnly, duration: Date.now() - start };
+    }
+    return { ok: false, error: (err.stderr || err.stdout || err.message || 'Eval runner failed').slice(0, 2000), duration: Date.now() - start };
+  } finally {
+    try { unlinkSync(tmpPath); } catch {}
+  }
+}
+
+app.post('/api/run-evals', (req, res) => {
+  const { source } = req.body;
+  const result = runEvalProcess(source);
+  res.json(result);
+});
+
 // Store API key server-side so child processes (compiled apps with agents) can use it
 let storedApiKey = process.env.ANTHROPIC_API_KEY || '';
 let mephTodos = [];

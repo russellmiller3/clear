@@ -9520,6 +9520,38 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     }
   }
 
+  // Post-process: when a NON-streaming agent (or scheduled agent, or tool-using agent)
+  // calls a streaming agent via `call 'X'`, the `await agent_streamer(arg)` would return
+  // the async generator itself, not the string. This transform detects those calls inside
+  // non-streaming agent bodies and wraps them with an inline collector that drains the
+  // generator into a concatenated string. Agent-to-agent orchestration (coordinator →
+  // specialist) depends on this: the coordinator wants the final answer, not a generator.
+  if (streamingAgentNames.size > 0) {
+    const streamingFnNames = new Set();
+    for (const agentName of streamingAgentNames) {
+      const fnName = 'agent_' + sanitizeName(agentName.toLowerCase().replace(/\s+/g, '_'));
+      streamingFnNames.add(fnName);
+    }
+    for (let i = 0; i < bodyLines.length; i++) {
+      const code = bodyLines[i];
+      // Only transform NON-streaming agent functions. Generators (`async function*`)
+      // chain generators via yield* naturally; ordinary functions (`async function`)
+      // can't await a generator to get a value.
+      if (!/async function agent_\w+/.test(code)) continue;
+      if (/async function\* agent_\w+/.test(code)) continue;
+      let transformed = code;
+      for (const fnName of streamingFnNames) {
+        // Match any `await agent_streaming(args)` occurrence (in assignments, inside
+        // loops, as expression). Replace with an IIFE that drains the generator.
+        const callRegex = new RegExp(`await ${fnName}\\(([^)]*?)\\)`, 'g');
+        transformed = transformed.replace(callRegex,
+          (m, args) => `await (async () => { let _t = ""; for await (const _c of ${fnName}(${args})) _t += _c; return _t; })()`
+        );
+      }
+      bodyLines[i] = transformed;
+    }
+  }
+
   // Tree-shake: only emit utility functions that are actually used in compiled code
   const bodyText = bodyLines.join('\n');
   const usedUtils = _getUsedUtilities(bodyText);

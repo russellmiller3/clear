@@ -200,8 +200,11 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Model selection | `ask claude 'prompt' with X using 'model'` | |
 | Streaming | Auto-streams by default in endpoints | Opt out: `do not stream` |
 | Scheduled agents | `agent 'Name' runs every 1 hour:` | setInterval |
-| Run agent | `result = call 'Name' with data` | |
+| Run agent | `result = call 'Name' with data` | Works inside endpoints AND inside other agents (coordinator pattern) |
 | Run pipeline | `result = call pipeline 'Name' with data` | |
+| Dynamic fan-out | `for each x in list: r = call 'A' with x; add r to results` | Loop over runtime-sized list, accumulate |
+| Agent evals button | Studio IDE "Run Evals" next to "Run Tests" | Schema evals run on demand — separate from unit tests because they can be slower |
+| Coordinator drains streams | `call 'StreamingAgent'` from a non-streaming caller | Compiler wraps with generator-drain IIFE — coordinator sees the final string, not an async iterator |
 
 ### Workflows
 

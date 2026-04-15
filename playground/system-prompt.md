@@ -348,6 +348,52 @@ Agent directives (inside agent body, before code):
 - `remember user's preferences` — long-term memory
 - `knows about: Products, FAQ` — RAG
 - `using 'claude-sonnet-4-6'` — model selection
+- `uses skills: 'Name'` — merge a `skill` bundle into this agent
+
+### Multi-agent orchestration
+
+Agents can call other agents. Four patterns — pick by the shape of the work:
+
+**1. Sequential chain** — one coordinator delegates in order.
+```clear
+agent 'Triage' receives ticket:
+  label = call 'Classifier' with ticket
+  summary = call 'Summarizer' with ticket
+  send back summary
+```
+
+**2. Parallel fan-out** — known arity, all at once.
+```clear
+do these at the same time:
+  sentiment = call 'Sentiment' with text
+  topic = call 'Topic' with text
+```
+
+**3. Dynamic fan-out** — runtime list, loop + accumulate.
+```clear
+agent 'Batch' receives items:
+  results is an empty list
+  for each item in items:
+    r = call 'Scorer' with item
+    add r to results
+  send back results
+```
+
+**4. Pipeline** — named reusable chain.
+```clear
+pipeline 'Process' with text:
+  classify with 'Classifier'
+  score with 'Scorer'
+```
+
+When a non-streaming agent calls a streaming one, the compiler drains the
+stream automatically — the caller sees a string, not an async iterator.
+Never write `for await ... yield` yourself inside an agent body; `call 'X'`
+does the right thing.
+
+**Agent evals** run behind the "Run Evals" button in the Tests tab
+(separate from "Run Tests" because they can be slow). Every agent
+auto-gets a schema eval — don't write them by hand.
 
 ## Workflows
 

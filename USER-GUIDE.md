@@ -763,6 +763,76 @@ agent 'Support' receives message:
 matches the pattern, the call is rejected before it executes. This prevents
 agents from accidentally passing sensitive data to external tools.
 
+### Multi-Agent: Coordinator and Specialists
+
+One agent is a conversation. Multiple agents is a team. When the work is
+too varied for a single prompt — score *and* classify *and* summarize —
+split the job across focused specialists and have a coordinator delegate.
+
+```clear
+# Two specialists, each small and focused.
+agent 'Classifier' receives text:
+  category = ask claude 'One-word category' with text
+  send back category
+
+agent 'Summarizer' receives text:
+  short = ask claude 'Summarize in one sentence' with text
+  send back short
+
+# Coordinator delegates in sequence. Each `call` returns a value the
+# coordinator uses in the next step.
+agent 'Triage' receives ticket:
+  label = call 'Classifier' with ticket
+  summary = call 'Summarizer' with ticket
+  create result:
+    category is label
+    summary is summary
+  send back result
+
+when user sends data to /api/triage:
+  out = call 'Triage' with data's body
+  send back out
+```
+
+When you need *many* runs of the same specialist — one per item in a list —
+loop instead of copy-paste:
+
+```clear
+agent 'Scorer' receives item:
+  score = ask claude 'Score 1-10' with item
+  send back score
+
+# Dynamic fan-out: list size isn't known until runtime.
+agent 'Batch Score' receives items:
+  scores is an empty list
+  for each item in items:
+    s = call 'Scorer' with item
+    add s to scores
+  send back scores
+```
+
+When you want all specialists to run *at once* (not sequentially):
+
+```clear
+agent 'Triage' receives ticket:
+  do these at the same time:
+    category = call 'Classifier' with ticket
+    priority = call 'Prioritizer' with ticket
+  create result:
+    category is category
+    priority is priority
+  send back result
+```
+
+The full working app is in `apps/multi-agent-research/main.clear` — a
+research assistant that splits a topic, fans out to specialists, and
+grades every answer.
+
+**Under the hood:** text agents stream by default (that's the common case
+for AI responses). When a coordinator calls a streaming specialist, the
+compiler automatically drains the stream into a string — you never see
+the async generator. It just works.
+
 ---
 
 ## Chapter 10b: Chat Interfaces (Making Your App Talk)
