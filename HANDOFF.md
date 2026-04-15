@@ -4,7 +4,7 @@
 - **Branch:** main, commit `a65f0a6` is **local only — push blocked** (see Push Blocker below)
 - **Previous session:** Session 29 made streaming the default, added rich text editor, multi-page routing, honest test labels (commit `552ae29`).
 - **This session:** audited multi-agent infrastructure (exists substantially), fixed one real bug exposed by streaming-default, added one new demo app, wired agent evals to a dedicated button, updated all 6 core docs + Meph's system prompt.
-- **Tests:** 1861 compiler tests pass (up from 1852 — added 9 new tests for multi-agent orchestration).
+- **Tests:** 1867 compiler tests pass (up from 1852 — added 15 new tests for multi-agent orchestration and loop patterns).
 
 ## Push Blocker (Action Needed)
 The pre-push e2e test (`playground/e2e.test.js`) reports 6 blog-fullstack failures — `GET /api/posts returns array`, `seeded 0 posts`, etc. These are **pre-existing on main**, verified by stashing this session's changes and re-running: failures persist. Most likely an environmental issue with the e2e runner (bcryptjs dep resolution in the sandbox it spins up) rather than a compiled-output bug — `node cli/clear.js test apps/blog-fullstack/main.clear` alone passes 21/21.
@@ -41,7 +41,14 @@ New reference app. Showcases all 4 orchestration patterns in one file:
 
 Compiles 0/0. Auto-tests pass 6/6.
 
-### 4. Studio IDE — "Run Evals" button
+### 4. Loops inside agent bodies — `repeat until X, max N times:` added as general construct
+The workflow parser had `repeat until ... max N` since phase 87, but the generic `parseRepeatLoop` didn't know about it. If you wrote it inside an agent body, `parseExpression` greedily consumed "until X..." as a count expression — the compiler silently emitted `for (let _i = 0; _i < until; _i++)` with an undefined `until` variable and no break condition. Completely broken at runtime.
+
+Fix: added `REPEAT_UNTIL` as a general node type. `parseRepeatLoop` now detects `repeat until` in position 1 and dispatches to the new branch. Compiler emits `for (let _i = 0; _i < N; _i++) { ...; if (cond) break; }`. Works in any body — agent, endpoint, top-level, pipeline — not just workflows.
+
+This is the canonical agent-refinement pattern: draft → critique → revise until quality bar met, cap iterations so plateau-loops don't run forever. Along with `while X:`, `repeat N times:`, and `for each X in list:`, Clear now has 4 working loop forms inside agent bodies.
+
+### 5. Studio IDE — "Run Evals" button
 Agent evals are separate from unit tests because they can be slower (graded evals hit real AI). Now surfaced with their own button.
 
 - `/api/run-evals` endpoint: compiles source, extracts `result.evals.schema` (auto-generated Clear test blocks with mocked AI), appends to source, runs via `clear test`. Deterministic.
@@ -49,12 +56,18 @@ Agent evals are separate from unit tests because they can be slower (graded eval
 - `renderEvalSection()` renders pass/fail lines; "no agents found" state shown when source has no agent definitions.
 - Graded evals (real AI scorecard) still CLI-only (`clear eval --graded`) — not in Studio yet, API key + running server required.
 
-### 5. New tests (9 total)
+### 6. New tests (15 total)
 - `Multi-agent: dynamic fan-out via for-each + call` — 5 tests verifying the loop pattern compiles, specialist is a generator, coordinator isn't, for..of iterates, generator-drain IIFE wraps streaming calls, endpoint await is plain.
+- `Multi-agent: repeat until bounded refinement loop` — 4 tests verifying 0 errors, bounded for loop with real max count, break condition inside loop, streaming call drained inside loop.
+- `Multi-agent: while loop inside agent body` — 1 test verifying while + nested call with stream-drain.
+- `Multi-agent: repeat N times collects agent results` — 1 test for fixed-count loop with list accumulation.
 - `Multi-agent: coordinator delegates to specialists` — 3 tests verifying both specialists are generators, coordinator drains both, call order preserved.
 - Updated `Pipeline agent calls Screener then Scorer` to reflect new drain-wrap behavior for streaming callees.
 
-### 6. Docs synced across 6 files
+### 7. New project rule in CLAUDE.md
+"Read AI-INSTRUCTIONS.md Before Writing Clear (MANDATORY)" — triggered after my first demo pass missed conventions: no `/* */` architecture diagram, self-assignment (`with report is report`), `#` block comments where `/* */` was required. Added as a standalone rule so the convention is refreshed every time, not just at session bootstrap.
+
+### 8. Docs synced across 6 files
 | File | Change |
 |------|--------|
 | `SYNTAX.md` | Added "Multi-Agent Orchestration" section — 4 patterns with worked examples. Fixed pipeline body syntax doc (both bare-name and `step with` forms). |

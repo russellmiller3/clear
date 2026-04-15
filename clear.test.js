@@ -16621,6 +16621,101 @@ when user calls POST /api/batch sending data:
 });
 
 // =============================================================================
+// MULTI-AGENT ORCHESTRATION: iterative refinement via `repeat until ... max N`
+// An agent calls a critic in a loop, stopping when the critic gives a high
+// score OR the iteration cap is hit. Canonical pattern for agent self-refinement.
+// =============================================================================
+
+describe('Multi-agent: repeat until bounded refinement loop', () => {
+  const src = `build for javascript backend
+agent 'Critic' receives draft:
+  score = ask claude 'Rate 1-10' with draft
+  send back score
+agent 'Polish' receives topic:
+  draft = topic
+  score = 0
+  repeat until score is greater than 8, max 3 times:
+    draft = ask claude 'Improve this' with draft
+    score = call 'Critic' with draft
+  send back draft`;
+
+  it('compiles with 0 errors', () => {
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('emits a bounded for loop with the max count, not a variable', () => {
+    const js = compileProgram(src).javascript;
+    const start = js.indexOf('async function agent_polish');
+    const end = js.indexOf('\n}', start);
+    const body = js.substring(start, end);
+    // Real number, not `< until`
+    expect(body).toMatch(/for \(let _i = 0; _i < 3; _i\+\+\)/);
+  });
+
+  it('emits the break condition at the end of each iteration', () => {
+    const js = compileProgram(src).javascript;
+    const start = js.indexOf('async function agent_polish');
+    const end = js.indexOf('\n}', start);
+    const body = js.substring(start, end);
+    expect(body).toMatch(/if \(score > 8\) break;/);
+  });
+
+  it('drains streaming critic call inside the loop body', () => {
+    const js = compileProgram(src).javascript;
+    const start = js.indexOf('async function agent_polish');
+    const end = js.indexOf('\n}', start);
+    const body = js.substring(start, end);
+    // Critic is streaming (it has ask claude) — coordinator drains the generator
+    expect(body).toMatch(/for await \(const _c of agent_critic\(draft\)\)/);
+  });
+});
+
+describe('Multi-agent: while loop inside agent body', () => {
+  it('compiles a while loop with nested agent call', () => {
+    const src = `build for javascript backend
+agent 'Scorer' receives x:
+  n = ask claude 'Score' with x
+  send back n
+agent 'Driver' receives seed:
+  attempts = 0
+  last = seed
+  while attempts is less than 5:
+    last = call 'Scorer' with last
+    increase attempts by 1
+  send back last`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript;
+    expect(js).toMatch(/async function agent_driver/);
+    expect(js).toMatch(/while \(attempts < 5\)/);
+    // Streaming Scorer drained inside the while body
+    expect(js).toMatch(/for await \(const _c of agent_scorer\(last\)\)/);
+  });
+});
+
+describe('Multi-agent: repeat N times collects agent results', () => {
+  it('compiles a fixed-count loop with list accumulation', () => {
+    const src = `build for javascript backend
+agent 'Gen' receives seed:
+  idea = ask claude 'One idea' with seed
+  send back idea
+agent 'Brainstorm' receives seed:
+  ideas is an empty list
+  repeat 5 times:
+    i = call 'Gen' with seed
+    add i to ideas
+  send back ideas`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript;
+    expect(js).toMatch(/for \(let _i = 0; _i < 5; _i\+\+\)/);
+    expect(js).toMatch(/for await \(const _c of agent_gen\(seed\)\)/);
+    expect(js).toContain('ideas.push(i)');
+  });
+});
+
+// =============================================================================
 // MULTI-AGENT ORCHESTRATION: coordinator pattern — one agent delegates to many
 // =============================================================================
 

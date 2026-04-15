@@ -1779,6 +1779,7 @@ pick based on the shape of the work, not the number of agents.
 | Several independent tasks on the same input (all needed, all different) | **Parallel fan-out** (`do these at the same time:`) | Known arity, all run at once, `Promise.all` under the hood |
 | A runtime list of items each needing the same work | **Dynamic fan-out** (`for each X: call 'Agent' with X; add result to list`) | List size isn't known until runtime; loops + accumulator |
 | A named, reusable A → B → C chain | **Pipeline** (`pipeline 'Name' with x:` + steps) | Name the chain, reuse it from many endpoints, compiler generates the linear chain for you |
+| Retry/refine an agent's own output until it clears a quality bar | **Iterative refinement** (`repeat until score is greater than 8, max 3 times:`) | Bounded loop — breaks early when the condition holds, caps iterations so quality plateaus don't run forever |
 
 ```clear
 # Coordinator pattern — one agent delegates to specialists
@@ -1805,6 +1806,15 @@ agent 'Triage' receives ticket:
     category is category
     priority is priority
   send back result
+
+# Iterative refinement — loop until the critic is satisfied OR cap hits
+agent 'Polish' receives topic:
+  draft = ask claude 'Write a first draft' with topic
+  score = 0
+  repeat until score is greater than 8, max 3 times:
+    draft = ask claude 'Improve this' with draft
+    score = call 'Critic' with draft
+  send back draft
 ```
 
 **Streaming-aware:** text agents stream by default (the common case for

@@ -2134,6 +2134,29 @@ result = call pipeline 'Process Inbound' with data
 Same data flows through each step end-to-end. The `result` is whatever
 the last step returned.
 
+**5. Iterative refinement — `repeat until X, max N times:`**
+```clear
+agent 'Critic' receives draft:
+  score = ask claude 'Rate 1-10 for clarity' with draft
+  send back score
+
+agent 'Polish' receives topic:
+  draft = ask claude 'Write a first draft' with topic
+  score = 0
+  repeat until score is greater than 8, max 3 times:
+    draft = ask claude 'Improve this' with draft
+    score = call 'Critic' with draft
+  send back draft
+```
+Runs the body, checks the condition after each pass, breaks early once
+it holds. The `max N times` cap guarantees termination — agent quality
+can plateau, and you don't want an infinite loop when it does. Works
+in any body (agent, endpoint, top-level), not just workflows.
+
+Other loop forms also work inside agent bodies: `while X:` for
+condition-driven loops, `repeat N times:` for fixed-count fan-out,
+`for each X in list:` for runtime-sized iteration (Pattern 3 above).
+
 ### Legacy: Pipelines
 See **Multi-Agent Orchestration → Pattern 4 (Pipeline)** above.
 

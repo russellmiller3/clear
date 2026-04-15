@@ -43,6 +43,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `MAP_APPLY` | `apply fn to each in list` (expression) | `list.map(fn)` |
 | `FILTER_APPLY` | `filter list using fn` (expression) | `list.filter(fn)` |
 | `WHILE` | `while count is less than 10:` | `while (count < 10) { ... }` |
+| `REPEAT_UNTIL` | `repeat until score is greater than 8, max 3 times:` | `for (let _i = 0; _i < 3; _i++) { ... if (score > 8) break; }` |
 | `BREAK` | `stop` / `break` | `break;` |
 | `CONTINUE` | `skip` / `continue` | `continue;` |
 | `COMMENT` | `# text` | `// text` / `# text` |
@@ -282,11 +283,12 @@ Agent directives (metadata on AGENT node, not separate nodes):
 | `knows about: 'https://url'` | RAG — fetch page text at startup, keyword search |
 | `knows about: 'file.pdf'` | RAG — read PDF/DOCX/TXT/MD at startup, keyword search |
 
-**Multi-agent orchestration.** Four patterns compose the primitives above:
+**Multi-agent orchestration.** Five patterns compose the primitives above:
 1. **Sequential chain** — nest `RUN_AGENT` calls inside an `AGENT` body, each step consumes the prior.
 2. **Parallel fan-out** — `PARALLEL_AGENTS` (`do these at the same time:`). Known arity, all concurrent (`Promise.all`).
 3. **Dynamic fan-out** — `FOR_EACH` with `RUN_AGENT` inside + `LIST_PUSH` accumulator. Runtime-sized list, serial per item.
 4. **Pipeline** — `PIPELINE` + `RUN_PIPELINE`. Named reusable linear chain, same value threads through each step.
+5. **Iterative refinement** — `REPEAT_UNTIL` (`repeat until X, max N times:`). Body runs, condition is checked at end-of-iteration, breaks early when true. Hard cap prevents plateau-loops. Canonical for agent self-refinement (draft → critic → revise).
 
 Text agents stream by default (`async function*`). When a non-streaming caller
 uses `RUN_AGENT` against a streaming callee, the compiler wraps the call with

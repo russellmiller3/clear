@@ -4328,6 +4328,22 @@ ${pad}}`;
       return `${pad}while (${cond}) {\n${bodyCode}\n${pad}}`;
     }
 
+    case NodeType.REPEAT_UNTIL: {
+      // `repeat until X, max N times:` — bounded refinement loop. Runs the
+      // body, then checks the condition; breaks if true. N guarantees
+      // termination even when the condition stays false (agent can't
+      // improve past some quality bar → stop with the best attempt).
+      const cond = exprToCode(node.condition, ctx);
+      const max = node.maxIterations;
+      if (ctx.lang === 'python') {
+        const bodyCode = compileBody(node.body, ctx);
+        return `${pad}for _i in range(${max}):\n${bodyCode}\n${pad}    if ${cond}:\n${pad}        break`;
+      }
+      const loopDeclared = new Set(ctx.declared);
+      const bodyCode = compileBody(node.body, ctx, { declared: loopDeclared });
+      return `${pad}for (let _i = 0; _i < ${max}; _i++) {\n${bodyCode}\n${pad}  if (${cond}) break;\n${pad}}`;
+    }
+
     case NodeType.TRY_HANDLE: {
       // Normalize: support both new handlers array and legacy errorVar/handleBody
       const _handlers = node.handlers || [{ errorType: null, body: node.handleBody || [] }];

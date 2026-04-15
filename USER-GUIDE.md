@@ -824,6 +824,28 @@ agent 'Triage' receives ticket:
   send back result
 ```
 
+When you want an agent to refine its own output until a critic is happy —
+or until it gives up after N tries:
+
+```clear
+agent 'Critic' receives draft:
+  score = ask claude 'Rate 1-10 for clarity' with draft
+  send back score
+
+agent 'Polish' receives topic:
+  draft = ask claude 'Write a first draft' with topic
+  score = 0
+  repeat until score is greater than 8, max 3 times:
+    draft = ask claude 'Improve this' with draft
+    score = call 'Critic' with draft
+  send back draft
+```
+
+`repeat until X, max N times:` runs the body, checks the condition at the
+end of each pass, and breaks early once it holds. The `max N` cap
+guarantees termination — even if the agent plateaus below the quality
+bar, you get back the best attempt instead of an infinite loop.
+
 The full working app is in `apps/multi-agent-research/main.clear` — a
 research assistant that splits a topic, fans out to specialists, and
 grades every answer.

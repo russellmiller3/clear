@@ -137,6 +137,7 @@ export const NodeType = Object.freeze({
 
   // Loops
   REPEAT: 'repeat',
+  REPEAT_UNTIL: 'repeat_until',
   FOR_EACH: 'for_each',
   WHILE: 'while',
   BREAK: 'break',
@@ -416,6 +417,13 @@ function returnNode(expression, line) {
 
 function repeatNode(count, body, line) {
   return { type: NodeType.REPEAT, count, body, line };
+}
+
+// `repeat until X, max N times:` — bounded refinement loop. Runs the body
+// until the condition becomes true OR the iteration cap is hit. Canonical
+// pattern for agent self-refinement (score-check-retry) loops.
+function repeatUntilNode(condition, maxIterations, body, line) {
+  return { type: NodeType.REPEAT_UNTIL, condition, maxIterations, body, line };
 }
 
 function forEachNode(variable, iterable, body, line, variable2) {
@@ -4031,6 +4039,37 @@ function parseRepeatLoop(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
   let pos = 1; // skip "repeat"
+
+  // `repeat until X, max N times:` — bounded refinement loop. The condition
+  // checks at the END of each iteration; the max guarantees termination
+  // even if the condition never holds. Canonical pattern for agent
+  // self-refinement (draft → critique → revise until quality bar or cap).
+  if (tokens.length > pos && tokens[pos].value === 'until') {
+    // Find "max N times" at the end
+    let maxIterations = 10; // safety default
+    let condEnd = tokens.length;
+    for (let t = tokens.length - 1; t >= pos + 2; t--) {
+      if ((tokens[t].value === 'times' || tokens[t].canonical === 'times_op') &&
+          t >= 2 && tokens[t - 1].type === TokenType.NUMBER &&
+          tokens[t - 2].value === 'max') {
+        maxIterations = tokens[t - 1].value;
+        condEnd = t - 2;
+        // Swallow trailing comma between the condition and `, max N times`
+        if (condEnd > 0 && tokens[condEnd - 1].type === TokenType.COMMA) condEnd--;
+        break;
+      }
+    }
+    const condExpr = parseExpression(tokens, pos + 1, line, condEnd);
+    if (condExpr.error) {
+      errors.push({ line, message: condExpr.error });
+      return { node: null, endIdx: startIdx + 1 };
+    }
+    const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
+    if (body.length === 0) {
+      errors.push({ line, message: 'The repeat-until loop is empty — it needs code inside to run. Indent some code below it. Example:\n  repeat until score is greater than 8, max 5 times:\n    draft = ask claude \'Improve this\' with draft' });
+    }
+    return { node: repeatUntilNode(condExpr.node, maxIterations, body, line), endIdx };
+  }
 
   // Parse count expression (up to "times" keyword)
   // Note: "times" maps to canonical "times_op" in the synonym table

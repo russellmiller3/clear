@@ -386,6 +386,20 @@ pipeline 'Process' with text:
   score with 'Scorer'
 ```
 
+**5. Iterative refinement** — loop an agent until a critic is satisfied,
+cap iterations so it always terminates.
+```clear
+agent 'Polish' receives topic:
+  draft = ask claude 'Write a first draft' with topic
+  score = 0
+  repeat until score is greater than 8, max 3 times:
+    draft = ask claude 'Improve this' with draft
+    score = call 'Critic' with draft
+  send back draft
+```
+Also works: `while X:`, `repeat N times:`, `for each X in list:` inside
+any agent body.
+
 When a non-streaming agent calls a streaming one, the compiler drains the
 stream automatically — the caller sees a string, not an async iterator.
 Never write `for await ... yield` yourself inside an agent body; `call 'X'`

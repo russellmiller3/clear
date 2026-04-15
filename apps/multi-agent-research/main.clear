@@ -1,44 +1,83 @@
-# Multi-Agent Research Assistant
-#
-# Showcase of every multi-agent orchestration pattern Clear supports:
-#   1. Sequential chain — one agent calls the next (coordinator → specialist)
-#   2. Parallel fan-out — `do these at the same time` (known arity)
-#   3. Dynamic fan-out — `for each item: call 'Agent'` (runtime-sized lists)
-#   4. Skill — reusable tool + instruction bundle shared by multiple agents
-#
-# One request → many AI calls → one combined answer.
-# Pipelines are demoed in SYNTAX.md — left out here to keep auto-generated
-# tests clean (pipelines emit their own evals).
+/*
+Multi-Agent Research Assistant — showcase of every orchestration pattern
+
+  ┌──────────┐  POST /api/research  ┌────────────────┐
+  │ Browser  │ ───────────────────► │ Research Topic │  (coordinator)
+  │  (page)  │ ◄─────────────────── │     Agent      │
+  └──────────┘       report          └───────┬────────┘
+                                             │
+                           ┌─────────────────┼──────────────────┐
+                           ▼                 ▼                  ▼
+                    ┌──────────────┐  ┌──────────────┐   ┌──────────────┐
+                    │ Research All │  │ Polished Rpt │   │  Quality     │
+                    │  (for each)  │  │ (repeat      │   │   Critic     │
+                    └──────┬───────┘  │  until...)   │   └──────────────┘
+                           │          └──────────────┘
+                           ▼
+                    ┌──────────────┐
+                    │  Researcher  │  (specialist — streams token-by-token)
+                    └──────────────┘
+
+AGENT FLOW:
+
+  Research Topic [skill: Report Style]
+    │
+    ├─ wraps topic into a 1-item list
+    │
+    ├─> Research All [dynamic fan-out]
+    │     │
+    │     └─ for each question: call Researcher ─> append to findings
+    │
+    └─> Polished Report [iterative refinement]
+          │
+          └─ repeat until score > 7, max 2 times:
+               ├─ improve the draft
+               └─ call Quality Critic ─> score
+
+Five orchestration patterns in one file:
+  1. Sequential chain     — Research Topic delegates step-by-step
+  2. Parallel fan-out     — Grade Answer runs two graders simultaneously
+  3. Dynamic fan-out      — Research All loops a list through Researcher
+  4. Iterative refinement — Polished Report loops until the critic passes
+  5. Skill bundle         — Report Style shared as reusable instructions
+*/
+
+# JUMP TO: Database | Specialists | Skill | Coordinators | Endpoints | Frontend
 
 build for web and javascript backend
 
 database is local memory
+
+# Database
 
 create a Reports table:
   topic, required
   report, required
   created_at, auto
 
-# === SPECIALIST AGENTS ===
-# Streaming is the default for text agents. When a coordinator `call`s a
-# streaming specialist, the compiler drains the generator into a string
-# automatically — you never see the generator object.
+# Specialists — small, focused, each does one thing
+# Streaming is default for text agents; coordinators see the final string,
+# not the async generator (compiler drains it automatically).
 
 agent 'Researcher' receives question:
   answer = ask claude 'Answer this question in 2-3 sentences' with question
   send back answer
 
-agent 'Fact Checker' receives answer:
-  verdict = ask claude 'Rate this answer 1-10 for factual accuracy. Return just the number.' with answer
+agent 'Fact Checker' receives claim:
+  verdict = ask claude 'Rate this claim 1-10 for factual accuracy. Return just the number.' with claim
   send back verdict
 
-agent 'Sentiment Rater' receives answer:
-  tone = ask claude 'Is this answer confident, cautious, or uncertain? One word.' with answer
+agent 'Sentiment Rater' receives claim:
+  tone = ask claude 'Is this answer confident, cautious, or uncertain? One word.' with claim
   send back tone
 
-# === SKILL: reusable tool + instructions bundle ===
-# Skills merge into any agent via `uses skills:`. Instructions get prepended
-# to the agent's prompt; listed tools get added to the agent's tool set.
+agent 'Quality Critic' receives draft:
+  grade = ask claude 'Rate this report 1-10 for clarity and completeness. Return just the number.' with draft
+  send back grade
+
+# Skill — reusable tool + instruction bundle merged into any agent that uses it
+# `uses skills:` prepends these instructions to the agent's prompt and
+# inherits any listed tools.
 
 skill 'Report Style':
   instructions:
@@ -46,22 +85,21 @@ skill 'Report Style':
     Lead with the answer, follow with the reasoning.
     Never say 'As an AI'.
 
-# === COORDINATOR AGENTS ===
+# Coordinators
 
-# Pattern 2 — Parallel fan-out. Known arity: exactly two graders, both run
-# at once and results meet back at the `create grade` record.
-agent 'Grade Answer' receives answer:
+# Pattern 2 — Parallel fan-out. Known arity: exactly two graders run at
+# once and meet back at the `create grade` record.
+agent 'Grade Answer' receives claim:
   do these at the same time:
-    accuracy = call 'Fact Checker' with answer
-    tone = call 'Sentiment Rater' with answer
+    accuracy = call 'Fact Checker' with claim
+    tone = call 'Sentiment Rater' with claim
   create grade:
     accuracy is accuracy
     tone is tone
   send back grade
 
 # Pattern 3 — Dynamic fan-out. Runtime-sized list of questions, each
-# delegated to a specialist, results accumulated. The compiler emits a
-# real for..of loop with a generator-drain IIFE around each streaming call.
+# delegated to a specialist, results accumulated into a list.
 agent 'Research All' receives questions:
   findings is an empty list
   for each question in questions:
@@ -69,35 +107,47 @@ agent 'Research All' receives questions:
     add answer to findings
   send back findings
 
-# Pattern 1 — Sequential chain. Top-level coordinator delegates in order.
-# Each downstream call receives the result of the previous step. The input
-# arrives as a list of comma-separated questions already split on the client.
-agent 'Research Topic' receives questions:
-  uses skills: 'Report Style'
-  findings = call 'Research All' with questions
-  report = ask claude 'Synthesize these findings into a final report' with findings
-  send back report
+# Pattern 4 — Iterative refinement. Loops the draft through a critic
+# until the quality bar is met, or stops after the max cap. The cap
+# keeps the loop bounded when the agent plateaus below the bar.
+agent 'Polished Report' receives findings:
+  draft = ask claude 'Synthesize these findings into a final report' with findings
+  grade = 0
+  repeat until grade is greater than 7, max 2 times:
+    draft = ask claude 'Improve the clarity and completeness of this report' with draft
+    grade = call 'Quality Critic' with draft
+  send back draft
 
-# === ENDPOINTS ===
+# Pattern 1 — Sequential chain. Top-level coordinator: wrap the single
+# topic into a list (so Research All can loop), fan out, then refine.
+agent 'Research Topic' receives topic:
+  uses skills: 'Report Style'
+  question_list is an empty list
+  add topic to question_list
+  findings = call 'Research All' with question_list
+  final_report = call 'Polished Report' with findings
+  send back final_report
+
+# Endpoints
 
 allow server to accept requests from frontend
 
 when user sends request to /api/research:
-  report = call 'Research Topic' with request's questions
-  new_entry = save request as new Report with report is report
-  send back new_entry
+  final_report = call 'Research Topic' with request's topic
+  saved = save request as new Report with report is final_report
+  send back saved
 
 when user requests data from /api/reports:
   all_reports = get all Reports
   send back all_reports
 
-# === FRONTEND ===
+# Frontend
 
 page 'Multi-Agent Research':
   on page load get reports from '/api/reports'
   heading 'Research Assistant'
-  text 'Enter one or more questions separated by commas. A coordinator agent dispatches a specialist to research each question, grades every answer in parallel, and synthesizes a final report.'
-  'Topics (comma-separated)' is a text input saved as a topic
+  text 'Enter a topic. The coordinator dispatches a specialist to research it, loops a critic to refine the final report, and shows the polished answer below.'
+  'Topic' is a text input saved as a topic
   button 'Research':
     send topic as a new request to '/api/research'
     get reports from '/api/reports'

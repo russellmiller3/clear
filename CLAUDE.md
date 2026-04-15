@@ -84,6 +84,11 @@ If `clear test` doesn't cover it, the gap is in the compiler's test generator �
 
 Never declare an app "done" or "compiles clean" based only on step 1. Steps 2-3 catch bugs in the COMPILED OUTPUT that the compiler tests don't cover (e.g. parentheses in skill instructions breaking generated JS, missing closing braces, malformed string concatenation).
 
+## Read AI-INSTRUCTIONS.md Before Writing Clear (MANDATORY)
+**Always re-read `AI-INSTRUCTIONS.md` before writing a `.clear` file — every time, not just at session start.** The file covers the conventions that make Clear code readable: mandatory ASCII architecture diagram at the top wrapped in `/* */`, no self-assignment (`x is x`), plain English section headers, `=` for numbers and `is` for strings, single-quote canonical form, and several others. Missing these conventions produces code that compiles but reads badly — and Russell will send it back.
+
+If you're editing an existing `.clear` file, read AI-INSTRUCTIONS.md first so your edits match the surrounding style. If you're starting a new one, read AI-INSTRUCTIONS.md first so you start with the diagram and conventions in place.
+
 ## Key Files
 - `index.js` -- public API, `compileProgram(source)` is the entry point
 - `tokenizer.js` -> `parser.js` -> `validator.js` -> `compiler.js` (the pipeline)
