@@ -16962,6 +16962,158 @@ when user calls POST /api/run sending data:
   });
 });
 
+// =============================================================================
+// PROBE QUALITY — every receiving-var in the core templates must resolve to
+// a real probe, not the 'hello' fallback. `probeQuality` metadata is the
+// machine-readable flag; string length is the coarse sanity check.
+// =============================================================================
+
+describe('Eval suite: probe quality — known nouns', () => {
+  it('Researcher with `receives question` gets a realistic question (not hello)', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Researcher' receives question:
+  answer = ask claude 'Answer briefly' with question
+  send back answer
+when user calls POST /api/ask sending data:
+  out = call 'Researcher' with data's question
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-researcher');
+    expect(spec.input.question).toBeDefined();
+    expect(spec.input.question.length).toBeGreaterThan(10);
+    expect(spec.input.question).not.toBe('hello');
+    expect(spec.probeQuality).toBe('real');
+  });
+
+  it('Polished Report with `receives findings` gets a list of strings', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Polished Report' receives findings:
+  draft = ask claude 'Synthesize' with findings
+  send back draft
+when user calls POST /api/polish sending data:
+  out = call 'Polished Report' with data's findings
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-polished_report');
+    expect(Array.isArray(spec.input.findings)).toBe(true);
+    expect(spec.input.findings.length > 1).toBe(true);
+    expect(typeof spec.input.findings[0]).toBe('string');
+    expect(spec.probeQuality).toBe('real');
+  });
+
+  it('Synthetic endpoint probe wraps value in { input: ... } and still tracks quality', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Inner' receives topic:
+  x = ask claude 'X' with topic
+  send back x
+agent 'Outer' receives t:
+  y = call 'Inner' with t
+  send back y
+when user calls POST /api/out sending data:
+  z = call 'Outer' with data's t
+  send back z`);
+    const innerRole = r.evalSuite.find(e => e.id === 'role-inner');
+    expect(innerRole.synthetic).toBe(true);
+    expect(innerRole.input.input).toBeDefined();
+    expect(typeof innerRole.input.input).toBe('string');
+    expect(innerRole.input.input.length).toBeGreaterThan(10);
+    expect(innerRole.probeQuality).toBe('real');
+  });
+});
+
+describe('Eval suite: probe quality — table-schema-aware', () => {
+  it('agent with `receives candidate` + Candidates table builds object from fields', () => {
+    const r = compileProgram(`build for javascript backend
+create a Candidates table:
+  name, required
+  resume
+  email
+agent 'Screener' receives candidate:
+  x = ask claude 'screen' with candidate
+  send back x
+when user calls POST /api/screen sending data:
+  out = call 'Screener' with data's candidate
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-screener');
+    const probe = spec.input.candidate;
+    expect(typeof probe).toBe('object');
+    expect(probe).not.toBeNull();
+    // All three schema fields represented
+    expect(probe.name).toBeDefined();
+    expect(probe.resume).toBeDefined();
+    expect(probe.email).toBeDefined();
+    expect(spec.probeQuality).toBe('real');
+    expect(spec.probeSource).toBe('table-schema');
+  });
+
+  it('falls back to known-noun dict when no matching table exists', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Screener' receives candidate:
+  x = ask claude 'screen' with candidate
+  send back x
+when user calls POST /api/screen sending data:
+  out = call 'Screener' with data's candidate
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-screener');
+    // Known noun for 'candidate' is a small structured object
+    const probe = spec.input.candidate;
+    expect(typeof probe).toBe('object');
+    expect(spec.probeQuality).toBe('real');
+    expect(spec.probeSource).toBe('known-noun');
+  });
+});
+
+describe('Eval suite: probe quality — prompt-hint fallback', () => {
+  it('unknown var with prompts mentioning multiple known nouns composes an object probe', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Analyzer' receives payload:
+  x = ask claude 'Extract the company name and industry from this' with payload
+  send back x
+when user calls POST /api/analyze sending data:
+  out = call 'Analyzer' with data's payload
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-analyzer');
+    // `payload` isn't in the dict, but the prompt hints at company + industry
+    const probe = spec.input.payload;
+    expect(typeof probe).toBe('object');
+    expect(probe.company || probe.industry).toBeDefined();
+    expect(spec.probeQuality).toBe('real');
+    expect(spec.probeSource).toBe('prompt-hints');
+  });
+});
+
+describe('Eval suite: probe quality — generic fallback is the last resort', () => {
+  it('agent with no-signal receiving var and no prompt hints falls through to generic', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Opaque' receives xyz:
+  send back xyz
+when user calls POST /api/opaque sending data:
+  out = call 'Opaque' with data's xyz
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-opaque');
+    expect(spec.probeQuality).toBe('generic');
+    expect(spec.probeSource).toBe('fallback');
+  });
+});
+
+describe('Eval suite: probe quality — multi-agent-research smoke', () => {
+  it('every runnable spec has a non-hello probe when loaded from the demo file', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const src = fs.readFileSync(path.join(process.cwd(), 'apps/multi-agent-research/main.clear'), 'utf8');
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const runnable = (r.evalSuite || []).filter(s => s.kind !== 'info' && s.runnable !== false);
+    expect(runnable.length).toBeGreaterThan(0);
+    for (const spec of runnable) {
+      // No probe reduces to the string 'hello'
+      const serialized = JSON.stringify(spec.input);
+      expect(serialized).not.toBe('"hello"');
+      expect(serialized).not.toBe('{"input":"hello"}');
+      // All multi-agent-research receiving vars are in the dict, so quality is real
+      expect(spec.probeQuality).toBe('real');
+    }
+  });
+});
+
 describe('Eval suite: input probes are shaped for the endpoint', () => {
   it('synthetic endpoints always get { input: X } body', () => {
     const r = compileProgram(`build for javascript backend

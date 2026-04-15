@@ -1063,24 +1063,183 @@ function generateEvalSuite(body) {
     return found;
   }
 
-  // Generic probe inputs keyed by common parameter names.
-  function sampleInput(agentNode) {
+  // === PROBE BUILDER ===
+  // Builds a realistic test input for an agent from three signal sources,
+  // in priority order:
+  //   1. Known-noun dictionary — receiving var matches a common noun
+  //      (question/topic/candidate/lead/message/...). Most agents hit this.
+  //   2. Table-schema-aware — receiving var (singular or plural) matches a
+  //      CREATE_TABLE in the same source. Build an object from its fields.
+  //   3. Prompt-hint — scan the agent's ask-claude prompts for recognizable
+  //      nouns (company, industry, email, ...). Compose an object probe.
+  //   4. Fallback — `'hello'` with `probeQuality: 'generic'`. The eval UI
+  //      should surface this so the user knows to override with an `evals:`
+  //      scenario. Core templates must not fall through here.
+  //
+  // Returns `{ value, quality: 'real' | 'generic', source: string }`.
+
+  // A short value that matches the shape implied by a CREATE_TABLE field.
+  function _sampleValueForField(field) {
+    const t = (field.type || 'text').toLowerCase();
+    const n = (field.name || '').toLowerCase();
+    if (t === 'number' || t === 'integer' || t === 'float') return 42;
+    if (t === 'boolean' || t === 'bool') return true;
+    if (t === 'timestamp' || t === 'datetime' || n.endsWith('_at')) return new Date('2026-04-15T12:00:00Z').toISOString();
+    if (n === 'email' || n.includes('email')) return 'test@example.com';
+    if (n === 'url' || n.includes('url')) return 'https://example.com';
+    if (n === 'phone' || n.includes('phone')) return '+1-555-0100';
+    if (n === 'name' || n === 'title' || n === 'subject' || n === 'label') return 'Sample ' + field.name;
+    if (n === 'body' || n === 'content' || n === 'description' || n === 'text' || n === 'summary') return 'Sample ' + field.name + ' text for evaluation.';
+    if (n === 'role') return 'user';
+    if (n === 'status') return 'open';
+    return 'sample ' + field.name;
+  }
+
+  // Known-noun dictionary. When an agent receives a value named after a
+  // common noun, we can be very specific about a realistic probe shape.
+  // Keep this dictionary covered by every receiving-var name used in the
+  // 8 core templates + apps/multi-agent-research (verified by smoke test).
+  const KNOWN_PROBES = {
+    // Plain-string probes (simple scalars)
+    question: 'What is quantum computing in one sentence?',
+    message: 'Hi, I need help with my recent order.',
+    text: 'The quick brown fox jumps over the lazy dog. It was surprisingly fast.',
+    topic: 'quantum computing',
+    subject: 'Cannot log in to my account',
+    claim: 'The Earth orbits the Sun once every 365 days.',
+    statement: 'The Earth orbits the Sun once every 365 days.',
+    draft: 'Quantum computing is a new kind of computer. It is different from regular computers.',
+    content: 'This is sample content for evaluation — around 20 words of plain text.',
+    description: 'A cozy café with strong coffee and quiet tables.',
+    name: 'Alice Smith',
+    email: 'alice@example.com',
+    url: 'https://example.com/sample',
+    body: 'I am unable to access my account. Could you help me reset my password?',
+    msg: 'Hi, I need help with my recent order.',
+    q: 'What is quantum computing?',
+    input: 'hello',
+
+    // List-valued probes (agent iterates them)
+    items: ['first sample item for rating', 'second sample item for rating'],
+    questions: ['What is quantum computing?', 'How does entanglement work?'],
+    findings: [
+      'Quantum computers use qubits that can be in superposition, representing 0 and 1 at once.',
+      'Entanglement lets two qubits share a state regardless of distance.',
+      'Shor\'s algorithm would let a quantum computer factor large numbers much faster than classical hardware.'
+    ],
+    tickets: ['Order has not arrived', 'Wrong item in the box'],
+    texts: ['First piece of text to analyze.', 'Second piece of text to analyze.'],
+    messages: ['Can you help me?', 'I have a problem with my order.'],
+    claims: ['The Earth is flat.', 'Water boils at 100°C at sea level.'],
+
+    // Structured-object probes (agents that expect several fields together)
+    candidate: { name: 'Jane Doe', resume: 'Senior engineer with 8 years of backend experience.', email: 'jane@example.com' },
+    lead: { company: 'Acme Corp', industry: 'SaaS', employees: 500, contact: 'sales@acme.com' },
+    request: { topic: 'quantum computing', depth: 'intro' },
+    data: { title: 'Sample post', body: 'Sample content for evaluation.' },
+    post: { title: 'Hello World', body: 'This is a sample post about quantum computing.' },
+    user: { name: 'Alice', email: 'alice@example.com' },
+    order: { id: 1, customer: 'Alice', total: 99.99, status: 'shipped' },
+    product: { name: 'Widget', description: 'A small but useful gadget', price: 9.99 },
+    ticket: { subject: 'Cannot log in', body: 'My password reset email never arrives.', priority: 'high' },
+    item: { name: 'Sample Item', description: 'A red leather notebook with gold edges.', price: 29.99 },
+    feedback: { rating: 4, comment: 'Mostly good, but arrived late.' },
+  };
+
+  // Scalar substitutions the prompt-hint composer uses when it finds a noun
+  // mentioned in an agent's ask-claude prompts but the noun isn't a direct
+  // receiving-var. Kept separate from KNOWN_PROBES so object-valued entries
+  // there (candidate, lead, order...) don't accidentally get inlined as
+  // single fields inside a composed probe.
+  const HINT_SCALARS = {
+    company: 'Acme Corp',
+    industry: 'SaaS',
+    employees: 500,
+    email: 'alice@example.com',
+    name: 'Alice Smith',
+    topic: 'quantum computing',
+    question: 'What is quantum computing?',
+    product: 'Widget',
+    order: 'order-1234',
+    customer: 'Alice Smith',
+    title: 'Sample Title',
+    summary: 'A short summary of the content.',
+  };
+
+  // Nouns worth scanning for inside ask-claude prompts when all other
+  // signals miss. Only the ones that map cleanly to a short string probe.
+  const PROMPT_HINT_NOUNS = ['company', 'industry', 'employees', 'email', 'name', 'topic', 'question', 'product', 'order', 'customer', 'title', 'summary'];
+
+  function _collectTableSchema(receivingVar) {
+    if (!receivingVar) return null;
+    const v = receivingVar.toLowerCase();
+    // Clear parses `create a X table:` to NodeType.DATA_SHAPE (not CREATE_TABLE).
+    const tables = body.filter(n => n.type === NodeType.DATA_SHAPE && n.name);
+    const match = tables.find(t => {
+      const tn = t.name.toLowerCase();
+      // Match against singular → plural (candidate → Candidates), plural → plural,
+      // exact, plural → singular, and -es plurals (addresses → address).
+      return tn === v || tn === v + 's' || tn === v + 'es' || tn.replace(/s$/, '') === v || tn.replace(/es$/, '') === v;
+    });
+    if (!match || !Array.isArray(match.fields)) return null;
+    const obj = {};
+    for (const field of match.fields) {
+      obj[field.name] = _sampleValueForField(field);
+    }
+    return obj;
+  }
+
+  function _collectPromptHintProbe(agentNode) {
+    const prompts = [];
+    (function walk(nodes) {
+      if (!Array.isArray(nodes)) return;
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI) {
+          const p = n.expression.prompt;
+          if (p && typeof p === 'object' && p.value) prompts.push(p.value);
+        }
+        if (n.body) walk(n.body);
+        if (n.thenBranch) walk(n.thenBranch);
+        if (n.otherwiseBranch) walk(n.otherwiseBranch);
+      }
+    })(agentNode.body);
+    const haystack = prompts.join(' ').toLowerCase();
+    const hits = PROMPT_HINT_NOUNS.filter(k => haystack.includes(k));
+    if (hits.length < 2) return null;
+    const obj = {};
+    for (const k of hits) {
+      if (Object.prototype.hasOwnProperty.call(HINT_SCALARS, k)) obj[k] = HINT_SCALARS[k];
+    }
+    return Object.keys(obj).length > 0 ? obj : null;
+  }
+
+  function buildProbe(agentNode) {
     const v = agentNode.receivingVar || 'input';
-    const probes = {
-      question: 'What is quantum computing in one sentence?',
-      message: 'hello',
-      text: 'The quick brown fox jumps over the lazy dog.',
-      topic: 'quantum computing',
-      ticket: 'My order has not arrived and it has been two weeks.',
-      lead: 'Acme Corp — 500 employees, looking to streamline ops.',
-      candidate: 'Senior engineer with 8 years of backend experience.',
-      draft: 'This is a short draft that needs revision.',
-      item: 'sample item for rating',
-      claim: 'The Earth orbits the Sun.',
-      items: ['sample item 1', 'sample item 2'],
-      questions: ['What is quantum computing?']
-    };
-    return probes[v] !== undefined ? probes[v] : 'hello';
+    // 1. Table-schema first — a table the user explicitly declared in the
+    //    source file is the strongest signal. If the user wrote a custom
+    //    `Candidates` table with 12 fields, our 3-field default probe would
+    //    skip most of them. Favor the user's own shape.
+    const schemaProbe = _collectTableSchema(v);
+    if (schemaProbe) {
+      return { value: schemaProbe, quality: 'real', source: 'table-schema' };
+    }
+    // 2. Known-noun — no matching table, use language-level default.
+    if (Object.prototype.hasOwnProperty.call(KNOWN_PROBES, v)) {
+      return { value: KNOWN_PROBES[v], quality: 'real', source: 'known-noun' };
+    }
+    // 3. Prompt-hint — compose from nouns mentioned in the agent's own prompts.
+    const hintProbe = _collectPromptHintProbe(agentNode);
+    if (hintProbe) {
+      return { value: hintProbe, quality: 'real', source: 'prompt-hints' };
+    }
+    // 4. Generic fallback — UI should flag this so the user adds an override.
+    return { value: 'hello', quality: 'generic', source: 'fallback' };
+  }
+
+  // Legacy shim — suite entries call this to get just the value. The full
+  // probe metadata is attached to the spec separately below.
+  function sampleInput(agentNode) {
+    return buildProbe(agentNode).value;
   }
 
   // Build the grader's rubric from the agent's actual definition. Every
@@ -1192,7 +1351,8 @@ function generateEvalSuite(body) {
     // Build a reasonable JSON body from the first agent's receiving variable.
     const firstAgentName = [...endpointByAgent.entries()].find(([, path]) => path === ep.path)?.[0];
     const firstAgent = agents.find(a => a.name === firstAgentName);
-    const body = firstAgent ? { [firstAgent.receivingVar || 'input']: sampleInput(firstAgent) } : { input: 'hello' };
+    const firstProbe = firstAgent ? buildProbe(firstAgent) : { value: 'hello', quality: 'generic', source: 'fallback' };
+    const body = firstAgent ? { [firstAgent.receivingVar || 'input']: firstProbe.value } : { input: firstProbe.value };
 
     suite.push({
       id: `e2e-${sanitizeName(ep.path.replace(/[/:]/g, '_'))}`,
@@ -1201,6 +1361,8 @@ function generateEvalSuite(body) {
       agentName: firstAgentName || null,
       endpointPath: ep.path,
       input: body,
+      probeQuality: firstProbe.quality,
+      probeSource: firstProbe.source,
       rubric: `The endpoint ${ep.path} should return a non-empty, relevant response when called with a realistic input. Judge the output on: 1) it's non-empty, 2) it looks like a real answer (not boilerplate or errors), 3) the top-level flow made sense given the input.`,
       expected: { kind: 'non-empty' }
     });
@@ -1221,7 +1383,8 @@ function generateEvalSuite(body) {
     // Real endpoints expect the user's body shape; synthetic endpoints
     // always read `req.body.input` — keep the shape consistent with what
     // the eval runner knows to post.
-    const input = isSynthetic ? { input: sampleInput(agent) } : { [receivingVar]: sampleInput(agent) };
+    const probe = buildProbe(agent);
+    const input = isSynthetic ? { input: probe.value } : { [receivingVar]: probe.value };
     const role = describeAgentRole(agent);
     const schema = findOutputSchema(agent);
 
@@ -1239,6 +1402,8 @@ function generateEvalSuite(body) {
       endpointPath: path,
       synthetic: isSynthetic,
       input,
+      probeQuality: probe.quality,
+      probeSource: probe.source,
       definition: role || null,  // shown in UI so the user knows what's being graded
       rubric,
       expected: { kind: 'non-empty' }
@@ -1252,6 +1417,8 @@ function generateEvalSuite(body) {
       endpointPath: path,
       synthetic: isSynthetic,
       input,
+      probeQuality: probe.quality,
+      probeSource: probe.source,
       expected: schema
         ? { kind: 'fields', fields: schema.map(f => ({ name: f.name, type: f.type || 'text' })) }
         : { kind: 'non-empty' }
