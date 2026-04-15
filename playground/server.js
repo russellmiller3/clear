@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import { createHash } from 'crypto';
 import { chromium } from 'playwright';
+import { EVAL_JWT_SECRET, mintEvalAuthToken } from './eval-auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -474,7 +475,22 @@ async function ensureEvalChild(serverJS) {
   for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
     if (existsSync(join(runtimeDir, f))) copyFileSync(join(runtimeDir, f), join(rtDir, f));
   }
-  const env = { ...process.env, PORT: String(EVAL_PORT), JWT_SECRET: 'clear-eval-secret', ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
+  // Share a single eval-scoped secret with the child so tokens minted by
+  // mintEvalAuthToken in this process are verified by the child's auth
+  // middleware. The compiler emits inline jsonwebtoken-based auth for the
+  // core templates (reads JWT_SECRET). We also set CLEAR_AUTH_SECRET to
+  // the same value so runtime/auth.js-based templates at least share the
+  // same secret, though that scheme's token FORMAT differs (2-part HMAC
+  // vs RFC 7519 JWT) — supporting it would require a second mint helper.
+  // Without this change, every `requires login` endpoint 401s on every
+  // probe, and 7 of 8 core templates score 0/N on evals (see eval-auth.js).
+  const env = {
+    ...process.env,
+    PORT: String(EVAL_PORT),
+    JWT_SECRET: EVAL_JWT_SECRET,
+    CLEAR_AUTH_SECRET: EVAL_JWT_SECRET,
+    ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}),
+  };
   const child = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
   child._lastServerJS = fullJS;
   evalChild = child;
@@ -704,11 +720,20 @@ async function callEvalEndpoint(port, path, body) {
   const MAX_ATTEMPTS = 3;
   const BACKOFF_MS = 500;
   let lastErr = null;
+  // Mint once per call (not once per retry) so retries don't stack tokens.
+  // Token TTL is 1 hour — trivially outlives any single eval spec run.
+  const authToken = mintEvalAuthToken();
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const r = await fetch(`http://localhost:${port}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // Authorize every probe as a test user so `requires login`
+          // endpoints pass the auth gate and the agent actually runs.
+          // Child verifies with JWT_SECRET=EVAL_JWT_SECRET (shared at spawn).
+          'Authorization': `Bearer ${authToken}`,
+        },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(45_000)
       });
