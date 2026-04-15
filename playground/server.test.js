@@ -664,6 +664,47 @@ try {
     assert(/Unknown eval id/.test(r2.data.error || ''), 'second call has unknown-id error');
   }
 
+  // ----- SSE streaming endpoint -----------------------------------------
+  // /api/run-eval-stream wraps runEvalSuite and streams per-spec progress
+  // as `eval_row` SSE frames so the Tests pane can update each row live
+  // instead of freezing the UI for 60-90s on a multi-agent suite. The
+  // final frame is `eval_results` with the full aggregate (same shape as
+  // the JSON that /api/run-eval returns). Verified here with a no-agent
+  // source so no child-process spawn is needed.
+  console.log('\n📡 /api/run-eval-stream');
+  {
+    const noAgentSrc = 'build for javascript backend\nwhen user requests data from /api/ping:\n  send back \'pong\'';
+    const r = await fetch(BASE + '/api/run-eval-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: noAgentSrc }),
+    });
+    assert(r.status === 200, 'stream endpoint returns 200');
+    const ct = r.headers.get('content-type') || '';
+    assert(ct.includes('text/event-stream'), 'Content-Type is text/event-stream');
+
+    // Drain the stream and collect frames.
+    const body = await r.text();
+    const frames = [];
+    for (const line of body.split('\n')) {
+      if (!line.startsWith('data: ')) continue;
+      try { frames.push(JSON.parse(line.slice(6).trim())); } catch {}
+    }
+    assert(frames.length >= 1, 'stream emits at least one SSE frame');
+    const suites = frames.filter(f => f.type === 'suite');
+    const rows = frames.filter(f => f.type === 'eval_row');
+    const results = frames.filter(f => f.type === 'eval_results');
+    // Suite frame must fire BEFORE any eval_row so the UI can render skeleton
+    // rows upfront instead of staying blank during the 60-90s run.
+    assert(suites.length === 1, 'emits exactly one suite frame at the start');
+    // Guard: only inspect suites[0] when it exists — prevents a cascading
+    // crash of the whole test runner if the previous assertion fails.
+    assert(suites[0] && Array.isArray(suites[0].suite) && suites[0].suite.length === 0, 'empty suite for no-agent source');
+    assert(rows.length === 0, 'no-agent source produces zero eval_row frames (no specs to run)');
+    assert(results.length === 1, 'emits exactly one eval_results frame at the end');
+    assert(results[0].ok === true && results[0].empty === true, 'eval_results marks the empty suite');
+  }
+
   // ----- Cost estimate endpoint -----------------------------------------
   // /api/eval-suite-estimate compiles source and returns a pre-run estimate
   // so the UI can show a modal like "This run calls Claude N times (~$X)".

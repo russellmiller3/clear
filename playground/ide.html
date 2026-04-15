@@ -1796,8 +1796,9 @@ function renderEvalSection(data) {
       pass: `<span class="eval-status eval-pass">pass</span>`,
       fail: `<span class="eval-status eval-fail">fail</span>`,
       skip: `<span class="eval-status eval-skip">skip</span>`,
+      running: `<span class="eval-status eval-pending">running…</span>`,
       pending: `<span class="eval-status eval-pending">not run</span>`,
-    })[status];
+    })[status] || `<span class="eval-status eval-pending">not run</span>`;
     const kindBadge = `<span class="eval-kind eval-kind-${spec.kind}">${spec.kind.toUpperCase()}</span>`;
     const scoreBadge = r?.score ? `<span class="eval-score">${r.score}/10</span>` : '';
     // Cost chip — only shown once the eval has run and incurred real API cost.
@@ -1923,15 +1924,61 @@ async function runEvals() {
     if (!confirm(msg)) return;
   }
   testRunning.evals = true;
+  // Seed a streaming result object so the Tests pane renders "running…" rows
+  // as they land instead of staying blank for 60–90s on a big suite. Rows
+  // get upserted by id as each `eval_row` SSE frame arrives, then the final
+  // `eval_results` frame replaces the whole object with the real aggregate.
+  testResults.evals = { suite: [], results: [], passed: 0, failed: 0, skipped: 0, streaming: true };
   if (activeTab === 'tests') showTests();
   try {
-    const resp = await fetch('/api/run-eval', {
+    const resp = await fetch('/api/run-eval-stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source }),
     });
-    const data = await resp.json();
-    testResults.evals = data;
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let frame;
+        try { frame = JSON.parse(line.slice(6).trim()); } catch { continue; }
+        if (frame.type === 'suite') {
+          // Populate the suite shape upfront so all rows render as "not run"
+          // right away. eval_row frames then flip them to running / pass / fail.
+          testResults.evals.suite = frame.suite || [];
+          if (activeTab === 'tests') showTests();
+        } else if (frame.type === 'eval_row') {
+          if (!testResults.evals.results) testResults.evals.results = [];
+          const existing = testResults.evals.results.filter(r => r.id !== frame.id);
+          if (frame.phase === 'start') {
+            existing.push({ id: frame.id, status: 'running', kind: frame.kind, agentName: frame.agentName });
+          } else if (frame.phase === 'end') {
+            // `frame` carries the full result fields (status, feedback,
+            // score, input, output, duration, usage) — keep them all.
+            existing.push({
+              id: frame.id, status: frame.status, kind: frame.kind,
+              feedback: frame.feedback, score: frame.score, input: frame.input,
+              output: frame.output, duration: frame.duration, usage: frame.usage,
+            });
+          }
+          testResults.evals.results = existing;
+          if (activeTab === 'tests') showTests();
+        } else if (frame.type === 'eval_results') {
+          testResults.evals = frame;
+          testResults.evals.streaming = false;
+        } else if (frame.type === 'error') {
+          testResults.evals = { ok: false, error: frame.message || 'stream error', duration: 0 };
+        }
+      }
+    }
     try { localStorage.setItem('clear_test_results', JSON.stringify(testResults)); } catch {}
   } catch (err) {
     testResults.evals = { ok: false, error: err.message || 'Network error', duration: 0 };

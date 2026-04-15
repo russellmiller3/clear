@@ -1207,6 +1207,52 @@ app.post('/api/run-eval', async (req, res) => {
   res.json(result);
 });
 
+// SSE variant — same runner, but streams per-spec `eval_row` frames as they
+// resolve so the UI (Tests pane) can flip each row from pending → running →
+// pass/fail live instead of freezing for 60-90s on a big suite. Final frame
+// is `eval_results` with the same aggregate shape /api/run-eval returns.
+//
+// Shape per frame:
+//   data: {"type":"eval_row","phase":"start","id":"role-foo","kind":"role","index":0,"total":17}
+//   data: {"type":"eval_row","phase":"end","id":"role-foo","status":"pass","index":0,"total":17,...}
+//   ...repeat for each spec...
+//   data: {"type":"eval_results","ok":true,"passed":11,"failed":6,"skipped":0,...}
+//
+// On error, emits a single `{"type":"error","message":"..."}` frame then ends.
+app.post('/api/run-eval-stream', async (req, res) => {
+  const { source, id } = req.body || {};
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  // Disable proxy buffering — some reverse proxies otherwise coalesce the
+  // whole stream into one blob, defeating the point of SSE.
+  res.setHeader('X-Accel-Buffering', 'no');
+  const send = (obj) => {
+    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
+  };
+  // Emit the suite shape upfront so the UI can render all rows as "pending"
+  // before any spec starts. Otherwise the Tests pane stays blank until the
+  // first `eval_row` lands — defeats the point of streaming. Cheap second
+  // compile (~10ms for typical apps); runEvalSuite does its own compile so
+  // this doesn't leak into the runner.
+  try {
+    const compiled = compileForEval(source);
+    if (compiled.ok && compiled.compiled) {
+      // `evalSuite` is undefined (not []) for sources with no agents. Coerce
+      // so the UI always gets exactly one suite frame it can trust as the
+      // signal that streaming has started, even if the suite is empty.
+      send({ type: 'suite', suite: compiled.compiled.evalSuite || [] });
+    }
+  } catch {}
+  try {
+    const result = await runEvalSuite(source, id, (row) => send({ type: 'eval_row', ...row }));
+    send({ type: 'eval_results', ...result });
+  } catch (err) {
+    send({ type: 'error', message: err?.message || String(err) });
+  }
+  res.end();
+});
+
 // Legacy endpoint kept for any stale clients — now just a no-op redirect.
 app.post('/api/run-evals', async (req, res) => {
   req.body = req.body || {};
