@@ -513,6 +513,7 @@ function askForNode(variable, inputType, label, line) {
   else if (baseType === 'file') htmlType = 'file';
   else if (baseType === 'yes/no') { htmlType = 'checkbox'; tag = 'input'; }
   else if (baseType === 'long text') { htmlType = 'textarea'; tag = 'textarea'; }
+  else if (baseType === 'rich text') { htmlType = 'rich-text'; tag = 'div'; }
   else if (baseType === 'choice') { htmlType = 'select'; tag = 'select'; }
 
   const ui = {
@@ -1629,11 +1630,31 @@ const CANONICAL_DISPATCH = new Map([
       return endIdx;
     }
     // 3. API call: send X to '/url'
+    // Also handle `send X as a new post to '/url'` — here the tokenizer has
+    // greedy-matched `post to` as a single `post_to` token (or `put to`,
+    // `delete from`, `get from`), so we treat those as the URL connector too.
+    // Without this, the resource word gets swallowed and the whole line is
+    // misinterpreted as `send back X`.
     if (ctx.tokens.length >= 3) {
       let toPos = -1;
+      let methodOverride = null; // 'POST'|'PUT'|'DELETE'|'GET' if greedy method-token found
       for (let k = 1; k < ctx.tokens.length; k++) {
-        if (ctx.tokens[k].canonical === 'to_connector' && k + 1 < ctx.tokens.length && ctx.tokens[k + 1].type === TokenType.STRING) {
+        const t = ctx.tokens[k];
+        // Plain "to" followed by URL string
+        if (t.canonical === 'to_connector' && k + 1 < ctx.tokens.length && ctx.tokens[k + 1].type === TokenType.STRING) {
           toPos = k; break;
+        }
+        // Greedy method synonyms: `post to`, `put to`, `get from`, `delete from`
+        // When seen in `send X as a new <resource> post to URL` style, the
+        // preceding word (`post`/`put`/etc.) is actually the resource name,
+        // not a method — treat the canonical token as the URL connector.
+        const METHOD_MAP = { post_to: 'POST', put_to: 'PUT', get_from: 'GET', delete_from: 'DELETE' };
+        if (METHOD_MAP[t.canonical] && k + 1 < ctx.tokens.length && ctx.tokens[k + 1].type === TokenType.STRING) {
+          toPos = k;
+          // Only override method if it's not the default POST — caller wrote
+          // `send X put to` → use PUT; `send X post to` → stay POST (default).
+          methodOverride = METHOD_MAP[t.canonical];
+          break;
         }
       }
       if (toPos > 0) {
@@ -1651,7 +1672,13 @@ const CANONICAL_DISPATCH = new Map([
           }
         }
         const url = ctx.tokens[toPos + 1].value;
-        ctx.body.push({ type: NodeType.API_CALL, method: 'POST', url, fields, line: ctx.line });
+        // When `post_to`/`put_to`/etc. captured the connector, the token
+        // before it (if it's an identifier like `post`/`ticket`/`widget`) was
+        // the resource name being created. It appears twice: once as the
+        // greedy canonical token's first word, once visually in `as a new X`.
+        // It's already consumed, so no extra work to strip from `fields`.
+        const method = methodOverride || 'POST';
+        ctx.body.push({ type: NodeType.API_CALL, method, url, fields, line: ctx.line });
         return ctx.i + 1;
       }
     }
@@ -4397,7 +4424,7 @@ function parseStyleDef(lines, startIdx, blockIndent, errors) {
 // 'Hourly Rate' as number input saves to rate
 
 function isInputType(token) {
-  return ['text_input', 'number_input', 'file_input', 'dropdown', 'checkbox', 'text_area'].includes(token.canonical);
+  return ['text_input', 'number_input', 'file_input', 'dropdown', 'checkbox', 'text_area', 'rich_text'].includes(token.canonical);
 }
 
 // 'Label' is a text input that saves to var
@@ -4415,6 +4442,7 @@ function parseLabelIsInput(tokens, line) {
   else if (typeToken.canonical === 'dropdown') inputType = 'choice';
   else if (typeToken.canonical === 'checkbox') inputType = 'yes/no';
   else if (typeToken.canonical === 'text_area') inputType = 'long text';
+  else if (typeToken.canonical === 'rich_text') inputType = 'rich text';
   pos++;
 
   let variable = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -4479,6 +4507,9 @@ function parseLabelFirstInput(tokens, line) {
     pos++;
   } else if (typeToken.canonical === 'text_area') {
     inputType = 'long text';
+    pos++;
+  } else if (typeToken.canonical === 'rich_text') {
+    inputType = 'rich text';
     pos++;
   } else if (typeToken.canonical === 'file_input') {
     inputType = 'file';

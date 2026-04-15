@@ -111,7 +111,36 @@ export function validate(ast) {
   validateChainDepth(ast.body, warnings);
   validateExprComplexity(ast.body, warnings);
   validateClassify(ast.body, errors);
+  validateLayoutNesting(ast.body, warnings);
   return { errors, warnings };
+}
+
+/**
+ * LAYOUT NESTING TRAP: app_layout uses h-screen + overflow-hidden which
+ * clips any child that needs full height. Warn when page_hero or
+ * page_section is nested inside app_layout — it'll render blank silently.
+ */
+function validateLayoutNesting(body, warnings) {
+  const CLIPS = new Set(['app_layout']);
+  const CLIPPED = new Set(['page_hero', 'page_section', 'page_section_dark']);
+  function walk(nodes, insideClippingAncestor) {
+    for (const n of nodes) {
+      if (n.type === NodeType.SECTION) {
+        if (insideClippingAncestor && CLIPPED.has(n.styleName)) {
+          warnings.push({
+            line: n.line,
+            severity: 'warning',
+            message: `Section '${n.title}' uses style '${n.styleName}' inside an 'app_layout' container — it will be clipped and render blank. Move page_hero/page_section to the top level of the page, OR wrap inside 'app_main'/'app_content' for scrolling.`
+          });
+        }
+        const nextInside = insideClippingAncestor || CLIPS.has(n.styleName);
+        if (n.body) walk(n.body, nextInside);
+      } else if (n.body && Array.isArray(n.body)) {
+        walk(n.body, insideClippingAncestor);
+      }
+    }
+  }
+  walk(body, false);
 }
 
 /**

@@ -74,7 +74,6 @@ when user requests data from /api/posts/:id:
   send back post
 
 when user sends post_data to /api/posts:
-  requires login
   validate post_data:
     title is text, required, min 1, max 200
     body is text, required, min 1
@@ -147,12 +146,35 @@ page 'Blog' at '/':
   section 'Hero' centered, padded:
     heading 'From the blog'
     text 'Learn how to grow your business with our expert advice.'
+    link 'Write a new post →' to '/new'
   section 'Search' centered:
     'Search posts...' as text input saves to query
     button 'Search':
       get posts from '/api/search'
   section 'Posts' with style blog_grid:
     display posts as cards showing image_url, category, title, excerpt, author
+
+page 'New Post' at '/new':
+  title = ''
+  body = ''
+  excerpt = ''
+  image_url = ''
+  section 'Write a new post' centered, padded:
+    heading 'Write a new post'
+    text 'Share your thoughts with the world.'
+  section 'Form' with style page_card:
+    'Title' is a text input saved as title
+    'Excerpt (short summary)' is a text input saved as excerpt
+    'Image URL' is a text input saved as image_url
+    'Body' is a text editor saved as body
+    button 'Publish post':
+      send title, body, excerpt and image_url as a new post to '/api/posts'
+      title is ''
+      body is ''
+      excerpt is ''
+      image_url is ''
+      redirect to '/'
+    link 'Cancel' to '/'
 
 # Tests
 

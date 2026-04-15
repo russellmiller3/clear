@@ -967,7 +967,16 @@ export function compile(ast, options = {}) {
 
   // Generate E2E test script for backend apps
   if (needsJSBackend) {
-    result.tests = generateE2ETests(ast.body);
+    const testGen = generateE2ETests(ast.body);
+    // New generator shape: { script, warnings }. Keep legacy string fallback.
+    if (testGen && typeof testGen === 'object' && 'script' in testGen) {
+      result.tests = testGen.script;
+      if (Array.isArray(testGen.warnings) && testGen.warnings.length > 0) {
+        result.warnings = (result.warnings || []).concat(testGen.warnings);
+      }
+    } else {
+      result.tests = testGen;
+    }
   }
 
   // Generate agent evals:
@@ -985,10 +994,14 @@ function generateE2ETests(body) {
   // Walk AST to collect endpoints and data shapes
   const endpoints = [];
   const schemas = {};
-  function collect(nodes) {
+  // Track which URLs the frontend actually wires up via buttons / page actions.
+  // Used below to decide whether to label CRUD flow tests as "User can..." (real
+  // UI exists) or "API: ..." (endpoint-only — no UI button triggers the flow).
+  const uiPostUrls = new Set(); // URLs that some button/action POSTs to
+  function collect(nodes, inPage = false) {
     for (const node of nodes) {
       if (node.type === NodeType.ENDPOINT) {
-        const ep = { method: node.method, path: node.path, hasAuth: false, hasValidation: false, receivingVar: node.receivingVar, rules: [], body: node.body || [] };
+        const ep = { method: node.method, path: node.path, line: node.line, hasAuth: false, hasValidation: false, receivingVar: node.receivingVar, rules: [], body: node.body || [] };
         for (const child of (node.body || [])) {
           if (child.type === NodeType.REQUIRES_AUTH) ep.hasAuth = true;
           if (child.type === NodeType.REQUIRES_ROLE) ep.hasAuth = true;
@@ -1004,7 +1017,12 @@ function generateE2ETests(body) {
         const fields = node.fields.map(f => ({ name: f.name, type: f.fieldType, required: f.required, default: f.defaultValue, fk: f.fk || null }));
         schemas[node.name] = fields;
       }
-      if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) collect(node.body || []);
+      // Inside pages, record any POST API_CALL — that's a real UI wiring
+      if (inPage && node.type === NodeType.API_CALL && node.method === 'POST' && node.url) {
+        uiPostUrls.add(node.url);
+      }
+      if (node.type === NodeType.PAGE) collect(node.body || [], true);
+      else if (node.type === NodeType.SECTION || node.type === NodeType.BUTTON || node.type === NodeType.FORM) collect(node.body || [], inPage);
     }
   }
   collect(body);
@@ -1438,8 +1456,17 @@ function generateE2ETests(body) {
       const getOpts = getEp.hasAuth ? ', { headers: AUTH_HEADERS }' : '';
       const expectedStatus = postEp.returns201 ? 201 : 200;
 
-      lines.push(`  // --- Happy-path flow: create and view ${rn} ---`);
-      lines.push(`  await test("User can create ${article(rn)} ${rn} and see it in the list", async () => {`);
+      // Name the test honestly. Every flow test is explicitly labeled
+      // "Endpoint:" (API contract only) or "UI:" (user clicks a real button).
+      // If no UI button POSTs to this endpoint, emit the Endpoint version only
+      // AND record a warning so the compiler can surface "your POST /api/foo
+      // has no UI — users can't reach it."
+      const hasUI = uiPostUrls.has(postEp.path);
+      const testLabel = hasUI
+        ? `UI: user can create ${article(rn)} ${rn} via the form and see it in the list`
+        : `Endpoint: POSTing to ${postEp.path} then GETting ${getEp.path} returns the new ${rn} (no UI button wired — see compiler warning)`;
+      lines.push(`  // --- Happy-path flow: create and view ${rn}${hasUI ? ' (UI-wired)' : ' (API-only)'} ---`);
+      lines.push(`  await test(${JSON.stringify(testLabel)}, async () => {`);
       // Build payload
       lines.push(`    const payload = ${JSON.stringify(buildPayload(postEp))};`);
       const deps = depMap[postEp.path] || [];
@@ -1471,7 +1498,10 @@ function generateE2ETests(body) {
 
       // Create-then-delete flow (if DELETE endpoint exists)
       if (deleteEp && deleteEp.hasAuth) {
-        lines.push(`  await test("User can create ${article(rn)} ${rn} then delete it", async () => {`);
+        const delLabel = hasUI
+          ? `UI: user can create ${article(rn)} ${rn} then delete it`
+          : `Endpoint: creating then deleting ${article(rn)} ${rn} via the API removes it from the list (no UI button wired)`;
+        lines.push(`  await test(${JSON.stringify(delLabel)}, async () => {`);
         lines.push(`    const payload = ${JSON.stringify(buildPayload(postEp))};`);
         for (const dep of deps) {
           lines.push(`    payload["${dep.field}"] = createdIds["${dep.parentTable}"];`);
@@ -1857,7 +1887,27 @@ function generateE2ETests(body) {
 
   lines.push('run();');
 
-  return lines.join('\n');
+  // === UI-REACHABILITY WARNINGS ===
+  // For every POST endpoint with validation, check that some UI button actually
+  // wires to it. If not, tell the author: the test labeled "Endpoint: ..." is
+  // green, but a real user has no way to trigger this endpoint.
+  const warnings = [];
+  for (const ep of endpoints) {
+    if (ep.method !== 'POST' || !ep.hasValidation) continue;
+    // Skip auth-scaffold endpoints (/auth/login etc.) — those are built-in
+    if (ep.path.startsWith('/auth/') || ep.path === '/api/seed') continue;
+    if (uiPostUrls.has(ep.path)) continue;
+    // Only warn if the app HAS a frontend — pure backends don't need UI wiring.
+    const hasWebTarget = body.some(n => n.type === NodeType.TARGET && /web|both/.test(n.value || ''));
+    if (!hasWebTarget) continue;
+    warnings.push({
+      line: ep.line || 1,
+      severity: 'warning',
+      message: `POST ${ep.path} has no UI button that triggers it. Users can't reach this endpoint from the app. Add a button with \`send <fields> as a new <resource> to '${ep.path}'\` inside a page, or remove the endpoint.`
+    });
+  }
+
+  return { script: lines.join('\n'), warnings };
 }
 
 /**
@@ -4463,6 +4513,11 @@ ${pad}}`;
       if (ctx.mode === 'backend') return null; // frontend-only
       if (ctx.lang === 'python') return `${pad}# Input: ${node.label} (${node.inputType})`;
       const inputId = `input_${sanitizeName(node.variable)}`;
+      // Rich text editors wire themselves up in _initRichTextEditors — they
+      // update _state on each text-change and have no <input> to listen to.
+      if (node.inputType === 'rich text') {
+        return `${pad}// Input: ${node.label} (rich text — bound by _initRichTextEditors)`;
+      }
       const inputType = node.inputType === 'number' ? 'number' : node.inputType === 'percent' ? 'number' : 'text';
       return `${pad}// Input: ${node.label}\n${pad}document.getElementById('${inputId}').addEventListener('input', (e) => {\n${pad}  _state.${sanitizeName(node.variable)} = ${inputType === 'number' ? 'Number(e.target.value)' : 'e.target.value'};\n${pad}  _recompute();\n${pad}});`;
     }
@@ -7400,6 +7455,7 @@ function buildHTML(body) {
   let hasChart = false; // Track if any chart nodes exist (for ECharts CDN)
   let hasMap = false;   // Track if any map display nodes exist (for Leaflet CDN)
   let hasQR = false;    // Track if any QR display nodes exist (for QRCode CDN)
+  let hasRichText = false; // Track if any rich text editors exist (for Quill CDN)
   let hasChat = false;  // Track if any chat display nodes exist (for chat CSS)
   const pages = [];
   const sectionStack = []; // Track parent section presets for context-aware rendering
@@ -8017,6 +8073,16 @@ function buildHTML(body) {
       <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
       <textarea id="${ui.id}" class="textarea textarea-bordered w-full" placeholder="${ui.label}" rows="6"></textarea>
     </fieldset>`);
+          } else if (ui.htmlType === 'rich-text') {
+            // Rich text editor: Quill via CDN. `_clear_rich_init` runs once at
+            // page load for every ${ui.id} instance and keeps _state in sync.
+            hasRichText = true;
+            parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
+      <legend class="fieldset-legend text-xs uppercase tracking-widest font-semibold text-base-content/50">${ui.label}</legend>
+      <div class="rich-text-wrap border border-base-300/60 rounded-field bg-base-100">
+        <div id="${ui.id}" class="rich-text-editor" data-clear-rich-text="${ui.id}" data-placeholder="${ui.label}"></div>
+      </div>
+    </fieldset>`);
           } else if (ui.htmlType === 'select' && ui.choices) {
             const options = ui.choices.map(c => `        <option value="${c}">${c}</option>`).join('\n');
             parts.push(`    <fieldset class="${fieldsetCls}"${clAttr(node)}>
@@ -8506,7 +8572,7 @@ ${options}
     }
   }
 
-  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks, hasChart, hasMap, hasQR };
+  return { pageTitle, htmlBody: parts.join('\n'), pages, inlineStyleBlocks, hasChart, hasMap, hasQR, hasRichText };
 }
 
 /**
@@ -8525,7 +8591,7 @@ function formatInlineText(text) {
  * Compile a Clear AST + compiled JS into a complete, runnable index.html.
  */
 function compileToHTML(body, compiledJS) {
-  const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart, hasMap, hasQR } = buildHTML(body);
+  const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart, hasMap, hasQR, hasRichText } = buildHTML(body);
   const styles = extractStyles(body);
   // Collect top-level variables for style resolution (e.g. primary_color is '#2563eb')
   const styleVars = {};
@@ -8551,18 +8617,43 @@ function compileToHTML(body, compiledJS) {
   if (hasRouting) {
     const routeMap = pages.map(p => `  '${p.route}': '${sanitizeName(p.title)}'`).join(',\n');
     routerJS = `
-// --- Hash Router ---
+// --- Router ---
+// Reads both location.pathname (server-side navigation, direct URLs, route
+// selector) and location.hash (in-iframe clicks). Pathname wins when set,
+// hash is the fallback so hash-style links keep working. Also intercepts
+// <a href> clicks to same-origin routes so we don't hit the server on each
+// click (SPA feel while still supporting refresh/direct-URL).
 const _routes = {
 ${routeMap}
 };
+function _currentRoute() {
+  const p = (location.pathname || '/').replace(/\\/$/, '') || '/';
+  if (_routes.hasOwnProperty(p)) return p;
+  const h = (location.hash || '').slice(1);
+  if (h && _routes.hasOwnProperty(h)) return h;
+  return Object.keys(_routes)[0]; // first declared route (usually '/')
+}
 function _router() {
-  const hash = location.hash.slice(1) || '/';
+  const current = _currentRoute();
   for (const [route, pageId] of Object.entries(_routes)) {
     const el = document.getElementById('page_' + pageId);
-    if (el) el.style.display = (hash === route) ? 'block' : 'none';
+    if (el) el.style.display = (route === current) ? 'block' : 'none';
   }
+  document.title = (_routes[current] || '').replace(/_/g, ' ') || document.title;
 }
+window.addEventListener('popstate', _router);
 window.addEventListener('hashchange', _router);
+document.addEventListener('click', function(e) {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return;
+  if (_routes.hasOwnProperty(href)) {
+    e.preventDefault();
+    history.pushState({}, '', href);
+    _router();
+  }
+});
 _router();`;
   }
 
@@ -8603,6 +8694,7 @@ _router();`;
 ${hasChart ? '  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>' : ''}
 ${hasMap ? '  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />\n  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"><\/script>' : ''}
 ${hasQR ? '  <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"><\/script>' : ''}
+${hasRichText ? '  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />\n  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.min.js"><\/script>\n  <style>.rich-text-editor{min-height:180px;border:none!important}.ql-toolbar{border:none!important;border-bottom:1px solid var(--color-base-300)!important;border-radius:0.375rem 0.375rem 0 0}.ql-container{border:none!important;font-family:inherit;font-size:15px}.rich-text-wrap .ql-editor{min-height:150px}</style>' : ''}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Geist+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
@@ -8617,6 +8709,41 @@ ${htmlBody}
   <script${scriptType}>
 ${(() => { const utils = _getUsedUtilities(compiledJS + routerJS); return utils.length > 0 ? '// --- Runtime ---\n' + utils.join('\n') + '\n' : ''; })()}${compiledJS}
 ${routerJS}
+${hasRichText ? `
+// --- Rich text editors (Quill) ---
+// Auto-wire every [data-clear-rich-text] element: mount a Quill instance and
+// keep _state[variable] in sync with the editor's HTML. Read-only display is
+// handled by existing _recompute setTextContent paths (which set innerHTML
+// for rich-text-bound fields).
+(function _initRichTextEditors() {
+  if (typeof Quill === 'undefined') return;
+  document.querySelectorAll('[data-clear-rich-text]').forEach(function(el) {
+    if (el.__quill) return;
+    var varName = (el.id || '').replace(/^input_/, '');
+    var q = new Quill(el, {
+      theme: 'snow',
+      placeholder: el.dataset.placeholder || '',
+      modules: { toolbar: [
+        [{header: [1, 2, 3, false]}],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{list: 'ordered'}, {list: 'bullet'}],
+        ['link', 'blockquote', 'code-block'],
+        ['clean']
+      ]}
+    });
+    el.__quill = q;
+    q.on('text-change', function() {
+      if (typeof _state !== 'undefined') {
+        _state[varName] = q.root.innerHTML === '<p><br></p>' ? '' : q.root.innerHTML;
+      }
+    });
+    // Initial sync from _state if already has value
+    if (typeof _state !== 'undefined' && _state[varName]) {
+      q.root.innerHTML = _state[varName];
+    }
+  });
+})();
+` : ''}
   <\/script>
 ${htmlBody.includes('data-nav-item') ? `  <script>
   document.querySelectorAll('[data-nav-item]').forEach(function(el) {
@@ -9379,12 +9506,31 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   }
 
   // Serve static files for full-stack apps (HTML, CSS, assets)
-  const hasPages = body.some(n => n.type === NodeType.PAGE);
-  if (hasPages) {
+  // Every declared page gets its own Express route that serves index.html so
+  // the browser gets a 200 + HTML on refresh/direct-nav. The client-side
+  // router in the compiled HTML then picks the right page based on
+  // window.location.pathname.
+  const pageNodes = body.filter(n => n.type === NodeType.PAGE);
+  if (pageNodes.length > 0) {
     lines.push('');
     lines.push("const path = require('path');");
     lines.push("app.use(express.static(__dirname));");
-    lines.push("app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));");
+    const pageRoutes = new Set();
+    for (const p of pageNodes) {
+      const route = p.route || '/';
+      // Skip routes that collide with API prefixes — the API routes above
+      // already handle those.
+      if (route.startsWith('/api/') || route.startsWith('/auth/')) continue;
+      pageRoutes.add(route);
+    }
+    // Always ensure root is served
+    pageRoutes.add('/');
+    // Use `{ root: __dirname }` option: Express 5's send module mishandles
+    // absolute paths on non-root request URLs (confuses path vs URL). With
+    // the root option, send resolves safely.
+    for (const route of pageRoutes) {
+      lines.push(`app.get(${JSON.stringify(route)}, (req, res) => res.sendFile('index.html', { root: __dirname }));`);
+    }
   }
 
   lines.push('');

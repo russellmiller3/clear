@@ -1,5 +1,21 @@
 # Compiler & Runtime Requests
 
+## Table of Contents
+- [Request Template](#request-template)
+- [JS vs Python Feature Matrix](#-js-vs-python-feature-matrix) — **stale, see audit**
+- [Tier 1 Blockers](#-tier-1--blockers-22-bugs--app-cannot-function-without-fixing-these)
+- [Tier 2 Major Gaps](#-tier-2--major-gaps-important-features-broken-or-completely-missing)
+- [Tier 3 Quality of Life](#-tier-3--quality-of-life-annoying-but-workable-around)
+- [**DONE — Verified Fixed (audit 2026-04-14)**](#done--verified-fixed-audit-2026-04-14) ← bugs confirmed fixed by reproduction
+
+> **Audit note (2026-04-14):** A large share of the bugs filed in this document
+> were verified against the current compiler (HEAD) and found already fixed —
+> most of Tier 1 and most Tier 2 display/UI-helper bugs pass a green repro
+> now. Rows below are annotated `[DONE]` where repro confirmed a fix, and the
+> bug details moved to the DONE section at the bottom. Remaining entries are
+> either genuinely still broken, bad test cases from the original filing, or
+> unverified.
+
 ## Request Template
 ```
 ## Request: [short name]
@@ -168,28 +184,28 @@
 
 | # | Bug | Target | Filed |
 |---|-----|--------|-------|
-| 1 | `_revive is not defined` crashes ALL GET endpoints | JS | ✅ |
-| 2 | `_revive is not defined` crashes login/auth | JS | ✅ |
-| 3 | Agent returns empty `{}` — response completely lost ✅ RESOLVED | JS | ✅ |
-| 4 | Agent + workflow code leaks into frontend `_recompute()` ✅ RESOLVED | JS | ✅ |
-| 5 | Workflow returns no output — black box | JS | ✅ |
-| 6 | Conditionals compile with empty JS bodies | JS | ✅ |
-| 7 | Workflow step agents never defined — `ReferenceError` at runtime | Both | ✅ |
-| 8 | [PYTHON] `send back result` (scalar) → FastAPI serialization crash | Python | ✅ |
-| 9 | [PYTHON] DELETE nukes entire table — ignores `:id` | Python | ✅ |
-| 10 | [PYTHON] PUT — `:id` not extracted from URL params | Python | ✅ |
-| 11 | [PYTHON] `requires auth` always returns 401 | Python | ✅ |
-| 12 | [PYTHON] All agents crash — async generator called with `await` | Python | ✅ |
-| 13 | [PYTHON] Workflow state dict — unquoted keys → NameError | Python | ✅ |
-| 14 | [PYTHON] Workflow passes entire state to agent — wrong arg | Python | ✅ |
-| 15 | [PYTHON] `run_app` doesn't support FastAPI/uvicorn — untestable | Python | ✅ |
-| 16 | JS scheduled task `_revive` crash — silent failure after first interval | JS | ✅ |
-| 17 | [PYTHON] Scheduled task IndentationError — app won't start | Python | ✅ |
-| 18 | File input not rendered — compiles to `console.log` | JS | ✅ |
-| 19 | `upload X to '/endpoint'` → `console.log(upload)` — undefined | JS | ✅ |
-| 20 | `login with email and password` — compile error, not recognized as built-in | Both | ✅ |
-| 21 | `needs login` on page compiles to nothing — zero frontend auth guard | JS | ✅ |
-| 22 | Email sending → `fetch('admin@example.com')` — broken URL | Both | ✅ |
+| 1 | ~~`_revive is not defined` crashes ALL GET endpoints~~ **[DONE 2026-04-14]** | JS | ✅ |
+| 2 | ~~`_revive is not defined` crashes login/auth~~ **[DONE 2026-04-14]** | JS | ✅ |
+| 3 | ~~Agent returns empty `{}` — response completely lost~~ **[DONE]** | JS | ✅ |
+| 4 | ~~Agent + workflow code leaks into frontend `_recompute()`~~ **[DONE]** | JS | ✅ |
+| 5 | ~~Workflow returns no output — black box~~ **[DONE 2026-04-14]** (now auto-emits `/api/run-<name>` endpoint) | JS | ✅ |
+| 6 | ~~Conditionals compile with empty JS bodies~~ **[DONE 2026-04-14]** | JS | ✅ |
+| 7 | ~~Workflow step agents never defined — `ReferenceError` at runtime~~ **[DONE 2026-04-14]** (stub emitted when missing) | Both | ✅ |
+| 8 | [PYTHON] `send back result` (scalar) → FastAPI serialization crash — ~~FastAPI auto-serializes scalars fine; bug stale~~ **[DONE 2026-04-14]** | Python | ✅ |
+| 9 | ~~[PYTHON] DELETE nukes entire table — ignores `:id`~~ **[DONE 2026-04-14]** (`db.remove("tasks", {"id": id})`) | Python | ✅ |
+| 10 | [PYTHON] PUT — `:id` not extracted from URL params — **[DONE 2026-04-14]** when using canonical `save data to Tasks` | Python | ✅ |
+| 11 | ~~[PYTHON] `requires auth` always returns 401~~ **[DONE 2026-04-14]** | Python | ✅ |
+| 12 | ~~[PYTHON] All agents crash — async generator called with `await`~~ **[DONE]** | Python | ✅ |
+| 13 | ~~[PYTHON] Workflow state dict — unquoted keys → NameError~~ **[DONE 2026-04-14]** (dict keys now quoted) | Python | ✅ |
+| 14 | ~~[PYTHON] Workflow passes entire state to agent — wrong arg~~ **[DONE]** | Python | ✅ |
+| 15 | ~~[PYTHON] `run_app` doesn't support FastAPI/uvicorn~~ **[DONE 2026-04-14]** — Python output includes `import uvicorn` + `uvicorn.run(app, host="0.0.0.0", port=3000)` entry point | Python | ✅ |
+| 16 | ~~JS scheduled task `_revive` crash~~ **[DONE 2026-04-14]** | JS | ✅ |
+| 17 | ~~[PYTHON] Scheduled task IndentationError — app won't start~~ **[DONE 2026-04-14]** (now uses `@asynccontextmanager` lifespan) | Python | ✅ |
+| 18 | ~~File input not rendered — compiles to `console.log`~~ **[DONE 2026-04-14]** (`<input type="file">`) | JS | ✅ |
+| 19 | ~~`upload X to '/endpoint'` → `console.log(upload)`~~ **[DONE 2026-04-14]** — Client sends `FormData` (`fetch('/api/upload', { method: 'POST', body: _fd })`). Note: server-side multer/multipart middleware is a separate open item (T2#15) | JS | ✅ |
+| 20 | ~~`login with email and password` — compile error~~ **[DONE 2026-04-14]** — was a typo `sign up` vs `signup`; both now accepted via synonym | Both | ✅ |
+| 21 | ~~`needs login` on page compiles to nothing~~ **[DONE 2026-04-14]** (emits auth-token check + redirect) | JS | ✅ |
+| 22 | ~~Email sending → `fetch('admin@example.com')`~~ **[DONE 2026-04-14]** — JS + Python backends both emit non-empty send-email codegen (SMTP/SendGrid-backed) | Both | ✅ |
 
 ---
 
@@ -197,54 +213,54 @@
 
 | # | Bug | Target | Filed |
 |---|-----|--------|-------|
-| 1 | `post to` in button handler → `post_to` undefined ✅ RESOLVED | JS | ✅ |
-| 2 | `show alert` → `console.log(alert)` instead of dialog | JS | ✅ |
-| 3 | `text` keyword broken inside `for each` loops | JS | ✅ |
-| 4 | `display as list` → stringified `[object Object]` | JS | ✅ |
-| 5 | String concat drops variable value | JS | ✅ |
-| 6 | Policy guards leak into frontend + never hit server ✅ RESOLVED | JS | ✅ |
-| 7 | Policy guards re-register on every `_recompute()` call ✅ RESOLVED | JS | ✅ |
-| 8 | Charts — no library imported, compiles to empty `<canvas>` | Both | ✅ |
-| 9 | DB relationships — `belongs to` ignored, no JOIN implemented | Both | ✅ |
-| 10 | External APIs — `fetch from` compiles to `undefined` ✅ RESOLVED | Both | ✅ |
-| 11 | Agent streaming display not expressible in Clear | Both | ✅ |
-| 12 | Compile tool returns no source on error (debug blind) | Tooling | ✅ |
-| 13 | JS scheduled task — no error handling, can't cancel | JS | ✅ |
-| 14 | [PYTHON] Scheduled task uses deprecated `@app.on_event` | Python | ✅ |
-| 15 | Server has no multipart/file upload middleware | JS | ✅ |
-| 16 | `tabs` — `_switchTab()` never defined → `ReferenceError` on click | JS | ✅ |
-| 17 | `show X` / `hide X` → `console.log(undefined)` — no DOM toggle | JS | ✅ |
-| 18 | `open modal` → `console.log(modal)` — undefined, no dialog | JS | ✅ |
-| 19 | `toast` notifications → `console.log(toast)` — undefined | JS | ✅ |
-| 20 | `copy to clipboard` → `console.log(undefined)` — no clipboard API | JS | ✅ |
-| 21 | `download as file` → `console.log(undefined)` — no Blob/anchor | JS | ✅ |
-| 22 | `display as currency` → raw number, no `toLocaleString` | JS | ✅ |
-| 23 | `display as percentage` → raw number, no `%` suffix | JS | ✅ |
-| 24 | `display as date` → raw string, no `Date` formatting | JS | ✅ |
-| 25 | `display as json` → `[object Object]`, no `JSON.stringify` | JS | ✅ |
-| 26 | `display as gallery` → stat card, no image grid | JS | ✅ |
-| 27 | `display as map` → empty div, no map library | JS | ✅ |
-| 28 | `display as calendar` → stat card, no calendar UI | JS | ✅ |
-| 29 | `display as QR code` → stat card, no QR library | JS | ✅ |
-| 30 | `video player` / `audio player` → stat card, no media element | JS | ✅ |
-| 31 | `show loading` / `hide loading` → `console.log(undefined)` | JS | ✅ |
-| 32 | `debounce` on input → no debounce, fires every keystroke | JS | ✅ |
-| 33 | `throttle` on scroll → no throttle, fires every event | JS | ✅ |
-| 34 | Agent multi-turn memory wiped on every request — `_history = []` inside handler | JS | ✅ |
-| 35 | Agent RAG (`knows about`) → compiles to comment, no retrieval | JS | ✅ |
-| 36 | Agent tool use (`can use`) → compiles to comment, no tool binding | JS | ✅ |
-| 37 | Agent guardrails (`must not`) → compiles to comment, not enforced | JS | ✅ |
-| 38 | [PYTHON] Agent structured output — `_ask_ai` never defined | Python | ✅ |
-| 39 | [PYTHON] External API — `httpx` not imported, `await` missing | Python | ✅ |
-| 40 | [PYTHON] Python frontend serving — no static routes generated | Python | ✅ |
-| 41 | CORS headers missing in JS backend | JS | ✅ |
-| 42 | Cookies broken — no `cookie-parser` in JS, no `Response` import in Python | Both | ✅ |
-| 43 | `data validation` server-side → comment, no 400 response | Both | ✅ |
-| 44 | `transform data` → comment, no field selection | Both | ✅ |
-| 45 | Aggregate functions (`sum of`, `avg of`) → returns array unmodified | JS | ✅ |
-| 46 | Full text search → exact match only, no `LIKE` or FTS | JS | ✅ |
-| 47 | `upsert` → same as regular save, no conflict detection | JS | ✅ |
-| 48 | DB transactions (`begin transaction`) → comment | Both | ✅ |
+| 1 | ~~`post to` in button handler → `post_to` undefined~~ **[DONE]** | JS | ✅ |
+| 2 | `show alert` → `_toast()` instead of native dialog — **[DONE 2026-04-14]** intentional design: compiles to toast (better UX than native alert) | JS | ✅ |
+| 3 | ~~`text` keyword broken inside `for each` loops~~ **[DONE 2026-04-14]** | JS | ✅ |
+| 4 | ~~`display as list` → stringified `[object Object]`~~ **[DONE 2026-04-14]** (renders `<ul>`) | JS | ✅ |
+| 5 | ~~String concat drops variable value~~ **[DONE 2026-04-14]** | JS | ✅ |
+| 6 | ~~Policy guards leak into frontend~~ **[DONE]** | JS | ✅ |
+| 7 | ~~Policy guards re-register on every `_recompute()`~~ **[DONE]** | JS | ✅ |
+| 8 | Charts — `display X as bar chart` **silently dropped** — no ECharts CDN, no `echarts.init`, no chart DOM. Directive accepted but no codegen | Both | **open** |
+| 9 | DB relationships — `belongs to` parses clean but no JOIN emitted on `get all X with Y` | Both | **open** |
+| 10 | ~~External APIs — `fetch from` compiles to `undefined`~~ **[DONE]** | Both | ✅ |
+| 11 | Agent streaming display not expressible in Clear | Both | open |
+| 12 | Compile tool returns no source on error (debug blind) | Tooling | open |
+| 13 | JS scheduled task — has `try/catch` + `setInterval` but NO `clearInterval`/cancellation handle | JS | partial |
+| 14 | ~~[PYTHON] Scheduled task uses deprecated `@app.on_event`~~ **[DONE 2026-04-14]** (now `@asynccontextmanager` lifespan) | Python | ✅ |
+| 15 | Server has no multipart/file upload middleware | JS | open |
+| 16 | ~~`tabs` — `_switchTab()` never defined~~ **[DONE 2026-04-14]** | JS | ✅ |
+| 17 | ~~`show X` / `hide X` → `console.log(undefined)`~~ **[DONE 2026-04-14]** (emits `.style.display`) | JS | ✅ |
+| 18 | ~~`open modal` → `console.log(modal)`~~ **[DONE 2026-04-14]** (renders `<dialog>` + `.showModal()`) | JS | ✅ |
+| 19 | `toast` notifications → `console.log(toast)` — **[DONE 2026-04-14]** when using canonical `show toast 'msg'`; bare `toast 'msg'` still falls through (docs fix / separate synonym task) | JS | ✅ (canonical) |
+| 20 | ~~`copy to clipboard` → `console.log(undefined)`~~ **[DONE 2026-04-14]** (`navigator.clipboard`) | JS | ✅ |
+| 21 | ~~`download as file` → `console.log(undefined)`~~ **[DONE 2026-04-14]** (Blob + anchor) | JS | ✅ |
+| 22 | ~~`display as currency` → raw number~~ **[DONE 2026-04-14]** (`Intl.NumberFormat` / `toLocaleString`) | JS | ✅ |
+| 23 | ~~`display as percentage` → raw number~~ **[DONE 2026-04-14]** | JS | ✅ |
+| 24 | ~~`display as date` → raw string~~ **[DONE 2026-04-14]** (`new Date` + `toLocaleDateString`) | JS | ✅ |
+| 25 | ~~`display as json` → `[object Object]`~~ **[DONE 2026-04-14]** (`JSON.stringify`) | JS | ✅ |
+| 26 | ~~`display as gallery` stat card~~ **[DONE 2026-04-14]** — emits responsive grid (`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4`) with `<img>` cards, alt/caption handling | JS | ✅ |
+| 27 | ~~`display as map` empty div~~ **[DONE 2026-04-14]** — Leaflet CDN + `<div>` with proper dimensions + `L.map()` init | JS | ✅ |
+| 28 | ~~`display as calendar` stat card~~ **[DONE 2026-04-14]** — calendar DOM `<div class="p-4" id="output_*_calendar">` emitted | JS | ✅ |
+| 29 | ~~`display as QR code` stat card~~ **[DONE 2026-04-14]** — QRCode CDN + `QRCode.toCanvas()` init | JS | ✅ |
+| 30 | ~~`video player` / `audio player` stat card~~ **[DONE 2026-04-14]** — canonical is `video 'path.mp4'` / `audio 'path.mp3'` (as content element like `image`), emits `<video>` / `<audio>` tags | JS | ✅ |
+| 31 | ~~`show loading` / `hide loading` → `console.log(undefined)`~~ **[DONE 2026-04-14]** (spinner / `LOADING_ACTION`) | JS | ✅ |
+| 32 | ~~`debounce` on input~~ **[DONE 2026-04-14]** — canonical is `when X changes after 300:` (block). Emits `clearTimeout(_debounce_X)` + `setTimeout(fn, 300)` | JS | ✅ |
+| 33 | `throttle` on scroll → no scroll-throttle syntax recognized | JS | open |
+| 34 | ~~Agent multi-turn memory wiped~~ **[DONE 2026-04-14]** `_history` persisted per-user in auto-created `Conversations` table, loaded from DB on call, written back after each response | JS | ✅ |
+| 35 | ~~Agent RAG (`knows about`) → comment~~ **[DONE 2026-04-14]** Tables searched via `db.findAll` + word-match scoring; top-5 results injected into prompt; URL + PDF sources fetched at startup | JS | ✅ |
+| 36 | ~~Agent tool use (`can use`) → comment~~ **[DONE 2026-04-14]** Tool functions defined at module level, `tool_use`/`tool_result` loop in LLM call, args wrapped with guardrail check | JS | ✅ |
+| 37 | ~~Agent guardrails (`block arguments matching`) → comment~~ **[DONE 2026-04-14]** Compiles to a real `RegExp` (`_guardrailRx`) that wraps tool calls and throws "Blocked by guardrail" on match | JS | ✅ |
+| 38 | ~~[PYTHON] Agent structured output — `_ask_ai` never defined~~ **[DONE 2026-04-14]** — `async def _ask_ai` helper emitted when any agent uses Claude | Python | ✅ |
+| 39 | ~~[PYTHON] External API — `httpx` not imported~~ **[DONE 2026-04-14]** (`import httpx` at top + `httpx.AsyncClient`) | Python | ✅ |
+| 40 | ~~[PYTHON] Python frontend serving — no static routes~~ **[DONE 2026-04-14]** (root route emitted) | Python | ✅ |
+| 41 | ~~CORS headers missing in JS backend~~ **[DONE 2026-04-14]** — OFF by default (explicit-over-implicit, per PHILOSOPHY.md). Opt in with `allow cross-origin requests` → emits `Access-Control-Allow-Origin` middleware + OPTIONS preflight | JS | ✅ |
+| 42 | Cookies broken — no `cookie-parser` in JS, no `Response` import in Python | Both | open |
+| 43 | ~~`data validation` server-side → comment~~ **[DONE 2026-04-14]** — `validate data:` block emits `_validate(data, rules)` call returning structured errors | Both | ✅ |
+| 44 | `transform data:` / `pick X from Y` → no keyword recognized (genuinely missing syntax) | Both | open |
+| 45 | ~~Aggregate functions (`sum of`, `avg of`)~~ **[DONE 2026-04-14]** — `sum of each x's amount in orders` emits `.reduce()` | JS | ✅ |
+| 46 | ~~Full text search~~ **[DONE 2026-04-14]** — canonical is `find all Posts where body contains data's q` (not `records in...`). Emits `.includes()` filter | JS | ✅ |
+| 47 | `upsert` keyword not recognized (genuinely missing syntax — need design: `save or update` / `upsert by email`) | JS | open |
+| 48 | DB transactions — no `begin transaction` / `atomically` / `with transaction` syntax recognized (genuinely missing feature) | Both | open |
 
 ---
 
@@ -252,16 +268,16 @@
 
 | # | Request | Target | Filed |
 |---|---------|--------|-------|
-| 1 | `protect tables` blocks ALL ops including reads | JS | ✅ |
-| 2 | `app_layout` clips `page_hero`/`page_section` silently | JS | ✅ |
-| 3 | Preview panel renders blank despite valid HTML | Tooling | ✅ |
-| 4 | Agent debug mode (`debug on` directive) | Both | ✅ |
-| 5 | Workflow step progress UI (`show workflow status`) | Both | ✅ |
-| 6 | Workflow missing from architecture diagram header | Both | ✅ |
-| 7 | Template scaffolding (`init --template NAME`) | Tooling | ✅ |
-| 8 | Compile tool should return source on success | Tooling | ✅ |
-| 9 | Agent streaming vs non-streaming toggle | Python | ✅ |
-| 10 | `refresh page` → `window.location.reload()` ✅ RESOLVED | JS | resolved |
+| 1 | `protect tables` semantic confusion — guards wrap insert/update/remove (writes only, reads are untouched). Bug claim was "blocks reads too" — **stale**; current blocks writes only. But name is misleading: "protect" suggests DDL-only, not CRUD-lock. Rename or add `lock tables` alias | JS | partial / docs |
+| 2 | `app_layout` clips `page_hero`/`page_section` silently — no compiler warning emitted | JS | open |
+| 3 | Preview panel renders blank — tooling bug (compiled HTML is valid). Compiler side is not the fix location | Tooling | open |
+| 4 | Agent debug mode (`debug on` directive) | Both | open |
+| 5 | Workflow step progress UI (`show workflow status`) | Both | open |
+| 6 | Workflow missing from architecture diagram header | Both | open |
+| 7 | ~~Template scaffolding (`init --template NAME`)~~ **[DONE 2026-04-14]** — `node cli/clear.js init [dir]` exists in CLI | Tooling | ✅ |
+| 8 | Compile tool should return source on success | Tooling | open |
+| 9 | Agent streaming vs non-streaming toggle | Python | open |
+| 10 | ~~`refresh page` → `window.location.reload()`~~ **[DONE]** | JS | ✅ |
 
 ---
 
@@ -2883,3 +2899,120 @@ db.save('inventory', data);
 ```
 **Bug:** Transaction markers compile to comments. No `db.transaction()`, no rollback if second save fails. Two saves can partially succeed.
 **Expected:** Atomic transaction — both succeed or both rolled back.
+
+---
+
+## DONE — Verified Fixed (audit 2026-04-14)
+
+This section lists bugs from the original filing that were **reproduced against
+the current compiler and confirmed fixed**. They stay listed (not deleted) so
+their details remain a historical record — and so future regressions can be
+cross-checked against the original repro.
+
+### How verification worked
+A reproduction harness ([tmp_bugtest.mjs](tmp_bugtest.mjs), [tmp_bugtest2.mjs](tmp_bugtest2.mjs))
+compiles each failing Clear snippet and pattern-matches the output for the
+smoking-gun string from the original report (e.g. `console.log(alert)`,
+`db.remove("tasks")` with no filter, `_revive` referenced without definition).
+A bug is "DONE" only when the smoking gun is gone AND the expected behavior
+is in the output.
+
+### Tier 1 Blockers (fixed)
+| # | Bug | Verified by |
+|---|-----|-------------|
+| 1 | `_revive is not defined` on GET endpoints | `function _revive(record)` now emitted in serverJS via tree-shake |
+| 2 | `_revive is not defined` on login | Same utility tree-shaker covers `allow signup and login` path |
+| 3 | Agent endpoint returns empty `{}` | Resolved prior to audit |
+| 4 | Agent/workflow code leaks to frontend | Resolved prior to audit |
+| 5 | Workflow black box (no endpoint) | Compiler emits `@app.post("/api/run-<name>")` + JS equivalent |
+| 6 | Conditionals empty JS bodies | if/else branches now emit `document.getElementById('cond_N').style.display = 'block'/'none'` |
+| 7 | Workflow agent `ReferenceError` | Stub `async function agent_<name>()` emitted when referenced agent not defined |
+| 8 | [PY] Scalar response crash | FastAPI auto-serializes scalars; bug stale (no crash observed in current build) |
+| 9 | [PY] DELETE nukes table | Emits `db.remove("tasks", {"id": id})` with path param extraction |
+| 10 | [PY] PUT `:id` extraction | Emits `data["id"] = request.path_params["id"]` before `db.update` when using canonical `save data to Tasks` |
+| 11 | [PY] `requires auth` always 401 | Proper JWT check emitted (no more `hasattr(request, 'user')` anti-pattern) |
+| 12 | [PY] Agent async-generator await | Fixed in Python agent codegen |
+| 13 | [PY] Workflow state dict unquoted | `{"input_text": None, "output_text": None}` (quoted) |
+| 14 | [PY] Workflow passes whole state | Per-step arg passing fixed |
+| 16 | JS scheduled task `_revive` | Tree-shaker covers `every N` blocks |
+| 17 | [PY] Scheduled task IndentationError | Uses `@asynccontextmanager` + `lifespan=` (not deprecated `@app.on_event`) |
+| 18 | File input not rendered | `<input type="file" id="input_resume">` emitted |
+| 20 | `login with email and password` unrecognized | Root cause was typo `sign up` vs `signup`. Both accepted now via `auth_scaffold` synonym addition (this audit) |
+| 21 | `needs login` on page compiles to nothing | Frontend emits token check + redirect |
+
+### Tier 2 Major Gaps (fixed)
+| # | Bug | Verified by |
+|---|-----|-------------|
+| 1 | `post to` undefined | Resolved prior to audit |
+| 2 | `show alert` logs function object | Now `_toast("msg", "alert-success")` — intentional design (toast > native alert) |
+| 3 | `text` inside `for each` | Compiler handles bare identifier in loop bodies |
+| 4 | `display as list` stat card | Now renders `<ul id="list_*">` with iteration |
+| 5 | String concat drops variable | Concat expression emits proper DOM update |
+| 6, 7 | Policy guards (frontend leak, re-register) | Resolved prior to audit |
+| 10 | External APIs `fetch from` undefined | Resolved prior to audit |
+| 14 | [PY] Scheduled task deprecated decorator | `@asynccontextmanager` lifespan used |
+| 16 | `tabs` `_switchTab()` undefined | Function now defined + event listeners emitted |
+| 17 | `show X`/`hide X` no-op | Emits `document.getElementById('X').style.display = 'block'\|'none'` |
+| 18 | `open modal` no dialog | Emits `<dialog>` element + `.showModal()` / `.close()` calls |
+| 20 | `copy to clipboard` no-op | Emits `navigator.clipboard.writeText(...)` |
+| 21 | `download as file` no-op | Emits `new Blob([...])` + synthetic anchor click |
+| 22–25 | `display as currency/percentage/date/json` raw | Emits `Intl.NumberFormat` / `toLocaleDateString` / `JSON.stringify` |
+| 31 | `show loading`/`hide loading` | `LOADING_ACTION` node + spinner helper |
+| 34 | Agent multi-turn memory | Auto-creates `Conversations` table. Per-user: `_conv = db.findAll('Conversations', { user_id: _userId })` → `_history = JSON.parse(_conv.messages)` → append → `db.update('Conversations', {..._conv, messages: JSON.stringify(_history)})`. History lives in DB, not in handler. |
+| 35 | Agent RAG (`knows about`) | Tables: `findAll(Table)` per-call, word-match scored, `_ragContext.slice(0, 5)` injected into prompt under "Relevant context:". URLs: `_fetchPageText(url)` at startup → `_knowledge_url_N`. Files: `_loadFileText(path)` → `_knowledge_file_N`. |
+| 36 | Agent tools (`can use`) | Tool functions emitted at module level. Agent body calls `_askClaudeWithTools(prompt, context, tools, toolFns, model)` which implements the Anthropic tool_use/tool_result loop. Each tool wrapped with `_guardrailRx.test(JSON.stringify(args))` check. |
+| 37 | Agent guardrails (`block arguments matching`) | Pattern compiles to `const _guardrailRx = /delete\|drop\|truncate/i`. Every tool function is wrapped: `(...args) => { if (_guardrailRx.test(JSON.stringify(args))) throw new Error('Blocked by guardrail'); return fn(...args); }`. |
+| 39 | [PY] `httpx` not imported | `import httpx` at module top + `async with httpx.AsyncClient()` |
+| 40 | [PY] No static frontend serving | Root route or `StaticFiles` mount emitted |
+
+### Tier 3 (fixed)
+| # | Bug | Verified by |
+|---|-----|-------------|
+| 7 | Template scaffolding | `node cli/clear.js init [dir]` (CLI help confirms) |
+| 10 | `refresh page` → broken JS | Now `window.location.reload()` |
+
+### Deep-audit additions (2026-04-14, second sweep)
+A second sweep verified these against canonical Clear syntax — many were filed
+because the original test used non-canonical wording. Each passes a green repro:
+
+| Area | Canonical form | Verified |
+|------|----------------|----------|
+| T1#15 Python uvicorn entry | any `build for python backend` app | `import uvicorn` + `uvicorn.run(app, host="0.0.0.0", port=3000)` |
+| T1#19 Client-side upload | `upload resume to '/api/upload'` | `fetch('/api/upload', { method: 'POST', body: _fd })` with `FormData` |
+| T1#22 Email sending (non-empty) | `send email to 'x@y': subject is '…'` | Non-empty codegen for both JS + Python backends |
+| T2#26 Gallery | `display photos as gallery` | Responsive grid `<div class="grid grid-cols-2 md:grid-cols-3 …">` with per-item `<img>` and alt/caption |
+| T2#27 Map | `display location as map` | Leaflet CDN in HTML, `<div style="width:100%;height:400px;">`, `L.map()` init |
+| T2#28 Calendar | `display date as calendar` | Calendar DOM container emitted |
+| T2#29 QR code | `display url as qr code` | `qrcode` CDN + `QRCode.toCanvas()` init |
+| T2#30 Video/audio | `video 'movie.mp4'` / `audio 'song.mp3'` (as content element) | `<video>` / `<audio>` tag emitted |
+| T2#32 Debounce | `when query changes after 300:` | `clearTimeout(_debounce_query)` + `setTimeout(…, 300)` |
+| T2#38 Python `_ask_ai` | any agent with `ask claude` | `async def _ask_ai` helper emitted |
+| T2#41 CORS | `allow cross-origin requests` | Full middleware: `Access-Control-Allow-Origin: *`, methods, headers, OPTIONS preflight |
+| T2#43 Server validation | `validate data: field, required, min 1` | `_validate(data, rules)` call returning structured errors |
+| T2#45 Aggregates | `sum of each order's amount in orders` | `.reduce()` codegen |
+| T2#46 Full-text search | `find all Posts where body contains data's q` | `.includes()` filter on record field |
+| T3#7 Template init | `clear init [dir]` | Command wired in CLI |
+
+### What the audit left as still-broken / unverified
+Actual remaining backlog (everything else has been verified or moved to DONE):
+
+- **T2#8 Charts** — `display X as bar chart` is *silently dropped* (no ECharts CDN, no `echarts.init`, no chart DOM). Directive accepted, no codegen. **Real bug.**
+- **T2#9 DB relationships** — `belongs to` parses clean but `get all Orders with Customers` emits no JOIN. **Real bug.**
+- **T2#11 Agent streaming** — `stream responses` / `stream:` requires design work for SSE headers + transport.
+- **T2#12 Compile tool returns no source on error** — tooling (playground/server.js compile endpoint).
+- **T2#13 Scheduled task cancellation** — has `try/catch` + `setInterval`, but no `clearInterval` / handle exposed. **Partial.**
+- **T2#15 Multipart middleware** — client sends `FormData`, server has no `multer`/`busboy`/`formidable` to parse it. **Real bug.**
+- **T2#33 Throttle** — no `on scroll throttle` syntax recognized. Missing feature.
+- **T2#42 Cookies** — no `set cookie` syntax, no `cookie-parser` infra. Missing feature.
+- **T2#44 Transform data** — no `transform data:` / `pick X from Y` keyword. Missing feature.
+- **T2#47 Upsert** — no `upsert` keyword or `save or update by email` syntax. Missing feature.
+- **T2#48 DB transactions** — no `begin transaction` / `atomically` / `with transaction` syntax. Missing feature.
+- **T3#1 `protect tables` naming** — guards wire to writes only (reads untouched), but "protect" sounds like DDL-only, which is confusing. Rename to `lock tables` or narrow semantics.
+- **T3#2 `app_layout` clipping trap** — silent visual bug. Add compiler warning when `page_hero`/`page_section` nested under `app_layout`.
+- **T3#3 Preview panel blank** — IDE tooling bug.
+- **T3#4 Agent debug mode** — missing feature.
+- **T3#5 Workflow progress UI** — missing feature.
+- **T3#6 Workflow in architecture diagram** — diagram generator doesn't list workflows.
+- **T3#8 Compile tool source on success** — tooling.
+- **T3#9 Python streaming toggle** — missing feature.
+

@@ -65,6 +65,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .sb-sep { width: 1px; height: 12px; background: rgba(255,255,255,.2); }
 .compile-stats-badge { display: none; font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 600; padding: 2px 10px; border-radius: 20px; background: color-mix(in oklch, var(--accent) 12%, transparent); border: 1px solid color-mix(in oklch, var(--accent) 25%, transparent); white-space: nowrap; letter-spacing: .3px; }
 .compile-stats-badge.visible { display: inline-flex; align-items: center; gap: 6px; animation: stats-pop .3s ease-out; }
+.tests-stats-badge { color: var(--green); background: color-mix(in oklch, var(--green) 12%, transparent); border-color: color-mix(in oklch, var(--green) 25%, transparent); cursor: pointer; }
+.tests-stats-badge.has-failures { color: var(--red); background: color-mix(in oklch, var(--red) 12%, transparent); border-color: color-mix(in oklch, var(--red) 25%, transparent); }
 @keyframes stats-pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 #chat-toggle-btn { background: none; border: 1px solid var(--bd2); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--tx3); font-size: 11px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 4px; transition: all .15s; flex-shrink: 0; margin-left: auto; }
 #chat-toggle-btn:hover { background: var(--bg3); color: var(--tx); border-color: var(--accent); }
@@ -424,6 +426,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <button class="toolbar-btn" onclick="openDocs('user-guide')" title="User guide">Guide</button>
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
     <span id="compile-stats-badge" class="compile-stats-badge"></span>
+    <span id="tests-stats-badge" class="compile-stats-badge tests-stats-badge"></span>
     <span id="status" class="status-ok">Ready</span>
     <button id="chat-toggle-btn" onclick="toggleChat()" title="Toggle Meph panel">Hide Chat ▶</button>
     <div id="compile-bar"></div>
@@ -1110,16 +1113,25 @@ async function autoCompile() {
       const clearWords = source.split(/\s+/).filter(w => w && !w.startsWith('#') && !w.startsWith('//')).length;
       const outCode = [lastCompiled.html, lastCompiled.serverJS, lastCompiled.javascript, lastCompiled.python].filter(Boolean).join('\n');
       const codeWords = outCode.split(/\s+/).filter(w => w).length;
+      const ratio = clearWords > 0 ? (codeWords / clearWords) : 0;
+      const ratioStr = ratio >= 10 ? `${Math.round(ratio)}×` : ratio >= 1 ? `${ratio.toFixed(1)}×` : '';
+      const statsText = ratioStr
+        ? `${clearWords} → ${codeWords} words · ${ratioStr} · ${elapsed}ms`
+        : `${clearWords} → ${codeWords} words · ${elapsed}ms`;
       const statsEl = document.getElementById('sb-compile-stats');
-      if (statsEl) { statsEl.textContent = `${clearWords} → ${codeWords} words · ${elapsed}ms`; statsEl.style.display = ''; }
+      if (statsEl) { statsEl.textContent = statsText; statsEl.style.display = ''; }
       // Prominent badge in toolbar
       const badge = document.getElementById('compile-stats-badge');
       if (badge) {
-        badge.textContent = `${clearWords} → ${codeWords} words · ${elapsed}ms`;
+        badge.textContent = statsText;
+        badge.title = `You wrote ${clearWords} words of Clear. The compiler generated ${codeWords} words of HTML/JS/Python (${ratioStr || ratio.toFixed(2) + '×'} expansion) in ${elapsed}ms.`;
         badge.classList.remove('visible');
         void badge.offsetWidth; // force reflow for re-animation
         badge.classList.add('visible');
       }
+      // Hide stale tests badge until fresh run completes
+      const tBadge = document.getElementById('tests-stats-badge');
+      if (tBadge) { tBadge.classList.remove('visible'); tBadge.textContent = ''; }
       // Update target info in status bar
       const target = lastCompiled.html ? (lastCompiled.serverJS ? 'web + backend' : 'web') : (lastCompiled.python ? 'python' : lastCompiled.javascript ? 'backend' : 'script');
       const tEl = document.getElementById('sb-target');
@@ -1209,6 +1221,32 @@ function showOutput() {
     el.innerHTML = '<div class="empty-state"><div class="icon" style="font-size:2.5rem">✦</div><div class="title" style="font-size:1.1rem;margin-top:8px">Start typing Clear code</div><div class="hint">Your app preview appears here automatically.</div></div>';
     return;
   }
+  // Multi-page apps get a route selector above the iframe so the user can
+  // navigate between `page 'X' at '/path':` blocks without hand-editing the URL.
+  const routeBarHtml = (() => {
+    try {
+      const { pages } = parseSourceInfo();
+      if (!pages || pages.length < 2) return '';
+      const opts = pages.map(p => `<option value="${p.route}">${p.title} — ${p.route}</option>`).join('');
+      return `<div id="preview-route-bar" style="flex-shrink:0;display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg2);border-bottom:1px solid var(--bd);font-size:11px;color:var(--tx3);">
+  <span style="text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Route</span>
+  <select id="preview-route-select" onchange="navigatePreview(this.value)" style="background:var(--bg);color:var(--tx);border:1px solid var(--bd2);border-radius:4px;padding:3px 8px;font-family:var(--mono);font-size:11px;cursor:pointer;">
+    ${opts}
+  </select>
+  <button class="toolbar-btn" onclick="navigatePreviewBack()" title="Back" style="padding:2px 8px;font-size:11px;">◀</button>
+  <button class="toolbar-btn" onclick="navigatePreviewForward()" title="Forward" style="padding:2px 8px;font-size:11px;">▶</button>
+  <button class="toolbar-btn" onclick="navigatePreviewRefresh()" title="Refresh" style="padding:2px 8px;font-size:11px;">⟳</button>
+</div>`;
+    } catch { return ''; }
+  })();
+  // For full-stack apps with a running server, prefer the http iframe so
+  // multi-page routing works (the compiled Express server handles each route).
+  // The srcdoc path below is for web-only apps where there is no real server.
+  if (lastCompiled.serverJS && runningPort) {
+    el.innerHTML = routeBarHtml + `<iframe src="http://localhost:${runningPort}/?clear-bridge=1" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals" style="flex:1;width:100%;border:none;"></iframe>`;
+    el.style.display = 'flex'; el.style.flexDirection = 'column';
+    return;
+  }
   if (lastCompiled.html) {
     let html = lastCompiled.html;
     if (lastCompiled.browserServer) {
@@ -1250,12 +1288,14 @@ document.addEventListener('click', function(e) {
     // Inject meta tag so the compiled bridge activates inside srcdoc iframes (no URL → no query param)
     const bridgeMeta = '<meta name="clear-bridge" content="1">';
     html = html.replace('</head>', bridgeMeta + errorCapture + sourceMapCapture + '</head>');
-    el.innerHTML = '<iframe sandbox="allow-scripts allow-same-origin"></iframe>';
+    el.innerHTML = routeBarHtml + '<iframe sandbox="allow-scripts allow-same-origin" style="flex:1;width:100%;border:none;"></iframe>';
+    el.style.display = 'flex'; el.style.flexDirection = 'column';
     el.querySelector('iframe').srcdoc = html;
   } else if (lastCompiled.serverJS || lastCompiled.javascript || lastCompiled.python) {
     if (runningPort) {
       // Add ?clear-bridge=1 to activate the postMessage bridge in the running app
-      el.innerHTML = `<iframe src="http://localhost:${runningPort}/?clear-bridge=1" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>`;
+      el.innerHTML = routeBarHtml + `<iframe src="http://localhost:${runningPort}/?clear-bridge=1" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals" style="flex:1;width:100%;border:none;"></iframe>`;
+      el.style.display = 'flex'; el.style.flexDirection = 'column';
     } else {
       const lang = lastCompiled.python ? 'Python' : 'Node.js';
       el.innerHTML = '<div class="empty-state"><div class="icon" style="font-size:1.8rem">⚙</div><div class="title">Starting ' + lang + ' server…</div><div class="hint">This happens automatically. Check Terminal for logs.</div></div>';
@@ -1264,6 +1304,35 @@ document.addEventListener('click', function(e) {
     el.innerHTML = '<div class="empty-state"><div class="icon">&#9654;</div><div class="title">No output</div><div class="hint">No renderable output.</div></div>';
   }
 }
+
+// Route-selector helpers for multi-page apps. Navigate the preview iframe
+// between routes declared by `page 'Title' at '/route':` without reloading
+// the full Studio page.
+function navigatePreview(route) {
+  const iframe = document.querySelector('#preview-content iframe');
+  if (!iframe) return;
+  // For running servers we need a full URL (same-origin rules vary); for
+  // srcdoc iframes we update the contentWindow location hash-style.
+  if (iframe.src && iframe.src.startsWith('http')) {
+    const u = new URL(iframe.src);
+    u.pathname = route;
+    // Keep ?clear-bridge=1 so Meph/user bridge still activates
+    u.searchParams.set('clear-bridge', '1');
+    iframe.src = u.toString();
+  } else {
+    // srcdoc: SPA-style. Post a message the compiled bridge can receive, or
+    // fall back to setting window.location directly via contentWindow.
+    try { iframe.contentWindow.history.pushState({}, '', route); iframe.contentWindow.dispatchEvent(new PopStateEvent('popstate')); }
+    catch { /* cross-origin; give up */ }
+  }
+}
+function navigatePreviewBack() { const f = document.querySelector('#preview-content iframe'); try { f && f.contentWindow && f.contentWindow.history.back(); } catch {} }
+function navigatePreviewForward() { const f = document.querySelector('#preview-content iframe'); try { f && f.contentWindow && f.contentWindow.history.forward(); } catch {} }
+function navigatePreviewRefresh() { const f = document.querySelector('#preview-content iframe'); if (!f) return; if (f.src) { f.src = f.src; } else { const d = f.srcdoc; f.srcdoc = ''; setTimeout(() => { f.srcdoc = d; }, 10); } }
+window.navigatePreview = navigatePreview;
+window.navigatePreviewBack = navigatePreviewBack;
+window.navigatePreviewForward = navigatePreviewForward;
+window.navigatePreviewRefresh = navigatePreviewRefresh;
 
 // Python tokenizer for Code tab highlighting
 const pythonTokenizer = StreamLanguage.define({
@@ -1634,6 +1703,7 @@ async function runTests(type) {
     const data = await resp.json();
     testResults[type] = data;
     try { localStorage.setItem('clear_test_results', JSON.stringify(testResults)); } catch {}
+    if (type === 'app') updateTestsBadge(data);
   } catch (err) {
     testResults[type] = { ok: false, error: err.message || 'Network error', duration: 0 };
   } finally {
@@ -1643,6 +1713,32 @@ async function runTests(type) {
 }
 
 window.runTests = runTests;
+
+// Populate the auto-generated-tests badge next to the compile badge.
+// Compiler generates tests for every endpoint, button, page, and flow — this
+// shows the user how much test coverage came for free.
+function updateTestsBadge(data) {
+  const badge = document.getElementById('tests-stats-badge');
+  if (!badge) return;
+  if (!data || typeof data.passed !== 'number') { badge.classList.remove('visible'); return; }
+  const total = (data.passed || 0) + (data.failed || 0);
+  if (total === 0) { badge.classList.remove('visible'); badge.textContent = ''; return; }
+  const durMs = data.duration || 0;
+  const suffix = durMs ? ` · ${durMs}ms` : '';
+  if (data.failed > 0) {
+    badge.textContent = `${data.passed}/${total} tests pass${suffix}`;
+    badge.classList.add('has-failures');
+    badge.title = `${data.failed} auto-generated test(s) failed. Click to see details.`;
+  } else {
+    badge.textContent = `✓ ${data.passed} tests pass${suffix}`;
+    badge.classList.remove('has-failures');
+    badge.title = `The compiler generated and ran ${data.passed} tests for your app — every endpoint, button, page, and flow — and they all passed.`;
+  }
+  badge.onclick = () => showTab('tests');
+  badge.classList.remove('visible');
+  void badge.offsetWidth;
+  badge.classList.add('visible');
+}
 
 // Auto-run tests after server starts. If any fail, switch to Tests tab.
 async function autoRunTests() {
@@ -1657,6 +1753,7 @@ async function autoRunTests() {
     const data = await resp.json();
     testResults.app = data;
     try { localStorage.setItem('clear_test_results', JSON.stringify(testResults)); } catch {}
+    updateTestsBadge(data);
     // If any tests failed, switch to Tests tab so user sees them
     if (data.failed > 0) {
       showTab('tests');
@@ -1682,6 +1779,7 @@ async function autoRunTests() {
 function parseSourceInfo(source) {
   const lines = (source || editor.state.doc.toString()).split('\n');
   const tables = [], endpoints = [], agents = [];
+  const pages = []; // { title, route }
   const tableColumns = {}; // tableName → ['col1', 'col2', ...]
   let hasAuth = false;
   let currentTable = null;
@@ -1713,9 +1811,12 @@ function parseSourceInfo(source) {
     }
     const ag = line.match(/^agent\s+'([^']+)'/i);
     if (ag) agents.push(ag[1]);
+    // `page 'Title' at '/path':` OR `page 'Title':` (route defaults to /)
+    const pg = line.match(/^page\s+'([^']+)'(?:\s+at\s+'([^']+)')?\s*:/i);
+    if (pg) pages.push({ title: pg[1], route: pg[2] || '/' });
     if (/requires\s+auth/i.test(line)) hasAuth = true;
   }
-  return { tables, endpoints, agents, hasAuth, tableColumns };
+  return { tables, endpoints, agents, hasAuth, tableColumns, pages };
 }
 
 // ==========================================================================

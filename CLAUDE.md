@@ -310,3 +310,6 @@ Landing pages (`landing/*.html`) must never use emoji characters. Use Lucide ico
 
 ## Rich Chat Output (MANDATORY)
 Studio chat (Meph) should support SVG diagrams and markdown rendering as standard output. When Meph explains architecture, data flow, or relationships, render them as inline SVG diagrams in the chat — not ASCII art. Markdown formatting (headers, bold, code blocks, lists) should render properly in chat bubbles.
+
+## Test Before Declaring Done (MANDATORY)
+Test everything you build before declaring it done. "The variable updated" is not verification — verify the user-visible outcome. For UI: check rendered content, not just DOM state. For flows: drive the flow end-to-end and assert the final result. If you can't test it, say so explicitly instead of claiming success. A route selector that updates `iframe.src` is not tested until you've confirmed the rendered page content actually changed.
