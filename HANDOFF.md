@@ -1,86 +1,82 @@
-# Handoff — 2026-04-14 (Shipped: Bridge + Friendly Tests + Terminal + Eval)
+# Handoff — 2026-04-14 (Session 28: Closed the "fix this bug" loop end-to-end)
 
 ## Current State
-- **Branch:** main, pushed to origin (was 50+ commits behind, now caught up)
-- **Tests:** 1852 compiler tests, **77/77 e2e**, 15/15 Meph tool eval verified
-- **Working tree:** clean after this commit
+- **Branch:** main (everything pushed to origin)
+- **Last commit:** `a0265ce` feat(skill): /bigpicture narrates session arc — different from /handoff
+- **Working tree:** dirty but harmless — `.claude/settings.local.json` (local prefs) and `apps/todo-fullstack/clear-runtime/db.js` (auto-regenerated runtime file)
+- **Tests:** 1850 compiler ✅, 77/77 e2e ✅ (3 consecutive runs — flake fixed), 16-scenario Meph eval ✅, full-loop suite passes 14-15/16
 
-## What Was Done This Session (9 commits)
+## What Was Done This Session (28 commits, ALL pushed)
 
-### Studio Bridge — shared browser session (the big one)
-Meph and the user now share the SAME iframe. When the user clicks in the preview, Meph sees it. When Meph clicks, the user sees it happen live. Bridge is a ~90-line postMessage script the compiler injects into every built HTML page, gated on `?clear-bridge=1` or `<meta name="clear-bridge">` (srcdoc safe).
+Massive session. Three structural shifts plus ~10 bug fixes plus new infrastructure. Top of the stack:
 
-- User clicks → `[user]` events fed into a ring buffer (last 200) via `/api/meph-actions`
-- Meph commands (click/fill/inspect/read-dom/read-storage) flow through SSE → iframe → postMessage reply → `_bridgePending` registry resolves server-side Promise
-- `click_element`, `fill_input`, `inspect_element`, `read_storage` refactored off Playwright onto the bridge
-- New tools: `read_actions`, `read_dom`
+- **Studio Bridge** — postMessage glue that gives Meph + user the SAME iframe. User clicks land in `[user]` log, Meph clicks happen in front of user. ~90 lines compiler-injected, gated on `?clear-bridge=1` or `<meta name="clear-bridge">`.
+- **Friendly test failures** — every status code (200/201/204/400/401/403/404/409/422/429/5xx) gets a plain-English explanation with a `[clear:N]` source-line tag. IDE renders failures as clickable + adds a "Fix with Meph" button that bundles error+line+context into a chat message.
+- **Unified terminal** — `[stdout]` / `[stderr]` / `[user]` / `[browser error]` / `[meph]` interleaved chronologically. One log to read for the whole repro.
+- **Schema enforcement (3 layers)** — runtime tool-input validator, system-prompt rule about JSON outputs, client-side `JSON.parse` lint on every `` ```json `` fence with red warning badge.
+- **Meph tool eval** — `playground/eval-meph.js`, 16 scenarios + Meph self-report, runs in ~90s for ~$0.10–0.30. Wired into `.husky/pre-push` (gated on `ANTHROPIC_API_KEY`, skips cleanly if no key).
+- **E2e flake eliminated** — 71/77 → 77/77 reliably. Root cause was state contamination across templates sharing BUILD_DIR; now wipes ALL persistence files (.db, .db-wal, .db-shm, .db-journal, .json) between runs and awaits child exit before reusing.
+- **Compiler bug fixes** — `incoming` binding for search endpoints (was emitting `incoming?.q` with no binding), user-test HTTP path tokenizer (was collapsing `/api/todos` to `/`), Windows libuv shutdown assertion.
+- **3 landing pages refreshed** — added "we made the AI not-blind" sections to `business-apps.html` and `business-agents.html`; created `for-business.html` (services pitch for buyers who hire Russell, $15k/$35k/$3k-mo pricing).
+- **Two new skills** — `/eval-meph` (when to invoke the agent regression net) and `/bigpicture` aka `/bp` (end-of-session narrative for the human, distinct from /handoff).
 
-### Friendly test failures with click-to-source
-Every test failure is now plain English, names the exact call, and carries `[clear:N]` so the Studio UI can jump to source. Compiler emits `_expectStatus` / `_expectBodyHas` / `_expectSuccess` / `_expectFailure` / `_expectBodyContains` / `_expectBodyLength` / `_expectBodyTruthy` / `_expectErrorContains` helpers. Each code explained in 14-year-old English:
+## What's In Progress
+**Nothing actively in-flight.** Working tree is clean modulo two auto-regenerated/local files. No half-built features, no commented-out code, no TODOs in commits.
 
-- 200/201/204/400/401/403/404/409/422/429/5xx all get unique hints
-- `POST /api/notes returned 404. 404 means "there is no endpoint at that URL." Either the path is wrong, or you forgot to write \`when user calls POST /api/notes:\`.`
+## Key Decisions Made
 
-### "Fix with Meph" button
-Every failing test row renders a button that bundles `{testName, error, sourceLine, 6 surrounding lines of code}` into a fix prompt and auto-submits to Meph. He already has `edit_code` + `run_tests`, so the loop closes: fail → click → edit → re-test.
+- **The product differentiator is "we made the AI not-blind."** Cursor / Lovable / v0 all make the human a narrator. Clear Studio's bridge + terminal + friendly errors mean Meph reads the room himself — "fix it" becomes a real command. This is now front-and-center on both dev landing pages and is the closing pitch for the services landing.
+- **Eval-meph runs in pre-push, full-loop suite stays manual.** Per-tool eval is cheap enough ($0.10) and fast enough (90s) for every push that has a key. Full-loop (3 apps from scratch, ~3min, ~$0.50–1.00) is too variable for automated gating — run manually after big architectural changes.
+- **State isolation > port isolation for e2e fix.** Initial hypothesis was timing/port races. Real cause was leftover persistence files (`clear-data.json` was the smoking gun) corrupting next template's seed/queries. Fix is wiping all 5 persistence file variants between runs + awaiting child exit.
+- **`/bigpicture` ≠ `/handoff`.** Bigpicture is for Russell now (60-second story, theme groupings, why-it-matters, open-claw). Handoff is for next session (file paths, resume prompt, in-progress state). Both should be invoked at session end.
+- **Validator default-rejects unknown tool names.** When Meph hallucinated `run_file` and `write_file` (neither exists), the validator's `default: null` was silently allowing them. Now defaults to teaching error with the full valid-tool list.
+- **Idle watchdog over wall-clock timeout.** Meph turns can legitimately stream for 90s+ on complex builds. Old `AbortSignal.timeout(60000)` killed entire streams mid-progress. New watchdog: 60s for first byte, then reset on every chunk, abort only after 90s of silence.
 
-### Meph sees user's Run Tests
-Chat POST body now includes a `testResults` snapshot. Server's new `buildSystemWithContext()` appends a "Latest Test Run" section to Meph's system prompt with the failures inline. Meph stops re-running tests just to see them.
+## Known Issues / Bugs
+- **Full-loop suite passes 14-15/16 reliably** — one scenario sometimes fails because Meph chooses a valid alternate tool path (e.g. uses `patch_code` instead of `edit_code` after iterating). Grader noise, not a real bug. Loosen the grader if it bothers you.
+- **`.husky/pre-push` runs eval in ~90s** — slows pushes when key is set. `SKIP_MEPH_EVAL=1 git push` to bypass for one push. Live with it; the regression net is worth the time.
+- **The auto-regenerated `apps/todo-fullstack/clear-runtime/db.js`** appears as dirty after every run. Harmless but noise in `git status`. Could add to `.gitignore` or rebuild the runtime copy logic.
 
-### Unified terminal timeline
-The terminal pane is now the single honest log. Five sources interleaved chronologically:
-- `[stdout]` / `[stderr]` — running app
-- `[user]` — bridge clicks/inputs
-- `[browser error]` / `[browser warn]` — iframe console
-- `[meph]` — every tool call Meph makes
+## Next Steps (Priority Order)
 
-When a bug happens, scroll the terminal up — that IS the repro. `read_terminal` tool description + system prompt updated so Meph reaches for it first on "fix this" requests.
+1. **Deploy todo-fullstack to Railway with a real URL** — the demo asset for pilot outreach. Pipeline exists (`clear deploy`), just hasn't been exercised end-to-end with a live URL.
+2. **Record a 60-second Loom** showing the bridge + Fix-with-Meph loop. Use the kudos board (already in eval suite) or a fresh inventory tracker. Script: click → bug → "fix it" → green tests. Send to 3 FinServ pilots from Axial network.
+3. **Find 3 pilot companies** for the $4k/mo RPA-replacement pitch. Axial network for FinServ/insurance/logistics. The two dev landing pages target the developer; `for-business.html` targets the buyer.
+4. **Update `for-business.html` placeholder fields** before sharing — `russell@clear-apps.dev` and `cal.com/russellmiller` are placeholders. Real domain decision still open: `clear-apps.dev` vs `magenagents.dev`.
+5. **Run `eval-fullloop-suite.js` weekly on a schedule** — consider GitHub Actions cron. Catches deeper integration regressions the per-tool eval misses.
 
-### Windows libuv shutdown fix
-Two competing SIGTERM handlers (one closing Playwright async, one synchronous `process.exit`) caused `UV_HANDLE_CLOSING` assertions on Ctrl-C. Consolidated into a single `shutdown()` that awaits `closeBrowser()` before exit.
+## Files to Read First
 
-### Post-ship: tightening pass
-After the main 9 commits shipped, fixed compounding gaps that the eval + e2e push surfaced:
-
-- **`incoming` binding for search endpoints** — `bodyUsesIncoming` scanner missed wrapper nodes (SEARCH/FILTER), so `results = search Todos for incoming's q` compiled to a referencing `incoming?.q` with no binding above it. Added fall-through scan + GET-without-receiving binds to `req.query`.
-- **JWT helper for e2e tests** — 5 POST tests failed because templates were hardened to `requires login` but tests didn't send auth. Added HS256 helper using node `crypto` (no jsonwebtoken dep) + pinned `JWT_SECRET=clear-test-secret` when playground spawns child apps. Result: 77/77.
-- **`highlight_code` missing executeTool case** — Meph's eval self-report caught it: tool returned `Unknown tool: highlight_code`. One-line fix.
-- **User-test HTTP path bug** — tokenizer split `/api/todos` into `/`, `api`, `/`, `todos`. Parser only took the first token, so every user-test call recorded path=`/`. Friendly errors said `POST / returned 404` instead of the real endpoint. Reassemble path tokens until `with`/EOL.
-- **Meph tool eval** — 16-scenario script that calls each tool and asks Meph to self-report whether it worked. 15/15 verified, 0 issues open. Pattern is single-turn (multi-turn breaks because SSE stream doesn't echo tool_use blocks back, leading to gaslit history).
-
-## What This Unlocks
-
-The complete "fix this bug" loop with zero user narration:
-
-1. User clicks around in preview → `[user]` events in terminal
-2. Something breaks → `[browser error]` or `[stderr]` in terminal
-3. User types "fix this" to Meph
-4. Meph `read_terminal` → full repro
-5. Meph `read_actions` / `read_dom` → structured state
-6. Meph edits the .clear file
-7. Meph sees user's latest test run in his context
-8. Meph runs tests once to confirm the fix
-
-This is the feedback loop RPA vendors charge $4k/mo for — except faster, explainable, and version-controlled.
-
-## Next Steps
-
-1. **Deploy todo-fullstack to Railway** — still not done end-to-end
-2. **Record 60-second Loom demo** — use the bridge + fix-with-Meph loop as the demo
-3. **Find 3 pilot companies** — FinServ/insurance via Axial network
-4. **Fix `_lastCall.path` quirk** — user-test HTTP calls record path as `/` instead of the real path (breaks error messages slightly)
-5. **Merge `frontendErrors` array** into terminal-only (array is now redundant with the mirrored lines)
-6. **Intent tests (TEST_INTENT) status asserts** — auto-generated tests in `generateE2ETests()` still use raw `assert(r.status === N, ...)`. Route them through `_expectStatus` too.
+| File | Why |
+|------|-----|
+| `HANDOFF.md` | This file |
+| `PHILOSOPHY.md` | Design rules — internalize before touching code |
+| `CLAUDE.md` | Project rules; updated this session with new "Meph Tool Eval" mandatory section + bigpicture pointer |
+| `.claude/skills/eval-meph/SKILL.md` | When to run the agent regression net |
+| `.claude/skills/bigpicture/SKILL.md` | When to step back and narrate |
+| `learnings.md` | Session 27 entry has bridge+friendly-errors lessons; Session 28 (today) needs adding next time |
+| `playground/server.js` lines 982–1045 | The new `validateToolInput` — schema enforcement layer |
+| `playground/eval-meph.js` | The eval scenarios + grading shape |
 
 ## Resume Prompt
 
 ```
-Read HANDOFF.md then PHILOSOPHY.md then CLAUDE.md.
+Read HANDOFF.md, PHILOSOPHY.md, then CLAUDE.md.
 
-Shipped Studio Bridge (shared iframe between Meph + user), plain-English
-test failures with click-to-source + Fix with Meph button, unified
-terminal timeline (5 sources interleaved), Meph sees user-triggered test
-runs. "Fix this bug" loop closes end-to-end with zero narration.
+Last session (Session 28, 2026-04-14) closed the "fix this bug" loop
+end-to-end: Studio Bridge (shared iframe), unified terminal (5 sources
+interleaved), plain-English test failures with click-to-source +
+Fix-with-Meph button, schema enforcement at 3 layers, agent regression
+net wired into pre-push. Plus 28 commits of fixes + new /eval-meph and
+/bigpicture skills.
 
-1850 compiler tests green. Next: ship end-to-end Railway demo.
+77/77 e2e reliably. 1850 compiler tests. Meph eval green.
+
+Top open-claw: deploy todo-fullstack to Railway end-to-end with a
+live URL, record a 60-second Loom of the bridge + Fix-with-Meph loop,
+contact 3 FinServ pilots from the Axial network.
+
+Studio: `node playground/server.js` → http://localhost:3456
+Meph eval: `node playground/eval-meph.js` (needs ANTHROPIC_API_KEY)
+Bigpicture this session: invoke `/bp` after meaningful chunks of work.
 ```
