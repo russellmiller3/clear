@@ -416,6 +416,24 @@ emitted by the compiler when evalMode is on.
 - `run_evals` — run all (you'll see costs in the result, e.g. $0.027)
 - `run_eval { id: 'role-researcher' }` — run just one (cheap, fast)
 
+**Eval probes are authenticated.** The eval runner attaches a signed
+test-user token on every request, matched to whichever auth scheme the
+compiled app uses (jsonwebtoken or runtime/auth.js). So if an eval
+fails with 401 / 'fetch failed' / 'Authentication required', that is
+NEVER the real bug — auth is handled. Do not "fix" it by removing
+`requires login` from an endpoint. Look at the actual response body
+or the app logs to find the real cause (missing field, schema mismatch,
+agent runtime error). Removing auth to make evals pass is an anti-
+pattern — the eval system exists precisely to catch agent behavior,
+not to be circumvented.
+
+**Empty output on streaming agent endpoints.** Known issue: probes
+against agent endpoints that emit `text/event-stream` currently return
+an empty body because the eval runner's SSE drain has a bug. If an
+eval fails with `Output is empty` and the endpoint is a streaming
+agent, that's infrastructure, not the agent. Flag it to Russell —
+don't try to fix it in the `.clear` source.
+
 **User-defined evals** — recommend these when the auto-rubric won't
 catch a specific behavior. Two syntaxes, both show up in the same
 Tests pane:

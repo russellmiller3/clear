@@ -1,3 +1,71 @@
+# Handoff — 2026-04-15 (Session 32 — post-ship bug hunt + Meph-driven fix test)
+
+## Follow-up session state (after Session 31)
+
+Session 31 shipped the eval feature end-to-end. Session 32 (this one) ran
+the templates through Meph to find where the feature actually breaks in
+practice. Several real issues surfaced. Current branch state:
+
+### Additional commits on `feature/awesome-evals`
+- `d519357` — retry ECONNRESET + per-spec progress events + fullloop harness
+- `50acc13` — Gap 1: auth-token bypass for auth-walled probes (JWT format)
+- `3c1602f` — Gap 2: SSE streaming endpoint `/api/run-eval-stream` + UI rewire
+- `6050b67` — Gap 3: idle timer resets per-call (cured workflow-agent fetch fails)
+- `97fa5b9` — `/rt` red-team-code skill
+- `f97964b` — terminal streams per-spec + grader verdict + agent output
+- `f9f8d60` — compiler emits implicit createTable for Conversations + Memories
+- `1cd854a` — legacy runtime/auth.js token format + auto-detection
+- `48136fc` — eval-fix-harness for driving Meph through "fix the failures"
+
+### Meph-driven fix-test results
+
+Drove Meph through 5 agent+auth templates using `playground/eval-fix-harness.js`.
+Each template: Meph reads source, calls list_evals, run_evals, diagnoses
+failures, tries to fix via edit_code (in-memory only — not persisted),
+re-runs evals, reports.
+
+| Template | Start | End | Notes |
+|---|---|---|---|
+| helpdesk-agent | 3/3 | 3/3 | Grader non-deterministic (was 2/3 elsewhere) |
+| page-analyzer | 0/3 | **3/3** | Meph fully fixed — behavior + probe shape |
+| multi-agent-research | 12/17 | **13/17** | +1 via behavior fix; 2 real bugs identified |
+| ecom-agent | 0/3 | 0/3 | Meph misdiagnosed + patch_code tool crashed |
+| lead-scorer | 0/3 | 0/3 | Streaming-response bug — agent never reached |
+
+### Open issues surfaced (priority order)
+
+1. **Streaming endpoint probes return empty body** — `_drainSSE` in
+   `callEvalEndpoint` doesn't handle agent SSE output correctly. Any
+   agent endpoint that emits `text/event-stream` (lead-scorer, ecom,
+   most `ask claude`-based endpoints) scores zero on grading because
+   the response body comes back empty. WIDEST BLAST RADIUS.
+2. **Compiler bug: `ask claude 'prompt' with var` inside `repeat until`
+   drops the variable value.** The prompt text reaches Claude but the
+   variable content doesn't — Meph saw the grader literally read
+   "The report is provided above" with no report attached. Breaks any
+   iterative-refinement agent.
+3. **`patch_code` tool crashes with `"[object Object]" is not valid
+   JSON`.** Tool arg-serialization bug in the dispatcher.
+4. **Meph's system prompt was stale on auth** — he diagnosed fetch-fail
+   as 401 and wanted to remove `requires login` from endpoints. Fixed
+   this session: playground/system-prompt.md now says eval probes are
+   authenticated and empty-output on streaming endpoints is a known bug.
+5. **Grader non-determinism (design question, not a clear bug).**
+   Same probe, same source, different verdict across runs. Helpdesk
+   went 2/3 → 3/3 between identical calls. Worth deciding: temperature=0,
+   confidence scoring, or multi-run voting. Not blocking.
+
+## Fix-harness usage
+
+```
+node playground/eval-fullloop-harness.js <template>   # run evals via Meph (read-only-ish)
+node playground/eval-fix-harness.js <template>        # drive Meph through "fix the failures" loop
+```
+
+Both stream Meph's SSE to stderr. Second one writes summary JSON to stdout.
+
+---
+
 # Handoff — 2026-04-15 (Session 31: Awesome agent evals — full /pres cycle)
 
 ## Current State
