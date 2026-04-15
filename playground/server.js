@@ -2966,7 +2966,12 @@ app.post('/api/chat', async (req, res) => {
             case 'source_map':
               return `[tool] ✓ source_map`;
             case 'patch_code':
-              return `[tool] ✓ patch — ${JSON.parse(res).applied || 0} applied, ${JSON.parse(res).skipped || 0} skipped`;
+              // `res` is ALREADY the parsed object (see line 2883). Calling
+              // JSON.parse on it coerces it to "[object Object]" first, then
+              // JSON.parse throws — which crashes the whole Meph turn mid-loop
+              // with the opaque error "\"[object Object]\" is not valid JSON".
+              // Use the parsed fields directly.
+              return `[tool] ✓ patch — ${res.applied || 0} applied, ${res.skipped || 0} skipped`;
             case 'browse_templates':
               return `[tool] ✓ browse_templates — ${input.action} ${input.name || ''}`.trim();
             default:

@@ -10124,15 +10124,21 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
         return '_fullResponse';
       });
 
-      // 3. Replace res.json(...) responses with SSE DONE + res.end()
+      // 3. Replace res.json(...) responses with a braced SSE DONE + res.end().
+      //    The braces are load-bearing: when the original `return res.json(...)`
+      //    was preceded by `if (cond)` (auth/validation early-return), splitting
+      //    into 3 unbraced statements would drop the last two outside the `if`,
+      //    firing res.end() + return unconditionally. Real bug on lead-scorer
+      //    in Session 32. Emit as one compound statement so it slots into any
+      //    single-statement position (post-if, post-else, post-try) safely.
       transformed = transformed.replace(
         /return res\.json\([^)]*\);/g,
-        "res.write('data: [DONE]\\n\\n');\n    res.end();\n    return;"
+        "{ res.write('data: [DONE]\\n\\n'); res.end(); return; }"
       );
       // Also handle res.status(N).json(...) — success responses
       transformed = transformed.replace(
         /return res\.status\(\d+\)\.json\([^)]*\);/g,
-        "res.write('data: [DONE]\\n\\n');\n    res.end();\n    return;"
+        "{ res.write('data: [DONE]\\n\\n'); res.end(); return; }"
       );
       // Also handle bare res.json(...) (without return) at end of try block
       transformed = transformed.replace(

@@ -22584,6 +22584,35 @@ page 'App':
     expect(r.serverJS).toContain('res.end()');
   });
 
+  it('T4b: streaming endpoint wraps auth/validation early-return in braces', () => {
+    // Without braces, `if (cond) res.write(...); res.end(); return;`
+    // only protects the first statement — res.end() + return fire
+    // unconditionally and the agent never runs. Every probe scored empty.
+    // Surfaced by the eval-auth fix on lead-scorer (0/3 with $0 cost).
+    // The streaming transform must emit a single-statement block so the
+    // whole early-return stays under the `if`.
+    const srcWithAuth = `build for javascript backend
+allow signup and login
+agent 'Scorer' receives lead:
+  response = ask claude 'Score this lead 1-10' with lead
+  send back response
+when user calls POST /api/score sending lead:
+  requires login
+  out = call 'Scorer' with lead
+  send back out`;
+    const r = compileProgram(srcWithAuth);
+    expect(r.errors).toHaveLength(0);
+    // compileProgram returns either `javascript` (pure backend) or `serverJS`
+    // (web+backend). Check both.
+    const js = r.javascript || r.serverJS || '';
+    expect(js.length).toBeGreaterThan(0);
+    // The auth branch must keep `res.end(); return;` under the `if (!req.user)` guard.
+    // Before the fix, the compiler emitted three unbraced statements and only
+    // the first fell under the if. Accept any number of wrapping braces.
+    const hasBracedAuth = /if \(!req\.user\)\s*\{[\s{]*res\.write\([^)]*\[DONE\][^)]*\);\s*res\.end\(\);\s*return;[\s}]*\}/.test(js);
+    expect(hasBracedAuth).toBe(true);
+  });
+
   it('T5: non-streaming agent uses await + res.json (no regression)', () => {
     const r = compileProgram(nonStreamingSrc);
     expect(r.serverJS).not.toContain("'Content-Type': 'text/event-stream'");
