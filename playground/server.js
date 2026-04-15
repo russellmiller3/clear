@@ -723,6 +723,14 @@ async function callEvalEndpoint(port, path, body) {
   // Mint once per call (not once per retry) so retries don't stack tokens.
   // Token TTL is 1 hour — trivially outlives any single eval spec run.
   const authToken = mintEvalAuthToken();
+  // Reset the eval-child idle timer every time we touch the child. Before
+  // this, the timer was set once at child spawn and only reset when a suite
+  // fully completed — so a suite that took longer than EVAL_IDLE_MS (60s)
+  // had its child killed mid-run, and every spec after that timer fired
+  // got "fetch failed" against a dead server. Workflow agents (Polished
+  // Report, Research Topic in MAR) run late in the suite and were the
+  // consistent casualties — 4 of 17 MAR evals failed this way.
+  resetEvalIdleTimer();
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const r = await fetch(`http://localhost:${port}${path}`, {
