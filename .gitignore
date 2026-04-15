@@ -19,3 +19,4 @@ test-save-compiled/
 .clear-test-build/
 .clear-test-runner.cjs
 .clear-test-server.cjs
+.tmp/

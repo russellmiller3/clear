@@ -694,25 +694,45 @@ function checkFormat(expected, output) {
 // stream, concatenating the `text` field from each `data:` frame into a
 // single string. The rest of the runner then grades the complete response.
 async function callEvalEndpoint(port, path, body) {
-  try {
-    const r = await fetch(`http://localhost:${port}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(45_000)
-    });
-    const ct = r.headers.get('content-type') || '';
-    if (ct.includes('text/event-stream')) {
-      const drained = await _drainSSE(r);
-      return { status: r.status, data: drained, streamed: true };
+  // Retry connection-level failures up to 2 extra times with short backoff.
+  // `probeUntilReady` returns as soon as `/` responds, but Express mounts
+  // `/` early and `/_eval/*` + domain routes later — so the first probe can
+  // land during a window where the TCP listener is up but the real route
+  // isn't registered yet, producing `fetch failed` / ECONNRESET. Retrying
+  // rides out that warmup gap without hiding legitimate route/HTTP failures
+  // (non-connection errors like 4xx/5xx are returned as-is on the first try).
+  const MAX_ATTEMPTS = 3;
+  const BACKOFF_MS = 500;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const r = await fetch(`http://localhost:${port}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(45_000)
+      });
+      const ct = r.headers.get('content-type') || '';
+      if (ct.includes('text/event-stream')) {
+        const drained = await _drainSSE(r);
+        return { status: r.status, data: drained, streamed: true };
+      }
+      let data;
+      try { data = await r.json(); }
+      catch { data = await r.text(); }
+      return { status: r.status, data };
+    } catch (err) {
+      lastErr = err;
+      // Only retry true connection errors — not AbortError (real 45s timeout).
+      const msg = String(err?.message || '');
+      const isConnErr = msg.includes('fetch failed') || msg.includes('ECONN') || err?.cause?.code?.startsWith?.('ECONN');
+      if (!isConnErr || attempt === MAX_ATTEMPTS) {
+        return { status: 0, data: null, error: msg };
+      }
+      await new Promise(ok => setTimeout(ok, BACKOFF_MS * attempt));
     }
-    let data;
-    try { data = await r.json(); }
-    catch { data = await r.text(); }
-    return { status: r.status, data };
-  } catch (err) {
-    return { status: 0, data: null, error: err.message };
   }
+  return { status: 0, data: null, error: lastErr?.message || 'unreachable' };
 }
 
 // Read an SSE response body and concatenate all `data: ...` frames into
@@ -1056,16 +1076,24 @@ app.post('/api/export-eval-report', (req, res) => {
 // tools. Serialized via `_evalMutex` so concurrent callers (e.g. Run-All +
 // per-row Run) never interleave on the same DB / child process. Returns the
 // same shape the UI expects.
-async function runEvalSuite(source, id) {
+async function runEvalSuite(source, id, onProgress) {
   // Take a ticket on the mutex chain. The chain always ends in a resolved
   // promise; we append our run after it and set the chain forward so the
   // next caller waits for us.
-  const ticket = _evalMutex.then(() => _runEvalSuiteImpl(source, id));
+  //
+  // `onProgress` (optional) is called twice per spec: once with
+  // `{ phase: 'start', id, kind }` before the spec runs, and once with the
+  // full result object (`{ phase: 'end', ...result }`) when it resolves.
+  // Callers forward these to the UI / terminal so the 30-90s suite run
+  // isn't a silent stare — Meph streams per-spec updates to the terminal
+  // pane, and the Tests pane (when wired to SSE) can flip each row from
+  // pending → running → pass/fail as results land.
+  const ticket = _evalMutex.then(() => _runEvalSuiteImpl(source, id, onProgress));
   _evalMutex = ticket.catch(() => undefined);
   return ticket;
 }
 
-async function _runEvalSuiteImpl(source, id) {
+async function _runEvalSuiteImpl(source, id, onProgress) {
   const start = Date.now();
   const compiled = compileForEval(source);
   if (!compiled.ok) return { ...compiled, duration: Date.now() - start };
@@ -1085,8 +1113,17 @@ async function _runEvalSuiteImpl(source, id) {
     }
     const port = await ensureEvalChild(compiled.serverJS);
     const results = [];
-    for (const spec of specs) {
-      results.push(await runOneEval(spec, port));
+    const total = specs.length;
+    for (let i = 0; i < specs.length; i++) {
+      const spec = specs[i];
+      if (onProgress) {
+        try { onProgress({ phase: 'start', id: spec.id, kind: spec.kind, agentName: spec.agentName, index: i, total }); } catch {}
+      }
+      const result = await runOneEval(spec, port);
+      results.push(result);
+      if (onProgress) {
+        try { onProgress({ phase: 'end', index: i, total, ...result }); } catch {}
+      }
     }
     resetEvalIdleTimer();
     const passed = results.filter(r => r.status === 'pass').length;
@@ -2316,16 +2353,34 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'run_evals': {
-        const evalResult = await runEvalSuite(currentSource);
+        // Forward per-spec progress to the user's terminal + Tests pane so
+        // they see the suite advance live instead of a silent 30-90s wait.
         send({ type: 'switch_tab', tab: 'tests' });
+        const onProgress = (ev) => {
+          send({ type: 'eval_row', ...ev });
+          if (ev.phase === 'start') {
+            termLog(`[eval] ${ev.index + 1}/${ev.total} ${ev.id} running...`);
+          } else if (ev.phase === 'end') {
+            const tag = ev.status === 'pass' ? '✓' : ev.status === 'fail' ? '✗' : '~';
+            termLog(`[eval] ${ev.index + 1}/${ev.total} ${tag} ${ev.id} ${ev.status}${ev.usage?.costUSD ? ' $' + ev.usage.costUSD.toFixed(4) : ''}`);
+          }
+        };
+        const evalResult = await runEvalSuite(currentSource, undefined, onProgress);
         send({ type: 'eval_results', ...evalResult });
         return JSON.stringify(evalResult);
       }
 
       case 'run_eval': {
         if (!input.id) return JSON.stringify({ ok: false, error: "Missing 'id' — use list_evals to see available ids." });
-        const evalResult = await runEvalSuite(currentSource, input.id);
         send({ type: 'switch_tab', tab: 'tests' });
+        const onProgress = (ev) => {
+          send({ type: 'eval_row', ...ev });
+          if (ev.phase === 'end') {
+            const tag = ev.status === 'pass' ? '✓' : ev.status === 'fail' ? '✗' : '~';
+            termLog(`[eval] ${tag} ${ev.id} ${ev.status}${ev.usage?.costUSD ? ' $' + ev.usage.costUSD.toFixed(4) : ''}`);
+          }
+        };
+        const evalResult = await runEvalSuite(currentSource, input.id, onProgress);
         send({ type: 'eval_results', ...evalResult });
         return JSON.stringify(evalResult);
       }
