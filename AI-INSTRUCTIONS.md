@@ -1908,22 +1908,93 @@ compiler drains the generator into a string automatically — you never
 see an async iterator. `do not stream` on the specialist is only needed
 if you're layering non-standard post-processing.
 
-### Agent Evals Are Separate From Tests
+### Agent Evals — Auto-Generated + User-Defined
 
-Unit tests verify the app's code. Evals verify the agent's behavior.
-Because evals can be slow (graded evals call real AI), Studio surfaces
-them behind a separate **Run Evals** button in the Tests tab.
+Unit tests verify code. Evals verify agent behavior. Because evals
+can be slow (grader calls a real LLM) and cost money, Studio surfaces
+them behind a separate **Run Evals** button gated by a cost-estimate
+modal.
 
-- `node cli/clear.js test app.clear` — runs user-authored `test` blocks
-  plus auto-generated UI/endpoint tests. Deterministic.
-- **Run Evals** button in Studio — compiles the app, injects the
-  auto-generated schema evals (mocked AI, shape checks per agent), and
-  shows one line per eval with pass/fail.
-- `node cli/clear.js eval app.clear --graded` (CLI only, not in Studio)
-  — LLM-graded scorecard against a live server. Slower, needs API key.
+**Auto-generated per agent (zero config):**
+- **Role eval** — Claude grades whether the agent did its job, judged
+  against the agent's own prompts, skills, tools, and guardrails.
+- **Format eval** — deterministic shape check against `returning JSON
+  text:` schema if present, else non-empty.
+- One **E2E eval** per POST endpoint that calls an agent.
 
-Every agent emits at least one schema eval automatically. You don't need
-to write them by hand.
+Internal agents (called only by other agents) get role + format too —
+the compiler emits synthetic `/_eval/agent_<name>` handlers in eval
+mode so they're individually graddable. Every receiving-var in the
+8 core templates resolves to a realistic probe (no `'hello'`).
+
+**User-defined evals — write them when you have a specific case:**
+
+Top-level for cross-agent or endpoint-direct scenarios:
+```clear
+eval 'Support handles complaints':
+  given 'Support' receives 'my order is broken'
+  expect 'Acknowledges the problem and offers next steps.'
+
+eval 'Classify returns shape':
+  call POST '/api/classify' with text is 'billing question'
+  expect output has category, confidence
+```
+
+Per-agent for agent-scoped scenarios (in the directive area, before
+executable body):
+```clear
+agent 'Researcher' receives question:
+  evals:
+    scenario 'short question':
+      input is 'What is quantum computing?'
+      expect 'Answer is 2-3 sentences long and on-topic.'
+    scenario 'tough question':
+      input is 'Explain Bell's theorem to a 10-year-old.'
+      expect 'Uses an analogy a 10-year-old would understand.'
+  answer = ask claude 'Answer this question in 2-3 sentences' with question
+  send back answer
+```
+
+**When to write user evals:**
+
+- **Auto-evals are too generic** — your agent has a specific behavior
+  (refuse off-topic questions, always include a citation, never use
+  exclamation points) that the auto-rubric won't catch.
+- **You need negative cases** — auto-evals only test the happy path.
+  Write a scenario for malformed input or off-topic queries.
+- **You need a regression net** — you fixed a bug, write the eval,
+  re-run before each ship to catch it coming back.
+
+**Grader provider — Claude default, swap for independence:**
+
+`EVAL_PROVIDER` in `.env`:
+- unset / `anthropic` — uses `ANTHROPIC_API_KEY`. Default. Same family
+  as the agent under test (sympathetic failure modes).
+- `google` — uses `GOOGLE_API_KEY`. Independent signal — recommended
+  when you suspect the agent is gaming Claude-style prompts.
+- `openai` — uses `OPENAI_API_KEY`. Cheapest of the three.
+
+Studio's Run Evals modal shows the active provider and the estimated
+cost before the run. Per-eval cost shown as a chip on each row;
+running total in the summary line.
+
+**Export:**
+
+After a run, Export MD or Export CSV. Markdown groups everything by
+agent with full criteria, input, output, grader feedback, and grader
+raw response. CSV is one row per eval — good for spreadsheets, CI
+diffing, regression tracking over time.
+
+**Ways to run:**
+
+- **Studio** — Run Evals (full suite, gated by cost modal); Run
+  button on each row (single eval, no gate); Run Tests stays separate
+  for unit tests.
+- **CLI legacy** — `node cli/clear.js eval app.clear` runs the older
+  schema-evals path (mocked AI). The structured suite path lives in
+  Studio for now.
+- **Meph** — `list_evals` to see the suite, `run_evals` to run all,
+  `run_eval` to run one by id.
 
 ### Use Text Blocks for Long System Prompts
 

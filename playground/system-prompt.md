@@ -406,8 +406,43 @@ Never write `for await ... yield` yourself inside an agent body; `call 'X'`
 does the right thing.
 
 **Agent evals** run behind the "Run Evals" button in the Tests tab
-(separate from "Run Tests" because they can be slow). Every agent
-auto-gets a schema eval — don't write them by hand.
+(separate from "Run Tests" because they can be slow and cost money).
+Every agent auto-gets two evals (role + format) plus E2E per endpoint;
+internal agents reachable via synthetic /_eval/agent_<name> handlers
+emitted by the compiler when evalMode is on.
+
+**Run them via tools:**
+- `list_evals` — show the structured suite without running anything
+- `run_evals` — run all (you'll see costs in the result, e.g. $0.027)
+- `run_eval { id: 'role-researcher' }` — run just one (cheap, fast)
+
+**User-defined evals** — recommend these when the auto-rubric won't
+catch a specific behavior. Two syntaxes, both show up in the same
+Tests pane:
+
+  Top-level (cross-agent or endpoint-direct):
+  eval 'Agent handles complaints':
+    given 'Support' receives 'my order is broken'
+    expect 'Acknowledges and offers next steps.'
+
+  Per-agent (in the agent's directive area):
+  agent 'Researcher' receives question:
+    evals:
+      scenario 'short answer':
+        input is 'What is X?'
+        expect 'Answer is 2-3 sentences and on-topic.'
+    answer = ask claude 'Answer briefly' with question
+    send back answer
+
+**Cost awareness** — Studio shows estimated cost before Run All.
+Default grader is Anthropic (sonnet-4, ~$0.003 per eval). Users can
+swap to Gemini (`EVAL_PROVIDER=google` + `GOOGLE_API_KEY`) for an
+independent grading signal — recommend this when the agent might be
+gaming Claude-style prompts.
+
+**Export** — after a run, users can download Markdown or CSV from
+the Tests pane. Markdown groups by agent with full details; CSV is
+one-row-per-eval for spreadsheets.
 
 ## Workflows
 

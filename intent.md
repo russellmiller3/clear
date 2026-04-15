@@ -266,6 +266,7 @@ Service calls use direct REST API calls via `fetch()`, not SDK imports. Auth via
 | `SKILL` | `skill 'Name':` + `has tool(s):` + `instructions:` | (same) | Compile-time merge into agent |
 | `HUMAN_CONFIRM` | `ask user to confirm 'message'` | (same) | Approvals table insert + 202 response |
 | `MOCK_AI` | `mock claude responding:` + fields (in test) | (same) | `_askAI` override with mock |
+| `EVAL_DEF` | `eval 'name':` + `given 'Agent' receives X` / `call POST '/path' with X` + `expect '<rubric>'` / `expect output has fields` | (same) | Merged into `result.evalSuite` with `source: 'user-top'`. Runner POSTs the input and grades via Claude (or Gemini/OpenAI if `EVAL_PROVIDER` set). |
 | `CLASSIFY` | `intent = classify X as 'a', 'b', 'c'` | (same) | `await _classifyIntent(X, ['a','b','c'])` — Claude Haiku |
 | `ASK_AI` (multi-context) | `ask ai 'prompt' with X, Y, Z` | (same) | `await _askAI(prompt, JSON.stringify({X, Y, Z}))` |
 
@@ -282,6 +283,9 @@ Agent directives (metadata on AGENT node, not separate nodes):
 | `knows about: Table1, Table2` | RAG — keyword search over DB tables before prompting |
 | `knows about: 'https://url'` | RAG — fetch page text at startup, keyword search |
 | `knows about: 'file.pdf'` | RAG — read PDF/DOCX/TXT/MD at startup, keyword search |
+| `evals:` + `scenario 'name': input is X; expect Y` | User-defined per-agent eval scenarios. Compiler attaches as `agent.evalScenarios[]`; merged into `result.evalSuite` with `source: 'user-agent'`. Scenario input overrides the auto-probe for that entry. |
+
+**Agent eval suite.** Every agent gets two evals (role + format) generated automatically from its source definition; every POST endpoint that calls an agent gets an E2E eval. Internal agents are reachable via synthetic `/_eval/agent_<name>` handlers emitted only when `compileProgram(source, { evalMode: true })` is set — Studio compiles in eval mode for the dedicated eval child, production builds compile without. Probes are built from receiving-var name + matching table schema + prompt noun-hints (priority order). LLM-graded role/E2E evals dispatch to Anthropic (default), Google Gemini, or OpenAI based on `EVAL_PROVIDER`. `result.evalSuite` is the structured spec list; `/api/run-eval` runs all or one; `/api/export-eval-report` generates downloadable markdown or CSV. User-defined evals via top-level `eval 'name':` blocks (EVAL_DEF) and per-agent `evals:` subsections.
 
 **Multi-agent orchestration.** Five patterns compose the primitives above:
 1. **Sequential chain** — nest `RUN_AGENT` calls inside an `AGENT` body, each step consumes the prior.

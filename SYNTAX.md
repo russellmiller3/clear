@@ -2181,6 +2181,102 @@ test 'handles product question':
   expect result's action is 'respond'
 ```
 
+### Agent Evals (auto-generated + user-defined)
+
+Every agent in a Clear file gets **two evals generated automatically**
+from its source:
+
+- **Role eval** — Claude grades whether the agent did its job, judged
+  against the agent's own `ask claude` prompts, skills, tools, and
+  constraints.
+- **Format eval** — deterministic shape check. If the agent has a
+  `returning JSON text:` schema, each field is verified. Otherwise
+  the response just has to be non-empty.
+
+Each POST endpoint that calls an agent gets a **third eval**:
+
+- **E2E eval** — full happy-path hit on the endpoint with a realistic
+  probe; grader checks the top-line result.
+
+Internal agents (called by other agents, not exposed via an endpoint)
+also get role + format evals — the compiler emits synthetic
+`/_eval/agent_<name>` endpoints at eval time so they're individually
+graddable without polluting the production app.
+
+Probes are built from the agent's receiving-var name, any matching
+table schema, and noun hints from its prompts. No `'hello'` fallback
+on any of the 8 core templates.
+
+Run from Studio's Tests tab — Run Evals button. Each row is
+individually re-runnable; click Run next to any row to re-grade just
+that eval. Export MD / Export CSV buttons save the full run as a
+downloadable report.
+
+### User-defined evals — top-level `eval 'name':` block
+
+Scenarios that span multiple agents or hit an endpoint directly. Parses
+like `test 'name':` but produces grader-ready specs:
+
+```clear
+# Agent scenario with string input + LLM-graded rubric
+eval 'Support greets politely':
+  given 'Support' receives 'hi'
+  expect 'Output opens with a warm greeting and offers to help.'
+
+# Compound-object input
+eval 'Screener preserves resume':
+  given 'Screener' receives:
+    name is 'Jane Doe'
+    resume is 'Senior engineer, 8 years backend'
+  expect 'Output contains the same resume text unmodified.'
+
+# Endpoint scenario with deterministic shape check
+eval 'Classify returns shape':
+  call POST '/api/classify' with text is 'billing question'
+  expect output has category, confidence
+```
+
+Rules:
+- `given 'Agent Name' receives ...` scenarios post to the agent's
+  endpoint (real if exposed, synthetic if internal).
+- `call METHOD 'path' with ...` scenarios post to the literal path.
+- `expect '<rubric>'` → LLM-graded.
+- `expect output has <fields>` → deterministic format check.
+
+### User-defined evals — per-agent `evals:` subsection
+
+For scenarios scoped to one agent, place them inside the agent block
+alongside other directives (before the executable body):
+
+```clear
+agent 'Support' receives message:
+  evals:
+    scenario 'warm greeting':
+      input is 'hi'
+      expect 'The agent greets the user warmly.'
+    scenario 'handles complaint':
+      input is 'my order is broken'
+      expect 'Acknowledges the problem and offers next steps.'
+  response = ask claude 'Help the user' with message
+  send back response
+```
+
+Scenario inputs override the auto-probe for that entry only. The
+auto-generated role + format rows for the agent stay, so you see both
+the baseline and your custom signals.
+
+### Grader provider (default Anthropic, Gemini or OpenAI optional)
+
+Set `EVAL_PROVIDER` in `.env` to choose:
+
+- `anthropic` (default) — uses `ANTHROPIC_API_KEY`. Model: claude-sonnet-4.
+- `google` — uses `GOOGLE_API_KEY`. Model: gemini-1.5-pro. Independent
+  signal — breaks the Claude-grading-Claude loop.
+- `openai` — uses `OPENAI_API_KEY`. Model: gpt-4o-mini. Cheapest option.
+
+Studio's Run Evals modal shows the active provider before the run so
+you know what'll be graded (and paid for).
+
 ### Streaming (Default for Text Agents)
 Text agents stream by default — token-by-token via SSE. No directive needed.
 ```clear
