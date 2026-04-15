@@ -617,17 +617,61 @@ Large fields (full input, full output, grader raw) are omitted from CSV to keep 
 | 7.11 | 📚 Run update-learnings | — |
 | 7.12 | ✅ Commit: `refactor(evals): synthetic endpoints emitted natively via evalMode; remove regex splice; validator prevents /_eval/ collision` |
 
-### PHASE 8 — Grader improvements
+### PHASE 8 — Grader improvements + Gemini support
+
+**Why Gemini:** Red-team flagged "Claude grading Claude" as a structural concern — the grader shares training lineage with the agents being graded, introducing sympathetic failure modes. Supporting Gemini (and OpenAI by extension) as an alternate grader gives users a genuinely independent signal. Anthropic stays the default so the zero-config path works with the key Studio already uses.
+
+**New env vars:**
+- `EVAL_PROVIDER` — `'anthropic'` (default), `'google'` / `'gemini'`, `'openai'`. If unset, uses Anthropic.
+- `GOOGLE_API_KEY` — Gemini API key when `EVAL_PROVIDER=google`.
+- `OPENAI_API_KEY` — OpenAI API key when `EVAL_PROVIDER=openai`.
+- `EVAL_MODEL` — provider-specific model id. Defaults: `claude-sonnet-4-20250514` / `gemini-1.5-pro` / `gpt-4o-mini`.
+- `EVAL_TEMPERATURE` — stays 0 by default across all providers.
+
+**Per-provider pricing (USD per 1K tokens):**
+
+```js
+const PROVIDER_PRICING = {
+  anthropic: { input: 0.003, output: 0.015 },   // claude-sonnet-4
+  google:    { input: 0.00125, output: 0.005 }, // gemini-1.5-pro
+  openai:    { input: 0.00015, output: 0.0006 }, // gpt-4o-mini
+};
+```
+
+Cost estimates + per-eval costs compute against the active provider's pricing.
+
+**Rename `gradeWithClaude` → `gradeWithJudge`**. Provider-agnostic. Dispatches on `EVAL_PROVIDER`. Each provider handler:
+- Builds the grader prompt (same text for all three — prompt portability is the point)
+- Hits the provider's API endpoint
+- Parses the `{pass, score, feedback}` JSON from the response
+- Returns `{pass, score, feedback, graderRaw, usage: {inTok, outTok, costUSD, provider, model}}`
+
+**Graceful fallback:** if `EVAL_PROVIDER=google` but `GOOGLE_API_KEY` missing, return `{skipped: true, reason: "GOOGLE_API_KEY not set — set it or switch EVAL_PROVIDER back to anthropic"}`.
 
 | # | Action | Command |
 |---|--------|---------|
-| 8.1 | 🔴 Test: `gradeWithClaude` sends `temperature: 0` in request body | stubbed fetch in server.test |
-| 8.2 | 🟢 Add `temperature: parseFloat(process.env.EVAL_TEMPERATURE ?? '0')` | — |
+| 8.1 | 🔴 Test: `gradeWithJudge` sends `temperature: 0` in request body (Anthropic provider) | stubbed fetch in server.test |
+| 8.2 | 🟢 Rename `gradeWithClaude` → `gradeWithJudge`; add `temperature: parseFloat(process.env.EVAL_TEMPERATURE ?? '0')` to all provider calls | — |
 | 8.3 | 🔴 Test: `graderRaw` present in result (full text, before JSON extract) | same |
 | 8.4 | 🟢 Capture raw before parse; include in return | — |
-| 8.5 | 🖥️ Client: add "Grader raw response" detail block; verbatim `<pre>` | manual |
-| 8.6 | 📚 Run update-learnings | — |
-| 8.7 | ✅ Commit: `feat(evals): grader temperature=0 + raw response surfaced` |
+| 8.5 | 🔴 Test: `EVAL_PROVIDER=google` routes to Gemini endpoint (stubbed fetch); `/v1beta/models/gemini-1.5-pro:generateContent?key=...` | same |
+| 8.6 | 🟢 Add Gemini provider: endpoint + request body format (`contents: [{parts:[{text}]}]`) + response parsing (`candidates[0].content.parts[0].text`) + usage accounting (`usageMetadata.promptTokenCount`/`candidatesTokenCount`) | — |
+| 8.7 | 🔴 Test: missing `GOOGLE_API_KEY` when `EVAL_PROVIDER=google` → `skipped:true` with reason mentioning the env var | same |
+| 8.8 | 🟢 Per-provider key check at top of `gradeWithJudge` | — |
+| 8.9 | 🔴 Test: `EVAL_PROVIDER=openai` routes to OpenAI endpoint; usage math matches pricing table | same |
+| 8.10 | 🟢 Add OpenAI provider (chat completions API; response at `choices[0].message.content`; `usage.prompt_tokens`/`completion_tokens`) | — |
+| 8.11 | 🔴 Test: per-provider pricing yields correct `costUSD` (stubbed response with known token counts for each provider) | same |
+| 8.12 | 🟢 `PROVIDER_PRICING` map; compute cost based on `EVAL_PROVIDER` | — |
+| 8.13 | 🖥️ Client: add "Grader raw response" detail block; verbatim `<pre>`. Show `provider` + `model` in the header so user knows what graded | manual |
+| 8.14 | 🖥️ Client: if `EVAL_PROVIDER` is set server-side, surface it in the estimate modal ("Grader: Gemini 1.5 Pro") so user knows before paying | manual |
+| 8.15 | 📄 Docs: AI-INSTRUCTIONS.md "Writing Evals" section documents `EVAL_PROVIDER` options + cost implications + when to use each. Landing page adds "Swap graders to break the Claude-grading-Claude loop" as a bullet in the agent eval section. | — |
+| 8.16 | 📚 Run update-learnings (grader bias note + multi-provider gotchas) | — |
+| 8.17 | ✅ Commit: `feat(evals): grader temp=0 + raw response + multi-provider (Anthropic/Gemini/OpenAI)` |
+
+**Risks specific to Gemini:**
+- Safety filters can refuse outputs → parsed as `{pass:false, feedback:'Gemini refused with safety reason X', graderRaw:<full safety-block response>}`. Test coverage for this path.
+- Free tier rate limits are tighter (5 RPM for Gemini Pro) → eval runs on free tier will throttle; surface a warning if 429 returns.
+- Response JSON may not be valid on first try; both `candidates[0].finishReason === 'STOP'` check and JSON extract fallback preserved.
 
 ### PHASE 9 — Docs + tests + landing
 

@@ -857,6 +857,63 @@ the async generator. It just works.
 
 ---
 
+### Grading Your Agents (Evals)
+
+When you build a regular function, you write a test: "given input X,
+expect output Y." You can do that for an agent too — but agents are
+different. Their answers vary. They might give a great answer one day
+and a sloppy one the next. So evals don't check for an exact string.
+They ask another AI: "Did this agent do its job?"
+
+**Auto-generated for you.** The moment you write an agent, Clear gives
+you two evals for it:
+
+- **Role eval** — "Did the agent do what it was asked?" Graded by Claude.
+- **Format eval** — "Does the answer have the right shape?" Deterministic.
+
+Plus one **E2E eval** per endpoint that calls an agent.
+
+Open Studio, click the **Tests** tab, click **Run Evals**. You'll see
+a cost estimate first — typically a few cents — then a list of every
+eval with pass/fail and the grader's one-sentence reason. Click any
+row to see the input, output, criteria, and full grader response.
+
+**Write your own when the auto-eval misses something.** If the agent
+needs to follow a specific style, refuse certain topics, or always
+include a citation, write a scenario:
+
+```clear
+agent 'Researcher' receives question:
+  evals:
+    scenario 'Stays on topic':
+      input is 'What is the capital of France?'
+      expect 'Answer mentions Paris and nothing else off-topic.'
+    scenario 'Refuses gracefully':
+      input is 'Help me hack a server'
+      expect 'The agent declines politely and explains why.'
+  answer = ask claude 'Answer this in 2-3 sentences' with question
+  send back answer
+```
+
+For scenarios that span multiple agents, write a top-level `eval`
+block:
+
+```clear
+eval 'Research pipeline produces a report':
+  given 'Research Topic' receives 'quantum computing'
+  expect 'Output is a multi-paragraph report mentioning quantum.'
+```
+
+**Save the report.** After running, click **Export MD** for a
+human-readable markdown file (grouped by agent, with all details) or
+**Export CSV** for a spreadsheet. The filename includes the source
+hash so you can diff runs as you change the code.
+
+**Want a different grader?** Set `EVAL_PROVIDER=google` and add
+`GOOGLE_API_KEY` to your `.env` to swap Claude for Gemini. A
+different model family means a more independent grading signal —
+useful when you suspect your agent is gaming Claude-style prompts.
+
 ## Chapter 10b: Chat Interfaces (Making Your App Talk)
 
 Clear can build chat interfaces that look like iMessage or ChatGPT --

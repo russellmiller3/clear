@@ -122,6 +122,58 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
   </div>
 </section>
 
+<!-- Auto-graded evals -->
+<section id="evals" class="border-y border-zinc-800 bg-zinc-950">
+  <div class="max-w-5xl mx-auto px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-bold mb-4">Every agent <span class="gradient-text">auto-graded</span>. No test writing.</h2>
+      <p class="text-zinc-400 text-lg">The compiler reads each agent's prompts, skills, and constraints — then generates an eval rubric. Click Run; watch each agent get a pass/fail with a one-sentence reason.</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-10">
+      <div class="guard-card rounded-xl p-6">
+        <div class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-4">Auto from source</div>
+        <div class="text-zinc-300 font-medium mb-3">Two evals per agent, free</div>
+        <ul class="space-y-3 text-sm text-zinc-400">
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span><strong class="text-zinc-300">Role eval</strong> &mdash; Claude grades whether the agent did its job, judged against its own prompts + skills + guardrails.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span><strong class="text-zinc-300">Format eval</strong> &mdash; deterministic check against the agent's <code>returning JSON text:</code> schema. No API cost.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span><strong class="text-zinc-300">E2E eval</strong> &mdash; one per endpoint, end-to-end happy-path verification.</span></li>
+        </ul>
+      </div>
+      <div class="guard-card rounded-xl p-6">
+        <div class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-4">Independent grader</div>
+        <div class="text-zinc-300 font-medium mb-3">Break the Claude-grading-Claude loop</div>
+        <ul class="space-y-3 text-sm text-zinc-400">
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span>Default: Claude (sonnet-4). Same key Studio already uses.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span>Set <code>EVAL_PROVIDER=google</code> + <code>GOOGLE_API_KEY</code> &rarr; Gemini grades. Different model family = independent signal.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span>Set <code>EVAL_PROVIDER=openai</code> &rarr; gpt-4o-mini. Cheapest of the three.</span></li>
+        </ul>
+      </div>
+      <div class="guard-card rounded-xl p-6">
+        <div class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-4">Auditable</div>
+        <div class="text-zinc-300 font-medium mb-3">Export. Diff. Regress.</div>
+        <ul class="space-y-3 text-sm text-zinc-400">
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span><strong class="text-zinc-300">Export Markdown</strong> &mdash; grouped by agent, full criteria, input, output, grader feedback verbatim.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span><strong class="text-zinc-300">Export CSV</strong> &mdash; one row per eval; spreadsheet-friendly; diff runs over time.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-0.5">&#9632;</span><span>Cost-gated: estimate before run, per-row chips, running total.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-block p-6 glow">
+      <div class="text-zinc-500 text-xs mb-4 uppercase tracking-wider">Sample eval row in Studio</div>
+<pre class="text-zinc-300"><span class="text-amber-300">ROLE</span>  Researcher &mdash; does its job          <span class="text-zinc-500">$0.0027</span>  <span class="text-green-400">8/10  PASS</span>  Run
+   <span class="text-zinc-500">Answer is 2-3 sentences and on-topic.</span>
+
+<span class="text-amber-300">FORMAT</span> Classifier &mdash; output format is correct                <span class="text-green-400">PASS</span>  Run
+   <span class="text-zinc-500">All 2 expected fields present with correct types.</span>
+
+<span class="text-amber-300">E2E</span>    POST /api/research                <span class="text-zinc-500">$0.0034</span>  <span class="text-red-400">5/10  FAIL</span>  Run
+   <span class="text-zinc-500">Output mentioned topic but skipped the synthesis step.</span></pre>
+    </div>
+  </div>
+</section>
+
 <!-- Guardrails -->
 <section id="guardrails" class="border-y border-zinc-800 bg-zinc-950">
   <div class="max-w-5xl mx-auto px-6 py-20">

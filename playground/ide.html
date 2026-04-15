@@ -185,6 +185,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .eval-kind-info   { background: color-mix(in oklch, var(--tx3) 25%, transparent); color: var(--tx3); }
 .eval-row-label { flex: 1; color: var(--tx); font-weight: 500; }
 .eval-score { font-size: 10px; color: var(--tx3); padding: 1px 6px; border: 1px solid var(--bd2); border-radius: 3px; flex-shrink: 0; }
+.eval-cost { font-size: 10px; color: var(--tx3); padding: 1px 6px; border: 1px solid var(--bd2); border-radius: 3px; flex-shrink: 0; font-family: var(--mono); cursor: help; }
+.eval-total-cost { font-family: var(--mono); color: var(--tx2); padding: 1px 6px; background: color-mix(in oklch, var(--accent) 10%, transparent); border-radius: 3px; }
 .eval-status { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
 .eval-status.eval-pass    { background: color-mix(in oklch, var(--green) 20%, transparent); color: var(--green); }
 .eval-status.eval-fail    { background: color-mix(in oklch, var(--red) 20%, transparent); color: var(--red); }
@@ -1642,8 +1644,16 @@ function showTests() {
   parts.push(`<button class="test-btn" onclick="runTests('app')" ${testRunning.app ? 'disabled' : ''}>
     ${testRunning.app ? '<span class="test-spinner"></span> Running...' : '&#9654; Run Tests'}
   </button>`);
-  parts.push(`<button class="test-btn" onclick="runEvals()" ${testRunning.evals ? 'disabled' : ''} title="Agent evals — deterministic schema checks with mocked AI. Requires agents in source.">
+  parts.push(`<button class="test-btn" onclick="runEvals()" ${testRunning.evals ? 'disabled' : ''} title="Agent evals — cost-gated. Deterministic format checks + LLM-graded role/E2E checks. Gemini opt-in via EVAL_PROVIDER=google.">
     ${testRunning.evals ? '<span class="test-spinner"></span> Running...' : '&#9733; Run Evals'}
+  </button>`);
+  // Export dropdown — only enabled once there are results to export.
+  const hasEvalResults = testResults.evals && (testResults.evals.results?.length > 0);
+  parts.push(`<button class="test-btn" onclick="exportEvalReport('md')" ${hasEvalResults ? '' : 'disabled'} title="Download this eval run as a markdown report (grouped by agent, with full criteria + outputs + grader feedback).">
+    &darr; Export MD
+  </button>`);
+  parts.push(`<button class="test-btn" onclick="exportEvalReport('csv')" ${hasEvalResults ? '' : 'disabled'} title="Download as CSV — one row per eval. Good for spreadsheets or diffing runs over time.">
+    &darr; Export CSV
   </button>`);
   parts.push('</div>');
 
@@ -1786,15 +1796,20 @@ function renderEvalSection(data) {
       pass: `<span class="eval-status eval-pass">pass</span>`,
       fail: `<span class="eval-status eval-fail">fail</span>`,
       skip: `<span class="eval-status eval-skip">skip</span>`,
+      running: `<span class="eval-status eval-pending">running…</span>`,
       pending: `<span class="eval-status eval-pending">not run</span>`,
-    })[status];
+    })[status] || `<span class="eval-status eval-pending">not run</span>`;
     const kindBadge = `<span class="eval-kind eval-kind-${spec.kind}">${spec.kind.toUpperCase()}</span>`;
     const scoreBadge = r?.score ? `<span class="eval-score">${r.score}/10</span>` : '';
+    // Cost chip — only shown once the eval has run and incurred real API cost.
+    const costChip = (r?.usage?.costUSD > 0)
+      ? `<span class="eval-cost" title="${(r.usage.inTok || 0)} in / ${(r.usage.outTok || 0)} out tokens · ${r.usage.provider || 'anthropic'} ${r.usage.model || ''}">$${r.usage.costUSD.toFixed(4)}</span>`
+      : '';
     const running = evalRowRunning.has(spec.id);
     const runBtn = `<button class="eval-run-btn" onclick="event.stopPropagation(); runEvalOne(${JSON.stringify(spec.id)})" ${running ? 'disabled' : ''}>${running ? '…' : 'Run'}</button>`;
 
     body += `<div class="eval-row" onclick="toggleEvalRow(${JSON.stringify(spec.id)})">`;
-    body += `<div class="eval-row-head">${kindBadge}<span class="eval-row-label">${escHtml(spec.label || spec.id)}</span>${scoreBadge}${statusBadge}${runBtn}</div>`;
+    body += `<div class="eval-row-head">${kindBadge}<span class="eval-row-label">${escHtml(spec.label || spec.id)}</span>${costChip}${scoreBadge}${statusBadge}${runBtn}</div>`;
     if (r?.feedback) body += `<div class="eval-row-feedback">${escHtml(r.feedback)}</div>`;
 
     // Failed rows auto-expand so the user can see what went wrong without
@@ -1824,6 +1839,16 @@ function renderEvalSection(data) {
       const feedbackBlock = r?.feedback
         ? `<div class="eval-detail-block"><div class="eval-detail-label">${status === 'fail' ? 'Why it failed' : 'Grader feedback'}</div><pre class="eval-detail-body">${escHtml(r.feedback)}</pre></div>`
         : '';
+      // Grader raw response — the exact text the grader returned, before
+      // JSON extraction. Useful for debugging weird grades, seeing which
+      // model/provider graded, or spotting safety-filter refusals.
+      const graderRawBlock = r?.graderRaw
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">Grader raw response${r.usage ? ` <span class="eval-detail-tag">${r.usage.provider}/${r.usage.model}</span>` : ''}</div><pre class="eval-detail-body">${escHtml(r.graderRaw)}</pre></div>`
+        : '';
+      // Tokens + cost breakdown block
+      const usageBlock = (r?.usage)
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">Tokens + cost</div><pre class="eval-detail-body">${r.usage.inTok || 0} input, ${r.usage.outTok || 0} output = $${(r.usage.costUSD || 0).toFixed(5)}</pre></div>`
+        : '';
       const criteriaBlock = criteriaLines.length
         ? `<div class="eval-detail-block"><div class="eval-detail-label">Grading criteria</div><pre class="eval-detail-body">${escHtml(criteriaLines.join('\n\n'))}</pre></div>`
         : '';
@@ -1837,21 +1862,27 @@ function renderEvalSection(data) {
 
       body += `<div class="eval-row-detail">`;
       if (status === 'fail') {
-        // Debugger ordering: WHY → output that caused it → criteria it was judged against → context
-        body += feedbackBlock + outputBlock + criteriaBlock + inputBlock + endpointBlock;
+        // Debugger ordering: WHY → output that caused it → criteria → context → grader raw
+        body += feedbackBlock + outputBlock + criteriaBlock + inputBlock + endpointBlock + graderRawBlock + usageBlock;
       } else {
         // Pass/skip/pending: context-first ordering for exploratory reading
-        body += criteriaBlock + endpointBlock + inputBlock + outputBlock + feedbackBlock;
+        body += criteriaBlock + endpointBlock + inputBlock + outputBlock + feedbackBlock + graderRawBlock + usageBlock;
       }
       body += `</div>`;
     }
     body += `</div>`;
   }
 
+  // Total cost + token running totals — sums real usage across graded rows.
+  const totalCost = data.total_cost_usd || 0;
+  const totalTokens = (data.total_input_tokens || 0) + (data.total_output_tokens || 0);
+  const costSummary = totalCost > 0
+    ? ` &mdash; <span class="eval-total-cost">$${totalCost.toFixed(4)} · ${totalTokens.toLocaleString()} tok</span>`
+    : '';
   const summaryHtml = `<span class="test-summary">
     <span class="pass-count">${passed} pass</span>,
     <span class="fail-count">${failed} fail</span>${skipped ? `, <span class="skip-count">${skipped} skip</span>` : ''}
-    ${duration ? ' &mdash; ' + duration : ''}
+    ${duration ? ' &mdash; ' + duration : ''}${costSummary}
   </span>`;
   return `<div class="test-section eval-section">
     <div class="test-section-header">Agent Evals ${summaryHtml}</div>
@@ -1869,18 +1900,85 @@ function toggleEvalRow(id) {
 }
 window.toggleEvalRow = toggleEvalRow;
 
+// Pre-run gate. Fetches a cost + duration estimate, shows a confirm
+// dialog with the active grader provider + model, and only kicks off
+// the real run if the user confirms. Single-eval re-runs don't gate —
+// they're cheap and the user just clicked a specific Run button.
 async function runEvals() {
-  testRunning.evals = true;
-  if (activeTab === 'tests') showTests();
+  const source = editor.state.doc.toString();
+  let estimate = null;
   try {
-    const source = editor.state.doc.toString();
-    const resp = await fetch('/api/run-eval', {
+    const eResp = await fetch('/api/eval-suite-estimate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source }),
     });
-    const data = await resp.json();
-    testResults.evals = data;
+    estimate = await eResp.json();
+  } catch (err) {
+    // If estimate fails, fall through and let the real run surface the error.
+  }
+  if (estimate?.ok && estimate.evals_to_grade > 0) {
+    const costStr = '$' + estimate.estimated_cost_usd.toFixed(4);
+    const provider = estimate.provider === 'google' ? 'Gemini' : (estimate.provider === 'openai' ? 'OpenAI' : 'Claude');
+    const msg = `Run ${estimate.evals_to_grade} graded evals using ${provider} (${estimate.model}).\n\nEstimated cost: ${costStr}\nEstimated duration: ~${estimate.estimated_duration_seconds}s\n\nActual cost will be shown per-row and in the summary. Continue?`;
+    if (!confirm(msg)) return;
+  }
+  testRunning.evals = true;
+  // Seed a streaming result object so the Tests pane renders "running…" rows
+  // as they land instead of staying blank for 60–90s on a big suite. Rows
+  // get upserted by id as each `eval_row` SSE frame arrives, then the final
+  // `eval_results` frame replaces the whole object with the real aggregate.
+  testResults.evals = { suite: [], results: [], passed: 0, failed: 0, skipped: 0, streaming: true };
+  if (activeTab === 'tests') showTests();
+  try {
+    const resp = await fetch('/api/run-eval-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let frame;
+        try { frame = JSON.parse(line.slice(6).trim()); } catch { continue; }
+        if (frame.type === 'suite') {
+          // Populate the suite shape upfront so all rows render as "not run"
+          // right away. eval_row frames then flip them to running / pass / fail.
+          testResults.evals.suite = frame.suite || [];
+          if (activeTab === 'tests') showTests();
+        } else if (frame.type === 'eval_row') {
+          if (!testResults.evals.results) testResults.evals.results = [];
+          const existing = testResults.evals.results.filter(r => r.id !== frame.id);
+          if (frame.phase === 'start') {
+            existing.push({ id: frame.id, status: 'running', kind: frame.kind, agentName: frame.agentName });
+          } else if (frame.phase === 'end') {
+            // `frame` carries the full result fields (status, feedback,
+            // score, input, output, duration, usage) — keep them all.
+            existing.push({
+              id: frame.id, status: frame.status, kind: frame.kind,
+              feedback: frame.feedback, score: frame.score, input: frame.input,
+              output: frame.output, duration: frame.duration, usage: frame.usage,
+            });
+          }
+          testResults.evals.results = existing;
+          if (activeTab === 'tests') showTests();
+        } else if (frame.type === 'eval_results') {
+          testResults.evals = frame;
+          testResults.evals.streaming = false;
+        } else if (frame.type === 'error') {
+          testResults.evals = { ok: false, error: frame.message || 'stream error', duration: 0 };
+        }
+      }
+    }
     try { localStorage.setItem('clear_test_results', JSON.stringify(testResults)); } catch {}
   } catch (err) {
     testResults.evals = { ok: false, error: err.message || 'Network error', duration: 0 };
@@ -1928,9 +2026,58 @@ async function runEvalOne(id) {
   }
 }
 
+async function exportEvalReport(format) {
+  const evalData = testResults.evals;
+  if (!evalData || !evalData.results || evalData.results.length === 0) {
+    alert('No eval results to export. Click Run Evals first.');
+    return;
+  }
+  try {
+    const source = editor.state.doc.toString();
+    const resp = await fetch('/api/export-eval-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source,
+        format,
+        suite: evalData.suite,
+        results: evalData.results,
+        meta: {
+          total_cost_usd: evalData.total_cost_usd,
+          passed: evalData.passed,
+          failed: evalData.failed,
+          skipped: evalData.skipped,
+          duration: evalData.duration,
+        },
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Export failed: ' + (err.error || resp.statusText));
+      return;
+    }
+    // Browser download: pull filename from Content-Disposition.
+    const cd = resp.headers.get('content-disposition') || '';
+    const match = /filename="([^"]+)"/.exec(cd);
+    const filename = match ? match[1] : `eval-report.${format}`;
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Export failed: ' + (err.message || 'Network error'));
+  }
+}
+
 window.runTests = runTests;
 window.runEvals = runEvals;
 window.runEvalOne = runEvalOne;
+window.exportEvalReport = exportEvalReport;
 
 // Populate the auto-generated-tests badge next to the compile badge.
 // Compiler generates tests for every endpoint, button, page, and flow — this

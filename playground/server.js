@@ -5,7 +5,9 @@ import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSy
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
+import { createHash } from 'crypto';
 import { chromium } from 'playwright';
+import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './eval-auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -395,9 +397,19 @@ app.post('/api/run-tests', (req, res) => {
 
 let evalChild = null;
 let evalChildPort = null;
+// Which auth scheme the current eval child uses — set by ensureEvalChild
+// based on what the compiled serverJS imports. 'jwt' = jsonwebtoken (most
+// templates). 'legacy' = runtime/auth.js (blog-api, lead-scorer, page-
+// analyzer). Read by callEvalEndpoint to mint the right token format.
+let evalChildAuthScheme = 'jwt';
 let evalChildIdleTimer = null;
 const EVAL_PORT = 4999;
 const EVAL_IDLE_MS = 60_000;
+
+// Promise mutex — serializes eval suite runs so a Run-All and a Run-One-Eval
+// never interleave. Each `/api/run-eval` caller chains onto this promise and
+// awaits its ticket. Blocks nothing else in Studio; only eval runs are serial.
+let _evalMutex = Promise.resolve();
 
 function killEvalChild() {
   if (evalChildIdleTimer) { clearTimeout(evalChildIdleTimer); evalChildIdleTimer = null; }
@@ -409,6 +421,13 @@ function killEvalChild() {
   evalChildPort = null;
 }
 
+// Orphan-child cleanup on Studio shutdown. Without these, Ctrl-C or an
+// uncaught exception would leave the eval child running on port 4999,
+// blocking the next Studio restart.
+process.on('SIGINT', killEvalChild);
+process.on('SIGTERM', killEvalChild);
+process.on('exit', killEvalChild);
+
 function resetEvalIdleTimer() {
   if (evalChildIdleTimer) clearTimeout(evalChildIdleTimer);
   evalChildIdleTimer = setTimeout(() => {
@@ -417,21 +436,22 @@ function resetEvalIdleTimer() {
   }, EVAL_IDLE_MS);
 }
 
-// Splice the auto-generated /_eval/* handlers into compiled serverJS right
-// before `app.listen(...)` so every agent is reachable via HTTP for grading.
-function injectEvalEndpoints(serverJS, endpointsJS) {
-  if (!endpointsJS) return serverJS;
-  // Insert above `const PORT = process.env.PORT` (the usual listen preamble).
-  const marker = /const PORT = process\.env\.PORT/;
-  if (marker.test(serverJS)) {
-    return serverJS.replace(marker, endpointsJS + '\nconst PORT = process.env.PORT');
+// Wipe any persistent DB state the eval child previously wrote. Runs at the
+// start of every FULL eval suite (no id), so Run-All always sees a clean
+// slate. Single-eval re-runs skip this for fast iteration on one agent.
+function wipeEvalChildDbFiles() {
+  for (const f of ['clear-data.db', 'clear-data.db-wal', 'clear-data.db-shm', 'clear-data.db-journal', 'clear-data.json']) {
+    try { unlinkSync(join(BUILD_DIR, f)); } catch {}
   }
-  // Fallback: prepend to `app.listen(` directly.
-  return serverJS.replace(/app\.listen\(/, endpointsJS + '\napp.listen(');
+  termLog('[eval] DB wiped before full suite run');
 }
 
-async function ensureEvalChild(serverJS, endpointsJS) {
-  const fullJS = injectEvalEndpoints(serverJS, endpointsJS || '');
+async function ensureEvalChild(serverJS) {
+  // serverJS must already include the /_eval/* synthetic handlers — the
+  // caller compiles with `{ evalMode: true }` to get them. Earlier versions
+  // spliced the handlers in here with regex; that was fragile. The compiler
+  // is now the single source of truth for the compiled serverJS shape.
+  const fullJS = serverJS;
   // If we already have a child for THIS exact source, reuse it.
   if (evalChild && evalChildPort && evalChild._lastServerJS === fullJS) {
     resetEvalIdleTimer();
@@ -460,11 +480,32 @@ async function ensureEvalChild(serverJS, endpointsJS) {
   for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
     if (existsSync(join(runtimeDir, f))) copyFileSync(join(runtimeDir, f), join(rtDir, f));
   }
-  const env = { ...process.env, PORT: String(EVAL_PORT), JWT_SECRET: 'clear-eval-secret', ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
+  // Share a single eval-scoped secret with the child so tokens minted by
+  // mintEvalAuthToken in this process are verified by the child's auth
+  // middleware. The compiler emits inline jsonwebtoken-based auth for the
+  // core templates (reads JWT_SECRET). We also set CLEAR_AUTH_SECRET to
+  // the same value so runtime/auth.js-based templates at least share the
+  // same secret, though that scheme's token FORMAT differs (2-part HMAC
+  // vs RFC 7519 JWT) — supporting it would require a second mint helper.
+  // Without this change, every `requires login` endpoint 401s on every
+  // probe, and 7 of 8 core templates score 0/N on evals (see eval-auth.js).
+  const env = {
+    ...process.env,
+    PORT: String(EVAL_PORT),
+    JWT_SECRET: EVAL_JWT_SECRET,
+    CLEAR_AUTH_SECRET: EVAL_JWT_SECRET,
+    ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}),
+  };
   const child = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
   child._lastServerJS = fullJS;
   evalChild = child;
   evalChildPort = EVAL_PORT;
+  // Detect which auth library the compiled child uses so callEvalEndpoint
+  // can mint a token in the matching format. Same `Authorization: Bearer`
+  // header either way — only the payload shape differs. Defaults to 'jwt'
+  // (modern templates); legacy runtime/auth.js templates get the 2-part
+  // HMAC format (blog-api, lead-scorer, page-analyzer).
+  evalChildAuthScheme = /require\(['"]\.\/clear-runtime\/auth['"]\)/.test(fullJS) ? 'legacy' : 'jwt';
   child.stderr.on('data', d => termLog('[eval-stderr] ' + d.toString().trimEnd()));
   child.stdout.on('data', d => termLog('[eval-stdout] ' + d.toString().trimEnd()));
   child.on('exit', () => { if (evalChild === child) { evalChild = null; evalChildPort = null; } });
@@ -474,29 +515,174 @@ async function ensureEvalChild(serverJS, endpointsJS) {
   return EVAL_PORT;
 }
 
-// Claude-as-judge. Returns { pass, feedback, score, skipped }.
-async function gradeWithClaude(rubric, input, output) {
-  const key = storedApiKey || process.env.ANTHROPIC_API_KEY || '';
-  if (!key) return { skipped: true, reason: 'ANTHROPIC_API_KEY not set — role/e2e grading skipped' };
-  const model = process.env.EVAL_MODEL || 'claude-sonnet-4-20250514';
-  const prompt = `You are grading an AI agent's output.\n\nRubric:\n${rubric}\n\nInput given to the agent:\n${JSON.stringify(input)}\n\nAgent's output:\n${typeof output === 'string' ? output : JSON.stringify(output)}\n\nRespond with ONLY a JSON object: { "pass": true|false, "score": 1-10, "feedback": "<one sentence>" }`;
-  try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 256, messages: [{ role: 'user', content: prompt }] }),
-      signal: AbortSignal.timeout(30_000)
-    });
-    if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0 };
-    const data = await r.json();
-    const text = data.content?.[0]?.text || '';
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return { pass: false, feedback: 'Grader returned non-JSON', score: 0 };
-    const g = JSON.parse(m[0]);
-    return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '' };
-  } catch (err) {
-    return { pass: false, feedback: 'Grader error: ' + err.message, score: 0 };
+// Pricing per 1K tokens for each grader provider. The UI's cost estimate
+// and per-eval cost capture multiply against these. Prices checked April 2026
+// — update when the vendor changes them. Source comment for each entry:
+//   - anthropic (claude-sonnet-4): https://anthropic.com/pricing
+//   - google (gemini-1.5-pro):     https://ai.google.dev/pricing
+//   - openai (gpt-4o-mini):        https://openai.com/api/pricing
+const PROVIDER_PRICING_USD_PER_1K = {
+  anthropic: { input: 0.003,   output: 0.015  },
+  google:    { input: 0.00125, output: 0.005  },
+  openai:    { input: 0.00015, output: 0.0006 },
+};
+
+// Default model per provider. Override with EVAL_MODEL.
+const PROVIDER_DEFAULT_MODEL = {
+  anthropic: 'claude-sonnet-4-20250514',
+  google:    'gemini-1.5-pro',
+  openai:    'gpt-4o-mini',
+};
+
+function _resolveGraderConfig() {
+  const provider = (process.env.EVAL_PROVIDER || 'anthropic').toLowerCase();
+  const normalized = provider === 'gemini' ? 'google' : provider;
+  const model = process.env.EVAL_MODEL || PROVIDER_DEFAULT_MODEL[normalized] || PROVIDER_DEFAULT_MODEL.anthropic;
+  const pricing = PROVIDER_PRICING_USD_PER_1K[normalized] || PROVIDER_PRICING_USD_PER_1K.anthropic;
+  const temperature = parseFloat(process.env.EVAL_TEMPERATURE || '0');
+  return { provider: normalized, model, pricing, temperature };
+}
+
+function _graderKey(provider) {
+  if (provider === 'google') return process.env.GOOGLE_API_KEY || '';
+  if (provider === 'openai') return process.env.OPENAI_API_KEY || '';
+  return storedApiKey || process.env.ANTHROPIC_API_KEY || '';
+}
+
+function _graderKeyEnvName(provider) {
+  if (provider === 'google') return 'GOOGLE_API_KEY';
+  if (provider === 'openai') return 'OPENAI_API_KEY';
+  return 'ANTHROPIC_API_KEY';
+}
+
+// Build the grading prompt — provider-independent, same text across all
+// graders so rubrics remain portable.
+function _buildGraderPrompt(rubric, input, output) {
+  return `You are grading an AI agent's output.\n\nRubric:\n${rubric}\n\nInput given to the agent:\n${JSON.stringify(input)}\n\nAgent's output:\n${typeof output === 'string' ? output : JSON.stringify(output)}\n\nRespond with ONLY a JSON object: { "pass": true|false, "score": 1-10, "feedback": "<one sentence>" }`;
+}
+
+function _parseGraderJSON(text) {
+  const m = String(text || '').match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch { return null; }
+}
+
+function _costUSD(inTok, outTok, pricing) {
+  return (inTok / 1000) * pricing.input + (outTok / 1000) * pricing.output;
+}
+
+// Provider-agnostic grader. Dispatches to Anthropic/Google/OpenAI based on
+// EVAL_PROVIDER (default anthropic). Returns {pass, score, feedback,
+// graderRaw, usage: {inTok, outTok, costUSD, provider, model}} on success,
+// or {skipped: true, reason} when the provider key is missing.
+async function gradeWithJudge(rubric, input, output) {
+  const cfg = _resolveGraderConfig();
+  const key = _graderKey(cfg.provider);
+  if (!key) {
+    return { skipped: true, reason: `${_graderKeyEnvName(cfg.provider)} not set — role/e2e grading skipped for provider '${cfg.provider}'` };
   }
+  const prompt = _buildGraderPrompt(rubric, input, output);
+  try {
+    if (cfg.provider === 'anthropic') {
+      return await _gradeAnthropic(cfg, key, prompt);
+    }
+    if (cfg.provider === 'google') {
+      return await _gradeGoogle(cfg, key, prompt);
+    }
+    if (cfg.provider === 'openai') {
+      return await _gradeOpenAI(cfg, key, prompt);
+    }
+    return { pass: false, feedback: `Unknown EVAL_PROVIDER: ${cfg.provider}`, score: 0, graderRaw: '' };
+  } catch (err) {
+    return { pass: false, feedback: 'Grader error: ' + err.message, score: 0, graderRaw: '' };
+  }
+}
+
+async function _gradeAnthropic(cfg, key, prompt) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: cfg.model,
+      max_tokens: 256,
+      temperature: cfg.temperature,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0, graderRaw: '' };
+  const data = await r.json();
+  const graderRaw = data.content?.[0]?.text || '';
+  const usage = {
+    inTok: data.usage?.input_tokens || 0,
+    outTok: data.usage?.output_tokens || 0,
+    provider: 'anthropic',
+    model: cfg.model,
+  };
+  usage.costUSD = _costUSD(usage.inTok, usage.outTok, cfg.pricing);
+  const g = _parseGraderJSON(graderRaw);
+  if (!g) return { pass: false, feedback: 'Grader returned non-JSON', score: 0, graderRaw, usage };
+  return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '', graderRaw, usage };
+}
+
+async function _gradeGoogle(cfg, key, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent?key=${encodeURIComponent(key)}`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: cfg.temperature, maxOutputTokens: 256 },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0, graderRaw: '' };
+  const data = await r.json();
+  // Gemini may refuse via safety filters — surface the finishReason so the
+  // user knows why the grade came back empty.
+  const cand = data.candidates?.[0];
+  if (cand?.finishReason && cand.finishReason !== 'STOP' && cand.finishReason !== 'MAX_TOKENS') {
+    return { pass: false, feedback: `Gemini refused: ${cand.finishReason}`, score: 0, graderRaw: JSON.stringify(cand) };
+  }
+  const graderRaw = cand?.content?.parts?.[0]?.text || '';
+  const usage = {
+    inTok: data.usageMetadata?.promptTokenCount || 0,
+    outTok: data.usageMetadata?.candidatesTokenCount || 0,
+    provider: 'google',
+    model: cfg.model,
+  };
+  usage.costUSD = _costUSD(usage.inTok, usage.outTok, cfg.pricing);
+  const g = _parseGraderJSON(graderRaw);
+  if (!g) return { pass: false, feedback: 'Grader returned non-JSON', score: 0, graderRaw, usage };
+  return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '', graderRaw, usage };
+}
+
+async function _gradeOpenAI(cfg, key, prompt) {
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify({
+      model: cfg.model,
+      temperature: cfg.temperature,
+      max_tokens: 256,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0, graderRaw: '' };
+  const data = await r.json();
+  const graderRaw = data.choices?.[0]?.message?.content || '';
+  const usage = {
+    inTok: data.usage?.prompt_tokens || 0,
+    outTok: data.usage?.completion_tokens || 0,
+    provider: 'openai',
+    model: cfg.model,
+  };
+  usage.costUSD = _costUSD(usage.inTok, usage.outTok, cfg.pricing);
+  const g = _parseGraderJSON(graderRaw);
+  if (!g) return { pass: false, feedback: 'Grader returned non-JSON', score: 0, graderRaw, usage };
+  return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '', graderRaw, usage };
 }
 
 // Deterministic format check. Works without API key.
@@ -526,21 +712,131 @@ function checkFormat(expected, output) {
   return { pass: true, feedback: 'No expectation specified; treated as pass.' };
 }
 
-// Hit an endpoint on the eval child and return { status, data }.
+// Hit an endpoint on the eval child and return { status, data, streamed? }.
+//
+// Streaming endpoints return content-type: text/event-stream. Naively
+// calling `r.json()` on them returns raw frame text like
+// `data: {"text":"partial"}\n\ndata: {"text":" more"}\n\n`, which is not
+// useful for grading. This function detects that case and drains the
+// stream, concatenating the `text` field from each `data:` frame into a
+// single string. The rest of the runner then grades the complete response.
 async function callEvalEndpoint(port, path, body) {
+  // Retry connection-level failures up to 2 extra times with short backoff.
+  // `probeUntilReady` returns as soon as `/` responds, but Express mounts
+  // `/` early and `/_eval/*` + domain routes later — so the first probe can
+  // land during a window where the TCP listener is up but the real route
+  // isn't registered yet, producing `fetch failed` / ECONNRESET. Retrying
+  // rides out that warmup gap without hiding legitimate route/HTTP failures
+  // (non-connection errors like 4xx/5xx are returned as-is on the first try).
+  const MAX_ATTEMPTS = 3;
+  const BACKOFF_MS = 500;
+  let lastErr = null;
+  // Mint once per call (not once per retry) so retries don't stack tokens.
+  // Token TTL is 1 hour — trivially outlives any single eval spec run.
+  // Format picked based on which auth library the child imports (set at
+  // spawn time in ensureEvalChild): 'legacy' = 2-part runtime/auth.js HMAC,
+  // anything else = standard 3-part jsonwebtoken JWT.
+  const authToken = evalChildAuthScheme === 'legacy'
+    ? mintLegacyEvalAuthToken()
+    : mintEvalAuthToken();
+  // Reset the eval-child idle timer every time we touch the child. Before
+  // this, the timer was set once at child spawn and only reset when a suite
+  // fully completed — so a suite that took longer than EVAL_IDLE_MS (60s)
+  // had its child killed mid-run, and every spec after that timer fired
+  // got "fetch failed" against a dead server. Workflow agents (Polished
+  // Report, Research Topic in MAR) run late in the suite and were the
+  // consistent casualties — 4 of 17 MAR evals failed this way.
+  resetEvalIdleTimer();
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const r = await fetch(`http://localhost:${port}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Authorize every probe as a test user so `requires login`
+          // endpoints pass the auth gate and the agent actually runs.
+          // Child verifies with JWT_SECRET=EVAL_JWT_SECRET (shared at spawn).
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(body),
+        // 90s budget. Single-LLM-call probes finish in 2-15s, but multi-
+        // step agents (repeat-until refinement, sub-agent orchestration)
+        // legitimately chain 4-8 Claude calls and land in the 30-60s range.
+        // Polished Report in multi-agent-research hit 45s and aborted under
+        // the previous budget; its timeouts surfaced as "Network error".
+        signal: AbortSignal.timeout(90_000)
+      });
+      const ct = r.headers.get('content-type') || '';
+      if (ct.includes('text/event-stream')) {
+        const drained = await _drainSSE(r);
+        return { status: r.status, data: drained, streamed: true };
+      }
+      let data;
+      try { data = await r.json(); }
+      catch { data = await r.text(); }
+      return { status: r.status, data };
+    } catch (err) {
+      lastErr = err;
+      // Only retry true connection errors — not AbortError (real 45s timeout).
+      const msg = String(err?.message || '');
+      const isConnErr = msg.includes('fetch failed') || msg.includes('ECONN') || err?.cause?.code?.startsWith?.('ECONN');
+      if (!isConnErr || attempt === MAX_ATTEMPTS) {
+        return { status: 0, data: null, error: msg };
+      }
+      await new Promise(ok => setTimeout(ok, BACKOFF_MS * attempt));
+    }
+  }
+  return { status: 0, data: null, error: lastErr?.message || 'unreachable' };
+}
+
+// Read an SSE response body and concatenate all `data: ...` frames into
+// a single string. Each frame is either `data: {"text": "..."}` (our
+// streaming-agent format) or `data: [DONE]` (end sentinel). Non-JSON frames
+// are treated as raw text to preserve whatever the endpoint emitted.
+async function _drainSSE(response) {
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    // Fallback path when streams aren't available — read full text, parse frames.
+    const raw = await response.text();
+    return _parseSSEFrames(raw);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let out = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Split on SSE frame boundaries (\n\n); keep the last partial frame in the buffer
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop();
+    for (const frame of frames) out += _extractSSEFrameText(frame);
+  }
+  if (buffer) out += _extractSSEFrameText(buffer);
+  return out;
+}
+
+function _parseSSEFrames(rawText) {
+  let out = '';
+  for (const frame of rawText.split('\n\n')) {
+    out += _extractSSEFrameText(frame);
+  }
+  return out;
+}
+
+function _extractSSEFrameText(frame) {
+  const trimmed = frame.trim();
+  if (!trimmed || !trimmed.startsWith('data:')) return '';
+  const payload = trimmed.slice('data:'.length).trim();
+  if (payload === '[DONE]' || payload === '') return '';
   try {
-    const r = await fetch(`http://localhost:${port}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(45_000)
-    });
-    let data;
-    try { data = await r.json(); }
-    catch { data = await r.text(); }
-    return { status: r.status, data };
-  } catch (err) {
-    return { status: 0, data: null, error: err.message };
+    const parsed = JSON.parse(payload);
+    if (typeof parsed === 'string') return parsed;
+    if (parsed && typeof parsed.text === 'string') return parsed.text;
+    return '';
+  } catch {
+    // Non-JSON frame — treat as raw
+    return payload;
   }
 }
 
@@ -567,11 +863,21 @@ async function runOneEval(spec, port) {
     return { id: spec.id, status: 'fail', duration: Date.now() - started, feedback: nonEmpty.feedback, input: spec.input, output: resp.data };
   }
   if (spec.rubric) {
-    const grade = await gradeWithClaude(spec.rubric, spec.input, resp.data);
+    const grade = await gradeWithJudge(spec.rubric, spec.input, resp.data);
     if (grade.skipped) {
       return { id: spec.id, status: 'skip', duration: Date.now() - started, feedback: grade.reason, input: spec.input, output: resp.data };
     }
-    return { id: spec.id, status: grade.pass ? 'pass' : 'fail', duration: Date.now() - started, feedback: grade.feedback, score: grade.score, input: spec.input, output: resp.data };
+    return {
+      id: spec.id,
+      status: grade.pass ? 'pass' : 'fail',
+      duration: Date.now() - started,
+      feedback: grade.feedback,
+      score: grade.score,
+      input: spec.input,
+      output: resp.data,
+      graderRaw: grade.graderRaw,
+      usage: grade.usage,
+    };
   }
   return { id: spec.id, status: 'pass', duration: Date.now() - started, feedback: 'Endpoint returned a non-empty response.', input: spec.input, output: resp.data };
 }
@@ -579,20 +885,28 @@ async function runOneEval(spec, port) {
 // Compile the given source. Returns { ok, compiled?, error? }.
 function compileForEval(source) {
   if (!source || !source.trim()) return { ok: false, error: 'No source code. Load or write a .clear file first.' };
-  let compiled;
-  try { compiled = compileProgram(source); }
-  catch (err) { return { ok: false, error: 'Compile threw: ' + err.message }; }
+  let compiled, compiledEvalMode;
+  try {
+    // Regular compile — used to surface the suite shape (needed even for
+    // the estimate endpoint which doesn't spin up the child).
+    compiled = compileProgram(source);
+    // Eval-mode compile — serverJS includes the /_eval/* synthetic
+    // handlers. Used by the eval child runner.
+    compiledEvalMode = compileProgram(source, { evalMode: true });
+  } catch (err) {
+    return { ok: false, error: 'Compile threw: ' + err.message };
+  }
   if (compiled.errors && compiled.errors.length > 0) {
     return { ok: false, error: 'Source has compile errors — fix them before running evals.', errors: compiled.errors };
   }
   // `serverJS` exists when the app builds both web + backend. For a pure
   // backend-only app the code lives in `javascript` instead. Accept either.
-  const server = compiled.serverJS || compiled.javascript;
+  const server = compiledEvalMode.serverJS || compiledEvalMode.javascript;
   if (!server) return { ok: false, error: 'App has no backend to run evals against (need a javascript backend build target).' };
   return { ok: true, compiled, serverJS: server };
 }
 
-// GET /api/eval-suite — returns the suite list (no execution, no child).
+// POST /api/eval-suite — returns the suite list (no execution, no child).
 app.post('/api/eval-suite', (req, res) => {
   const { source } = req.body;
   const compiled = compileForEval(source);
@@ -601,9 +915,239 @@ app.post('/api/eval-suite', (req, res) => {
   res.json({ ok: true, suite });
 });
 
+// POST /api/eval-suite-estimate — returns a pre-run cost + duration estimate
+// for the current source so the UI can gate Run All behind a confirm modal.
+// Does not spin up the eval child; pure compile + count.
+app.post('/api/eval-suite-estimate', (req, res) => {
+  const { source } = req.body;
+  const compiled = compileForEval(source);
+  if (!compiled.ok) return res.json(compiled);
+  const suite = compiled.compiled.evalSuite || [];
+  const estimate = estimateEvalSuiteCost(suite);
+  res.json({ ok: true, ...estimate });
+});
+
+// --- Eval report export ---------------------------------------------------
+// Renders current suite + results as a downloadable markdown or CSV file.
+// Markdown = human audit-friendly (grouped by agent, full criteria + input +
+// output + grader feedback inline). CSV = machine/spreadsheet friendly
+// (one row per eval, large fields omitted — use MD for those).
+// Stale-result warning: we recompute the source hash server-side and compare
+// to the one implied by the result set. Mismatch = banner in the output so
+// the user knows the results were generated against a different source.
+
+function _sourceHash(source) {
+  if (!source) return 'nosource';
+  return createHash('sha256').update(String(source), 'utf8').digest('hex').slice(0, 12);
+}
+
+function _appTitleFromSource(source) {
+  if (!source) return 'Clear App';
+  // First `page 'Name'` if present; else scan for an `agent 'Name'`; else 'Clear App'.
+  const page = /^\s*page\s+'([^']+)'/m.exec(source);
+  if (page) return page[1];
+  const agent = /^\s*agent\s+'([^']+)'/m.exec(source);
+  if (agent) return agent[1] + ' (agent app)';
+  return 'Clear App';
+}
+
+function _truncateForReport(s, max = 4000) {
+  if (typeof s !== 'string') s = JSON.stringify(s, null, 2);
+  if (s.length <= max) return s;
+  return s.slice(0, max) + '\n\n… (truncated)';
+}
+
+function renderEvalReportMarkdown({ source, suite, results, meta }) {
+  const byId = new Map();
+  for (const r of (results || [])) byId.set(r.id, r);
+  const hash = _sourceHash(source);
+  const title = _appTitleFromSource(source);
+  const when = new Date().toISOString();
+  const passed = meta?.passed ?? (results || []).filter(r => r.status === 'pass').length;
+  const failed = meta?.failed ?? (results || []).filter(r => r.status === 'fail').length;
+  const skipped = meta?.skipped ?? (results || []).filter(r => r.status === 'skip').length;
+  const totalCost = meta?.total_cost_usd ?? (results || []).reduce((s, r) => s + (r.usage?.costUSD || 0), 0);
+  const inTok = (results || []).reduce((s, r) => s + (r.usage?.inTok || 0), 0);
+  const outTok = (results || []).reduce((s, r) => s + (r.usage?.outTok || 0), 0);
+  const duration = meta?.duration ? (meta.duration / 1000).toFixed(1) + 's' : '—';
+
+  const lines = [];
+  lines.push(`# Eval Report — ${title}`);
+  lines.push('');
+  lines.push(`- **Run at:** ${when}`);
+  lines.push(`- **Source hash:** \`${hash}\``);
+  lines.push(`- **Total cost:** $${totalCost.toFixed(4)} (${inTok.toLocaleString()} input / ${outTok.toLocaleString()} output tokens)`);
+  lines.push(`- **Duration:** ${duration}`);
+  lines.push(`- **Summary:** ${passed} pass · ${failed} fail · ${skipped} skip — out of ${(suite || []).length}`);
+  lines.push('');
+
+  // Group entries by agent name (fall back to '(no agent)').
+  const byAgent = new Map();
+  for (const spec of (suite || [])) {
+    const key = spec.agentName || '(unassigned)';
+    if (!byAgent.has(key)) byAgent.set(key, []);
+    byAgent.get(key).push(spec);
+  }
+
+  for (const [agentName, specs] of byAgent) {
+    lines.push(`## ${agentName}`);
+    lines.push('');
+    for (const spec of specs) {
+      const r = byId.get(spec.id);
+      lines.push(`### ${spec.kind.toUpperCase()} — ${spec.label || spec.id}`);
+      lines.push('');
+      const statusStr = r?.status || 'not-run';
+      const scoreStr = r?.score ? ` (score ${r.score}/10)` : '';
+      lines.push(`**Status:** ${statusStr}${scoreStr}`);
+      if (r?.usage) {
+        lines.push(`**Cost:** $${(r.usage.costUSD || 0).toFixed(5)} — ${r.usage.inTok || 0} input / ${r.usage.outTok || 0} output tokens · ${r.usage.provider || ''}/${r.usage.model || ''}`);
+      }
+      lines.push('');
+      // Criteria
+      const crit = [];
+      if (spec.expected?.kind === 'fields' && spec.expected.fields?.length) {
+        crit.push('Expected shape — object with fields: ' + spec.expected.fields.map(f => `${f.name} (${f.type || 'text'})`).join(', '));
+      } else if (spec.expected?.kind === 'non-empty') {
+        crit.push('Expected — any non-empty response from the endpoint.');
+      }
+      if (spec.rubric) crit.push(spec.rubric);
+      if (spec.note) crit.push(spec.note);
+      if (crit.length) {
+        lines.push('**Criteria:**');
+        lines.push('');
+        lines.push('```');
+        lines.push(crit.join('\n\n'));
+        lines.push('```');
+        lines.push('');
+      }
+      if (spec.input !== undefined) {
+        lines.push('**Input:**');
+        lines.push('');
+        lines.push('```json');
+        lines.push(JSON.stringify(spec.input, null, 2));
+        lines.push('```');
+        lines.push('');
+      }
+      if (r?.output !== undefined) {
+        lines.push('**Output:**');
+        lines.push('');
+        lines.push('```');
+        lines.push(_truncateForReport(r.output));
+        lines.push('```');
+        lines.push('');
+      }
+      if (r?.feedback) {
+        lines.push('**Grader feedback:**');
+        lines.push('');
+        lines.push('> ' + r.feedback.replace(/\n/g, '\n> '));
+        lines.push('');
+      }
+      if (r?.graderRaw) {
+        lines.push('**Grader raw response:**');
+        lines.push('');
+        lines.push('```');
+        lines.push(_truncateForReport(r.graderRaw, 2000));
+        lines.push('```');
+        lines.push('');
+      }
+      lines.push('---');
+      lines.push('');
+    }
+  }
+
+  lines.push('');
+  lines.push(`_Note: grader bias is structural — a model family grading its own outputs shares failure modes. Re-run with EVAL_PROVIDER=google or openai for an independent signal._`);
+  return lines.join('\n');
+}
+
+function _csvEscape(v) {
+  if (v === undefined || v === null) return '';
+  const s = typeof v === 'string' ? v : String(v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function renderEvalReportCSV({ suite, results }) {
+  const byId = new Map();
+  for (const r of (results || [])) byId.set(r.id, r);
+  // Column order fixed and documented — consumers depend on this.
+  const cols = [
+    'id', 'kind', 'agent_name', 'status', 'score', 'pass',
+    'duration_ms', 'cost_usd', 'input_tokens', 'output_tokens',
+    'endpoint_path', 'synthetic', 'feedback', 'source',
+  ];
+  const rows = [cols.join(',')];
+  for (const spec of (suite || [])) {
+    const r = byId.get(spec.id) || {};
+    rows.push([
+      _csvEscape(spec.id),
+      _csvEscape(spec.kind),
+      _csvEscape(spec.agentName || ''),
+      _csvEscape(r.status || 'not-run'),
+      _csvEscape(r.score ?? ''),
+      _csvEscape(r.status === 'pass' ? 'true' : r.status === 'fail' ? 'false' : ''),
+      _csvEscape(r.duration ?? ''),
+      _csvEscape(r.usage?.costUSD ? r.usage.costUSD.toFixed(6) : ''),
+      _csvEscape(r.usage?.inTok ?? ''),
+      _csvEscape(r.usage?.outTok ?? ''),
+      _csvEscape(spec.endpointPath || ''),
+      _csvEscape(spec.synthetic ? 'true' : 'false'),
+      _csvEscape(r.feedback ? r.feedback.replace(/\r?\n/g, '\\n') : ''),
+      _csvEscape(spec.source || 'auto'),
+    ].join(','));
+  }
+  return rows.join('\n') + '\n';
+}
+
+// POST /api/export-eval-report — returns a file download of the current
+// suite + results. Supports format=md (markdown, grouped by agent) or
+// format=csv (one row per eval). UI triggers a browser download from this.
+app.post('/api/export-eval-report', (req, res) => {
+  const { source, format, suite, results, meta } = req.body || {};
+  const fmt = String(format || 'md').toLowerCase();
+  if (fmt !== 'md' && fmt !== 'csv') {
+    return res.status(400).json({ error: `Unknown format '${format}'. Use 'md' or 'csv'.` });
+  }
+  if (!Array.isArray(results) || results.length === 0) {
+    return res.status(400).json({ error: 'No results to export. Run evals first, then try again.' });
+  }
+  const hash = _sourceHash(source || '');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const filename = `eval-report-${hash}-${ts}.${fmt}`;
+  if (fmt === 'md') {
+    const body = renderEvalReportMarkdown({ source, suite, results, meta });
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(body);
+  }
+  const body = renderEvalReportCSV({ suite, results });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(body);
+});
+
 // Shared runner used by both the HTTP endpoint and Meph's run_evals/run_eval
-// tools. Returns the same shape the UI expects.
-async function runEvalSuite(source, id) {
+// tools. Serialized via `_evalMutex` so concurrent callers (e.g. Run-All +
+// per-row Run) never interleave on the same DB / child process. Returns the
+// same shape the UI expects.
+async function runEvalSuite(source, id, onProgress) {
+  // Take a ticket on the mutex chain. The chain always ends in a resolved
+  // promise; we append our run after it and set the chain forward so the
+  // next caller waits for us.
+  //
+  // `onProgress` (optional) is called twice per spec: once with
+  // `{ phase: 'start', id, kind }` before the spec runs, and once with the
+  // full result object (`{ phase: 'end', ...result }`) when it resolves.
+  // Callers forward these to the UI / terminal so the 30-90s suite run
+  // isn't a silent stare — Meph streams per-spec updates to the terminal
+  // pane, and the Tests pane (when wired to SSE) can flip each row from
+  // pending → running → pass/fail as results land.
+  const ticket = _evalMutex.then(() => _runEvalSuiteImpl(source, id, onProgress));
+  _evalMutex = ticket.catch(() => undefined);
+  return ticket;
+}
+
+async function _runEvalSuiteImpl(source, id, onProgress) {
   const start = Date.now();
   const compiled = compileForEval(source);
   if (!compiled.ok) return { ...compiled, duration: Date.now() - start };
@@ -615,19 +1159,92 @@ async function runEvalSuite(source, id) {
     if (specs.length === 0) return { ok: false, error: `Unknown eval id: ${id}`, duration: Date.now() - start };
   }
   try {
-    const port = await ensureEvalChild(compiled.serverJS, compiled.compiled.evalEndpointsJS || '');
+    // Full-suite runs wipe DB state to guarantee deterministic behavior.
+    // Single-eval re-runs keep the DB warm for fast iteration.
+    if (!id) {
+      killEvalChild();          // force respawn so the wipe is observed by the DB module
+      wipeEvalChildDbFiles();
+    }
+    const port = await ensureEvalChild(compiled.serverJS);
     const results = [];
-    for (const spec of specs) {
-      results.push(await runOneEval(spec, port));
+    const total = specs.length;
+    for (let i = 0; i < specs.length; i++) {
+      const spec = specs[i];
+      if (onProgress) {
+        try { onProgress({ phase: 'start', id: spec.id, kind: spec.kind, agentName: spec.agentName, index: i, total }); } catch {}
+      }
+      // Stream per-spec progress to the Studio terminal pane so the user can
+      // watch the whole suite unfold — not just in the Tests tab chips but in
+      // the actual terminal log, one line per start/end/output. Works for any
+      // caller: Meph's run_evals tool, the UI's Run Evals button, a direct
+      // POST to /api/run-eval, or the SSE streaming variant — they all get
+      // the same terminal trace for free.
+      termLog(`[eval] ${i + 1}/${total} ${spec.id} running…`);
+      const result = await runOneEval(spec, port);
+      results.push(result);
+      const tag = result.status === 'pass' ? '✓' : result.status === 'fail' ? '✗' : '~';
+      const cost = result.usage?.costUSD ? ` $${result.usage.costUSD.toFixed(4)}` : '';
+      const fb = (result.feedback || '').slice(0, 160).replace(/\s+/g, ' ').trim();
+      termLog(`[eval] ${i + 1}/${total} ${tag} ${spec.id} ${result.status}${cost}${fb ? ' — ' + fb : ''}`);
+      // On failure, show the agent's actual output so the user can see WHAT
+      // the agent said that got graded "fail" — otherwise the terminal trace
+      // says "fail: didn't follow instructions" with no way to verify. Cap
+      // at 240 chars per line; long outputs wrap badly in the terminal pane.
+      if (result.status === 'fail' && result.output != null) {
+        const out = (typeof result.output === 'string' ? result.output : JSON.stringify(result.output))
+          .slice(0, 240).replace(/\s+/g, ' ').trim();
+        if (out) termLog(`[eval] ${i + 1}/${total}   output: ${out}`);
+      }
+      if (onProgress) {
+        try { onProgress({ phase: 'end', index: i, total, ...result }); } catch {}
+      }
     }
     resetEvalIdleTimer();
     const passed = results.filter(r => r.status === 'pass').length;
     const failed = results.filter(r => r.status === 'fail').length;
     const skipped = results.filter(r => r.status === 'skip').length;
-    return { ok: failed === 0, suite, results, passed, failed, skipped, duration: Date.now() - start };
+    // Sum real-cost totals across graded specs. Format-only and unskipped
+    // specs contribute zero; skipped specs have no usage; null-guarded.
+    const totalInputTokens = results.reduce((sum, r) => sum + (r.usage?.inTok || 0), 0);
+    const totalOutputTokens = results.reduce((sum, r) => sum + (r.usage?.outTok || 0), 0);
+    const totalCostUsd = results.reduce((sum, r) => sum + (r.usage?.costUSD || 0), 0);
+    return {
+      ok: failed === 0,
+      suite,
+      results,
+      passed,
+      failed,
+      skipped,
+      duration: Date.now() - start,
+      total_cost_usd: totalCostUsd,
+      total_input_tokens: totalInputTokens,
+      total_output_tokens: totalOutputTokens,
+    };
   } catch (err) {
     return { ok: false, error: 'Eval run failed: ' + err.message, duration: Date.now() - start };
   }
+}
+
+// Pre-run cost estimate. Gradeable specs = role + e2e (format is
+// deterministic, zero API cost). Typical grader call: ~400 input tokens
+// (rubric + input + output) + ~100 output tokens (JSON verdict). Multiplied
+// against the active provider's pricing. Rough — actual cost surfaced in
+// real time by per-row cost chips and running total after the run.
+const TYPICAL_GRADER_INPUT_TOKENS = 400;
+const TYPICAL_GRADER_OUTPUT_TOKENS = 100;
+
+function estimateEvalSuiteCost(suite) {
+  const cfg = _resolveGraderConfig();
+  const gradeable = suite.filter(s => (s.kind === 'role' || s.kind === 'e2e' || s.kind === 'user') && s.rubric);
+  const perCall = _costUSD(TYPICAL_GRADER_INPUT_TOKENS, TYPICAL_GRADER_OUTPUT_TOKENS, cfg.pricing);
+  return {
+    suite_size: suite.length,
+    evals_to_grade: gradeable.length,
+    estimated_cost_usd: +(gradeable.length * perCall).toFixed(4),
+    estimated_duration_seconds: Math.round(gradeable.length * 2 + 3),
+    provider: cfg.provider,
+    model: cfg.model,
+  };
 }
 
 // POST /api/run-eval — runs one or all evals.
@@ -637,6 +1254,52 @@ app.post('/api/run-eval', async (req, res) => {
   const { source, id } = req.body || {};
   const result = await runEvalSuite(source, id);
   res.json(result);
+});
+
+// SSE variant — same runner, but streams per-spec `eval_row` frames as they
+// resolve so the UI (Tests pane) can flip each row from pending → running →
+// pass/fail live instead of freezing for 60-90s on a big suite. Final frame
+// is `eval_results` with the same aggregate shape /api/run-eval returns.
+//
+// Shape per frame:
+//   data: {"type":"eval_row","phase":"start","id":"role-foo","kind":"role","index":0,"total":17}
+//   data: {"type":"eval_row","phase":"end","id":"role-foo","status":"pass","index":0,"total":17,...}
+//   ...repeat for each spec...
+//   data: {"type":"eval_results","ok":true,"passed":11,"failed":6,"skipped":0,...}
+//
+// On error, emits a single `{"type":"error","message":"..."}` frame then ends.
+app.post('/api/run-eval-stream', async (req, res) => {
+  const { source, id } = req.body || {};
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  // Disable proxy buffering — some reverse proxies otherwise coalesce the
+  // whole stream into one blob, defeating the point of SSE.
+  res.setHeader('X-Accel-Buffering', 'no');
+  const send = (obj) => {
+    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
+  };
+  // Emit the suite shape upfront so the UI can render all rows as "pending"
+  // before any spec starts. Otherwise the Tests pane stays blank until the
+  // first `eval_row` lands — defeats the point of streaming. Cheap second
+  // compile (~10ms for typical apps); runEvalSuite does its own compile so
+  // this doesn't leak into the runner.
+  try {
+    const compiled = compileForEval(source);
+    if (compiled.ok && compiled.compiled) {
+      // `evalSuite` is undefined (not []) for sources with no agents. Coerce
+      // so the UI always gets exactly one suite frame it can trust as the
+      // signal that streaming has started, even if the suite is empty.
+      send({ type: 'suite', suite: compiled.compiled.evalSuite || [] });
+    }
+  } catch {}
+  try {
+    const result = await runEvalSuite(source, id, (row) => send({ type: 'eval_row', ...row }));
+    send({ type: 'eval_results', ...result });
+  } catch (err) {
+    send({ type: 'error', message: err?.message || String(err) });
+  }
+  res.end();
 });
 
 // Legacy endpoint kept for any stale clients — now just a no-op redirect.
@@ -1810,16 +2473,21 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'run_evals': {
-        const evalResult = await runEvalSuite(currentSource);
+        // Forward per-spec progress to the Tests pane. Terminal logging now
+        // lives inside runEvalSuite itself — every caller (Meph, UI, direct
+        // POST) gets the same terminal trace without duplicating it here.
         send({ type: 'switch_tab', tab: 'tests' });
+        const onProgress = (ev) => { send({ type: 'eval_row', ...ev }); };
+        const evalResult = await runEvalSuite(currentSource, undefined, onProgress);
         send({ type: 'eval_results', ...evalResult });
         return JSON.stringify(evalResult);
       }
 
       case 'run_eval': {
         if (!input.id) return JSON.stringify({ ok: false, error: "Missing 'id' — use list_evals to see available ids." });
-        const evalResult = await runEvalSuite(currentSource, input.id);
         send({ type: 'switch_tab', tab: 'tests' });
+        const onProgress = (ev) => { send({ type: 'eval_row', ...ev }); };
+        const evalResult = await runEvalSuite(currentSource, input.id, onProgress);
         send({ type: 'eval_results', ...evalResult });
         return JSON.stringify(evalResult);
       }
@@ -2303,7 +2971,12 @@ app.post('/api/chat', async (req, res) => {
             case 'source_map':
               return `[tool] ✓ source_map`;
             case 'patch_code':
-              return `[tool] ✓ patch — ${JSON.parse(res).applied || 0} applied, ${JSON.parse(res).skipped || 0} skipped`;
+              // `res` is ALREADY the parsed object (see line 2883). Calling
+              // JSON.parse on it coerces it to "[object Object]" first, then
+              // JSON.parse throws — which crashes the whole Meph turn mid-loop
+              // with the opaque error "\"[object Object]\" is not valid JSON".
+              // Use the parsed fields directly.
+              return `[tool] ✓ patch — ${res.applied || 0} applied, ${res.skipped || 0} skipped`;
             case 'browse_templates':
               return `[tool] ✓ browse_templates — ${input.action} ${input.name || ''}`.trim();
             default:

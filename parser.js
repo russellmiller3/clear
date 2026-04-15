@@ -225,6 +225,7 @@ export const NodeType = Object.freeze({
 
   // Testing (Phase 11)
   TEST_DEF: 'test_def',
+  EVAL_DEF: 'eval_def',
   EXPECT: 'expect',
   HTTP_TEST_CALL: 'http_test_call',
   EXPECT_RESPONSE: 'expect_response',
@@ -1366,6 +1367,11 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['test', (ctx) => {
     const parsed = parseTestDef(ctx.lines, ctx.i, ctx.indent, ctx.errors);
+    if (parsed.node) ctx.body.push(parsed.node);
+    return parsed.endIdx;
+  }],
+  ['eval_block', (ctx) => {
+    const parsed = parseEvalBlock(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
@@ -3422,6 +3428,103 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
         }
       }
       bodyStartIdx++; continue;
+    }
+    // evals: — per-agent user-defined scenarios. Block form only.
+    //   evals:
+    //     scenario 'name':
+    //       input is X                (scalar) OR input is:   (block-object)
+    //       expect '<rubric>'         OR expect output has f1, f2
+    // Stored on the agent's .evalScenarios; compiler merges into evalSuite
+    // with source='user-agent'. This directive intentionally lives in the
+    // directive area (before the agent's executable body) so users can see
+    // the agent's test-cases at a glance.
+    if (dTokens.length === 1 && dTokens[0].value === 'evals') {
+      directives.evalScenarios = directives.evalScenarios || [];
+      const evalsHeaderIndent = lines[bodyStartIdx].indent;
+      bodyStartIdx++;
+      // Walk indented children — expected to be `scenario 'name':` blocks
+      while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > evalsHeaderIndent) {
+        const sTokens = lines[bodyStartIdx].tokens;
+        if (sTokens.length === 0) { bodyStartIdx++; continue; }
+        if (sTokens[0].value !== 'scenario') {
+          errors.push({ line: sTokens[0].line, message: `Inside \`evals:\` only \`scenario 'name':\` blocks are allowed. Got: ${sTokens[0].value}` });
+          bodyStartIdx++; continue;
+        }
+        if (sTokens.length < 2 || sTokens[1].type !== TokenType.STRING) {
+          errors.push({ line: sTokens[0].line, message: `Each scenario needs a quoted name. Example: scenario 'warm greeting':` });
+          bodyStartIdx++; continue;
+        }
+        const scenarioName = sTokens[1].value;
+        const scenarioHeaderIndent = lines[bodyStartIdx].indent;
+        const scenario = { name: scenarioName, input: null, rubric: null, expectFields: null, line: sTokens[0].line };
+        bodyStartIdx++;
+        // Walk scenario body: `input is ...` and `expect ...`
+        while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > scenarioHeaderIndent) {
+          const iTokens = lines[bodyStartIdx].tokens;
+          if (iTokens.length === 0) { bodyStartIdx++; continue; }
+          const iFirst = iTokens[0].value;
+
+          if (iFirst === 'input') {
+            // Find `is`, then either inline value OR indented block (next line greater indent)
+            const isIdx = iTokens.findIndex((tok) => tok.canonical === 'is' || tok.value === 'is');
+            if (isIdx === -1) {
+              errors.push({ line: iTokens[0].line, message: "Scenario line needs `input is <value>` or `input is:` + indented fields." });
+              bodyStartIdx++; continue;
+            }
+            const afterIs = iTokens.slice(isIdx + 1);
+            const lineIndent = lines[bodyStartIdx].indent;
+            const isObjectBlock = afterIs.length === 0 && (bodyStartIdx + 1) < lines.length && lines[bodyStartIdx + 1].indent > lineIndent;
+            if (isObjectBlock) {
+              bodyStartIdx++;
+              const obj = {};
+              while (bodyStartIdx < lines.length && lines[bodyStartIdx].indent > lineIndent) {
+                const ft = lines[bodyStartIdx].tokens;
+                if (ft.length === 0) { bodyStartIdx++; continue; }
+                const fname = ft[0].value;
+                const fIsIdx = ft.findIndex((x) => x.canonical === 'is' || x.value === 'is');
+                if (fIsIdx <= 0) { bodyStartIdx++; continue; }
+                const expr = parseExpression(ft, fIsIdx + 1, ft[0].line);
+                if (!expr.error) obj[fname] = _literalFromExpr(expr.node);
+                bodyStartIdx++;
+              }
+              scenario.input = obj;
+              continue;
+            }
+            const expr = parseExpression(iTokens, isIdx + 1, iTokens[0].line);
+            if (!expr.error) scenario.input = _literalFromExpr(expr.node);
+            bodyStartIdx++;
+            continue;
+          }
+
+          if (iFirst === 'expect') {
+            // `expect output has <fields>` (deterministic) OR `expect '<rubric>'` (LLM-graded)
+            const outputIdx = iTokens.findIndex((tok, idx) => idx > 0 && tok.value === 'output');
+            const hasIdx = iTokens.findIndex((tok, idx) => outputIdx !== -1 && idx > outputIdx && tok.value === 'has');
+            if (outputIdx !== -1 && hasIdx !== -1) {
+              const fields = iTokens.slice(hasIdx + 1)
+                .filter((tok) => tok.type !== TokenType.COMMA)
+                .filter((tok) => tok.type === TokenType.IDENTIFIER || tok.type === TokenType.KEYWORD)
+                .map((tok) => tok.value);
+              scenario.expectFields = fields;
+              bodyStartIdx++;
+              continue;
+            }
+            if (iTokens.length >= 2 && iTokens[1].type === TokenType.STRING) {
+              scenario.rubric = iTokens[1].value;
+              bodyStartIdx++;
+              continue;
+            }
+            errors.push({ line: iTokens[0].line, message: "Scenario `expect` needs a rubric string or `output has field1, field2`." });
+            bodyStartIdx++;
+            continue;
+          }
+
+          errors.push({ line: iTokens[0].line, message: `Unexpected line inside scenario '${scenarioName}': ${iFirst}. Use \`input is ...\` and \`expect ...\`.` });
+          bodyStartIdx++;
+        }
+        directives.evalScenarios.push(scenario);
+      }
+      continue;
     }
     // block arguments matching 'pattern1', 'pattern2'
     if (dTokens[0].canonical === 'block_arguments' || (dTokens[0].value === 'block' && dTokens.length >= 3 && dTokens[1].value === 'arguments')) {
@@ -5501,6 +5604,211 @@ function parseExpect(tokens, line) {
   const expr = parseExpression(tokens, pos, line);
   if (expr.error) return { error: expr.error };
   return { node: expectNode(expr.node, line) };
+}
+
+/**
+ * Parse a top-level `eval 'name':` block.
+ *
+ * Body grammar:
+ *   given 'Agent Name' receives <input-expr>    → agent scenario
+ *   given 'Agent Name' receives:                → agent scenario w/ indented object
+ *     <field> is <value>
+ *     ...
+ *   call <METHOD> '<path>' with <input-expr>    → endpoint scenario
+ *   expect '<rubric string>'                    → LLM-graded expectation
+ *   expect output has <field>, <field>          → deterministic shape check
+ *
+ * Produces an EVAL_DEF AST node consumed by `generateEvalSuite` which merges
+ * it into `result.evalSuite` with `source: 'user-top'`. Designed to read like
+ * `test 'name':` so the language feels consistent.
+ */
+function parseEvalBlock(lines, startIdx, blockIndent, errors) {
+  const { tokens } = lines[startIdx];
+  const line = tokens[0].line;
+  let pos = 1; // skip "eval"
+
+  // Optional name in a string literal — matches the test-block pattern.
+  let name = null;
+  if (pos < tokens.length && tokens[pos].type === TokenType.STRING) {
+    name = tokens[pos].value;
+  }
+
+  // Walk indented body lines. Recognized keywords at body-level: given, call, expect.
+  // Everything else is an error (keeps the surface small).
+  const evalNode = {
+    type: NodeType.EVAL_DEF,
+    name: name || 'unnamed eval',
+    scope: 'top',
+    line,
+    // Populated below
+    scenarioKind: null,   // 'agent' | 'endpoint'
+    agentName: null,
+    method: null,
+    endpointPath: null,
+    input: null,
+    rubric: null,
+    expectFields: null,
+  };
+
+  let i = startIdx + 1;
+  while (i < lines.length && lines[i].indent > blockIndent) {
+    const t = lines[i].tokens;
+    if (t.length === 0) { i++; continue; }
+    const lineNum = t[0].line;
+    const first = t[0].value;
+
+    // `given 'Agent' receives <value>` OR `given 'Agent' receives:` + indented block
+    if (first === 'given') {
+      const agentIdx = t.findIndex((tok) => tok.type === TokenType.STRING);
+      if (agentIdx === -1) {
+        errors.push({ line: lineNum, message: "The `given` line needs an agent name in quotes. Example: given 'Support' receives 'hello'" });
+        i++; continue;
+      }
+      evalNode.scenarioKind = 'agent';
+      evalNode.agentName = t[agentIdx].value;
+      // Find "receives" — could be canonical 'receiving' or literal 'receives'
+      const recvIdx = t.findIndex((tok) => tok.value === 'receives' || tok.canonical === 'receiving');
+      if (recvIdx === -1) {
+        errors.push({ line: lineNum, message: "The `given` line needs `receives` before the input. Example: given 'Support' receives 'hello'" });
+        i++; continue;
+      }
+      // After `receives`: trailing tokens on this line are the scalar input.
+      // If NO trailing tokens AND the next line is more indented, it's a block
+      // form (tokenizer strips the trailing `:`). Otherwise it's a scalar.
+      const afterRecv = t.slice(recvIdx + 1);
+      const headerIndent = lines[i].indent;
+      const isBlock = afterRecv.length === 0 && (i + 1) < lines.length && lines[i + 1].indent > headerIndent;
+      if (isBlock) {
+        // Parse indented "field is value" lines until indent drops back
+        i++;
+        const obj = {};
+        while (i < lines.length && lines[i].indent > headerIndent) {
+          const ft = lines[i].tokens;
+          if (ft.length === 0) { i++; continue; }
+          // `<name> is <value>` — reuse parseExpression for the RHS
+          const fname = ft[0].value;
+          const isIdx = ft.findIndex((x) => x.canonical === 'is' || x.value === 'is');
+          if (isIdx <= 0) {
+            errors.push({ line: ft[0].line, message: "Each field inside `receives:` needs `<name> is <value>`. Example: name is 'Jane'" });
+            i++; continue;
+          }
+          const expr = parseExpression(ft, isIdx + 1, ft[0].line);
+          if (expr.error) { errors.push({ line: ft[0].line, message: expr.error }); i++; continue; }
+          obj[fname] = _literalFromExpr(expr.node);
+          i++;
+        }
+        evalNode.input = obj;
+        continue;
+      }
+      // Inline scalar value
+      const expr = parseExpression(t, recvIdx + 1, lineNum);
+      if (expr.error) { errors.push({ line: lineNum, message: expr.error }); i++; continue; }
+      evalNode.input = _literalFromExpr(expr.node);
+      i++;
+      continue;
+    }
+
+    // `call POST '/api/x' with <value>` OR `call POST '/api/x' with <field> is <value>, ...`
+    if (first === 'call') {
+      evalNode.scenarioKind = 'endpoint';
+      // t = [call, METHOD, STRING_PATH, with, ...value...]
+      const methodIdx = 1;
+      const pathIdx = t.findIndex((tok) => tok.type === TokenType.STRING);
+      const withIdx = t.findIndex((tok) => tok.canonical === 'with' || tok.value === 'with');
+      if (methodIdx >= t.length || pathIdx === -1 || withIdx === -1) {
+        errors.push({ line: lineNum, message: "`call` needs METHOD + path + with + value. Example: call POST '/api/x' with text is 'hi'" });
+        i++; continue;
+      }
+      evalNode.method = t[methodIdx].value.toUpperCase();
+      evalNode.endpointPath = t[pathIdx].value;
+
+      // Parse the body after `with`. Two forms:
+      //  - `with <field> is <value>, <field> is <value>`  (inline object)
+      //  - `with <bare-expr>`  (scalar — wrap as {input: value})
+      const afterWith = t.slice(withIdx + 1);
+      if (afterWith.some((tok) => tok.canonical === 'is' || tok.value === 'is')) {
+        // Inline object — split on commas
+        const obj = {};
+        let fragment = [];
+        const flush = () => {
+          if (fragment.length === 0) return;
+          const isIdx = fragment.findIndex((x) => x.canonical === 'is' || x.value === 'is');
+          if (isIdx <= 0) return;
+          const fname = fragment[0].value;
+          const expr = parseExpression(fragment, isIdx + 1, lineNum);
+          if (!expr.error) obj[fname] = _literalFromExpr(expr.node);
+          fragment = [];
+        };
+        for (const tok of afterWith) {
+          if (tok.type === TokenType.COMMA) { flush(); } else { fragment.push(tok); }
+        }
+        flush();
+        evalNode.input = obj;
+      } else {
+        const expr = parseExpression(t, withIdx + 1, lineNum);
+        if (expr.error) { errors.push({ line: lineNum, message: expr.error }); i++; continue; }
+        evalNode.input = _literalFromExpr(expr.node);
+      }
+      i++;
+      continue;
+    }
+
+    // `expect 'rubric'` OR `expect output has field, field, ...`
+    if (first === 'expect') {
+      // Deterministic form: expect output has <field-list>
+      const outputIdx = t.findIndex((tok, idx) => idx > 0 && tok.value === 'output');
+      const hasIdx = t.findIndex((tok, idx) => idx > outputIdx && outputIdx !== -1 && tok.value === 'has');
+      if (outputIdx !== -1 && hasIdx !== -1) {
+        const fields = t.slice(hasIdx + 1)
+          .filter((tok) => tok.type !== TokenType.COMMA)
+          .filter((tok) => tok.type === TokenType.IDENTIFIER || tok.type === TokenType.KEYWORD)
+          .map((tok) => tok.value);
+        evalNode.expectFields = fields;
+        i++;
+        continue;
+      }
+      // Rubric form: expect '<string>'
+      if (t.length >= 2 && t[1].type === TokenType.STRING) {
+        evalNode.rubric = t[1].value;
+        i++;
+        continue;
+      }
+      errors.push({ line: lineNum, message: "`expect` needs either a rubric string (expect 'Response is warm and professional') or a shape check (expect output has field1, field2)." });
+      i++;
+      continue;
+    }
+
+    errors.push({ line: lineNum, message: `Unexpected line inside \`eval\` block: "${first}". Use \`given\` / \`call\` for input and \`expect\` for criteria.` });
+    i++;
+  }
+
+  // Validation
+  if (!evalNode.scenarioKind) {
+    errors.push({ line, message: `The eval block '${evalNode.name}' is empty. It needs a \`given\` or \`call\` line followed by \`expect\`. Example:\n  eval 'Agent greets politely':\n    given 'Support' receives 'hi'\n    expect 'Output is a warm greeting'` });
+    return { node: null, endIdx: i };
+  }
+  if (!evalNode.rubric && !evalNode.expectFields) {
+    errors.push({ line, message: `The eval block '${evalNode.name}' is missing an \`expect\` line. Example: expect 'The output addresses the question clearly.'` });
+    return { node: null, endIdx: i };
+  }
+
+  return { node: evalNode, endIdx: i };
+}
+
+/**
+ * Reduce a parsed expression node back to a plain JS literal for eval specs.
+ * Handles strings, numbers, booleans, and nothing (null). Returns the literal
+ * as-is if the expression tree is already simple.
+ */
+function _literalFromExpr(expr) {
+  if (expr == null) return null;
+  if (expr.type === NodeType.LITERAL_STRING) return expr.value;
+  if (expr.type === NodeType.LITERAL_NUMBER) return expr.value;
+  if (expr.type === NodeType.LITERAL_BOOLEAN) return expr.value;
+  if (expr.type === NodeType.LITERAL_NOTHING) return null;
+  if (typeof expr.value !== 'undefined' && expr.type && /literal/i.test(expr.type)) return expr.value;
+  // Fall back to value if present, else stringify the tree
+  return expr.value !== undefined ? expr.value : JSON.stringify(expr);
 }
 
 // =============================================================================

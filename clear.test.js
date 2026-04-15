@@ -16962,6 +16962,454 @@ when user calls POST /api/run sending data:
   });
 });
 
+// =============================================================================
+// USER-DEFINED EVALS — per-agent `evals:` subsection. Scenarios attach to
+// the owning agent as .evalScenarios; compiler merges them into
+// result.evalSuite with source='user-agent'. Each scenario has its own
+// input + expect, overriding the agent's auto-probe for that entry.
+// =============================================================================
+
+describe('User eval: per-agent `evals:` subsection', () => {
+  it('parses a single scenario with inline input + rubric', () => {
+    const src = `build for javascript backend
+agent 'Support' receives message:
+  evals:
+    scenario 'responds warmly':
+      input is 'hi'
+      expect 'The agent greets the user warmly.'
+  r = ask claude 'help' with message
+  send back r`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === NodeType.AGENT && n.name === 'Support');
+    expect(agent).toBeDefined();
+    expect(Array.isArray(agent.evalScenarios)).toBe(true);
+    expect(agent.evalScenarios.length).toBe(1);
+    const sc = agent.evalScenarios[0];
+    expect(sc.name).toBe('responds warmly');
+    expect(sc.input).toBe('hi');
+    expect(sc.rubric).toBe('The agent greets the user warmly.');
+  });
+
+  it('parses multiple scenarios on one agent', () => {
+    const src = `build for javascript backend
+agent 'Support' receives message:
+  evals:
+    scenario 'warm greeting':
+      input is 'hi'
+      expect 'warm and professional'
+    scenario 'handles complaint':
+      input is 'my order is broken'
+      expect 'acknowledges the problem and offers next steps'
+  r = ask claude 'help' with message
+  send back r`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === NodeType.AGENT);
+    expect(agent.evalScenarios.length).toBe(2);
+    expect(agent.evalScenarios[0].name).toBe('warm greeting');
+    expect(agent.evalScenarios[1].name).toBe('handles complaint');
+  });
+
+  it('scenarios merge into evalSuite with source=user-agent', () => {
+    const src = `build for javascript backend
+agent 'Support' receives message:
+  evals:
+    scenario 'warm greeting':
+      input is 'hi'
+      expect 'warm greeting'
+  r = ask claude 'help' with message
+  send back r
+
+when user calls POST /api/ask sending data:
+  out = call 'Support' with data's message
+  send back out`;
+    const r = compileProgram(src);
+    const scenarios = r.evalSuite.filter(e => e.source === 'user-agent');
+    expect(scenarios.length).toBe(1);
+    expect(scenarios[0].agentName).toBe('Support');
+    expect(scenarios[0].label).toContain('warm greeting');
+  });
+
+  it('supports compound-object input inside a scenario', () => {
+    const src = `build for javascript backend
+agent 'Screener' receives candidate:
+  evals:
+    scenario 'preserves resume':
+      input is:
+        name is 'Jane Doe'
+        resume is 'Senior engineer, 8 years backend'
+      expect 'Output contains the same resume text unmodified.'
+  send back candidate`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === NodeType.AGENT);
+    const sc = agent.evalScenarios[0];
+    expect(typeof sc.input).toBe('object');
+    expect(sc.input.name).toBe('Jane Doe');
+    expect(sc.input.resume).toBe('Senior engineer, 8 years backend');
+  });
+
+  it('scenario with deterministic `expect output has` check', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receives text:
+  evals:
+    scenario 'returns shape':
+      input is 'billing question'
+      expect output has category, confidence
+  r = ask claude 'Classify' with text returning JSON text:
+    category
+    confidence (number)
+  send back r`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const agent = r.ast.body.find(n => n.type === NodeType.AGENT);
+    const sc = agent.evalScenarios[0];
+    expect(sc.expectFields).toEqual(['category', 'confidence']);
+    expect(sc.rubric).toBeNull();
+  });
+
+  it('scenario input overrides auto-probe for that suite entry', () => {
+    const src = `build for javascript backend
+agent 'Support' receives message:
+  evals:
+    scenario 'explicit input':
+      input is 'specific test string used only by this scenario'
+      expect 'ok'
+  r = ask claude 'help' with message
+  send back r
+
+when user calls POST /api/ask sending data:
+  out = call 'Support' with data's message
+  send back out`;
+    const r = compileProgram(src);
+    const scenario = r.evalSuite.find(e => e.source === 'user-agent');
+    // Input key is agent's receiving var (message) since Support IS exposed
+    expect(scenario.input.message).toBe('specific test string used only by this scenario');
+    // Auto-probe rows still exist for the agent — separate from user-agent scenarios
+    const autoRole = r.evalSuite.find(e => e.id === 'role-support');
+    expect(autoRole.input.message).not.toBe('specific test string used only by this scenario');
+  });
+});
+
+// =============================================================================
+// USER-DEFINED EVALS — top-level `eval 'name':` block. Mirrors `test 'name':`.
+// Produces EVAL_DEF AST nodes; compiler merges them into result.evalSuite
+// with source='user-top'. Body grammar: given/call + expect.
+// =============================================================================
+
+describe('User eval: top-level `eval \'name\':` block syntax', () => {
+  it('parses an agent-scenario eval with string input + rubric', () => {
+    const src = `build for javascript backend
+agent 'Support' receives msg:
+  r = ask claude 'help' with msg
+  send back r
+
+eval 'Support greets politely':
+  given 'Support' receives 'hi'
+  expect 'The agent opens with a warm greeting and offers to help.'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const evalNode = r.ast.body.find(n => n.type === NodeType.EVAL_DEF);
+    expect(evalNode).toBeDefined();
+    expect(evalNode.name).toBe('Support greets politely');
+    expect(evalNode.scope).toBe('top');
+    expect(evalNode.scenarioKind).toBe('agent');
+    expect(evalNode.agentName).toBe('Support');
+    expect(evalNode.input).toBe('hi');
+    expect(evalNode.rubric).toBe('The agent opens with a warm greeting and offers to help.');
+  });
+
+  it('parses an endpoint-scenario eval with object input + deterministic expect', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receives text:
+  r = ask claude 'Classify' with text returning JSON text:
+    category
+    confidence (number)
+  send back r
+
+when user calls POST /api/classify sending data:
+  out = call 'Classifier' with data's text
+  send back out
+
+eval 'Classify returns a category and confidence':
+  call POST '/api/classify' with text is 'Billing question about my invoice'
+  expect output has category, confidence`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const evalNode = r.ast.body.find(n => n.type === NodeType.EVAL_DEF);
+    expect(evalNode.scenarioKind).toBe('endpoint');
+    expect(evalNode.method).toBe('POST');
+    expect(evalNode.endpointPath).toBe('/api/classify');
+    expect(typeof evalNode.input).toBe('object');
+    expect(evalNode.input.text).toBe('Billing question about my invoice');
+    expect(evalNode.expectFields).toEqual(['category', 'confidence']);
+  });
+
+  it('parses a compound-object input (indented `receives:` block)', () => {
+    const src = `build for javascript backend
+agent 'Screener' receives candidate:
+  r = candidate
+  send back r
+
+eval 'Screener keeps resumes intact':
+  given 'Screener' receives:
+    name is 'Jane Doe'
+    resume is 'Senior engineer, 8 years backend'
+  expect 'Output contains the same resume text unmodified.'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const evalNode = r.ast.body.find(n => n.type === NodeType.EVAL_DEF);
+    expect(evalNode).toBeDefined();
+    expect(typeof evalNode.input).toBe('object');
+    expect(evalNode.input.name).toBe('Jane Doe');
+    expect(evalNode.input.resume).toBe('Senior engineer, 8 years backend');
+  });
+
+  it('user evals merge into result.evalSuite with source=user-top', () => {
+    const src = `build for javascript backend
+agent 'Support' receives msg:
+  r = ask claude 'help' with msg
+  send back r
+
+eval 'Support greets politely':
+  given 'Support' receives 'hi'
+  expect 'Output should be a warm greeting'`;
+    const r = compileProgram(src);
+    const userSpec = r.evalSuite.find(e => e.source === 'user-top');
+    expect(userSpec).toBeDefined();
+    expect(userSpec.label).toBe('Support greets politely');
+    expect(userSpec.kind).toBe('user');
+    expect(userSpec.rubric).toBe('Output should be a warm greeting');
+  });
+
+  it('empty `eval` block produces a friendly error', () => {
+    const r = compileProgram(`build for javascript backend
+eval 'empty eval':
+when user requests data from /api/x:
+  send back 'ok'`);
+    expect(r.errors.length > 0).toBe(true);
+    expect(r.errors[0].message).toContain('eval');
+  });
+
+  it('eval referencing an unknown agent emits a validator warning', () => {
+    const r = compileProgram(`build for javascript backend
+eval 'Unknown':
+  given 'No Such Agent' receives 'hi'
+  expect 'pass'`);
+    // We accept warning or error — either surfaces the problem
+    const hasSignal = (r.errors.length > 0) ||
+      (r.warnings && r.warnings.some(w => /unknown|undefined|no such|not found/i.test(w.message || '')));
+    expect(hasSignal).toBe(true);
+  });
+});
+
+// =============================================================================
+// PROBE QUALITY — every receiving-var in the core templates must resolve to
+// a real probe, not the 'hello' fallback. `probeQuality` metadata is the
+// machine-readable flag; string length is the coarse sanity check.
+// =============================================================================
+
+describe('Eval suite: probe quality — known nouns', () => {
+  it('Researcher with `receives question` gets a realistic question (not hello)', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Researcher' receives question:
+  answer = ask claude 'Answer briefly' with question
+  send back answer
+when user calls POST /api/ask sending data:
+  out = call 'Researcher' with data's question
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-researcher');
+    expect(spec.input.question).toBeDefined();
+    expect(spec.input.question.length).toBeGreaterThan(10);
+    expect(spec.input.question).not.toBe('hello');
+    expect(spec.probeQuality).toBe('real');
+  });
+
+  it('Polished Report with `receives findings` gets a list of strings', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Polished Report' receives findings:
+  draft = ask claude 'Synthesize' with findings
+  send back draft
+when user calls POST /api/polish sending data:
+  out = call 'Polished Report' with data's findings
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-polished_report');
+    expect(Array.isArray(spec.input.findings)).toBe(true);
+    expect(spec.input.findings.length > 1).toBe(true);
+    expect(typeof spec.input.findings[0]).toBe('string');
+    expect(spec.probeQuality).toBe('real');
+  });
+
+  it('Synthetic endpoint probe wraps value in { input: ... } and still tracks quality', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Inner' receives topic:
+  x = ask claude 'X' with topic
+  send back x
+agent 'Outer' receives t:
+  y = call 'Inner' with t
+  send back y
+when user calls POST /api/out sending data:
+  z = call 'Outer' with data's t
+  send back z`);
+    const innerRole = r.evalSuite.find(e => e.id === 'role-inner');
+    expect(innerRole.synthetic).toBe(true);
+    expect(innerRole.input.input).toBeDefined();
+    expect(typeof innerRole.input.input).toBe('string');
+    expect(innerRole.input.input.length).toBeGreaterThan(10);
+    expect(innerRole.probeQuality).toBe('real');
+  });
+});
+
+describe('Eval suite: probe quality — table-schema-aware', () => {
+  it('agent with `receives candidate` + Candidates table builds object from fields', () => {
+    const r = compileProgram(`build for javascript backend
+create a Candidates table:
+  name, required
+  resume
+  email
+agent 'Screener' receives candidate:
+  x = ask claude 'screen' with candidate
+  send back x
+when user calls POST /api/screen sending data:
+  out = call 'Screener' with data's candidate
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-screener');
+    const probe = spec.input.candidate;
+    expect(typeof probe).toBe('object');
+    expect(probe).not.toBeNull();
+    // All three schema fields represented
+    expect(probe.name).toBeDefined();
+    expect(probe.resume).toBeDefined();
+    expect(probe.email).toBeDefined();
+    expect(spec.probeQuality).toBe('real');
+    expect(spec.probeSource).toBe('table-schema');
+  });
+
+  it('falls back to known-noun dict when no matching table exists', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Screener' receives candidate:
+  x = ask claude 'screen' with candidate
+  send back x
+when user calls POST /api/screen sending data:
+  out = call 'Screener' with data's candidate
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-screener');
+    // Known noun for 'candidate' is a small structured object
+    const probe = spec.input.candidate;
+    expect(typeof probe).toBe('object');
+    expect(spec.probeQuality).toBe('real');
+    expect(spec.probeSource).toBe('known-noun');
+  });
+});
+
+describe('Eval suite: probe quality — prompt-hint fallback', () => {
+  it('unknown var with prompts mentioning multiple known nouns composes an object probe', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Analyzer' receives payload:
+  x = ask claude 'Extract the company name and industry from this' with payload
+  send back x
+when user calls POST /api/analyze sending data:
+  out = call 'Analyzer' with data's payload
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-analyzer');
+    // `payload` isn't in the dict, but the prompt hints at company + industry
+    const probe = spec.input.payload;
+    expect(typeof probe).toBe('object');
+    expect(probe.company || probe.industry).toBeDefined();
+    expect(spec.probeQuality).toBe('real');
+    expect(spec.probeSource).toBe('prompt-hints');
+  });
+});
+
+describe('Eval suite: probe quality — generic fallback is the last resort', () => {
+  it('agent with no-signal receiving var and no prompt hints falls through to generic', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Opaque' receives xyz:
+  send back xyz
+when user calls POST /api/opaque sending data:
+  out = call 'Opaque' with data's xyz
+  send back out`);
+    const spec = r.evalSuite.find(e => e.id === 'role-opaque');
+    expect(spec.probeQuality).toBe('generic');
+    expect(spec.probeSource).toBe('fallback');
+  });
+});
+
+describe('Eval suite: probe quality — multi-agent-research smoke', () => {
+  it('every runnable spec has a non-hello probe when loaded from the demo file', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const src = fs.readFileSync(path.join(process.cwd(), 'apps/multi-agent-research/main.clear'), 'utf8');
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const runnable = (r.evalSuite || []).filter(s => s.kind !== 'info' && s.runnable !== false);
+    expect(runnable.length).toBeGreaterThan(0);
+    for (const spec of runnable) {
+      // No probe reduces to the string 'hello'
+      const serialized = JSON.stringify(spec.input);
+      expect(serialized).not.toBe('"hello"');
+      expect(serialized).not.toBe('{"input":"hello"}');
+      // All multi-agent-research receiving vars are in the dict, so quality is real
+      expect(spec.probeQuality).toBe('real');
+    }
+  });
+});
+
+describe('Eval mode: compileProgram({evalMode:true}) emits /_eval/* natively', () => {
+  const src = `build for javascript backend
+agent 'Scorer' receives item:
+  n = ask claude 'Rate 1-10' with item
+  send back n
+agent 'Coordinator' receives topic:
+  s = call 'Scorer' with topic
+  send back s
+when user calls POST /api/run sending data:
+  o = call 'Coordinator' with data's topic
+  send back o`;
+
+  it('without evalMode, zero /_eval/ handlers leak into compiled serverJS', () => {
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js.includes('/_eval/agent_')).toBe(false);
+  });
+
+  it('with evalMode, emits /_eval/agent_<name> for every agent natively', () => {
+    const r = compileProgram(src, { evalMode: true });
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    expect(js).toContain("app.post('/_eval/agent_scorer'");
+    expect(js).toContain("app.post('/_eval/agent_coordinator'");
+    // Synthetic handlers handle both streaming (generator) and plain (await)
+    expect(js).toContain('Symbol.asyncIterator');
+    expect(js).toContain('req.body.input');
+  });
+
+  it('all 8 core templates compile clean without evalMode and contain no /_eval/ leaks', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const templates = ['todo-fullstack', 'crm-pro', 'blog-fullstack', 'live-chat', 'helpdesk-agent', 'booking', 'expense-tracker', 'ecom-agent'];
+    for (const name of templates) {
+      const source = fs.readFileSync(path.join(process.cwd(), 'apps', name, 'main.clear'), 'utf8');
+      const r = compileProgram(source);
+      expect(r.errors).toHaveLength(0);
+      const js = r.javascript || r.serverJS || '';
+      expect(js.includes('/_eval/agent_')).toBe(false);
+    }
+  });
+
+  it('validator errors when source declares an endpoint starting with /_eval/', () => {
+    const r = compileProgram(`build for javascript backend
+when user calls POST /_eval/custom sending data:
+  send back 'hi'`);
+    // Error OR warning — either flags the collision
+    const signal = r.errors.length > 0 ||
+      (r.warnings && r.warnings.some(w => /_eval\/|reserved|collide/i.test(w.message || '')));
+    expect(signal).toBe(true);
+  });
+});
+
 describe('Eval suite: input probes are shaped for the endpoint', () => {
   it('synthetic endpoints always get { input: X } body', () => {
     const r = compileProgram(`build for javascript backend
@@ -17473,6 +17921,32 @@ agent 'Chat' receiving message:
     expect(result.javascript).toContain('_history');
     expect(result.javascript).toContain('JSON.parse');
     expect(result.javascript).toContain('JSON.stringify');
+  });
+
+  it('emits implicit createTable for Conversations when rememberConversation is used', () => {
+    // The compiler emits db.findAll/insert/update on a 'Conversations' table
+    // for any agent that declares `remember conversation context`. Without an
+    // implicit CREATE TABLE, the first insert 500s with "no such table" at
+    // runtime. Surfaced by the eval-auth fix: helpdesk-agent went from 401
+    // (auth wall) to 500 (schema missing) — this test prevents the 500.
+    const src = `build for javascript backend
+agent 'Chat' receiving message:
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("db.createTable('Conversations'");
+  });
+
+  it('does NOT emit createTable for Conversations when rememberConversation is not used', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain("db.createTable('Conversations'");
   });
 
   it('non-conversation agent has no history code', () => {
@@ -22108,6 +22582,65 @@ page 'App':
     const r = compileProgram(streamingSrc);
     expect(r.serverJS).toContain('[DONE]');
     expect(r.serverJS).toContain('res.end()');
+  });
+
+  it('T4c: ask-claude var inside repeat-until stays non-streaming if reassigned', () => {
+    // Bug surfaced by Meph on multi-agent-research's Polished Report agent:
+    // \`let draft = await _askAI('Synthesize', findings)\` was converted to
+    // \`let draft = _askAIStream(...)\` (generator). Then the repeat-until
+    // reassigned \`draft = await _askAI('Improve', draft)\` — passing the
+    // generator as the "with" variable. Claude received [object AsyncGenerator]
+    // and produced nonsense. Only convert to streaming if the var is assigned
+    // exactly once — reassigned vars must stay as awaited strings so the
+    // next call gets a real value.
+    const srcRefinement = `build for javascript backend
+agent 'Refiner' receives findings:
+  draft = ask claude 'Synthesize' with findings
+  grade = 0
+  repeat until grade is greater than 7, max 2 times:
+    draft = ask claude 'Improve' with draft
+    grade = 5
+  send back draft`;
+    const r = compileProgram(srcRefinement);
+    expect(r.errors).toHaveLength(0);
+    const js = r.javascript || r.serverJS || '';
+    // Find the first assignment — must be an awaited string, not a stream
+    // generator. If it's \`_askAIStream\`, the loop body will pass a
+    // generator as the \`with\` value and the second call gets garbage.
+    const firstAssign = js.match(/let draft\s*=\s*(await )?_(askAIStream|askAI)\(/);
+    expect(firstAssign).toBeTruthy();
+    // Either `await _askAI(...)` OR (if streaming was correctly skipped)
+    // anything that isn't `_askAIStream(` as the first call to that var.
+    expect(firstAssign[0]).not.toContain('_askAIStream');
+  });
+
+  it('T4b: streaming endpoint wraps auth/validation early-return in braces', () => {
+    // Without braces, `if (cond) res.write(...); res.end(); return;`
+    // only protects the first statement — res.end() + return fire
+    // unconditionally and the agent never runs. Every probe scored empty.
+    // Surfaced by the eval-auth fix on lead-scorer (0/3 with $0 cost).
+    // The streaming transform must emit a single-statement block so the
+    // whole early-return stays under the `if`.
+    const srcWithAuth = `build for javascript backend
+allow signup and login
+agent 'Scorer' receives lead:
+  response = ask claude 'Score this lead 1-10' with lead
+  send back response
+when user calls POST /api/score sending lead:
+  requires login
+  out = call 'Scorer' with lead
+  send back out`;
+    const r = compileProgram(srcWithAuth);
+    expect(r.errors).toHaveLength(0);
+    // compileProgram returns either `javascript` (pure backend) or `serverJS`
+    // (web+backend). Check both.
+    const js = r.javascript || r.serverJS || '';
+    expect(js.length).toBeGreaterThan(0);
+    // The auth branch must keep `res.end(); return;` under the `if (!req.user)` guard.
+    // Before the fix, the compiler emitted three unbraced statements and only
+    // the first fell under the if. Accept any number of wrapping braces.
+    const hasBracedAuth = /if \(!req\.user\)\s*\{[\s{]*res\.write\([^)]*\[DONE\][^)]*\);\s*res\.end\(\);\s*return;[\s}]*\}/.test(js);
+    expect(hasBracedAuth).toBe(true);
   });
 
   it('T5: non-streaming agent uses await + res.json (no regression)', () => {

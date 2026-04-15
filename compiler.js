@@ -875,6 +875,22 @@ function compileNamespaceObject(useNode, ctx, pad) {
   return `${pad}${keyword}${ns} = { ${entries.join(', ')} };`;
 }
 
+// Insert /_eval/* Express handlers into compiled serverJS just before the
+// `app.listen(...)` / `const PORT = ...` preamble. Called during compile
+// when `evalMode: true` is set in compiler options. The alternative (a
+// server-side regex splice at eval-run time) was fragile — any change to
+// the compiled preamble would break the splice silently and every eval
+// would then 404. This puts the splice under the compiler's single-AST
+// invariant, so drift is impossible.
+function _spliceEvalEndpoints(serverJS, endpointsJS) {
+  if (!endpointsJS) return serverJS;
+  const marker = /const PORT = process\.env\.PORT/;
+  if (marker.test(serverJS)) {
+    return serverJS.replace(marker, endpointsJS + '\nconst PORT = process.env.PORT');
+  }
+  return serverJS.replace(/app\.listen\(/, endpointsJS + '\napp.listen(');
+}
+
 export function compile(ast, options = {}) {
   const errors = [...ast.errors];
   const warnings = [];
@@ -944,13 +960,23 @@ export function compile(ast, options = {}) {
     result.css = htmlResult.css;
   }
   if (needsJSBackend) {
-    // If we already have web JS, backend JS is a separate output
+    // evalMode is a compile-time flag that appends /_eval/agent_<name>
+    // Express handlers to the end of the serverJS so every agent is
+    // directly POST-able for grading. Off by default; the Studio eval
+    // runner flips it on for the child process it spawns, and user
+    // apps in prod compile without it. Safer than server-side regex
+    // splicing because the handlers are emitted from the same AST pass
+    // that generates the rest of the routes — no drift risk.
+    const evalEndpointsJS = options.evalMode === true ? generateEvalEndpoints(ast.body) : '';
+
     if (needsWeb) {
       result.serverJS = compileToJSBackend(ast.body, errors, sourceMap, streamingAgentNames);
+      if (evalEndpointsJS) result.serverJS = _spliceEvalEndpoints(result.serverJS, evalEndpointsJS);
       // Also generate browser-compatible server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
     } else {
       result.javascript = compileToJSBackend(ast.body, errors, sourceMap, streamingAgentNames);
+      if (evalEndpointsJS) result.javascript = _spliceEvalEndpoints(result.javascript, evalEndpointsJS);
       // Backend-only apps also get a browser server for playground preview
       result.browserServer = compileToBrowserServer(ast.body, errors);
     }
@@ -1063,24 +1089,183 @@ function generateEvalSuite(body) {
     return found;
   }
 
-  // Generic probe inputs keyed by common parameter names.
-  function sampleInput(agentNode) {
+  // === PROBE BUILDER ===
+  // Builds a realistic test input for an agent from three signal sources,
+  // in priority order:
+  //   1. Known-noun dictionary — receiving var matches a common noun
+  //      (question/topic/candidate/lead/message/...). Most agents hit this.
+  //   2. Table-schema-aware — receiving var (singular or plural) matches a
+  //      CREATE_TABLE in the same source. Build an object from its fields.
+  //   3. Prompt-hint — scan the agent's ask-claude prompts for recognizable
+  //      nouns (company, industry, email, ...). Compose an object probe.
+  //   4. Fallback — `'hello'` with `probeQuality: 'generic'`. The eval UI
+  //      should surface this so the user knows to override with an `evals:`
+  //      scenario. Core templates must not fall through here.
+  //
+  // Returns `{ value, quality: 'real' | 'generic', source: string }`.
+
+  // A short value that matches the shape implied by a CREATE_TABLE field.
+  function _sampleValueForField(field) {
+    const t = (field.type || 'text').toLowerCase();
+    const n = (field.name || '').toLowerCase();
+    if (t === 'number' || t === 'integer' || t === 'float') return 42;
+    if (t === 'boolean' || t === 'bool') return true;
+    if (t === 'timestamp' || t === 'datetime' || n.endsWith('_at')) return new Date('2026-04-15T12:00:00Z').toISOString();
+    if (n === 'email' || n.includes('email')) return 'test@example.com';
+    if (n === 'url' || n.includes('url')) return 'https://example.com';
+    if (n === 'phone' || n.includes('phone')) return '+1-555-0100';
+    if (n === 'name' || n === 'title' || n === 'subject' || n === 'label') return 'Sample ' + field.name;
+    if (n === 'body' || n === 'content' || n === 'description' || n === 'text' || n === 'summary') return 'Sample ' + field.name + ' text for evaluation.';
+    if (n === 'role') return 'user';
+    if (n === 'status') return 'open';
+    return 'sample ' + field.name;
+  }
+
+  // Known-noun dictionary. When an agent receives a value named after a
+  // common noun, we can be very specific about a realistic probe shape.
+  // Keep this dictionary covered by every receiving-var name used in the
+  // 8 core templates + apps/multi-agent-research (verified by smoke test).
+  const KNOWN_PROBES = {
+    // Plain-string probes (simple scalars)
+    question: 'What is quantum computing in one sentence?',
+    message: 'Hi, I need help with my recent order.',
+    text: 'The quick brown fox jumps over the lazy dog. It was surprisingly fast.',
+    topic: 'quantum computing',
+    subject: 'Cannot log in to my account',
+    claim: 'The Earth orbits the Sun once every 365 days.',
+    statement: 'The Earth orbits the Sun once every 365 days.',
+    draft: 'Quantum computing is a new kind of computer. It is different from regular computers.',
+    content: 'This is sample content for evaluation — around 20 words of plain text.',
+    description: 'A cozy café with strong coffee and quiet tables.',
+    name: 'Alice Smith',
+    email: 'alice@example.com',
+    url: 'https://example.com/sample',
+    body: 'I am unable to access my account. Could you help me reset my password?',
+    msg: 'Hi, I need help with my recent order.',
+    q: 'What is quantum computing?',
+    input: 'hello',
+
+    // List-valued probes (agent iterates them)
+    items: ['first sample item for rating', 'second sample item for rating'],
+    questions: ['What is quantum computing?', 'How does entanglement work?'],
+    findings: [
+      'Quantum computers use qubits that can be in superposition, representing 0 and 1 at once.',
+      'Entanglement lets two qubits share a state regardless of distance.',
+      'Shor\'s algorithm would let a quantum computer factor large numbers much faster than classical hardware.'
+    ],
+    tickets: ['Order has not arrived', 'Wrong item in the box'],
+    texts: ['First piece of text to analyze.', 'Second piece of text to analyze.'],
+    messages: ['Can you help me?', 'I have a problem with my order.'],
+    claims: ['The Earth is flat.', 'Water boils at 100°C at sea level.'],
+
+    // Structured-object probes (agents that expect several fields together)
+    candidate: { name: 'Jane Doe', resume: 'Senior engineer with 8 years of backend experience.', email: 'jane@example.com' },
+    lead: { company: 'Acme Corp', industry: 'SaaS', employees: 500, contact: 'sales@acme.com' },
+    request: { topic: 'quantum computing', depth: 'intro' },
+    data: { title: 'Sample post', body: 'Sample content for evaluation.' },
+    post: { title: 'Hello World', body: 'This is a sample post about quantum computing.' },
+    user: { name: 'Alice', email: 'alice@example.com' },
+    order: { id: 1, customer: 'Alice', total: 99.99, status: 'shipped' },
+    product: { name: 'Widget', description: 'A small but useful gadget', price: 9.99 },
+    ticket: { subject: 'Cannot log in', body: 'My password reset email never arrives.', priority: 'high' },
+    item: { name: 'Sample Item', description: 'A red leather notebook with gold edges.', price: 29.99 },
+    feedback: { rating: 4, comment: 'Mostly good, but arrived late.' },
+  };
+
+  // Scalar substitutions the prompt-hint composer uses when it finds a noun
+  // mentioned in an agent's ask-claude prompts but the noun isn't a direct
+  // receiving-var. Kept separate from KNOWN_PROBES so object-valued entries
+  // there (candidate, lead, order...) don't accidentally get inlined as
+  // single fields inside a composed probe.
+  const HINT_SCALARS = {
+    company: 'Acme Corp',
+    industry: 'SaaS',
+    employees: 500,
+    email: 'alice@example.com',
+    name: 'Alice Smith',
+    topic: 'quantum computing',
+    question: 'What is quantum computing?',
+    product: 'Widget',
+    order: 'order-1234',
+    customer: 'Alice Smith',
+    title: 'Sample Title',
+    summary: 'A short summary of the content.',
+  };
+
+  // Nouns worth scanning for inside ask-claude prompts when all other
+  // signals miss. Only the ones that map cleanly to a short string probe.
+  const PROMPT_HINT_NOUNS = ['company', 'industry', 'employees', 'email', 'name', 'topic', 'question', 'product', 'order', 'customer', 'title', 'summary'];
+
+  function _collectTableSchema(receivingVar) {
+    if (!receivingVar) return null;
+    const v = receivingVar.toLowerCase();
+    // Clear parses `create a X table:` to NodeType.DATA_SHAPE (not CREATE_TABLE).
+    const tables = body.filter(n => n.type === NodeType.DATA_SHAPE && n.name);
+    const match = tables.find(t => {
+      const tn = t.name.toLowerCase();
+      // Match against singular → plural (candidate → Candidates), plural → plural,
+      // exact, plural → singular, and -es plurals (addresses → address).
+      return tn === v || tn === v + 's' || tn === v + 'es' || tn.replace(/s$/, '') === v || tn.replace(/es$/, '') === v;
+    });
+    if (!match || !Array.isArray(match.fields)) return null;
+    const obj = {};
+    for (const field of match.fields) {
+      obj[field.name] = _sampleValueForField(field);
+    }
+    return obj;
+  }
+
+  function _collectPromptHintProbe(agentNode) {
+    const prompts = [];
+    (function walk(nodes) {
+      if (!Array.isArray(nodes)) return;
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI) {
+          const p = n.expression.prompt;
+          if (p && typeof p === 'object' && p.value) prompts.push(p.value);
+        }
+        if (n.body) walk(n.body);
+        if (n.thenBranch) walk(n.thenBranch);
+        if (n.otherwiseBranch) walk(n.otherwiseBranch);
+      }
+    })(agentNode.body);
+    const haystack = prompts.join(' ').toLowerCase();
+    const hits = PROMPT_HINT_NOUNS.filter(k => haystack.includes(k));
+    if (hits.length < 2) return null;
+    const obj = {};
+    for (const k of hits) {
+      if (Object.prototype.hasOwnProperty.call(HINT_SCALARS, k)) obj[k] = HINT_SCALARS[k];
+    }
+    return Object.keys(obj).length > 0 ? obj : null;
+  }
+
+  function buildProbe(agentNode) {
     const v = agentNode.receivingVar || 'input';
-    const probes = {
-      question: 'What is quantum computing in one sentence?',
-      message: 'hello',
-      text: 'The quick brown fox jumps over the lazy dog.',
-      topic: 'quantum computing',
-      ticket: 'My order has not arrived and it has been two weeks.',
-      lead: 'Acme Corp — 500 employees, looking to streamline ops.',
-      candidate: 'Senior engineer with 8 years of backend experience.',
-      draft: 'This is a short draft that needs revision.',
-      item: 'sample item for rating',
-      claim: 'The Earth orbits the Sun.',
-      items: ['sample item 1', 'sample item 2'],
-      questions: ['What is quantum computing?']
-    };
-    return probes[v] !== undefined ? probes[v] : 'hello';
+    // 1. Table-schema first — a table the user explicitly declared in the
+    //    source file is the strongest signal. If the user wrote a custom
+    //    `Candidates` table with 12 fields, our 3-field default probe would
+    //    skip most of them. Favor the user's own shape.
+    const schemaProbe = _collectTableSchema(v);
+    if (schemaProbe) {
+      return { value: schemaProbe, quality: 'real', source: 'table-schema' };
+    }
+    // 2. Known-noun — no matching table, use language-level default.
+    if (Object.prototype.hasOwnProperty.call(KNOWN_PROBES, v)) {
+      return { value: KNOWN_PROBES[v], quality: 'real', source: 'known-noun' };
+    }
+    // 3. Prompt-hint — compose from nouns mentioned in the agent's own prompts.
+    const hintProbe = _collectPromptHintProbe(agentNode);
+    if (hintProbe) {
+      return { value: hintProbe, quality: 'real', source: 'prompt-hints' };
+    }
+    // 4. Generic fallback — UI should flag this so the user adds an override.
+    return { value: 'hello', quality: 'generic', source: 'fallback' };
+  }
+
+  // Legacy shim — suite entries call this to get just the value. The full
+  // probe metadata is attached to the spec separately below.
+  function sampleInput(agentNode) {
+    return buildProbe(agentNode).value;
   }
 
   // Build the grader's rubric from the agent's actual definition. Every
@@ -1192,7 +1377,8 @@ function generateEvalSuite(body) {
     // Build a reasonable JSON body from the first agent's receiving variable.
     const firstAgentName = [...endpointByAgent.entries()].find(([, path]) => path === ep.path)?.[0];
     const firstAgent = agents.find(a => a.name === firstAgentName);
-    const body = firstAgent ? { [firstAgent.receivingVar || 'input']: sampleInput(firstAgent) } : { input: 'hello' };
+    const firstProbe = firstAgent ? buildProbe(firstAgent) : { value: 'hello', quality: 'generic', source: 'fallback' };
+    const body = firstAgent ? { [firstAgent.receivingVar || 'input']: firstProbe.value } : { input: firstProbe.value };
 
     suite.push({
       id: `e2e-${sanitizeName(ep.path.replace(/[/:]/g, '_'))}`,
@@ -1201,6 +1387,8 @@ function generateEvalSuite(body) {
       agentName: firstAgentName || null,
       endpointPath: ep.path,
       input: body,
+      probeQuality: firstProbe.quality,
+      probeSource: firstProbe.source,
       rubric: `The endpoint ${ep.path} should return a non-empty, relevant response when called with a realistic input. Judge the output on: 1) it's non-empty, 2) it looks like a real answer (not boilerplate or errors), 3) the top-level flow made sense given the input.`,
       expected: { kind: 'non-empty' }
     });
@@ -1221,7 +1409,8 @@ function generateEvalSuite(body) {
     // Real endpoints expect the user's body shape; synthetic endpoints
     // always read `req.body.input` — keep the shape consistent with what
     // the eval runner knows to post.
-    const input = isSynthetic ? { input: sampleInput(agent) } : { [receivingVar]: sampleInput(agent) };
+    const probe = buildProbe(agent);
+    const input = isSynthetic ? { input: probe.value } : { [receivingVar]: probe.value };
     const role = describeAgentRole(agent);
     const schema = findOutputSchema(agent);
 
@@ -1239,6 +1428,8 @@ function generateEvalSuite(body) {
       endpointPath: path,
       synthetic: isSynthetic,
       input,
+      probeQuality: probe.quality,
+      probeSource: probe.source,
       definition: role || null,  // shown in UI so the user knows what's being graded
       rubric,
       expected: { kind: 'non-empty' }
@@ -1252,9 +1443,107 @@ function generateEvalSuite(body) {
       endpointPath: path,
       synthetic: isSynthetic,
       input,
+      probeQuality: probe.quality,
+      probeSource: probe.source,
       expected: schema
         ? { kind: 'fields', fields: schema.map(f => ({ name: f.name, type: f.type || 'text' })) }
         : { kind: 'non-empty' }
+    });
+  }
+
+  // User-defined evals from per-agent `evals:` subsections. Each scenario
+  // attached to `.evalScenarios` on an agent becomes a suite entry with
+  // source='user-agent'. The scenario's input overrides the auto-probe for
+  // that specific entry — other auto-generated rows for the agent stay.
+  for (const agent of agents) {
+    if (!Array.isArray(agent.evalScenarios) || agent.evalScenarios.length === 0) continue;
+    const userPath = endpointByAgent.get(agent.name);
+    const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
+    const path = userPath || `/_eval/${fnName}`;
+    const isSynthetic = !userPath;
+    const receivingVar = agent.receivingVar || 'input';
+    for (const sc of agent.evalScenarios) {
+      const input = isSynthetic ? { input: sc.input } : { [receivingVar]: sc.input };
+      const expected = sc.expectFields && sc.expectFields.length > 0
+        ? { kind: 'fields', fields: sc.expectFields.map(f => ({ name: f, type: 'text' })) }
+        : { kind: 'non-empty' };
+      suite.push({
+        id: `scenario-${sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'))}-${sanitizeName(sc.name.toLowerCase().replace(/\s+/g, '_'))}`,
+        kind: 'user',
+        label: `${agent.name} — ${sc.name}`,
+        source: 'user-agent',
+        agentName: agent.name,
+        endpointPath: path,
+        synthetic: isSynthetic,
+        input,
+        rubric: sc.rubric || null,
+        expected,
+      });
+    }
+  }
+
+  // User-defined evals from top-level `eval 'name':` blocks. Each EVAL_DEF
+  // node translates into exactly one suite entry. The translation maps:
+  //   - scenarioKind='agent' → look up the agent's endpoint path (real or
+  //     synthetic /_eval/), wrap input for that transport
+  //   - scenarioKind='endpoint' → use the literal path the user wrote
+  //   - rubric → LLM-graded expectation
+  //   - expectFields → deterministic fields-based format check
+  const userEvals = body.filter(n => n.type === NodeType.EVAL_DEF);
+  for (const e of userEvals) {
+    let endpointPath = null;
+    let synthetic = false;
+    let input = null;
+
+    if (e.scenarioKind === 'agent') {
+      const agent = agents.find(a => a.name === e.agentName);
+      if (!agent) {
+        // Validator will also flag; still emit the spec so the UI can surface it.
+        suite.push({
+          id: `user-${sanitizeName((e.name || 'eval').toLowerCase().replace(/\s+/g, '_'))}`,
+          kind: 'user',
+          label: e.name,
+          source: 'user-top',
+          agentName: e.agentName,
+          endpointPath: null,
+          runnable: false,
+          note: `Eval '${e.name}' references agent '${e.agentName}', which isn't defined in this source.`,
+        });
+        continue;
+      }
+      const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
+      const userPath = endpointByAgent.get(agent.name);
+      endpointPath = userPath || `/_eval/${fnName}`;
+      synthetic = !userPath;
+      // Synthetic endpoints always read req.body.input; real endpoints read the
+      // agent's receiving-var key. Preserve that invariant here too.
+      if (synthetic) {
+        input = { input: e.input };
+      } else {
+        input = { [agent.receivingVar || 'input']: e.input };
+      }
+    } else if (e.scenarioKind === 'endpoint') {
+      endpointPath = e.endpointPath;
+      input = (e.input && typeof e.input === 'object' && !Array.isArray(e.input))
+        ? e.input
+        : { input: e.input };
+    }
+
+    const expected = e.expectFields && e.expectFields.length > 0
+      ? { kind: 'fields', fields: e.expectFields.map(f => ({ name: f, type: 'text' })) }
+      : { kind: 'non-empty' };
+
+    suite.push({
+      id: `user-${sanitizeName((e.name || 'eval').toLowerCase().replace(/\s+/g, '_'))}`,
+      kind: 'user',
+      label: e.name,
+      source: 'user-top',
+      agentName: e.agentName || null,
+      endpointPath,
+      synthetic,
+      input,
+      rubric: e.rubric || null,
+      expected,
     });
   }
 
@@ -3178,14 +3467,37 @@ function compileAgent(node, ctx, pad) {
   } else if (shouldStream && ctx.lang !== 'python' && bodyCode.includes('_askAI(')) {
     // Track which variables hold stream results (so we know which returns to convert)
     const streamVars = new Set();
+    // Reassigned variables MUST stay non-streaming. If we converted
+    // `let draft = await _askAI(...)` to `_askAIStream(...)` but a later
+    // `draft = await _askAI('...', draft)` fed the generator back in as
+    // context, Claude would receive [object AsyncGenerator] instead of a
+    // string. Polished Report in multi-agent-research hit this — second
+    // call got no real draft text, produced nonsense. Scan for
+    // `<var> = ` (reassignment without `let`) and skip streaming for
+    // those vars. Only truly single-assignment vars get streamed.
+    const reassignedVars = new Set();
+    for (const m of bodyCode.matchAll(/(?:^|\n)\s*(\w+)\s*=(?!=)/g)) {
+      // Ignore declarations (`let`, `const`, `var`), keep bare reassignments only.
+      const before = bodyCode.slice(0, m.index + m[0].length - m[1].length - 1);
+      const lastWord = (before.match(/\b(let|const|var)\s*$/) || [])[1];
+      if (!lastWord) reassignedVars.add(m[1]);
+    }
     bodyCode = bodyCode.replace(
       /let (\w+) = await _askAI\(([^)]*)\)/g,
-      (m, varName, args) => { streamVars.add(varName); return `let ${varName} = _askAIStream(${args})`; }
+      (m, varName, args) => {
+        if (reassignedVars.has(varName)) return m; // keep awaited — need real string for next call
+        streamVars.add(varName);
+        return `let ${varName} = _askAIStream(${args})`;
+      }
     );
     // Also handle _askAIWithTools
     bodyCode = bodyCode.replace(
       /let (\w+) = await _askAIWithTools\(([^)]*)\)/g,
-      (m, varName, args) => { streamVars.add(varName); return `let ${varName} = _askAIStream(${args})`; }
+      (m, varName, args) => {
+        if (reassignedVars.has(varName)) return m;
+        streamVars.add(varName);
+        return `let ${varName} = _askAIStream(${args})`;
+      }
     );
     // Only convert returns of stream variables to yield
     if (streamVars.size > 0) {
@@ -9747,6 +10059,27 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   const bodyLines = [];
   const declared = new Set();
   const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, _astBody: body, _allNodes: body, _asyncFunctions };
+
+  // Implicit tables for agent-memory features. Agents declared with
+  // `remember conversation context` call db.findAll/insert/update on a
+  // 'Conversations' table; `remember user's preferences` uses 'Memories'.
+  // Neither table is declared in user source, so without these implicit
+  // CREATE TABLE calls the app 500s with "no such table" on first access.
+  // Surfaced by the eval-auth fix when helpdesk-agent went from 401 to 500.
+  const hasRememberConv = body.some(n => n.type === NodeType.AGENT && n.rememberConversation);
+  const hasRememberPrefs = body.some(n => n.type === NodeType.AGENT && n.rememberPreferences);
+  const isLocalMemoryDb = !(dbBackend && dbBackend.includes('supabase'));
+  if (isLocalMemoryDb && (hasRememberConv || hasRememberPrefs)) {
+    const lines = ['// Implicit tables for agent memory (remember conversation / preferences)'];
+    if (hasRememberConv) {
+      lines.push(`db.createTable('Conversations', { user_id: { type: 'text' }, messages: { type: 'text' } });`);
+    }
+    if (hasRememberPrefs) {
+      lines.push(`db.createTable('Memories', { user_id: { type: 'text' }, fact: { type: 'text' } });`);
+    }
+    bodyLines.push(lines.join('\n'));
+  }
+
   for (const node of body) {
     // Skip test blocks in server output when running as a server (not test mode)
     // Tests are compiled into the server output for `compileProgram()` consumers
@@ -9814,15 +10147,21 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
         return '_fullResponse';
       });
 
-      // 3. Replace res.json(...) responses with SSE DONE + res.end()
+      // 3. Replace res.json(...) responses with a braced SSE DONE + res.end().
+      //    The braces are load-bearing: when the original `return res.json(...)`
+      //    was preceded by `if (cond)` (auth/validation early-return), splitting
+      //    into 3 unbraced statements would drop the last two outside the `if`,
+      //    firing res.end() + return unconditionally. Real bug on lead-scorer
+      //    in Session 32. Emit as one compound statement so it slots into any
+      //    single-statement position (post-if, post-else, post-try) safely.
       transformed = transformed.replace(
         /return res\.json\([^)]*\);/g,
-        "res.write('data: [DONE]\\n\\n');\n    res.end();\n    return;"
+        "{ res.write('data: [DONE]\\n\\n'); res.end(); return; }"
       );
       // Also handle res.status(N).json(...) — success responses
       transformed = transformed.replace(
         /return res\.status\(\d+\)\.json\([^)]*\);/g,
-        "res.write('data: [DONE]\\n\\n');\n    res.end();\n    return;"
+        "{ res.write('data: [DONE]\\n\\n'); res.end(); return; }"
       );
       // Also handle bare res.json(...) (without return) at end of try block
       transformed = transformed.replace(
