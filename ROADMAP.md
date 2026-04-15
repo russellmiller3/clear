@@ -184,8 +184,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Agent definition | `agent 'Name' receives data:` | Async function |
 | Ask Claude | `response = ask claude 'prompt' with context` | Also `ask ai` |
 | Structured output | `ask claude 'prompt' with X returning JSON text:` + fields | Schema enforcement |
-| Tool use | `can use: fn1, fn2` | Anthropic tool_use API |
-| Skills | `skill 'Name':` + `can:` + `instructions:` | Reusable tool bundles |
+| Tool use | `has tools: fn1, fn2` | Anthropic tool_use API |
+| Skills | `skill 'Name':` + `has tool(s):` + `instructions:` | Reusable tool bundles |
 | Uses skills | `uses skills: 'Lookup', 'Email'` | Merge into agent |
 | Pipelines | `pipeline 'Name' with var:` + agent steps | Sequential chain |
 | Parallel agents | `do these at the same time:` + calls | Promise.all |

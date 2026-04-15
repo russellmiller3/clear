@@ -39,14 +39,14 @@ define function search_faq(query):
 # --- Skills ---
 
 skill 'Order Management':
-  can: look_up_orders, check_order_status
+  has tools: look_up_orders, check_order_status
   instructions:
     Always look up the customer's order before answering shipping questions.
     Include the order number and status in your response.
     If an order is delayed, apologize and offer to check again in 24 hours.
 
 skill 'FAQ Search':
-  can: search_faq
+  has tool: search_faq
   instructions:
     Search the FAQ before answering general questions.
     Quote the FAQ answer directly when relevant.

@@ -16762,6 +16762,238 @@ when user calls POST /api/triage sending data:
 });
 
 // =============================================================================
+// EVAL SUITE GENERATOR — structured per-agent evals, used by Studio's
+// "Run Evals" UI. Each agent (even internal ones) gets role + format;
+// each POST endpoint that calls an agent gets an E2E happy path.
+// =============================================================================
+
+describe('Eval suite: top-level shape', () => {
+  const src = `build for javascript backend
+agent 'Scorer' receives item:
+  n = ask claude 'Rate 1-10' with item
+  send back n
+agent 'Batch' receives items:
+  results is an empty list
+  for each item in items:
+    s = call 'Scorer' with item
+    add s to results
+  send back results
+when user calls POST /api/batch sending data:
+  out = call 'Batch' with data's items
+  send back out`;
+
+  it('attaches evalSuite and evalEndpointsJS to the compile result', () => {
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(Array.isArray(r.evalSuite)).toBe(true);
+    expect(r.evalSuite.length).toBeGreaterThan(0);
+    expect(typeof r.evalEndpointsJS).toBe('string');
+    expect(r.evalEndpointsJS.length).toBeGreaterThan(0);
+  });
+
+  it('emits exactly one E2E per POST endpoint that calls an agent', () => {
+    const r = compileProgram(src);
+    const e2e = r.evalSuite.filter(e => e.kind === 'e2e');
+    expect(e2e).toHaveLength(1);
+    expect(e2e[0].endpointPath).toBe('/api/batch');
+    expect(e2e[0].synthetic).not.toBe(true);
+  });
+
+  it('emits role + format for every agent (including internal)', () => {
+    const r = compileProgram(src);
+    const roles = r.evalSuite.filter(e => e.kind === 'role').map(e => e.agentName).sort();
+    const formats = r.evalSuite.filter(e => e.kind === 'format').map(e => e.agentName).sort();
+    expect(roles).toEqual(['Batch', 'Scorer']);
+    expect(formats).toEqual(['Batch', 'Scorer']);
+  });
+
+  it('internal agents are marked synthetic and point at /_eval/...', () => {
+    const r = compileProgram(src);
+    const scorerRole = r.evalSuite.find(e => e.id === 'role-scorer');
+    expect(scorerRole.synthetic).toBe(true);
+    expect(scorerRole.endpointPath).toBe('/_eval/agent_scorer');
+  });
+
+  it('agents exposed via an endpoint use the real path, not synthetic', () => {
+    const r = compileProgram(src);
+    const batchRole = r.evalSuite.find(e => e.id === 'role-batch');
+    expect(batchRole.synthetic).toBe(false);
+    expect(batchRole.endpointPath).toBe('/api/batch');
+  });
+});
+
+describe('Eval suite: rubric is built from the agent definition', () => {
+  it('role rubric quotes the agent\'s ask-claude prompts verbatim', () => {
+    const src = `build for javascript backend
+agent 'Researcher' receives question:
+  answer = ask claude 'Answer this question in 2-3 sentences' with question
+  send back answer
+when user calls POST /api/ask sending data:
+  r = call 'Researcher' with data's question
+  send back r`;
+    const r = compileProgram(src);
+    const role = r.evalSuite.find(e => e.id === 'role-researcher');
+    expect(role.rubric).toContain('Answer this question in 2-3 sentences');
+    expect(role.rubric).toContain("'Researcher'");
+  });
+
+  it('role rubric pulls in skill instructions when the agent uses a skill', () => {
+    const src = `build for javascript backend
+skill 'Report Style':
+  instructions:
+    Use short paragraphs.
+    Lead with the answer.
+agent 'Writer' receives topic:
+  uses skills: 'Report Style'
+  draft = ask claude 'Write a report' with topic
+  send back draft
+when user calls POST /api/write sending data:
+  r = call 'Writer' with data's topic
+  send back r`;
+    const r = compileProgram(src);
+    const role = r.evalSuite.find(e => e.id === 'role-writer');
+    expect(role.rubric).toContain('Use short paragraphs');
+    expect(role.rubric).toContain('Lead with the answer');
+  });
+
+  it('role rubric lists tools the agent has', () => {
+    const src = `build for javascript backend
+define function count_words(text):
+  n = text's length
+  return n
+agent 'Checker' receives draft:
+  has tool: count_words
+  r = ask claude 'Check this' with draft
+  send back r
+when user calls POST /api/check sending data:
+  out = call 'Checker' with data's draft
+  send back out`;
+    const r = compileProgram(src);
+    const role = r.evalSuite.find(e => e.id === 'role-checker');
+    expect(role.rubric).toContain('count_words');
+  });
+
+  it('format eval uses returning-schema fields as expected shape', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receives text:
+  result = ask claude 'Classify' with text returning JSON text:
+    category
+    confidence (number)
+  send back result
+when user calls POST /api/classify sending data:
+  out = call 'Classifier' with data's text
+  send back out`;
+    const r = compileProgram(src);
+    const format = r.evalSuite.find(e => e.id === 'format-classifier');
+    expect(format.expected.kind).toBe('fields');
+    const fieldNames = format.expected.fields.map(f => f.name).sort();
+    expect(fieldNames).toEqual(['category', 'confidence']);
+    // confidence is declared (number); category defaults to text
+    const confidence = format.expected.fields.find(f => f.name === 'confidence');
+    expect(confidence.type).toBe('number');
+  });
+
+  it('format eval falls back to non-empty check when no returning schema', () => {
+    const src = `build for javascript backend
+agent 'Chatter' receives msg:
+  r = ask claude 'Chat' with msg
+  send back r
+when user calls POST /api/chat sending data:
+  out = call 'Chatter' with data's msg
+  send back out`;
+    const r = compileProgram(src);
+    const format = r.evalSuite.find(e => e.id === 'format-chatter');
+    expect(format.expected.kind).toBe('non-empty');
+  });
+});
+
+describe('Eval endpoints: synthetic /_eval/* handlers', () => {
+  const src = `build for javascript backend
+agent 'Scorer' receives item:
+  n = ask claude 'Rate' with item
+  send back n
+agent 'Plain' receives input:
+  do not stream
+  r = input
+  send back r
+when user calls POST /api/batch sending data:
+  out = call 'Plain' with data's x
+  send back out`;
+
+  it('emits a POST /_eval/<fn_name> handler for every agent', () => {
+    const r = compileProgram(src);
+    expect(r.evalEndpointsJS).toContain("app.post('/_eval/agent_scorer'");
+    expect(r.evalEndpointsJS).toContain("app.post('/_eval/agent_plain'");
+  });
+
+  it('each handler drains async iterators and awaits plain promises', () => {
+    const r = compileProgram(src);
+    // The handler code checks Symbol.asyncIterator so it works for both
+    // streaming (generator) and non-streaming agents with one code path.
+    expect(r.evalEndpointsJS).toContain('Symbol.asyncIterator');
+    expect(r.evalEndpointsJS).toContain('for await (const _c of _r)');
+    expect(r.evalEndpointsJS).toContain('const _result = await _r');
+  });
+
+  it('handler reads req.body.input falling back to raw body', () => {
+    const r = compileProgram(src);
+    expect(r.evalEndpointsJS).toContain('req.body && req.body.input !== undefined ? req.body.input : req.body');
+  });
+
+  it('handler returns { result } and catches agent throws as 500', () => {
+    const r = compileProgram(src);
+    expect(r.evalEndpointsJS).toContain('res.json({ result: _result })');
+    expect(r.evalEndpointsJS).toContain('res.status(500).json({ error:');
+  });
+
+  it('does not emit endpoints for scheduled agents (no args, no endpoint path)', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Daily' runs every 1 day:
+  x = 1
+  send back x
+agent 'Active' receives msg:
+  r = msg
+  send back r
+when user calls POST /api/run sending data:
+  out = call 'Active' with data's msg
+  send back out`);
+    expect(r.evalEndpointsJS).not.toContain('/_eval/agent_daily');
+    expect(r.evalEndpointsJS).toContain('/_eval/agent_active');
+  });
+});
+
+describe('Eval suite: input probes are shaped for the endpoint', () => {
+  it('synthetic endpoints always get { input: X } body', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Inner' receives question:
+  r = ask claude 'X' with question
+  send back r
+agent 'Outer' receives q:
+  x = call 'Inner' with q
+  send back x
+when user calls POST /api/ask sending data:
+  out = call 'Outer' with data's q
+  send back out`);
+    const innerRole = r.evalSuite.find(e => e.id === 'role-inner');
+    expect(innerRole.synthetic).toBe(true);
+    expect(innerRole.input).toHaveProperty('input');
+  });
+
+  it('real endpoint specs use the agent\'s receiving var as the body key', () => {
+    const r = compileProgram(`build for javascript backend
+agent 'Top' receives topic:
+  r = ask claude 'Research' with topic
+  send back r
+when user calls POST /api/research sending data:
+  out = call 'Top' with data's topic
+  send back out`);
+    const topRole = r.evalSuite.find(e => e.id === 'role-top');
+    expect(topRole.synthetic).toBe(false);
+    expect(topRole.input).toHaveProperty('topic');
+  });
+});
+
+// =============================================================================
 // AGENT OBSERVABILITY (Phase 82)
 // =============================================================================
 

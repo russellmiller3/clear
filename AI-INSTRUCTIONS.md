@@ -18,9 +18,37 @@ code to match. If the code disagrees with the diagram, the diagram wins.
 **The check:** before you call `compile`, scroll to the top of your file. If
 you don't see a `/* ... */` block with boxes and arrows, STOP and add one.
 
-**USE `/* */` FOR DIAGRAMS, NOT `#`.** Single-line `#` comments become TOC
-entries in the Studio IDE. Architecture diagrams pollute the TOC with
-box-drawing fragments. Always wrap diagrams in `/* ... */` block comments.
+**USE `/* */` FOR ANYTHING MULTI-LINE.** Every `#` line becomes a clickable
+pill in Studio's editor TOC. That's useful for section headers; it's
+terrible for narrative prose, diagrams, and multi-line explanations.
+
+Hard rule:
+- `#` — **one-word section headers only** (`# Database`, `# Backend`,
+  `# Specialists`, `# Endpoints`). These appear as TOC pills.
+- `/* ... */` — **everything else**: architecture diagrams, pattern
+  explanations, "why this agent exists" notes, anything that runs
+  more than one line. Hidden from the TOC.
+
+Anti-pattern — three `#` lines in a row. If you've written more than one
+`#` comment in a block, convert to `/* */`:
+
+```clear
+# BAD — three TOC pills named "Specialists — small, focused...",
+# "Streaming is default for text agents...", and "not the async
+# generator (compiler drains it automatically)."
+# Specialists — small, focused, each does one thing
+# Streaming is default for text agents; coordinators see the final string,
+# not the async generator (compiler drains it automatically).
+
+# GOOD — one TOC pill "Specialists", narrative hidden in a block
+# Specialists
+
+/*
+Small, focused agents — each does one thing. Streaming is the default
+for text agents; coordinators see the final string, not the async
+generator (compiler drains it automatically).
+*/
+```
 
 **When AI updates a program:**
 1. Read the existing diagram to understand current structure
@@ -519,6 +547,36 @@ If the program uses a database adapter, add a Database section at the top.
 If there's no backend, skip the Backend section. The comments are for the
 human reading the file -- the compiler ignores them.
 
+**Don't add a `# JUMP TO:` index line.** Studio's editor TOC already
+auto-builds from `#` section headers — every `#`/`##` line becomes a
+clickable pill in the bar above the editor. A manual `# JUMP TO:` line
+duplicates the auto-index and drifts out of sync whenever sections change.
+Let the TOC do its job.
+
+**Comments must be plain English — no jargon.** A `.clear` file is meant
+to be readable by a curious 14-year-old, not a JavaScript engineer.
+Never reach for CS or compiler terms: no "async generator", "drains
+into a string", "coroutine", "yield", "await", "stream", "token",
+"compiler", "runtime", "mutation", "promise", "iterator". If a concept
+matters to the reader, explain it concretely:
+
+```
+# BAD
+/*
+When a coordinator calls a streaming agent, the compiler drains the
+async generator into a string before the caller sees it.
+*/
+
+# GOOD
+/*
+When one agent asks another agent for an answer, it waits for the
+whole answer, not just the first word.
+*/
+```
+
+Before committing any `.clear` file, re-read every comment and ask:
+would a 14-year-old understand this? If not, rewrite it.
+
 ## Multi-File Architecture (When Apps Get Complex)
 
 **First decision: is this a simple or complex app?**
@@ -911,7 +969,7 @@ when user sends todo_data to /api/todos:
 
 ```clear
 agent 'Support Agent' receives question:
-  can use: look_up_order, create_ticket, send_email
+  has tools: look_up_order, create_ticket, send_email
   knows about: Products, FAQs
 
   # What the agent must not do (compile-time + runtime checks)
@@ -1702,7 +1760,7 @@ agent body, before any executable code:
 ```clear
 agent 'Customer Support' receives message:
   # --- DIRECTIVES (order doesn't matter, but group them at top) ---
-  can use: look_up_orders, check_status, send_email
+  has tools: look_up_orders, check_status, send_email
   must not: delete records, modify prices, access admin tables
   knows about: Products, FAQ
   remember conversation context
@@ -1738,33 +1796,60 @@ agent 'Customer Support' receives message:
    using 'claude-sonnet-4-6'
    ```
 
-### Use Skills for Reusable Tool Bundles
+### Use Skills for Reusable Tool + Instruction Bundles
 
-Don't repeat `can use:` lists across agents. Define skills once, attach everywhere:
+A skill is a bundle attached to one or more agents. It can contain **tools, instructions, or both** — pick whichever parts the skill needs:
+
+| Skill shape | Use when |
+|-------------|----------|
+| `has tool(s):` + `instructions:` | Skill bundles tools AND how-to-use-them guidance (the common case — e.g. "here are the order-management tools, and always verify customer identity before using them") |
+| `has tool(s):` only | A pure tool bundle with no extra guidance on usage |
+| `instructions:` only | A pure style/policy bundle with no tools (e.g. "Report Style" — how to write, nothing to call) |
+
+**Canonical syntax is `has tool:` for one, `has tools:` for many.** Use plural when listing two or more functions (it reads naturally in English). `can:` and `can use:` still parse as legacy aliases, but don't write them in new code — `has tool(s):` is what the docs and landing page show.
+
+An agent that says `uses skills: 'Name'` inherits all of the skill's tools AND gets the skill's instructions prepended to its prompt. Define once, attach everywhere — no `has tool:` copy-paste across agents.
 
 ```clear
+# Both tools and instructions — the usual case
 skill 'Order Management':
-  can: look_up_orders, update_order, cancel_order
+  has tools: look_up_orders, update_order, cancel_order
   instructions:
     Always verify customer identity before changes.
     Include order number in all responses.
 
-skill 'Email Support':
-  can: send_email, check_inbox
+# Instructions only — pure style/policy, no tool
+skill 'Report Style':
   instructions:
-    Use professional tone. Include order number in subject.
+    Use short paragraphs.
+    Lead with the answer, follow with the reasoning.
 
-# Both agents share the same tools + instructions
+# Tools only — a pure tool bundle
+skill 'Inbox Access':
+  has tools: send_email, check_inbox
+
+# Single tool — use the singular form for one function
+skill 'Length Check':
+  has tool: character_count
+
+# Agents mix and match skills
 agent 'Support' receives message:
-  uses skills: 'Order Management', 'Email Support'
+  uses skills: 'Order Management', 'Inbox Access'
   must not: delete records
   response = ask claude 'Help' with message
   send back response
 
-agent 'Returns' receives request:
-  uses skills: 'Order Management'
-  must not: modify prices
-  response = ask claude 'Process return' with request
+agent 'Writer' receives topic:
+  uses skills: 'Report Style'
+  draft = ask claude 'Write a report' with topic
+  send back draft
+```
+
+**Agents can also list tools directly without a skill wrapper:**
+```clear
+agent 'Support' receives message:
+  has tools: look_up_orders, check_status, send_email
+  response = ask claude 'Help' with message
   send back response
 ```
 

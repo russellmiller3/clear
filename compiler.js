@@ -980,14 +980,325 @@ export function compile(ast, options = {}) {
   }
 
   // Generate agent evals:
-  //   .evals.schema — Clear test blocks (deterministic, mocked AI)
-  //   .evals.graded — JS eval harness (real AI, LLM-graded scorecard)
+  //   .evals.schema — Clear test blocks (deterministic, mocked AI) [legacy, CLI]
+  //   .evals.graded — JS eval harness (real AI, LLM-graded scorecard) [legacy, CLI]
+  //   .evalSuite   — structured per-eval spec list (individually runnable,
+  //                  Studio "Run Evals" button path). Shape:
+  //                  [ { id, kind, agentName, endpointPath, input, rubric, expected } ]
   const agentEvals = generateAgentEvals(ast.body);
   if (agentEvals) {
     result.evals = agentEvals;
   }
+  const suite = generateEvalSuite(ast.body);
+  if (suite && suite.length > 0) {
+    result.evalSuite = suite;
+    // Pre-built Express handlers the eval runner injects into a COPY of
+    // serverJS before spawning the eval child. Exposes every agent at
+    // /_eval/agent_<name> so internal agents can be graded individually.
+    result.evalEndpointsJS = generateEvalEndpoints(ast.body);
+  }
 
   return result;
+}
+
+/**
+ * Structured eval suite for the Studio "Run Evals" button path.
+ *
+ * Three eval kinds per app:
+ *   - e2e    — one per POST endpoint. Asserts the endpoint returns a non-empty
+ *              response and, when an API key is available, asks Claude to
+ *              grade whether the full workflow produced a useful result.
+ *   - role   — one per agent reachable via a POST endpoint. Claude grades
+ *              whether the agent did its job (as described by its body +
+ *              directives). Skipped without API key.
+ *   - format — one per agent reachable via a POST endpoint. Deterministic:
+ *              asserts the response matches the agent's declared output
+ *              shape (returning: fields or non-empty text).
+ *
+ * Agents with no direct endpoint (called only by other agents) are flagged
+ * runnable:false with a note pointing to the E2E path that exercises them.
+ */
+function generateEvalSuite(body) {
+  const agents = body.filter(n => n.type === NodeType.AGENT && !n.schedule);
+  if (agents.length === 0) return [];
+
+  // Which agents are reachable via a POST endpoint? Walk every POST body
+  // for ASSIGN → RUN_AGENT and record the shortest endpoint that exposes
+  // each agent. An agent may be reached through multiple endpoints; the
+  // first one wins (order in source file).
+  const endpointByAgent = new Map();
+  const endpoints = body.filter(n => n.type === NodeType.ENDPOINT && n.method?.toUpperCase() === 'POST');
+  for (const ep of endpoints) {
+    (function walk(nodes) {
+      if (!Array.isArray(nodes)) return;
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_AGENT) {
+          if (!endpointByAgent.has(n.expression.agentName)) {
+            endpointByAgent.set(n.expression.agentName, ep.path);
+          }
+        }
+        if (n.body) walk(n.body);
+        if (n.thenBranch) walk(n.thenBranch);
+        if (n.otherwiseBranch) walk(n.otherwiseBranch);
+      }
+    })(ep.body || []);
+  }
+
+  // For each agent, find its output schema (from returning: fields on the
+  // first ask_ai call) — used to build Format eval expected-shape checks.
+  function findOutputSchema(agentNode) {
+    let found = null;
+    (function walk(nodes) {
+      if (!Array.isArray(nodes) || found) return;
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI && n.expression.schema?.length > 0) {
+          found = n.expression.schema;
+          return;
+        }
+        if (n.body) walk(n.body);
+        if (n.thenBranch) walk(n.thenBranch);
+        if (n.otherwiseBranch) walk(n.otherwiseBranch);
+      }
+    })(agentNode.body);
+    return found;
+  }
+
+  // Generic probe inputs keyed by common parameter names.
+  function sampleInput(agentNode) {
+    const v = agentNode.receivingVar || 'input';
+    const probes = {
+      question: 'What is quantum computing in one sentence?',
+      message: 'hello',
+      text: 'The quick brown fox jumps over the lazy dog.',
+      topic: 'quantum computing',
+      ticket: 'My order has not arrived and it has been two weeks.',
+      lead: 'Acme Corp — 500 employees, looking to streamline ops.',
+      candidate: 'Senior engineer with 8 years of backend experience.',
+      draft: 'This is a short draft that needs revision.',
+      item: 'sample item for rating',
+      claim: 'The Earth orbits the Sun.',
+      items: ['sample item 1', 'sample item 2'],
+      questions: ['What is quantum computing?']
+    };
+    return probes[v] !== undefined ? probes[v] : 'hello';
+  }
+
+  // Build the grader's rubric from the agent's actual definition. Every
+  // section of the agent declaration contributes: the prompts it sends to
+  // Claude, the skills it uses (with those skills' instructions pulled in),
+  // its tools, guardrails, memory, knowledge sources, and output shape.
+  //
+  // The grader reads this verbatim — so we want it rich and specific, not
+  // a generic "does it do its job" template.
+  function describeAgentRole(agentNode) {
+    const sections = [];
+
+    // 1. The prompts the agent sends to Claude — the primary job statement.
+    const askAi = [];
+    (function walk(nodes) {
+      if (!Array.isArray(nodes)) return;
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.ASK_AI) {
+          const p = n.expression.prompt;
+          if (p && typeof p === 'object' && p.value) askAi.push(p.value);
+        }
+        if (n.body) walk(n.body);
+        if (n.thenBranch) walk(n.thenBranch);
+        if (n.otherwiseBranch) walk(n.otherwiseBranch);
+      }
+    })(agentNode.body);
+    if (askAi.length > 0) {
+      sections.push(`Purpose — the agent sends these prompts to Claude: ${askAi.map(p => JSON.stringify(p)).join('; ')}.`);
+    }
+
+    // 2. Skills the agent uses — pull in their instructions so the grader
+    //    knows the style/policy rules the agent is supposed to follow.
+    if (agentNode.skills?.length) {
+      sections.push(`Uses skills: ${agentNode.skills.join(', ')}.`);
+      for (const skillName of agentNode.skills) {
+        const skillNode = body.find(n => n.type === NodeType.SKILL && n.name === skillName);
+        if (!skillNode) continue;
+        if (Array.isArray(skillNode.instructions) && skillNode.instructions.length > 0) {
+          sections.push(`Skill '${skillName}' instructions: ${skillNode.instructions.join(' ')}`);
+        }
+        if (Array.isArray(skillNode.tools) && skillNode.tools.length > 0) {
+          sections.push(`Skill '${skillName}' tools: ${skillNode.tools.join(', ')}.`);
+        }
+      }
+    }
+
+    // 3. Tools the agent has direct access to (outside any skill bundle).
+    if (agentNode.tools?.length) {
+      sections.push(`Direct tools: ${agentNode.tools.map(t => t.name || t.description).join(', ')}.`);
+    }
+
+    // 4. Hard constraints — the agent must not do these things.
+    if (agentNode.restrictions?.length) {
+      sections.push(`Must not: ${agentNode.restrictions.map(r => r.text || r).join('; ')}.`);
+    }
+
+    // 5. Argument-level guardrails (regex filters on tool inputs).
+    if (agentNode.blockArgumentsPattern) {
+      sections.push(`Rejects tool-input arguments matching: /${agentNode.blockArgumentsPattern}/.`);
+    }
+
+    // 6. Knowledge sources the agent has access to (RAG).
+    if (agentNode.knowsAbout?.length) {
+      const sources = agentNode.knowsAbout.map(s => {
+        if (typeof s === 'string') return s;
+        return s.value || s.table || s.type || '';
+      }).filter(Boolean);
+      if (sources.length) sections.push(`Knows about (RAG sources): ${sources.join(', ')}.`);
+    }
+
+    // 7. Memory directives — conversation history / user preferences.
+    const memory = [];
+    if (agentNode.rememberConversation) memory.push('multi-turn conversation context');
+    if (agentNode.rememberUser) memory.push('per-user preferences');
+    if (memory.length) sections.push(`Maintains: ${memory.join(', ')}.`);
+
+    // 8. Declared output shape — what fields the agent is supposed to return.
+    const schema = findOutputSchema(agentNode);
+    if (schema && schema.length > 0) {
+      sections.push(`Declared output shape: ${schema.map(f => `${f.name}${f.type ? ` (${f.type})` : ''}`).join(', ')}.`);
+    }
+
+    // 9. Observability — whether the agent logs its decisions.
+    if (agentNode.trackDecisions) {
+      sections.push(`Logs decisions to the AgentLogs table.`);
+    }
+
+    return sections.join('\n');
+  }
+
+  const suite = [];
+
+  // One E2E eval per POST endpoint. Validates the top-line app flow.
+  for (const ep of endpoints) {
+    // Skip endpoints that don't call an agent — those get endpoint-level
+    // happy-path coverage from e2e.test.js already.
+    let callsAgent = false;
+    (function walk(nodes) {
+      if (!Array.isArray(nodes)) return;
+      for (const n of nodes) {
+        if (n.type === NodeType.ASSIGN && n.expression?.type === NodeType.RUN_AGENT) callsAgent = true;
+        if (n.body) walk(n.body);
+        if (n.thenBranch) walk(n.thenBranch);
+        if (n.otherwiseBranch) walk(n.otherwiseBranch);
+      }
+    })(ep.body || []);
+    if (!callsAgent) continue;
+
+    // Build a reasonable JSON body from the first agent's receiving variable.
+    const firstAgentName = [...endpointByAgent.entries()].find(([, path]) => path === ep.path)?.[0];
+    const firstAgent = agents.find(a => a.name === firstAgentName);
+    const body = firstAgent ? { [firstAgent.receivingVar || 'input']: sampleInput(firstAgent) } : { input: 'hello' };
+
+    suite.push({
+      id: `e2e-${sanitizeName(ep.path.replace(/[/:]/g, '_'))}`,
+      kind: 'e2e',
+      label: `E2E happy path — POST ${ep.path}`,
+      agentName: firstAgentName || null,
+      endpointPath: ep.path,
+      input: body,
+      rubric: `The endpoint ${ep.path} should return a non-empty, relevant response when called with a realistic input. Judge the output on: 1) it's non-empty, 2) it looks like a real answer (not boilerplate or errors), 3) the top-level flow made sense given the input.`,
+      expected: { kind: 'non-empty' }
+    });
+  }
+
+  // Role + Format evals per agent — every agent gets graded individually,
+  // whether it's exposed via an endpoint or called internally. For internal
+  // agents, we point at a synthetic `/_eval/agent_<name>` endpoint that the
+  // eval runner injects into the compiled app only when evals are running.
+  // The synthetic endpoint wraps the agent's function so we can POST to it
+  // directly and grade the output.
+  for (const agent of agents) {
+    const userPath = endpointByAgent.get(agent.name);
+    const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
+    const path = userPath || `/_eval/${fnName}`;
+    const isSynthetic = !userPath;
+    const receivingVar = agent.receivingVar || 'input';
+    // Real endpoints expect the user's body shape; synthetic endpoints
+    // always read `req.body.input` — keep the shape consistent with what
+    // the eval runner knows to post.
+    const input = isSynthetic ? { input: sampleInput(agent) } : { [receivingVar]: sampleInput(agent) };
+    const role = describeAgentRole(agent);
+    const schema = findOutputSchema(agent);
+
+    // The rubric is the grader's complete brief on what this agent does.
+    // Built entirely from the agent's definition — no generic template text.
+    const rubric = role
+      ? `Judge whether the '${agent.name}' agent did its job based on how it is defined in the source:\n\n${role}\n\nThe agent was given this input:\n\n<input>\n${JSON.stringify(input, null, 2)}\n</input>\n\nPass if the output is on-task, matches the declared shape, and respects any constraints. Fail otherwise.`
+      : `Judge whether the '${agent.name}' agent produced a useful response for the input. Pass if the response is non-empty and on-topic.`;
+
+    suite.push({
+      id: `role-${sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'))}`,
+      kind: 'role',
+      label: `${agent.name} — does its job`,
+      agentName: agent.name,
+      endpointPath: path,
+      synthetic: isSynthetic,
+      input,
+      definition: role || null,  // shown in UI so the user knows what's being graded
+      rubric,
+      expected: { kind: 'non-empty' }
+    });
+
+    suite.push({
+      id: `format-${sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'))}`,
+      kind: 'format',
+      label: `${agent.name} — output format is correct`,
+      agentName: agent.name,
+      endpointPath: path,
+      synthetic: isSynthetic,
+      input,
+      expected: schema
+        ? { kind: 'fields', fields: schema.map(f => ({ name: f.name, type: f.type || 'text' })) }
+        : { kind: 'non-empty' }
+    });
+  }
+
+  return suite;
+}
+
+/**
+ * Given the list of agents in the program, return a string of Express
+ * handler code that exposes each agent as `POST /_eval/agent_<name>`.
+ * The eval runner injects this into a COPY of the compiled serverJS before
+ * spinning up the eval child — the user's app never sees these handlers.
+ *
+ * Each handler:
+ *   - reads `req.body.input` as the agent's single argument
+ *   - calls the agent's compiled function
+ *   - if the return value is an async iterator (streaming agent), drains
+ *     it into a single string so the eval runner sees finished text
+ *   - returns { result } JSON (or { error } on throw)
+ */
+export function generateEvalEndpoints(body) {
+  const agents = body.filter(n => n.type === NodeType.AGENT && !n.schedule);
+  if (agents.length === 0) return '';
+  const lines = [];
+  lines.push('');
+  lines.push('// === EVAL-MODE ENDPOINTS (auto-injected) ===');
+  lines.push('// Expose every agent at /_eval/<fn_name> so the eval runner can');
+  lines.push('// grade each agent individually, even ones only called internally.');
+  for (const agent of agents) {
+    const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
+    lines.push(`app.post('/_eval/${fnName}', async (req, res) => {`);
+    lines.push(`  try {`);
+    lines.push(`    const _arg = req.body && req.body.input !== undefined ? req.body.input : req.body;`);
+    lines.push(`    const _r = ${fnName}(_arg);`);
+    lines.push(`    if (_r && typeof _r[Symbol.asyncIterator] === 'function') {`);
+    lines.push(`      let _t = '';`);
+    lines.push(`      for await (const _c of _r) _t += _c;`);
+    lines.push(`      return res.json({ result: _t });`);
+    lines.push(`    }`);
+    lines.push(`    const _result = await _r;`);
+    lines.push(`    return res.json({ result: _result });`);
+    lines.push(`  } catch (e) { return res.status(500).json({ error: e.message || String(e) }); }`);
+    lines.push(`});`);
+  }
+  return lines.join('\n') + '\n';
 }
 
 function generateE2ETests(body) {

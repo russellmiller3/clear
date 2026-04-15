@@ -227,7 +227,10 @@ const SYNONYM_TABLE = Object.freeze({
   requires_role: Object.freeze(['requires role', 'this endpoint requires role']),
   define_role: Object.freeze(['define role']),
   guard: Object.freeze(['guard']),
-  can: Object.freeze(['can']),
+  // `has tool` / `has tools` is the canonical form for listing an agent's
+  // or skill's callable functions. `can` and `can use` are legacy aliases
+  // kept working for backward compatibility.
+  can: Object.freeze(['has tools', 'has tool', 'can use', 'can']),
 
   // RLS (Phase 15)
   same_org: Object.freeze(['same org']),
@@ -445,6 +448,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.26.0';
+const SYNONYM_VERSION = '0.27.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

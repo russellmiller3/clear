@@ -3326,12 +3326,22 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
         dTokens.length >= 2 && dTokens[1].type === TokenType.STRING) {
       directives.model = dTokens[1].value; bodyStartIdx++; continue;
     }
-    // can use: fn1, fn2 (single-line) OR can use: (block with indented inline tools)
-    if ((dTokens[0].value === 'can' || dTokens[0].canonical === 'can') &&
-        dTokens.length >= 2 && (dTokens[1].canonical === 'use' || dTokens[1].value === 'use')) {
+    // Tool directive — canonical: `has tool:` (one) / `has tools:` (many).
+    // Legacy aliases `can:` and `can use:` still work; all four tokenize to
+    // canonical `can` via the synonym table. After the canonical-`can` head
+    // there's an optional `use` (only present when the legacy two-token form
+    // `can` + `use` is written — multi-word synonyms fold it into token 0).
+    // Body can be inline (`has tools: f, g`) OR indented block.
+    if (dTokens[0].value === 'can' || dTokens[0].canonical === 'can') {
       directives.tools = [];
-      if (dTokens.length > 2) {
-        for (let t = 2; t < dTokens.length; t++) {
+      // Start scanning for function names after token 0. Skip a bare `use`
+      // filler token (legacy `can use:` written as two tokens).
+      let scanStart = 1;
+      if (dTokens[scanStart] && (dTokens[scanStart].canonical === 'use' || dTokens[scanStart].value === 'use')) {
+        scanStart++;
+      }
+      if (dTokens.length > scanStart) {
+        for (let t = scanStart; t < dTokens.length; t++) {
           if (dTokens[t].type === TokenType.COMMA) continue;
           if (dTokens[t].type === TokenType.IDENTIFIER || dTokens[t].type === TokenType.KEYWORD) {
             directives.tools.push({ type: 'ref', name: dTokens[t].value });

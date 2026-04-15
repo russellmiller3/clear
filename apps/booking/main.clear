@@ -14,8 +14,6 @@ Booking — room reservation system with multi-step workflow
        └── workflow: room ► date ► time ► confirm
 */
 
-# JUMP TO: Database | Backend | Seed Data | Endpoints | Frontend
-
 build for web and javascript backend
 
 # Database

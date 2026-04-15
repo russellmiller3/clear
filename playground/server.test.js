@@ -590,6 +590,64 @@ try {
     assert(after.actions.length === 0, 'buffer empty after clear');
   }
 
+  // ----- Eval suite endpoint --------------------------------------------
+  // /api/eval-suite returns the structured eval list for a Clear source.
+  // Does NOT spin up any child — pure compile + extract. Fast test.
+  console.log('\n🧪 Eval suite endpoint');
+  const agentSrc = [
+    "build for javascript backend",
+    "agent 'Rater' receives item:",
+    "  n = ask claude 'Rate 1-10' with item",
+    "  send back n",
+    "agent 'Top' receives input:",
+    "  x = call 'Rater' with input",
+    "  send back x",
+    "when user calls POST /api/run sending data:",
+    "  out = call 'Top' with data's input",
+    "  send back out",
+  ].join('\n');
+  {
+    const { status, data } = await post('/api/eval-suite', { source: agentSrc });
+    assert(status === 200, 'POST /api/eval-suite returns 200');
+    assert(data.ok === true, 'returns ok:true');
+    assert(Array.isArray(data.suite), 'returns a suite array');
+    const kinds = data.suite.map(e => e.kind).sort();
+    assert(kinds.includes('e2e'), 'suite includes at least one E2E eval');
+    assert(kinds.filter(k => k === 'role').length === 2, 'suite has role eval per agent (2)');
+    assert(kinds.filter(k => k === 'format').length === 2, 'suite has format eval per agent (2)');
+    const raterRole = data.suite.find(e => e.id === 'role-rater');
+    assert(raterRole && raterRole.synthetic === true, 'internal agent (Rater) uses synthetic endpoint');
+    assert(raterRole && raterRole.endpointPath === '/_eval/agent_rater', 'synthetic endpoint path is /_eval/agent_<name>');
+    const topRole = data.suite.find(e => e.id === 'role-top');
+    assert(topRole && topRole.synthetic === false, 'endpoint-exposed agent (Top) uses real endpoint');
+    assert(topRole && topRole.endpointPath === '/api/run', 'real endpoint path matches source');
+    assert(typeof raterRole.rubric === 'string' && raterRole.rubric.includes('Rate 1-10'), 'rubric quotes the agent\'s ask-claude prompt');
+  }
+
+  {
+    // No agents in source → empty suite
+    const { status, data } = await post('/api/eval-suite', { source: 'build for javascript backend\nwhen user requests data from /api/ping:\n  send back \'pong\'' });
+    assert(status === 200, 'empty-agent source returns 200');
+    assert(data.ok === true && Array.isArray(data.suite) && data.suite.length === 0, 'no agents → empty suite');
+  }
+
+  {
+    // Compile-error source → ok:false with errors
+    const { status, data } = await post('/api/eval-suite', { source: 'totally not valid clear code %%%' });
+    assert(status === 200, 'bad source returns 200 (with ok:false body)');
+    assert(data.ok === false, 'bad source returns ok:false');
+    assert(typeof data.error === 'string', 'includes error message');
+  }
+
+  // ----- Unknown-id handling on /api/run-eval ---------------------------
+  // Doesn't require the eval child to start — guard fires first.
+  {
+    const { status, data } = await post('/api/run-eval', { source: agentSrc, id: 'definitely-not-an-eval' });
+    assert(status === 200, 'unknown id returns 200');
+    assert(data.ok === false, 'unknown id returns ok:false');
+    assert(/Unknown eval id/.test(data.error || ''), 'error message mentions unknown id');
+  }
+
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);
   failed++;

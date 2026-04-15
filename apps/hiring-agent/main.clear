@@ -56,13 +56,13 @@ define function get_job_description(title):
 # === SKILLS ===
 
 skill 'Candidate Lookup':
-  can: look_up_candidate, search_candidates
+  has tools: look_up_candidate, search_candidates
   instructions:
     Always look up the candidate record before evaluating.
     Reference specific details from their resume and experience.
 
 skill 'Evaluation Recording':
-  can: save_evaluation
+  has tool: save_evaluation
   instructions:
     Score candidates on a scale of 1 to 10.
     Provide specific, actionable feedback.

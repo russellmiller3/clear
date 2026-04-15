@@ -27,7 +27,7 @@
 
 import { tokenize, tokenizeLine, TokenType } from './tokenizer.js';
 import { parse, NodeType } from './parser.js';
-import { compile, resolveModules } from './compiler.js';
+import { compile, resolveModules, generateEvalEndpoints } from './compiler.js';
 import { validate } from './validator.js';
 import { SYNONYM_TABLE, REVERSE_LOOKUP, SYNONYM_VERSION } from './synonyms.js';
 
@@ -122,6 +122,7 @@ export {
   compile,
   parse,
   validate,
+  generateEvalEndpoints,
 
   // Low-level API
   tokenize,

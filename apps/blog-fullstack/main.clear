@@ -19,8 +19,6 @@ Blog Fullstack — content publishing with authors, categories, and search
                                     Seed (demo data)
 */
 
-# JUMP TO: Database | Backend | Endpoints | Seed Data | Frontend
-
 build for web and javascript backend
 theme 'ivory'
 

@@ -172,6 +172,34 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .test-error-banner { padding: 8px 12px; background: color-mix(in oklch, var(--red) 10%, transparent); border: 1px solid var(--red); border-radius: 6px; color: var(--red); font-size: 12px; white-space: pre-wrap; }
 .test-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--bd); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Agent eval rows — compact header bar, expandable detail panel below */
+.test-summary .skip-count { color: var(--tx3); font-weight: 600; }
+.eval-row { border-bottom: 1px solid var(--bd2); cursor: pointer; transition: background 0.1s; }
+.eval-row:hover { background: color-mix(in oklch, var(--accent) 4%, transparent); }
+.eval-row:last-child { border-bottom: none; }
+.eval-row-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12px; }
+.eval-kind { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
+.eval-kind-e2e    { background: color-mix(in oklch, var(--accent) 25%, transparent); color: var(--accent); }
+.eval-kind-role   { background: color-mix(in oklch, #8b5cf6 25%, transparent); color: #a78bfa; }
+.eval-kind-format { background: color-mix(in oklch, #14b8a6 25%, transparent); color: #2dd4bf; }
+.eval-kind-info   { background: color-mix(in oklch, var(--tx3) 25%, transparent); color: var(--tx3); }
+.eval-row-label { flex: 1; color: var(--tx); font-weight: 500; }
+.eval-score { font-size: 10px; color: var(--tx3); padding: 1px 6px; border: 1px solid var(--bd2); border-radius: 3px; flex-shrink: 0; }
+.eval-status { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
+.eval-status.eval-pass    { background: color-mix(in oklch, var(--green) 20%, transparent); color: var(--green); }
+.eval-status.eval-fail    { background: color-mix(in oklch, var(--red) 20%, transparent); color: var(--red); }
+.eval-status.eval-skip    { background: color-mix(in oklch, var(--tx3) 20%, transparent); color: var(--tx3); }
+.eval-status.eval-pending { background: transparent; color: var(--tx4); border: 1px dashed var(--bd2); }
+.eval-run-btn { font-size: 10px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--bd); background: var(--bg2); color: var(--tx2); cursor: pointer; flex-shrink: 0; transition: all 0.1s; }
+.eval-run-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.eval-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.eval-row-feedback { padding: 0 12px 8px 12px; font-size: 11px; color: var(--tx3); line-height: 1.4; }
+.eval-row-detail { padding: 8px 12px 12px 12px; background: color-mix(in oklch, var(--bg2) 50%, transparent); border-top: 1px dashed var(--bd2); }
+.eval-detail-block { margin-bottom: 10px; }
+.eval-detail-block:last-child { margin-bottom: 0; }
+.eval-detail-label { font-size: 10px; font-weight: 700; color: var(--tx3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.eval-detail-tag { font-size: 9px; padding: 1px 5px; border-radius: 2px; background: var(--bg3); color: var(--tx3); margin-left: 4px; }
+.eval-detail-body { font-family: var(--mono); font-size: 11px; background: var(--bg); border: 1px solid var(--bd2); border-radius: 4px; padding: 8px; color: var(--tx2); white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; margin: 0; }
 /* Meph todo widget */
 #meph-todos { border-bottom: 1px solid var(--bd); font-size: 11px; font-family: var(--mono); max-height: 180px; overflow: auto; }
 #meph-todos:empty { display: none; }
@@ -1721,53 +1749,132 @@ async function runTests(type) {
   }
 }
 
-// Render the eval results section. Evals are auto-generated from agent
-// definitions — no user-written test blocks needed. Each agent emits one
-// "output matches schema" check that verifies shape with a mocked AI response.
+// Render the eval results section. Evals are auto-generated from every
+// agent in the source. The UI shows one row per eval (Role, Format, E2E);
+// click a row to reveal the rubric, input, and output; each row has its
+// own Run button for re-running just that one. Top of section has Run All.
+//
+// Shape: data = { ok, suite: [spec], results: [resultForId], passed, failed, skipped, duration }
 function renderEvalSection(data) {
-  if (data.error && !data.results) {
+  if (data.error && !(data.suite || data.results)) {
     return `<div class="test-section">
       <div class="test-section-header">Agent Evals <span class="test-summary">${data.duration ? (data.duration / 1000).toFixed(1) + 's' : ''}</span></div>
       <div class="test-error-banner">${escHtml(data.error)}</div>
     </div>`;
   }
-  if (data.empty) {
+  if (data.empty || (data.suite && data.suite.length === 0)) {
     return `<div class="test-section">
       <div class="test-section-header">Agent Evals <span class="test-summary" style="color:var(--tx3);">no agents found</span></div>
       <div class="test-empty" style="padding:12px;">Add an <code>agent 'Name' receives X:</code> block to generate evals.</div>
     </div>`;
   }
-  const passed = data.passed || 0;
-  const failed = data.failed || 0;
+
+  // Index results by id so we can pair each spec with its latest outcome.
+  const suite = data.suite || [];
+  const byId = new Map();
+  for (const r of (data.results || [])) byId.set(r.id, r);
+  const passed = suite.filter(s => byId.get(s.id)?.status === 'pass').length;
+  const failed = suite.filter(s => byId.get(s.id)?.status === 'fail').length;
+  const skipped = suite.filter(s => byId.get(s.id)?.status === 'skip').length;
   const duration = data.duration ? (data.duration / 1000).toFixed(1) + 's' : '';
-  const results = data.results || [];
-  const failures = results.filter(r => r.status === 'fail');
-  const passes = results.filter(r => r.status === 'pass');
+
   let body = '';
-  for (const r of failures) {
-    body += `<div class="test-fail"><div class="test-fail-name">${escHtml(r.name)}</div>`;
-    if (r.error) body += `<div class="test-fail-error">${escHtml(r.error)}</div>`;
-    body += '</div>';
+  for (const spec of suite) {
+    const r = byId.get(spec.id);
+    const status = r?.status || 'pending';
+    const statusBadge = ({
+      pass: `<span class="eval-status eval-pass">pass</span>`,
+      fail: `<span class="eval-status eval-fail">fail</span>`,
+      skip: `<span class="eval-status eval-skip">skip</span>`,
+      pending: `<span class="eval-status eval-pending">not run</span>`,
+    })[status];
+    const kindBadge = `<span class="eval-kind eval-kind-${spec.kind}">${spec.kind.toUpperCase()}</span>`;
+    const scoreBadge = r?.score ? `<span class="eval-score">${r.score}/10</span>` : '';
+    const running = evalRowRunning.has(spec.id);
+    const runBtn = `<button class="eval-run-btn" onclick="event.stopPropagation(); runEvalOne(${JSON.stringify(spec.id)})" ${running ? 'disabled' : ''}>${running ? '…' : 'Run'}</button>`;
+
+    body += `<div class="eval-row" onclick="toggleEvalRow(${JSON.stringify(spec.id)})">`;
+    body += `<div class="eval-row-head">${kindBadge}<span class="eval-row-label">${escHtml(spec.label || spec.id)}</span>${scoreBadge}${statusBadge}${runBtn}</div>`;
+    if (r?.feedback) body += `<div class="eval-row-feedback">${escHtml(r.feedback)}</div>`;
+
+    // Failed rows auto-expand so the user can see what went wrong without
+    // hunting for it. Pass/skip rows stay collapsed until clicked. For
+    // failed rows, we put "why it failed" first, then the output that
+    // triggered the failure, then the criteria it was graded against —
+    // that's the order a debugger wants to read.
+    const shouldExpand = evalExpanded.has(spec.id) || status === 'fail';
+    if (shouldExpand) {
+      const criteriaLines = [];
+      if (spec.expected) {
+        if (spec.expected.kind === 'fields' && spec.expected.fields?.length) {
+          criteriaLines.push('Expected shape — an object with fields: ' + spec.expected.fields.map(f => `${f.name} (${f.type || 'text'})`).join(', '));
+        } else if (spec.expected.kind === 'non-empty') {
+          criteriaLines.push('Expected — any non-empty response from the endpoint.');
+        }
+      }
+      if (spec.rubric) criteriaLines.push(spec.rubric);
+      if (spec.note) criteriaLines.push(spec.note);
+
+      const outputBlock = r?.output !== undefined
+        ? (() => {
+            const outText = typeof r.output === 'string' ? r.output : JSON.stringify(r.output, null, 2);
+            return `<div class="eval-detail-block"><div class="eval-detail-label">Agent output</div><pre class="eval-detail-body">${escHtml(outText.slice(0, 4000))}${outText.length > 4000 ? '\n\n… (truncated)' : ''}</pre></div>`;
+          })()
+        : '';
+      const feedbackBlock = r?.feedback
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">${status === 'fail' ? 'Why it failed' : 'Grader feedback'}</div><pre class="eval-detail-body">${escHtml(r.feedback)}</pre></div>`
+        : '';
+      const criteriaBlock = criteriaLines.length
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">Grading criteria</div><pre class="eval-detail-body">${escHtml(criteriaLines.join('\n\n'))}</pre></div>`
+        : '';
+      const pathTag = spec.synthetic ? ' <span class="eval-detail-tag">synthetic</span>' : '';
+      const endpointBlock = spec.endpointPath
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">Endpoint${pathTag}</div><pre class="eval-detail-body">POST ${escHtml(spec.endpointPath)}</pre></div>`
+        : '';
+      const inputBlock = spec.input !== undefined
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">Input sent</div><pre class="eval-detail-body">${escHtml(JSON.stringify(spec.input, null, 2))}</pre></div>`
+        : '';
+
+      body += `<div class="eval-row-detail">`;
+      if (status === 'fail') {
+        // Debugger ordering: WHY → output that caused it → criteria it was judged against → context
+        body += feedbackBlock + outputBlock + criteriaBlock + inputBlock + endpointBlock;
+      } else {
+        // Pass/skip/pending: context-first ordering for exploratory reading
+        body += criteriaBlock + endpointBlock + inputBlock + outputBlock + feedbackBlock;
+      }
+      body += `</div>`;
+    }
+    body += `</div>`;
   }
-  for (const r of passes) {
-    body += `<div class="test-pass">${escHtml(r.name)}</div>`;
-  }
-  if (results.length === 0) {
-    body = `<div class="test-empty" style="padding:12px;">No eval results.</div>`;
-  }
-  const summaryHtml = `<span class="test-summary"><span class="pass-count">${passed} passed</span>, <span class="fail-count">${failed} failed</span>${duration ? ' &mdash; ' + duration : ''}</span>`;
-  return `<div class="test-section">
+
+  const summaryHtml = `<span class="test-summary">
+    <span class="pass-count">${passed} pass</span>,
+    <span class="fail-count">${failed} fail</span>${skipped ? `, <span class="skip-count">${skipped} skip</span>` : ''}
+    ${duration ? ' &mdash; ' + duration : ''}
+  </span>`;
+  return `<div class="test-section eval-section">
     <div class="test-section-header">Agent Evals ${summaryHtml}</div>
-    <div class="test-section-body">${body}</div>
+    <div class="test-section-body">${body || '<div class="test-empty" style="padding:12px;">No evals yet. Click Run Evals to grade each agent.</div>'}</div>
   </div>`;
 }
+
+const evalExpanded = new Set();
+const evalRowRunning = new Set();
+
+function toggleEvalRow(id) {
+  if (evalExpanded.has(id)) evalExpanded.delete(id);
+  else evalExpanded.add(id);
+  if (activeTab === 'tests') showTests();
+}
+window.toggleEvalRow = toggleEvalRow;
 
 async function runEvals() {
   testRunning.evals = true;
   if (activeTab === 'tests') showTests();
   try {
     const source = editor.state.doc.toString();
-    const resp = await fetch('/api/run-evals', {
+    const resp = await fetch('/api/run-eval', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source }),
@@ -1783,8 +1890,47 @@ async function runEvals() {
   }
 }
 
+// Run a single eval by id. Patches just that row's result into the existing
+// testResults.evals.results — no full suite re-run, no lost state on other rows.
+async function runEvalOne(id) {
+  evalRowRunning.add(id);
+  if (activeTab === 'tests') showTests();
+  try {
+    const source = editor.state.doc.toString();
+    const resp = await fetch('/api/run-eval', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, id }),
+    });
+    const data = await resp.json();
+    if (!testResults.evals) testResults.evals = { suite: data.suite, results: [], passed: 0, failed: 0, skipped: 0 };
+    if (data.suite) testResults.evals.suite = data.suite;
+    const one = (data.results || [])[0];
+    if (one) {
+      const existing = (testResults.evals.results || []).filter(r => r.id !== id);
+      existing.push(one);
+      testResults.evals.results = existing;
+      // Recompute top-line counts from the merged results.
+      const all = testResults.evals.results;
+      testResults.evals.passed = all.filter(r => r.status === 'pass').length;
+      testResults.evals.failed = all.filter(r => r.status === 'fail').length;
+      testResults.evals.skipped = all.filter(r => r.status === 'skip').length;
+    }
+    try { localStorage.setItem('clear_test_results', JSON.stringify(testResults)); } catch {}
+  } catch (err) {
+    if (!testResults.evals) testResults.evals = { results: [] };
+    const existing = (testResults.evals.results || []).filter(r => r.id !== id);
+    existing.push({ id, status: 'fail', feedback: err.message || 'Network error' });
+    testResults.evals.results = existing;
+  } finally {
+    evalRowRunning.delete(id);
+    if (activeTab === 'tests') showTests();
+  }
+}
+
 window.runTests = runTests;
 window.runEvals = runEvals;
+window.runEvalOne = runEvalOne;
 
 // Populate the auto-generated-tests badge next to the compile badge.
 // Compiler generates tests for every endpoint, button, page, and flow — this

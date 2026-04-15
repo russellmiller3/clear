@@ -13,8 +13,6 @@ Todo Fullstack — CRUD task manager with categories, search, and auth
                                    Search (keyword)
 */
 
-# JUMP TO: Database | Backend | Endpoints | Seed Data | Frontend
-
 build for web and javascript backend
 database is local memory
 

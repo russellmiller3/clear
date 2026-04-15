@@ -20,8 +20,6 @@ database is local memory
 allow signup and login
 log every request
 
-# JUMP TO: Database | Tools | Skills | Agent | Scheduled Tasks | Endpoints | Seed Data | Tests | Frontend
-
 # Database
 
 create a Products table:
@@ -99,21 +97,21 @@ define function get_low_stock_items():
 # Skills
 
 skill 'Order Management':
-  can: lookup_order, lookup_orders_by_email
+  has tools: lookup_order, lookup_orders_by_email
   instructions:
     Always look up the order before taking action.
     Include the order status and tracking number in your response.
     Be empathetic about delays.
 
 skill 'Returns':
-  can: process_return
+  has tool: process_return
   instructions:
     Only process returns for delivered orders.
     Always explain the refund timeline (5-7 business days).
     If the order is not eligible, explain why.
 
 skill 'Inventory':
-  can: check_stock, get_low_stock_items
+  has tools: check_stock, get_low_stock_items
   instructions:
     Report stock levels precisely.
     Suggest alternatives if an item is out of stock.

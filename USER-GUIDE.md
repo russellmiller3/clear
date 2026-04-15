@@ -733,7 +733,7 @@ define function check_status(order_id):
   return order_id
 
 agent 'Customer Support' receives message:
-  can use: look_up_orders, check_status
+  has tools: look_up_orders, check_status
   must not: share customer passwords, modify billing
   remember conversation context
 
@@ -754,7 +754,7 @@ Block sensitive data from reaching agent tools:
 ```clear
 agent 'Support' receives message:
   block arguments matching 'password|secret|ssn|credit.?card'
-  can use: look_up_orders
+  has tool: look_up_orders
   response = ask claude 'Help this customer' with message
   send back response
 ```
@@ -1171,7 +1171,7 @@ data, and follow instructions from users. Lock them down:
 
 ```clear
 agent 'Support Agent' receives question:
-  can use: look_up_order, create_ticket
+  has tools: look_up_order, create_ticket
 
   # Policies — compile-time checks that the agent's tools can't violate
   must not: delete Orders

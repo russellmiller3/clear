@@ -13,8 +13,6 @@ Live Chat — real-time messaging with WebSocket broadcast
   Auth (JWT) — signup + login, mutations require login
 */
 
-# JUMP TO: Database | Backend | Endpoints | WebSocket | Frontend
-
 build for web and javascript backend
 
 # Database

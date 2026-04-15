@@ -342,7 +342,7 @@ ask claude 'Summarize' with text without streaming
 ```
 
 Agent directives (inside agent body, before code):
-- `can use: fn1, fn2` — tool use
+- `has tools: fn1, fn2` — tool use
 - `must not: delete records, access users` — guardrails
 - `remember conversation context` — multi-turn
 - `remember user's preferences` — long-term memory

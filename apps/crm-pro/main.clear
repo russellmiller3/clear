@@ -21,8 +21,6 @@ CRM Pro — sales pipeline with companies, contacts, and deal tracking
        └── GET /deals/total ◄── sum(value)
 */
 
-# JUMP TO: Database | Backend | Seed Data | Companies | Contacts | Deals | Search | Frontend
-
 build for web and javascript backend
 
 theme 'midnight'

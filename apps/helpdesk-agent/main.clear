@@ -16,8 +16,6 @@ Helpdesk Agent — AI support bot with tools, RAG, memory, and guardrails
                     └──────────┘  └──────────┘
 */
 
-# JUMP TO: Database | Backend | CRUD | Search | Tools | Agent | Seed Data | Frontend
-
 build for javascript backend
 database is local memory
 allow signup and login
@@ -100,7 +98,7 @@ define function create_ticket(title, email_address):
 ## Agent
 
 agent 'Helpdesk' receives question:
-  can use: lookup_product, create_ticket
+  has tools: lookup_product, create_ticket
   knows about: Products
   remember conversation context
   block arguments matching 'delete|drop|truncate'

@@ -377,58 +377,273 @@ app.post('/api/run-tests', (req, res) => {
   res.json(result);
 });
 
-// Run agent evals: compile source → extract schema evals (Clear test blocks
-// with mocked AI responses) → append to source → run via `clear test`.
-// Deterministic, no API key needed. Graded evals (real AI) are separate
-// — they require a live server; not surfaced in the IDE yet.
-function runEvalProcess(source) {
-  const start = Date.now();
-  if (!source || !source.trim()) {
-    return { ok: false, error: 'No source code. Load or write a .clear file first.' };
+// === STRUCTURED AGENT EVALS ===
+//
+// One eval suite per compiled app. Three kinds per suite:
+//   - e2e    — POST the user-facing endpoint, LLM-grade the final result
+//   - role   — POST an agent's endpoint, LLM-grade "did it do its job"
+//   - format — POST an agent's endpoint, deterministic shape check (no API key needed)
+//   - info   — agents called only by other agents; listed, not runnable
+//
+// Each eval has a unique id and is individually runnable.
+// GET /api/eval-suite — returns the suite list (no execution)
+// POST /api/run-eval  — runs one or all ({ id?: string }) ; returns results
+//
+// The child process that hosts the compiled app is kept alive for 60 seconds
+// after the last run so "Run" clicks on individual eval rows are fast —
+// we don't re-spawn the server for each click.
+
+let evalChild = null;
+let evalChildPort = null;
+let evalChildIdleTimer = null;
+const EVAL_PORT = 4999;
+const EVAL_IDLE_MS = 60_000;
+
+function killEvalChild() {
+  if (evalChildIdleTimer) { clearTimeout(evalChildIdleTimer); evalChildIdleTimer = null; }
+  if (evalChild) {
+    try { evalChild.kill('SIGTERM'); } catch {}
+    setTimeout(() => { try { if (evalChild) evalChild.kill('SIGKILL'); } catch {} }, 1500);
   }
-  let compiled;
+  evalChild = null;
+  evalChildPort = null;
+}
+
+function resetEvalIdleTimer() {
+  if (evalChildIdleTimer) clearTimeout(evalChildIdleTimer);
+  evalChildIdleTimer = setTimeout(() => {
+    termLog('[eval] idle timeout — stopping eval child');
+    killEvalChild();
+  }, EVAL_IDLE_MS);
+}
+
+// Splice the auto-generated /_eval/* handlers into compiled serverJS right
+// before `app.listen(...)` so every agent is reachable via HTTP for grading.
+function injectEvalEndpoints(serverJS, endpointsJS) {
+  if (!endpointsJS) return serverJS;
+  // Insert above `const PORT = process.env.PORT` (the usual listen preamble).
+  const marker = /const PORT = process\.env\.PORT/;
+  if (marker.test(serverJS)) {
+    return serverJS.replace(marker, endpointsJS + '\nconst PORT = process.env.PORT');
+  }
+  // Fallback: prepend to `app.listen(` directly.
+  return serverJS.replace(/app\.listen\(/, endpointsJS + '\napp.listen(');
+}
+
+async function ensureEvalChild(serverJS, endpointsJS) {
+  const fullJS = injectEvalEndpoints(serverJS, endpointsJS || '');
+  // If we already have a child for THIS exact source, reuse it.
+  if (evalChild && evalChildPort && evalChild._lastServerJS === fullJS) {
+    resetEvalIdleTimer();
+    return evalChildPort;
+  }
+  // Otherwise: kill any previous child (source changed) and spin a fresh one.
+  killEvalChild();
+
+  const rtDir = join(BUILD_DIR, 'clear-runtime');
+  mkdirSync(rtDir, { recursive: true });
+  for (const f of ['clear-data.db', 'clear-data.db-wal', 'clear-data.db-shm', 'clear-data.db-journal', 'clear-data.json']) {
+    try { unlinkSync(join(BUILD_DIR, f)); } catch {}
+  }
+  writeFileSync(join(BUILD_DIR, 'server.js'), fullJS);
+  const deps = { ws: '*' };
+  if (fullJS.includes("require('bcryptjs')")) deps.bcryptjs = '*';
+  if (fullJS.includes("require('jsonwebtoken')")) deps.jsonwebtoken = '*';
+  if (fullJS.includes("require('multer')")) deps.multer = '*';
+  if (fullJS.includes("require('nodemailer')")) deps.nodemailer = '*';
+  writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: deps }));
+  const depsNeeded = Object.keys(deps).filter(d => !existsSync(join(BUILD_DIR, 'node_modules', d)));
+  if (depsNeeded.length > 0) {
+    try { execSync('npm install --production --silent', { cwd: BUILD_DIR, timeout: 15000, stdio: 'pipe' }); } catch {}
+  }
+  const runtimeDir = join(ROOT_DIR, 'runtime');
+  for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
+    if (existsSync(join(runtimeDir, f))) copyFileSync(join(runtimeDir, f), join(rtDir, f));
+  }
+  const env = { ...process.env, PORT: String(EVAL_PORT), JWT_SECRET: 'clear-eval-secret', ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
+  const child = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
+  child._lastServerJS = fullJS;
+  evalChild = child;
+  evalChildPort = EVAL_PORT;
+  child.stderr.on('data', d => termLog('[eval-stderr] ' + d.toString().trimEnd()));
+  child.stdout.on('data', d => termLog('[eval-stdout] ' + d.toString().trimEnd()));
+  child.on('exit', () => { if (evalChild === child) { evalChild = null; evalChildPort = null; } });
+  // Wait for the port to accept connections.
+  await probeUntilReady(EVAL_PORT, 10_000);
+  resetEvalIdleTimer();
+  return EVAL_PORT;
+}
+
+// Claude-as-judge. Returns { pass, feedback, score, skipped }.
+async function gradeWithClaude(rubric, input, output) {
+  const key = storedApiKey || process.env.ANTHROPIC_API_KEY || '';
+  if (!key) return { skipped: true, reason: 'ANTHROPIC_API_KEY not set — role/e2e grading skipped' };
+  const model = process.env.EVAL_MODEL || 'claude-sonnet-4-20250514';
+  const prompt = `You are grading an AI agent's output.\n\nRubric:\n${rubric}\n\nInput given to the agent:\n${JSON.stringify(input)}\n\nAgent's output:\n${typeof output === 'string' ? output : JSON.stringify(output)}\n\nRespond with ONLY a JSON object: { "pass": true|false, "score": 1-10, "feedback": "<one sentence>" }`;
   try {
-    compiled = compileProgram(source);
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 256, messages: [{ role: 'user', content: prompt }] }),
+      signal: AbortSignal.timeout(30_000)
+    });
+    if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0 };
+    const data = await r.json();
+    const text = data.content?.[0]?.text || '';
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return { pass: false, feedback: 'Grader returned non-JSON', score: 0 };
+    const g = JSON.parse(m[0]);
+    return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '' };
   } catch (err) {
-    return { ok: false, error: 'Compile failed: ' + err.message, duration: Date.now() - start };
-  }
-  if (compiled.errors && compiled.errors.length > 0) {
-    return { ok: false, error: 'Source has compile errors — fix them before running evals.', errors: compiled.errors, duration: Date.now() - start };
-  }
-  if (!compiled.evals || !compiled.evals.schema) {
-    return { ok: true, kind: 'evals', passed: 0, failed: 0, results: [], empty: true, duration: Date.now() - start };
-  }
-  const combined = source + '\n\n' + compiled.evals.schema;
-  const tmpPath = join(BUILD_DIR, '_eval-source-' + Date.now() + '.clear');
-  mkdirSync(BUILD_DIR, { recursive: true });
-  writeFileSync(tmpPath, combined);
-  try {
-    const evalEnv = { ...process.env, ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
-    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: 60000, maxBuffer: 5 * 1024 * 1024, env: evalEnv });
-    const parsed = parseTestOutput(stdout);
-    // Keep only eval-labeled results (generated test names contain ' — ')
-    const evalOnly = (parsed.results || []).filter(r => /—/.test(r.name));
-    const passed = evalOnly.filter(r => r.status === 'pass').length;
-    const failed = evalOnly.filter(r => r.status === 'fail').length;
-    return { ok: failed === 0, kind: 'evals', passed, failed, results: evalOnly, duration: Date.now() - start };
-  } catch (err) {
-    if (err.status === 4) {
-      const parsed = parseTestOutput(err.stdout || '');
-      const evalOnly = (parsed.results || []).filter(r => /—/.test(r.name));
-      const passed = evalOnly.filter(r => r.status === 'pass').length;
-      const failed = evalOnly.filter(r => r.status === 'fail').length;
-      return { ok: false, kind: 'evals', passed, failed, results: evalOnly, duration: Date.now() - start };
-    }
-    return { ok: false, error: (err.stderr || err.stdout || err.message || 'Eval runner failed').slice(0, 2000), duration: Date.now() - start };
-  } finally {
-    try { unlinkSync(tmpPath); } catch {}
+    return { pass: false, feedback: 'Grader error: ' + err.message, score: 0 };
   }
 }
 
-app.post('/api/run-evals', (req, res) => {
+// Deterministic format check. Works without API key.
+function checkFormat(expected, output) {
+  if (!output || (typeof output === 'object' && Object.keys(output).length === 0)) {
+    return { pass: false, feedback: 'Output is empty.' };
+  }
+  if (expected.kind === 'non-empty') {
+    const asText = typeof output === 'string' ? output : JSON.stringify(output);
+    if (!asText || asText.length < 2) return { pass: false, feedback: 'Output is empty or too short.' };
+    return { pass: true, feedback: 'Output is non-empty.' };
+  }
+  if (expected.kind === 'fields' && Array.isArray(expected.fields)) {
+    if (typeof output !== 'object' || Array.isArray(output)) return { pass: false, feedback: 'Expected an object with fields, got ' + typeof output };
+    const missing = expected.fields.filter(f => output[f.name] === undefined).map(f => f.name);
+    const wrongType = expected.fields.filter(f => {
+      if (output[f.name] === undefined) return false;
+      if (f.type === 'number' && typeof output[f.name] !== 'number') return true;
+      if (f.type === 'boolean' && typeof output[f.name] !== 'boolean') return true;
+      return false;
+    }).map(f => f.name);
+    if (missing.length || wrongType.length) {
+      return { pass: false, feedback: (missing.length ? `Missing fields: ${missing.join(', ')}. ` : '') + (wrongType.length ? `Wrong types: ${wrongType.join(', ')}.` : '') };
+    }
+    return { pass: true, feedback: `All ${expected.fields.length} expected fields present with correct types.` };
+  }
+  return { pass: true, feedback: 'No expectation specified; treated as pass.' };
+}
+
+// Hit an endpoint on the eval child and return { status, data }.
+async function callEvalEndpoint(port, path, body) {
+  try {
+    const r = await fetch(`http://localhost:${port}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000)
+    });
+    let data;
+    try { data = await r.json(); }
+    catch { data = await r.text(); }
+    return { status: r.status, data };
+  } catch (err) {
+    return { status: 0, data: null, error: err.message };
+  }
+}
+
+async function runOneEval(spec, port) {
+  const started = Date.now();
+  if (!spec.endpointPath) {
+    return { id: spec.id, status: 'skip', duration: Date.now() - started, feedback: spec.note || 'Not directly runnable.' };
+  }
+  const resp = await callEvalEndpoint(port, spec.endpointPath, spec.input);
+  if (resp.status === 0) {
+    return { id: spec.id, status: 'fail', duration: Date.now() - started, feedback: 'Network error: ' + (resp.error || 'unknown'), input: spec.input };
+  }
+  if (resp.status >= 400) {
+    return { id: spec.id, status: 'fail', duration: Date.now() - started, feedback: `Endpoint returned ${resp.status}.`, input: spec.input, output: resp.data };
+  }
+  // Format: deterministic shape check.
+  if (spec.kind === 'format') {
+    const check = checkFormat(spec.expected || { kind: 'non-empty' }, resp.data);
+    return { id: spec.id, status: check.pass ? 'pass' : 'fail', duration: Date.now() - started, feedback: check.feedback, input: spec.input, output: resp.data };
+  }
+  // Role / E2E: deterministic "non-empty" gate, then LLM grading if a rubric is given.
+  const nonEmpty = checkFormat({ kind: 'non-empty' }, resp.data);
+  if (!nonEmpty.pass) {
+    return { id: spec.id, status: 'fail', duration: Date.now() - started, feedback: nonEmpty.feedback, input: spec.input, output: resp.data };
+  }
+  if (spec.rubric) {
+    const grade = await gradeWithClaude(spec.rubric, spec.input, resp.data);
+    if (grade.skipped) {
+      return { id: spec.id, status: 'skip', duration: Date.now() - started, feedback: grade.reason, input: spec.input, output: resp.data };
+    }
+    return { id: spec.id, status: grade.pass ? 'pass' : 'fail', duration: Date.now() - started, feedback: grade.feedback, score: grade.score, input: spec.input, output: resp.data };
+  }
+  return { id: spec.id, status: 'pass', duration: Date.now() - started, feedback: 'Endpoint returned a non-empty response.', input: spec.input, output: resp.data };
+}
+
+// Compile the given source. Returns { ok, compiled?, error? }.
+function compileForEval(source) {
+  if (!source || !source.trim()) return { ok: false, error: 'No source code. Load or write a .clear file first.' };
+  let compiled;
+  try { compiled = compileProgram(source); }
+  catch (err) { return { ok: false, error: 'Compile threw: ' + err.message }; }
+  if (compiled.errors && compiled.errors.length > 0) {
+    return { ok: false, error: 'Source has compile errors — fix them before running evals.', errors: compiled.errors };
+  }
+  // `serverJS` exists when the app builds both web + backend. For a pure
+  // backend-only app the code lives in `javascript` instead. Accept either.
+  const server = compiled.serverJS || compiled.javascript;
+  if (!server) return { ok: false, error: 'App has no backend to run evals against (need a javascript backend build target).' };
+  return { ok: true, compiled, serverJS: server };
+}
+
+// GET /api/eval-suite — returns the suite list (no execution, no child).
+app.post('/api/eval-suite', (req, res) => {
   const { source } = req.body;
-  const result = runEvalProcess(source);
+  const compiled = compileForEval(source);
+  if (!compiled.ok) return res.json(compiled);
+  const suite = compiled.compiled.evalSuite || [];
+  res.json({ ok: true, suite });
+});
+
+// Shared runner used by both the HTTP endpoint and Meph's run_evals/run_eval
+// tools. Returns the same shape the UI expects.
+async function runEvalSuite(source, id) {
+  const start = Date.now();
+  const compiled = compileForEval(source);
+  if (!compiled.ok) return { ...compiled, duration: Date.now() - start };
+  const suite = compiled.compiled.evalSuite || [];
+  if (suite.length === 0) return { ok: true, suite: [], results: [], empty: true, duration: Date.now() - start };
+  let specs = suite;
+  if (id) {
+    specs = suite.filter(s => s.id === id);
+    if (specs.length === 0) return { ok: false, error: `Unknown eval id: ${id}`, duration: Date.now() - start };
+  }
+  try {
+    const port = await ensureEvalChild(compiled.serverJS, compiled.compiled.evalEndpointsJS || '');
+    const results = [];
+    for (const spec of specs) {
+      results.push(await runOneEval(spec, port));
+    }
+    resetEvalIdleTimer();
+    const passed = results.filter(r => r.status === 'pass').length;
+    const failed = results.filter(r => r.status === 'fail').length;
+    const skipped = results.filter(r => r.status === 'skip').length;
+    return { ok: failed === 0, suite, results, passed, failed, skipped, duration: Date.now() - start };
+  } catch (err) {
+    return { ok: false, error: 'Eval run failed: ' + err.message, duration: Date.now() - start };
+  }
+}
+
+// POST /api/run-eval — runs one or all evals.
+//   body: { source, id?: string }  → if id present, runs just that eval;
+//                                    otherwise runs the whole suite.
+app.post('/api/run-eval', async (req, res) => {
+  const { source, id } = req.body || {};
+  const result = await runEvalSuite(source, id);
   res.json(result);
+});
+
+// Legacy endpoint kept for any stale clients — now just a no-op redirect.
+app.post('/api/run-evals', async (req, res) => {
+  req.body = req.body || {};
+  req.body.id = undefined;
+  return app._router.handle({ ...req, url: '/api/run-eval', method: 'POST' }, res, () => {});
 });
 
 // Store API key server-side so child processes (compiled apps with agents) can use it
@@ -866,6 +1081,27 @@ You can modify .clear files and requests.md. You can create new files of any all
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'list_evals',
+    description: "Return the agent eval suite for the current source WITHOUT running it. Each entry has { id, kind ('e2e'|'role'|'format'), agentName, endpointPath, synthetic, rubric?, expected? }. Use this to decide which evals to run or to show the user what will be graded.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'run_evals',
+    description: "Run the FULL agent eval suite for the current source. Compiles the app, starts a dedicated eval child with synthetic /_eval/<agent> endpoints injected for every agent, runs each eval, grades role/E2E via Claude when ANTHROPIC_API_KEY is set. Format evals are deterministic (no key needed). Slower than run_tests — can take 30s+ for multi-agent apps.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'run_eval',
+    description: 'Run ONE agent eval by id (from list_evals). Useful when iterating on a single agent — avoids re-running the whole suite. The eval child stays alive between runs for fast repeat invocations.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: "Eval id, e.g. 'role-researcher' or 'e2e-_api_research'" }
+      },
+      required: ['id'],
+    },
+  },
+  {
     name: 'click_element',
     description: 'Click an element in the running app (headless browser). Pass a CSS selector or visible text. Returns updated HTML and any errors. Use this to test buttons, links, tabs. Requires app to be running.',
     input_schema: {
@@ -1219,6 +1455,8 @@ app.post('/api/chat', async (req, res) => {
       case 'read_terminal':
       case 'screenshot_output':
       case 'run_tests':
+      case 'list_evals':
+      case 'run_evals':
       case 'read_dom':
       case 'read_actions':
       case 'read_storage':
@@ -1226,11 +1464,15 @@ app.post('/api/chat', async (req, res) => {
       case 'browse_templates':
       case 'websocket_log':
         return null;
+      case 'run_eval': {
+        if (!str(input.id)) return `run_eval requires "id" (string). Use list_evals first to get available ids.`;
+        return null;
+      }
       // Reject any tool we don't recognize so Meph stops hallucinating
       // names like "run_file" or "write_file" (neither exists). Earlier
       // the default case returned null which silently allowed unknown calls.
       default:
-        return `Unknown tool "${name}". Valid tools: edit_code, read_file, edit_file, run_command, http_request, compile, run_app, stop_app, run_tests, click_element, fill_input, highlight_code, inspect_element, read_network, read_storage, read_terminal, read_actions, read_dom, screenshot_output, browse_templates, source_map, websocket_log, db_inspect, todo, patch_code.`;
+        return `Unknown tool "${name}". Valid tools: edit_code, read_file, edit_file, run_command, http_request, compile, run_app, stop_app, run_tests, list_evals, run_evals, run_eval, click_element, fill_input, highlight_code, inspect_element, read_network, read_storage, read_terminal, read_actions, read_dom, screenshot_output, browse_templates, source_map, websocket_log, db_inspect, todo, patch_code.`;
     }
   }
 
@@ -1558,6 +1800,28 @@ app.post('/api/chat', async (req, res) => {
         send({ type: 'switch_tab', tab: 'tests' });
         send({ type: 'test_results', testType: 'app', ...testResult });
         return JSON.stringify(testResult);
+      }
+
+      case 'list_evals': {
+        const compiled = compileForEval(currentSource);
+        if (!compiled.ok) return JSON.stringify(compiled);
+        const suite = compiled.compiled.evalSuite || [];
+        return JSON.stringify({ ok: true, suite, count: suite.length });
+      }
+
+      case 'run_evals': {
+        const evalResult = await runEvalSuite(currentSource);
+        send({ type: 'switch_tab', tab: 'tests' });
+        send({ type: 'eval_results', ...evalResult });
+        return JSON.stringify(evalResult);
+      }
+
+      case 'run_eval': {
+        if (!input.id) return JSON.stringify({ ok: false, error: "Missing 'id' — use list_evals to see available ids." });
+        const evalResult = await runEvalSuite(currentSource, input.id);
+        send({ type: 'switch_tab', tab: 'tests' });
+        send({ type: 'eval_results', ...evalResult });
+        return JSON.stringify(evalResult);
       }
 
       case 'click_element': {

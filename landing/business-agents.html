@@ -98,8 +98,8 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
       <pre class="text-zinc-300"><span class="text-amber-400">agent</span> <span class="text-amber-200">'Support Agent'</span> receives question:
 
   <span class="text-zinc-500"># What it can do</span>
-  <span class="text-amber-400">can use:</span> look_up_order, check_inventory,
-           create_ticket, send_email
+  <span class="text-amber-400">has tools:</span> look_up_order, check_inventory,
+             create_ticket, send_email
 
   <span class="text-zinc-500"># What it knows</span>
   <span class="text-amber-400">knows about:</span> Products, FAQs, Policies
@@ -138,7 +138,7 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
         <ul class="space-y-3 text-sm text-zinc-400">
           <li class="flex items-start gap-2">
             <span class="text-amber-400 mt-0.5">&#9632;</span>
-            <span><strong class="text-zinc-300">Tool validation</strong> &mdash; <code>can use: delete_order</code> but no function named <code>delete_order</code> exists? Compile error.</span>
+            <span><strong class="text-zinc-300">Tool validation</strong> &mdash; <code>has tool: delete_order</code> but no function named <code>delete_order</code> exists? Compile error.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-amber-400 mt-0.5">&#9632;</span>
@@ -162,7 +162,7 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
           </li>
           <li class="flex items-start gap-2">
             <span class="text-red-400 mt-0.5">&#9632;</span>
-            <span><strong class="text-zinc-300">Tool restrictions</strong> &mdash; agent can only call tools listed in <code>can use:</code>. No surprise API calls.</span>
+            <span><strong class="text-zinc-300">Tool restrictions</strong> &mdash; agent can only call tools listed in <code>has tools:</code>. No surprise API calls.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-red-400 mt-0.5">&#9632;</span>
@@ -212,7 +212,7 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
       <div class="mb-1"><i data-lucide="wrench" class="w-6 h-6 text-amber-400"></i></div>
       <div>
         <div class="font-semibold mb-1">Tool use</div>
-        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">can use: search_orders, create_ticket, send_email</div>
+        <div class="code-block px-3 py-1.5 text-xs mt-2 text-amber-300">has tools: search_orders, create_ticket, send_email</div>
         <div class="text-zinc-500 text-xs mt-2">Compiles to Anthropic tool_use API. Tools validated at compile time.</div>
       </div>
     </div>
@@ -371,7 +371,7 @@ agent = create_tool_calling_agent(llm, tools, prompt)
       <div class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-4">The Clear way</div>
       <div class="code-block p-4 text-xs text-amber-300 mb-4">
 <pre>agent 'Support' receives question:
-  can use: look_up_order, check_inventory
+  has tools: look_up_order, check_inventory
   knows about: Products, FAQs
   must not: delete Orders
   block arguments matching 'drop|truncate'

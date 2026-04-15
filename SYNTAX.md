@@ -1984,7 +1984,7 @@ define function look_up_orders(customer_email):
   return orders
 
 agent 'Support' receives message:
-  can use: look_up_orders
+  has tool: look_up_orders
   response = ask claude 'Help this customer' with message
   send back response
 ```
@@ -2006,7 +2006,7 @@ agent 'Support' receives message:
 ### Guardrails
 ```clear
 agent 'Public Bot' receives question:
-  can use: search_products
+  has tool: search_products
   must not:
     delete any records
     access Users table
