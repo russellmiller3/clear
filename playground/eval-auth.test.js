@@ -65,6 +65,27 @@ console.log('\n🔑 eval-auth — mintEvalAuthToken custom user');
   assert(payload.role === 'admin', 'custom role threaded through');
 }
 
+console.log('\n🔑 eval-auth — mintLegacyEvalAuthToken (runtime/auth.js format)');
+{
+  // The legacy format used by blog-api, lead-scorer, page-analyzer and any
+  // other template that compiles `require('./clear-runtime/auth')`. Token
+  // shape: base64url(payload) + "." + base64url(HMAC-SHA256(payload, secret)).
+  // Two parts, not three — runtime/auth.js verifyToken splits on '.' and
+  // rejects anything that isn't exactly [payload, signature].
+  const { mintLegacyEvalAuthToken } = await import('./eval-auth.js');
+  const token = mintLegacyEvalAuthToken();
+  assert(typeof token === 'string', 'returns a string');
+  const parts = token.split('.');
+  assert(parts.length === 2, 'legacy token has payload.signature shape (2 parts)');
+  const [payloadB64, signature] = parts;
+  const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+  assert(payload.id === EVAL_USER.id, 'payload has EVAL_USER.id');
+  // runtime/auth.js uses MILLISECONDS for exp (not seconds like jsonwebtoken).
+  assert(typeof payload.exp === 'number' && payload.exp > Date.now(), 'exp is in the future (ms)');
+  const expected = crypto.createHmac('sha256', EVAL_JWT_SECRET).update(payloadB64).digest('base64url');
+  assert(signature === expected, 'signature is HMAC-SHA256 of payload (no header) with EVAL_JWT_SECRET');
+}
+
 console.log('\n🔑 eval-auth — tampered payload cannot reuse signature');
 {
   const token = mintEvalAuthToken();

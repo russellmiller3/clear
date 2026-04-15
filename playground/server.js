@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import { createHash } from 'crypto';
 import { chromium } from 'playwright';
-import { EVAL_JWT_SECRET, mintEvalAuthToken } from './eval-auth.js';
+import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './eval-auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -397,6 +397,11 @@ app.post('/api/run-tests', (req, res) => {
 
 let evalChild = null;
 let evalChildPort = null;
+// Which auth scheme the current eval child uses — set by ensureEvalChild
+// based on what the compiled serverJS imports. 'jwt' = jsonwebtoken (most
+// templates). 'legacy' = runtime/auth.js (blog-api, lead-scorer, page-
+// analyzer). Read by callEvalEndpoint to mint the right token format.
+let evalChildAuthScheme = 'jwt';
 let evalChildIdleTimer = null;
 const EVAL_PORT = 4999;
 const EVAL_IDLE_MS = 60_000;
@@ -495,6 +500,12 @@ async function ensureEvalChild(serverJS) {
   child._lastServerJS = fullJS;
   evalChild = child;
   evalChildPort = EVAL_PORT;
+  // Detect which auth library the compiled child uses so callEvalEndpoint
+  // can mint a token in the matching format. Same `Authorization: Bearer`
+  // header either way — only the payload shape differs. Defaults to 'jwt'
+  // (modern templates); legacy runtime/auth.js templates get the 2-part
+  // HMAC format (blog-api, lead-scorer, page-analyzer).
+  evalChildAuthScheme = /require\(['"]\.\/clear-runtime\/auth['"]\)/.test(fullJS) ? 'legacy' : 'jwt';
   child.stderr.on('data', d => termLog('[eval-stderr] ' + d.toString().trimEnd()));
   child.stdout.on('data', d => termLog('[eval-stdout] ' + d.toString().trimEnd()));
   child.on('exit', () => { if (evalChild === child) { evalChild = null; evalChildPort = null; } });
@@ -722,7 +733,12 @@ async function callEvalEndpoint(port, path, body) {
   let lastErr = null;
   // Mint once per call (not once per retry) so retries don't stack tokens.
   // Token TTL is 1 hour — trivially outlives any single eval spec run.
-  const authToken = mintEvalAuthToken();
+  // Format picked based on which auth library the child imports (set at
+  // spawn time in ensureEvalChild): 'legacy' = 2-part runtime/auth.js HMAC,
+  // anything else = standard 3-part jsonwebtoken JWT.
+  const authToken = evalChildAuthScheme === 'legacy'
+    ? mintLegacyEvalAuthToken()
+    : mintEvalAuthToken();
   // Reset the eval-child idle timer every time we touch the child. Before
   // this, the timer was set once at child spawn and only reset when a suite
   // fully completed — so a suite that took longer than EVAL_IDLE_MS (60s)

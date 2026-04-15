@@ -75,3 +75,30 @@ export function mintEvalAuthToken(user) {
   const signature = crypto.createHmac('sha256', EVAL_JWT_SECRET).update(signingInput).digest('base64url');
   return `${signingInput}.${signature}`;
 }
+
+// =============================================================================
+// LEGACY FORMAT — runtime/auth.js compatibility
+// =============================================================================
+//
+// Some templates (blog-api, lead-scorer, page-analyzer, and anything that
+// compiles `require('./clear-runtime/auth')`) verify tokens with runtime/
+// auth.js's home-rolled 2-part HMAC format instead of the standard JWT.
+// Shape: base64url(payload) + "." + base64url(HMAC-SHA256(payload, secret))
+// — no header, two parts. Uses MILLISECONDS for exp (not seconds like
+// jsonwebtoken). Shares EVAL_JWT_SECRET with the JWT format; the parent
+// exports both as JWT_SECRET and CLEAR_AUTH_SECRET to the child at spawn.
+//
+// callEvalEndpoint picks which mint to call based on which auth library
+// the compiled child imports — detected once at spawn time.
+export function mintLegacyEvalAuthToken(user) {
+  const u = user || EVAL_USER;
+  const payload = {
+    id: u.id,
+    role: u.role || 'user',
+    email: u.email,
+    exp: Date.now() + TOKEN_TTL_SECONDS * 1000, // ms, matches runtime/auth.js
+  };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', EVAL_JWT_SECRET).update(payloadB64).digest('base64url');
+  return `${payloadB64}.${signature}`;
+}
