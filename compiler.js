@@ -10036,6 +10036,27 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   const bodyLines = [];
   const declared = new Set();
   const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, _astBody: body, _allNodes: body, _asyncFunctions };
+
+  // Implicit tables for agent-memory features. Agents declared with
+  // `remember conversation context` call db.findAll/insert/update on a
+  // 'Conversations' table; `remember user's preferences` uses 'Memories'.
+  // Neither table is declared in user source, so without these implicit
+  // CREATE TABLE calls the app 500s with "no such table" on first access.
+  // Surfaced by the eval-auth fix when helpdesk-agent went from 401 to 500.
+  const hasRememberConv = body.some(n => n.type === NodeType.AGENT && n.rememberConversation);
+  const hasRememberPrefs = body.some(n => n.type === NodeType.AGENT && n.rememberPreferences);
+  const isLocalMemoryDb = !(dbBackend && dbBackend.includes('supabase'));
+  if (isLocalMemoryDb && (hasRememberConv || hasRememberPrefs)) {
+    const lines = ['// Implicit tables for agent memory (remember conversation / preferences)'];
+    if (hasRememberConv) {
+      lines.push(`db.createTable('Conversations', { user_id: { type: 'text' }, messages: { type: 'text' } });`);
+    }
+    if (hasRememberPrefs) {
+      lines.push(`db.createTable('Memories', { user_id: { type: 'text' }, fact: { type: 'text' } });`);
+    }
+    bodyLines.push(lines.join('\n'));
+  }
+
   for (const node of body) {
     // Skip test blocks in server output when running as a server (not test mode)
     // Tests are compiled into the server output for `compileProgram()` consumers

@@ -17923,6 +17923,32 @@ agent 'Chat' receiving message:
     expect(result.javascript).toContain('JSON.stringify');
   });
 
+  it('emits implicit createTable for Conversations when rememberConversation is used', () => {
+    // The compiler emits db.findAll/insert/update on a 'Conversations' table
+    // for any agent that declares `remember conversation context`. Without an
+    // implicit CREATE TABLE, the first insert 500s with "no such table" at
+    // runtime. Surfaced by the eval-auth fix: helpdesk-agent went from 401
+    // (auth wall) to 500 (schema missing) — this test prevents the 500.
+    const src = `build for javascript backend
+agent 'Chat' receiving message:
+  remember conversation context
+  response = ask claude 'Help' with message
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain("db.createTable('Conversations'");
+  });
+
+  it('does NOT emit createTable for Conversations when rememberConversation is not used', () => {
+    const src = `build for javascript backend
+agent 'Plain' receiving data:
+  response = ask claude 'Hello' with data
+  send back response`;
+    const result = compileProgram(src);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).not.toContain("db.createTable('Conversations'");
+  });
+
   it('non-conversation agent has no history code', () => {
     const src = `build for javascript backend
 agent 'Plain' receiving data:
