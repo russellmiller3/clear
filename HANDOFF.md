@@ -50,10 +50,35 @@ re-runs evals, reports.
    as 401 and wanted to remove `requires login` from endpoints. Fixed
    this session: playground/system-prompt.md now says eval probes are
    authenticated and empty-output on streaming endpoints is a known bug.
-5. **Grader non-determinism (design question, not a clear bug).**
-   Same probe, same source, different verdict across runs. Helpdesk
-   went 2/3 → 3/3 between identical calls. Worth deciding: temperature=0,
-   confidence scoring, or multi-run voting. Not blocking.
+5. **Grader non-determinism — design recommendation (not a bug).**
+
+   **Reality check:** temperature=0 is already the default in
+   gradeWithJudge (server.js line 542). Variance still exists at T=0
+   due to backend sampling. Can't be eliminated fully.
+
+   **Recommendation (in order):**
+
+   a) **Score-gap display.** The grader already returns 1-10. Show the
+      gap to threshold in the UI. "Passed at 7.2/10" → "Passed at 6.8/10"
+      reads as "same borderline case, sampling jitter" instead of "broke."
+      One-afternoon UI change.
+
+   b) **Auto re-run on fail, once.** When a spec fails, re-run it
+      immediately. If the re-run passes, tag as "borderline — flipped."
+      Only costs 2x on genuine failures, not all specs. ~50 LOC.
+
+   c) **Pin-and-flag history.** Store last verdict + score. On re-run,
+      only flag a "regression" when score drops >2 points — not on
+      any flip. Needs a tiny JSON store. Half-day.
+
+   **DON'T do by default:**
+   - Multi-run majority voting — 3x cost for 5% improvement
+   - Ensemble grading as the flakiness fix — different problem
+     (bias, not variance). Keep it as a separate feature.
+
+   Order of operations if you tackle this: (a) first — it's the
+   cheapest honest fix. Gather a week of data. If still flaky on
+   >10% of specs, do (b). Only add (c) if users complain.
 
 ## Fix-harness usage
 
