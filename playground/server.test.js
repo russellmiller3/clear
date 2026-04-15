@@ -664,6 +664,41 @@ try {
     assert(/Unknown eval id/.test(r2.data.error || ''), 'second call has unknown-id error');
   }
 
+  // ----- Cost estimate endpoint -----------------------------------------
+  // /api/eval-suite-estimate compiles source and returns a pre-run estimate
+  // so the UI can show a modal like "This run calls Claude N times (~$X)".
+  console.log('\n💰 Cost estimate endpoint');
+  {
+    const { status, data } = await post('/api/eval-suite-estimate', { source: agentSrc });
+    assert(status === 200, 'POST /api/eval-suite-estimate returns 200');
+    assert(data.ok === true, 'returns ok:true for valid source');
+    assert(typeof data.suite_size === 'number' && data.suite_size > 0, 'returns suite_size');
+    assert(typeof data.evals_to_grade === 'number', 'returns evals_to_grade count');
+    assert(typeof data.estimated_cost_usd === 'number' && data.estimated_cost_usd >= 0, 'returns estimated_cost_usd');
+    assert(typeof data.estimated_duration_seconds === 'number', 'returns estimated_duration_seconds');
+    // Sanity — role + e2e specs grade; format specs don't. For this source:
+    // 1 E2E + 2 role + 2 format = 5 total, 3 gradeable (e2e + 2 role).
+    assert(data.evals_to_grade === 3, `expected 3 gradeable specs, got ${data.evals_to_grade}`);
+    // Cost is per-gradeable × ~0.003 USD — should be well under a dollar
+    assert(data.estimated_cost_usd < 1, 'estimated cost is under $1 for a small suite');
+    // Provider + model surfaced
+    assert(typeof data.provider === 'string', 'returns provider name');
+    assert(typeof data.model === 'string', 'returns model id');
+  }
+
+  {
+    // Source with no agents → 0 suite, 0 to grade, 0 cost
+    const { data } = await post('/api/eval-suite-estimate', { source: 'build for javascript backend\nwhen user requests data from /api/p:\n  send back \'ok\'' });
+    assert(data.ok === true && data.suite_size === 0, 'empty-agent source: suite_size=0');
+    assert(data.evals_to_grade === 0 && data.estimated_cost_usd === 0, 'no gradeable evals, zero cost');
+  }
+
+  {
+    // Bad source — surfaces the compile error
+    const { data } = await post('/api/eval-suite-estimate', { source: 'not valid %%%' });
+    assert(data.ok === false, 'bad source returns ok:false');
+  }
+
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);
   failed++;

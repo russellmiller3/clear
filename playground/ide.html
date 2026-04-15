@@ -185,6 +185,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .eval-kind-info   { background: color-mix(in oklch, var(--tx3) 25%, transparent); color: var(--tx3); }
 .eval-row-label { flex: 1; color: var(--tx); font-weight: 500; }
 .eval-score { font-size: 10px; color: var(--tx3); padding: 1px 6px; border: 1px solid var(--bd2); border-radius: 3px; flex-shrink: 0; }
+.eval-cost { font-size: 10px; color: var(--tx3); padding: 1px 6px; border: 1px solid var(--bd2); border-radius: 3px; flex-shrink: 0; font-family: var(--mono); cursor: help; }
+.eval-total-cost { font-family: var(--mono); color: var(--tx2); padding: 1px 6px; background: color-mix(in oklch, var(--accent) 10%, transparent); border-radius: 3px; }
 .eval-status { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
 .eval-status.eval-pass    { background: color-mix(in oklch, var(--green) 20%, transparent); color: var(--green); }
 .eval-status.eval-fail    { background: color-mix(in oklch, var(--red) 20%, transparent); color: var(--red); }
@@ -1790,11 +1792,15 @@ function renderEvalSection(data) {
     })[status];
     const kindBadge = `<span class="eval-kind eval-kind-${spec.kind}">${spec.kind.toUpperCase()}</span>`;
     const scoreBadge = r?.score ? `<span class="eval-score">${r.score}/10</span>` : '';
+    // Cost chip — only shown once the eval has run and incurred real API cost.
+    const costChip = (r?.usage?.costUSD > 0)
+      ? `<span class="eval-cost" title="${(r.usage.inTok || 0)} in / ${(r.usage.outTok || 0)} out tokens · ${r.usage.provider || 'anthropic'} ${r.usage.model || ''}">$${r.usage.costUSD.toFixed(4)}</span>`
+      : '';
     const running = evalRowRunning.has(spec.id);
     const runBtn = `<button class="eval-run-btn" onclick="event.stopPropagation(); runEvalOne(${JSON.stringify(spec.id)})" ${running ? 'disabled' : ''}>${running ? '…' : 'Run'}</button>`;
 
     body += `<div class="eval-row" onclick="toggleEvalRow(${JSON.stringify(spec.id)})">`;
-    body += `<div class="eval-row-head">${kindBadge}<span class="eval-row-label">${escHtml(spec.label || spec.id)}</span>${scoreBadge}${statusBadge}${runBtn}</div>`;
+    body += `<div class="eval-row-head">${kindBadge}<span class="eval-row-label">${escHtml(spec.label || spec.id)}</span>${costChip}${scoreBadge}${statusBadge}${runBtn}</div>`;
     if (r?.feedback) body += `<div class="eval-row-feedback">${escHtml(r.feedback)}</div>`;
 
     // Failed rows auto-expand so the user can see what went wrong without
@@ -1824,6 +1830,16 @@ function renderEvalSection(data) {
       const feedbackBlock = r?.feedback
         ? `<div class="eval-detail-block"><div class="eval-detail-label">${status === 'fail' ? 'Why it failed' : 'Grader feedback'}</div><pre class="eval-detail-body">${escHtml(r.feedback)}</pre></div>`
         : '';
+      // Grader raw response — the exact text the grader returned, before
+      // JSON extraction. Useful for debugging weird grades, seeing which
+      // model/provider graded, or spotting safety-filter refusals.
+      const graderRawBlock = r?.graderRaw
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">Grader raw response${r.usage ? ` <span class="eval-detail-tag">${r.usage.provider}/${r.usage.model}</span>` : ''}</div><pre class="eval-detail-body">${escHtml(r.graderRaw)}</pre></div>`
+        : '';
+      // Tokens + cost breakdown block
+      const usageBlock = (r?.usage)
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">Tokens + cost</div><pre class="eval-detail-body">${r.usage.inTok || 0} input, ${r.usage.outTok || 0} output = $${(r.usage.costUSD || 0).toFixed(5)}</pre></div>`
+        : '';
       const criteriaBlock = criteriaLines.length
         ? `<div class="eval-detail-block"><div class="eval-detail-label">Grading criteria</div><pre class="eval-detail-body">${escHtml(criteriaLines.join('\n\n'))}</pre></div>`
         : '';
@@ -1837,21 +1853,27 @@ function renderEvalSection(data) {
 
       body += `<div class="eval-row-detail">`;
       if (status === 'fail') {
-        // Debugger ordering: WHY → output that caused it → criteria it was judged against → context
-        body += feedbackBlock + outputBlock + criteriaBlock + inputBlock + endpointBlock;
+        // Debugger ordering: WHY → output that caused it → criteria → context → grader raw
+        body += feedbackBlock + outputBlock + criteriaBlock + inputBlock + endpointBlock + graderRawBlock + usageBlock;
       } else {
         // Pass/skip/pending: context-first ordering for exploratory reading
-        body += criteriaBlock + endpointBlock + inputBlock + outputBlock + feedbackBlock;
+        body += criteriaBlock + endpointBlock + inputBlock + outputBlock + feedbackBlock + graderRawBlock + usageBlock;
       }
       body += `</div>`;
     }
     body += `</div>`;
   }
 
+  // Total cost + token running totals — sums real usage across graded rows.
+  const totalCost = data.total_cost_usd || 0;
+  const totalTokens = (data.total_input_tokens || 0) + (data.total_output_tokens || 0);
+  const costSummary = totalCost > 0
+    ? ` &mdash; <span class="eval-total-cost">$${totalCost.toFixed(4)} · ${totalTokens.toLocaleString()} tok</span>`
+    : '';
   const summaryHtml = `<span class="test-summary">
     <span class="pass-count">${passed} pass</span>,
     <span class="fail-count">${failed} fail</span>${skipped ? `, <span class="skip-count">${skipped} skip</span>` : ''}
-    ${duration ? ' &mdash; ' + duration : ''}
+    ${duration ? ' &mdash; ' + duration : ''}${costSummary}
   </span>`;
   return `<div class="test-section eval-section">
     <div class="test-section-header">Agent Evals ${summaryHtml}</div>
@@ -1869,11 +1891,32 @@ function toggleEvalRow(id) {
 }
 window.toggleEvalRow = toggleEvalRow;
 
+// Pre-run gate. Fetches a cost + duration estimate, shows a confirm
+// dialog with the active grader provider + model, and only kicks off
+// the real run if the user confirms. Single-eval re-runs don't gate —
+// they're cheap and the user just clicked a specific Run button.
 async function runEvals() {
+  const source = editor.state.doc.toString();
+  let estimate = null;
+  try {
+    const eResp = await fetch('/api/eval-suite-estimate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    });
+    estimate = await eResp.json();
+  } catch (err) {
+    // If estimate fails, fall through and let the real run surface the error.
+  }
+  if (estimate?.ok && estimate.evals_to_grade > 0) {
+    const costStr = '$' + estimate.estimated_cost_usd.toFixed(4);
+    const provider = estimate.provider === 'google' ? 'Gemini' : (estimate.provider === 'openai' ? 'OpenAI' : 'Claude');
+    const msg = `Run ${estimate.evals_to_grade} graded evals using ${provider} (${estimate.model}).\n\nEstimated cost: ${costStr}\nEstimated duration: ~${estimate.estimated_duration_seconds}s\n\nActual cost will be shown per-row and in the summary. Continue?`;
+    if (!confirm(msg)) return;
+  }
   testRunning.evals = true;
   if (activeTab === 'tests') showTests();
   try {
-    const source = editor.state.doc.toString();
     const resp = await fetch('/api/run-eval', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

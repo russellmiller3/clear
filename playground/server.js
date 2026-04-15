@@ -496,29 +496,174 @@ async function ensureEvalChild(serverJS, endpointsJS) {
   return EVAL_PORT;
 }
 
-// Claude-as-judge. Returns { pass, feedback, score, skipped }.
-async function gradeWithClaude(rubric, input, output) {
-  const key = storedApiKey || process.env.ANTHROPIC_API_KEY || '';
-  if (!key) return { skipped: true, reason: 'ANTHROPIC_API_KEY not set — role/e2e grading skipped' };
-  const model = process.env.EVAL_MODEL || 'claude-sonnet-4-20250514';
-  const prompt = `You are grading an AI agent's output.\n\nRubric:\n${rubric}\n\nInput given to the agent:\n${JSON.stringify(input)}\n\nAgent's output:\n${typeof output === 'string' ? output : JSON.stringify(output)}\n\nRespond with ONLY a JSON object: { "pass": true|false, "score": 1-10, "feedback": "<one sentence>" }`;
-  try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 256, messages: [{ role: 'user', content: prompt }] }),
-      signal: AbortSignal.timeout(30_000)
-    });
-    if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0 };
-    const data = await r.json();
-    const text = data.content?.[0]?.text || '';
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return { pass: false, feedback: 'Grader returned non-JSON', score: 0 };
-    const g = JSON.parse(m[0]);
-    return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '' };
-  } catch (err) {
-    return { pass: false, feedback: 'Grader error: ' + err.message, score: 0 };
+// Pricing per 1K tokens for each grader provider. The UI's cost estimate
+// and per-eval cost capture multiply against these. Prices checked April 2026
+// — update when the vendor changes them. Source comment for each entry:
+//   - anthropic (claude-sonnet-4): https://anthropic.com/pricing
+//   - google (gemini-1.5-pro):     https://ai.google.dev/pricing
+//   - openai (gpt-4o-mini):        https://openai.com/api/pricing
+const PROVIDER_PRICING_USD_PER_1K = {
+  anthropic: { input: 0.003,   output: 0.015  },
+  google:    { input: 0.00125, output: 0.005  },
+  openai:    { input: 0.00015, output: 0.0006 },
+};
+
+// Default model per provider. Override with EVAL_MODEL.
+const PROVIDER_DEFAULT_MODEL = {
+  anthropic: 'claude-sonnet-4-20250514',
+  google:    'gemini-1.5-pro',
+  openai:    'gpt-4o-mini',
+};
+
+function _resolveGraderConfig() {
+  const provider = (process.env.EVAL_PROVIDER || 'anthropic').toLowerCase();
+  const normalized = provider === 'gemini' ? 'google' : provider;
+  const model = process.env.EVAL_MODEL || PROVIDER_DEFAULT_MODEL[normalized] || PROVIDER_DEFAULT_MODEL.anthropic;
+  const pricing = PROVIDER_PRICING_USD_PER_1K[normalized] || PROVIDER_PRICING_USD_PER_1K.anthropic;
+  const temperature = parseFloat(process.env.EVAL_TEMPERATURE || '0');
+  return { provider: normalized, model, pricing, temperature };
+}
+
+function _graderKey(provider) {
+  if (provider === 'google') return process.env.GOOGLE_API_KEY || '';
+  if (provider === 'openai') return process.env.OPENAI_API_KEY || '';
+  return storedApiKey || process.env.ANTHROPIC_API_KEY || '';
+}
+
+function _graderKeyEnvName(provider) {
+  if (provider === 'google') return 'GOOGLE_API_KEY';
+  if (provider === 'openai') return 'OPENAI_API_KEY';
+  return 'ANTHROPIC_API_KEY';
+}
+
+// Build the grading prompt — provider-independent, same text across all
+// graders so rubrics remain portable.
+function _buildGraderPrompt(rubric, input, output) {
+  return `You are grading an AI agent's output.\n\nRubric:\n${rubric}\n\nInput given to the agent:\n${JSON.stringify(input)}\n\nAgent's output:\n${typeof output === 'string' ? output : JSON.stringify(output)}\n\nRespond with ONLY a JSON object: { "pass": true|false, "score": 1-10, "feedback": "<one sentence>" }`;
+}
+
+function _parseGraderJSON(text) {
+  const m = String(text || '').match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch { return null; }
+}
+
+function _costUSD(inTok, outTok, pricing) {
+  return (inTok / 1000) * pricing.input + (outTok / 1000) * pricing.output;
+}
+
+// Provider-agnostic grader. Dispatches to Anthropic/Google/OpenAI based on
+// EVAL_PROVIDER (default anthropic). Returns {pass, score, feedback,
+// graderRaw, usage: {inTok, outTok, costUSD, provider, model}} on success,
+// or {skipped: true, reason} when the provider key is missing.
+async function gradeWithJudge(rubric, input, output) {
+  const cfg = _resolveGraderConfig();
+  const key = _graderKey(cfg.provider);
+  if (!key) {
+    return { skipped: true, reason: `${_graderKeyEnvName(cfg.provider)} not set — role/e2e grading skipped for provider '${cfg.provider}'` };
   }
+  const prompt = _buildGraderPrompt(rubric, input, output);
+  try {
+    if (cfg.provider === 'anthropic') {
+      return await _gradeAnthropic(cfg, key, prompt);
+    }
+    if (cfg.provider === 'google') {
+      return await _gradeGoogle(cfg, key, prompt);
+    }
+    if (cfg.provider === 'openai') {
+      return await _gradeOpenAI(cfg, key, prompt);
+    }
+    return { pass: false, feedback: `Unknown EVAL_PROVIDER: ${cfg.provider}`, score: 0, graderRaw: '' };
+  } catch (err) {
+    return { pass: false, feedback: 'Grader error: ' + err.message, score: 0, graderRaw: '' };
+  }
+}
+
+async function _gradeAnthropic(cfg, key, prompt) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: cfg.model,
+      max_tokens: 256,
+      temperature: cfg.temperature,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0, graderRaw: '' };
+  const data = await r.json();
+  const graderRaw = data.content?.[0]?.text || '';
+  const usage = {
+    inTok: data.usage?.input_tokens || 0,
+    outTok: data.usage?.output_tokens || 0,
+    provider: 'anthropic',
+    model: cfg.model,
+  };
+  usage.costUSD = _costUSD(usage.inTok, usage.outTok, cfg.pricing);
+  const g = _parseGraderJSON(graderRaw);
+  if (!g) return { pass: false, feedback: 'Grader returned non-JSON', score: 0, graderRaw, usage };
+  return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '', graderRaw, usage };
+}
+
+async function _gradeGoogle(cfg, key, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent?key=${encodeURIComponent(key)}`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: cfg.temperature, maxOutputTokens: 256 },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0, graderRaw: '' };
+  const data = await r.json();
+  // Gemini may refuse via safety filters — surface the finishReason so the
+  // user knows why the grade came back empty.
+  const cand = data.candidates?.[0];
+  if (cand?.finishReason && cand.finishReason !== 'STOP' && cand.finishReason !== 'MAX_TOKENS') {
+    return { pass: false, feedback: `Gemini refused: ${cand.finishReason}`, score: 0, graderRaw: JSON.stringify(cand) };
+  }
+  const graderRaw = cand?.content?.parts?.[0]?.text || '';
+  const usage = {
+    inTok: data.usageMetadata?.promptTokenCount || 0,
+    outTok: data.usageMetadata?.candidatesTokenCount || 0,
+    provider: 'google',
+    model: cfg.model,
+  };
+  usage.costUSD = _costUSD(usage.inTok, usage.outTok, cfg.pricing);
+  const g = _parseGraderJSON(graderRaw);
+  if (!g) return { pass: false, feedback: 'Grader returned non-JSON', score: 0, graderRaw, usage };
+  return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '', graderRaw, usage };
+}
+
+async function _gradeOpenAI(cfg, key, prompt) {
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify({
+      model: cfg.model,
+      temperature: cfg.temperature,
+      max_tokens: 256,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!r.ok) return { pass: false, feedback: `Grader HTTP ${r.status}`, score: 0, graderRaw: '' };
+  const data = await r.json();
+  const graderRaw = data.choices?.[0]?.message?.content || '';
+  const usage = {
+    inTok: data.usage?.prompt_tokens || 0,
+    outTok: data.usage?.completion_tokens || 0,
+    provider: 'openai',
+    model: cfg.model,
+  };
+  usage.costUSD = _costUSD(usage.inTok, usage.outTok, cfg.pricing);
+  const g = _parseGraderJSON(graderRaw);
+  if (!g) return { pass: false, feedback: 'Grader returned non-JSON', score: 0, graderRaw, usage };
+  return { pass: !!g.pass, score: g.score || 0, feedback: g.feedback || '', graderRaw, usage };
 }
 
 // Deterministic format check. Works without API key.
@@ -652,11 +797,21 @@ async function runOneEval(spec, port) {
     return { id: spec.id, status: 'fail', duration: Date.now() - started, feedback: nonEmpty.feedback, input: spec.input, output: resp.data };
   }
   if (spec.rubric) {
-    const grade = await gradeWithClaude(spec.rubric, spec.input, resp.data);
+    const grade = await gradeWithJudge(spec.rubric, spec.input, resp.data);
     if (grade.skipped) {
       return { id: spec.id, status: 'skip', duration: Date.now() - started, feedback: grade.reason, input: spec.input, output: resp.data };
     }
-    return { id: spec.id, status: grade.pass ? 'pass' : 'fail', duration: Date.now() - started, feedback: grade.feedback, score: grade.score, input: spec.input, output: resp.data };
+    return {
+      id: spec.id,
+      status: grade.pass ? 'pass' : 'fail',
+      duration: Date.now() - started,
+      feedback: grade.feedback,
+      score: grade.score,
+      input: spec.input,
+      output: resp.data,
+      graderRaw: grade.graderRaw,
+      usage: grade.usage,
+    };
   }
   return { id: spec.id, status: 'pass', duration: Date.now() - started, feedback: 'Endpoint returned a non-empty response.', input: spec.input, output: resp.data };
 }
@@ -677,13 +832,25 @@ function compileForEval(source) {
   return { ok: true, compiled, serverJS: server };
 }
 
-// GET /api/eval-suite — returns the suite list (no execution, no child).
+// POST /api/eval-suite — returns the suite list (no execution, no child).
 app.post('/api/eval-suite', (req, res) => {
   const { source } = req.body;
   const compiled = compileForEval(source);
   if (!compiled.ok) return res.json(compiled);
   const suite = compiled.compiled.evalSuite || [];
   res.json({ ok: true, suite });
+});
+
+// POST /api/eval-suite-estimate — returns a pre-run cost + duration estimate
+// for the current source so the UI can gate Run All behind a confirm modal.
+// Does not spin up the eval child; pure compile + count.
+app.post('/api/eval-suite-estimate', (req, res) => {
+  const { source } = req.body;
+  const compiled = compileForEval(source);
+  if (!compiled.ok) return res.json(compiled);
+  const suite = compiled.compiled.evalSuite || [];
+  const estimate = estimateEvalSuiteCost(suite);
+  res.json({ ok: true, ...estimate });
 });
 
 // Shared runner used by both the HTTP endpoint and Meph's run_evals/run_eval
@@ -726,10 +893,48 @@ async function _runEvalSuiteImpl(source, id) {
     const passed = results.filter(r => r.status === 'pass').length;
     const failed = results.filter(r => r.status === 'fail').length;
     const skipped = results.filter(r => r.status === 'skip').length;
-    return { ok: failed === 0, suite, results, passed, failed, skipped, duration: Date.now() - start };
+    // Sum real-cost totals across graded specs. Format-only and unskipped
+    // specs contribute zero; skipped specs have no usage; null-guarded.
+    const totalInputTokens = results.reduce((sum, r) => sum + (r.usage?.inTok || 0), 0);
+    const totalOutputTokens = results.reduce((sum, r) => sum + (r.usage?.outTok || 0), 0);
+    const totalCostUsd = results.reduce((sum, r) => sum + (r.usage?.costUSD || 0), 0);
+    return {
+      ok: failed === 0,
+      suite,
+      results,
+      passed,
+      failed,
+      skipped,
+      duration: Date.now() - start,
+      total_cost_usd: totalCostUsd,
+      total_input_tokens: totalInputTokens,
+      total_output_tokens: totalOutputTokens,
+    };
   } catch (err) {
     return { ok: false, error: 'Eval run failed: ' + err.message, duration: Date.now() - start };
   }
+}
+
+// Pre-run cost estimate. Gradeable specs = role + e2e (format is
+// deterministic, zero API cost). Typical grader call: ~400 input tokens
+// (rubric + input + output) + ~100 output tokens (JSON verdict). Multiplied
+// against the active provider's pricing. Rough — actual cost surfaced in
+// real time by per-row cost chips and running total after the run.
+const TYPICAL_GRADER_INPUT_TOKENS = 400;
+const TYPICAL_GRADER_OUTPUT_TOKENS = 100;
+
+function estimateEvalSuiteCost(suite) {
+  const cfg = _resolveGraderConfig();
+  const gradeable = suite.filter(s => (s.kind === 'role' || s.kind === 'e2e' || s.kind === 'user') && s.rubric);
+  const perCall = _costUSD(TYPICAL_GRADER_INPUT_TOKENS, TYPICAL_GRADER_OUTPUT_TOKENS, cfg.pricing);
+  return {
+    suite_size: suite.length,
+    evals_to_grade: gradeable.length,
+    estimated_cost_usd: +(gradeable.length * perCall).toFixed(4),
+    estimated_duration_seconds: Math.round(gradeable.length * 2 + 3),
+    provider: cfg.provider,
+    model: cfg.model,
+  };
 }
 
 // POST /api/run-eval — runs one or all evals.
