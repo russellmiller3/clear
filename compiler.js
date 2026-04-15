@@ -1425,6 +1425,71 @@ function generateEvalSuite(body) {
     });
   }
 
+  // User-defined evals from top-level `eval 'name':` blocks. Each EVAL_DEF
+  // node translates into exactly one suite entry. The translation maps:
+  //   - scenarioKind='agent' → look up the agent's endpoint path (real or
+  //     synthetic /_eval/), wrap input for that transport
+  //   - scenarioKind='endpoint' → use the literal path the user wrote
+  //   - rubric → LLM-graded expectation
+  //   - expectFields → deterministic fields-based format check
+  const userEvals = body.filter(n => n.type === NodeType.EVAL_DEF);
+  for (const e of userEvals) {
+    let endpointPath = null;
+    let synthetic = false;
+    let input = null;
+
+    if (e.scenarioKind === 'agent') {
+      const agent = agents.find(a => a.name === e.agentName);
+      if (!agent) {
+        // Validator will also flag; still emit the spec so the UI can surface it.
+        suite.push({
+          id: `user-${sanitizeName((e.name || 'eval').toLowerCase().replace(/\s+/g, '_'))}`,
+          kind: 'user',
+          label: e.name,
+          source: 'user-top',
+          agentName: e.agentName,
+          endpointPath: null,
+          runnable: false,
+          note: `Eval '${e.name}' references agent '${e.agentName}', which isn't defined in this source.`,
+        });
+        continue;
+      }
+      const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
+      const userPath = endpointByAgent.get(agent.name);
+      endpointPath = userPath || `/_eval/${fnName}`;
+      synthetic = !userPath;
+      // Synthetic endpoints always read req.body.input; real endpoints read the
+      // agent's receiving-var key. Preserve that invariant here too.
+      if (synthetic) {
+        input = { input: e.input };
+      } else {
+        input = { [agent.receivingVar || 'input']: e.input };
+      }
+    } else if (e.scenarioKind === 'endpoint') {
+      endpointPath = e.endpointPath;
+      input = (e.input && typeof e.input === 'object' && !Array.isArray(e.input))
+        ? e.input
+        : { input: e.input };
+    }
+
+    const expected = e.expectFields && e.expectFields.length > 0
+      ? { kind: 'fields', fields: e.expectFields.map(f => ({ name: f, type: 'text' })) }
+      : { kind: 'non-empty' };
+
+    suite.push({
+      id: `user-${sanitizeName((e.name || 'eval').toLowerCase().replace(/\s+/g, '_'))}`,
+      kind: 'user',
+      label: e.name,
+      source: 'user-top',
+      agentName: e.agentName || null,
+      endpointPath,
+      synthetic,
+      input,
+      rubric: e.rubric || null,
+      expected,
+    });
+  }
+
   return suite;
 }
 

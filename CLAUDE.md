@@ -325,3 +325,6 @@ Studio chat (Meph) should support SVG diagrams and markdown rendering as standar
 
 ## Test Before Declaring Done (MANDATORY)
 Test everything you build before declaring it done. "The variable updated" is not verification — verify the user-visible outcome. For UI: check rendered content, not just DOM state. For flows: drive the flow end-to-end and assert the final result. If you can't test it, say so explicitly instead of claiming success. A route selector that updates `iframe.src` is not tested until you've confirmed the rendered page content actually changed.
+
+## Quality Bar High By Default (MANDATORY)
+The quality bar is HIGH for everything in this repo unless there's a good reason not to. Compute is cheap — extra tests, richer error messages, fuller docs, cleaner abstractions are usually worth it. Don't optimize for tokens or "minimal diff" at the expense of readability, test coverage, or the 14-year-old test. When in doubt, do the thorough thing and leave code that's easier for the next person (or AI) to work with.

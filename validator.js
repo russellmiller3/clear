@@ -112,7 +112,41 @@ export function validate(ast) {
   validateExprComplexity(ast.body, warnings);
   validateClassify(ast.body, errors);
   validateLayoutNesting(ast.body, warnings);
+  validateEvalReferences(ast.body, warnings);
   return { errors, warnings };
+}
+
+/**
+ * Warn on user-defined `eval 'name':` blocks that reference agents or
+ * endpoints not defined in the source. The spec still compiles — the UI
+ * marks the spec `runnable: false` and shows a note — but the warning
+ * gives the user an early signal.
+ */
+function validateEvalReferences(body, warnings) {
+  const evals = body.filter(n => n.type === 'eval_def');
+  if (evals.length === 0) return;
+  const agentNames = new Set(body.filter(n => n.type === 'agent').map(a => a.name));
+  const endpoints = body.filter(n => n.type === 'endpoint');
+  for (const e of evals) {
+    if (e.scenarioKind === 'agent' && e.agentName && !agentNames.has(e.agentName)) {
+      warnings.push({
+        line: e.line,
+        message: `Eval '${e.name}' references agent '${e.agentName}' which isn't defined in this source. Did you mean one of: ${[...agentNames].slice(0, 5).join(', ') || '(no agents defined)'}?`
+      });
+    }
+    if (e.scenarioKind === 'endpoint' && e.endpointPath) {
+      const match = endpoints.find(ep =>
+        ep.path === e.endpointPath &&
+        (!e.method || (ep.method || '').toUpperCase() === e.method.toUpperCase())
+      );
+      if (!match) {
+        warnings.push({
+          line: e.line,
+          message: `Eval '${e.name}' calls ${e.method || 'POST'} ${e.endpointPath}, which isn't defined in this source.`
+        });
+      }
+    }
+  }
 }
 
 /**

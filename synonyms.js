@@ -217,6 +217,7 @@ const SYNONYM_TABLE = Object.freeze({
 
   // Testing (Phase 11)
   test: Object.freeze(['test']),
+  eval_block: Object.freeze(['eval']),
   expect: Object.freeze(['expect']),
 
   // Deployment (Phase 12)
@@ -448,6 +449,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.27.0';
+const SYNONYM_VERSION = '0.28.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

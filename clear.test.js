@@ -16963,6 +16963,118 @@ when user calls POST /api/run sending data:
 });
 
 // =============================================================================
+// USER-DEFINED EVALS — top-level `eval 'name':` block. Mirrors `test 'name':`.
+// Produces EVAL_DEF AST nodes; compiler merges them into result.evalSuite
+// with source='user-top'. Body grammar: given/call + expect.
+// =============================================================================
+
+describe('User eval: top-level `eval \'name\':` block syntax', () => {
+  it('parses an agent-scenario eval with string input + rubric', () => {
+    const src = `build for javascript backend
+agent 'Support' receives msg:
+  r = ask claude 'help' with msg
+  send back r
+
+eval 'Support greets politely':
+  given 'Support' receives 'hi'
+  expect 'The agent opens with a warm greeting and offers to help.'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const evalNode = r.ast.body.find(n => n.type === NodeType.EVAL_DEF);
+    expect(evalNode).toBeDefined();
+    expect(evalNode.name).toBe('Support greets politely');
+    expect(evalNode.scope).toBe('top');
+    expect(evalNode.scenarioKind).toBe('agent');
+    expect(evalNode.agentName).toBe('Support');
+    expect(evalNode.input).toBe('hi');
+    expect(evalNode.rubric).toBe('The agent opens with a warm greeting and offers to help.');
+  });
+
+  it('parses an endpoint-scenario eval with object input + deterministic expect', () => {
+    const src = `build for javascript backend
+agent 'Classifier' receives text:
+  r = ask claude 'Classify' with text returning JSON text:
+    category
+    confidence (number)
+  send back r
+
+when user calls POST /api/classify sending data:
+  out = call 'Classifier' with data's text
+  send back out
+
+eval 'Classify returns a category and confidence':
+  call POST '/api/classify' with text is 'Billing question about my invoice'
+  expect output has category, confidence`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const evalNode = r.ast.body.find(n => n.type === NodeType.EVAL_DEF);
+    expect(evalNode.scenarioKind).toBe('endpoint');
+    expect(evalNode.method).toBe('POST');
+    expect(evalNode.endpointPath).toBe('/api/classify');
+    expect(typeof evalNode.input).toBe('object');
+    expect(evalNode.input.text).toBe('Billing question about my invoice');
+    expect(evalNode.expectFields).toEqual(['category', 'confidence']);
+  });
+
+  it('parses a compound-object input (indented `receives:` block)', () => {
+    const src = `build for javascript backend
+agent 'Screener' receives candidate:
+  r = candidate
+  send back r
+
+eval 'Screener keeps resumes intact':
+  given 'Screener' receives:
+    name is 'Jane Doe'
+    resume is 'Senior engineer, 8 years backend'
+  expect 'Output contains the same resume text unmodified.'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const evalNode = r.ast.body.find(n => n.type === NodeType.EVAL_DEF);
+    expect(evalNode).toBeDefined();
+    expect(typeof evalNode.input).toBe('object');
+    expect(evalNode.input.name).toBe('Jane Doe');
+    expect(evalNode.input.resume).toBe('Senior engineer, 8 years backend');
+  });
+
+  it('user evals merge into result.evalSuite with source=user-top', () => {
+    const src = `build for javascript backend
+agent 'Support' receives msg:
+  r = ask claude 'help' with msg
+  send back r
+
+eval 'Support greets politely':
+  given 'Support' receives 'hi'
+  expect 'Output should be a warm greeting'`;
+    const r = compileProgram(src);
+    const userSpec = r.evalSuite.find(e => e.source === 'user-top');
+    expect(userSpec).toBeDefined();
+    expect(userSpec.label).toBe('Support greets politely');
+    expect(userSpec.kind).toBe('user');
+    expect(userSpec.rubric).toBe('Output should be a warm greeting');
+  });
+
+  it('empty `eval` block produces a friendly error', () => {
+    const r = compileProgram(`build for javascript backend
+eval 'empty eval':
+when user requests data from /api/x:
+  send back 'ok'`);
+    expect(r.errors.length > 0).toBe(true);
+    expect(r.errors[0].message).toContain('eval');
+  });
+
+  it('eval referencing an unknown agent emits a validator warning', () => {
+    const r = compileProgram(`build for javascript backend
+eval 'Unknown':
+  given 'No Such Agent' receives 'hi'
+  expect 'pass'`);
+    // We accept warning or error — either surfaces the problem
+    const hasSignal = (r.errors.length > 0) ||
+      (r.warnings && r.warnings.some(w => /unknown|undefined|no such|not found/i.test(w.message || '')));
+    expect(hasSignal).toBe(true);
+  });
+});
+
+// =============================================================================
 // PROBE QUALITY — every receiving-var in the core templates must resolve to
 // a real probe, not the 'hello' fallback. `probeQuality` metadata is the
 // machine-readable flag; string length is the coarse sanity check.
