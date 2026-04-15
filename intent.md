@@ -104,8 +104,8 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 
 | Node Type | Syntax | HTML Output |
 |-----------|--------|-------------|
-| `PAGE` | `page 'Title' at '/route':` | `<title>` + hash router |
-| `ASK_FOR` | `'Label' is a text input that saves to var` | `<input>` with label |
+| `PAGE` | `page 'Title' at '/route':` | `<title>` + pathname router (reads `location.pathname`, falls back to hash, intercepts same-origin `<a>` clicks for SPA nav). Each declared route also gets an `app.get('/route', res.sendFile('index.html', { root: __dirname }))` handler so direct URLs / refresh work. |
+| `ASK_FOR` | `'Label' is a text input that saves to var` — also supports: `text area`, `text editor` (Quill WYSIWYG via CDN, toolbar + live `_state` binding), `number input`, `dropdown with ['a','b']`, `checkbox`, `file input` | `<input>` / `<textarea>` / `<div data-clear-rich-text>` / `<select>` |
 | `DISPLAY` | `display x as dollars called 'Label'` / `display x as table showing a, b with delete` / `display x as chat showing role, content` | `<output>` or `<table>` with action buttons, or chat bubble component |
 | `CHART` | `chart 'Title' as line showing data` / `chart 'Status' as pie showing data by field` | ECharts `<div>` with auto-configured option |
 | `BUTTON` | `button 'Click':` + body | `<button>` + event handler |

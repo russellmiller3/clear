@@ -27,6 +27,7 @@ For EVERY new or changed feature on this branch, verify it appears in ALL FIVE d
 | 3 | **`AI-INSTRUCTIONS.md`** | Coding conventions, when to use this feature, gotchas | Add to the appropriate section with a "do this / don't do this" example |
 | 4 | **`USER-GUIDE.md`** | Tutorial coverage with a worked example | Add to an existing chapter or create a new section. Must be teachable. |
 | 5 | **`.claude/skills/write-clear/SKILL.md`** | Meph knows how to use this feature | Add syntax pattern and example if it's something Meph would write |
+| 5b | **`playground/system-prompt.md`** | Meph's live system prompt in Studio — this is what actually ships to users. The write-clear SKILL tells Claude how to write Clear; the system-prompt tells Meph how to write Clear when helping a human in Studio. If a new syntax/behavior is added, Meph must know about it here or users see stale guidance. | Add syntax example + when to use it, matching existing prompt style |
 
 **How to audit:** For each `.js` file changed on this branch:
 1. `git diff main -- parser.js | grep "+.*NodeType\."` — find new node types

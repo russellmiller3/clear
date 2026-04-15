@@ -677,7 +677,16 @@ style card:
 'Color' is a dropdown with ['Red', 'Green', 'Blue']
 'Gift Wrap' is a checkbox
 'Notes' is a text area saved as a note
+'Body' is a text editor saved as a body            # rich WYSIWYG (Quill)
+'Resume' is a file input saved as a resume
 ```
+
+**When to use `text editor` vs `text area`:** Plain-text users expect, use
+`text area`. Users writing formatted content (blog posts, docs, rich notes)
+get `text editor` — Quill mounts with toolbar (headers, bold/italic, lists,
+links, blockquote, code). The editor's HTML flows into `_state[var]` on
+every keystroke, so you POST it like any other input. Don't use `text editor`
+for short single-line inputs; use `text input` for those.
 
 Articles (`a`, `an`, `the`) are optional but encouraged for readability:
 ```
@@ -1842,6 +1851,44 @@ test 'full todo workflow':
 - Use colon for fields: `with title: 'Buy groceries'` reads better than `with title is 'Buy groceries'`
 - Auto-generated tests already cover basic CRUD, validation, auth, security, agents, and CRUD flows — only write custom tests for business logic beyond basic CRUD
 - Never use API paths or HTTP methods in test names
+
+### Streaming is the Default
+
+When `ask claude` appears at statement level inside a POST endpoint, Clear
+**streams by default** — the backend emits `text/event-stream` and the
+frontend's `get X from URL with Y` auto-detects the streaming endpoint and
+reads chunks into `_state[X]` as they arrive. No `stream` keyword required:
+
+```clear
+# Backend: streams by default
+when user sends data to /api/ask:
+  ask claude 'You are helpful.' with data's question
+
+# Frontend: get ... with ... auto-streams when target is a streaming endpoint
+page 'Chat' at '/':
+  question = ''
+  answer = ''
+  'Ask something' is a text input saved as question
+  button 'Send':
+    get answer from '/api/ask' with question    # auto-streams
+  display answer                                  # grows live
+```
+
+**Opt out with `without streaming`** when you need the full answer once
+(server-side post-processing, downstream validation, summaries used as
+input to another call):
+
+```clear
+ask claude 'Summarize this' with text without streaming
+```
+
+The compiler sees `without streaming` and emits `res.json({ text: ... })`
+instead of SSE headers. The matching frontend `get X from URL with Y`
+auto-detects the non-streaming endpoint and uses a plain POST + JSON parse.
+
+Rule of thumb: if the user is watching a response appear, default streaming
+is right. If an endpoint consumer needs the complete text as a single
+string, use `without streaming`.
 
 ### Agent Tables (Required Infrastructure)
 

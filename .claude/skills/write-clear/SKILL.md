@@ -74,9 +74,18 @@ name is "Alice"           # works but don't write this
 ```
 'What needs to be done?' is a text input saved as a todo
 'How much?' is a number input saved as a price
+'Notes' is a text area saved as a note            # plain multi-line
+'Body' is a text editor saved as a body           # rich WYSIWYG (Quill)
 'Color' is a dropdown with ['Red', 'Green', 'Blue']
 'Gift Wrap' is a checkbox
+'Resume' is a file input saved as a resume
 ```
+
+Use `text editor` for long-form formatted content (blog posts, rich notes,
+comments). It mounts a Quill editor via CDN with a toolbar (headers,
+bold/italic/underline, lists, links, blockquote, code) and binds the
+editor's HTML to `_state[var]` on every keystroke. Plain `text area` is
+right for short multi-line plaintext.
 
 ### API Endpoints
 ```
@@ -198,6 +207,27 @@ agent 'Support' receives message:
   can use: look_up_orders
   response = ask claude 'Help this customer' with message
   send back response
+```
+
+### AI Streaming (Default)
+`ask claude` inside a POST endpoint streams by default — no keyword needed.
+Frontend `get X from URL with Y` auto-detects streaming endpoints and reads
+chunks into `_state[X]` live. Opt out with `without streaming` when you
+need the full response once:
+```
+when user sends data to /api/ask:
+  ask claude 'You are helpful.' with data's question          # streams
+
+when user sends data to /api/summary:
+  ask claude 'Summarize' with data's text without streaming   # one-shot JSON
+
+page 'Chat' at '/':
+  q = ''
+  answer = ''
+  'Ask' is a text input saved as q
+  button 'Send':
+    get answer from '/api/ask' with q    # streaming reader (auto-detected)
+  display answer                          # grows live as tokens arrive
 ```
 
 ### Security Rules (compiler-enforced)

@@ -319,6 +319,8 @@ page 'My App':
 'Notes' is a text area saved as a note
 'Gift Wrap' is a checkbox
 'Color' is a dropdown with ['Red', 'Green', 'Blue']
+'Body' is a text editor saved as body          # rich WYSIWYG (Quill)
+'Resume' is a file input saved as a resume
 
 # Articles (a, an, the) are optional but encouraged
 'Name' is a text input saved as a name
@@ -327,6 +329,12 @@ page 'My App':
 # Legacy form still works
 'Name' is a text input that saves to name
 ```
+
+`text editor` (alias: `rich text editor`, `rich text`) mounts a Quill editor
+via CDN with toolbar (headers, bold/italic/underline/strike, lists, links,
+blockquote, code block). On every keystroke the editor's HTML flows into
+`_state[var]` so the value can be POSTed like any other input. Use this when
+you want users to write formatted content (blog posts, notes, rich comments).
 
 ## Buttons & Actions
 
@@ -1892,6 +1900,46 @@ answer = ask ai 'Summarize this' with data
 ```
 
 Requires `ANTHROPIC_API_KEY` (falls back to `CLEAR_AI_KEY`).
+
+### Streaming (Default)
+
+When `ask claude` appears at statement level inside a POST endpoint, Clear
+**streams by default**. The backend emits `text/event-stream` headers and
+writes each token as an SSE frame. No keyword needed:
+
+```clear
+when user sends data to /api/ask:
+  ask claude 'You are a helpful assistant.' with data's question
+
+page 'Chat' at '/':
+  question = ''
+  answer = ''
+  'Ask something' is a text input saved as question
+  button 'Send':
+    get answer from '/api/ask' with question    # auto-streams into _state.answer
+  display answer                                  # grows live as tokens arrive
+```
+
+The frontend `get X from URL with Y` auto-detects streaming endpoints (via
+the compiled AST) and emits a streaming reader (`fetch` POST → `getReader` →
+SSE frame parser → append each chunk to `_state[X]` → call `_recompute()`).
+For non-streaming POST endpoints, the same syntax emits a one-shot POST +
+JSON parse. Users never think about HTTP verbs.
+
+### Opting out of streaming
+
+When you need a one-shot JSON response (e.g. for server-side post-processing
+or when a downstream consumer needs the full text), add `without streaming`:
+
+```clear
+when user sends data to /api/summary:
+  ask claude 'Summarize this in one sentence.' with data's text without streaming
+  # Responds with { text: "..." } after the full answer is generated
+```
+
+The frontend `get answer from '/api/summary' with text` auto-detects that
+this endpoint does NOT stream, so it uses a plain POST + JSON parse (the
+result goes into `_state.answer` all at once).
 
 ## Webhooks (Natural Syntax)
 

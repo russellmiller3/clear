@@ -672,6 +672,46 @@ JSON to parse. Just ask a question and get an answer.
 response = ask claude 'Summarize this article' with article_text
 ```
 
+### Streaming is the Default
+
+When `ask claude` is the body of a POST endpoint, the response **streams
+live to the browser** — no extra keyword, no EventSource setup, nothing.
+Here's a full AI chat app in 12 lines:
+
+```clear
+build for web and javascript backend
+
+when user sends data to /api/ask:
+  ask claude 'You are a helpful assistant.' with data's question
+
+page 'Chat' at '/':
+  question = ''
+  answer = ''
+  'Ask something' is a text input saved as question
+  button 'Send':
+    get answer from '/api/ask' with question
+  heading 'Answer'
+  display answer
+```
+
+What happens when you click Send: the backend streams each token from
+Anthropic as it's generated. The frontend auto-detects that the endpoint
+streams (because it contains `ask claude`) and emits a streaming reader
+instead of a plain fetch. `_state.answer` grows chunk-by-chunk and
+`display answer` updates on every `_recompute()`. Users see the answer
+appear live, like ChatGPT.
+
+**Opt out when you need the full text at once:**
+
+```clear
+ask claude 'Summarize this' with text without streaming
+```
+
+`without streaming` gives you a one-shot JSON response. Use this when a
+downstream function needs the complete answer before doing something with
+it (running validation, chaining to another agent, storing the whole
+thing).
+
 ### Structured Output
 
 ```clear
@@ -889,9 +929,18 @@ image 'https://example.com/avatar.jpg' rounded, 64px wide, 64px tall
 'Name' is a text input saved as a name
 'Age' is a number input saved as a age
 'Bio' is a text area saved as a bio
+'Body' is a text editor saved as a body        # rich WYSIWYG with toolbar
 'Country' is a dropdown with ['US', 'UK', 'Canada'] saved as a country
 'Newsletter' is a checkbox
+'Resume' is a file input saved as a resume
 ```
+
+**When to use `text editor`:** blog posts, long-form notes, comments where
+formatting matters. You get a Quill toolbar (headers, bold/italic, lists,
+links, blockquote, code) mounted over a `contenteditable` div. The HTML
+flows into `_state[var]` on every keystroke so you can POST it like any
+other input. Use plain `text area` for simple multi-line text without
+formatting.
 
 ### Display Formatting
 

@@ -260,8 +260,10 @@ page 'App' at '/':
 - `'Name' as text input` — text field
 - `'Price' as number input` — number field
 - `'Active' as checkbox` — boolean
-- `'Notes' as text area` — multiline
+- `'Notes' as text area` — multiline plaintext
+- `'Body' as text editor` — rich WYSIWYG (Quill toolbar, bold/italic/headers/lists/links). Use for blog posts, formatted docs, rich comments. The editor's HTML flows into state on every keystroke.
 - `'Color' as dropdown with ['Red', 'Green', 'Blue']` — select
+- `'Resume' as file input` — file upload
 - `'Rate' as number input saved as a rate` — custom variable name
 
 ## Endpoints
@@ -310,6 +312,33 @@ agent 'Classifier' receives text:
     category
     confidence (number)
   send back result
+```
+
+### Streaming is the default
+
+`ask claude` at statement level inside a POST endpoint **streams by default**
+— backend emits `text/event-stream`, frontend's `get X from URL with Y`
+auto-detects it and reads chunks live. No `stream` keyword needed. Users see
+tokens appear like ChatGPT.
+
+```clear
+when user sends data to /api/ask:
+  ask claude 'You are helpful.' with data's question
+
+page 'Chat' at '/':
+  question = ''
+  answer = ''
+  'Ask something' is a text input saved as question
+  button 'Send':
+    get answer from '/api/ask' with question
+  display answer
+```
+
+Opt out with `without streaming` when a downstream consumer needs the full
+text at once (summaries used by other code, server-side validation):
+
+```clear
+ask claude 'Summarize' with text without streaming
 ```
 
 Agent directives (inside agent body, before code):

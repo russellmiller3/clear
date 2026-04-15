@@ -932,3 +932,56 @@ User actions, Meph tool calls, browser console errors all mirrored into `termina
 
 - **Rule 15: The compiler tests everything — users don't secure themselves.** If the compiler can think of a test, it generates it. Every endpoint, button, input, display, agent, and CRUD flow gets auto-tested. Security tests are not optional features the user remembers to add — they're structural guarantees that ship with every app. Added to PHILOSOPHY.md.
 - **Test names must read like English, not HTTP.** "Creating a new todo succeeds" not "POST /api/todos with valid data returns 201". The compiler translates methods to verbs and paths to resource names. Users writing tests never mention API paths or status codes.
+
+---
+
+## Session 29: Rich Text, Multi-Page Routing, Streaming-as-Default (2026-04-14/15)
+
+### Greedy Multi-Word Synonyms Steal Resource Names
+- **Bug:** `send title as a new post to '/api/posts'` was compiled to an empty button handler — the entire send line got silently dropped. Root cause: the tokenizer has `post to` as a multi-word synonym (canonical `post_to`, used for `post to '/url'` style API calls). So `new post to '/api/posts'` tokenized as `new | post-to | /api/posts`, swallowing the resource word "post."
+- **Fix:** The `respond` handler in parser.js now recognizes `post_to`/`put_to`/`get_from`/`delete_from` as URL connectors (not just `to_connector`). `send X as a new Y to URL` works regardless of what Y is called.
+- **Lesson:** Greedy multi-word synonyms can swallow bare identifiers when those identifiers happen to be the first word of a synonym. Test multi-word resource names (`post`, `put`, `get`, `delete`) in every pattern that accepts a resource identifier.
+
+### `reply` Is a `respond` Synonym — Breaks Bare Assignments
+- **Bug:** `reply = ''` at page-top compiled to a RESPOND node. The tokenizer canonicalized `reply` → `respond` (it's in the `respond` synonym list for `send back`). Parser tried to parse `reply = ''` as `respond = ''` and failed.
+- **Workaround:** Use `answer`, `result`, `response` instead.
+- **Lesson:** Reserved-word synonyms aren't just keywords — they poison variable naming. Document common synonyms as names to avoid. Consider: `respond` handler should fall through to assignment when followed by `=`.
+
+### Client-Side Router Must Read `pathname`, Not Just `hash`
+- **Bug:** Multi-page apps silently broke on page refresh. Compiler emitted a router that read `location.hash.slice(1) || '/'`. But the iframe/server loads pages via pathname (`/new`), not hash. Hash is empty → router defaults to `/` → Blog page renders at `/new`.
+- **Fix:** Router now reads pathname first, falls back to hash for backward compat. Also: intercepts `<a href="/route">` clicks to use `history.pushState` (SPA nav), listens to `popstate` for back/forward, updates `document.title`.
+- **Lesson:** When declaring multi-route UI, test both direct URL navigation AND in-app link clicks. Hash-only routing breaks refresh.
+
+### Express 5 `sendFile` Wants `{ root }` Option
+- **Bug:** `res.sendFile(path.join(__dirname, 'index.html'))` worked for `/` but 404'd for `/new`. The `send` module that Express uses threw `NotFoundError` from `SendStream.pipe`. Absolute paths + non-root request URLs don't mix cleanly in send 1.x.
+- **Fix:** `res.sendFile('index.html', { root: __dirname })` — with the root option, send resolves safely regardless of request path.
+- **Lesson:** Whenever emitting static-file-serving code, always use the root option form. Never rely on absolute paths with sendFile in Express 5.
+
+### "The Variable Updated" Is Not Verification
+- **Bug:** I reported the route selector worked because `iframe.src` updated. It didn't. The iframe was showing the OLD page because the compiled client router didn't respond to pathname changes.
+- **Rule added:** `Test Before Declaring Done` in CLAUDE.md — verify user-visible outcome (rendered content, DOM heights, observable state), not DOM attribute writes.
+- **Lesson:** For every UI/flow claim, verify what a user would see. Check element heights, text content, or screenshot diff. Don't declare success from proxy signals.
+
+### Tests That Say "User Can ..." Must Be True for Users
+- **Bug:** Compiler auto-generated a test named `User can create a post and see it in the list` for every POST+GET endpoint pair. It was green. But blog-fullstack had zero UI buttons that POST to `/api/posts` — the test was testing API contract, not user flow. The name lied.
+- **Fix:** Walk the AST for `API_CALL` nodes with method='POST' and collect the URLs the frontend actually targets. CRUD flow tests now emit `UI: user can create X ...` only when a button is wired; otherwise `Endpoint: creating X via the API makes it appear in the list (no UI button wired)`. Also emit a compiler warning for POST endpoints with no UI wiring.
+- **Lesson:** Test names make promises. If a test name says "user can X" and X requires UI that doesn't exist, the test is misleading. Pattern: auto-detect the affordance before naming the test.
+
+### Streaming Should Be the Default
+- **Design call:** Users shouldn't need an extra `stream` keyword for agent responses — streaming IS the natural UX for any AI response. Made `ask claude 'X' with Y` at statement level emit SSE by default. Frontend `get X from URL with Y` auto-detects streaming endpoints (compiler builds a `streamingEndpoints` Set from the AST) and emits a streaming reader. Same syntax handles non-streaming POSTs (one-shot JSON). Explicit opt-out: `... without streaming` for cases where a downstream consumer needs the full text.
+- **Lesson:** Defaults should match the common case, not the less-used alternative. When we add a feature with an "opt-in keyword," ask: which is more common? Make that the default, make the other the keyword.
+
+### Non-Existent NodeType Silently Emits `/* ERROR */`
+- **Bug:** The `ask claude 'X' with Y` parser (both branches — bare and stream-prefixed) used `NodeType.STRING_LITERAL`, which doesn't exist. The correct constant is `NodeType.LITERAL_STRING`. The compiler's `exprToCode` had no case for `string_literal` so it fell through to a `/* ERROR */` stub. Every streaming endpoint was emitting `_askAIStream(/* ERROR */, context)` — never observed because no one had exercised the streaming path end-to-end.
+- **Fix:** Correct both code paths.
+- **Lesson:** Enums with similar names (`LITERAL_STRING` vs `STRING_LITERAL`) are a typo trap. The compiler's silent `/* ERROR */` fallback hid the bug for months. Make NodeType typos FAIL loudly, not silently.
+
+### Rich Text Editor Via Quill CDN
+- **Pattern:** New input type `text editor` (synonyms: `rich text editor`, `rich text`). HTML emits a `<div data-clear-rich-text="input_X">`; JS runtime detects those elements via `_initRichTextEditors()` and mounts Quill with a toolbar (headers, bold/italic/underline/strike, lists, links, blockquote, code). `text-change` handler writes editor.root.innerHTML to `_state[X]` so the rich HTML POSTs with the rest of the form.
+- **CDN:** `quill@2.0.3` — ~80KB gzipped. Loaded only when `hasRichText` is true in the compiled HTML.
+- **Lesson:** For pattern elements that need a third-party library, feature-detect at the ASK_FOR level, set a `has<Feature>` flag during HTML scaffolding, conditionally inject the CDN + init script. Keeps the footprint zero when unused.
+
+### PostTool Hook "A preview server is running" Is an Opportunity
+- **Observation:** The IDE notifies when preview is live. Every compiler change that would affect rendering should be verified visually before claiming success. Use `bridge` postMessage API (`read-dom`, `inspect`, `click`, `fill`) to drive real apps from Studio and assert rendered state.
+- **Pattern:** `bridge('inspect', { selector: '#X' })` returns `{ box: { width, height }, text }`. Height=0 means hidden. Text matches rendered content. This is cross-origin-safe because the bridge is already injected into every compiled app.
+
