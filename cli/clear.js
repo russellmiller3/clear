@@ -451,7 +451,20 @@ async function testCommand(args) {
       const needInstall = Object.keys(deps).some(d => !existsSync(resolve(buildDir, 'node_modules', d)));
       if (needInstall) {
         if (!flags.quiet) console.log('  Installing dependencies...');
-        try { execSync('npm install --production --silent', { cwd: buildDir, timeout: 30000, stdio: 'pipe' }); } catch {}
+        // npm install on Windows goes through cmd.exe and can be slow on first
+        // run (Defender scanning, fresh cache). 60s is a safer default than 30s.
+        // A quiet failure here means tests about to require() a missing module,
+        // so emit a warning when the install times out or errors.
+        const installTimeoutMs = Math.max(15000, Number(process.env.CLEAR_NPM_INSTALL_TIMEOUT_MS) || 60000);
+        try {
+          execSync('npm install --production --silent', { cwd: buildDir, timeout: installTimeoutMs, stdio: 'pipe' });
+        } catch (e) {
+          const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
+          if (!flags.quiet) {
+            if (timedOut) console.log(`  (npm install timed out after ${Math.round(installTimeoutMs / 1000)}s — continuing; tests may fail if deps are missing)`);
+            else console.log(`  (npm install failed: ${(e.message || '').slice(0, 140)} — continuing)`);
+          }
+        }
       }
 
       // Start server
@@ -489,22 +502,46 @@ async function testCommand(args) {
         }, 200);
       });
 
-      // Run tests
+      // Run tests. Timeout is generous (default 120s) because templates with
+      // agents make live `ask claude` calls that can each take 10–30 seconds.
+      // Windows surfaces execSync timeouts as the cryptic "spawnSync cmd.exe
+      // ETIMEDOUT" — catch that case explicitly and print something a human
+      // can act on. Users can override with CLEAR_TEST_TIMEOUT_MS for heavy
+      // suites (multi-agent research chains, LLM-graded evals, etc.).
+      const testTimeoutMs = Math.max(10000, Number(process.env.CLEAR_TEST_TIMEOUT_MS) || 120000);
       if (!flags.quiet) console.log('  Running tests...\n');
       try {
         const testEnv = { ...process.env, TEST_URL: `http://localhost:${port}`, JWT_SECRET: testJwtSecret, CLEAR_AUTH_SECRET: testJwtSecret };
-        const stdout = execSync(`node test.js`, { cwd: buildDir, encoding: 'utf8', timeout: 30000, env: testEnv });
+        const stdout = execSync(`node test.js`, { cwd: buildDir, encoding: 'utf8', timeout: testTimeoutMs, env: testEnv });
         process.stdout.write(stdout);
       } catch (e) {
         if (e.stdout) process.stdout.write(e.stdout);
-        if (e.status === 4) process.exit(4);
-        if (e.stderr) process.stderr.write(e.stderr);
+        if (e.status === 4) { server.kill('SIGTERM'); process.exit(4); }
+        // Node represents execSync timeouts with .signal === 'SIGTERM' and .code === 'ETIMEDOUT'
+        // on Windows; on other platforms .killed === true. Surface a plain message either way.
+        const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
+        if (timedOut) {
+          process.stderr.write(`\n  Tests exceeded the ${Math.round(testTimeoutMs / 1000)}s time limit.\n`);
+          process.stderr.write(`  Set CLEAR_TEST_TIMEOUT_MS to a higher value for long-running suites (e.g. agent chains).\n`);
+        } else if (e.stderr) {
+          process.stderr.write(e.stderr);
+        }
       } finally {
         server.kill('SIGTERM');
       }
     } else {
-      // Frontend-only app — run tests without server
-      execSync(`node test.js`, { cwd: buildDir, stdio: 'inherit', timeout: 30000 });
+      // Frontend-only app — run tests without server (no live API calls,
+      // so the default 30s timeout is usually plenty; still honor the override).
+      const testTimeoutMs = Math.max(10000, Number(process.env.CLEAR_TEST_TIMEOUT_MS) || 30000);
+      try {
+        execSync(`node test.js`, { cwd: buildDir, stdio: 'inherit', timeout: testTimeoutMs });
+      } catch (e) {
+        const timedOut = e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM');
+        if (timedOut) {
+          process.stderr.write(`\n  Tests exceeded the ${Math.round(testTimeoutMs / 1000)}s time limit (set CLEAR_TEST_TIMEOUT_MS to override).\n`);
+        }
+        if (e.status === 4) process.exit(4);
+      }
     }
     return;
   }

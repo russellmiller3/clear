@@ -348,10 +348,15 @@ function runTestProcess(source) {
   const tmpPath = join(BUILD_DIR, '_test-source-' + Date.now() + '.clear');
   mkdirSync(BUILD_DIR, { recursive: true });
   writeFileSync(tmpPath, source);
+  // Outer timeout wraps both npm install + server startup + actual test
+  // execution. Multi-agent templates with real `ask claude` E2E calls can
+  // easily push past 30s. 180s is generous enough for those without letting
+  // a truly hung run block the Studio UI forever. Override via env.
+  const outerTimeoutMs = Math.max(15000, Number(process.env.CLEAR_STUDIO_TEST_TIMEOUT_MS) || 180000);
   try {
     // Pass API key from Meph config so agent tests can call Claude
     const testEnv = { ...process.env, ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
-    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: 30000, maxBuffer: 5 * 1024 * 1024, env: testEnv });
+    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: outerTimeoutMs, maxBuffer: 5 * 1024 * 1024, env: testEnv });
     const parsed = parseTestOutput(stdout);
     return { ok: true, ...parsed, duration: Date.now() - start };
   } catch (err) {
@@ -366,6 +371,20 @@ function runTestProcess(source) {
       } catch {
         return { ok: false, error: (err.stdout || err.stderr || err.message).slice(0, 2000), duration: Date.now() - start };
       }
+    }
+    // Translate the cryptic "spawnSync C:\Windows\system32\cmd.exe ETIMEDOUT"
+    // that Node emits on Windows when execSync hits its timeout. On macOS/Linux
+    // it shows up as killed=true + signal=SIGTERM. Either way the user needs
+    // a message they can act on, not a stack trace pointing at cmd.exe.
+    const timedOut = err.code === 'ETIMEDOUT' || (err.killed && err.signal === 'SIGTERM');
+    if (timedOut) {
+      const secs = Math.round(outerTimeoutMs / 1000);
+      return {
+        ok: false,
+        error: `Test runner timed out after ${secs}s. Templates with live agent calls can be slow — try running fewer tests, or set CLEAR_STUDIO_TEST_TIMEOUT_MS to raise the limit.`,
+        timedOut: true,
+        duration: Date.now() - start,
+      };
     }
     return { ok: false, error: (err.stderr || err.message || 'Test runner failed').slice(0, 2000), duration: Date.now() - start };
   } finally {
@@ -1003,21 +1022,29 @@ function renderEvalReportMarkdown({ source, suite, results, meta }) {
         lines.push(`**Cost:** $${(r.usage.costUSD || 0).toFixed(5)} — ${r.usage.inTok || 0} input / ${r.usage.outTok || 0} output tokens · ${r.usage.provider || ''}/${r.usage.model || ''}`);
       }
       lines.push('');
-      // Criteria
+      // Criteria — rubric leads if present, shape check demotes to footnote.
+      // Matches the Studio UI so exported reports read the same way.
       const crit = [];
+      const critFootnotes = [];
+      const hasRubric = !!spec.rubric;
+      if (spec.rubric) crit.push(spec.rubric);
       if (spec.expected?.kind === 'fields' && spec.expected.fields?.length) {
         crit.push('Expected shape — object with fields: ' + spec.expected.fields.map(f => `${f.name} (${f.type || 'text'})`).join(', '));
       } else if (spec.expected?.kind === 'non-empty') {
-        crit.push('Expected — any non-empty response from the endpoint.');
+        if (hasRubric) critFootnotes.push('Also validated: endpoint returned a non-empty response.');
+        else crit.push('Expected — any non-empty response from the endpoint.');
       }
-      if (spec.rubric) crit.push(spec.rubric);
       if (spec.note) crit.push(spec.note);
-      if (crit.length) {
+      if (crit.length || critFootnotes.length) {
         lines.push('**Criteria:**');
         lines.push('');
         lines.push('```');
-        lines.push(crit.join('\n\n'));
+        if (crit.length) lines.push(crit.join('\n\n'));
         lines.push('```');
+        if (critFootnotes.length) {
+          lines.push('');
+          lines.push('*' + critFootnotes.join(' · ') + '*');
+        }
         lines.push('');
       }
       if (spec.input !== undefined) {

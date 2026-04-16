@@ -207,6 +207,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .eval-detail-label { font-size: 10px; font-weight: 700; color: var(--tx3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 .eval-detail-tag { font-size: 9px; padding: 1px 5px; border-radius: 2px; background: var(--bg3); color: var(--tx3); margin-left: 4px; }
 .eval-detail-body { font-family: var(--mono); font-size: 11px; background: var(--bg); border: 1px solid var(--bd2); border-radius: 4px; padding: 8px; color: var(--tx2); white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; margin: 0; }
+.eval-detail-footnote { font-family: var(--font); font-size: 10px; color: var(--tx3); font-style: italic; margin-top: 4px; padding: 0 2px; }
 /* Meph todo widget */
 #meph-todos { border-bottom: 1px solid var(--bd); font-size: 11px; font-family: var(--mono); max-height: 180px; overflow: auto; }
 #meph-todos:empty { display: none; }
@@ -331,6 +332,11 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #chat-send:disabled { opacity: .3; cursor: default; transform: none; box-shadow: none; }
 #chat-stop { background: var(--red, #f43f5e); color: #fff; border: none; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 700; font-family: var(--font); cursor: pointer; transition: all .15s; }
 #chat-stop:hover { opacity: .85; transform: translateY(-1px); }
+#chat-mic:hover { background: var(--bg); border-color: var(--accent); }
+#chat-mic.recording { background: #f43f5e; border-color: #f43f5e; color: #fff; animation: mic-pulse 1.2s ease-in-out infinite; }
+@keyframes mic-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(244,63,94,.55); } 50% { box-shadow: 0 0 0 7px rgba(244,63,94,0); } }
+#voice-toggle-label.on { color: var(--accent) !important; }
+#voice-status.speaking::before { content: '● '; color: var(--accent); animation: mic-pulse 1.2s ease-in-out infinite; }
 #personality-setup { padding: 20px; color: var(--tx3); font-family: var(--font); display: flex; flex-direction: column; gap: 10px; height: 100%; }
 #personality-setup textarea { background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 10px; width: 100%; flex: 1; min-height: 120px; font-family: var(--font); font-size: 12px; resize: none; transition: border-color .15s; line-height: 1.5; }
 #personality-setup textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -495,14 +501,20 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <button id="chat-scroll-btn" onclick="scrollChatToBottom()" title="Scroll to bottom">↓ Latest</button>
     <div id="chat-input-area">
       <textarea id="chat-input" rows="2" placeholder="Ask Meph to build something... (Enter to send)"></textarea>
+      <button id="chat-mic" onclick="toggleMic()" title="Speak to Meph (voice mode)" style="display:none;background:var(--bg3);color:var(--tx);border:1px solid var(--bd2);border-radius:10px;padding:10px 12px;font-size:15px;cursor:pointer;transition:all .15s;">🎙</button>
       <button id="chat-send" onclick="sendChat()">Send</button>
       <button id="chat-stop" onclick="stopChat()" style="display:none">Stop</button>
     </div>
-    <div style="padding:6px 16px 8px;border-top:1px solid var(--bd);background:var(--bg2);display:flex;align-items:center;gap:6px;">
+    <div style="padding:6px 16px 8px;border-top:1px solid var(--bd);background:var(--bg2);display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
       <label id="web-toggle-label" title="Enable web search + fetch — Meph can search the web and read any URL" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
         <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
         🌐 Web search + fetch
       </label>
+      <label id="voice-toggle-label" title="Voice mode — Meph speaks his replies and you can talk to him via the microphone" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
+        <input type="checkbox" id="voice-toggle" style="cursor:pointer;" onchange="updateVoiceToggle()">
+        🔊 Voice mode
+      </label>
+      <span id="voice-status" style="font-size:10px;color:var(--tx3);font-family:var(--mono);"></span>
     </div>
   </div>
 
@@ -1831,15 +1843,27 @@ function renderEvalSection(data) {
     // triggered the failure, then the criteria it was graded against —
     // that's the order a debugger wants to read.
     if (shouldExpand) {
+      // Criteria ordering matters. The LLM rubric is the real test — what the
+      // grader actually reasoned about. The shape check ("non-empty response")
+      // is a deterministic pre-check that's almost always implicit, so when
+      // a rubric exists we show the rubric first and demote the shape line to
+      // a quiet footnote. If there's no rubric, the shape check IS the test
+      // and earns top billing.
       const criteriaLines = [];
+      const footnotes = [];
+      const hasRubric = !!spec.rubric;
+      if (spec.rubric) criteriaLines.push(spec.rubric);
       if (spec.expected) {
         if (spec.expected.kind === 'fields' && spec.expected.fields?.length) {
-          criteriaLines.push('Expected shape — an object with fields: ' + spec.expected.fields.map(f => `${f.name} (${f.type || 'text'})`).join(', '));
+          const shape = 'Expected shape — an object with fields: ' + spec.expected.fields.map(f => `${f.name} (${f.type || 'text'})`).join(', ');
+          // Field shape is a real structural contract, keep it primary even with a rubric
+          criteriaLines.push(shape);
         } else if (spec.expected.kind === 'non-empty') {
-          criteriaLines.push('Expected — any non-empty response from the endpoint.');
+          // Non-empty is a baseline sanity check — always a footnote when a rubric leads
+          if (hasRubric) footnotes.push('Also validated: endpoint returned a non-empty response.');
+          else criteriaLines.push('Expected — any non-empty response from the endpoint.');
         }
       }
-      if (spec.rubric) criteriaLines.push(spec.rubric);
       if (spec.note) criteriaLines.push(spec.note);
 
       const outputBlock = r?.output !== undefined
@@ -1861,8 +1885,13 @@ function renderEvalSection(data) {
       const usageBlock = (r?.usage)
         ? `<div class="eval-detail-block"><div class="eval-detail-label">Tokens + cost</div><pre class="eval-detail-body">${r.usage.inTok || 0} input, ${r.usage.outTok || 0} output = $${(r.usage.costUSD || 0).toFixed(5)}</pre></div>`
         : '';
-      const criteriaBlock = criteriaLines.length
-        ? `<div class="eval-detail-block"><div class="eval-detail-label">Grading criteria</div><pre class="eval-detail-body">${escHtml(criteriaLines.join('\n\n'))}</pre></div>`
+      // Footnotes render in dim text below the main criteria so they read as
+      // "also true, but not the main test." Keeps the rubric visually primary.
+      const footnoteHtml = footnotes.length
+        ? `<div class="eval-detail-footnote">${escHtml(footnotes.join(' · '))}</div>`
+        : '';
+      const criteriaBlock = (criteriaLines.length || footnotes.length)
+        ? `<div class="eval-detail-block"><div class="eval-detail-label">Grading criteria</div>${criteriaLines.length ? `<pre class="eval-detail-body">${escHtml(criteriaLines.join('\n\n'))}</pre>` : ''}${footnoteHtml}</div>`
         : '';
       const pathTag = spec.synthetic ? ' <span class="eval-detail-tag">synthetic</span>' : '';
       const endpointBlock = spec.endpointPath
@@ -2713,6 +2742,326 @@ window.updateWebToggle = function() {
 };
 
 // ==========================================================================
+// VOICE MODE — always-on speech in + speech out for Meph
+// ==========================================================================
+// Once toggled on, the mic stays live. You talk → words land in the input
+// → when you stop speaking it auto-sends. Meph's replies are spoken aloud
+// in an elegant British voice. The mic auto-pauses while Meph is speaking
+// so it doesn't hear itself, then resumes. Toggle off to go quiet.
+//
+// Tone note: the Anthropic API takes text + images, not audio. We transcribe
+// your voice to text with the browser's SpeechRecognition, so tone/emotion
+// is lost in the hop. If we later want tone preservation we'd need to add
+// a side classifier or upgrade to a realtime audio API.
+window._voice = {
+  on: false,               // voice mode toggle
+  rec: null,               // SpeechRecognition instance
+  recActive: false,        // is the recognizer currently listening?
+  wantListening: false,    // should it be listening right now (paused while Meph speaks)
+  restartTimer: null,      // scheduled auto-restart after end
+  interim: '',             // interim transcript preview
+  final: '',               // finalized transcript accumulated since last send
+  silenceTimer: null,      // silence → auto-send timer
+  voice: null,             // chosen SpeechSynthesisVoice
+  speakQueue: '',          // unspoken text buffered between sentence boundaries
+  isSpeaking: false,       // synthesis currently vocalizing
+  lastMsgIdx: -1,          // index of last assistant msg we started speaking for
+};
+
+// Pick the most elegant/refined available voice — British English female first,
+// then other British voices, then anything en-* that sounds neutral. Voice list
+// arrives asynchronously in most browsers, so this can be called multiple times.
+function pickElegantVoice() {
+  if (!('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  // Ranked preference — exact matches first, then loose contains
+  const ranked = [
+    // Tier 1: cultured British male voices — ideal for Mephistopheles
+    v => v.name === 'Google UK English Male',
+    v => v.name === 'Microsoft Ryan Online (Natural) - English (United Kingdom)',
+    v => v.name === 'Microsoft Thomas Online (Natural) - English (United Kingdom)',
+    v => v.name === 'Microsoft George - English (United Kingdom)',
+    v => /Ryan|Thomas|George|Oliver|Arthur|Daniel/i.test(v.name) && /en.GB|en_GB|en-gb/i.test(v.lang || ''),
+    v => v.lang === 'en-GB' && /male/i.test(v.name) && !/female/i.test(v.name),
+    v => v.name === 'Daniel',                              // macOS British male
+    v => v.lang === 'en-GB',                               // any British voice as a last UK option
+    // Tier 2: refined non-British male voices
+    v => v.name === 'Microsoft Guy Online (Natural) - English (United States)',
+    v => v.name === 'Microsoft Davis Online (Natural) - English (United States)',
+    v => /Alex|Fred|Tom|Aaron|Evan/i.test(v.name) && /^en/i.test(v.lang || ''),
+    // Tier 3: prefer any male-sounding voice before generic fallback (David > Zira for Meph)
+    v => /David|Mark|Guy|Davis|Male/i.test(v.name) && /^en/i.test(v.lang || ''),
+    // Tier 4: any en- voice as last resort
+    v => /^en/i.test(v.lang || ''),
+  ];
+  for (const pred of ranked) {
+    const hit = voices.find(pred);
+    if (hit) return hit;
+  }
+  return voices[0];
+}
+
+// Speak a chunk of prose with the chosen voice. Queues up if busy.
+function speakSentence(text) {
+  if (!('speechSynthesis' in window)) return;
+  text = text.replace(/\s+/g, ' ').trim();
+  if (!text) return;
+  const u = new SpeechSynthesisUtterance(text);
+  if (window._voice.voice) u.voice = window._voice.voice;
+  u.rate = 0.98;    // a touch slower than default feels poised
+  u.pitch = 1.0;
+  u.volume = 1.0;
+  u.onstart = () => {
+    window._voice.isSpeaking = true;
+    pauseListeningForSpeech();
+    const s = document.getElementById('voice-status');
+    if (s) { s.textContent = 'speaking…'; s.classList.add('speaking'); }
+  };
+  u.onend = u.onerror = () => {
+    // Wait until ALL queued utterances finish before resuming mic
+    if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+      window._voice.isSpeaking = false;
+      const s = document.getElementById('voice-status');
+      if (s) { s.textContent = window._voice.on ? 'listening…' : ''; s.classList.remove('speaking'); }
+      resumeListeningAfterSpeech();
+    }
+  };
+  window.speechSynthesis.speak(u);
+}
+
+// Strip markdown/code noise before vocalizing so Meph doesn't spell out `*`
+function cleanForTTS(s) {
+  return s
+    .replace(/```[\s\S]*?```/g, ' (code block) ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+// Buffer streamed text deltas, speak at sentence boundaries so speech isn't jittery.
+function pushSpeakChunk(delta) {
+  if (!window._voice.on) return;
+  window._voice.speakQueue += delta;
+  // Look for sentence-ish boundaries: . ! ? followed by space or end, or newline
+  const boundary = /([.!?])(\s|$)|\n+/;
+  let m;
+  while ((m = window._voice.speakQueue.match(boundary))) {
+    const cut = m.index + m[0].length;
+    const sentence = window._voice.speakQueue.slice(0, cut);
+    window._voice.speakQueue = window._voice.speakQueue.slice(cut);
+    speakSentence(cleanForTTS(sentence));
+  }
+}
+
+// Drain any leftover prose when the stream finishes
+function flushSpeakBuffer() {
+  if (!window._voice.on) return;
+  const tail = cleanForTTS(window._voice.speakQueue).trim();
+  window._voice.speakQueue = '';
+  if (tail) speakSentence(tail);
+}
+
+function cancelAllSpeech() {
+  window._voice.speakQueue = '';
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  window._voice.isSpeaking = false;
+  const s = document.getElementById('voice-status');
+  if (s) { s.classList.remove('speaking'); s.textContent = window._voice.on ? 'listening…' : ''; }
+}
+
+// ---- Speech recognition (continuous, auto-restart) ----
+function buildRecognizer() {
+  const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Ctor) return null;
+  const rec = new Ctor();
+  rec.lang = 'en-US';
+  rec.interimResults = true;
+  rec.continuous = true;   // keep going instead of stopping after one utterance
+  rec.maxAlternatives = 1;
+
+  rec.onstart = () => {
+    window._voice.recActive = true;
+    const s = document.getElementById('voice-status');
+    if (s && !window._voice.isSpeaking) s.textContent = 'listening…';
+    const btn = document.getElementById('chat-mic');
+    if (btn) btn.classList.add('recording');
+  };
+
+  rec.onend = () => {
+    window._voice.recActive = false;
+    const btn = document.getElementById('chat-mic');
+    if (btn) btn.classList.remove('recording');
+    // Auto-restart if the user is still in voice mode and Meph isn't speaking
+    if (window._voice.on && window._voice.wantListening && !window._voice.isSpeaking) {
+      clearTimeout(window._voice.restartTimer);
+      window._voice.restartTimer = setTimeout(() => {
+        try { rec.start(); } catch (e) { /* already started */ }
+      }, 250);
+    }
+  };
+
+  rec.onerror = ev => {
+    // "no-speech" and "aborted" are normal — just let onend handle restart
+    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+      window._voice.on = false;
+      const cb = document.getElementById('voice-toggle');
+      if (cb) cb.checked = false;
+      updateVoiceToggle();
+      alert('Microphone access denied. Enable it in browser settings to use voice mode.');
+    }
+  };
+
+  rec.onresult = ev => {
+    let interim = '';
+    let finalChunk = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const res = ev.results[i];
+      if (res.isFinal) finalChunk += res[0].transcript;
+      else interim += res[0].transcript;
+    }
+    const input = document.getElementById('chat-input');
+    if (finalChunk) {
+      window._voice.final += (window._voice.final ? ' ' : '') + finalChunk.trim();
+    }
+    window._voice.interim = interim;
+    if (input) {
+      const combined = (window._voice.final + ' ' + interim).trim();
+      input.value = combined;
+    }
+    // Reset the silence → send timer whenever new audio arrives
+    clearTimeout(window._voice.silenceTimer);
+    if (window._voice.final) {
+      window._voice.silenceTimer = setTimeout(() => {
+        // Auto-send if there is finalized text and the user stopped talking
+        const t = (window._voice.final || '').trim();
+        if (t && !window._voice.isSpeaking) {
+          window._voice.final = '';
+          window._voice.interim = '';
+          const input = document.getElementById('chat-input');
+          if (input) input.value = t;
+          window.sendChat();
+        }
+      }, 1200); // 1.2s of silence counts as "done talking"
+    }
+  };
+
+  return rec;
+}
+
+function startListening() {
+  if (!window._voice.rec) window._voice.rec = buildRecognizer();
+  if (!window._voice.rec) return;
+  window._voice.wantListening = true;
+  if (!window._voice.recActive) {
+    try { window._voice.rec.start(); } catch (e) { /* already starting */ }
+  }
+}
+
+function stopListening() {
+  window._voice.wantListening = false;
+  clearTimeout(window._voice.restartTimer);
+  clearTimeout(window._voice.silenceTimer);
+  if (window._voice.rec && window._voice.recActive) {
+    try { window._voice.rec.stop(); } catch (e) {}
+  }
+  const btn = document.getElementById('chat-mic');
+  if (btn) btn.classList.remove('recording');
+}
+
+function pauseListeningForSpeech() {
+  // Meph is talking — don't listen, we'd hear ourselves
+  clearTimeout(window._voice.restartTimer);
+  clearTimeout(window._voice.silenceTimer);
+  if (window._voice.rec && window._voice.recActive) {
+    try { window._voice.rec.abort(); } catch (e) {}
+  }
+}
+
+function resumeListeningAfterSpeech() {
+  if (window._voice.on && window._voice.wantListening) {
+    setTimeout(() => {
+      if (window._voice.on && window._voice.wantListening && !window._voice.isSpeaking) {
+        try { window._voice.rec && window._voice.rec.start(); } catch (e) {}
+      }
+    }, 400); // small grace period so the tail of TTS isn't caught
+  }
+}
+
+window.updateVoiceToggle = function() {
+  const cb = document.getElementById('voice-toggle');
+  const label = document.getElementById('voice-toggle-label');
+  const mic = document.getElementById('chat-mic');
+  const status = document.getElementById('voice-status');
+  window._voice.on = !!(cb && cb.checked);
+  try { localStorage.setItem('clear.voiceMode', window._voice.on ? '1' : '0'); } catch (e) {}
+
+  if (label) label.classList.toggle('on', window._voice.on);
+  if (mic) mic.style.display = window._voice.on ? '' : 'none';
+
+  const hasTTS = 'speechSynthesis' in window;
+  const hasSTT = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  if (window._voice.on) {
+    if (!hasTTS || !hasSTT) {
+      alert('Your browser does not support the Web Speech API. Try Chrome or Edge.');
+      cb.checked = false;
+      window._voice.on = false;
+      if (label) label.classList.remove('on');
+      if (mic) mic.style.display = 'none';
+      return;
+    }
+    // Load voice — may be async; listen for voiceschanged
+    window._voice.voice = pickElegantVoice();
+    if (!window._voice.voice && 'onvoiceschanged' in window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window._voice.voice = pickElegantVoice();
+      };
+    }
+    if (status) status.textContent = 'listening…';
+    startListening();
+  } else {
+    if (status) { status.textContent = ''; status.classList.remove('speaking'); }
+    cancelAllSpeech();
+    stopListening();
+  }
+};
+
+// Mic button is a second way to force-toggle listening (useful if browser
+// auto-stopped the recognizer after a long silence and needs a kick).
+window.toggleMic = function() {
+  if (!window._voice.on) {
+    const cb = document.getElementById('voice-toggle');
+    if (cb) { cb.checked = true; updateVoiceToggle(); }
+    return;
+  }
+  if (window._voice.recActive) stopListening();
+  else startListening();
+};
+
+// Restore voice toggle state on load
+try {
+  if (localStorage.getItem('clear.voiceMode') === '1') {
+    // Defer until DOM is ready — checkbox may not exist yet
+    setTimeout(() => {
+      const cb = document.getElementById('voice-toggle');
+      if (cb) { cb.checked = true; updateVoiceToggle(); }
+    }, 500);
+  }
+} catch (e) {}
+
+// Pre-warm voice list so pickElegantVoice returns something on first toggle
+if ('speechSynthesis' in window) {
+  try { window.speechSynthesis.getVoices(); } catch (e) {}
+}
+
+// ==========================================================================
 // MARKDOWN RENDERER
 // ==========================================================================
 function markdownToHtml(text) {
@@ -3161,6 +3510,8 @@ window.removeImage = function(i) {
 let currentAbort = null;
 window.stopChat = function() {
   if (currentAbort) currentAbort.abort();
+  // Kill any in-flight speech so Meph stops mid-sentence
+  try { cancelAllSpeech(); } catch (e) {}
 };
 
 window.sendChat = async function() {
@@ -3187,6 +3538,9 @@ window.sendChat = async function() {
   } else {
     userContent = msg;
   }
+
+  // New send → stop any TTS that's still running from the previous reply
+  try { cancelAllSpeech(); } catch (e) {}
 
   chatMessages.push({ role: 'user', content: userContent, _idx: chatMessages.length });
   renderChat();
@@ -3305,6 +3659,8 @@ window.sendChat = async function() {
           if (last && last.type === 'text') { last.text += ev.delta; }
           else { am.timeline.push({ type: 'text', text: ev.delta }); }
           updateLastMsg();
+          // Voice mode: speak Meph's prose as it arrives, sentence by sentence
+          try { pushSpeakChunk(ev.delta); } catch (e) {}
         } else if (ev.type === 'tool_start') {
           am.toolSteps.push({ name: ev.name, summary: ev.summary || ev.name });
           am.timeline.push({ type: 'tool', name: ev.name, summary: ev.summary || ev.name, done: false });
@@ -3370,6 +3726,8 @@ window.sendChat = async function() {
         } else if (ev.type === 'done') {
           am.streaming = false;
           updateLastMsg();
+          // Voice mode: drain any unspoken tail so the last sentence isn't swallowed
+          try { flushSpeakBuffer(); } catch (e) {}
         } else if (ev.type === 'error') {
           am.content += (am.content ? '\n\n' : '') + 'Error: ' + ev.message;
           am.streaming = false;

@@ -1,3 +1,35 @@
+# Handoff — 2026-04-16 (Session 34 — Meph voice mode + session 33 deferred items)
+
+## Shipped this session (on `main`)
+
+- **Meph voice mode in Studio.** Toggle at the bottom of the chat pane (🔊 Voice mode). Once on, the mic listens continuously — say something, pause for 1.2s, it auto-sends. Meph's replies speak aloud sentence-by-sentence as they stream in. Mic auto-pauses while he's talking so it doesn't hear itself, auto-resumes after. All zero-deps Web Speech API — works in Chrome/Edge. Voice picker prefers British male voices (Google UK English Male, Microsoft Ryan Online Natural, Microsoft Thomas, George) with refined US fallbacks. Stop button kills both API stream and in-flight speech. State persists across reloads via localStorage.
+- **Eval criteria display fixed** (session 33 deferred #2). Rubric now leads, shape check drops to a dim italic footnote ("Also validated: endpoint returned a non-empty response."). Applied to both the Studio Tests pane and the exported Markdown report. Field-shape checks stay primary because they're real structural contracts.
+- **Windows spawnSync ETIMEDOUT fixed** (session 33 deferred #1). Test runner timeouts bumped from 30s to 120s (CLI) / 180s (Studio wrapper), overridable via `CLEAR_TEST_TIMEOUT_MS` / `CLEAR_STUDIO_TEST_TIMEOUT_MS`. `npm install` timeout bumped to 60s via `CLEAR_NPM_INSTALL_TIMEOUT_MS`. Cryptic cmd.exe errors translated to plain English: "Test runner timed out after 180s. Templates with live agent calls can be slow — set CLEAR_STUDIO_TEST_TIMEOUT_MS to raise the limit." Un-swallowed the silent npm install catch so missing-dependency failures are visible.
+
+Tests: 1914/0 compiler. Server tests match baseline (171 pass, 16 pre-existing failures unrelated to this session).
+
+## Deferred — next session
+
+Nothing new deferred from this session. Session 32 open claws (streaming endpoint probes returning empty body, `ask claude with var` inside `repeat until` dropping variable content, `patch_code` JSON serialization bug) remain open.
+
+## Key decisions
+
+- **Audio input for Meph: not worth it yet.** Claude's Messages API takes text + images + PDFs, not audio. Tone is lost when transcribing voice to text. Could bolt on a side-classifier to emit `[tone: X]` hints, but that's janky and Meph does fine on raw words. If this becomes a paid feature, upgrade STT (Deepgram/AssemblyAI) and TTS (ElevenLabs) in one sweep — don't layer piecemeal.
+- **Voice gender: Meph is male.** Initial draft picked British female voices because "elegant and refined" reads female-coded in English. Corrected to baritone — Mephistopheles is a male persona, a Ryan/Thomas/George Natural voice fits the theatrical literary reference.
+- **Timeout tuning: raise defaults, expose env overrides.** The old 30s didn't account for templates that make live `ask claude` calls (10–30s each × N agents). Could have added retry-with-backoff but that hides real problems — better to give headroom and surface clean errors when the headroom's exhausted.
+
+## Resume prompt
+
+Read HANDOFF.md, PHILOSOPHY.md, then CLAUDE.md.
+
+Session 34 shipped Meph voice mode + polished the two deferred items from session 33. Studio now has conversational voice UX — toggle once, stays on, elegant male British voice. Test runner on Windows no longer shows cryptic spawnSync errors.
+
+Top open-claws (from session 32): streaming endpoint probes return empty body (widest blast radius — any agent SSE endpoint scores zero), `ask claude with var` inside `repeat until` drops the variable value (breaks iterative-refinement agents), `patch_code` tool crashes with object-not-JSON error.
+
+Studio: `node playground/server.js` → http://localhost:3456. Eval suite: Tests tab → Run Evals.
+
+---
+
 # Handoff — 2026-04-16 (Session 33 — eval UI polish + compiler caller/callee + probe shape)
 
 ## Shipped this session (on `main`)
