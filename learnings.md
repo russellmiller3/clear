@@ -1009,3 +1009,29 @@ User actions, Meph tool calls, browser console errors all mirrored into `termina
 - **Observation:** The IDE notifies when preview is live. Every compiler change that would affect rendering should be verified visually before claiming success. Use `bridge` postMessage API (`read-dom`, `inspect`, `click`, `fill`) to drive real apps from Studio and assert rendered state.
 - **Pattern:** `bridge('inspect', { selector: '#X' })` returns `{ box: { width, height }, text }`. Height=0 means hidden. Text matches rendered content. This is cross-origin-safe because the bridge is already injected into every compiled app.
 
+## Session 34: Evals Pass End-to-End (2026-04-16)
+
+### Probe Builder Must Honor `validate incoming:` Required Fields
+- **Bug:** Auto-probes wrapped the agent-receiving-var value at one level and fed that as the POST body. Endpoints with `validate page_data: url is text, required` saw `{page_data: 'hello'}` and returned HTTP 400 "url is required" before the agent ever ran. page-analyzer + lead-scorer scored 0/3 across all specs for this reason — SSE fix had been masking it because everything was also "empty body."
+- **Fix:** New `buildEndpointBody(ep, agent, probe)` helper reads the endpoint's validate block, extracts required-field metadata, and overlays sample values at the top level of the probe body. Called from both the e2e-spec builder and the role/format-spec builder so all 3 per-endpoint specs include the same required fields.
+- **Lesson:** When an app has multiple contracts on the same data (agent expects shape A, endpoint validates shape B), the OUTER contract is the gate. Probes must satisfy the gate before the inner contract gets to run. Always follow the request shape outward-in.
+
+### "sample company" Makes Claude Refuse
+- **Bug:** The field-level sample generator emitted strings like `"sample company"` / `"sample email"`. Real Claude calls against those refused: "I can't rate a company called 'sample company' without more context about their product, market, or financials." Every lead-scorer probe hit this; the AGENT emitted an error the endpoint caught and returned 400.
+- **Fix:** Specific concrete values per field name. `company → 'Acme Corp'`, `topic → 'quantum computing'`, `industry → 'SaaS'`, `email → 'alice@example.com'`, etc. Keeps the generator hard-coded (not LLM-generated) but gives grounded values the agent can reason about.
+- **Lesson:** "Generic but unique" values feel safe but fail against LLM-backed agents. Claude treats suspicious placeholders as intentional ambiguity and refuses. Pick names that sound like real-world inputs.
+
+### `killEvalChild()` Sync Kill Races the Next Spawn
+- **Bug:** Switching templates between eval runs consistently produced "Network error: fetch failed" on every probe. Cause: `killEvalChild()` sent SIGTERM and returned immediately. `ensureEvalChild()` then wrote to `BUILD_DIR/server.js` and spawned a new child on port 4999 while the old process was still dying and holding the port. New child's `app.listen(4999)` failed with EADDRINUSE → exited silently → every probe hit a dead socket.
+- **Fix:** Added `killEvalChildAndWait()` that awaits the child's `exit` event, with a 2s SIGKILL fallback, plus a 200ms OS-socket grace period (Windows specifically holds ports briefly after process exit). Called from `ensureEvalChild` before the spawn and from `_runEvalSuiteImpl` before full-suite DB wipes.
+- **Lesson:** Any sync "kill then spawn on same port" pattern is a race. On Windows doubly so. Always await exit + a small grace period, or the second spawn will lose to port-release latency.
+
+### Eval Child Idle Timer Must Outlast the Longest Suite
+- **Bug:** `EVAL_IDLE_MS = 60_000` reaped the child mid-run when a multi-agent-research suite (3+ min) had a grader burst that happened to span 60s between probe hits. Every spec after that timer fired returned "fetch failed" (port dead). `resetEvalIdleTimer()` is called per-request, but if the grader takes longer than the idle window between requests, the window closes.
+- **Fix:** Bumped to 300s (5 min). Covers any realistic suite without meaningfully hurting idle cleanup (child still gets reaped when Studio actually goes idle).
+- **Lesson:** Idle timeouts between scheduled activities must exceed the longest legit activity gap, not just the median. If graded evals take 5-10s each and there are 17 of them with inter-spec pauses, 60s is too tight. Pick a ceiling from the longest legitimate use case.
+
+### Dependent Fixes Surface in Dependency Order
+- **Pattern:** Fixing the SSE structured-payload drain (session 34 early) looked like it helped only 1 template out of 5. But it UNMASKED three other bugs: generic probe shapes, sampled-value refusals, shutdown races. Each had been hiding behind "empty response from streaming endpoint." Fixing them in order got every template to pass.
+- **Lesson:** When a single bug has wide blast radius, fixing it is a force multiplier — but expect cascading discovery. Budget time for 2-3 follow-up bugs that the first fix was hiding. Prioritize fixes that unblock more surface area over those that fix one spec.
+
