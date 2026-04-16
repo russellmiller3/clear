@@ -292,6 +292,12 @@ When introducing new syntax or synonyms, ALWAYS compile all 8 core templates to 
 node -e "import { compileProgram } from './index.js'; import fs from 'fs'; ['todo-fullstack','crm-pro','blog-fullstack','live-chat','helpdesk-agent','booking','expense-tracker','ecom-agent'].forEach(a => { const r = compileProgram(fs.readFileSync('apps/'+a+'/main.clear','utf8')); console.log(a+': '+r.errors.length+' errors, '+r.warnings.length+' warnings'); });"
 ```
 
+## Review Learnings Before Working (MANDATORY)
+Scan `learnings.md` TOC before starting any work — not just at session start, but before each new task. Every section is a bug someone already hit. If you're about to touch the compiler, parser, eval runner, or agent codegen, check whether learnings.md has a gotcha for that area. Saves you from re-discovering the same trap.
+
+## Test in Clear Studio (MANDATORY)
+Do all testing by running the app in Clear Studio — compile, run, click Run Tests, click Run Evals — and verify the output in the actual UI. Don't rely on harness scripts or compiler tests alone. The real errors Russell sees come from the Studio environment (Windows paths, spawn timeouts, live compilation, browser rendering). If you skip Studio, you miss the same bugs he'll hit.
+
 ## Known Issues
 - Browser server may 404 on some routes (untested in real browser)
 - Playground styling needs visual verification

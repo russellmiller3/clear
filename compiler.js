@@ -2239,11 +2239,20 @@ function generateE2ETests(body) {
       if (!callingEp) continue;
       const epHeaders = callingEp.hasAuth ? 'AUTH_HEADERS' : '{ "Content-Type": "application/json" }';
 
-      // Test 1: Agent responds to a message
+      // Test 1: Agent responds to a message.
+      // The endpoint unpacks whatever field the .clear source declared — e.g.
+      // `when user sends request to /api/research: call 'Research Topic'
+      // with request's topic` expects `{ topic: ... }`, not `{ message: ... }`.
+      // Use the agent's declared receiving variable name so the probe body
+      // matches the endpoint's expected shape. Falls back to "message" for
+      // agents with no receivingVar.
+      const recvVar = agent.receivingVar || 'message';
+      const probeVal = JSON.stringify('Hello, what can you help me with?');
+      const probeBody = `JSON.stringify({ ${JSON.stringify(recvVar)}: ${probeVal} })`;
       lines.push(`  await test("The ${agentName} agent responds to messages", async () => {`);
       lines.push(`    const r = await fetch(BASE + "${callingEp.path}", {`);
       lines.push(`      method: "POST", headers: ${epHeaders},`);
-      lines.push(`      body: JSON.stringify({ message: "Hello, what can you help me with?" })`);
+      lines.push(`      body: ${probeBody}`);
       lines.push(`    });`);
       lines.push(`    assert(r.status >= 200 && r.status < 300, "Agent should respond, got " + r.status);`);
       lines.push(`  });`);
@@ -2254,7 +2263,7 @@ function generateE2ETests(body) {
         lines.push(`  await test("The ${agentName} agent requires login", async () => {`);
         lines.push(`    const r = await fetch(BASE + "${callingEp.path}", {`);
         lines.push(`      method: "POST", headers: { "Content-Type": "application/json" },`);
-        lines.push(`      body: JSON.stringify({ message: "test" })`);
+        lines.push(`      body: JSON.stringify({ ${JSON.stringify(recvVar)}: "test" })`);
         lines.push(`    });`);
         lines.push(`    assert(r.status === 401, "Agent should require login, got " + r.status);`);
         lines.push(`  });`);
@@ -3302,8 +3311,17 @@ function compileCrud(node, ctx, pad) {
           `${pad}if (!${existingVar}) await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
       }
     }
-    if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
-    if (node.isInsert) return `${pad}await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${tryCtx});${lineComment}`;
+    // "with field is value" overrides — merge local variables on top of the
+    // picked request fields. e.g. `save request as new Report with report is
+    // final_report` → { ...picked_from_request, report: final_report }.
+    const picked = `_pick(${varCode}, ${schemaName})`;
+    let insertArg = picked;
+    if (node.overrides && node.overrides.length > 0) {
+      const spreads = node.overrides.map(o => `${sanitizeName(o.field)}: ${sanitizeName(o.value)}`).join(', ');
+      insertArg = `{ ...${picked}, ${spreads} }`;
+    }
+    if (node.resultVar) return `${pad}const ${sanitizeName(node.resultVar)} = await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
+    if (node.isInsert) return `${pad}await _clearTry(() => db.insert('${table}', ${insertArg}), ${tryCtx});${lineComment}`;
     // In PUT endpoints with :id, inject the URL param so db.update finds the right record
     const updateCtx = `{ op: 'update', table: '${table}', line: ${node.line}, file: '${srcFile}', source: ${JSON.stringify(node._rawSource || '')} }`;
     if (ctx.endpointHasId) {
