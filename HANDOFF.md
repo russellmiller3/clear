@@ -1,3 +1,21 @@
+# Handoff — 2026-04-16 (Session 33 — eval UI polish + compiler caller/callee + probe shape)
+
+## Shipped this session (on `main`)
+
+- `9547412` — eval rows are actually clickable now. The onclick attribute had nested double-quotes; click was silently a no-op. Passing rows now expand with all 6 detail blocks (criteria, endpoint, agent output, grader feedback, grader raw, tokens+cost). Added chevron indicator.
+- `2c9902b` — caller/callee streaming-shape mismatch. When an agent was pre-classified as streaming but its compile demoted (vars reassigned, property assignments), callers still used `for await` on a function that returned a Promise. Runtime threw. Fix propagates the demotion through the shared set.
+- `7fcdd49` — two probe-shape bugs. (1) Save statements lost their `with field is value` override — parser dropped it silently. (2) Auto-generated "agent responds to messages" tests hardcoded `{ message: ... }` for every agent. Both fixed; tests use the agent's actual receiving var.
+
+Tests: 1914/0. Main up to date.
+
+## Deferred — next session
+
+1. **Tests pane shows `spawnSync C:\Windows\system32\cmd.exe ETIMEDOUT`** when running tests on Windows. The test runner spawns a child that times out. Reproducible in Studio on the multi-agent-research template. Probably the test-runner's npm-install-in-build-dir step hitting a long timeout, or a Windows-specific spawn path. Needs instrumentation to narrow down.
+
+2. **Grading criteria display is too weak.** The Tests pane shows a "Expected: any non-empty response from the endpoint" line as grading criteria. That's the deterministic shape check — the actual LLM rubric is richer (full agent definition sent to Claude) but the one visible line sounds lazy. Polish: either drop the shape-check line when a rubric exists, or prepend the rubric as the primary criteria and demote the shape check to a footnote.
+
+---
+
 # Handoff — 2026-04-15 (Session 32 — post-ship bug hunt + Meph-driven fix test)
 
 ## Follow-up session state (after Session 31)
