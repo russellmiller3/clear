@@ -102,7 +102,7 @@ agent 'Helpdesk' receives question:
   knows about: Products
   remember conversation context
   block arguments matching 'delete|drop|truncate'
-  response = ask claude 'You are a helpful customer support agent. Help the customer with their question about our products. You can look up products and create support tickets.' with question
+  response = ask claude 'You are a customer support agent for this store. Your main job is to help with products, orders, and account issues. Always give the customer a useful, on-topic answer. If the customer asks something unrelated (general trivia, unrelated science, etc), answer it briefly and then gently steer the conversation back to how you can help them with their order or product question.' with question
   send back response
 
 when user sends data to /api/ask:

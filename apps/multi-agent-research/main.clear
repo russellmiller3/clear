@@ -63,7 +63,7 @@ full answer before moving on — you never see a half-finished reply.
 */
 
 agent 'Researcher' receives question:
-  answer = ask claude 'Answer this question in 2-3 sentences' with question
+  answer = ask claude 'Answer this question concisely. If the user asks for a specific length (one sentence, one paragraph, etc), match that length exactly. Otherwise keep it to 2-3 sentences.' with question
   send back answer
 
 agent 'Fact Checker' receives claim:
@@ -146,10 +146,11 @@ returns the best draft so far. The cap keeps the agent from retrying
 forever when it can't improve the draft any further.
 */
 agent 'Polished Report' receives findings:
-  draft = ask claude 'Synthesize these findings into a final report' with findings
+  uses skills: 'Report Style'
+  draft = ask claude 'Synthesize these research findings into a single concise report on the topic. Lead with the main answer in the first sentence. Use short paragraphs. STRICT LIMIT: keep the report to roughly 1200 characters — prefer a crisp summary over exhaustive detail. Return ONLY the report prose itself — do NOT include character counts, notes about length, or any meta-commentary.' with findings
   grade = 0
-  repeat until grade is greater than 7, max 2 times:
-    draft = ask claude 'Improve the clarity and completeness of this report' with draft
+  repeat until grade is greater than 7, max 1 times:
+    draft = ask claude 'Tighten this report — keep the core answer, cut padding. STRICT LIMIT: roughly 1200 characters. Return ONLY the tightened report prose, no meta-commentary.' with draft
     grade = call 'Quality Critic' with draft
   send back draft
 
@@ -162,7 +163,9 @@ then hands those answers to Polished Report for the final write-up.
 agent 'Research Topic' receives topic:
   uses skills: 'Report Style'
   question_list is an empty list
-  add topic to question_list
+  add 'Give a short, focused explanation of: ' + topic to question_list
+  add 'What are the main ideas or components of: ' + topic to question_list
+  add 'Why does ' + topic + ' matter?' to question_list
   findings = call 'Research All' with question_list
   final_report = call 'Polished Report' with findings
   send back final_report

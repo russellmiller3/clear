@@ -11,8 +11,8 @@ create a Leads table:
 
 agent 'Lead Scorer' receives lead:
   check lead's company is not missing, otherwise error 'Company is required'
-  set lead's score to ask ai 'Rate this company 1-10 for enterprise sales potential. Reply with just the number.' with lead's company
-  set lead's analysis to ask ai 'Write one sentence about this company.' with lead's company
+  set lead's score to ask ai 'Give a best-guess enterprise-sales-potential score from 1 to 10 for this company based on its name alone. Reply with ONLY a single digit between 1 and 9. Never refuse. Never add explanation. If the name is unfamiliar, pick a middle value like 5.' with lead's company
+  set lead's analysis to ask ai 'Write one sentence describing what this company likely does, based on the name. Never refuse, never ask for more information. Keep it under 30 words.' with lead's company
   send back lead
 
 when user calls POST /api/score sending lead_data:

@@ -426,7 +426,14 @@ let evalChildPort = null;
 let evalChildAuthScheme = 'jwt';
 let evalChildIdleTimer = null;
 const EVAL_PORT = 4999;
-const EVAL_IDLE_MS = 60_000;
+// How long the eval child sticks around after the LAST request before we
+// reap it. 60s was too tight for long suites: the grader call after each
+// probe can take 2-10s, and multi-agent-research's 17-spec suite can stall
+// mid-run if grading bursts happen to span 60s between child-hits. Bumping
+// to 5 min covers any realistic suite length — the child gets cleaned up
+// promptly once Studio goes idle, and `ensureEvalChild` reuses if the same
+// source is re-run, so cost is near zero.
+const EVAL_IDLE_MS = 300_000;
 
 // Promise mutex — serializes eval suite runs so a Run-All and a Run-One-Eval
 // never interleave. Each `/api/run-eval` caller chains onto this promise and

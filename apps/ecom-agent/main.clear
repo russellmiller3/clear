@@ -127,17 +127,17 @@ agent 'Customer Support' receives message:
   must not:
     modify Products table
 
-  intent = classify message as 'order status', 'return or refund', 'product availability'
+  intent = classify message as 'order status', 'return or refund', 'product availability', 'general question'
 
   match intent:
     when 'order status':
-      response = ask claude 'Help this customer check their order. Look it up by ID or email and give a clear status update with tracking info if available.' with message
+      response = ask claude 'Help this customer check their order. If the message clearly gives an order ID or email, look it up. If the message is too generic to identify a specific order, ask the customer politely which order they need help with instead of guessing.' with message
     when 'return or refund':
-      response = ask claude 'Help with this return request. Process it if the order is delivered. Explain the refund timeline.' with message
+      response = ask claude 'Help with this return request. If the message gives enough detail, explain the next steps. Otherwise ask for the order number and reason before proceeding.' with message
     when 'product availability':
-      response = ask claude 'Check if this product is in stock. Give the exact count. Suggest alternatives if out of stock.' with message
+      response = ask claude 'Check if this product is in stock. If the message names a specific product, give the exact count. If the message is generic, ask which product the customer is asking about.' with message
     otherwise:
-      response = ask claude 'You are a friendly e-commerce support agent for TechGear Store. Help the customer with their question about our electronics products.' with message
+      response = ask claude 'You are a friendly e-commerce support agent for TechGear Store. Answer the customer question directly. If the message is too generic to act on, ask a clarifying follow-up question. Never assume unrelated intent.' with message
 
   send back response
 
