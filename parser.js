@@ -5277,6 +5277,26 @@ function parseSave(tokens, line) {
 
   const node = crudNode('save', variable, target, null, line);
   if (isInsert) node.isInsert = true;
+
+  // Parse optional "with field is value" overrides (same as parseSaveAssignment)
+  pos++;
+  if (pos < tokens.length && tokens[pos].value === 'with') {
+    pos++;
+    const overrides = [];
+    while (pos + 1 < tokens.length) {
+      const field = tokens[pos].value;
+      pos++;
+      if (pos < tokens.length && tokens[pos].canonical === 'is') pos++;
+      if (pos < tokens.length) {
+        overrides.push({ field, value: tokens[pos].value });
+        pos++;
+      }
+      if (pos < tokens.length && tokens[pos].type === TokenType.COMMA) pos++;
+      else break;
+    }
+    if (overrides.length > 0) node.overrides = overrides;
+  }
+
   return { node };
 }
 
@@ -5559,6 +5579,31 @@ function parseSaveAssignment(name, tokens, pos, line) {
 
   const node = crudNode('save', variable, target, null, line);
   node.resultVar = name; // "new_todo = save incoming as Todo" -> resultVar is new_todo
+
+  // Parse optional "with field is value" overrides. Lets the user set a
+  // field from a local variable instead of the request body:
+  //   saved = save request as new Report with report is final_report
+  // Multiple overrides separated by commas are supported:
+  //   saved = save request as new X with a is b, c is d
+  pos++;
+  if (pos < tokens.length && tokens[pos].value === 'with') {
+    pos++;
+    const overrides = [];
+    while (pos + 1 < tokens.length) {
+      const field = tokens[pos].value;
+      pos++;
+      if (pos < tokens.length && tokens[pos].canonical === 'is') pos++; // skip "is"
+      if (pos < tokens.length) {
+        overrides.push({ field, value: tokens[pos].value });
+        pos++;
+      }
+      // skip comma separator
+      if (pos < tokens.length && tokens[pos].type === TokenType.COMMA) pos++;
+      else break;
+    }
+    if (overrides.length > 0) node.overrides = overrides;
+  }
+
   return { node };
 }
 

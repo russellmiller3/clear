@@ -5388,6 +5388,45 @@ when user calls GET /api/todos/:id:
   });
 });
 
+describe('Save with field overrides (with X is Y)', () => {
+  // The "with field is value" clause on a save statement lets you set a
+  // field from a local variable instead of the request body. The compiler
+  // was dropping it entirely — the insert only picked from the request,
+  // so required fields computed server-side were missing → 400.
+
+  it('parses "save X as new Y with field is value" and records overrides in AST', () => {
+    const ast = parse(`build for javascript backend
+create a Reports table:
+  topic, required
+  report, required
+when user sends request to /api/research:
+  final_report = 'hello'
+  saved = save request as new Report with report is final_report
+  send back saved`);
+    const crud = ast.body.flatMap(n => n.body || []).find(n => n.type === 'crud');
+    expect(crud).toBeTruthy();
+    expect(crud.overrides).toBeTruthy();
+    expect(crud.overrides.length).toBe(1);
+    expect(crud.overrides[0].field).toBe('report');
+    expect(crud.overrides[0].value).toBe('final_report');
+  });
+
+  it('compiled output merges field overrides into the insert', () => {
+    const result = compileProgram(`build for javascript backend
+create a Reports table:
+  topic, required
+  report, required
+when user sends request to /api/research:
+  final_report = 'hello'
+  saved = save request as new Report with report is final_report
+  send back saved`);
+    expect(result.errors).toHaveLength(0);
+    const js = result.serverJS || result.javascript;
+    // The insert should spread the override: { ...picked, report: final_report }
+    expect(js).toContain('report: final_report');
+  });
+});
+
 describe('Compiler - lookupAll parser flag', () => {
   it('sets lookupAll true when "all" keyword is present', () => {
     const ast = parse('todos = look up all Todos');
