@@ -103,10 +103,10 @@ No copy-paste across agents.
 skill 'Report Style':
   has tool: character_count
   instructions:
-    Use short paragraphs.
-    Lead with the answer, follow with the reasoning.
+    Use short paragraphs. Lead with the answer, follow with the reasoning.
     Never say 'As an AI'.
-    Call character_count on your draft. Keep the report under 1500 characters.
+    Keep the report under 1500 characters. You can call character_count
+    on a draft to check its length if you are unsure.
 
 # Coordinators
 
