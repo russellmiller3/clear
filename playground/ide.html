@@ -126,9 +126,25 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #preview-content { flex: 1; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
 #preview-content iframe { width: 100%; height: 100%; border: none; background: var(--iframe-bg); border-radius: 0; }
 #preview-content pre { padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--tx2); white-space: pre-wrap; }
-#terminal { flex: 1; overflow: auto; padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--tx2); background: var(--bg); scrollbar-width: thin; display: flex; flex-direction: column-reverse; }
-#terminal .term-entry { padding: 4px 0; border-bottom: 1px solid var(--bd); opacity: 0.6; }
-#terminal .term-entry:first-child { opacity: 1; color: var(--accent); border-bottom: none; }
+/* Newest event at the TOP. Scrolling down walks backward in time.
+   We reverse the array in JS (renderTerminal) so DOM[0] is the newest,
+   then let normal flex stacking put DOM[0] at the top. Previously we
+   also had flex-direction: column-reverse, which double-reversed and
+   buried the newest entry at the bottom. */
+#terminal { flex: 1; overflow: auto; padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--tx2); background: var(--bg); scrollbar-width: thin; display: flex; flex-direction: column; }
+#terminal .term-entry { padding: 4px 0; border-bottom: 1px solid var(--bd); opacity: 0.55; transition: opacity .15s; }
+#terminal .term-entry:first-child {
+  /* Newest entry — full color, accent highlight, and a glow so the eye
+     finds it immediately. Older entries fade so scroll context stays subtle. */
+  opacity: 1;
+  color: var(--accent);
+  border-bottom: none;
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+  background: var(--accent-glow, transparent);
+  border-radius: 4px;
+}
+#terminal .term-entry:nth-child(2) { opacity: 0.8; }
 .term-cmd { color: var(--accent); display: block; padding: 4px 0; border-top: 1px solid var(--bd); margin-top: 8px; }
 .term-cmd::before { content: '❯ '; color: var(--tx3); font-weight: 700; }
 .term-out { color: var(--tx2); white-space: pre-wrap; display: block; padding: 1px 0 1px 16px; }
@@ -337,6 +353,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 @keyframes mic-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(244,63,94,.55); } 50% { box-shadow: 0 0 0 7px rgba(244,63,94,0); } }
 #voice-toggle-label.on { color: var(--accent) !important; }
 #voice-status.speaking::before { content: '● '; color: var(--accent); animation: mic-pulse 1.2s ease-in-out infinite; }
+/* Tri-state voice-mode segmented control: Off / Speak / Converse */
+#voice-mode-group { display: inline-flex; gap: 0; border: 1px solid var(--bd2); border-radius: 6px; overflow: hidden; font-size: 11px; user-select: none; }
+.voice-seg { padding: 3px 9px; background: transparent; color: var(--tx3); cursor: pointer; border: none; border-right: 1px solid var(--bd2); font-family: var(--font); font-size: 11px; transition: background .12s, color .12s; white-space: nowrap; }
+.voice-seg:last-child { border-right: none; }
+.voice-seg:hover { background: var(--bg3); color: var(--tx); }
+.voice-seg.active { background: var(--accent); color: #fff; }
+.voice-seg.active:hover { background: var(--accent2); color: #fff; }
 #personality-setup { padding: 20px; color: var(--tx3); font-family: var(--font); display: flex; flex-direction: column; gap: 10px; height: 100%; }
 #personality-setup textarea { background: var(--bg3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 10px; width: 100%; flex: 1; min-height: 120px; font-family: var(--font); font-size: 12px; resize: none; transition: border-color .15s; line-height: 1.5; }
 #personality-setup textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -510,10 +533,11 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
         <input type="checkbox" id="web-tools-toggle" style="cursor:pointer;" onchange="updateWebToggle()">
         🌐 Web search + fetch
       </label>
-      <label id="voice-toggle-label" title="Voice mode — Meph speaks his replies and you can talk to him via the microphone" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--tx2);user-select:none;">
-        <input type="checkbox" id="voice-toggle" style="cursor:pointer;" onchange="updateVoiceToggle()">
-        🔊 Voice mode
-      </label>
+      <div id="voice-mode-group" title="Voice: Off = text only. Speak = Meph talks but mic is off. Converse = Meph talks and listens.">
+        <button class="voice-seg active" data-mode="off" onclick="setVoiceMode('off')">Off</button>
+        <button class="voice-seg" data-mode="speak" onclick="setVoiceMode('speak')">🔊 Speak</button>
+        <button class="voice-seg" data-mode="converse" onclick="setVoiceMode('converse')">🎤 Converse</button>
+      </div>
       <span id="voice-status" style="font-size:10px;color:var(--tx3);font-family:var(--mono);"></span>
     </div>
   </div>
@@ -2742,19 +2766,22 @@ window.updateWebToggle = function() {
 };
 
 // ==========================================================================
-// VOICE MODE — always-on speech in + speech out for Meph
+// VOICE MODE — three states: off, speak (TTS only), converse (TTS + STT)
 // ==========================================================================
-// Once toggled on, the mic stays live. You talk → words land in the input
-// → when you stop speaking it auto-sends. Meph's replies are spoken aloud
-// in an elegant British voice. The mic auto-pauses while Meph is speaking
-// so it doesn't hear itself, then resumes. Toggle off to go quiet.
+// - 'off'       → silent text chat, nothing happens
+// - 'speak'     → Meph speaks his replies aloud in a refined baritone; mic is
+//                  off, you type like normal. Good for when you want to hear
+//                  him while your hands are busy but don't want a hot mic.
+// - 'converse'  → speak mode + continuous mic. You talk → words land in the
+//                  input → 1.2s pause auto-sends. Mic auto-pauses while Meph
+//                  talks so it doesn't hear itself, resumes after.
 //
 // Tone note: the Anthropic API takes text + images, not audio. We transcribe
 // your voice to text with the browser's SpeechRecognition, so tone/emotion
 // is lost in the hop. If we later want tone preservation we'd need to add
 // a side classifier or upgrade to a realtime audio API.
 window._voice = {
-  on: false,               // voice mode toggle
+  mode: 'off',             // 'off' | 'speak' | 'converse'
   rec: null,               // SpeechRecognition instance
   recActive: false,        // is the recognizer currently listening?
   wantListening: false,    // should it be listening right now (paused while Meph speaks)
@@ -2814,17 +2841,18 @@ function speakSentence(text) {
   u.volume = 1.0;
   u.onstart = () => {
     window._voice.isSpeaking = true;
-    pauseListeningForSpeech();
+    // Only need to pause the mic if it's actually listening (converse mode)
+    if (window._voice.mode === 'converse') pauseListeningForSpeech();
     const s = document.getElementById('voice-status');
     if (s) { s.textContent = 'speaking…'; s.classList.add('speaking'); }
   };
   u.onend = u.onerror = () => {
-    // Wait until ALL queued utterances finish before resuming mic
+    // Wait until ALL queued utterances finish before resuming mic / idling
     if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
       window._voice.isSpeaking = false;
       const s = document.getElementById('voice-status');
-      if (s) { s.textContent = window._voice.on ? 'listening…' : ''; s.classList.remove('speaking'); }
-      resumeListeningAfterSpeech();
+      if (s) { s.textContent = voiceIdleStatus(); s.classList.remove('speaking'); }
+      if (window._voice.mode === 'converse') resumeListeningAfterSpeech();
     }
   };
   window.speechSynthesis.speak(u);
@@ -2844,8 +2872,9 @@ function cleanForTTS(s) {
 }
 
 // Buffer streamed text deltas, speak at sentence boundaries so speech isn't jittery.
+// Fires for BOTH speak and converse modes — anywhere Meph should be heard.
 function pushSpeakChunk(delta) {
-  if (!window._voice.on) return;
+  if (window._voice.mode === 'off') return;
   window._voice.speakQueue += delta;
   // Look for sentence-ish boundaries: . ! ? followed by space or end, or newline
   const boundary = /([.!?])(\s|$)|\n+/;
@@ -2860,7 +2889,7 @@ function pushSpeakChunk(delta) {
 
 // Drain any leftover prose when the stream finishes
 function flushSpeakBuffer() {
-  if (!window._voice.on) return;
+  if (window._voice.mode === 'off') return;
   const tail = cleanForTTS(window._voice.speakQueue).trim();
   window._voice.speakQueue = '';
   if (tail) speakSentence(tail);
@@ -2873,7 +2902,14 @@ function cancelAllSpeech() {
   }
   window._voice.isSpeaking = false;
   const s = document.getElementById('voice-status');
-  if (s) { s.classList.remove('speaking'); s.textContent = window._voice.on ? 'listening…' : ''; }
+  if (s) { s.classList.remove('speaking'); s.textContent = voiceIdleStatus(); }
+}
+
+// Returns the status-text for when nothing is actively happening — depends on mode.
+function voiceIdleStatus() {
+  if (window._voice.mode === 'converse') return 'listening…';
+  if (window._voice.mode === 'speak') return 'speak mode';
+  return '';
 }
 
 // ---- Speech recognition (continuous, auto-restart) ----
@@ -2898,8 +2934,9 @@ function buildRecognizer() {
     window._voice.recActive = false;
     const btn = document.getElementById('chat-mic');
     if (btn) btn.classList.remove('recording');
-    // Auto-restart if the user is still in voice mode and Meph isn't speaking
-    if (window._voice.on && window._voice.wantListening && !window._voice.isSpeaking) {
+    // Auto-restart only in converse mode when we still want to be listening
+    // and Meph isn't speaking. Speak mode never starts the recognizer.
+    if (window._voice.mode === 'converse' && window._voice.wantListening && !window._voice.isSpeaking) {
       clearTimeout(window._voice.restartTimer);
       window._voice.restartTimer = setTimeout(() => {
         try { rec.start(); } catch (e) { /* already started */ }
@@ -2910,11 +2947,9 @@ function buildRecognizer() {
   rec.onerror = ev => {
     // "no-speech" and "aborted" are normal — just let onend handle restart
     if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
-      window._voice.on = false;
-      const cb = document.getElementById('voice-toggle');
-      if (cb) cb.checked = false;
-      updateVoiceToggle();
-      alert('Microphone access denied. Enable it in browser settings to use voice mode.');
+      // Fall back from converse → speak so the user can still hear Meph
+      setVoiceMode('speak');
+      alert('Microphone access denied. Enable it in browser settings to use converse mode. Falling back to speak-only.');
     }
   };
 
@@ -2985,74 +3020,90 @@ function pauseListeningForSpeech() {
 }
 
 function resumeListeningAfterSpeech() {
-  if (window._voice.on && window._voice.wantListening) {
+  if (window._voice.mode === 'converse' && window._voice.wantListening) {
     setTimeout(() => {
-      if (window._voice.on && window._voice.wantListening && !window._voice.isSpeaking) {
+      if (window._voice.mode === 'converse' && window._voice.wantListening && !window._voice.isSpeaking) {
         try { window._voice.rec && window._voice.rec.start(); } catch (e) {}
       }
     }, 400); // small grace period so the tail of TTS isn't caught
   }
 }
 
-window.updateVoiceToggle = function() {
-  const cb = document.getElementById('voice-toggle');
-  const label = document.getElementById('voice-toggle-label');
-  const mic = document.getElementById('chat-mic');
-  const status = document.getElementById('voice-status');
-  window._voice.on = !!(cb && cb.checked);
-  try { localStorage.setItem('clear.voiceMode', window._voice.on ? '1' : '0'); } catch (e) {}
-
-  if (label) label.classList.toggle('on', window._voice.on);
-  if (mic) mic.style.display = window._voice.on ? '' : 'none';
-
+// Central mode setter — single source of truth. Every voice UI button calls this.
+window.setVoiceMode = function(mode) {
+  if (mode !== 'off' && mode !== 'speak' && mode !== 'converse') mode = 'off';
+  const prev = window._voice.mode;
   const hasTTS = 'speechSynthesis' in window;
   const hasSTT = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
-  if (window._voice.on) {
-    if (!hasTTS || !hasSTT) {
-      alert('Your browser does not support the Web Speech API. Try Chrome or Edge.');
-      cb.checked = false;
-      window._voice.on = false;
-      if (label) label.classList.remove('on');
-      if (mic) mic.style.display = 'none';
-      return;
-    }
-    // Load voice — may be async; listen for voiceschanged
+  // Feature detection: if the browser can't do TTS at all, nothing beats 'off'
+  if (mode !== 'off' && !hasTTS) {
+    alert('Your browser does not support speech synthesis. Try Chrome or Edge.');
+    mode = 'off';
+  }
+  // Converse needs both mic + TTS; degrade to speak if mic is unavailable
+  if (mode === 'converse' && !hasSTT) {
+    alert('Your browser does not support speech recognition. Falling back to speak-only.');
+    mode = 'speak';
+  }
+
+  window._voice.mode = mode;
+  try { localStorage.setItem('clear.voiceMode', mode); } catch (e) {}
+
+  // Update segmented-control active state
+  document.querySelectorAll('.voice-seg').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+
+  const mic = document.getElementById('chat-mic');
+  const status = document.getElementById('voice-status');
+
+  // Mic button only shows in converse mode — it's how the user kicks the
+  // recognizer back on if Chrome auto-stopped it after a long silence.
+  if (mic) mic.style.display = mode === 'converse' ? '' : 'none';
+
+  // Warm up the voice (voices list is async in some browsers)
+  if (mode !== 'off') {
     window._voice.voice = pickElegantVoice();
     if (!window._voice.voice && 'onvoiceschanged' in window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = () => {
         window._voice.voice = pickElegantVoice();
       };
     }
+  }
+
+  // Apply listening state transitions
+  if (mode === 'converse') {
     if (status) status.textContent = 'listening…';
     startListening();
   } else {
-    if (status) { status.textContent = ''; status.classList.remove('speaking'); }
-    cancelAllSpeech();
     stopListening();
+    if (mode === 'speak') {
+      if (status) status.textContent = 'speak mode';
+    } else {
+      if (status) { status.textContent = ''; status.classList.remove('speaking'); }
+      cancelAllSpeech();
+    }
   }
 };
 
-// Mic button is a second way to force-toggle listening (useful if browser
-// auto-stopped the recognizer after a long silence and needs a kick).
+// Mic button: converse mode only, kicks the recognizer if it auto-stopped.
 window.toggleMic = function() {
-  if (!window._voice.on) {
-    const cb = document.getElementById('voice-toggle');
-    if (cb) { cb.checked = true; updateVoiceToggle(); }
+  if (window._voice.mode !== 'converse') {
+    setVoiceMode('converse');
     return;
   }
   if (window._voice.recActive) stopListening();
   else startListening();
 };
 
-// Restore voice toggle state on load
+// Restore persisted mode on load. Old boolean '1' maps to 'converse' for
+// backward compatibility with session 34 before this refactor.
 try {
-  if (localStorage.getItem('clear.voiceMode') === '1') {
-    // Defer until DOM is ready — checkbox may not exist yet
-    setTimeout(() => {
-      const cb = document.getElementById('voice-toggle');
-      if (cb) { cb.checked = true; updateVoiceToggle(); }
-    }, 500);
+  const raw = localStorage.getItem('clear.voiceMode');
+  const saved = raw === '1' ? 'converse' : (raw === '0' ? 'off' : raw);
+  if (saved === 'speak' || saved === 'converse') {
+    setTimeout(() => setVoiceMode(saved), 500);
   }
 } catch (e) {}
 

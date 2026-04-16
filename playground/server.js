@@ -339,6 +339,9 @@ function parseTestOutput(stdout) {
 
 // Exported for testing
 export { parseTestOutput };
+// Exposed for unit testing — the SSE drainer has been the source of
+// agent-endpoint grading bugs (empty bodies, dropped structured payloads).
+export { _extractSSEFrameText, _parseSSEFrames };
 
 function runTestProcess(source) {
   const start = Date.now();
@@ -850,9 +853,17 @@ function _extractSSEFrameText(frame) {
   if (payload === '[DONE]' || payload === '') return '';
   try {
     const parsed = JSON.parse(payload);
-    if (typeof parsed === 'string') return parsed;
+    // Most common: streaming AI chunk `{text: "..."}` — return the chunk.
     if (parsed && typeof parsed.text === 'string') return parsed.text;
-    return '';
+    // Bare string payloads: `send back "hello"` inside a stream block emits
+    // `data: "hello"\n\n` — return the unwrapped string.
+    if (typeof parsed === 'string') return parsed;
+    // Everything else (objects, arrays, numbers, booleans, errors) is a
+    // structured payload the grader needs to judge. Return its compact JSON
+    // so it survives the concat into the final body. Before this, any shape
+    // other than {text} or string was silently dropped — graders saw an
+    // empty body and scored every structured-response agent zero.
+    return JSON.stringify(parsed);
   } catch {
     // Non-JSON frame — treat as raw
     return payload;
