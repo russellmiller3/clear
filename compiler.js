@@ -3515,6 +3515,18 @@ function compileAgent(node, ctx, pad) {
     shouldStream = false;
   }
 
+  // If this agent was pre-classified as streaming but we're now emitting it
+  // as a plain async function (no generator), remove it from the shared set
+  // so call-site codegen uses `await agent_X(...)` instead of
+  // `for await (const _c of agent_X(...))`. The pre-scan's static analysis
+  // is coarser than the per-agent compile's decisions (e.g. it doesn't
+  // account for ask-claude vars that get reassigned inside `repeat until`
+  // loops), so the two CAN disagree. When they do, the per-agent decision
+  // wins — it's the one that actually shapes the emitted function.
+  if (!shouldStream && ctx.streamingAgentNames && ctx.streamingAgentNames.has(node.name)) {
+    ctx.streamingAgentNames.delete(node.name);
+  }
+
   // 0. Model selection: using 'claude-sonnet-4-6' — inject model param into _askAI calls
   if (node.model) {
     const modelStr = JSON.stringify(node.model);
@@ -10058,7 +10070,15 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
 
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, _astBody: body, _allNodes: body, _asyncFunctions };
+  // streamingAgentNames is a live Set that compileAgent can mutate. When an
+  // agent is pre-classified as streaming but its per-agent compile demotes
+  // `shouldStream` to false (e.g. all ask-claude vars get reassigned so none
+  // qualify as streamVars), compileAgent deletes the name here. That way
+  // downstream call-site codegen doesn't wrap the call in `for await (const
+  // _c of agent_X(...))` — which would throw at runtime because agent_X
+  // compiled as `async function` not `async function*`. Classic shape
+  // mismatch bug surfaced on multi-agent-research's Polished Report.
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions };
 
   // Implicit tables for agent-memory features. Agents declared with
   // `remember conversation context` call db.findAll/insert/update on a

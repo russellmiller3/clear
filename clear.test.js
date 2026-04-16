@@ -10891,10 +10891,18 @@ when user calls POST /api/evaluate sending data:
     const pipeBody = js.substring(pipeStart, pipeEnd);
     // Screener is non-streaming (no ask ai) — plain await
     expect(pipeBody).toContain('await agent_screener(candidate)');
-    // Scorer is a streaming agent (ask ai auto-streams). The coordinator's `call 'Scorer'`
-    // must drain the generator into a string, not receive the generator object.
-    expect(pipeBody).toContain('agent_scorer(screened)');
-    expect(pipeBody).toMatch(/for await \(const _c of agent_scorer\(screened\)\)/);
+    // Scorer's body is `candidate.score = await _askAI(...)` — a property
+    // assignment, not a `let X = await _askAI(...)`. The streaming
+    // conversion only promotes `let`-declared variables to generators, so
+    // Scorer compiles as a regular `async function`. The caller codegen
+    // must therefore use `await agent_scorer(screened)` — NOT a for-await
+    // drain, which would throw at runtime because the function returns a
+    // Promise, not an async iterator. (This was the bug Polished Report
+    // surfaced on multi-agent-research — compile-time test locked in a
+    // runtime-broken pattern.)
+    expect(pipeBody).toContain('await agent_scorer(screened)');
+    // Explicitly NOT a for-await drain.
+    expect(/for await \(const _c of agent_scorer\(screened\)\)/.test(pipeBody)).toBe(false);
     // Screener is called before Scorer
     expect(pipeBody.indexOf('agent_screener')).toBeLessThan(pipeBody.indexOf('agent_scorer'));
   });
