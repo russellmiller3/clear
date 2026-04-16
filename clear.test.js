@@ -17398,6 +17398,67 @@ when user calls POST /api/opaque sending data:
   });
 });
 
+describe('Eval suite: probe honors `validate incoming` rules', () => {
+  // The probe body must include every field the endpoint's validate block
+  // marks `required`. Before this fix, probes only used the agent's
+  // receiving-var name, so page-analyzer (validate url required) and
+  // lead-scorer (validate company, email required) got HTTP 400 before the
+  // agent even ran — wasting every eval on those templates.
+  it('e2e probe includes every required field from validate block', () => {
+    const r = compileProgram(`build for javascript backend
+
+agent 'Page Analyzer' receives page_data:
+  send back page_data
+
+when user calls POST /api/analyze sending page_data:
+  validate page_data:
+    url is text, required
+  analyzed = call 'Page Analyzer' with page_data
+  send back analyzed`);
+    const e2e = r.evalSuite.find(s => s.id === 'e2e-_api_analyze');
+    expect(e2e).toBeDefined();
+    // Whether body shape is { url } or { page_data: { url } }, the `url`
+    // field must be present so the endpoint's validator accepts the probe.
+    const serialized = JSON.stringify(e2e.input);
+    expect(serialized.includes('"url"')).toBe(true);
+    // The probe value for url should look like a URL, not 'hello'.
+    expect(serialized.includes('http')).toBe(true);
+  });
+
+  it('probe includes all multi-field validate requirements', () => {
+    const r = compileProgram(`build for javascript backend
+
+agent 'Lead Scorer' receives lead:
+  send back lead
+
+when user calls POST /api/score sending lead_data:
+  validate lead_data:
+    company is text, required
+    email is text, required
+  scored = call 'Lead Scorer' with lead_data
+  send back scored`);
+    const e2e = r.evalSuite.find(s => s.id === 'e2e-_api_score');
+    const serialized = JSON.stringify(e2e.input);
+    expect(serialized.includes('"company"')).toBe(true);
+    expect(serialized.includes('"email"')).toBe(true);
+  });
+
+  it('endpoint with no validate rules keeps the old receivingVar-wrap behavior', () => {
+    const r = compileProgram(`build for javascript backend
+
+agent 'Helpdesk' receives question:
+  send back 'ok'
+
+when user sends data to /api/ask:
+  result = call 'Helpdesk' with data's question
+  send back result`);
+    const e2e = r.evalSuite.find(s => s.id === 'e2e-_api_ask');
+    expect(e2e).toBeDefined();
+    // Helpdesk reads `data's question` — body must have question at top level
+    expect(JSON.stringify(e2e.input).includes('"question"')).toBe(true);
+  });
+});
+
 describe('Eval suite: probe quality — multi-agent-research smoke', () => {
   it('every runnable spec has a non-hello probe when loaded from the demo file', async () => {
     const fs = await import('node:fs');

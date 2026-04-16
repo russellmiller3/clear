@@ -1105,19 +1105,39 @@ function generateEvalSuite(body) {
   // Returns `{ value, quality: 'real' | 'generic', source: string }`.
 
   // A short value that matches the shape implied by a CREATE_TABLE field.
+  // Specific values first (company names, industries, etc.) so the grader
+  // and any LLM downstream get something concrete to reason about. Generic
+  // fallbacks like "sample X" caused Claude-backed agents to refuse — e.g.
+  // "I can't rate a company called 'Sample company' without more info."
   function _sampleValueForField(field) {
     const t = (field.type || 'text').toLowerCase();
     const n = (field.name || '').toLowerCase();
     if (t === 'number' || t === 'integer' || t === 'float') return 42;
     if (t === 'boolean' || t === 'bool') return true;
     if (t === 'timestamp' || t === 'datetime' || n.endsWith('_at')) return new Date('2026-04-15T12:00:00Z').toISOString();
-    if (n === 'email' || n.includes('email')) return 'test@example.com';
+    if (n === 'email' || n.includes('email')) return 'alice@example.com';
     if (n === 'url' || n.includes('url')) return 'https://example.com';
     if (n === 'phone' || n.includes('phone')) return '+1-555-0100';
-    if (n === 'name' || n === 'title' || n === 'subject' || n === 'label') return 'Sample ' + field.name;
-    if (n === 'body' || n === 'content' || n === 'description' || n === 'text' || n === 'summary') return 'Sample ' + field.name + ' text for evaluation.';
+    // Concrete-name fields — give something the grader can check against.
+    if (n === 'company') return 'Acme Corp';
+    if (n === 'industry') return 'SaaS';
+    if (n === 'customer') return 'Alice Smith';
+    if (n === 'product') return 'Widget';
+    if (n === 'topic') return 'quantum computing';
+    if (n === 'title') return 'Intro to quantum computing';
+    if (n === 'subject') return 'Cannot log in to my account';
+    if (n === 'name' || n === 'label') return 'Alice Smith';
+    if (n === 'question' || n === 'q') return 'What is quantum computing in one sentence?';
+    if (n === 'message' || n === 'msg') return 'Hi, I need help with my order.';
+    if (n === 'body') return 'I am unable to access my account. Could you help me reset my password?';
+    if (n === 'content') return 'This is sample content for evaluation — around 20 words of plain text.';
+    if (n === 'description') return 'A cozy café with strong coffee and quiet tables.';
+    if (n === 'summary') return 'A short summary of the content.';
+    if (n === 'text') return 'The quick brown fox jumps over the lazy dog.';
     if (n === 'role') return 'user';
     if (n === 'status') return 'open';
+    if (n === 'resume') return 'Senior engineer with 8 years of backend experience.';
+    if (n === 'comment') return 'Mostly good, but arrived late.';
     return 'sample ' + field.name;
   }
 
@@ -1356,6 +1376,54 @@ function generateEvalSuite(body) {
     return sections.join('\n');
   }
 
+  // Find any `validate incoming:` block inside an endpoint body. Walks
+  // nested blocks because validate can live inside `if`, `try`, etc.
+  function _findValidateBlock(nodes) {
+    if (!Array.isArray(nodes)) return null;
+    for (const n of nodes) {
+      if (n.type === NodeType.VALIDATE || n.type === 'validate') return n;
+      if (n.body) { const v = _findValidateBlock(n.body); if (v) return v; }
+    }
+    return null;
+  }
+
+  // Build a probe body that honors both the agent's receiving-var AND the
+  // endpoint's `validate incoming:` required fields. Without the validate
+  // merge, probes return HTTP 400 before the agent even runs — page-analyzer
+  // and lead-scorer both had this problem. The endpoint's validator is the
+  // ground truth about what body shape the agent expects.
+  //
+  // Three shape paths based on how the endpoint reads the body:
+  //   - `sending X` → endpoint names the body X. Required fields land at
+  //     top-level, agent probe fields are spread in if it's an object.
+  //   - No `sending X` → endpoint reads `data's field` / `req.body`. We
+  //     put the agent probe under its receiving-var name and overlay
+  //     required fields at the top level.
+  //   - No endpoint (synthetic /_eval/*) → wrap as `{ input: probe }`, which
+  //     is what the synthetic handler reads.
+  function buildEndpointBody(ep, agent, probe) {
+    const validateNode = _findValidateBlock(ep?.body || []);
+    const validateFields = Array.isArray(validateNode?.rules)
+      ? validateNode.rules.filter(r => r && r.constraints?.required)
+      : [];
+    // Base shape — wrap the probe under the agent's receiving-var name. This
+    // is the ground truth for how every template without a validate block
+    // has always worked (endpoint reads `data's X` → body must be `{X:...}`).
+    const agentKey = agent?.receivingVar || 'input';
+    const body = agent ? { [agentKey]: probe.value } : { input: probe.value };
+    // If there's a validate block, its rules describe what fields must sit
+    // at the body's TOP level (the endpoint validates `req.body`, not a
+    // nested object). Overlay them. Matters for `sending X` + `validate X:`
+    // templates (page-analyzer, lead-scorer) where the validator reads the
+    // body directly and rejects anything that doesn't include the required
+    // fields. When the agent's receiving-var key would duplicate one of
+    // those top-level fields, the validate field wins.
+    for (const f of validateFields) {
+      body[f.name] = _sampleValueForField({ name: f.name, type: f.fieldType || f.type || 'text' });
+    }
+    return body;
+  }
+
   const suite = [];
 
   // One E2E eval per POST endpoint. Validates the top-line app flow.
@@ -1378,7 +1446,7 @@ function generateEvalSuite(body) {
     const firstAgentName = [...endpointByAgent.entries()].find(([, path]) => path === ep.path)?.[0];
     const firstAgent = agents.find(a => a.name === firstAgentName);
     const firstProbe = firstAgent ? buildProbe(firstAgent) : { value: 'hello', quality: 'generic', source: 'fallback' };
-    const body = firstAgent ? { [firstAgent.receivingVar || 'input']: firstProbe.value } : { input: firstProbe.value };
+    const body = buildEndpointBody(ep, firstAgent, firstProbe);
 
     suite.push({
       id: `e2e-${sanitizeName(ep.path.replace(/[/:]/g, '_'))}`,
@@ -1405,12 +1473,17 @@ function generateEvalSuite(body) {
     const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
     const path = userPath || `/_eval/${fnName}`;
     const isSynthetic = !userPath;
-    const receivingVar = agent.receivingVar || 'input';
-    // Real endpoints expect the user's body shape; synthetic endpoints
-    // always read `req.body.input` — keep the shape consistent with what
-    // the eval runner knows to post.
+    // Real endpoints expect the user's body shape including any required
+    // validate fields; synthetic endpoints always read `req.body.input` so
+    // the wrapper stays consistent with what the synthetic handler expects.
     const probe = buildProbe(agent);
-    const input = isSynthetic ? { input: probe.value } : { [receivingVar]: probe.value };
+    let input;
+    if (isSynthetic) {
+      input = { input: probe.value };
+    } else {
+      const userEndpoint = endpoints.find(e => e.path === userPath);
+      input = buildEndpointBody(userEndpoint, agent, probe);
+    }
     const role = describeAgentRole(agent);
     const schema = findOutputSchema(agent);
 

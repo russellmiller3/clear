@@ -433,6 +433,9 @@ const EVAL_IDLE_MS = 60_000;
 // awaits its ticket. Blocks nothing else in Studio; only eval runs are serial.
 let _evalMutex = Promise.resolve();
 
+// Synchronous fire-and-forget kill — used by SIGINT/exit handlers where we
+// can't await. For cross-template switches use `killEvalChildAndWait` so the
+// OS actually releases port 4999 before the next spawn fires.
 function killEvalChild() {
   if (evalChildIdleTimer) { clearTimeout(evalChildIdleTimer); evalChildIdleTimer = null; }
   if (evalChild) {
@@ -441,6 +444,34 @@ function killEvalChild() {
   }
   evalChild = null;
   evalChildPort = null;
+}
+
+// Kill the child AND wait for the OS to actually release port 4999. Without
+// this, ensureEvalChild would immediately try to spawn a new child on the
+// same port and the new listener would fail with EADDRINUSE — surfacing as
+// "Network error: fetch failed" on every probe (the child crashes mid-boot
+// and every request hits a dead socket). Switching templates between eval
+// runs was the consistent trigger.
+async function killEvalChildAndWait() {
+  if (evalChildIdleTimer) { clearTimeout(evalChildIdleTimer); evalChildIdleTimer = null; }
+  const prev = evalChild;
+  evalChild = null;
+  evalChildPort = null;
+  if (!prev) return;
+  try {
+    await new Promise(resolve => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      prev.once('exit', finish);
+      try { prev.kill('SIGTERM'); } catch { finish(); }
+      // Hard kill if the child ignores SIGTERM within 2s
+      setTimeout(() => { try { prev.kill('SIGKILL'); } catch {} finish(); }, 2000);
+    });
+  } catch {}
+  // Small grace period for the OS socket layer to release the port — Windows
+  // specifically holds the port briefly even after the process exits. Without
+  // this a fast-follow spawn still races.
+  await new Promise(r => setTimeout(r, 200));
 }
 
 // Orphan-child cleanup on Studio shutdown. Without these, Ctrl-C or an
@@ -480,7 +511,10 @@ async function ensureEvalChild(serverJS) {
     return evalChildPort;
   }
   // Otherwise: kill any previous child (source changed) and spin a fresh one.
-  killEvalChild();
+  // Wait for the old child to fully exit before reusing port 4999 — sync kill
+  // returns instantly, but the OS may still hold the port for a beat, and a
+  // fast spawn on top of that surfaces as "fetch failed" on every probe.
+  await killEvalChildAndWait();
 
   const rtDir = join(BUILD_DIR, 'clear-runtime');
   mkdirSync(rtDir, { recursive: true });
@@ -1215,9 +1249,12 @@ async function _runEvalSuiteImpl(source, id, onProgress) {
   }
   try {
     // Full-suite runs wipe DB state to guarantee deterministic behavior.
-    // Single-eval re-runs keep the DB warm for fast iteration.
+    // Single-eval re-runs keep the DB warm for fast iteration. Await the
+    // kill so port 4999 is actually free before the respawn — the sync
+    // kill variant raced with ensureEvalChild's spawn and produced
+    // "fetch failed" on every probe for the whole suite.
     if (!id) {
-      killEvalChild();          // force respawn so the wipe is observed by the DB module
+      await killEvalChildAndWait();
       wipeEvalChildDbFiles();
     }
     const port = await ensureEvalChild(compiled.serverJS);
