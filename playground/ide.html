@@ -200,7 +200,19 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .eval-kind-format { background: color-mix(in oklch, #14b8a6 25%, transparent); color: #2dd4bf; }
 .eval-kind-info   { background: color-mix(in oklch, var(--tx3) 25%, transparent); color: var(--tx3); }
 .eval-row-label { flex: 1; color: var(--tx); font-weight: 500; }
-.eval-score { font-size: 10px; color: var(--tx3); padding: 1px 6px; border: 1px solid var(--bd2); border-radius: 3px; flex-shrink: 0; }
+.eval-score { font-size: 10px; color: var(--tx3); padding: 1px 6px; border: 1px solid var(--bd2); border-radius: 3px; flex-shrink: 0; cursor: help; display: inline-flex; align-items: center; gap: 4px; }
+.eval-score-gap { font-family: var(--mono); font-weight: 600; opacity: 0.75; }
+/* Score tinted by gap-to-threshold:
+   - clear: well above threshold (confidently passed)
+   - borderline: within 1 point of threshold either side (flaky zone)
+   - fail: clearly below threshold (confidently failed) */
+.eval-score-clear { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.06); color: var(--green, #22c55e); }
+.eval-score-borderline { border-color: rgba(234,179,8,.45); background: rgba(234,179,8,.08); color: #eab308; }
+.eval-score-fail { border-color: rgba(244,63,94,.45); background: rgba(244,63,94,.08); color: var(--red, #f43f5e); }
+/* Borderline badge — shown when auto-rerun flipped a failing verdict to pass.
+   Reads as "this one's flaky, not broken" so the user doesn't treat sampling
+   jitter as a real regression. */
+.eval-borderline { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(234,179,8,.15); border: 1px solid rgba(234,179,8,.4); color: #eab308; font-weight: 600; flex-shrink: 0; cursor: help; letter-spacing: 0.02em; }
 .eval-cost { font-size: 10px; color: var(--tx3); padding: 1px 6px; border: 1px solid var(--bd2); border-radius: 3px; flex-shrink: 0; font-family: var(--mono); cursor: help; }
 .eval-total-cost { font-family: var(--mono); color: var(--tx2); padding: 1px 6px; background: color-mix(in oklch, var(--accent) 10%, transparent); border-radius: 3px; }
 .eval-status { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
@@ -1841,7 +1853,28 @@ function renderEvalSection(data) {
       pending: `<span class="eval-status eval-pending">not run</span>`,
     })[status] || `<span class="eval-status eval-pending">not run</span>`;
     const kindBadge = `<span class="eval-kind eval-kind-${spec.kind}">${spec.kind.toUpperCase()}</span>`;
-    const scoreBadge = r?.score ? `<span class="eval-score">${r.score}/10</span>` : '';
+    // Score display with gap-to-threshold annotation. The grader passes at
+    // score > 7 (the rubric prompt defines this implicitly). Showing the gap
+    // reframes borderline cases: "Passed at 7.2/10 (+0.2)" vs "Failed at
+    // 6.8/10 (-0.2)" reads as "same borderline case, sampling jitter" instead
+    // of "broke." Threshold line is the 7.0 midpoint between pass (>7) and
+    // fail (<=7). Only shown for rubric-graded specs where score is meaningful.
+    let scoreBadge = '';
+    if (r?.score && spec.rubric) {
+      const score = r.score;
+      const gap = score - 7;  // Positive = passed with margin, negative = failed by this much
+      const gapLabel = gap >= 0 ? `+${gap.toFixed(1)}` : gap.toFixed(1);
+      const gapClass = Math.abs(gap) <= 1 ? 'eval-score-borderline' : (gap > 0 ? 'eval-score-clear' : 'eval-score-fail');
+      scoreBadge = `<span class="eval-score ${gapClass}" title="Threshold is 7/10. Gap: ${gapLabel}">${score}/10 <span class="eval-score-gap">${gapLabel}</span></span>`;
+    } else if (r?.score) {
+      // Non-rubric spec that somehow got a score — render bare
+      scoreBadge = `<span class="eval-score">${r.score}/10</span>`;
+    }
+    // Borderline badge — shown when the row failed first attempt but passed
+    // on auto-rerun. Tells the user "this is flaky, not broken."
+    const borderlineBadge = r?.borderline
+      ? `<span class="eval-borderline" title="Failed first attempt (score ${r.priorAttempt?.score || '?'}/10: ${(r.priorAttempt?.feedback || '').slice(0, 120)}) — passed on retry. Treat as borderline, not a regression.">borderline</span>`
+      : '';
     // Cost chip — only shown once the eval has run and incurred real API cost.
     const costChip = (r?.usage?.costUSD > 0)
       ? `<span class="eval-cost" title="${(r.usage.inTok || 0)} in / ${(r.usage.outTok || 0)} out tokens · ${r.usage.provider || 'anthropic'} ${r.usage.model || ''}">$${r.usage.costUSD.toFixed(4)}</span>`
@@ -1858,7 +1891,7 @@ function renderEvalSection(data) {
     const shouldExpand = evalExpanded.has(spec.id) || status === 'fail';
     const chevron = `<span class="eval-chevron">▸</span>`;
     body += `<div class="eval-row${shouldExpand ? ' expanded' : ''}" onclick='toggleEvalRow(${JSON.stringify(spec.id)})'>`;
-    body += `<div class="eval-row-head">${chevron}${kindBadge}<span class="eval-row-label">${escHtml(spec.label || spec.id)}</span>${costChip}${scoreBadge}${statusBadge}${runBtn}</div>`;
+    body += `<div class="eval-row-head">${chevron}${kindBadge}<span class="eval-row-label">${escHtml(spec.label || spec.id)}</span>${costChip}${scoreBadge}${borderlineBadge}${statusBadge}${runBtn}</div>`;
     if (r?.feedback) body += `<div class="eval-row-feedback">${escHtml(r.feedback)}</div>`;
 
     // Failed rows auto-expand so the user can see what went wrong without

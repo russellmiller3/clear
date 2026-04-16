@@ -1027,10 +1027,27 @@ function renderEvalReportMarkdown({ source, suite, results, meta }) {
       lines.push(`### ${spec.kind.toUpperCase()} — ${spec.label || spec.id}`);
       lines.push('');
       const statusStr = r?.status || 'not-run';
-      const scoreStr = r?.score ? ` (score ${r.score}/10)` : '';
-      lines.push(`**Status:** ${statusStr}${scoreStr}`);
+      // Include score-gap so the exported report reads the same as the
+      // Studio Tests pane: "Passed at 7.2/10 (+0.2)" vs "Failed at 6.8/10
+      // (-0.2)" frames flakiness as a borderline case, not a regression.
+      let scoreStr = '';
+      if (r?.score) {
+        if (spec.rubric) {
+          const gap = r.score - 7;
+          const gapLabel = gap >= 0 ? `+${gap.toFixed(1)}` : gap.toFixed(1);
+          scoreStr = ` (score ${r.score}/10, gap ${gapLabel} from threshold)`;
+        } else {
+          scoreStr = ` (score ${r.score}/10)`;
+        }
+      }
+      const borderlineStr = r?.borderline ? ' *(borderline — passed on retry)*' : '';
+      lines.push(`**Status:** ${statusStr}${scoreStr}${borderlineStr}`);
+      if (r?.priorAttempt) {
+        lines.push(`**First attempt:** ${r.priorAttempt.status} at ${r.priorAttempt.score}/10 — ${r.priorAttempt.feedback}`);
+      }
       if (r?.usage) {
-        lines.push(`**Cost:** $${(r.usage.costUSD || 0).toFixed(5)} — ${r.usage.inTok || 0} input / ${r.usage.outTok || 0} output tokens · ${r.usage.provider || ''}/${r.usage.model || ''}`);
+        const rerunNote = r.usage.reruns ? ` (includes ${r.usage.reruns} retry)` : '';
+        lines.push(`**Cost:** $${(r.usage.costUSD || 0).toFixed(5)}${rerunNote} — ${r.usage.inTok || 0} input / ${r.usage.outTok || 0} output tokens · ${r.usage.provider || ''}/${r.usage.model || ''}`);
       }
       lines.push('');
       // Criteria — rubric leads if present, shape check demotes to footnote.
@@ -1218,7 +1235,47 @@ async function _runEvalSuiteImpl(source, id, onProgress) {
       // POST to /api/run-eval, or the SSE streaming variant — they all get
       // the same terminal trace for free.
       termLog(`[eval] ${i + 1}/${total} ${spec.id} running…`);
-      const result = await runOneEval(spec, port);
+      let result = await runOneEval(spec, port);
+      // Auto-rerun on fail, once. T=0 sampling jitter at the grader flips
+      // borderline specs; re-running immediately catches transient failures
+      // without paying 3x on every spec. If the re-run passes, mark the
+      // result as borderline so the UI can signal "this one is flaky, not
+      // broken." Cap at graded specs only (skip shape-checks + already-
+      // passed runs). Override with CLEAR_EVAL_NO_RERUN=1 for strict mode.
+      const canRerun =
+        result.status === 'fail' &&
+        spec.rubric &&                      // rubric-graded specs only
+        !process.env.CLEAR_EVAL_NO_RERUN;
+      if (canRerun) {
+        termLog(`[eval] ${i + 1}/${total} ${spec.id} failed — retrying once to rule out sampling jitter`);
+        const rerun = await runOneEval(spec, port);
+        if (rerun.status === 'pass') {
+          // First attempt failed, second passed. Attach the prior verdict so
+          // the UI can show "borderline — flipped" and the user knows it was
+          // close rather than confidently-correct.
+          rerun.borderline = true;
+          rerun.priorAttempt = {
+            status: result.status,
+            score: result.score || 0,
+            feedback: result.feedback || '',
+          };
+          // Cost of the failed first attempt is real money — account for it
+          // in the usage totals by merging with the rerun's usage.
+          if (result.usage && rerun.usage) {
+            rerun.usage = {
+              ...rerun.usage,
+              inTok: (rerun.usage.inTok || 0) + (result.usage.inTok || 0),
+              outTok: (rerun.usage.outTok || 0) + (result.usage.outTok || 0),
+              costUSD: (rerun.usage.costUSD || 0) + (result.usage.costUSD || 0),
+              reruns: 1,
+            };
+          }
+          result = rerun;
+          termLog(`[eval] ${i + 1}/${total} ${spec.id} passed on retry — flagged borderline`);
+        }
+        // If the rerun also failed, keep the original result (don't double-
+        // report two failures — the user just wanted to know if it was stable).
+      }
       results.push(result);
       const tag = result.status === 'pass' ? '✓' : result.status === 'fail' ? '✗' : '~';
       const cost = result.usage?.costUSD ? ` $${result.usage.costUSD.toFixed(4)}` : '';

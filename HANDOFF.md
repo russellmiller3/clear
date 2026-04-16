@@ -20,10 +20,28 @@ Tests: 1914/0 compiler. Server tests match baseline (171 pass, 16 pre-existing f
 2. **`ask claude with var` inside `repeat until` drops the variable** — already FIXED in session 33 (`compiler.js:3488`). The pre-scan that converts `let X = await _askAI(...)` to `_askAIStream(...)` now skips variables that get reassigned later in the body, so the second call still receives a real string. Regression test lives at `clear.test.js:22649` ("T4c: ask-claude var inside repeat-until stays non-streaming if reassigned"). Verified by re-compiling the Polished Report agent — `draft` is awaited correctly on both calls.
 3. **`patch_code` JSON crash** — already FIXED in session 32 (`playground/server.js:3011-3017`). The terminal-log formatter now reads `res.applied`/`res.skipped` from the once-parsed `res` variable instead of re-parsing the tool result string. Comment at the fix site explains the double-parse that used to crash the whole Meph turn.
 
-**What's actually open next session:**
+**What shipped after the audit:**
 
-- **Real-world eval validation.** Session 32 measured lead-scorer and ecom-agent at 0/3 because of the SSE bug. With that fixed, re-run `playground/eval-fix-harness.js <template>` against the 5 agent+auth templates and measure the new scores. If lead-scorer jumps from 0/3 to 3/3, the SSE fix is confirmed end-to-end. Cost per template: ~$0.15.
-- **Grader non-determinism follow-ups** from the session-32 design doc (score-gap display, auto-rerun on fail). Cheap UX polish that'd make flakiness feel like borderline cases instead of regressions.
+- **Grader score-gap display.** Rubric-graded specs now render with a tinted score chip showing the gap from the pass threshold (`7.4/10 +0.4` green-ish if barely over, `6.8/10 -0.2` yellow if barely under, `3/10 -4.0` red if confidently failed). Three tiers: `eval-score-clear` (|gap| > 1 and passing), `eval-score-borderline` (|gap| ≤ 1, flaky zone), `eval-score-fail` (|gap| > 1 and failing). Exported Markdown reports mirror the same format.
+- **Auto-rerun on eval fail.** Rubric-graded specs that fail first attempt auto-rerun once. If the rerun passes, it's tagged "borderline" and the prior attempt's score + feedback are kept for context. The UI shows a `borderline` badge next to the score so the user reads it as "flaky, not broken." Merged cost includes the failed first attempt so the $ total stays honest. Costs ~2x on genuine failures only (passes never rerun). Disable with `CLEAR_EVAL_NO_RERUN=1` for strict mode.
+
+**Real-world eval validation — ran all 5 templates through `/api/run-eval`:**
+
+| Template | Before (Session 32) | After (Session 34) | Delta |
+|---|---|---|---|
+| helpdesk-agent | 3/3 | 2/3 | -1 (grader nondeterminism — behavior) |
+| page-analyzer | 0/3 | 0/3 | 0 — but now failing for a DIFFERENT reason (probe shape, not empty SSE) |
+| multi-agent-research | 12/17 | 0/17 | -12 (network/`fetch failed` on every spec — regression?) |
+| ecom-agent | 0/3 | 1/3 | **+1** (SSE fix helped — now scoring instead of Network errors) |
+| lead-scorer | 0/3 | 0/3 | 0 — but now failing for probe shape, not SSE |
+
+**What the SSE fix changed for real:** ecom-agent went from 0 (all "Network error: empty") to 1 pass + 2 behavior fails with actual scores. The SSE fix is confirmed working — graders now receive the structured body and score it. But three new bugs surfaced that the SSE bug had been masking:
+
+**Open claws discovered this run (priority order):**
+
+1. **Probe builder misses required fields from `validate incoming:`** — page-analyzer + lead-scorer all fail with 400 "field is required" before the agent even runs. Before the SSE fix these failed with "empty body"; now they fail with "wrong input shape." The compiler's auto-probe needs to read the endpoint's `validate incoming:` rules and mint the required fields.
+2. **multi-agent-research all 17 specs return `fetch failed`** — suggests the eval child server isn't booting for this template. Could be compile time, port conflict, or the new auto-rerun tripping something. Needs investigation.
+3. **helpdesk-agent role spec scored 3/10 on a quantum-computing off-topic question** — this one IS the agent being off-topic. Fixable-by-Meph (edit the agent's restriction list). Same for ecom-agent's 2 fails.
 
 ## Key decisions
 
