@@ -31,7 +31,7 @@ Tests: 1914/0 compiler. Server tests match baseline (171 pass, 16 pre-existing f
 |---|---|---|---|
 | helpdesk-agent | 3/3 | 2/3 | -1 (grader nondeterminism — behavior) |
 | page-analyzer | 0/3 | 0/3 | 0 — but now failing for a DIFFERENT reason (probe shape, not empty SSE) |
-| multi-agent-research | 12/17 | 0/17 | -12 (network/`fetch failed` on every spec — regression?) |
+| multi-agent-research | 12/17 | 14/17 | **+2** (SSE fix confirmed — first validation run's 0/17 was a sampling fluke, covered below) |
 | ecom-agent | 0/3 | 1/3 | **+1** (SSE fix helped — now scoring instead of Network errors) |
 | lead-scorer | 0/3 | 0/3 | 0 — but now failing for probe shape, not SSE |
 
@@ -40,8 +40,9 @@ Tests: 1914/0 compiler. Server tests match baseline (171 pass, 16 pre-existing f
 **Open claws discovered this run (priority order):**
 
 1. **Probe builder misses required fields from `validate incoming:`** — page-analyzer + lead-scorer all fail with 400 "field is required" before the agent even runs. Before the SSE fix these failed with "empty body"; now they fail with "wrong input shape." The compiler's auto-probe needs to read the endpoint's `validate incoming:` rules and mint the required fields.
-2. **multi-agent-research all 17 specs return `fetch failed`** — suggests the eval child server isn't booting for this template. Could be compile time, port conflict, or the new auto-rerun tripping something. Needs investigation.
+2. **Flaky `fetch failed` races inside a suite.** Investigated this session. The first validation run reported multi-agent-research at 0/17 — everything "fetch failed." A second fresh run scored 14/17 (cleanly up from 12/17 baseline). Root cause: one stray `fetch failed` on an early spec in the first run cascaded because the eval child's idle timer or the DB wipe interacted with an already-in-flight request. Not a regression from this session's fixes — a pre-existing race. Mitigations already in place: `callEvalEndpoint` retries connection errors 3× with backoff, idle timer resets on every request. Possible next steps: warm up with a cheap ping before the suite starts, or isolate the retry budget per spec instead of per call.
 3. **helpdesk-agent role spec scored 3/10 on a quantum-computing off-topic question** — this one IS the agent being off-topic. Fixable-by-Meph (edit the agent's restriction list). Same for ecom-agent's 2 fails.
+4. **multi-agent-research 2 real behavior fails (from the 14/17 re-run):** `role-researcher` agent returned 2 sentences when the rubric asked for 1; `role-research_topic` ignored its `Report Style` skill constraints. Both are agent-prompt tuning, not infrastructure.
 
 ## Key decisions
 
