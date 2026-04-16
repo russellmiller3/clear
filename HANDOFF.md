@@ -14,7 +14,16 @@ Tests: 1914/0 compiler. Server tests match baseline (171 pass, 16 pre-existing f
 
 ## Deferred — next session
 
-Nothing new deferred from this session. Session 32 open claws (streaming endpoint probes returning empty body, `ask claude with var` inside `repeat until` dropping variable content, `patch_code` JSON serialization bug) remain open.
+**All three session-32 compiler/tool bugs now closed.** Audit done this session:
+
+1. **Streaming endpoint probes returning empty body** — FIXED this session. `_extractSSEFrameText` now preserves structured payloads as JSON instead of dropping them. 14 new unit tests in `playground/sse-drain.test.js`.
+2. **`ask claude with var` inside `repeat until` drops the variable** — already FIXED in session 33 (`compiler.js:3488`). The pre-scan that converts `let X = await _askAI(...)` to `_askAIStream(...)` now skips variables that get reassigned later in the body, so the second call still receives a real string. Regression test lives at `clear.test.js:22649` ("T4c: ask-claude var inside repeat-until stays non-streaming if reassigned"). Verified by re-compiling the Polished Report agent — `draft` is awaited correctly on both calls.
+3. **`patch_code` JSON crash** — already FIXED in session 32 (`playground/server.js:3011-3017`). The terminal-log formatter now reads `res.applied`/`res.skipped` from the once-parsed `res` variable instead of re-parsing the tool result string. Comment at the fix site explains the double-parse that used to crash the whole Meph turn.
+
+**What's actually open next session:**
+
+- **Real-world eval validation.** Session 32 measured lead-scorer and ecom-agent at 0/3 because of the SSE bug. With that fixed, re-run `playground/eval-fix-harness.js <template>` against the 5 agent+auth templates and measure the new scores. If lead-scorer jumps from 0/3 to 3/3, the SSE fix is confirmed end-to-end. Cost per template: ~$0.15.
+- **Grader non-determinism follow-ups** from the session-32 design doc (score-gap display, auto-rerun on fail). Cheap UX polish that'd make flakiness feel like borderline cases instead of regressions.
 
 ## Key decisions
 
