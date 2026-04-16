@@ -703,3 +703,4 @@ The `edit_code` tool supports `action='undo'` to revert the last editor change. 
 - DON'T forget `database is local memory` for apps with tables
 - DON'T use `receiving` (use `receives`)
 - DON'T use `returning:` alone (use `returning JSON text:`)
+- DON'T leave a `-` or `+` at the start of a line when editing code. These are diff-markers — not valid syntax. The parser reads `-  send back draft` as `-(send back)` and emits a "stray '-' at the start" error. When adapting code from diffs or chat messages, strip every leading `-` and `+` before saving.

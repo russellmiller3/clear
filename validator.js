@@ -486,6 +486,21 @@ function validateForwardReferences(body, errors) {
     switch (expr.type) {
       case NodeType.VARIABLE_REF:
         if (!scope.has(expr.name) && !BUILTINS.has(expr.name.toLowerCase())) {
+          // A variable_ref whose name contains a space is always a parser
+          // artifact, not a real identifier — real variables are single words.
+          // The name here is a canonicalized multi-word keyword (send back,
+          // respond with, show all, etc.) that ended up in expression position.
+          // Most common cause: a stray '-' or '+' at the start of a line,
+          // left over from a diff-style edit. Call it out directly so the
+          // user fixes the real problem instead of trying to define a
+          // variable called "send back".
+          if (expr.name.includes(' ')) {
+            errors.push({
+              line: line,
+              message: `Line ${line} looks like it has a stray '-' or '+' at the start — the parser read '${expr.name}' as a value, but it's a keyword. Remove the stray character and the line will compile.`
+            });
+            break;
+          }
           const suggestion = suggestKeyword(expr.name, scope);
           if (suggestion) {
             errors.push({

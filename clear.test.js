@@ -4424,6 +4424,21 @@ describe('Standalone Validator', () => {
     const { errors } = validate(ast);
     expect(errors.length).toBe(0);
   });
+
+  // Regression: a stray '-' at the start of a line (typical AI-edit diff-marker
+  // artifact) makes the parser read `-  send back draft` as a show statement
+  // holding a unary_op over "send back" — which then hits the undefined-variable
+  // check with a name that has a space in it. Real variables never have spaces,
+  // so a variable_ref name containing a space is always a canonicalized multi-word
+  // keyword shoved into expression position. Catch it with a message that names
+  // the real cause instead of telling the user to define a variable called "send back".
+  it('gives a clear error when a line starts with a stray dash', () => {
+    const ast = parse("agent 'Foo' receives x:\n  y = 1\n-  send back y");
+    const { errors } = validate(ast);
+    expect(errors.length > 0).toBe(true);
+    const msg = errors.map(e => e.message).join(' ');
+    expect(msg.includes('stray')).toBe(true);
+  });
 });
 
 // =============================================================================

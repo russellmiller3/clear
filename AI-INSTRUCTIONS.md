@@ -430,6 +430,11 @@ test:
 | `section 'X' side by side:` | `section 'X' with style row:` | Use preset or style for layout |
 | `user's id` in endpoint | `current user's id` | `user` is undefined — use `current user's id` for logged-in user |
 | `result = for each X in Y:` | Use `filter` or loop + `add to` | Can't assign a for-each loop to a variable |
+| `-  send back draft` (leading dash) | `  send back draft` | Never leave a `-` or `+` at the start of a line. Diff-marker artifacts from edit tools make the parser read the line as a negation — the compiler will say "stray '-' or '+' at the start" and point you at it. |
+
+## No Diff Markers in Source (MANDATORY)
+
+Never paste or emit a line that starts with `-` or `+` followed by whitespace. These are diff markers from `git diff` output or patch hunks, and they are not valid Clear syntax. The tokenizer reads the `-` as a negation operator, which turns the rest of the line into an expression — so `-  send back draft` becomes `-(send back)` and the validator trips on "send back" as an undefined variable. If you're adapting code from a diff or a chat transcript, strip every leading `-` / `+` before committing. The compiler's stray-dash error will name the real problem, but the cheaper fix is to not make the mistake in the first place.
 
 ## Design System
 
