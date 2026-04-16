@@ -381,6 +381,18 @@ Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it com
 | P9 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
 | P10 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
 
+### Next Up (Session 34 Open Claws)
+
+Ordered by impact.
+
+| Priority | Feature | Notes |
+|----------|---------|-------|
+| N1 | **Ensemble grader mode** | `EVAL_PROVIDER=ensemble` runs Anthropic + Gemini and surfaces grader disagreement as a pink chip. Catches Claude-grading-Claude bias automatically. On session 32's list, still unbuilt. |
+| N2 | **Eval history** | Persist runs + score trends per template to a local table. Auto-flag regressions (score drop > 2 points vs last run). Half-day of work. |
+| N3 | **CLI `clear eval --suite` mode** | Port the structured eval path from Studio to the CLI so CI can run evals outside the browser. Unblocks scheduled regression runs. |
+| N4 | **Probe-validate sweep against nested shapes** | Session 34's probe fix was tested against flat `validate` rules (url, company, email). Validate blocks with nested objects / list constraints haven't been exercised. Sweep every `validate incoming:` in apps/ to confirm. |
+| N5 | **Review SQLite WIP in `apps/todo-fullstack/clear-runtime/db.js`** | Pending migration sitting unstaged in working tree since session 32 or earlier. Decide: ship, stash, or revert. |
+
 ---
 
 ## Future (Not Committed)
