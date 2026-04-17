@@ -2454,6 +2454,7 @@ function generateE2ETests(body) {
   lines.push('');
 
   // Shim expect/toBe/toHaveProperty for user-written test blocks
+  const hasUnitAsserts = testDefs.some(td => (td.body || []).some(n => n.type === NodeType.UNIT_ASSERT));
   if (testDefs.length > 0) {
     lines.push('// Expect shim for user-written test assertions');
     lines.push('function expect(val) {');
@@ -2563,6 +2564,28 @@ function generateE2ETests(body) {
     lines.push('  if (as && as.includes(value)) return;');
     lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
     lines.push('  throw new Error("Error response didn\'t mention \\"" + value + "\\". Got: " + (as || "nothing") + ". Check the `fail with error \'...\'` or `validate` message in your endpoint." + where);');
+    lines.push('}');
+    lines.push('');
+  }
+  if (hasUnitAsserts) {
+    lines.push('// Unit-level value assertion — used by "expect x is 5", "expect x is greater than N", etc.');
+    lines.push('// check: eq | ne | gt | lt | gte | lte | empty | not_empty');
+    lines.push('function _unitAssert(actual, check, expected, line, expr) {');
+    lines.push('  const where = line ? " [clear:" + line + "]" : "";');
+    lines.push('  let ok = false;');
+    lines.push('  if (check === "eq")        ok = actual == expected;');
+    lines.push('  if (check === "ne")        ok = actual != expected;');
+    lines.push('  if (check === "gt")        ok = actual > expected;');
+    lines.push('  if (check === "lt")        ok = actual < expected;');
+    lines.push('  if (check === "gte")       ok = actual >= expected;');
+    lines.push('  if (check === "lte")       ok = actual <= expected;');
+    lines.push('  if (check === "empty")     ok = actual === null || actual === undefined || actual === "" || (Array.isArray(actual) && actual.length === 0);');
+    lines.push('  if (check === "not_empty") ok = actual !== null && actual !== undefined && actual !== "" && (!Array.isArray(actual) || actual.length > 0);');
+    lines.push('  if (ok) return;');
+    lines.push('  const got = actual === null || actual === undefined ? "nothing" : JSON.stringify(actual);');
+    lines.push('  const want = { eq: "to equal", ne: "to not equal", gt: "to be greater than", lt: "to be less than", gte: "to be at least", lte: "to be at most", empty: "to be empty", not_empty: "to not be empty" };');
+    lines.push('  const suffix = (check === "empty" || check === "not_empty") ? "" : " " + JSON.stringify(expected);');
+    lines.push('  throw new Error("`" + expr + "` was expected " + (want[check] || check) + suffix + ", but got " + got + " instead." + where);');
     lines.push('}');
     lines.push('');
   }
@@ -3424,8 +3447,8 @@ function compileRespond(node, ctx, pad) {
   const val = exprToCode(node.expression, ctx);
   const isStringLiteral = node.expression.type === NodeType.LITERAL_STRING;
 
-  // Inside an agent, send back = plain return (not res.json)
-  if (ctx.insideAgent) {
+  // Inside an agent or plain function def, send back = plain return (not res.json)
+  if (ctx.insideAgent || ctx.insideFunction) {
     if (ctx.lang === 'python') return `${pad}return ${val}`;
     return `${pad}return ${val};`;
   }
@@ -4923,8 +4946,9 @@ function _compileNodeInner(node, ctx) {
         _jsdoc = `${pad}/**\n${_pDocs ? _pDocs + '\n' : ''}${_rDoc ? _rDoc + '\n' : ''}${pad} */\n`;
       }
       // JS: functions get their own scope — params are pre-declared
+      // insideFunction: true so that `send back` compiles to `return` instead of `res.json`
       const fnDeclared = new Set(node.params.map(p => sanitizeName(p.name)));
-      const bodyCode = compileBody(node.body, ctx, { declared: fnDeclared });
+      const bodyCode = compileBody(node.body, ctx, { declared: fnDeclared, insideFunction: true });
       // Auto-detect async: if body contains await (CRUD, API calls, agent calls), make function async
       const isAsync = bodyCode.includes('await ');
       return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${sanitizeName(node.name)}(${params}) {\n${bodyCode}\n${pad}}`;
@@ -5646,6 +5670,22 @@ ${pad}}`;
     case NodeType.EXPECT: {
       if (ctx.lang === 'python') return `${pad}assert ${exprToCode(node.expression, ctx)}`;
       return `${pad}expect(${exprToCode(node.expression, ctx)}).toBeTruthy();`;
+    }
+
+    case NodeType.UNIT_ASSERT: {
+      const left = exprToCode(node.left, ctx);
+      const check = JSON.stringify(node.check);
+      const right = node.right ? exprToCode(node.right, ctx) : 'null';
+      const line = node.line || 0;
+      const raw = JSON.stringify(node.rawLeft);
+      if (ctx.lang === 'python') {
+        // Python: simple assert with readable message
+        const ops = { eq: '==', ne: '!=', gt: '>', lt: '<', gte: '>=', lte: '<=' };
+        if (node.check === 'empty') return `${pad}assert not ${left}, f"Expected '${node.rawLeft}' to be empty, got {${left}}"`;
+        if (node.check === 'not_empty') return `${pad}assert ${left}, f"Expected '${node.rawLeft}' to not be empty, got {${left}}"`;
+        return `${pad}assert ${left} ${ops[node.check] || '=='} ${right}, f"Expected '${node.rawLeft}' to be {${right}}, got {${left}}"`;
+      }
+      return `${pad}_unitAssert(${left}, ${check}, ${right}, ${line}, ${raw});`;
     }
 
     case NodeType.HTTP_TEST_CALL: {
@@ -6863,10 +6903,15 @@ export function exprToCode(expr, ctx) {
         const right = exprToCode(expr.args[1], ctx);
         return ctx.lang === 'python' ? `{**${left}, **${right}}` : `{ ...${left}, ...${right} }`;
       }
-      const fnName = ctx.lang === 'python' ? mapFunctionNamePython(expr.name) : mapFunctionNameJS(expr.name);
       const args = expr.args.map(a => exprToCode(a, ctx)).join(', ');
       // Add await for user-defined async functions (detected by pre-scan)
       const awaitPrefix = ctx._asyncFunctions?.has(expr.name) ? 'await ' : '';
+      // User-defined functions always shadow built-in aliases.
+      // e.g. `define function sum(a, b)` → sum(2,3) calls the user's function, not _clear_sum.
+      if (ctx._userFunctions?.has(expr.name)) {
+        return `${awaitPrefix}${sanitizeName(expr.name)}(${args})`;
+      }
+      const fnName = ctx.lang === 'python' ? mapFunctionNamePython(expr.name) : mapFunctionNameJS(expr.name);
       return `${awaitPrefix}${fnName}(${args})`;
     }
 
@@ -9910,6 +9955,16 @@ function generateDiagram(body, commentPrefix = '//', streamingAgentNames = new S
  * ASK_AI calls, external fetches, agent/pipeline calls, or HTTP requests.
  * Also handles transitive async: if function A calls async function B, A is async too.
  */
+// Collect all user-defined function names so CALL resolution can prefer them
+// over built-in aliases (e.g. user defines `sum(a,b)` → `sum` should NOT map to `_clear_sum`)
+function _findUserFunctions(body) {
+  const names = new Set();
+  for (const n of (body || [])) {
+    if (n.type === NodeType.FUNCTION_DEF && n.name) names.add(n.name);
+  }
+  return names;
+}
+
 function _findAsyncFunctions(body) {
   const ASYNC_NODE_TYPES = new Set([
     NodeType.CRUD, NodeType.ASK_AI, NodeType.EXTERNAL_FETCH,
@@ -10158,6 +10213,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   // A function is async if its body contains CRUD, ASK_AI, EXTERNAL_FETCH,
   // RUN_AGENT, RUN_PIPELINE, HTTP_REQUEST, or calls to other async functions.
   const _asyncFunctions = _findAsyncFunctions(body);
+  const _userFunctions = _findUserFunctions(body);
 
   const bodyLines = [];
   const declared = new Set();
@@ -10169,7 +10225,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   // _c of agent_X(...))` — which would throw at runtime because agent_X
   // compiled as `async function` not `async function*`. Classic shape
   // mismatch bug surfaced on multi-agent-research's Polished Report.
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions, _userFunctions };
 
   // Implicit tables for agent-memory features. Agents declared with
   // `remember conversation context` call db.findAll/insert/update on a
@@ -10499,9 +10555,10 @@ function compileToBrowserServer(body, errors) {
     if (node.type === NodeType.DATA_SHAPE) schemaNames.add(node.name);
   }
   const _asyncFunctions = _findAsyncFunctions(body);
+  const _userFunctions = _findUserFunctions(body);
   const bodyLines = [];
   const declared = new Set();
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames, _astBody: body, _allNodes: body, _asyncFunctions };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', schemaNames, _astBody: body, _allNodes: body, _asyncFunctions, _userFunctions };
 
   // Collect schemas and route handlers
   for (const node of body) {

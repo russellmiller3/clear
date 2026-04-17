@@ -419,6 +419,24 @@ section 'Stats' as 4 columns:
 ```
 Text starting with `+` renders green with up-arrow. Text starting with `-` renders red with down-arrow. Automatic — no extra syntax.
 
+### TDD with define function (test-first pattern)
+```clear
+build for javascript backend
+
+# Red step — write the test before the function exists
+test 'discount math':
+  result = apply_discount(100, 0.10)
+  expect result is 10
+
+# Green step — write the function to make it pass
+define function apply_discount(price, rate):
+  send back price * rate
+```
+
+`send back` inside `define function` compiles to a plain `return` — not HTTP.
+Call it from test blocks, other functions, or endpoints. No server needed to test.
+User-defined function names take priority over any built-in alias with the same name.
+
 ## What NOT to do
 
 - Do NOT nest expressions: `avg(filter(data, x > 5))` -- use flat, one-step-per-line

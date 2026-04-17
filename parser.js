@@ -88,7 +88,7 @@
 //   DATA SHAPE ........................ parseDataShape(), parseRLSPolicy()
 //   CRUD OPERATIONS ................... parseSave, parseRemoveFrom, parseDefineAs,
 //                                      parseLookUpAssignment, parseSaveAssignment
-//   TEST BLOCKS ....................... parseTestDef(), parseExpect()
+//   TEST BLOCKS ....................... parseTestDef(), parseExpect(), UNIT_ASSERT detection
 //   ASK FOR (legacy) .................. parseAskFor()
 //   DISPLAY ........................... parseDisplay() — includes "with delete/edit"
 //   CHART ............................. parseChart(), parseChartTypeFirst(), parseChartTitleFirst(),
@@ -230,6 +230,7 @@ export const NodeType = Object.freeze({
   HTTP_TEST_CALL: 'http_test_call',
   EXPECT_RESPONSE: 'expect_response',
   TEST_INTENT: 'test_intent',  // Intent-based test: "can user create a todo", "does it require login"
+  UNIT_ASSERT: 'unit_assert', // Value-level assertion: expect x is 5, expect x is greater than 3
   STYLE_DEF: 'style_def',
   THEME: 'theme',
 
@@ -1286,6 +1287,75 @@ const CANONICAL_DISPATCH = new Map([
       const searchVal = ctx.tokens[3].type === TokenType.STRING ? ctx.tokens[3].value : ctx.tokens[3].value;
       ctx.body.push({ type: NodeType.EXPECT_RESPONSE, property: 'variable', check: 'contains', value: searchVal, field: varName, line: ctx.line });
       return ctx.i + 1;
+    }
+
+    // --- Unit-level value assertion ---
+    // "expect <expr> is [comparator] <value>"
+    // The tokenizer collapses comparison phrases into single tokens:
+    //   "is not"         → single token, canonical "is not"
+    //   "is greater than"→ single token, canonical "is greater than"
+    //   "is less than"   → single token, canonical "is less than"
+    //   "is at least"    → single token, canonical "is at least"
+    //   "is at most"     → single token, canonical "is at most"
+    //   "is"             → single token, canonical "is" (plain equality or empty check)
+    // So we scan for any of these comparison tokens at position > 1 to split left/right.
+    {
+      const compCanonicals = new Set(['is', 'is not', 'is greater than', 'is less than', 'is at least', 'is at most']);
+      const compIdx = ctx.tokens.findIndex((t, i) => i > 1 && compCanonicals.has(t.canonical));
+      if (compIdx !== -1) {
+        const compToken = ctx.tokens[compIdx];
+        const leftTokens = ctx.tokens.slice(1, compIdx);
+        const rightTokens = ctx.tokens.slice(compIdx + 1);
+        const rawLeft = leftTokens.map(t => t.type === TokenType.STRING ? "'" + t.value + "'" : t.value).join(' ');
+
+        // Determine check type from the comparison token canonical
+        let check = 'eq';
+        let rightExprTokens = rightTokens;
+
+        const comp = compToken.canonical;
+        if (comp === 'is greater than') {
+          check = 'gt';
+        } else if (comp === 'is less than') {
+          check = 'lt';
+        } else if (comp === 'is at least') {
+          check = 'gte';
+        } else if (comp === 'is at most') {
+          check = 'lte';
+        } else if (comp === 'is not') {
+          // "is not empty" → not_empty; "is not <value>" → ne
+          if (rightTokens.length > 0 && (rightTokens[0].canonical === 'nothing' || rightTokens[0].value === 'empty')) {
+            check = 'not_empty'; rightExprTokens = [];
+          } else {
+            check = 'ne';
+          }
+        } else if (comp === 'is') {
+          // "is empty" → empty; "is <value>" → eq
+          if (rightTokens.length > 0 && (rightTokens[0].canonical === 'nothing' || rightTokens[0].value === 'empty')) {
+            check = 'empty'; rightExprTokens = [];
+          } else {
+            check = 'eq';
+          }
+        }
+
+        const leftParsed = leftTokens.length > 0 ? parseExpression(leftTokens, 0, ctx.line) : { error: 'Missing expression before comparison. Example: expect total is 100' };
+        if (leftParsed.error) {
+          ctx.errors.push({ line: ctx.line, message: leftParsed.error });
+          return ctx.i + 1;
+        }
+
+        let rightNode = null;
+        if (rightExprTokens.length > 0) {
+          const rightParsed = parseExpression(rightExprTokens, 0, ctx.line);
+          if (rightParsed.error) {
+            ctx.errors.push({ line: ctx.line, message: rightParsed.error });
+            return ctx.i + 1;
+          }
+          rightNode = rightParsed.node;
+        }
+
+        ctx.body.push({ type: NodeType.UNIT_ASSERT, left: leftParsed.node, check, right: rightNode, line: ctx.line, rawLeft });
+        return ctx.i + 1;
+      }
     }
 
     const parsed = parseExpect(ctx.tokens, ctx.line);

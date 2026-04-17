@@ -3770,7 +3770,7 @@ test 'addition works':
     expect(test.body).toHaveLength(2);
   });
 
-  it('parses expect statement', () => {
+  it('parses expect statement — value equality becomes unit_assert', () => {
     const ast = parse(`
 test 'greeting':
   result is greet('Alice')
@@ -3778,8 +3778,10 @@ test 'greeting':
     `);
     expect(ast.errors).toHaveLength(0);
     const test = ast.body.find(n => n.type === 'test_def');
-    const expectNode = test.body.find(n => n.type === 'expect');
-    expect(expectNode).toBeDefined();
+    // "expect result is 'Hello, Alice'" is a value assertion → unit_assert node
+    const assertNode = test.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('eq');
   });
 });
 
@@ -6974,7 +6976,7 @@ when user calls GET /api/me:
 // =============================================================================
 
 describe('Compiler - expect in test blocks', () => {
-  it('expect X is Y compiles to equality check', () => {
+  it('expect X is Y compiles to _unitAssert equality check', () => {
     const result = compileProgram(`
 build for web
 double(x) = x * 2
@@ -6983,7 +6985,8 @@ test 'double works':
   expect result is 10
     `);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('(result == 10)');
+    // Now compiles to a proper _unitAssert call, not a silent boolean comparison
+    expect(result.javascript).toContain('_unitAssert(result, "eq", 10');
     expect(result.javascript).not.toContain('result_is');
   });
 });
@@ -20479,6 +20482,69 @@ describe('Type annotations — JSDoc output', () => {
   });
 });
 
+// ============================================================
+// Function def: send back compiles to return, not res.json
+// ============================================================
+
+describe('define function — send back compiles to plain return', () => {
+  it('send back inside function compiles to return, not res.json', () => {
+    const r = compileProgram("build for javascript backend\ndefine function double(x):\n  send back x * 2");
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('return (x * 2)');
+    expect(r.javascript).not.toContain('res.json');
+  });
+
+  it('send back a string literal inside function compiles to return, not res.json', () => {
+    const r = compileProgram("build for javascript backend\ndefine function greet(name):\n  send back 'hello'");
+    expect(r.errors).toHaveLength(0);
+    // compiler emits double-quoted strings; just check it returns and doesn't use res.json
+    expect(r.javascript).toContain('return "hello"');
+    expect(r.javascript).not.toContain('res.json({ message:');
+  });
+
+  it('function callable from test block with unit assertion', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "define function add(a, b):\n" +
+      "  send back a + b\n" +
+      "test \"add works\":\n" +
+      "  set result to add(2, 3)\n" +
+      "  expect result is 5"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('function add(a, b)');
+    expect(r.javascript).toContain('return (a + b)');
+    expect(r.javascript).toContain('let result = add(2, 3)');
+    expect(r.javascript).toContain('_unitAssert(result, "eq", 5');
+  });
+
+  it('user-defined function named "sum" shadows the built-in sum alias', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "define function sum(a, b):\n" +
+      "  send back a + b\n" +
+      "test \"sum works\":\n" +
+      "  set result to sum(2, 3)\n" +
+      "  expect result is 5"
+    );
+    expect(r.errors).toHaveLength(0);
+    // call site must use the user's function, not _clear_sum
+    expect(r.javascript).toContain('let result = sum(2, 3)');
+    expect(r.javascript).not.toContain('_clear_sum(2, 3)');
+  });
+
+  it('send back in endpoint still uses res.json (no regression)', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "when user calls GET /api/hello:\n" +
+      "  send back 'world'"
+    );
+    expect(r.errors).toHaveLength(0);
+    // for backend target, compiled output is in r.javascript (not serverJS)
+    expect(r.javascript).toContain('res.json');
+  });
+});
+
 
 // ============================================================
 // GP Phase 5: Typed Error Handling
@@ -22953,6 +23019,159 @@ page 'App' at '/':
     expect(r.tests).toContain('Deleting a todo requires login');
     expect(r.tests).not.toContain('POST /api/todos');
     expect(r.tests).not.toContain('GET /api/todos returns');
+  });
+});
+
+// =============================================================================
+// UNIT-LEVEL TEST ASSERTIONS (UNIT_ASSERT node)
+// =============================================================================
+// These tests are RED until UNIT_ASSERT is implemented in parser + compiler.
+// Currently "expect x is 5" falls through to a generic EXPECT node and compiles
+// to expect(x == 5).toBeTruthy() — a silent false-positive that always passes.
+// UNIT_ASSERT fixes this by emitting _unitAssert(x, 'eq', 5, line, 'x').
+
+describe('Unit assertions — parser produces UNIT_ASSERT nodes', () => {
+  const baseBackend = `build for javascript backend\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n`;
+
+  it('expect x is N → parses as unit_assert node (not expect node)', () => {
+    const src = baseBackend + `\ntest 'number eq':\n  x = 5\n  expect x is 5\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('eq');
+  });
+
+  it('expect x is not N → unit_assert with ne check', () => {
+    const src = baseBackend + `\ntest 'ne check':\n  x = 5\n  expect x is not 9\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('ne');
+  });
+
+  it('expect x is greater than N → gt check', () => {
+    const src = baseBackend + `\ntest 'gt check':\n  x = 85\n  expect x is greater than 80\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('gt');
+  });
+
+  it('expect x is less than N → lt check', () => {
+    const src = baseBackend + `\ntest 'lt check':\n  x = 5\n  expect x is less than 10\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('lt');
+  });
+
+  it('expect x is at least N → gte check', () => {
+    const src = baseBackend + `\ntest 'gte check':\n  x = 85\n  expect x is at least 85\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('gte');
+  });
+
+  it('expect x is at most N → lte check', () => {
+    const src = baseBackend + `\ntest 'lte check':\n  x = 5\n  expect x is at most 10\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('lte');
+  });
+
+  it('expect x is empty → empty check', () => {
+    const src = baseBackend + `\ntest 'empty check':\n  x is ''\n  expect x is empty\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('empty');
+  });
+
+  it('expect x is not empty → not_empty check', () => {
+    const src = baseBackend + `\ntest 'not_empty check':\n  x is 'hello'\n  expect x is not empty\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('not_empty');
+  });
+
+  it('expect name is string → eq check with string right-hand side', () => {
+    const src = baseBackend + `\ntest 'string eq':\n  name is 'Alice'\n  expect name is 'Alice'\n`;
+    const ast = parse(src);
+    const td = ast.body.find(n => n.type === 'test_def');
+    const assertNode = td?.body.find(n => n.type === 'unit_assert');
+    expect(assertNode).toBeDefined();
+    expect(assertNode.check).toBe('eq');
+  });
+});
+
+describe('Unit assertions — compiler emits _unitAssert in test harness', () => {
+  const baseBackend = `build for javascript backend\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n`;
+
+  it('compiles eq assertion to _unitAssert call', () => {
+    const src = baseBackend + `\ntest 'eq':\n  x = 5\n  expect x is 5\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('_unitAssert(');
+    expect(r.tests).toContain('"eq"');
+  });
+
+  it('compiles ne assertion to _unitAssert with ne', () => {
+    const src = baseBackend + `\ntest 'ne':\n  x = 5\n  expect x is not 9\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('"ne"');
+  });
+
+  it('compiles gt/lt/gte/lte assertions', () => {
+    const src = baseBackend + `\ntest 'comparisons':\n  x = 50\n  expect x is greater than 10\n  expect x is less than 100\n  expect x is at least 50\n  expect x is at most 50\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('"gt"');
+    expect(r.tests).toContain('"lt"');
+    expect(r.tests).toContain('"gte"');
+    expect(r.tests).toContain('"lte"');
+  });
+
+  it('compiles empty/not_empty assertions', () => {
+    const src = baseBackend + `\ntest 'empty':\n  x is ''\n  expect x is empty\n  y is 'hi'\n  expect y is not empty\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('"empty"');
+    expect(r.tests).toContain('"not_empty"');
+  });
+
+  it('emits _unitAssert helper function in test harness', () => {
+    const src = baseBackend + `\ntest 'any':\n  x = 1\n  expect x is 1\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.tests).toContain('function _unitAssert(');
+  });
+
+  it('includes source line number in _unitAssert call for error messages', () => {
+    const src = baseBackend + `\ntest 'with line':\n  x = 42\n  expect x is 42\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Third argument is the line number (non-zero): _unitAssert(x, "eq", 5, lineN, "x")
+    expect(r.tests).toMatch(/_unitAssert\(\w+, "eq", \d+, \d+/);
+  });
+
+  it('does NOT emit _unitAssert for HTTP response assertions (no regression)', () => {
+    const src = baseBackend + `\ntest 'http only':\n  can user view all items\n  expect it succeeds\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // HTTP assertions should NOT produce _unitAssert — they use _expectSuccess etc.
+    expect(r.tests).not.toContain('_unitAssert(');
   });
 });
 

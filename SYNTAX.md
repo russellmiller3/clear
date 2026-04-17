@@ -1383,6 +1383,58 @@ test 'function works':
   expect result is 10
 ```
 
+### Unit-Level Value Assertions
+
+Assert directly on values — no server or HTTP needed. Use inside any `test:` block.
+
+```clear
+test 'tax calculation':
+  price = 100
+  tax = price * 0.08
+  expect price is 100
+  expect tax is 8.0
+  expect tax is not 0
+
+test 'comparison checks':
+  score = 85
+  expect score is greater than 80
+  expect score is less than 100
+  expect score is at least 85
+  expect score is at most 90
+
+test 'string equality':
+  name is 'Alice'
+  expect name is 'Alice'
+  expect name is not 'Bob'
+
+test 'empty checks':
+  filled is 'hello'
+  expect filled is not empty
+  blank is ''
+  expect blank is empty
+```
+
+**All comparison forms:**
+
+```clear
+expect x is 5              # equals (==)
+expect x is not 5          # not equal (!=)
+expect x is greater than 5 # > 5
+expect x is less than 5    # < 5
+expect x is at least 5     # >= 5
+expect x is at most 5      # <= 5
+expect x is empty          # null, '', or zero-length list
+expect x is not empty      # non-null, non-empty string/list
+```
+
+When an assertion fails, the error message names the variable and the source line:
+
+```
+`tax` was expected to equal 8, but got 9 instead. [clear:5]
+```
+
+**Limitation:** unit assertions work on variables and expressions within the test block. Calling functions defined elsewhere in the app requires going through an endpoint.
+
 ### Intent-Based Test Assertions
 
 Write tests that read like user stories. The compiler figures out which endpoints to call:

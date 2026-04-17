@@ -166,26 +166,81 @@ This means:
 - When `read_terminal` shows a runtime error with a line number, use `source_map` to map it back to Clear
 - The user can click any element in the live preview and the editor jumps to the source line that generated it
 
+## Test-Driven Development — Red → Green → Refactor (MANDATORY)
+
+**Always write the failing test first. Every time. No exceptions.**
+
+The TDD loop has three steps. Do them in this exact order:
+
+**1. Red** — Write a `test:` block describing what you want. Run `run_tests`. Confirm it fails. The failure must be the *assertion* failing — not a compile error, not a crash. If it fails for the wrong reason, fix the test before writing any code.
+
+**2. Green** — Write the *minimum* code that makes the test pass. No extras. Run `run_tests` again. Confirm it goes green.
+
+**3. Refactor** — Clean up: extract helpers, rename variables, remove duplication. Run `run_tests` to confirm still green.
+
+**The rule is non-negotiable.** If you have not run `run_tests` and seen a red failure before writing implementation code, you are skipping TDD. Stop. Write the test first.
+
+**"Failing for the right reason" means:**
+- ✅ `POST /api/todos returned 404 — that endpoint doesn't exist` → the endpoint isn't there yet. Right reason.
+- ✅ `Expected result to equal 10, got undefined` → the function isn't written yet. Right reason.
+- ❌ Compile error in the test itself → fix the test syntax first, then re-run.
+- ❌ Server crash on startup → fix the server first, then re-run.
+
+**One test per cycle.** Don't write five tests at once. Write one, make it pass, then the next.
+
+**When the user asks you to build something:**
+1. Ask: "What test would prove this works?"
+2. Write that test in the `.clear` file.
+3. Run `run_tests` → see red.
+4. Build the feature.
+5. Run `run_tests` → see green.
+6. Report the green result.
+
+**Never declare a feature done unless `run_tests` shows it passing.**
+
+### TDD for pure functions (not just endpoints)
+
+Use `define function` + test blocks to TDD any pure logic — calculations, formatting, scoring, business rules. No server needed.
+
+```clear
+# Write the test first (red)
+test 'discount calculation':
+  set result to apply_discount(100, 0.10)
+  expect result is 90
+
+# Then write the function (green)
+define function apply_discount(price, rate):
+  send back price - (price * rate)
+```
+
+`send back` inside a `define function` compiles to a plain `return` — not HTTP. Calling the function in a test block works exactly like calling it anywhere else. This is the right way to TDD any logic that doesn't need the database or HTTP.
+
+---
+
 ## Workflow
 
-1. Write code with `edit_code`
-2. Compile with `compile` to check for errors
-3. Fix any errors with `edit_code`
-4. Start with `run_app` for full-stack apps (it waits until the server is ready)
-5. Test with `http_request` to verify endpoints work
-6. Check `read_terminal` for any server errors or frontend JS errors
-7. Use `screenshot_output` after UI changes to visually verify the result
-8. To run CLI tools: first `edit_file` (action='overwrite') the code to `temp-app.clear`, then `run_command` with the CLI
-9. Use `highlight_code` throughout to show the user what you're working on
-10. Iterate until the app is correct, then report results
+1. Write a failing `test:` block first (see TDD section above)
+2. Run `run_tests` — confirm red, for the right reason
+3. Write code with `edit_code` or `patch_code`
+4. Compile with `compile` to check for errors
+5. Fix any errors with `edit_code`
+6. Start with `run_app` for full-stack apps (it waits until the server is ready)
+7. Run `run_tests` — confirm green
+8. Check `read_terminal` for any server errors or frontend JS errors
+9. Use `screenshot_output` after UI changes to visually verify the result
+10. To run CLI tools: first `edit_file` (action='overwrite') the code to `temp-app.clear`, then `run_command` with the CLI
+11. Use `highlight_code` throughout to show the user what you're working on
+12. Iterate until the app is correct, then report results
 
 ## Full Autonomous Loop
 
 For self-directed tasks, use this loop until done:
-1. `patch_code` (small changes) or `edit_code write` (full rewrite) → `compile` → fix errors → `highlight_code` what changed
-2. `run_app` → `read_terminal` (check for crashes) → `http_request` (test endpoints)
-3. `screenshot_output` → inspect the image → fix visual issues → repeat
-4. Only stop when: no compile errors, no terminal errors, screenshot looks correct
+1. Write a failing test → `run_tests` → confirm red
+2. `patch_code` (small changes) or `edit_code write` (full rewrite) → `compile` → fix errors → `highlight_code` what changed
+3. `run_app` → `run_tests` → confirm green
+4. `read_terminal` (check for crashes) → `http_request` (spot-check endpoints)
+5. `screenshot_output` → inspect the image → fix visual issues → repeat
+6. Only stop when: tests green, no terminal errors, screenshot looks correct
 
 ## Pointing at Code (highlight_code)
 

@@ -256,6 +256,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Agent intent test | `can user ask agent 'Support' with message is 'hello'` | Agent smoke test |
 | Semantic expects | `expect it succeeds` / `fails` / `requires login` / `is rejected` | Status code assertions |
 | Mock AI | `mock claude responding:` + fields | Override `_askAI` |
+| Unit assertions | `expect x is 5`, `expect x is greater than N`, `expect x is empty` | Value-level assertions — 8 check forms, friendly error messages, no HTTP needed |
 
 ### Policies (App-Level Guards)
 

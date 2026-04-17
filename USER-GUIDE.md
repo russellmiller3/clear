@@ -1867,6 +1867,39 @@ test 'double works':
   expect result is 10
 ```
 
+### TDD with Functions (Write the Test First)
+
+For any logic that doesn't need a database or HTTP endpoint, use `define function` and test it directly. The test goes in first — before the function exists.
+
+**Red step — write a failing test:**
+```clear
+build for javascript backend
+
+test 'discount calculation':
+  result = apply_discount(100, 0.10)
+  expect result is 10
+```
+
+Run `clear test`. It fails: `apply_discount is not defined`. That's the signal. Now write the function.
+
+**Green step — write the function:**
+```clear
+build for javascript backend
+
+define function apply_discount(price, rate):
+  send back price * rate
+
+test 'discount calculation':
+  result = apply_discount(100, 0.10)
+  expect result is 10
+```
+
+Run `clear test` again. It passes. The function and the test live in the same file.
+
+`send back` inside `define function` compiles to a plain `return` — not HTTP. You can call it from test blocks, from other functions, or from endpoints. It's just a regular function.
+
+**If your function name collides with a built-in** (like `length`, `keys`, or `values`), Clear gives priority to your definition. You can write `define function length(text):` and it will shadow the built-in in your app.
+
 ### Testing AI Agents
 
 Use `mock claude responding:` to test agents without calling the real API:

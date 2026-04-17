@@ -339,7 +339,15 @@ Workflow step types (inside workflow body):
 |-----------|--------|-------------|
 | `TEST_DEF` | `test 'name':` + body | Named test function in E2E test file |
 | `TEST_DEF` | `test:` + body | Nameless test — first body line becomes test name |
-| `EXPECT` | `expect result is 42` | Equality assertion |
+| `UNIT_ASSERT` | `expect x is 5` | Value-level assertion — `_unitAssert(x, 'eq', 5, line, 'x')` |
+| `UNIT_ASSERT` | `expect x is not 5` | Not-equal assertion |
+| `UNIT_ASSERT` | `expect x is greater than 5` | Greater-than assertion |
+| `UNIT_ASSERT` | `expect x is less than 5` | Less-than assertion |
+| `UNIT_ASSERT` | `expect x is at least 5` | Greater-than-or-equal assertion |
+| `UNIT_ASSERT` | `expect x is at most 5` | Less-than-or-equal assertion |
+| `UNIT_ASSERT` | `expect x is empty` | Empty/null/zero-length check |
+| `UNIT_ASSERT` | `expect x is not empty` | Non-empty check |
+| `EXPECT` | `expect expr` (bare truthy) | Generic truthy assertion — use UNIT_ASSERT forms above instead |
 | `HTTP_TEST_CALL` | `call POST /api/users with name is 'Alice'` | `fetch()` call with JSON body |
 | `EXPECT_RESPONSE` | `expect response status is 201` | Status code assertion |
 | `EXPECT_RESPONSE` | `expect response body has id` | Field existence check |
