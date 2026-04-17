@@ -24,18 +24,51 @@ If still unclear, default to **large** (better to over-plan).
 
 ---
 
-## Step 2: Read intent.md + CODEBASE-REFERENCE.md
+## Step 2: Codebase reconnaissance (MANDATORY — do not skip)
 
-**Mandatory before writing any plan:**
+**Before writing a single word of the plan, prove the feature doesn't already exist.** Clear has 126+ node types, a full CLI (`cli/clear.js`), a Studio server (`playground/server.js`), and years of accumulated capability. We've nearly rebuilt things that already existed (SERVICE_CALL, `clear package`, etc.). Every plan that duplicates existing code is a plan that wastes a session.
+
+### 2a. Extract keywords from the plan title
+
+Pull the 3-5 most specific nouns and verbs from what the user asked for. Example: "Fly.io deploy pipeline" → `deploy`, `fly`, `dockerfile`, `package`, `bundle`.
+
+### 2b. Grep the entire codebase for those keywords
+
+Run these greps in parallel. If a keyword shows up in any of these files, **read the surrounding code before writing the plan** — you may be about to rebuild it.
+
+| Grep target | Why |
+|-------------|-----|
+| `cli/clear.js` | Existing CLI commands. Every command is a potential overlap. |
+| `playground/server.js` | Existing Studio endpoints. Every `app.post('/api/...')` could be the thing you're about to add. |
+| `playground/ide.html` | Existing UI controls. Toolbar buttons, modals, state. |
+| `compiler.js` + `parser.js` | Read the TOC at the top of each file. Existing node types, compile paths. |
+| `synonyms.js` | Keyword collisions before proposing new syntax. |
+| `runtime/` | Existing db adapters, auth, rate limit — don't rebuild. |
+| `plans/` | Past plans on the same topic. Learn from what was tried. |
+
+If a grep hit looks like partial overlap, **stop and tell the user** before continuing. Ask: "I found `X` at `path:line` that seems to overlap with this plan. Is the new feature an extension, replacement, or separate?" Do NOT assume.
+
+### 2c. Read Clear's canonical files
 
 ```
-Read intent.md
-Read plans/CODEBASE-REFERENCE.md (if it exists)
+Read intent.md          # 126+ node types — authoritative syntax spec
+Read CLAUDE.md          # project rules, docs gate, testing conventions
+Read AI-INSTRUCTIONS.md # Clear-writing conventions (diagrams, comment style, etc.)
+Read SYNTAX.md          # syntax reference with examples
+Read learnings.md       # scan TOC — every entry is a bug someone already hit
+Read ROADMAP.md         # what's already built (phases 1-84 complete) vs what's planned
 ```
 
-`intent.md` is the **authoritative** source for shapes, actions, auth rules, env vars, and monetization boundaries. If the feature adds or changes any of these, update `intent.md` as part of the plan.
+`intent.md` is **authoritative but may lag the parser** — always cross-check against `parser.js` TOC when in doubt.
 
-`CODEBASE-REFERENCE.md` is **advisory** — architecture, file layout, testing patterns. May be stale; verify against actual files.
+### 2d. Report before writing
+
+Before drafting the plan, tell the user in chat:
+- **What already exists** that overlaps (with `path:line` cites)
+- **What's genuinely new** (the delta)
+- **What surfaces will change** (CLI, compiler, playground, docs)
+
+If ≥80% of what the plan proposes already exists, **recommend a reuse-and-extend plan instead of a net-new plan**.
 
 ---
 
@@ -152,28 +185,37 @@ Also add to the **Pre-Flight Checklist** (Section 9 for large plans):
 
 ---
 
-## Step 5.5: Five-Surface Checklist (for new functions)
+## Step 5.5: Clear Documentation Surfaces (MANDATORY for new features)
 
-**When adding new functions to Cast, there are 5 surfaces that must be updated.** Missing any one causes a real user-facing bug (AI won't suggest it, help panel won't show it, editor won't highlight it).
+Clear's `CLAUDE.md` Documentation Rule lists 7 surfaces that MUST be updated when any new syntax, node type, CLI command, or Studio capability ships. Missing any one causes a user-facing gap (AI writes stale syntax, Meph doesn't know the feature, landing page shows wrong example).
 
-| # | Surface | File | What it does | What breaks if missed |
-|---|---------|------|--------------|----------------------|
-| 1 | `CAST_FUNCTIONS` | `src/lib/castSyntaxReference.js` (~line 294) | AI function whitelist — the AI ONLY suggests functions listed here | AI refuses to suggest the new function or hallucinates wrong syntax |
-| 2 | `CAST_SYNTAX` | `src/lib/castSyntaxReference.js` (~line 20) | Quick-reference cheatsheet snippets for help panel + AI prompt | Help panel missing examples, AI prompt incomplete |
-| 3 | `HELP_FUNCTIONS` | `src/lib/castSyntaxReference.js` (~line 1945) | Detailed help cards (params, returns, examples, related) | User can't find documentation for the function |
-| 4 | `castLanguage.js` | `src/lib/editor/castLanguage.js` | Syntax highlighting keywords for the editor | Function name shows as plain text, not highlighted |
-| 5 | `evaluator.js` | `src/lib/evaluator.js` (CUSTOM_FUNCTIONS) | Runtime registration — function actually works | Function throws "undefined" at runtime |
+Pick the surfaces that match the feature type and add them as the FINAL phase of the plan. No new feature ships without these updates.
 
-**The AI system prompt auto-generates** from `CAST_FUNCTIONS` + `CAST_SYNTAX` via `generateAIPrompt()`, so updating surfaces 1 and 2 automatically fixes the AI.
+| Surface | File | When to update |
+|---------|------|----------------|
+| Spec | `intent.md` | New node type, new syntax, new build target |
+| Reference | `SYNTAX.md` | Any new user-facing syntax — include a runnable example |
+| AI conventions | `AI-INSTRUCTIONS.md` | Any rule for how AI should write Clear code using the feature |
+| Tutorial | `USER-GUIDE.md` | User-facing feature — add worked example |
+| Status | `ROADMAP.md` | Mark the phase complete, update counts under "What's Next" |
+| Marketing | `landing/*.html` | Feature appears in demos, hero examples, or agent pitch pages |
+| Studio AI | `playground/system-prompt.md` | Feature Meph should know to use when building apps |
 
-**For every new function in the plan, verify all 5 surfaces are covered.** Add a checklist step at the end of each phase:
+If the feature adds a CLI command, also update the `## CLI (for AI agents)` block in `CLAUDE.md` itself.
+
+If the feature adds a Studio endpoint, also update `playground/server.test.js` with coverage.
+
+**Checklist to paste into the plan's final phase:**
 
 ```markdown
-- [ ] `CAST_FUNCTIONS` updated (AI whitelist)
-- [ ] `CAST_SYNTAX` updated (cheatsheet examples)
-- [ ] `HELP_FUNCTIONS` updated (detailed help card)
-- [ ] `castLanguage.js` updated (syntax highlighting)
-- [ ] `evaluator.js` CUSTOM_FUNCTIONS updated (runtime)
+- [ ] `intent.md` updated (spec row)
+- [ ] `SYNTAX.md` updated (reference + example)
+- [ ] `AI-INSTRUCTIONS.md` updated (convention / gotcha)
+- [ ] `USER-GUIDE.md` updated (tutorial coverage)
+- [ ] `ROADMAP.md` updated (phase complete + next moves)
+- [ ] `landing/*.html` synced (if feature is user-facing)
+- [ ] `playground/system-prompt.md` updated (if Meph should use it)
+- [ ] `playground/clear-compiler.min.js` rebuilt (if compiler changed)
 ```
 
 ---

@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crystallized — Solving alignment at compile time</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; background: linear-gradient(135deg, #e8e0f0 0%, #e4e8f0 30%, #dfe6ed 60%, #dce8e4 100%); background-attachment: fixed; color: #1a1d2b; -webkit-font-smoothing: antialiased; margin: 0; min-height: 100vh; }
+
+/* Mesh */
+.hero-mesh {
+  position: relative;
+  overflow: hidden;
+}
+.hero-mesh::before {
+  content: '';
+  position: absolute;
+  top: -20%; left: 30%;
+  width: 50%; height: 80%;
+  background: radial-gradient(ellipse, rgba(99,102,241,0.06) 0%, transparent 70%);
+}
+.hero-mesh::after {
+  content: '';
+  position: absolute;
+  bottom: 0; right: 10%;
+  width: 40%; height: 60%;
+  background: radial-gradient(ellipse, rgba(167,139,250,0.04) 0%, transparent 70%);
+}
+
+/* Cards */
+.glass {
+  background: rgba(255,255,255,0.5);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 16px;
+}
+.glass:hover { border-color: rgba(0,0,0,0.1); }
+
+/* Code */
+.code-box {
+  background: #1a1d2b;
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.kw { color: #818cf8; font-weight: 500; }
+.str { color: #34d399; }
+.cmt { color: #4a4e5a; font-style: italic; }
+.hi { background: rgba(129,140,248,0.1); margin: 0 -20px; padding: 0 20px; border-left: 2px solid #818cf8; }
+
+/* Diagram */
+.diagram-box {
+  background: #1a1d2b;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #71717a;
+}
+.diagram-box .accent { color: #818cf8; }
+.diagram-box .green { color: #34d399; }
+.diagram-box .amber { color: #d97706; }
+.diagram-box .red { color: #ef4444; }
+
+/* Dividers */
+.section-line { border-top: 1px solid rgba(0,0,0,0.06); }
+
+/* Nav */
+nav { background: rgba(232,234,239,0.8); backdrop-filter: blur(20px); }
+
+/* Buttons */
+.btn-primary {
+  background: linear-gradient(135deg, #312e81, #4338ca, #4f46e5);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15), 0 4px 16px rgba(79,70,229,0.2);
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+.btn-primary:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 8px 32px rgba(79,70,229,0.3);
+  transform: translateY(-1px);
+}
+
+/* Fade */
+.fade-up { animation: fadeUp 1s cubic-bezier(0.16,1,0.3,1) both; }
+.fd1 { animation-delay: 0.1s; }
+.fd2 { animation-delay: 0.25s; }
+.fd3 { animation-delay: 0.4s; }
+.fd4 { animation-delay: 0.55s; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Stat */
+.stat-num { font-variant-numeric: tabular-nums; }
+
+/* Label */
+.lab-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #818cf8;
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="sticky top-0 z-50 border-b border-black/[0.06] px-6 py-4">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-10">
+      <div class="text-[17px] font-bold tracking-tight text-slate-800">Crystallized</div>
+      <div class="hidden md:flex items-center gap-7 text-[13px] font-medium text-slate-400">
+        <a href="#thesis" class="hover:text-slate-600 transition">Thesis</a>
+        <a href="#compiler" class="hover:text-slate-600 transition">Compiler</a>
+        <a href="#agents" class="hover:text-slate-600 transition">Agents</a>
+        <a href="#rl" class="hover:text-slate-600 transition">RL Environment</a>
+        <a href="#" class="hover:text-slate-600 transition">Docs</a>
+      </div>
+    </div>
+    <a href="#" class="btn-primary text-white text-[13px] px-5 py-2.5 rounded-xl font-semibold">Open Studio</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero-mesh">
+  <div class="max-w-4xl mx-auto px-6 pt-32 pb-24 relative z-10">
+    <div class="fade-up lab-label mb-6">Crystallized Research</div>
+    <h1 class="fade-up fd1 text-4xl md:text-[56px] font-extrabold leading-[1.1] tracking-[-0.035em] text-slate-800 mb-6 max-w-3xl">
+      Solving alignment<br>at compile time.
+    </h1>
+    <p class="fade-up fd2 text-lg md:text-xl text-slate-500 max-w-2xl mb-10 leading-relaxed font-light">
+      AI model output is fluid — probabilistic, shifting, unaligned by nature.
+      We crystallize it. A deterministic compiler hardens AI-generated code into
+      safe, verified, constrained output. Intelligence moves from the model to the compiler.
+    </p>
+    <div class="fade-up fd3 flex items-center gap-5">
+      <a href="#" class="btn-primary text-white px-8 py-3.5 rounded-xl font-semibold text-[15px] inline-flex items-center gap-2">
+        Read the paper
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <a href="#" class="text-[14px] font-medium text-slate-500 hover:text-slate-700 transition">Open Studio</a>
+    </div>
+  </div>
+</section>
+
+<!-- Crystallization concept -->
+<section class="py-24">
+  <div class="max-w-6xl mx-auto px-6">
+    <svg viewBox="0 0 900 380" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full">
+      <defs>
+        <filter id="fluid-blur"><feGaussianBlur stdDeviation="3"/></filter>
+        <radialGradient id="fluid-bg" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stop-color="#6366f1" stop-opacity="0.1"/>
+          <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+        </radialGradient>
+        <!-- Crystal gradient -->
+        <linearGradient id="crystal-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#059669" stop-opacity="0.06"/>
+          <stop offset="100%" stop-color="#059669" stop-opacity="0.02"/>
+        </linearGradient>
+        <!-- Fluid blur filter -->
+        <filter id="fluid-blur">
+          <feGaussianBlur stdDeviation="2"/>
+        </filter>
+      </defs>
+
+      <!-- LEFT: Fluid model output -->
+      <text x="175" y="28" text-anchor="middle" fill="#818cf8" font-size="11" font-weight="700" letter-spacing="0.12em" font-family="Inter">MODEL OUTPUT</text>
+      <text x="175" y="46" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="Inter">fluid · probabilistic · unaligned</text>
+
+      <!-- Fluid blob shape -->
+      <ellipse cx="175" cy="200" rx="140" ry="140" fill="url(#fluid-glow)"/>
+
+      <!-- Wavy, chaotic lines representing fluid output -->
+      <path d="M80,140 Q100,120 120,145 T160,135 T200,148 T240,130 T270,142" stroke="#818cf8" stroke-width="1" opacity="0.3" fill="none" filter="url(#fluid-blur)"/>
+      <path d="M90,170 Q115,155 135,175 T175,162 T210,178 T250,160 T265,172" stroke="#a78bfa" stroke-width="1" opacity="0.25" fill="none" filter="url(#fluid-blur)"/>
+      <path d="M85,200 Q110,185 140,205 T180,192 T215,208 T255,190 T270,200" stroke="#818cf8" stroke-width="1" opacity="0.3" fill="none" filter="url(#fluid-blur)"/>
+      <path d="M90,230 Q120,215 145,235 T185,222 T220,238 T255,220 T265,232" stroke="#c4b5fd" stroke-width="1" opacity="0.2" fill="none" filter="url(#fluid-blur)"/>
+      <path d="M80,260 Q105,245 130,265 T170,252 T205,268 T245,250 T270,262" stroke="#818cf8" stroke-width="1" opacity="0.25" fill="none" filter="url(#fluid-blur)"/>
+
+      <!-- Scattered dots - chaos -->
+      <circle cx="110" cy="155" r="2" fill="#818cf8" opacity="0.3"/>
+      <circle cx="200" cy="175" r="1.5" fill="#a78bfa" opacity="0.25"/>
+      <circle cx="150" cy="220" r="2.5" fill="#818cf8" opacity="0.2"/>
+      <circle cx="230" cy="195" r="1.5" fill="#c4b5fd" opacity="0.3"/>
+      <circle cx="130" cy="250" r="2" fill="#a78bfa" opacity="0.2"/>
+      <circle cx="210" cy="240" r="1.5" fill="#818cf8" opacity="0.25"/>
+      <circle cx="160" cy="180" r="3" fill="#818cf8" opacity="0.15"/>
+      <circle cx="190" cy="255" r="2" fill="#c4b5fd" opacity="0.2"/>
+
+      <!-- Labels inside fluid -->
+      <text x="175" y="150" text-anchor="middle" fill="#71717a" font-size="10" font-family="Inter">hallucination</text>
+      <text x="145" y="195" text-anchor="middle" fill="#71717a" font-size="10" font-family="Inter">auth bypass</text>
+      <text x="210" y="215" text-anchor="middle" fill="#71717a" font-size="10" font-family="Inter">injection</text>
+      <text x="165" y="248" text-anchor="middle" fill="#71717a" font-size="10" font-family="Inter">data leak</text>
+
+      <!-- CENTER: The compiler / crystallization process -->
+      <!-- Arrow -->
+      <line x1="330" y1="200" x2="390" y2="200" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+
+      <!-- Central crystallization icon -->
+      <rect x="395" y="155" width="110" height="90" rx="12" fill="rgba(255,255,255,0.6)" stroke="rgba(0,0,0,0.08)" stroke-width="1"/>
+
+      <!-- Diamond/crystal shape inside -->
+      <polygon points="450,170 475,200 450,230 425,200" fill="none" stroke="#34d399" stroke-width="1.5" opacity="0.6"/>
+      <polygon points="450,178 468,200 450,222 432,200" fill="rgba(52,211,153,0.06)" stroke="none"/>
+      <line x1="450" y1="170" x2="450" y2="230" stroke="#34d399" stroke-width="0.5" opacity="0.3"/>
+      <line x1="425" y1="200" x2="475" y2="200" stroke="#34d399" stroke-width="0.5" opacity="0.3"/>
+
+      <text x="450" y="258" text-anchor="middle" fill="#34d399" font-size="10" font-weight="600" font-family="Inter">COMPILER</text>
+
+      <!-- Arrow out -->
+      <line x1="510" y1="200" x2="570" y2="200" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+      <polygon points="568,195 578,200 568,205" fill="rgba(0,0,0,0.12)"/>
+
+      <!-- RIGHT: Crystal output -->
+      <text x="725" y="28" text-anchor="middle" fill="#34d399" font-size="11" font-weight="700" letter-spacing="0.12em" font-family="Inter">COMPILED OUTPUT</text>
+      <text x="725" y="46" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="Inter">crystallized · deterministic · aligned</text>
+
+      <!-- Crystal structure - hexagonal grid -->
+      <rect x="590" y="70" width="270" height="260" rx="16" fill="url(#crystal-grad)" stroke="rgba(5,150,105,0.15)" stroke-width="1"/>
+
+      <!-- Ordered grid lines -->
+      <line x1="620" y1="100" x2="830" y2="100" stroke="rgba(5,150,105,0.12)" stroke-width="0.5"/>
+      <line x1="620" y1="135" x2="830" y2="135" stroke="rgba(5,150,105,0.12)" stroke-width="0.5"/>
+      <line x1="620" y1="170" x2="830" y2="170" stroke="rgba(5,150,105,0.12)" stroke-width="0.5"/>
+      <line x1="620" y1="205" x2="830" y2="205" stroke="rgba(5,150,105,0.12)" stroke-width="0.5"/>
+      <line x1="620" y1="240" x2="830" y2="240" stroke="rgba(5,150,105,0.12)" stroke-width="0.5"/>
+      <line x1="620" y1="275" x2="830" y2="275" stroke="rgba(5,150,105,0.12)" stroke-width="0.5"/>
+      <line x1="620" y1="300" x2="830" y2="300" stroke="rgba(5,150,105,0.12)" stroke-width="0.5"/>
+
+      <!-- Crystal nodes at intersections -->
+      <circle cx="640" cy="100" r="3" fill="#34d399" opacity="0.4"/><circle cx="700" cy="100" r="3" fill="#34d399" opacity="0.4"/><circle cx="760" cy="100" r="3" fill="#34d399" opacity="0.4"/><circle cx="820" cy="100" r="3" fill="#34d399" opacity="0.4"/>
+      <circle cx="640" cy="135" r="3" fill="#34d399" opacity="0.3"/><circle cx="700" cy="135" r="3" fill="#34d399" opacity="0.3"/><circle cx="760" cy="135" r="3" fill="#34d399" opacity="0.3"/><circle cx="820" cy="135" r="3" fill="#34d399" opacity="0.3"/>
+      <circle cx="640" cy="170" r="3" fill="#34d399" opacity="0.4"/><circle cx="700" cy="170" r="3" fill="#34d399" opacity="0.4"/><circle cx="760" cy="170" r="3" fill="#34d399" opacity="0.4"/><circle cx="820" cy="170" r="3" fill="#34d399" opacity="0.4"/>
+      <circle cx="640" cy="205" r="3" fill="#34d399" opacity="0.3"/><circle cx="700" cy="205" r="3" fill="#34d399" opacity="0.3"/><circle cx="760" cy="205" r="3" fill="#34d399" opacity="0.3"/><circle cx="820" cy="205" r="3" fill="#34d399" opacity="0.3"/>
+      <circle cx="640" cy="240" r="3" fill="#34d399" opacity="0.4"/><circle cx="700" cy="240" r="3" fill="#34d399" opacity="0.4"/><circle cx="760" cy="240" r="3" fill="#34d399" opacity="0.4"/><circle cx="820" cy="240" r="3" fill="#34d399" opacity="0.4"/>
+
+      <!-- Labels inside crystal -->
+      <text x="725" y="103" text-anchor="middle" fill="#047857" font-size="10" font-family="JetBrains Mono" opacity="0.7">requires login</text>
+      <text x="725" y="138" text-anchor="middle" fill="#047857" font-size="10" font-family="JetBrains Mono" opacity="0.7">queries parameterized</text>
+      <text x="725" y="173" text-anchor="middle" fill="#047857" font-size="10" font-family="JetBrains Mono" opacity="0.7">inputs validated</text>
+      <text x="725" y="208" text-anchor="middle" fill="#047857" font-size="10" font-family="JetBrains Mono" opacity="0.7">PII redacted</text>
+      <text x="725" y="243" text-anchor="middle" fill="#047857" font-size="10" font-family="JetBrains Mono" opacity="0.7">agent guardrails enforced</text>
+      <text x="725" y="278" text-anchor="middle" fill="#047857" font-size="10" font-family="JetBrains Mono" opacity="0.7">XSS escaped</text>
+      <text x="725" y="303" text-anchor="middle" fill="#047857" font-size="10" font-family="JetBrains Mono" opacity="0.7">deterministic output</text>
+
+      <!-- Bottom caption -->
+      <text x="450" y="380" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="Inter">The compiler is the phase transition. Fluid intelligence in, crystallized safety out.</text>
+    </svg>
+  </div>
+</section>
+
+<!-- Stats strip -->
+<div class="section-line py-6">
+  <div class="max-w-5xl mx-auto px-6 flex items-center justify-center gap-16 text-center">
+    <div>
+      <div class="text-2xl font-bold text-slate-800 stat-num">126</div>
+      <div class="text-[11px] text-slate-400 mt-1">node types</div>
+    </div>
+    <div>
+      <div class="text-2xl font-bold text-slate-800 stat-num">27</div>
+      <div class="text-[11px] text-slate-400 mt-1">bug classes eliminated</div>
+    </div>
+    <div>
+      <div class="text-2xl font-bold text-slate-800 stat-num">1,914</div>
+      <div class="text-[11px] text-slate-400 mt-1">compiler tests</div>
+    </div>
+    <div>
+      <div class="text-2xl font-bold text-slate-800 stat-num">0</div>
+      <div class="text-[11px] text-slate-400 mt-1">dependencies</div>
+    </div>
+    <div>
+      <div class="text-2xl font-bold text-slate-800 stat-num">20</div>
+      <div class="text-[11px] text-slate-400 mt-1">RL curriculum tasks</div>
+    </div>
+  </div>
+</div>
+
+<!-- Thesis -->
+<section id="thesis" class="section-line py-28">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="lab-label mb-4">Thesis</div>
+    <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight text-slate-800 mb-6 max-w-2xl">
+      AI will write all software.<br>
+      <span class="text-slate-400">Safety should live in the compiler, not the model.</span>
+    </h2>
+    <div class="grid md:grid-cols-2 gap-16 mt-14">
+      <div>
+        <h3 class="text-[15px] font-bold text-slate-800 mb-3">The problem with AI-generated code</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          LLMs can already write software faster than humans. Lovable, Bolt, Cursor, Devin —
+          all generate working code from prompts. The hard problem isn't speed.
+          The hard problem is trust.
+        </p>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          How do you know the AI didn't ship a security hole? How do you know the agent
+          won't delete your database? How do you know the output is the same as yesterday's?
+        </p>
+        <p class="text-[14px] text-slate-500 leading-relaxed">
+          Today's answer is hope. Hope the AI wrote secure code. Hope it didn't break something.
+          Hope the output is right.
+        </p>
+      </div>
+      <div>
+        <h3 class="text-[15px] font-bold text-slate-800 mb-3">The compiler builds the cage</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          Our approach to alignment: don't try to make the model safe. Build a cage around
+          its output. The AI writes whatever it wants in Clear. The compiler decides what ships.
+        </p>
+        <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+          The cage has 27 walls. Auth bypass? Won't compile. SQL injection? Impossible — queries
+          are parameterized structurally. Agent trying to delete data? Blocked by guardrails
+          the human wrote in English and the compiler enforces in code.
+        </p>
+        <p class="text-[14px] text-slate-500 leading-relaxed">
+          Inside the cage, the AI is free — creative, fast, capable. Outside the cage,
+          nothing ships. As AI gets more capable, we add more walls. The cage and the
+          capability co-evolve.
+        </p>
+      </div>
+    </div>
+
+    <!-- Diagram -->
+    <div class="mt-14 rounded-2xl p-8" style="background: rgba(255,255,255,0.4); border: 1px solid rgba(0,0,0,0.06);">
+      <div class="text-[11px] lab-label mb-6">Architecture</div>
+      <svg viewBox="0 0 900 340" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full">
+        <!-- Left column: AI writes -->
+        <rect x="20" y="30" width="220" height="120" rx="16" fill="rgba(129,140,248,0.06)" stroke="rgba(129,140,248,0.15)" stroke-width="1"/>
+        <text x="130" y="60" text-anchor="middle" fill="#818cf8" font-size="11" font-weight="700" letter-spacing="0.1em" font-family="Inter">AI WRITES</text>
+        <text x="130" y="85" text-anchor="middle" fill="#a1a1aa" font-size="12" font-family="Inter">LLM generates</text>
+        <text x="130" y="103" text-anchor="middle" fill="#a1a1aa" font-size="12" font-family="Inter">plain-English source</text>
+        <text x="130" y="135" text-anchor="middle" fill="#71717a" font-size="11" font-family="Inter">Patch API: 11 structured ops</text>
+
+        <!-- Arrow 1 -->
+        <line x1="250" y1="90" x2="310" y2="90" stroke="rgba(0,0,0,0.12)" stroke-width="1.5"/>
+        <polygon points="310,85 320,90 310,95" fill="rgba(0,0,0,0.15)"/>
+
+        <!-- Center column: Compiler -->
+        <rect x="325" y="10" width="250" height="280" rx="16" fill="rgba(52,211,153,0.04)" stroke="rgba(52,211,153,0.12)" stroke-width="1"/>
+        <text x="450" y="40" text-anchor="middle" fill="#34d399" font-size="11" font-weight="700" letter-spacing="0.1em" font-family="Inter">COMPILER CONSTRAINS</text>
+
+        <rect x="350" y="60" width="200" height="28" rx="6" fill="rgba(52,211,153,0.06)"/>
+        <text x="450" y="79" text-anchor="middle" fill="#047857" font-size="11" font-family="Inter">27 security checks</text>
+
+        <rect x="350" y="96" width="200" height="28" rx="6" fill="rgba(52,211,153,0.06)"/>
+        <text x="450" y="115" text-anchor="middle" fill="#047857" font-size="11" font-family="Inter">Auth enforced</text>
+
+        <rect x="350" y="132" width="200" height="28" rx="6" fill="rgba(52,211,153,0.06)"/>
+        <text x="450" y="151" text-anchor="middle" fill="#047857" font-size="11" font-family="Inter">SQL parameterized</text>
+
+        <rect x="350" y="168" width="200" height="28" rx="6" fill="rgba(52,211,153,0.06)"/>
+        <text x="450" y="187" text-anchor="middle" fill="#047857" font-size="11" font-family="Inter">Agent guardrails</text>
+
+        <rect x="350" y="204" width="200" height="28" rx="6" fill="rgba(52,211,153,0.06)"/>
+        <text x="450" y="223" text-anchor="middle" fill="#047857" font-size="11" font-family="Inter">XSS escaped · PII redacted</text>
+
+        <rect x="350" y="248" width="200" height="28" rx="14" fill="rgba(52,211,153,0.1)" stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+        <text x="450" y="267" text-anchor="middle" fill="#34d399" font-size="11" font-weight="600" font-family="Inter">Deterministic output</text>
+
+        <!-- Arrow 2 -->
+        <line x1="585" y1="90" x2="645" y2="90" stroke="rgba(0,0,0,0.12)" stroke-width="1.5"/>
+        <polygon points="645,85 655,90 645,95" fill="rgba(0,0,0,0.15)"/>
+
+        <!-- Right column: Evals -->
+        <rect x="660" y="30" width="220" height="120" rx="16" fill="rgba(251,191,36,0.04)" stroke="rgba(251,191,36,0.1)" stroke-width="1"/>
+        <text x="770" y="60" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="700" letter-spacing="0.1em" font-family="Inter">EVALS GRADE</text>
+        <text x="770" y="85" text-anchor="middle" fill="#a1a1aa" font-size="12" font-family="Inter">Auto-generated tests</text>
+        <text x="770" y="103" text-anchor="middle" fill="#a1a1aa" font-size="12" font-family="Inter">Structured scoring API</text>
+        <text x="770" y="135" text-anchor="middle" fill="#71717a" font-size="11" font-family="Inter">20 tasks · 10 levels · 63 tests</text>
+
+        <!-- Bottom label -->
+        <text x="450" y="325" text-anchor="middle" fill="#34d399" font-size="13" font-weight="600" font-family="Inter">Same input = same output. Every time. Guaranteed.</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- Compiler Guarantees -->
+<section id="compiler" class="section-line py-28">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="lab-label mb-4">Compiler</div>
+    <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight text-slate-800 mb-6 max-w-2xl">
+      27 bug classes eliminated<br>at compile time.
+    </h2>
+    <p class="text-[14px] text-slate-500 leading-relaxed max-w-xl mb-14">
+      Not warnings. Not lint rules. Compile errors. The program doesn't build until
+      the bug is fixed. Fix a pattern once in the compiler, every app gets the fix on recompile.
+    </p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="glass p-6">
+        <div class="text-[12px] font-bold text-red-400 uppercase tracking-wider mb-4">Security — compile errors</div>
+        <div class="space-y-3 text-[13px]">
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">SQL injection — all queries parameterized</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Auth bypass — DELETE without login = won't compile</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Mass assignment — unknown fields auto-stripped</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">CSRF — mutating endpoints without auth = error</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">PII in errors — passwords auto-redacted</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">XSS — all user input escaped in display</span></div>
+        </div>
+      </div>
+
+      <div class="glass p-6">
+        <div class="text-[12px] font-bold text-amber-400 uppercase tracking-wider mb-4">Correctness — caught before runtime</div>
+        <div class="space-y-3 text-[13px]">
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Undefined variables with typo suggestions</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Type mismatches in math operations</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Frontend-backend URL mismatches</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Missing endpoint responses</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Schema-frontend field mismatches</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Agent tool reference validation</span></div>
+        </div>
+      </div>
+
+      <div class="glass p-6">
+        <div class="text-[12px] font-bold text-indigo-400 uppercase tracking-wider mb-4">Business logic — common mistakes</div>
+        <div class="space-y-3 text-[13px]">
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Negative balance / stock warnings</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Overbooking without capacity check</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Deep property chain warnings</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Expression complexity limits</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Prompt injection blocking</span></div>
+          <div class="flex items-start gap-2"><span class="text-emerald-400 mt-0.5">&#10003;</span><span class="text-slate-600">Input validation auto-generated</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Agent Primitives -->
+<section id="agents" class="section-line py-28">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="lab-label mb-4">Agent primitives</div>
+    <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight text-slate-800 mb-6 max-w-3xl">
+      Agents as language constructs,<br>
+      <span class="text-slate-400">not library calls.</span>
+    </h2>
+    <p class="text-[14px] text-slate-500 leading-relaxed max-w-xl mb-14">
+      Tool use, memory, RAG, guardrails, pipelines, parallel execution, human approval gates,
+      structured output, and multi-agent coordination — all as first-class syntax.
+      The compiler validates agent references, tool bindings, and guardrail patterns at compile time.
+    </p>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="code-box p-6">
+        <div class="text-[11px] text-slate-500 uppercase tracking-wider mb-4 font-medium">Agent with tools + guardrails</div>
+        <div><span class="kw">agent</span> <span class="str">'Helpdesk'</span> receives question:</div>
+        <div class="pl-5"><span class="kw">has tools:</span> lookup_product, create_ticket</div>
+        <div class="pl-5"><span class="kw">knows about:</span> Products</div>
+        <div class="pl-5"><span class="kw">remember</span> conversation context</div>
+        <div class="pl-5 hi"><span class="kw">block arguments matching</span> <span class="str">'delete|drop|truncate'</span></div>
+        <div class="pl-5">response = <span class="kw">ask claude</span> <span class="str">'You are a customer</span></div>
+        <div class="pl-9"><span class="str">support agent. Help with products</span></div>
+        <div class="pl-9"><span class="str">and account issues.'</span> with question</div>
+        <div class="pl-5"><span class="kw">send back</span> response</div>
+      </div>
+
+      <div class="code-box p-6">
+        <div class="text-[11px] text-slate-500 uppercase tracking-wider mb-4 font-medium">Multi-agent pipeline</div>
+        <div><span class="kw">pipeline</span> <span class="str">'Deal Review'</span> with request:</div>
+        <div class="pl-5"><span class="kw">step</span> <span class="str">'Enrich'</span> with <span class="str">'Enrichment Agent'</span></div>
+        <div class="pl-5"><span class="kw">step</span> <span class="str">'Score'</span> with <span class="str">'Scoring Agent'</span></div>
+        <div class="pl-5"><span class="kw">step</span> <span class="str">'Summarize'</span> with <span class="str">'Summary Agent'</span></div>
+        <div class="mt-4"><span class="kw">agent</span> <span class="str">'Triage'</span> runs every 1 hour:</div>
+        <div class="pl-5">pending = <span class="kw">get all</span> Requests <span class="kw">where</span> status <span class="kw">is</span> <span class="str">'new'</span></div>
+        <div class="pl-5"><span class="kw">for each</span> req <span class="kw">in</span> pending:</div>
+        <div class="pl-9">result = <span class="kw">call pipeline</span> <span class="str">'Deal Review'</span> with req</div>
+        <div class="pl-9"><span class="kw">send email to</span> req's owner_email:</div>
+        <div class="pl-13">subject <span class="kw">is</span> <span class="str">'New deal scored'</span></div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-4 mt-6">
+      <div class="glass p-5">
+        <div class="text-[13px] font-bold text-slate-800 mb-2">Guardrails</div>
+        <div class="text-[12px] text-slate-400 leading-relaxed">block arguments matching, must not, protect tables — compile-time constraints on agent behavior</div>
+      </div>
+      <div class="glass p-5">
+        <div class="text-[13px] font-bold text-slate-800 mb-2">Memory</div>
+        <div class="text-[12px] text-slate-400 leading-relaxed">remember conversation context, remember user preferences — DB-backed, per-user long-term memory</div>
+      </div>
+      <div class="glass p-5">
+        <div class="text-[13px] font-bold text-slate-800 mb-2">Human-in-loop</div>
+        <div class="text-[12px] text-slate-400 leading-relaxed">ask user to confirm — approval gates before irreversible actions. Policy, not code.</div>
+      </div>
+      <div class="glass p-5">
+        <div class="text-[13px] font-bold text-slate-800 mb-2">Coordination</div>
+        <div class="text-[12px] text-slate-400 leading-relaxed">Agents call agents. Pipelines chain steps. do these at the same time for parallel fan-out.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RL Environment -->
+<section id="rl" class="section-line py-28">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="lab-label mb-4">RL environment</div>
+    <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight text-slate-800 mb-6 max-w-3xl">
+      A gym for AI that writes software.
+    </h2>
+    <p class="text-[14px] text-slate-500 leading-relaxed max-w-xl mb-14">
+      Deterministic compiler. Structured errors as reward signal. Constrained action space.
+      20 curriculum tasks across 10 difficulty levels. The infrastructure for training
+      AI systems that write correct, safe, auditable code.
+    </p>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="glass p-6">
+        <div class="text-[12px] font-bold text-indigo-400 uppercase tracking-wider mb-5">What's built</div>
+        <div class="space-y-4 text-[13px]">
+          <div>
+            <div class="font-semibold text-slate-800 mb-1">Sandbox runner</div>
+            <div class="text-slate-400">Isolated child process with timeout and memory limits. Deterministic execution environment.</div>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-800 mb-1">Curriculum</div>
+            <div class="text-slate-400">20 benchmark tasks (L1-L10). 63 tests. From "create a variable" to "build a multi-agent pipeline with auth."</div>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-800 mb-1">Patch API</div>
+            <div class="text-slate-400">11 structured edit operations. Constrained action space — the AI edits programs through operations, not raw text. Add line, replace line, insert block, wrap in conditional.</div>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-800 mb-1">Structured eval</div>
+            <div class="text-slate-400">compileProgram() returns JSON: error count, warning count, compiled output, test results, timing. The reward function.</div>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-800 mb-1">Source maps</div>
+            <div class="text-slate-400">Runtime errors map back to Clear line numbers. The AI can read its own stack traces.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass p-6">
+        <div class="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-5">The loop</div>
+        <svg viewBox="0 0 380 440" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full max-w-sm">
+          <!-- Step 1 -->
+          <rect x="50" y="10" width="220" height="44" rx="10" fill="rgba(129,140,248,0.1)" stroke="rgba(129,140,248,0.25)" stroke-width="1"/>
+          <text x="82" y="37" fill="#818cf8" font-size="12" font-weight="600" font-family="Inter">1</text>
+          <text x="102" y="37" fill="#c4b5fd" font-size="12" font-family="Inter">AI writes .clear</text>
+          <!-- Arrow -->
+          <line x1="160" y1="54" x2="160" y2="78" stroke="rgba(0,0,0,0.12)" stroke-width="1.5"/>
+          <polygon points="155,78 160,88 165,78" fill="rgba(0,0,0,0.12)"/>
+
+          <!-- Step 2 -->
+          <rect x="50" y="90" width="220" height="44" rx="10" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+          <text x="82" y="117" fill="#34d399" font-size="12" font-weight="600" font-family="Inter">2</text>
+          <text x="102" y="117" fill="#047857" font-size="12" font-family="Inter">Compiler validates</text>
+          <!-- Error branch -->
+          <line x1="270" y1="112" x2="330" y2="112" stroke="rgba(248,113,113,0.3)" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="335" y="116" fill="#f87171" font-size="10" font-family="Inter">-reward</text>
+          <!-- Arrow -->
+          <line x1="160" y1="134" x2="160" y2="158" stroke="rgba(0,0,0,0.12)" stroke-width="1.5"/>
+          <polygon points="155,158 160,168 165,158" fill="rgba(0,0,0,0.12)"/>
+
+          <!-- Step 3 -->
+          <rect x="50" y="170" width="220" height="44" rx="10" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+          <text x="82" y="197" fill="#34d399" font-size="12" font-weight="600" font-family="Inter">3</text>
+          <text x="102" y="197" fill="#047857" font-size="12" font-family="Inter">Tests auto-run</text>
+          <!-- Error branch -->
+          <line x1="270" y1="192" x2="330" y2="192" stroke="rgba(248,113,113,0.3)" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="335" y="196" fill="#f87171" font-size="10" font-family="Inter">-reward</text>
+          <!-- Arrow -->
+          <line x1="160" y1="214" x2="160" y2="238" stroke="rgba(0,0,0,0.12)" stroke-width="1.5"/>
+          <polygon points="155,238 160,248 165,238" fill="rgba(0,0,0,0.12)"/>
+
+          <!-- Step 4 -->
+          <rect x="50" y="250" width="220" height="44" rx="10" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.2)" stroke-width="1"/>
+          <text x="82" y="277" fill="#fbbf24" font-size="12" font-weight="600" font-family="Inter">4</text>
+          <text x="102" y="277" fill="#fcd34d" font-size="12" font-family="Inter">Evals grade quality</text>
+          <!-- Score branch -->
+          <line x1="270" y1="272" x2="330" y2="272" stroke="rgba(251,191,36,0.3)" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="335" y="276" fill="#fbbf24" font-size="10" font-family="Inter">0–1 score</text>
+          <!-- Arrow -->
+          <line x1="160" y1="294" x2="160" y2="318" stroke="rgba(0,0,0,0.12)" stroke-width="1.5"/>
+          <polygon points="155,318 160,328 165,318" fill="rgba(0,0,0,0.12)"/>
+
+          <!-- Step 5 -->
+          <rect x="50" y="330" width="220" height="44" rx="10" fill="rgba(129,140,248,0.1)" stroke="rgba(129,140,248,0.25)" stroke-width="1"/>
+          <text x="82" y="357" fill="#818cf8" font-size="12" font-weight="600" font-family="Inter">5</text>
+          <text x="102" y="357" fill="#c4b5fd" font-size="12" font-family="Inter">Patch API edits</text>
+
+          <!-- Loop-back arrow -->
+          <line x1="50" y1="352" x2="25" y2="352" stroke="rgba(129,140,248,0.2)" stroke-width="1.5"/>
+          <line x1="25" y1="352" x2="25" y2="112" stroke="rgba(129,140,248,0.2)" stroke-width="1.5"/>
+          <line x1="25" y1="112" x2="48" y2="112" stroke="rgba(129,140,248,0.2)" stroke-width="1.5"/>
+          <polygon points="48,107 58,112 48,117" fill="rgba(129,140,248,0.25)"/>
+
+          <!-- Loop label -->
+          <text x="12" y="240" fill="#818cf8" font-size="9" font-family="Inter" transform="rotate(-90, 12, 240)" text-anchor="middle">LOOP</text>
+        </svg>
+        <div class="mt-4 p-4 rounded-lg" style="background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.1);">
+          <div class="text-[12px] font-semibold text-amber-400 mb-1">Blocker</div>
+          <div class="text-[12px] text-slate-400">No fine-tuning access. The gym is ready but can't train athletes in it yet. When frontier model APIs open training endpoints, Clear is the environment.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- The trajectory -->
+<section class="section-line py-28">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="lab-label mb-4">Trajectory</div>
+    <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight text-slate-800 mb-14 max-w-2xl">
+      From writing code<br>
+      <span class="text-slate-400">to setting constraints.</span>
+    </h2>
+
+    <div class="space-y-0">
+      <div class="flex gap-6 pb-12">
+        <div class="flex flex-col items-center">
+          <div class="w-10 h-10 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-[13px] font-bold text-indigo-400">1</div>
+          <div class="w-px flex-1 bg-white/[0.06] mt-3"></div>
+        </div>
+        <div>
+          <div class="text-[15px] font-bold text-slate-800 mb-2">Today — AI writes, compiler catches, human reviews</div>
+          <p class="text-[13px] text-slate-400 leading-relaxed max-w-lg">AI generates 100-line .clear files. Compiler catches security bugs and correctness errors. Human reviews the readable source. Ships.</p>
+        </div>
+      </div>
+
+      <div class="flex gap-6 pb-12">
+        <div class="flex flex-col items-center">
+          <div class="w-10 h-10 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-[13px] font-bold text-indigo-400">2</div>
+          <div class="w-px flex-1 bg-white/[0.06] mt-3"></div>
+        </div>
+        <div>
+          <div class="text-[15px] font-bold text-slate-800 mb-2">Next — AI writes complex systems, evals grade, human reviews exceptions</div>
+          <p class="text-[13px] text-slate-400 leading-relaxed max-w-lg">AI generates 500-line multi-agent systems. Compiler validates. Evals grade quality against rubrics. Human reviews only what the evals flag.</p>
+        </div>
+      </div>
+
+      <div class="flex gap-6 pb-12">
+        <div class="flex flex-col items-center">
+          <div class="w-10 h-10 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-[13px] font-bold text-violet-400">3</div>
+          <div class="w-px flex-1 bg-white/[0.06] mt-3"></div>
+        </div>
+        <div>
+          <div class="text-[15px] font-bold text-slate-800 mb-2">Later — AI writes, compiles, tests, deploys, monitors autonomously</div>
+          <p class="text-[13px] text-slate-400 leading-relaxed max-w-lg">Human sets policy: <code class="text-indigo-400 text-[12px]">block arguments matching</code>, <code class="text-indigo-400 text-[12px]">must not:</code>, <code class="text-indigo-400 text-[12px]">requires role</code>. Compiler enforces it. AI handles everything else. The human moves from writing code to setting constraints.</p>
+        </div>
+      </div>
+
+      <div class="flex gap-6">
+        <div class="flex flex-col items-center">
+          <div class="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-[13px] font-bold text-amber-400">4</div>
+        </div>
+        <div>
+          <div class="text-[15px] font-bold text-slate-800 mb-2">Eventually — AI writes agents that write .clear files</div>
+          <p class="text-[13px] text-slate-400 leading-relaxed max-w-lg">Self-improving software factory, constrained by a deterministic compiler. The compiler is the alignment mechanism. As the compiler gets smarter, the AI gets safer. They co-evolve.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="section-line py-24">
+  <div class="max-w-3xl mx-auto px-6 text-center">
+    <h2 class="text-3xl md:text-[40px] font-extrabold text-slate-800 tracking-[-0.03em] leading-tight mb-5">
+      Intelligence in the compiler.<br>Safety encoded, not hoped for.
+    </h2>
+    <p class="text-slate-400 text-[15px] mb-10 font-light max-w-lg mx-auto">
+      Clear is open for research collaboration. The compiler, RL environment,
+      and curriculum are available now.
+    </p>
+    <div class="flex items-center justify-center gap-4">
+      <a href="#" class="btn-primary text-white px-8 py-3.5 rounded-xl font-semibold text-[15px] inline-flex items-center gap-2">
+        Open Studio
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <a href="#" class="text-[14px] font-medium text-slate-500 hover:text-slate-700 transition">Read the docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-black/[0.06] py-10">
+  <div class="max-w-5xl mx-auto px-6 flex items-center justify-between">
+    <div class="text-[14px] font-semibold text-slate-500">Crystallized</div>
+    <div class="flex gap-8 text-[13px] text-slate-500 font-medium">
+      <a href="#" class="hover:text-slate-500 transition">Docs</a>
+      <a href="#" class="hover:text-slate-500 transition">Studio</a>
+      <a href="#" class="hover:text-slate-500 transition">GitHub</a>
+      <a href="#" class="hover:text-slate-500 transition">Changelog</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

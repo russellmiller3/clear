@@ -357,7 +357,44 @@ All compile to direct REST `fetch()` calls. No SDK required.
 
 ## What's Next
 
-Ordered by impact. Two tracks: **language completeness** and **platform quality**.
+Ordered by impact. Three tracks: **go-to-market**, **language completeness**, and **platform quality**.
+
+### Go-To-Market & Positioning (locked Session 35)
+
+**Long-term anchor: Marcus.** Technical-adjacent RevOps person at 100–500 person B2B SaaS companies. Builds Zapier zaps, knows enough SQL to be dangerous, has a backlog of 15 internal tools nobody is going to build. Already comfortable in a code-adjacent UI.
+
+**Why Marcus over Sara (non-technical ops):**
+- 10x LTV ($50K → $200K/year by year 3 vs $5K → $20K)
+- Higher stickiness — builds 30 apps, switching = recoding everything
+- Real expansion path — one team → company-wide standard → enterprise contract
+- Loud evangelist — RevOps community is tight (SaaStr Ops Stars, RevOps Co-op)
+- Tolerates rough edges, gives feedback, builds with us
+- Sara needs us perfect on day one — death by perfection
+
+**Historical analog:** Vercel (devs first, no-code via v0 from a position of strength). Stripe (devs first, no-code 5 years later). Bubble (broad/no-code first → stuck at ~$30M ARR after 12 years). Pattern: every successful "expand to non-technical" play started technical. None went the other way successfully.
+
+**Sara is downstream of Marcus.** Once we have 1000 paying Marcuses, we have the revenue, templates, community, brand, and polish to bring Sara in via Builder mode. Reverse doesn't work. Build Sara's templates as demo assets, but spend $0 marketing on her until 2027.
+
+**Hero use case for Marcus landing page:** deal-desk approval queue. Reps submit discount requests, anything over 20% routes to CRO, agent drafts the approval summary. Universal RevOps pain, AI-shaped middle step.
+
+**Pricing model: Vercel pattern (portable code, sticky platform).**
+- Free: 1 user, 1 hosted app, 1K agent calls/mo, .clear export
+- Team $99/mo: 25 apps, 50K agent calls, custom domain, 10 seats
+- Business $499/mo: unlimited apps, SSO, audit logs, dedicated support
+- Enterprise (custom): on-prem, dedicated CSM, $20K–100K ACV
+- Three revenue levers stacking: per-seat × app count × agent usage. Target NDR 3x year over year.
+
+**Studio readiness:** Marcus is comfortable in Studio today (3-panel IDE feels like Retool). Sara is NOT. Builder mode (chat + preview only, "Show code" toggle for trust) is a P1 for ~2026 Q3, blocking the Sara expansion.
+
+| Priority | Item | Notes |
+|----------|------|-------|
+| GTM-1 | Build `apps/deal-desk/main.clear` | Hero use case for Marcus landing page. Discount approval workflow + agent. Target ~150 lines. |
+| GTM-2 | Build `landing/marcus.html` | GAN against the ASCII mock locked this session. Headline: "That backlog of internal tools nobody's going to build? Ship the first one this Friday." |
+| GTM-3 | Sketch `landing/pricing.html` | Free / Team $99 / Business $499 / Enterprise. Concrete agent quotas, app limits, seat counts. |
+| GTM-4 | Find 5 real Marcuses on LinkedIn | DM, show Studio, watch what breaks. Fastest validation lever. |
+| GTM-5 | Studio onboarding fix | New users land in Meph chat with "What do you want to build?" — not in the editor. Cuts bounce rate without building Builder mode. |
+| GTM-6 | Builder mode (Studio simple-UI) | Chat + preview only. "Show code" toggle. P1 for ~Q3 2026. Blocks Sara expansion. |
+| GTM-7 | Instrument Studio | First-click tracking, time-to-first-app, where signups bounce. Data drives Builder mode priorities. |
 
 ### Language Completeness
 
@@ -371,6 +408,24 @@ Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it com
 | P4 | Decorators / middleware | `before each endpoint:` | Skipped — built-in middleware covers use cases |
 | P5 | `clear serve` ESM fix | `clear serve app.clear` | CLI serve crashes with `require is not defined` because project uses `"type": "module"`. Must output `.cjs` or use `createRequire`. |
 
+### Performance (Session 35 — real gaps found via competitive research)
+
+Every internal tool builder has performance problems at scale. Retool chokes because everything runs in the browser. Lovable/Bolt choke because AI-generated code has no optimization guarantees. Clear's architecture is better (server-side CRUD, vanilla JS frontend, no framework overhead) but has real gaps:
+
+| Priority | Gap | Current Behavior | Fix | Impact |
+|----------|-----|-------------------|-----|--------|
+| PERF-1 | **No pagination** | `get all Users` → `SELECT * FROM users` (no LIMIT). 50K rows → browser death. | Compile to `LIMIT 50 OFFSET ?page*50` by default. Opt-out: `get every User`. Auto-generate prev/next controls on `display X as table`. | Biggest single perf fix. Every list endpoint benefits. |
+| PERF-2 | **Aggregations are client-side** | `sum of price in orders` → fetches ALL rows, then `Array.reduce()` in browser. Same for `avg of`, `count of`, `group by`, `filter`. | Compile to SQL: `SELECT SUM(price) FROM orders`. Detect when the variable references a table (not an in-memory array) and use SQL aggregation. | Marcus's dashboards are ALL aggregates. This must be server-side. |
+| PERF-3 | **Search returns all matches** | `search Products for query` → `SELECT * FROM products WHERE ... LIKE ...` with no LIMIT. | Add `LIMIT 100` default. Allow `search Products for query, first 20`. | Prevents runaway result sets on text search. |
+| PERF-4 | **No virtual scrolling** | `display X as table` renders every row into the DOM. 1,000 rows = 1,000 DOM elements. | Only render visible rows + buffer. Intersection Observer or fixed-height virtualization. | Lower priority — pagination (PERF-1) solves most cases. Virtual scroll is the polish layer. |
+
+**What's already fine:**
+- CRUD ops (save/delete/update) → server-side SQL. Single-row ops. Fast.
+- Auth/security → server-side Express middleware. No browser cost.
+- Agent calls → server-side API calls. No browser cost.
+- Compiled output → vanilla JS + HTML. No React/Vue framework overhead.
+- Charts → ECharts. Client-side but handles reasonable datasets well.
+
 ### Platform Quality
 
 | Priority | Feature | Notes |
@@ -381,7 +436,7 @@ Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it com
 | P9 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
 | P10 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
 
-### Next Up (Session 34 Open Claws)
+### Next Up (Session 34 Next Steps)
 
 Ordered by impact.
 
@@ -395,6 +450,54 @@ Ordered by impact.
 
 ---
 
+## Competitive Landscape (Session 35 — sourced from G2, Capterra, Reddit, product pages)
+
+### Direct Competitors
+
+**Retool** — $450M+ raised, incumbent. Developer-only (needs JS + SQL). $10-50/seat/mo. Large apps "extremely cumbersome to maintain, nearly impossible to test." 2023 breach exposed 27 cloud customers. Our edge: no developer needed, readable source, auto-generated tests, compile-time security.
+
+**Superblocks** — $60M raised, enterprise-focused. $49/creator/mo. G2 reviewers call lack of automated testing "a deal breaker." Has "Clark" AI agent (won 2025 AI Breakthrough Award) but generates black-box output. Our edge: readable source, deterministic compilation, built-in tests.
+
+**Zite** — Closest competitor. 100K+ teams. AI-native, prompt-to-app. Aggressive pricing: $0/15/55/mo with unlimited users on all plans including free. SOC 2 Type II, SSO, Salesforce integration, built-in database with spreadsheet UI, custom domains. Acknowledged weaknesses: smaller template library, not for consumer/mobile apps. **Key gap vs Clear:** AI-generated black box (can't read what it built), no agent primitives, no compile-time guarantees, no deterministic output, "modify with follow-up prompts" = re-prompt AI and hope (same Lovable/Bolt problem). **Key gap vs Zite:** they have hosting, compliance, integrations, marketplace, 100K users. We have zero. All platform stuff, all buildable — but they're ahead.
+
+**Lovable** — AI app generator. Gets you "70% of the way there." Users report "unable to diagnose problems hidden deep within code they couldn't read." Credits burn on AI mistakes. "Simple requests would fail and break unrelated parts." Our edge: readable source, deterministic compiler, no credit roulette.
+
+**Bolt.new** — AI app generator. "Rewrites the entire file, breaks your UI, and still fails to fix the original problem." Users spend "$1,000+ on tokens just debugging." Context degrades past 15-20 components. Our edge: edit one line, only that line changes. No token burn.
+
+### Developer-only tools (different category — Marcus can't use these)
+
+**Appsmith** — Open source, self-hosted. G2 4.7/5. "Not for non-technical people. Period." Needs SQL + JS. Performance degrades with large datasets. Free self-hosted.
+
+**Budibase** — Open source. G2 4.5/5. "Open source bait and switch" — licensing changes angered community. Automations are fragile ("publishing a new one can break all existing automations"). Permissions are screen-level only.
+
+**ToolJet** — Open source. 25K GitHub stars. Best visual design quality in head-to-head comparisons. $19/builder/mo. Community maturity and stability scored lower than Appsmith.
+
+### Simple/portal tools (different category — too limited for Marcus)
+
+**Softr** — Best for non-technical users IF data lives in Airtable. Pricing pivot destroyed trust (user limit dropped from 2,500 to 500 with no price reduction). Customization ceiling is low. Airtable-bound.
+
+**Noloco** — Airtable/Sheets integration. Imposed 50,000 row limit mid-flight with no warning. Reliability degrades at scale. Small team, variable support quality.
+
+### New AI-native entrants (watch list)
+
+**AgentUI** — Claims non-technical teams built enterprise-grade apps. 500+ teams. No independent reviews yet.
+
+**Bricks.sh** — 1.6M EUR pre-seed (Jan 2026). One-click admin panels from your API/database. Too early to evaluate.
+
+### Clear's unique position (backed by competitive data)
+
+Every tool on this list either requires a developer (Retool, Appsmith, Budibase, ToolJet) OR generates black-box output the user can't read or modify precisely (Lovable, Bolt, Zite). Nobody gives you:
+1. **Readable source code** a non-technical person can understand
+2. **Deterministic compilation** (same input = same output, always)
+3. **Built-in AI agent primitives** with guardrails
+4. **Compile-time security guarantees** (27 bug classes eliminated)
+5. **Auto-generated tests** from the source
+6. **Portable output** (cancel and keep your compiled JS)
+
+That combination is unique. The gap to close is platform: hosting, compliance, integrations, marketplace, users.
+
+---
+
 ## Future (Not Committed)
 
 | Feature | Syntax | Notes |
@@ -404,6 +507,91 @@ Ordered by impact.
 | Supabase Auth | `allow login with magic link` / `with google` | Replace hand-rolled JWT |
 | GAN Loop | Claude Code + Meph automated quality loop | Infrastructure exists, needs orchestration |
 | Real RAG (pgvector) | Semantic search over unstructured text | Current `knows about:` is keyword-only |
+
+---
+
+## The Big Thesis: Alignment at Compile Time
+
+Clear isn't a tool builder. It's an alignment layer for AI-generated software. The Marcus stuff — approval queues, internal tools — that's the go-to-market. What Clear actually is, if you follow the thread all the way out: **the first programming language where the compiler IS the alignment mechanism for autonomous AI.**
+
+### The pieces already built
+
+```
+AI WRITES CODE          COMPILER CONSTRAINS         EVALS GRADE
+────────────            ────────────────            ────────────
+LLM generates           27 security checks          Auto-generated tests
+  .clear files           Auth bypass? Won't compile  Structured scoring API
+                         SQL injection? Impossible   Curriculum (20 tasks,
+Patch API gives          Mass assignment? Stripped     10 difficulty levels)
+  structured edits       Agent guardrails enforced   HTTP assertions as
+  (11 operations =       PII auto-redacted            reward function
+   constrained           XSS escaped
+   action space)         Deterministic output        Sandbox runner with
+                                                      timeout + memory limit
+```
+
+That's not an app builder. That's a **closed-loop system** where AI writes software, the compiler prevents it from shipping anything dangerous, and evals measure whether what it built actually works.
+
+### Why this is AGI-shaped
+
+The hard problem with AI writing software isn't speed — LLMs are already faster than humans. The hard problem is **trust.** How do you know the AI didn't ship a security hole? How do you know the agent won't delete your database? How do you know the output is the same as yesterday's?
+
+Every other AI code generator (Lovable, Bolt, Copilot, Cursor, Devin) answers this with: **"hope."** Clear answers it with: **"the compiler won't let it."**
+
+```
+LOVABLE/BOLT/DEVIN                    CLEAR
+──────────────────                    ─────
+AI generates code ──→ ship it         AI generates .clear ──→ compile
+                      (hope it works)                          │
+                                                    ┌──────────┤
+                                                    │ 27 security checks
+                                                    │ Auto-generated tests
+                                                    │ Deterministic output
+                                                    │ Agent guardrails
+                                                    │ Structured eval
+                                                    └──→ THEN ship it
+```
+
+The compiler is the **alignment layer** between AI capability and human trust. As AI gets more capable, the compiler gets more important — it's the thing that ensures the AI's output is safe, correct, and auditable.
+
+### The hard takeoff scenario
+
+1. **Today:** AI writes 100-line .clear files. Compiler catches bugs. Human reviews. Ships.
+2. **Next year:** AI writes 500-line .clear files with multi-agent coordination. Compiler catches bugs. Evals grade quality. Human reviews exceptions. Ships.
+3. **Year 3:** AI writes, compiles, tests, deploys, monitors, and fixes .clear apps autonomously. The compiler constrains what it can ship. Evals flag regressions. Humans set policy (`block arguments matching`, `must not:`, `requires role`) and the compiler enforces it. The AI handles everything else.
+4. **Year 5:** AI writes agents that write .clear files. Meta-programming. Self-improving software factory, constrained by a deterministic compiler that prevents unsafe output. The compiler IS the alignment mechanism.
+
+Every step, the human moves from **writing code** to **setting constraints.** The compiler turns constraints into guarantees.
+
+### Why this is defensible
+
+Anyone can build an AI code generator. GPT-wrapper + templates. That's Lovable and Bolt — and they're already in a race to the bottom.
+
+**Nobody can easily replicate "deterministic compiler with 27 security guarantees + structured eval + constrained action space + readable output."** That's years of engineering in the compiler, parser, validator. You can't bolt it on after the fact. You'd have to build a language from scratch.
+
+The RL gym, the curriculum, the patch API — those aren't features. They're the **training infrastructure for the next generation of AI systems that write software.** When fine-tuning access opens up, Clear is the environment they train in. Not "generate React and hope." Generate Clear, compile, test, get a reward signal, improve.
+
+### The one-liner
+
+> **Clear is the language AI writes when the output has to be safe.**
+
+That's bigger than Marcus. That's bigger than internal tools. That's the thesis for why this matters at scale.
+
+### The sequence
+
+- **$3M seed (Marcus landing page):** "We built a compiler that prevents AI from shipping unsafe code. Here are 200 companies using it for internal tools."
+- **$40M Series A (Crystallized lab page):** "500 companies run apps compiled by Clear. The compiler catches 50K unsafe patterns/month. Here's our alignment thesis. Here's our RL environment. We want to generalize this to all AI-generated code."
+
+The Marcus page IS the path to the lab page. Every Marcus running an approval queue generates data — compiler catches, security patterns, agent guardrail triggers. That data IS the alignment research, generated by real production usage.
+
+### Company name: Crystallized
+
+AI model output is **fluid** — probabilistic, shifting, unaligned by nature. We **crystallize** it. The compiler is the phase transition. Fluid intelligence in, crystallized safety out. Intelligence moves from the model (fluid, can be unaligned) to the compiler (crystal, constrained, lawful good).
+
+- **Crystallized** = the company
+- **Clear** = the language
+- **Clear Studio** = the product Marcus uses
+- **crystallized.dev** or **crystallized.ai** = the domain
 
 ---
 
