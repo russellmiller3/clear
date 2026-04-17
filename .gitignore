@@ -20,3 +20,13 @@ test-save-compiled/
 .clear-test-runner.cjs
 .clear-test-server.cjs
 .tmp/
+
+# Build artifacts — regenerated from canonical runtime/ on every clear build
+# Canonical sources live in runtime/. These per-app copies are output, not source.
+clear-runtime/
+apps/*/clear-runtime/
+apps/*/build/clear-runtime/
+.clear-build/
+.clear-serve/
+tests/*/build/clear-runtime/
+tests/guard-bugs/*/build/clear-runtime/
