@@ -20482,6 +20482,69 @@ describe('Type annotations — JSDoc output', () => {
   });
 });
 
+// ============================================================
+// Function def: send back compiles to return, not res.json
+// ============================================================
+
+describe('define function — send back compiles to plain return', () => {
+  it('send back inside function compiles to return, not res.json', () => {
+    const r = compileProgram("build for javascript backend\ndefine function double(x):\n  send back x * 2");
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('return (x * 2)');
+    expect(r.javascript).not.toContain('res.json');
+  });
+
+  it('send back a string literal inside function compiles to return, not res.json', () => {
+    const r = compileProgram("build for javascript backend\ndefine function greet(name):\n  send back 'hello'");
+    expect(r.errors).toHaveLength(0);
+    // compiler emits double-quoted strings; just check it returns and doesn't use res.json
+    expect(r.javascript).toContain('return "hello"');
+    expect(r.javascript).not.toContain('res.json({ message:');
+  });
+
+  it('function callable from test block with unit assertion', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "define function add(a, b):\n" +
+      "  send back a + b\n" +
+      "test \"add works\":\n" +
+      "  set result to add(2, 3)\n" +
+      "  expect result is 5"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('function add(a, b)');
+    expect(r.javascript).toContain('return (a + b)');
+    expect(r.javascript).toContain('let result = add(2, 3)');
+    expect(r.javascript).toContain('_unitAssert(result, "eq", 5');
+  });
+
+  it('user-defined function named "sum" shadows the built-in sum alias', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "define function sum(a, b):\n" +
+      "  send back a + b\n" +
+      "test \"sum works\":\n" +
+      "  set result to sum(2, 3)\n" +
+      "  expect result is 5"
+    );
+    expect(r.errors).toHaveLength(0);
+    // call site must use the user's function, not _clear_sum
+    expect(r.javascript).toContain('let result = sum(2, 3)');
+    expect(r.javascript).not.toContain('_clear_sum(2, 3)');
+  });
+
+  it('send back in endpoint still uses res.json (no regression)', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "when user calls GET /api/hello:\n" +
+      "  send back 'world'"
+    );
+    expect(r.errors).toHaveLength(0);
+    // for backend target, compiled output is in r.javascript (not serverJS)
+    expect(r.javascript).toContain('res.json');
+  });
+});
+
 
 // ============================================================
 // GP Phase 5: Typed Error Handling
