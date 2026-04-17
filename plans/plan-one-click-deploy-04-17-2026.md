@@ -2,6 +2,7 @@
 
 **Branch:** `feature/one-click-deploy`
 **Date:** 2026-04-17
+**Status:** Red-teamed 2026-04-17 — line numbers verified, critical security test code inline, data contracts added, fail-closed policy specified, Stripe webhook dedup added, docker build resource caps added
 **Scope:** Extra-large — new infrastructure (builder + AI proxy), billing, multi-tenancy, Studio endpoints, UI, docs
 **Supersedes:** `plans/plan-fly-deploy-04-16-2026.md` (deleted — assumed direct Machines API build, impossible from Vercel)
 
@@ -55,6 +56,19 @@ Per-app isolation is Fly's default: each machine is its own Firecracker VM, priv
 
 ---
 
+## ⚠️ Architectural Shift Flagged
+
+**Studio gains a persistent database for the first time.** Today `playground/server.js` is in-memory — state resets on restart, nothing survives. This plan introduces a Studio-owned Postgres database (separate from per-customer app databases) holding:
+
+- `tenants` — one row per paying customer, source of truth for plan + quotas + AI spend
+- `tenants_apps` — maps (tenant, appSlug) → Fly appName for re-deploy idempotency
+- `stripe_events` — event_id dedup table, prevents double-billing on webhook replay
+- `audit_log` — immutable log of every deploy, rollback, destroy, secret-set
+
+**Why this matters:** Studio goes from stateless to stateful. Deployment adds a backup requirement. Schema migrations become a thing. A Studio DB outage now blocks all deploys + billing operations.
+
+**Decision:** Accept the shift — billing + multi-tenant cannot work without persistence. Use Fly Postgres (same DB infrastructure as customer apps) so one vendor + one set of ops knowledge. Run daily `pg_dump` → S3 via a scheduled Fly machine. Document in `playground/README.md` and flag in `HANDOFF.md` when this ships.
+
 ## 📁 Files Involved
 
 ### New
@@ -75,13 +89,15 @@ Per-app isolation is Fly's default: each machine is its own Firecracker VM, priv
 | `playground/tenants.test.js` | Tenant tests |
 | `playground/billing.js` | Stripe Checkout + webhook handlers + metering |
 | `playground/billing.test.js` | Billing tests (Stripe test mode) |
-| `runtime/ai-client.js` | Replaces direct Anthropic calls in compiled apps — talks to proxy via `CLEAR_AI_URL` + `CLEAR_AI_TOKEN` |
+<!-- no runtime/ai-client.js — routing happens inside the compiler-emitted _askAI helper (compiler.js:323–437) via a runtime check on process.env.CLEAR_AI_URL -->
+| `lib/packaging.js` | Shared packager — called by both `cli/clear.js` and `playground/deploy.js`. Produces Dockerfile + package.json + runtime copy. Exports `packageBundle()`. |
+| `lib/packaging.test.js` | Unit tests for packaging |
 
 ### Modified
 | File | What changes | Why |
 |------|-------------|-----|
-| `cli/clear.js` | Extract `packageCommand` body into exportable `packageBundle(result, outDir, opts)` | Reuse across CLI + Studio deploy. No duplicate Dockerfile logic. |
-| `compiler.js` | Emit `ai-client.js` calls instead of direct `@anthropic-ai/sdk` when `process.env.CLEAR_AI_URL` is set | Route deployed apps through the proxy |
+| `cli/clear.js` | `packageCommand` (lines 867–954) becomes a thin wrapper around `packageBundle` from `lib/packaging.js`. Keep argv parsing + output; remove the 70 lines of generator code. | Reuse across CLI + Studio deploy. No duplicate Dockerfile logic. |
+| `compiler.js` | In the `_askAI` helper (lines 323–437), add a runtime check: if `process.env.CLEAR_AI_URL` is set, POST to that URL with `Authorization: Bearer <CLEAR_AI_TENANT_JWT>` instead of calling `https://api.anthropic.com/v1/messages` directly. Do the same in `_askAIWithTools` and `_askAIStream`. | Route deployed apps through the proxy so we meter + rate-limit per tenant. Local dev still uses the direct path. |
 | `playground/server.js` | Add `/api/deploy`, `/api/deploy-status/:jobId`, `/api/custom-domain`, `/api/deploy-history/:app`, `/api/rollback`, `/api/stripe-webhook`, `/api/checkout-session`, `/api/tenant` | Studio's deploy + billing surface |
 | `playground/ide.html` | Deploy button + progress modal + secrets prompt + custom-domain dialog + deploy-history drawer + plan/usage badge | UI |
 | `playground/server.test.js` | Cover all new endpoints with mocked builder + mocked Stripe | Coverage |
@@ -96,6 +112,116 @@ Per-app isolation is Fly's default: each machine is its own Firecracker VM, priv
 
 ### Deleted
 - `plans/plan-fly-deploy-04-16-2026.md` — already deleted this session (architecturally broken)
+
+---
+
+## 🏗️ Phase 0 — Fly Capacity (hard prerequisite, do not skip)
+
+Fly's default org quota is ~100 machines. At 25 apps × 500 customers we need 12,500. We cannot start Phase 1 until either (a) Fly raises our quota to 10k+, or (b) we architect sharding across multiple orgs from day one.
+
+**Step 0.1 — Apply for Trust Verified Org status**
+Send this email to `sales@fly.io` (cc `support@fly.io`). Subject: **Multi-tenant SaaS — Trust Verified org + machine quota request**
+
+```
+Hi Fly team,
+
+I'm Russell Miller, building Clear (https://buildclear.dev) — a platform
+where business users describe apps in plain English and we compile + deploy
+them to a live URL. Customer never sees code or infrastructure; they just
+click Deploy and get deals.acme.com.
+
+Looking to run all customer deploys on Fly. Your scale-to-zero machines are
+the whole reason our unit economics work: customers have 20-30 small apps
+each, each used ~2h/day. On always-running platforms we lose money per
+customer; on Fly we project 87% gross margin.
+
+Three specific asks:
+  1. Trust Verified Org status for multi-tenant SaaS workload
+  2. Machine quota raised from default to 10,000 across 3 orgs
+     (clear-apps-01, clear-apps-02, clear-apps-03)
+  3. A dedicated account contact for capacity planning as we grow
+
+Architecture:
+  • Each customer's apps live in one of 3 sharded orgs (deterministic
+    sha256(customerSlug) % 3 routing)
+  • Firecracker VM isolation per machine (Fly default — no extra config)
+  • SQLite + Fly Volumes for most apps; Fly Postgres for apps that opt in
+  • One shared builder machine per org handles: Docker build → push to
+    registry.fly.io → Machines API create
+  • AI-enabled apps route Claude calls through a metered proxy machine
+    (one per shard), so we attribute + bill usage per customer
+
+Scale plan:
+  • Q1 launch target:  ~50 customers × ~20 apps  = ~1,000 machines
+  • Q2 target:         ~200 customers × 20 apps  = ~4,000 machines
+  • 12-month target:   500+ customers            = 10,000+ machines
+
+Billing model: Clear pays Fly directly. Our customers pay Clear $99/mo and
+never have a Fly account.
+
+Pattern reference: this mirrors how Supabase, Resend, and Val.town run
+multi-tenant platforms on Fly. Happy to jump on a call to walk through the
+isolation + capacity model in more detail.
+
+What information do you need from us to approve Trust Verified status?
+
+Thanks,
+Russell Miller
+Founder, Clear
+russell@buildclear.dev
+```
+
+Turnaround: ~24 hrs. Expected outputs: higher org machine limit, Trust Verified badge on all 3 orgs, dedicated account contact email/Slack. If Fly declines or caps at an unacceptable level, Phase 0 exit criteria are NOT met — re-evaluate the whole plan before proceeding.
+
+**Step 0.2 — Design the shard fallback now (even if Step 0.1 succeeds)**
+Single-org is a single point of failure. If Fly throttles us or our org gets flagged, the whole platform stops. Shard across N orgs from day one.
+
+Design:
+```javascript
+// playground/builder/shards.js
+const SHARDS = [
+  { index: 0, slug: 'clear-apps-01', token: process.env.FLY_API_TOKEN_01 },
+  { index: 1, slug: 'clear-apps-02', token: process.env.FLY_API_TOKEN_02 },
+  { index: 2, slug: 'clear-apps-03', token: process.env.FLY_API_TOKEN_03 },
+];
+
+export function shardFor(tenantSlug) {
+  const h = crypto.createHash('sha256').update(tenantSlug).digest();
+  const idx = h.readUInt32BE(0) % SHARDS.length;
+  return SHARDS[idx];
+}
+```
+Customer `acme` always lands on the same shard. App names stay unique because they include the customer slug. Builder calls flyctl with `FLY_API_TOKEN=<shardToken>` in env.
+
+**Step 0.3 — Provision 3 orgs from day one**
+Even if we could fit everyone in one org, start with three. Migrations later are painful; shard headers now are free.
+- `clear-apps-01`, `clear-apps-02`, `clear-apps-03` — all in org group owned by Clear
+- Generate org-scoped tokens for each; store as builder secrets
+
+**Step 0.4 — Auto-failover when a shard hits quota**
+If shard N returns `FLY_QUOTA_HIT`, builder retries on shard N+1 (with a capacity check first). If ALL shards are full, page ops.
+```javascript
+async function deployWithFailover(tenantSlug, ...args) {
+  const primary = shardFor(tenantSlug);
+  const order = [primary, ...SHARDS.filter(s => s.index !== primary.index)];
+  for (const shard of order) {
+    const result = await tryDeploy(shard, ...args);
+    if (result.ok) return { ...result, shard: shard.slug };
+    if (result.code !== 'FLY_QUOTA_HIT') return result;
+    logger.warn('[SHARD_FULL]', { shard: shard.slug });
+  }
+  await notifyOps({ severity: 'P1', text: 'All Fly shards at capacity — deploys blocked' });
+  return { ok: false, code: 'ALL_SHARDS_FULL' };
+}
+```
+
+**Exit criteria for Phase 0:**
+- [ ] Fly sales replies with confirmed higher quota (or explicit "use sharding")
+- [ ] 3 Fly orgs provisioned with names, tokens stored as builder secrets
+- [ ] `shards.js` design reviewed and committed to the plan
+- [ ] `DEPLOY_ERRORS.ALL_SHARDS_FULL` added to the error constants
+
+**Do not write any Phase 1 code until Phase 0 exit criteria are met.**
 
 ---
 
@@ -131,7 +257,7 @@ Per-app isolation is Fly's default: each machine is its own Firecracker VM, priv
 | App crashes on startup | Builder waits for Fly `started` state; returns 502 if never healthy; destroys bad machine |
 | App startup crash-looping forever | Builder gives up after 3 retries, marks deploy failed, preserves previous release |
 | **Secrets** | |
-| Source needs `ANTHROPIC_API_KEY` | v1: bring-your-own, customer pastes in modal. v2 (Phase 6): auto-issue CLEAR_AI_TOKEN, route via AI proxy. |
+| Source needs `ANTHROPIC_API_KEY` | v1: bring-your-own, customer pastes in modal. v2 (Phase 6): auto-issue CLEAR_AI_TENANT_JWT, route via AI proxy. |
 | Source needs `JWT_SECRET` | Auto-generate random 32-byte hex, set as Fly secret |
 | Source uses SERVICE_CALL (Stripe/Twilio/etc.) | Pre-deploy scan detects needs; Studio prompts for each key before submit |
 | Customer rotates a secret | Studio endpoint `/api/secrets` → `flyctl secrets set --stage` → next deploy picks up |
@@ -161,36 +287,255 @@ Per-app isolation is Fly's default: each machine is its own Firecracker VM, priv
 | Customer wants to download their data | Out of scope v1 — document "contact support"; Phase 90 later |
 | Customer deletes account | Webhook schedules `flyctl apps destroy` + `flyctl postgres destroy` after 30-day grace; refund any prepaid time |
 | **Runtime** | |
-| Deployed app hits proxy with bad CLEAR_AI_TOKEN | Proxy returns 401; app shows "AI service unavailable" |
+| Deployed app hits proxy with bad CLEAR_AI_TENANT_JWT | Proxy returns 401; app shows "AI service unavailable" |
 | Proxy down | Deployed app gets 503 on `ask claude`; app falls through to error UI; log to ops |
 | Anthropic API down | Proxy returns their error as-is to app; log per-tenant |
 | Customer tries to bypass proxy (hardcodes their own key) | They can — it's their app source. If they use `use '@anthropic-ai/sdk'` directly, Clear doesn't meter. We'll catch this in lint (Phase 7) and warn. |
 
 ---
 
+## 📜 Data Contracts (authoritative JSON shapes)
+
+### Browser → Studio: `POST /api/deploy`
+```jsonc
+// Request
+{
+  "appSlug": "todos",               // string, 3-40 chars, [a-z0-9-]+, required
+  "source": "build for web ...",    // string, Clear source, required
+  "secrets": {                      // object, optional; present if needsSecrets non-empty
+    "ANTHROPIC_API_KEY": "sk-...",
+    "JWT_SECRET": null              // null = let builder auto-generate
+  },
+  "customDomain": "deals.acme.com"  // string, optional
+}
+
+// Response (202 — job accepted)
+{
+  "jobId": "job_a7b3c9d2e1f0",      // string, opaque
+  "appName": "clear-acme-todos-a7b3c9", // computed, globally unique
+  "url": null                        // null while building; populated by deploy-status
+}
+
+// Error (400)
+{
+  "code": "MISSING_SECRET",         // one of DEPLOY_ERRORS keys
+  "needsSecrets": ["ANTHROPIC_API_KEY"],
+  "message": "This app needs a secret called ANTHROPIC_API_KEY before it can ship."
+}
+```
+
+### Studio → Builder: `POST /build`
+```jsonc
+// Request — multipart/form-data
+// part "metadata": JSON
+{
+  "appName": "clear-acme-todos-a7b3c9",   // sanitized, already validated by Studio
+  "tenantSlug": "acme",
+  "dbBackend": "sqlite",                  // "sqlite" | "postgresql"
+  "secrets": {                            // all values base64 to survive transport
+    "JWT_SECRET": "aGVsbG8=",
+    "CLEAR_AI_URL": "https://api.buildclear.dev/claude",
+    "CLEAR_AI_TENANT_JWT": "eyJhbGc..."
+  },
+  "customDomain": "deals.acme.com",       // optional
+  "flyToml": "app = '...'\n..."           // full config, pre-rendered by Studio
+}
+// part "tarball": application/x-tar binary
+
+// Response (200)
+{
+  "ok": true,
+  "appName": "clear-acme-todos-a7b3c9",
+  "url": "https://clear-acme-todos-a7b3c9.fly.dev",
+  "releaseVersion": "v7",
+  "buildDurationMs": 28340
+}
+
+// Error (4xx/5xx)
+{
+  "ok": false,
+  "code": "BUILD_FAILED",                 // PATH_ESCAPE, BUILD_FAILED, PUSH_FAILED, DEPLOY_FAILED, FLY_QUOTA_HIT, TIMEOUT, UNHEALTHY
+  "stage": "build",                       // upload, extract, build, push, create, secrets, deploy, health
+  "stderrTail": "..last 20 lines..",
+  "durationMs": 305000
+}
+```
+
+### Studio → Browser: `GET /api/deploy-status/:jobId`
+```jsonc
+{
+  "jobId": "job_a7b3c9d2e1f0",
+  "status": "building",           // uploading | building | deploying | live | failed
+  "stage": "push",                // sub-stage, updated live from builder
+  "progressPct": 45,              // 0-100
+  "url": null,                    // string when status === "live"
+  "error": null                   // { code, message, tail } when status === "failed"
+}
+```
+
+### Proxy: `POST /claude`
+```jsonc
+// Request — same shape as Anthropic's /v1/messages, plus:
+{
+  "model": "claude-sonnet-4-6",
+  "messages": [...],
+  "max_tokens": 1024
+}
+// Headers: Authorization: Bearer <CLEAR_AI_TENANT_JWT>
+
+// Response — Anthropic's response verbatim (we just forward), status 200
+// OR 402 { code: "AI_QUOTA_EXCEEDED" } when over plan
+// OR 503 { code: "AI_PROXY_DOWN" } when our DB unreachable
+// OR 401 { code: "BAD_TENANT_JWT" } when JWT invalid/expired
+```
+
+## 🔁 Deploy State Machine (reference for Phases 5 + 6)
+
+```
+  IDLE ──[user clicks Deploy]──→ PROMPTING_SECRETS ──[submit]──→ UPLOADING
+                                      │                              │
+                                      │[cancel]                      │[fail]
+                                      ▼                              ▼
+                                    IDLE                          FAILED ◄──[build fails]── BUILDING ◄──[tarball uploaded]──
+                                                                     │                         │
+                                                                     │[retry]                  │
+                                                                     ▼                         ▼
+                                                                 PROMPTING_SECRETS         DEPLOYING
+                                                                                              │
+                                                                                              ▼
+                                                                                         HEALTHY ──[user clicks Rollback]──→ ROLLING_BACK ──→ HEALTHY
+```
+
+| State | Visible | Hidden | User Can | User Can't |
+|-------|---------|--------|----------|------------|
+| IDLE | Deploy button | spinner | click Deploy | — |
+| PROMPTING_SECRETS | secrets modal | progress bar | cancel, edit, submit | deploy a second time |
+| UPLOADING | progress (0–20%) | secrets modal | — | click Deploy (button disabled) |
+| BUILDING | progress (20–60%), stage name | — | — | deploy a second time |
+| DEPLOYING | progress (60–95%), stage name | — | — | — |
+| HEALTHY | live URL + Copy + History | progress | click URL, rollback, re-deploy | — |
+| FAILED | stage + stderr tail + Retry | progress | retry, cancel | — |
+| ROLLING_BACK | progress (0–100%) | rollback button | — | deploy a second time |
+
+## 📢 Error Strings (copy exact)
+
+```javascript
+// playground/deploy-errors.js
+export const DEPLOY_ERRORS = {
+  NO_TENANT:           "Sign in before deploying — check your subscription.",
+  TENANT_CANCELLED:    "Your subscription was cancelled. Re-subscribe to deploy again.",
+  TENANT_PAST_DUE:     "Payment failed. Update your card to keep deploying.",
+  QUOTA_EXCEEDED:      "You've used all {limit} app slots on your plan. Upgrade or delete an app.",
+  TARBALL_TOO_LARGE:   "Your app bundle is over 50 MB. Remove large files and try again.",
+  MISSING_SECRET:      "This app needs a secret called {name} before it can ship.",
+  BUILDER_OFFLINE:     "Deploy service is down — try again in a minute. Status: status.buildclear.dev",
+  BUILD_FAILED:        "Build failed at stage {stage}. Last error: {tail}",
+  FLY_QUOTA_HIT:       "We hit a shard's capacity — trying another. You shouldn't see this unless all shards are full.",
+  ALL_SHARDS_FULL:     "All deploy shards are at capacity. Ops has been paged; deploys resume in ~15 minutes.",
+  AI_PROXY_DOWN:       "AI service temporarily unavailable. Your deploy will work; AI calls will return an error until this clears.",
+  AI_QUOTA_EXCEEDED:   "Your app's Claude usage hit this month's cap. Top up credits or upgrade.",
+  CERT_DNS_BAD:        "Cert not issued — DNS isn't set correctly yet. Check the records below.",
+  ROLLBACK_NO_HISTORY: "No previous release to roll back to.",
+};
+```
+
 ## 📋 Implementation — TDD Cycles (9 phases)
 
-### Phase 1 — Refactor `packageCommand` → `packageBundle()` helper
+### Phase 1 — Extract `packageBundle()` into `lib/packaging.js`
 
-**Why first:** Every downstream phase calls into this. Refactor before anyone else depends on the old shape.
+**Why first:** Every downstream phase calls into this. Refactor before anyone else depends on the old shape. `cli/clear.js` has zero export statements (it's a CLI entry point) — the helper must live in a new shared module.
 
-🔴 **Test 1.1:** `packageBundle(result, outDir)` writes server.js + index.html + package.json + Dockerfile + .dockerignore to outDir
-🟢 **Code:** Extract lines 882–951 of `cli/clear.js` into new exported function. `packageCommand` becomes a thin wrapper calling `packageBundle`.
+**New file:** `lib/packaging.js` — exports `packageBundle(result, outDir, opts)`.
+**Why new file (not cli/clear.js export):** cli/clear.js is a CLI entry point; importing it from Studio would pull every CLI helper (argv parsing, `output()`, `loadSource`) along with it. A dedicated module keeps boundaries clean.
 
-🔴 **Test 1.2:** `packageBundle` picks `db-postgres.js` when `result.dbBackend === 'postgresql'`
-🟢 **Code:** Already in extracted logic; add assertion.
+🔴 **Test 1.1:** `packageBundle(result, outDir)` writes `server.js` + `index.html` + `package.json` + `Dockerfile` + `.dockerignore` + `clear-runtime/db.js` + `clear-runtime/auth.js` + `clear-runtime/rateLimit.js` to outDir, returns `{ ok: true, files, outDir, dbBackend, needsSecrets, aiCallsDetected }`.
+🟢 **Code:** Port lines 882–951 of `cli/clear.js` into `lib/packaging.js`. <!-- Lines verified 2026-04-17 -->
 
-🔴 **Test 1.3:** `packageBundle` returns `{ files, outDir, dbBackend, needsSecrets: string[], aiCallsDetected: boolean }`
-🟢 **Code:** `needsSecrets` scans AST for `requires login` (JWT_SECRET) + `SERVICE_CALL` nodes (per-service keys). `aiCallsDetected` for any `ASK_CLAUDE` or scheduled agent.
+```javascript
+// lib/packaging.js — copy the logic from cli/clear.js:882–951 here
+export function packageBundle(result, outDir, opts = {}) {
+  const { useAIProxy = false, sourceText = '' } = opts;
+  mkdirSync(outDir, { recursive: true });
+  const files = [];
 
-🔴 **Test 1.4:** When `opts.useAIProxy === true`, the generated Dockerfile sets `CLEAR_AI_URL` + `CLEAR_AI_TOKEN` env; package.json drops `@anthropic-ai/sdk` dep (not needed on the app side)
-🟢 **Code:** Conditional in generator. Runtime uses `runtime/ai-client.js` instead.
+  // server.js
+  const serverCode = result.serverJS || result.javascript;
+  writeFileSync(resolve(outDir, 'server.js'), serverCode);
+  files.push('server.js');
 
-**Refactor:** Move Dockerfile template strings to a named constant at top of `cli/clear.js`. De-magic the conditional.
+  // ... (index.html, tests, runtime copy, package.json, Dockerfile, .dockerignore — mirrors cli/clear.js:890–951)
 
-**Test command:** `node clear.test.js` — existing `clear package` tests stay green.
+  return {
+    ok: true,
+    files,
+    outDir,
+    dbBackend: result.dbBackend || 'sqlite',
+    needsSecrets: detectNeededSecrets(result.ast, sourceText),
+    aiCallsDetected: detectAICalls(result.ast),
+  };
+}
 
-**Commit:** `refactor(cli): extract packageBundle() for reuse by Studio deploy`
+function detectNeededSecrets(ast, sourceText) {
+  const secrets = [];
+  if (sourceText.includes('requires login') || sourceText.includes('requires auth')) secrets.push('JWT_SECRET');
+  // scan AST for SERVICE_CALL nodes
+  const walk = (nodes) => {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      if (n?.type === 'SERVICE_CALL' && n.service) secrets.push(`${n.service.toUpperCase()}_KEY`);
+      if (n?.body) walk(n.body);
+      if (n?.pages) walk(n.pages);
+    }
+  };
+  walk(ast?.body || []);
+  return [...new Set(secrets)];
+}
+
+function detectAICalls(ast) {
+  let found = false;
+  const walk = (nodes) => {
+    if (!Array.isArray(nodes) || found) return;
+    for (const n of nodes) {
+      if (n?.type === 'ASK_CLAUDE' || n?.type === 'AGENT_DEF' || n?.type === 'SCHEDULED_AGENT') { found = true; return; }
+      if (n?.body) walk(n.body);
+      if (n?.pages) walk(n.pages);
+    }
+  };
+  walk(ast?.body || []);
+  return found;
+}
+```
+
+**cli/clear.js edit:** `packageCommand` (currently lines 867–954) becomes a thin wrapper:
+```javascript
+import { packageBundle } from '../lib/packaging.js';
+async function packageCommand(args) {
+  // ... same argv parsing + loadSource + compile (lines 867–881 unchanged) ...
+  const result = compileProgram(loaded.source, { sourceMap: true, moduleResolver: makeModuleResolver(loaded.filePath) });
+  if (result.errors.length > 0) { output({ ok: false, errors: result.errors }, flags); process.exit(1); }
+  const outDir = flags.outDir || resolve(dirname(loaded.filePath), 'deploy');
+  const res = packageBundle(result, outDir, { sourceText: loaded.source });
+  output({ ok: true, files: res.files, outDir: res.outDir, message: `Packaged ${res.files.length} files to ${res.outDir}/` }, flags);
+}
+```
+
+🔴 **Test 1.2:** `packageBundle` picks `runtime/db-postgres.js` as `db.js` when `result.dbBackend === 'postgresql'`
+🟢 **Code:** Carried from old logic in lines 903–910.
+
+🔴 **Test 1.3:** `needsSecrets` for source containing `requires login` returns `['JWT_SECRET']`; for source with Stripe SERVICE_CALL returns `['JWT_SECRET', 'STRIPE_KEY']` (deduped)
+🟢 **Code:** `detectNeededSecrets` above.
+
+🔴 **Test 1.4:** `aiCallsDetected === true` for source containing `ask claude` or `define agent`; false for plain CRUD app
+🟢 **Code:** `detectAICalls` above.
+
+🔴 **Test 1.5:** When `opts.useAIProxy === true`, generated `package.json` omits `@anthropic-ai/sdk` from dependencies (proxy handles it); Dockerfile adds `ENV CLEAR_AI_URL ENV CLEAR_AI_TENANT_JWT` placeholders
+🟢 **Code:** Conditional around the npm deps collection. Placeholders overwritten at deploy time via Fly secrets.
+
+**Refactor:** Move Dockerfile template strings to named constants (`DOCKERFILE_ALPINE`, `DOCKERFILE_SLIM`) at top of `lib/packaging.js`.
+
+**Test command:** `node lib/packaging.test.js` (new) + `node clear.test.js` (existing `clear package` tests still pass).
+
+**Commit:** `refactor(packaging): extract packageBundle into lib/packaging.js for Studio reuse`
 
 ---
 
@@ -202,14 +547,28 @@ Per-app isolation is Fly's default: each machine is its own Firecracker VM, priv
 🔴 **Test 2.2:** `POST /build` extracts tarball to scoped temp dir, validates no path escapes (zip-slip defense)
 🟢 **Code:** Use `tar-stream` with per-entry validation: path starts without `/`, normalized path has no `..`, type is `regular` or `directory`. Anything else → 400.
 
-🔴 **Test 2.3:** `POST /build` runs `docker build` + `docker push registry.fly.io/<appName>:<sha>` in the temp dir
-🟢 **Code:** `execFile('docker', [...])` with 5min timeout. Capture stdout/stderr per stage. Retry push once on network errors.
+🔴 **Test 2.3:** `POST /build` runs `docker build` + `docker push registry.fly.io/<appName>:<sha>` in the temp dir, with resource caps (cpu-quota 100000, memory 512m) and a 5-min timeout
+🟢 **Code:**
+```javascript
+await execFile('docker', [
+  'build',
+  '--cpu-quota', '100000',           // 1 CPU max
+  '--memory', '512m',                // 512MB RAM max
+  '--network', 'bridge',             // no host network
+  '-t', `registry.fly.io/${appName}:${sha}`,
+  '.'
+], { cwd: tempDir, timeout: 300_000 });
+```
+Capture stdout/stderr per stage. Retry `docker push` once on network 5xx; never retry `docker build` (non-deterministic failures mean a real source bug). Kill the container if timeout hits.
+
+🔴 **Test 2.3b:** Dockerfile with a 10-minute `RUN sleep 600` is killed at the 5-min mark and returns `{ ok: false, stage: 'build', reason: 'timeout' }`
+🟢 **Code:** Same as above. Timeout behavior asserted.
 
 🔴 **Test 2.4:** `POST /build` creates the Fly app if absent (`flyctl apps create <appName> --org clear-apps`)
 🟢 **Code:** Check via `flyctl apps list --json`. Create if absent.
 
 🔴 **Test 2.5:** `POST /build` sets secrets before deploy (`flyctl secrets set KEY=VAL --app <appName> --stage`)
-🟢 **Code:** `--stage` defers restart; all secrets applied before first deploy. Injects `JWT_SECRET` auto-gen, `CLEAR_AI_URL`/`CLEAR_AI_TOKEN` if AI proxy enabled, customer-provided SERVICE_CALL keys.
+🟢 **Code:** `--stage` defers restart; all secrets applied before first deploy. Injects `JWT_SECRET` auto-gen, `CLEAR_AI_URL`/`CLEAR_AI_TENANT_JWT` if AI proxy enabled, customer-provided SERVICE_CALL keys.
 
 🔴 **Test 2.6:** `POST /build` writes fly.toml with `auto_stop_machines='stop'` + `min_machines_running=0` + `[mounts]` if SQLite
 🟢 **Code:** Template string with placeholders. Test asserts exact keys present. Region default `iad`, override via metadata.
@@ -244,6 +603,30 @@ Per-app isolation is Fly's default: each machine is its own Firecracker VM, priv
 🔴 **Test 2.16:** `POST /destroy` tears down an app + volume + Postgres (idempotent, used for cancellation cleanup)
 🟢 **Code:** `flyctl apps destroy --yes` + `flyctl postgres destroy --yes` if present. Log to ops.
 
+🔴 **Test 2.17:** When primary shard returns `FLY_QUOTA_HIT`, builder auto-fails over to the next shard; only pages ops when ALL shards are full
+🟢 **Code:** Use the `deployWithFailover` helper from Phase 0. Test scenarios:
+- Primary shard has capacity → deploy lands on primary, response includes `shard: 'clear-apps-01'`
+- Primary at quota, secondary has capacity → deploy lands on secondary, logs `[SHARD_FULL]` for primary
+- All 3 shards at quota → returns `{ ok: false, code: 'ALL_SHARDS_FULL' }`, ops paged once (not per shard)
+- Tenant's shard assignment is sticky — re-deploy of same tenant+app goes to same shard even when that shard has free capacity elsewhere
+```javascript
+it('fails over when primary shard is at quota', async () => {
+  mockFlyctl('clear-apps-01', { ok: false, code: 'FLY_QUOTA_HIT' });
+  mockFlyctl('clear-apps-02', { ok: true, url: 'https://clear-acme-todos-a7.fly.dev' });
+  const res = await deployWithFailover('acme', { appName: 'clear-acme-todos-a7', ... });
+  expect(res.ok).toBe(true);
+  expect(res.shard).toBe('clear-apps-02');
+  expect(opsNotifier.calls).toHaveLength(0);  // don't page on partial capacity
+});
+
+it('pages ops when all shards full', async () => {
+  SHARDS.forEach(s => mockFlyctl(s.slug, { ok: false, code: 'FLY_QUOTA_HIT' }));
+  const res = await deployWithFailover('acme', ...);
+  expect(res).toEqual({ ok: false, code: 'ALL_SHARDS_FULL' });
+  expect(opsNotifier.calls).toHaveLength(1);
+});
+```
+
 **Refactor:** Extract each flyctl invocation into named functions (`createApp`, `setSecrets`, `createVolume`, `deployApp`, `issueCert`, `rollbackApp`, `listReleases`, `destroyApp`). Each returns `{ ok, stderr?, stdout? }` — no exceptions leak to caller. All go through a single `runFlyctl(args, opts)` helper that enforces 5-min timeout + audit log line.
 
 **Test command:** `node playground/builder/server.test.js` (new file). Mock `execFile` for unit tests; integration test spins a real docker-in-docker container locally.
@@ -266,10 +649,23 @@ flyctl deploy
 🟢 **Code:** JWT verified with `TENANT_JWT_SECRET`. Forward via `@anthropic-ai/sdk`. Stream response back via SSE.
 
 🔴 **Test 3.2:** `POST /claude` meters usage: increments `ai_spent_cents` in tenants DB per request (input + output tokens × per-model rate)
-🟢 **Code:** Post-response, look up rate table, increment atomically.
+🟢 **Code:** Post-response, look up rate table, increment atomically via `UPDATE tenants SET ai_spent_cents = ai_spent_cents + ? WHERE slug = ?` (idempotent on replay because we log the request_id).
 
 🔴 **Test 3.3:** When tenant's `ai_spent_cents > ai_credit_cents + overage_allowance`, return 402 with "Upgrade or top up"
 🟢 **Code:** Read-check before forwarding. Configurable overage allowance (default $20 grace).
+
+🔴 **Test 3.3b:** When proxy's DB is unreachable (can't read tenant record), return 503 — DO NOT forward to Anthropic
+🟢 **Code:** Fail closed. Reasoning: if we can't check the tenant's quota OR meter the call, forwarding means free Claude calls for whoever. Log to ops, surface "AI service temporarily unavailable" in the deployed app.
+```javascript
+try {
+  const tenant = await db.findOne('tenants', { slug: jwt.sub });
+  if (!tenant) return res.status(401).json({ error: 'unknown tenant' });
+  // ... quota check, forward, meter
+} catch (dbErr) {
+  logger.error('[PROXY_DB_FAIL]', dbErr);
+  return res.status(503).json({ error: 'AI service temporarily unavailable' });
+}
+```
 
 🔴 **Test 3.4:** `GET /usage/:tenant` returns current spend + credit + per-day breakdown (last 30 days)
 🟢 **Code:** Aggregate from a `ai_calls` table logged per request.
@@ -301,8 +697,16 @@ flyctl deploy
 🔴 **Test 4.1:** `POST /api/checkout-session` creates Stripe Checkout for $99/mo Pro subscription, returns session URL
 🟢 **Code:** Stripe SDK, success URL back to Studio with session_id.
 
-🔴 **Test 4.2:** `POST /api/stripe-webhook` on `customer.subscription.created` creates tenant row + slug + issues cookie
-🟢 **Code:** Slug = `clear-<random-6>` (globally unique). Cookie = signed JWT with slug + exp 24h.
+🔴 **Test 4.2:** `POST /api/stripe-webhook` on `customer.subscription.created` creates tenant row + slug + issues cookie. Same `event_id` replayed returns 200 but does NOT create a duplicate tenant.
+🟢 **Code:** Dedup via `stripe_events` table (`id TEXT PRIMARY KEY, received_at TIMESTAMP`). On every webhook:
+```javascript
+const { id: eventId } = stripe.webhooks.constructEvent(body, sig, STRIPE_WEBHOOK_SECRET);
+const existing = await db.findOne('stripe_events', { id: eventId });
+if (existing) return res.status(200).json({ ok: true, deduped: true });
+await db.insert('stripe_events', { id: eventId, received_at: new Date() });
+// ... proceed to handle event
+```
+Slug = `clear-<random-6>` (globally unique across tenants table). Cookie = signed JWT with slug + exp 24h. Use upsert on tenant row so out-of-order `subscription.updated` before `subscription.created` still settles correctly.
 
 🔴 **Test 4.3:** Webhook on `subscription.deleted` sets `plan='cancelled'`, blocks deploys, schedules 30-day destroy
 🟢 **Code:** Immediate flag, scheduled destroy via a cron-like table.
@@ -338,7 +742,7 @@ flyctl deploy
 🔴 **Test 5.3:** `POST /api/deploy` with source needing secrets returns 400 + `{ needsSecrets: [...] }` unless provided
 🟢 **Code:** `packageBundle.needsSecrets` drives validation.
 
-🔴 **Test 5.4:** When `aiCallsDetected`, auto-issue CLEAR_AI_TOKEN (JWT with tenant slug) and pass to builder for secret-set
+🔴 **Test 5.4:** When `aiCallsDetected`, auto-issue CLEAR_AI_TENANT_JWT (JWT with tenant slug) and pass to builder for secret-set
 🟢 **Code:** Sign with `TENANT_JWT_SECRET`, 90-day expiry, include tenant slug.
 
 🔴 **Test 5.5:** `GET /api/deploy-status/:jobId` returns `{ status, url?, error?, stage }`
@@ -367,7 +771,11 @@ flyctl deploy
 ### Phase 6 — Studio UI
 
 🔴 **Test 6.1:** Deploy button appears in toolbar when `compileStatus === 'ok' && tenant.plan !== 'cancelled'`
-🟢 **Code:** Toggle visibility per pattern as `#run-btn`.
+🟢 **Code:** Insert button in `playground/ide.html` AFTER line 497 (`#stop-btn`), BEFORE line 498 (`<span class="toolbar-sep"></span>`). Exact insertion: <!-- Lines verified 2026-04-17 -->
+```html
+<button id="deploy-btn" class="toolbar-btn primary" onclick="doDeploy()" title="Ship to a live URL" style="display:none">Deploy</button>
+```
+Toggle visibility in the same place `#run-btn` is toggled (grep `run-btn` for current pattern). Style with `.primary` when plan is active; add `.disabled` class when plan is `cancelled` or `past_due`.
 
 🔴 **Test 6.2:** Clicking Deploy opens modal listing required secrets with inputs + optional custom domain field
 🟢 **Code:** Reuse existing modal component styles.
@@ -405,23 +813,92 @@ flyctl deploy
 
 ### Phase 7 — Security hardening + multi-tenancy audit
 
-🔴 **Test 7.1:** Tarball with `/etc/passwd` absolute path → builder rejects 400
-🟢 **Code:** Already in Phase 2, add explicit red-team test here.
+🔴 **Test 7.1:** Tarball with `/etc/passwd` absolute path → builder rejects 400 `{ code: 'PATH_ESCAPE' }`
+🟢 **Code:** In `playground/builder/server.js`, per-entry validation:
+```javascript
+function validateTarEntry(entry) {
+  const p = entry.header.name;
+  if (p.startsWith('/') || p.startsWith('\\')) throw { code: 'PATH_ESCAPE', path: p };
+  if (p.includes('..')) throw { code: 'PATH_ESCAPE', path: p };
+  if (entry.header.type !== 'file' && entry.header.type !== 'directory') throw { code: 'BAD_ENTRY_TYPE', path: p };
+}
+```
+Test:
+```javascript
+// playground/builder/server.test.js
+it('rejects tarball with absolute path', async () => {
+  const bad = await tarFromEntries([{ name: '/etc/passwd', type: 'file', contents: 'x' }]);
+  const res = await fetch(`${BUILDER}/build`, {
+    method: 'POST', body: bad,
+    headers: { 'Authorization': `Bearer ${SECRET}`, 'Content-Type': 'application/x-tar' }
+  });
+  expect(res.status).toBe(400);
+  expect(await res.json()).toMatchObject({ code: 'PATH_ESCAPE' });
+});
+```
 
-🔴 **Test 7.2:** Tarball with `../../../root/.ssh/id_rsa` → rejected
-🟢 **Code:** Same.
+🔴 **Test 7.2:** Tarball with `../../../root/.ssh/id_rsa` → rejected with `PATH_ESCAPE`
+🟢 **Code:** Same validator. Test mirrors 7.1 with path `../../../root/.ssh/id_rsa`.
 
-🔴 **Test 7.3:** Tarball with symlink → rejected
-🟢 **Code:** Same.
+🔴 **Test 7.3:** Tarball with a symlink entry → rejected with `BAD_ENTRY_TYPE`
+🟢 **Code:** Same validator. Test uses `type: 'symlink'`.
 
-🔴 **Test 7.4:** Builder without Bearer secret → 401
-🟢 **Code:** Already in Phase 2, add explicit test.
+🔴 **Test 7.4:** Builder request without Bearer secret → 401
+🟢 **Code:**
+```javascript
+function requireBearer(req, res, next) {
+  const h = req.headers.authorization || '';
+  if (h !== `Bearer ${process.env.BUILDER_SHARED_SECRET}`) return res.status(401).json({ error: 'unauthorized' });
+  next();
+}
+```
+Test: fetch without header → 401. Fetch with wrong bearer → 401. Fetch with correct → 200.
 
-🔴 **Test 7.5:** AppName injection attempt (`; rm -rf /`) → Studio sanitizer rejects at `/api/deploy`
-🟢 **Code:** Regex `^[a-z0-9-]{3,63}$`. Never splice raw into shell — use `execFile` not `exec`.
+🔴 **Test 7.5:** AppName injection (`todos; rm -rf /`) rejected at Studio with `INVALID_APP_NAME`
+🟢 **Code:**
+```javascript
+// playground/sanitize.js
+export function sanitizeAppName(s) {
+  if (!/^[a-z0-9-]{3,63}$/.test(s)) throw { code: 'INVALID_APP_NAME', input: s };
+  return s;
+}
+```
+Test:
+```javascript
+it('rejects shell injection in appName', async () => {
+  const res = await post('/api/deploy', {
+    source: 'build for web...',
+    appSlug: 'todos; rm -rf /',
+  });
+  expect(res.status).toBe(400);
+  expect(res.data.code).toBe('INVALID_APP_NAME');
+});
+```
+Every flyctl invocation in the builder uses `execFile(bin, args, opts)` — never `exec(string)` — so even if a bad slug slipped through Studio, it could not inject shell metacharacters.
 
-🔴 **Test 7.6:** Cross-tenant deploy attempt (Tenant A's cookie, Tenant B's appName) → 403
-🟢 **Code:** Ownership check: `appName` must start with `clear-<cookie.tenantSlug>-`.
+🔴 **Test 7.6:** Cross-tenant deploy (Tenant A cookie, appName belongs to Tenant B) → 403 `CROSS_TENANT`
+🟢 **Code:**
+```javascript
+function assertOwnership(tenantSlug, appName) {
+  if (!appName.startsWith(`clear-${tenantSlug}-`)) throw { code: 'CROSS_TENANT', tenantSlug, appName };
+}
+```
+Test:
+```javascript
+it('blocks cross-tenant rollback', async () => {
+  // Create two tenants
+  const a = await createTestTenant('a');
+  const b = await createTestTenant('b');
+  // A tries to rollback B's app
+  const res = await fetch('/api/rollback', {
+    method: 'POST',
+    headers: { Cookie: a.cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appName: `clear-${b.slug}-todos-xyz`, version: '1' }),
+  });
+  expect(res.status).toBe(403);
+  expect((await res.json()).code).toBe('CROSS_TENANT');
+});
+```
 
 🔴 **Test 7.7:** AI proxy with expired JWT → 401
 🟢 **Code:** Standard JWT expiry check.
@@ -451,7 +928,7 @@ flyctl deploy
 🔴 **Test 8.2:** Re-deploy same app, assert same URL, assert SQLite data persists
 🟢 **Code:** Seed one todo before re-deploy, fetch after, assert present.
 
-🔴 **Test 8.3:** Deploy agent app (helpdesk-agent) with CLEAR_AI_TOKEN → `/api/chat` returns an agent response via proxy → `ai_spent_cents` ticked up
+🔴 **Test 8.3:** Deploy agent app (helpdesk-agent) with CLEAR_AI_TENANT_JWT → `/api/chat` returns an agent response via proxy → `ai_spent_cents` ticked up
 🟢 **Code:** Real ask-claude call via proxy. Cost ~$0.02 + prove metering works.
 
 🔴 **Test 8.4:** Add custom domain `test-<rand>.example.buildclear.dev` (pre-configured wildcard) → cert issues → URL serves 200 on custom domain
