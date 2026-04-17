@@ -196,6 +196,58 @@ Worker hits compile error
   Outcome logged back to factor_db
 ```
 
+### Genetic Algorithm loop (full version — replaces "Meph retries with same strategy"):
+```
+Task assigned to GA-mode worker
+  GENERATION 0 (seed):
+    LLM generates POP_SIZE candidates at varied temperatures (0.3, 0.6, 0.9)
+    + top-K Factor DB retrievals seeded as additional candidates
+    All candidates evaluated in parallel: one sandbox per candidate
+    Fitness = { test_score, compile_ok, warnings_count, source_length }
+    Pareto-rank candidates → Pareto front = generation 0 elite set
+
+  EACH GENERATION (1..max):
+    Select parents from elite set (tournament selection, k=3)
+
+    CROSSOVER (prob GA_CROSSOVER_RATE per offspring):
+      parent_a.patch_ops[:split] + parent_b.patch_ops[split:]
+      Validate: no duplicate endpoint paths, no conflicting table names
+      If invalid → repair: drop conflicting ops, or fall back to mutation
+
+    MUTATION (prob GA_MUTATION_RATE per offspring):
+      Pick one patch-op from parent, ask LLM to rewrite it differently
+      (LLM-as-mutation-operator: AlphaEvolve / FunSearch pattern)
+
+    DIVERSITY CHECK (before eval):
+      Jaccard similarity on patch-op types vs existing population
+      If similarity > GA_DIVERSITY_THRESHOLD → discard, generate new offspring
+
+    EVALUATE offspring in parallel sandboxes (same as generation 0)
+    RE-RANKER FILTER: if re-ranker loaded, score all offspring first;
+      skip full sandbox eval for bottom-quartile candidates (cheap filter)
+
+    UPDATE population:
+      Merge offspring into population, keep Pareto-non-dominated set
+      MAP-Elites grid update: behavioral niche = (task_type, error_category)
+        → each cell keeps its best-fitness resident; new candidates evict only
+        when they strictly dominate the current cell occupant
+
+    BASELINE INJECTION (every 5 generations):
+      Add 1 fresh LLM-generated candidate at temperature=1.0 (no Factor DB seed)
+      Prevents closed-loop drift: re-ranker trains on GA outputs but GA must
+      also explore directions the re-ranker hasn't seen yet
+
+    TERMINATION CHECK:
+      • all_tests_pass=1 on any candidate → SOLUTION FOUND, stop
+      • best_score unchanged for 3 generations → fitness plateau, stop
+      • total elapsed > GA_COMPUTE_BUDGET_MS → BUDGET EXHAUSTED, stop
+      • generation >= GA_MAX_GENERATIONS → stop
+
+  FINAL: best Pareto-front candidate promoted to supervisor
+  Full trajectory logged to Factor DB (all candidates, all generations)
+  Re-ranker training set grows with this run's outcomes
+```
+
 ---
 
 ## Section 4: Integration Points
@@ -209,6 +261,11 @@ Worker hits compile error
 | Factor DB | Meph context | Top-K suggested patches, plain English | Injected into Meph system prompt or tool result |
 | Supervisor loop | Observability pane | `{sessions: [SessionRecord]}` | SSE from `/api/supervisor/status` |
 | Git worktrees | Merge step | `.clear` source files | `git diff`, `patch.js` apply |
+| GA seed pool | GeneticOptimizer | Top-K past patch-op sequences with `test_pass=1` | Factor DB BM25/vector query at generation 0 |
+| GA offspring | Sandbox runner | patch-op sequence → evaluated `{compile_ok, test_score}` | N parallel `runTestProcess` calls (one per candidate) |
+| Re-ranker | GA offspring filter | Predicted test_score per candidate (scalar) | In-process cross-encoder, no HTTP |
+| GeneticOptimizer | Factor DB | One `ga_candidates` row per evaluated candidate | Direct SQLite INSERT after each sandbox eval |
+| GA Pareto front | Supervisor loop | Best candidate source + fitness | `GeneticOptimizer.getBest()` in-process call |
 
 ---
 
@@ -225,6 +282,12 @@ Worker hits compile error
 | Re-ranker suggests a patch that breaks compilation | Outcome logged as `compile_ok=0` → down-weights that pattern automatically. No rollback needed — patch is just a suggestion, Meph still validates |
 | Worker API key exhausted / rate limited | Supervisor detects 429 from `/api/chat`. Backs off that worker for 60s. Continues other workers |
 | Supervisor itself crashes | Sessions persisted in SQLite — supervisor restarts, reads registry, re-attaches to live worker processes (workers don't stop when supervisor restarts) |
+| **GA: Premature convergence** | All candidates reach the same local optimum (same test_score, no improvement). Detected when Pareto-front diversity drops: if all candidates in the front have Jaccard similarity >0.8 on patch-op types, force-inject `GA_NOVELTY_INJECTION_COUNT` (default 3) random-seed candidates drawn at temperature=1.0. If MAP-Elites grid has <25% cells occupied, convergence is confirmed — inject and widen temperature range. |
+| **GA: Crossover produces invalid Clear syntax** | Splicing two patch-op sequences may create semantic conflicts: endpoint path duplicated, table defined twice, validation block referencing a non-existent field. Repair operator runs *before* sandbox eval: (1) deduplicate endpoint paths (keep first), (2) deduplicate table names (keep first), (3) drop validation ops whose target field was removed by a later op. If repair still fails compile, discard offspring and log `origin='crossover_discarded'`. |
+| **GA: Closed-loop re-ranker drift** | Re-ranker trains on Factor DB rows that were generated by GA runs that used the re-ranker as a filter → selection bias grows each training round. Mitigation: keep a fixed 10% random-baseline holdout in each generation (origin='baseline', not scored by re-ranker before eval). Monitor `precision@1` on curriculum validation set. If it drops across two consecutive training rounds, suspend re-ranker filter for one GA run to let unfiltered data in. |
+| **GA: Compute explosion (N × M × K sandboxes)** | POP_SIZE=10, MAX_GEN=20 = 200 sandbox runs per task × multiple workers. At 5s per run this is 1000s per worker per task. Mitigation: (1) compile-only pre-filter — reject non-compiling candidates before running tests (compile is ~0.1s, test is ~5s), (2) progressive deepening — gen 0–2 run only first 2 test blocks, gen 3+ run full suite, (3) honor `GA_COMPUTE_BUDGET_MS` hard stop. |
+| **GA: Multi-objective fitness conflict** | Pareto-optimal set may contain one candidate with 100% tests + 200 lines and another with 80% tests + 50 lines. Supervisor can't auto-pick. Resolution: default to highest `test_score` (correctness first). If tied, prefer shorter source. Flag to user when top-2 Pareto candidates differ by >10% on any secondary objective — let user decide. |
+| **GA: LLM mutation returns semantically identical op** | Mutation asks LLM to rewrite one patch-op differently but LLM may return nearly the same op. Detect via Jaccard similarity on token set of `patch_summary`. If >0.9 similarity to parent op, retry mutation once. If still too similar, fall back to crossover for that offspring slot. |
 
 ---
 
@@ -242,6 +305,15 @@ Worker hits compile error
 | `RERANKER_EMBED_MODEL` | Optional | `all-MiniLM-L6-v2` | Bi-encoder model for fast first-pass (runs locally via onnxruntime-node) |
 | `COLD_START_CURRICULUM` | Optional | `curriculum/` | Directory of curriculum tasks for bootstrapping Factor DB |
 | `ANTHROPIC_API_KEY` | Required | — | For Supervisor + all Worker Meph sessions |
+| `GA_ENABLED` | Optional | `false` | Opt-in. If false, workers use single-trajectory Meph (current behavior). Set to `true` to activate GA loop per task. |
+| `GA_POPULATION_SIZE` | Optional | `10` | Candidates per generation. Each needs a sandbox. Don't exceed `SUPERVISOR_WORKERS × 2`. |
+| `GA_MAX_GENERATIONS` | Optional | `20` | Hard cap on generations before declaring budget exhausted. |
+| `GA_MUTATION_RATE` | Optional | `0.3` | Fraction of new offspring produced via LLM mutation (vs crossover). |
+| `GA_CROSSOVER_RATE` | Optional | `0.5` | Fraction via crossover. `1 - GA_MUTATION_RATE - GA_CROSSOVER_RATE` = fraction seeded fresh from LLM. |
+| `GA_DIVERSITY_THRESHOLD` | Optional | `0.3` | Min Jaccard distance (patch-op type sets) between any two population members. Below this → one is discarded. |
+| `GA_COMPUTE_BUDGET_MS` | Optional | `300000` | Hard wall (5 min default) — GA terminates regardless of generation count. |
+| `GA_NOVELTY_INJECTION_COUNT` | Optional | `3` | Forced-random candidates injected when convergence detected (Pareto-front Jaccard >0.8). |
+| `GA_BASELINE_INJECTION_EVERY` | Optional | `5` | Inject one unfiltered (no re-ranker) baseline candidate every N generations to prevent drift. |
 
 ---
 
@@ -378,6 +450,45 @@ CREATE TABLE reranker_feedback (
   outcome_score   REAL,                         -- test_score after applying
   ts              INTEGER NOT NULL
 );
+
+-- GA run: one row per genetic optimization run (one task in GA mode)
+CREATE TABLE ga_runs (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id      TEXT NOT NULL,
+  task            TEXT,
+  generation      INTEGER DEFAULT 0,            -- current generation number
+  best_score      REAL DEFAULT 0.0,
+  population_size INTEGER NOT NULL,
+  status          TEXT DEFAULT 'running',       -- running | solution_found | converged | budget_exhausted
+  clear_version   TEXT,                         -- synonyms.js SYNONYM_VERSION at run time (for drift tracking)
+  created_at      INTEGER NOT NULL,
+  completed_at    INTEGER
+);
+
+-- GA candidates: one row per evaluated (generation, candidate) pair
+CREATE TABLE ga_candidates (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id          INTEGER NOT NULL REFERENCES ga_runs(id),
+  generation      INTEGER NOT NULL,
+  parent_ids      TEXT,                         -- JSON: [id, id] for crossover, [id] for mutation, null for seed
+  origin          TEXT NOT NULL,                -- 'seed' | 'crossover' | 'mutation' | 'baseline' | 'crossover_discarded'
+  patch_ops       TEXT NOT NULL,                -- JSON: array of patch.js ops
+  patch_summary   TEXT,                         -- human-readable: what this candidate does
+  source          TEXT,                         -- .clear source after applying patch_ops
+  compile_ok      INTEGER DEFAULT 0,
+  test_score      REAL DEFAULT 0.0,             -- fraction of tests passing
+  test_pass       INTEGER DEFAULT 0,            -- 1 if all tests pass
+  warnings_count  INTEGER DEFAULT 0,
+  source_length   INTEGER DEFAULT 0,            -- char count of .clear source
+  novelty_score   REAL DEFAULT 0.0,             -- Jaccard distance to nearest neighbor in population
+  reranker_score  REAL DEFAULT 0.0,             -- predicted test_score from cross-encoder (0 if not available)
+  pareto_rank     INTEGER DEFAULT 0,            -- 0 = Pareto front, 1 = dominated by 1, etc.
+  created_at      INTEGER NOT NULL
+);
+
+CREATE INDEX idx_ga_run_id      ON ga_candidates(run_id, generation);
+CREATE INDEX idx_ga_pareto      ON ga_candidates(run_id, pareto_rank, test_score DESC);
+CREATE INDEX idx_ga_status      ON ga_runs(status, created_at);
 ```
 
 **What counts as a "code action" (the unit of the Factor DB):**
@@ -456,13 +567,70 @@ Neither system alone is sufficient:
 
 **Weak spots — plan around these explicitly:**
 
-1. **Candidate diversity bottleneck.** If the LLM consistently proposes similar candidates for a given error, the re-ranker can't rescue the situation — it can only rank what it's given. Mitigation: diversity prompt ("give me 3 structurally different approaches"), temperature variation across K candidates (temp=0.3 for candidate 1, 0.9 for candidate 2–3).
+1. **Candidate diversity bottleneck.** Addressed by the genetic algorithm — see Section 7c (`genetic.js`). GA replaces the diversity-prompt workaround with a principled diversity mechanism (MAP-Elites grid, novelty scoring, forced baseline injection).
 
 2. **Action granularity mismatch.** Some fixes are one-liners (fix_line), others are 10-operation refactors. The Factor DB treats both as single rows. A 10-op refactor that partially succeeds has ambiguous reward signal. Mitigation: normalize score_delta (improvement per patch op, not total improvement), flag rows with len(patch_ops) > 5 for manual review.
 
 3. **Re-ranker drift with language evolution.** As Clear adds new syntax, old training data's error signatures become stale. A "syntax error on line 5" from 3 months ago may refer to a deprecated keyword. Mitigation: version-tag all code_actions rows with Clear's `SYNONYM_VERSION` from synonyms.js. Filter out rows from old versions during retrieval when version gap > 2.
 
 4. **Feedback sparsity.** re-ranker_feedback.was_used=1 only when Meph actually applies the suggestion. In practice, Meph may ignore suggestions and write its own fix. Low coverage = slow re-ranker improvement. Mitigation: implicit feedback — log outcome for any action whose patch_summary has >60% token overlap with a returned suggestion, even if Meph didn't explicitly accept.
+
+---
+
+### `playground/supervisor/genetic.js` — GeneticOptimizer (new)
+
+The genetic algorithm lives entirely in this module. It is called by the supervisor loop when `GA_ENABLED=true` and a task is assigned. Workers in GA mode are driven by `GeneticOptimizer`, not by autonomous Meph sessions — the LLM is called as a mutation/generation operator, not as an agent.
+
+**Class interface:**
+
+```javascript
+export class GeneticOptimizer {
+  constructor({ factorDB, reranker, sandboxRunner, taskContext }) {}
+
+  // Run full GA loop. Returns best candidate when terminated.
+  async optimize(task, baseSource) {
+    // returns: { source, patchOps, testScore, testPass, generation, terminationReason }
+  }
+
+  // Exposed for tests
+  crossover(parentA, parentB)   // → patchOps array
+  mutate(candidate)             // → patchOps array (LLM call)
+  computeFitness(result)        // → { testScore, compileOk, warnings, sourceLength }
+  paretoRank(population)        // → population with pareto_rank filled
+  noveltyScore(candidate, pop)  // → float (Jaccard distance to nearest neighbor)
+  detectConvergence(paretoFront)// → boolean
+}
+```
+
+**Crossover implementation note:**
+
+Clear's patch API makes crossover clean: patch ops are atomic and boundary-safe. Split point is chosen uniformly at random between op indices (not within an op). Conflict check after splice:
+1. Collect all endpoint paths in merged ops. If any path appears in both halves with conflicting methods → drop one.
+2. Collect all table names. If defined twice → keep first definition, drop duplicate.
+3. Run `compileProgram` on the resulting source to verify. If compile errors remain after repair → `origin='crossover_discarded'`, skip sandbox.
+
+**Pareto-front fitness dimensions:**
+
+| Dimension | Direction | Weight (for display only — Pareto doesn't use weights) |
+|-----------|-----------|------|
+| `test_score` | maximize | primary |
+| `compile_ok` | maximize | primary |
+| `-warnings_count` | maximize (fewer = better) | secondary |
+| `-source_length` | maximize (shorter = better) | tiebreaker |
+
+Pareto dominance: A dominates B iff A is ≥ B on ALL dimensions and strictly > on at least one.
+
+**MAP-Elites behavioral grid:**
+
+Each cell = `(task_type, primary_error_category)` where `primary_error_category` is the first error keyword in the compile/test output (e.g., "missing endpoint", "validation failed", "undefined table").
+- Grid is `ga_candidates` rows grouped by `(task_type, error_category)`
+- Each group keeps the single highest `test_score` resident
+- New candidates evict only if they strictly dominate the current cell occupant
+- Convergence check: if >80% of cells have been stable for 3 generations, run novelty injection
+
+**Sandbox parallelism:**
+
+`GeneticOptimizer` uses `Promise.all(population.map(c => sandboxRunner.eval(c.source)))`. The sandbox runner is already designed for parallel child processes. GA with `POP_SIZE=10` runs 10 simultaneous compile+test processes. This saturates available CPU but finishes in the time of a single sequential run. Set `POP_SIZE <= CPU_CORES` for best throughput.
 
 ---
 
@@ -757,6 +925,56 @@ describe('SessionRegistry', () => {
 
 ---
 
+### Phase 5c — Genetic Algorithm (4 cycles)
+
+**Read first:** `patch.js` (crossover depends on op structure), `playground/supervisor/factor-db.js` (seed pool query), Section 7c `genetic.js` spec above
+
+| Step | Action | Test |
+|------|--------|------|
+| 🔴 | Write test: `crossover(parentA, parentB)` produces a valid patch-op array with no duplicate endpoint paths | `node playground/supervisor/genetic.test.js` |
+| 🟢 | Implement `crossover`: random split point on op index, merge, run conflict-repair (dedup endpoints + tables) | Crossover test passes |
+| 🔴 | Write test: `mutate(candidate)` calls LLM (mock) and returns different patch-ops from parent | |
+| 🟢 | Implement `mutate`: pick one op, call `/api/chat` with mutation prompt, parse response into patch-op | Mutation test passes (mock LLM) |
+| 🔴 | Write test: `paretoRank([...])` correctly assigns rank 0 to non-dominated candidates and rank 1+ to dominated ones. Test case: A=(score=1.0, warnings=0) dominates B=(score=0.9, warnings=5). C=(score=0.8, warnings=0) is non-dominated vs B. | |
+| 🟢 | Implement `paretoRank`: O(n²) dominance check for small populations (n ≤ 50), returns population with `.pareto_rank` filled | Pareto test passes |
+| 🔴 | Write integration test: `GeneticOptimizer.optimize('add a users table', baseSource)` with mock LLM + real sandbox. Runs 2 generations, Factor DB has `ga_candidates` rows, `getBest()` returns candidate with highest `test_score`. | Integration test — requires live sandbox |
+| 🟢 | Wire `GeneticOptimizer` into supervisor loop: when `GA_ENABLED=true` and task assigned, use `optimizer.optimize()` instead of `assignTask()` | Integration test passes |
+| 🔄 | Extract novelty scoring into pure function `noveltyScore(candidate, population)`. Extract MAP-Elites grid into `MapElitesGrid` class. | |
+| 📚 | Update `learnings.md`: GA termination edge cases, crossover repair operator behavior, sandbox parallelism limits on Windows (child_process.spawn concurrency ceiling) | |
+
+**Copy-paste test for `crossover` (first 🔴 cycle):**
+
+```javascript
+import { describe, it, expect } from '../../lib/testUtils.js';
+import { GeneticOptimizer } from './genetic.js';
+
+// Minimal mock — just needs crossover method, no LLM/DB required
+const opt = new GeneticOptimizer({ factorDB: null, reranker: null, sandboxRunner: null, taskContext: {} });
+
+describe('GeneticOptimizer.crossover', () => {
+  it('produces a merged op array with correct length', () => {
+    const a = [{ op: 'add_table', name: 'User' }, { op: 'add_endpoint', method: 'GET', path: '/api/users' }];
+    const b = [{ op: 'add_field', table: 'User', field: 'email' }, { op: 'add_validation', endpoint: '/api/users' }];
+    const child = opt.crossover(a, b);
+    expect(Array.isArray(child)).toBeTruthy();
+    expect(child.length).toEqual(a.length); // same length as parents (split + rejoin)
+  });
+
+  it('repair: removes duplicate endpoint paths', () => {
+    const a = [{ op: 'add_endpoint', method: 'GET', path: '/api/items' }];
+    const b = [{ op: 'add_endpoint', method: 'POST', path: '/api/items' }, { op: 'add_field', table: 'Item', field: 'name' }];
+    const child = opt.crossover(a, b);
+    const paths = child.filter(o => o.op === 'add_endpoint').map(o => o.path);
+    // Both have /api/items — repair should keep only one
+    expect(paths.filter(p => p === '/api/items').length).toEqual(1);
+  });
+});
+```
+
+**Commit:** `feat(ga): genetic optimizer — crossover, mutation, pareto ranking`
+
+---
+
 ### Phase 6 — Integration / Merge Step (3 cycles)
 
 **Read first:** `patch.js`, `index.js` `compileProgram`
@@ -837,6 +1055,19 @@ describe('SessionRegistry', () => {
 - Cold-start curriculum run on all 63 tasks (synthetic variations generated)
 - First re-ranker training run completes on laptop CPU in <15 min
 - precision@1 > 0.5 on curriculum validation set
+
+**Genetic Algorithm (Phase 5c, parallel with phases 5–6, weeks 4–6):**
+- `crossover` and `mutate` operators pass unit tests with mock LLM
+- `paretoRank` correctly scores a 10-candidate population
+- `GeneticOptimizer.optimize` completes a 3-generation run on the `todo-fullstack` curriculum task — `ga_runs` and `ga_candidates` rows populated in factor_db
+- Convergence detection fires correctly: if all gen-0 seeds have same test_score (mock), optimizer injects novelty candidates
+- Closed-loop drift sentinel works: every 5th generation includes at least 1 `origin='baseline'` candidate
+
+**GA + Re-ranker composed loop (weeks 7–9):**
+- GA seed pool queries Factor DB (BM25) and injects top-3 past high-score patch sequences as gen-0 candidates
+- Re-ranker scores GA offspring before sandbox eval — bottom-quartile candidates filtered out, saving ~25% compute on benchmark tasks
+- `ga_runs` table shows `termination_reason='solution_found'` for ≥50% of curriculum tasks when `GA_MAX_GENERATIONS=10`
+- No Pareto-front collapse (novelty injection fires when needed): measure with `SELECT COUNT(DISTINCT pareto_rank) FROM ga_candidates WHERE run_id=X` — should be ≥3 at end of a 10-generation run
 
 ---
 
