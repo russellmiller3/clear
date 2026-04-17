@@ -2454,6 +2454,7 @@ function generateE2ETests(body) {
   lines.push('');
 
   // Shim expect/toBe/toHaveProperty for user-written test blocks
+  const hasUnitAsserts = testDefs.some(td => (td.body || []).some(n => n.type === NodeType.UNIT_ASSERT));
   if (testDefs.length > 0) {
     lines.push('// Expect shim for user-written test assertions');
     lines.push('function expect(val) {');
@@ -2563,6 +2564,28 @@ function generateE2ETests(body) {
     lines.push('  if (as && as.includes(value)) return;');
     lines.push('  const where = _lastCall && _lastCall.line ? " [clear:" + _lastCall.line + "]" : "";');
     lines.push('  throw new Error("Error response didn\'t mention \\"" + value + "\\". Got: " + (as || "nothing") + ". Check the `fail with error \'...\'` or `validate` message in your endpoint." + where);');
+    lines.push('}');
+    lines.push('');
+  }
+  if (hasUnitAsserts) {
+    lines.push('// Unit-level value assertion — used by "expect x is 5", "expect x is greater than N", etc.');
+    lines.push('// check: eq | ne | gt | lt | gte | lte | empty | not_empty');
+    lines.push('function _unitAssert(actual, check, expected, line, expr) {');
+    lines.push('  const where = line ? " [clear:" + line + "]" : "";');
+    lines.push('  let ok = false;');
+    lines.push('  if (check === "eq")        ok = actual == expected;');
+    lines.push('  if (check === "ne")        ok = actual != expected;');
+    lines.push('  if (check === "gt")        ok = actual > expected;');
+    lines.push('  if (check === "lt")        ok = actual < expected;');
+    lines.push('  if (check === "gte")       ok = actual >= expected;');
+    lines.push('  if (check === "lte")       ok = actual <= expected;');
+    lines.push('  if (check === "empty")     ok = actual === null || actual === undefined || actual === "" || (Array.isArray(actual) && actual.length === 0);');
+    lines.push('  if (check === "not_empty") ok = actual !== null && actual !== undefined && actual !== "" && (!Array.isArray(actual) || actual.length > 0);');
+    lines.push('  if (ok) return;');
+    lines.push('  const got = actual === null || actual === undefined ? "nothing" : JSON.stringify(actual);');
+    lines.push('  const want = { eq: "to equal", ne: "to not equal", gt: "to be greater than", lt: "to be less than", gte: "to be at least", lte: "to be at most", empty: "to be empty", not_empty: "to not be empty" };');
+    lines.push('  const suffix = (check === "empty" || check === "not_empty") ? "" : " " + JSON.stringify(expected);');
+    lines.push('  throw new Error("`" + expr + "` was expected " + (want[check] || check) + suffix + ", but got " + got + " instead." + where);');
     lines.push('}');
     lines.push('');
   }
@@ -5646,6 +5669,22 @@ ${pad}}`;
     case NodeType.EXPECT: {
       if (ctx.lang === 'python') return `${pad}assert ${exprToCode(node.expression, ctx)}`;
       return `${pad}expect(${exprToCode(node.expression, ctx)}).toBeTruthy();`;
+    }
+
+    case NodeType.UNIT_ASSERT: {
+      const left = exprToCode(node.left, ctx);
+      const check = JSON.stringify(node.check);
+      const right = node.right ? exprToCode(node.right, ctx) : 'null';
+      const line = node.line || 0;
+      const raw = JSON.stringify(node.rawLeft);
+      if (ctx.lang === 'python') {
+        // Python: simple assert with readable message
+        const ops = { eq: '==', ne: '!=', gt: '>', lt: '<', gte: '>=', lte: '<=' };
+        if (node.check === 'empty') return `${pad}assert not ${left}, f"Expected '${node.rawLeft}' to be empty, got {${left}}"`;
+        if (node.check === 'not_empty') return `${pad}assert ${left}, f"Expected '${node.rawLeft}' to not be empty, got {${left}}"`;
+        return `${pad}assert ${left} ${ops[node.check] || '=='} ${right}, f"Expected '${node.rawLeft}' to be {${right}}, got {${left}}"`;
+      }
+      return `${pad}_unitAssert(${left}, ${check}, ${right}, ${line}, ${raw});`;
     }
 
     case NodeType.HTTP_TEST_CALL: {

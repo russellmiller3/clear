@@ -410,6 +410,24 @@ test:
 - "User can create a todo and see it in the list" — CRUD flow
 - "The Helpdesk agent responds to messages" — agent smoke test
 
+**Unit-level assertions (no endpoint needed):** when testing a calculation, string check, or computed value, assert directly on the variable:
+
+```clear
+test 'discount math':
+  price = 120
+  discount = price * 0.10
+  expect discount is 12
+  expect discount is less than price
+  expect discount is greater than 0
+
+test 'label formatting':
+  label is 'Hello, World'
+  expect label is not empty
+  expect label is 'Hello, World'
+```
+
+Use `expect X is Y` for equality, `expect X is greater/less than N` for ranges, `expect X is empty / not empty` for presence. These are unit assertions — they run without a server. Use them for pure calculations and string checks. For endpoint behavior (status codes, response fields, auth), use the HTTP forms: `can user create ...`, `call POST ...`, `expect it succeeds`.
+
 **When a test fails, read the error message — it's plain English and names the fix.** The compiler emits friendly errors like `"POST /api/notes returned 404 — that endpoint doesn't exist on the server. Check the path."` for every status mismatch (200/201/204/400/401/403/404/409/422/429/5xx). Each carries `[clear:N]` pointing at the exact line. Don't re-run tests just to "see" them — the snapshot Meph gets in his context already contains the failures. Read the error, make the smallest edit that fixes it, run once to confirm.
 
 ## Common Mistakes (read this before writing Clear)
