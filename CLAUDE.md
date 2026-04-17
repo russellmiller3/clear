@@ -270,7 +270,7 @@ When debugging any browser/UI issue, **always check console errors first** befor
 ## Ross Perot Rule
 Proactively do what makes sense. Don't wait to be told. If something obviously needs doing — fix it, build it, clean it up. Act on judgment, not just instructions.
 
-## Open Claw Rule
+## Next Steps Rule
 At the end of every task, come up with the next relevant tasks and suggest them. Don't stop at "done" — show what's next and offer to keep going.
 
 ## Strong Opinion Rule
@@ -336,4 +336,4 @@ Test everything you build before declaring it done. "The variable updated" is no
 The quality bar is HIGH for everything in this repo unless there's a good reason not to. Compute is cheap — extra tests, richer error messages, fuller docs, cleaner abstractions are usually worth it. Don't optimize for tokens or "minimal diff" at the expense of readability, test coverage, or the 14-year-old test. When in doubt, do the thorough thing and leave code that's easier for the next person (or AI) to work with.
 
 ## Next-Moves Go In ROADMAP (MANDATORY)
-Whenever you surface "what's next" suggestions, open claws, or follow-up ideas, add them to `ROADMAP.md` immediately — never leave them only in chat. Chat scrolls away; ROADMAP is what future sessions read. If you suggest three next moves to Russell, the SAME three moves must appear in ROADMAP before the session ends. Put them under the "What's Next" section, priority-ordered.
+Whenever you surface "what's next" suggestions, next steps, or follow-up ideas, add them to `ROADMAP.md` immediately — never leave them only in chat. Chat scrolls away; ROADMAP is what future sessions read. If you suggest three next moves to Russell, the SAME three moves must appear in ROADMAP before the session ends. Put them under the "What's Next" section, priority-ordered.

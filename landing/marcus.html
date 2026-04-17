@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clear — Ship Your Internal Tool Backlog</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: #fafbfd; color: #0f172a; -webkit-font-smoothing: antialiased; margin: 0; }
+
+/* Hero mesh gradient */
+.hero-bg {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f0f4ff 0%, #fafbfd 40%, #f5f0ff 70%, #fafbfd 100%);
+}
+.hero-bg::before {
+  content: '';
+  position: absolute;
+  top: -40%; right: -20%;
+  width: 80%; height: 120%;
+  background: radial-gradient(ellipse at center, rgba(99,102,241,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-bg::after {
+  content: '';
+  position: absolute;
+  bottom: -30%; left: -10%;
+  width: 60%; height: 80%;
+  background: radial-gradient(ellipse at center, rgba(67,97,238,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* Product mock */
+.product-frame {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.02),
+    0 8px 24px rgba(0,0,0,0.04),
+    0 24px 48px rgba(0,0,0,0.06),
+    0 48px 96px rgba(0,0,0,0.04);
+  overflow: hidden;
+  transform: perspective(2000px) rotateX(4deg) scale(0.95);
+  transition: transform 0.5s cubic-bezier(0.16,1,0.3,1);
+}
+.product-frame:hover { transform: perspective(2000px) rotateX(0deg) scale(0.98); }
+
+/* Bento grid */
+.bento { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: auto auto; gap: 16px; }
+.bento-card {
+  padding: 32px 28px;
+  border-radius: 20px;
+  border: 1px solid rgba(0,0,0,0.04);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.bento-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.08); }
+.bento-card::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 50%; height: 50%;
+  pointer-events: none;
+  opacity: 0.4;
+}
+.bento-1 { background: linear-gradient(145deg, #eef2ff 0%, #f8f9ff 100%); grid-column: span 1; }
+.bento-2 { background: linear-gradient(145deg, #ecfdf5 0%, #f7fdfb 100%); grid-column: span 1; }
+.bento-3 { background: linear-gradient(145deg, #fffbeb 0%, #fffef5 100%); grid-column: span 1; }
+.bento-4 { background: linear-gradient(145deg, #fff1f2 0%, #fffbfb 100%); grid-column: span 1; }
+.bento-5 { background: linear-gradient(145deg, #f5f3ff 0%, #fbfaff 100%); grid-column: span 2; }
+
+.icon-ring {
+  width: 48px; height: 48px;
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+
+/* Agent section */
+.agent-section {
+  background: linear-gradient(180deg, #fafbfd 0%, #f0f4ff 50%, #fafbfd 100%);
+}
+.agent-card {
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(99,102,241,0.1);
+  box-shadow: 0 4px 24px rgba(99,102,241,0.06);
+}
+.code-line {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  line-height: 2;
+}
+.code-kw { color: #4361ee; font-weight: 500; }
+.code-str { color: #059669; }
+.code-cmt { color: #94a3b8; font-style: italic; }
+
+/* Differentiator section */
+.diff-section {
+  background: #fff;
+  border-top: 1px solid rgba(0,0,0,0.04);
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.diff-card {
+  border-radius: 16px;
+  padding: 32px 28px;
+  position: relative;
+}
+.diff-card-1 { background: linear-gradient(135deg, #fafbfd 0%, #f0f4ff 100%); }
+.diff-card-2 { background: linear-gradient(135deg, #fafbfd 0%, #f5f0ff 100%); }
+.diff-card-3 { background: linear-gradient(135deg, #fafbfd 0%, #ecfdf5 100%); }
+.diff-number {
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1;
+  background: linear-gradient(135deg, rgba(67,97,238,0.08), rgba(124,58,237,0.08));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  position: absolute;
+  top: 20px;
+  right: 24px;
+}
+.compare-them { background: #fef2f2; border: 1px solid rgba(239,68,68,0.08); }
+.compare-us { background: #f0fdf4; border: 1px solid rgba(5,150,105,0.08); }
+
+/* CTA section */
+.cta-section {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #3730a3 100%);
+  position: relative;
+  overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute;
+  top: -50%; right: -30%;
+  width: 80%; height: 200%;
+  background: radial-gradient(ellipse, rgba(129,140,248,0.15) 0%, transparent 60%);
+}
+.cta-section::after {
+  content: '';
+  position: absolute;
+  bottom: -50%; left: -20%;
+  width: 60%; height: 150%;
+  background: radial-gradient(ellipse, rgba(167,139,250,0.1) 0%, transparent 60%);
+}
+
+/* Buttons */
+.btn-hero {
+  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #4f46e5 100%);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 4px 16px rgba(67,97,238,0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  letter-spacing: -0.01em;
+}
+.btn-hero:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 8px 32px rgba(67,97,238,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #3730a3 0%, #4f46e5 50%, #6366f1 100%);
+}
+.btn-white {
+  background: #fff;
+  color: #1e1b4b;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.1);
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+.btn-white:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1), 0 16px 40px rgba(0,0,0,0.15); }
+
+/* Nav */
+nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+
+/* Fade */
+.fade-up { animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) both; }
+.fade-d1 { animation-delay: 0.1s; }
+.fade-d2 { animation-delay: 0.2s; }
+.fade-d3 { animation-delay: 0.35s; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Proof strip */
+.proof-strip { background: #fff; border-top: 1px solid rgba(0,0,0,0.04); border-bottom: 1px solid rgba(0,0,0,0.04); }
+
+/* For/Get/Pay */
+.fgp-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #4361ee;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 768px) {
+  .bento { grid-template-columns: 1fr; }
+  .bento-5 { grid-column: span 1; }
+  .product-frame { transform: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="sticky top-0 z-50 border-b border-black/[0.04] px-6 py-4">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-10">
+      <div class="text-[18px] font-bold tracking-tight">Clear</div>
+      <div class="hidden md:flex items-center gap-7 text-[13px] font-medium text-slate-400">
+        <a href="#apps" class="hover:text-slate-600 transition">Apps</a>
+        <a href="#" class="hover:text-slate-600 transition">Pricing</a>
+        <a href="#" class="hover:text-slate-600 transition">Docs</a>
+        <a href="#" class="hover:text-slate-600 transition">Changelog</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="#" class="text-[13px] font-medium text-slate-500 hover:text-slate-700 transition hidden md:block">Sign in</a>
+      <a href="#" class="btn-hero text-white text-[13px] px-5 py-2.5 rounded-xl font-semibold">Open Studio</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero-bg">
+  <div class="max-w-5xl mx-auto px-6 pt-28 pb-8 text-center relative z-10">
+    <div class="fade-up inline-flex items-center gap-2 text-[13px] font-medium text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-full px-4 py-1.5 mb-8">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Ships to a live URL in under 30 seconds
+    </div>
+    <h1 class="fade-up fade-d1 text-5xl md:text-[64px] font-extrabold leading-[1.08] tracking-[-0.035em] mb-6 max-w-4xl mx-auto">
+      That backlog of internal tools?<br>
+      <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-purple-500 bg-clip-text text-transparent" style="white-space: nowrap;">Pick one. Ship it this afternoon.</span>
+    </h1>
+    <p class="fade-up fade-d2 text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed font-light">
+      Describe what you need in plain English. Get a real app with
+      database, login, and an AI agent — deployed in one click.
+    </p>
+    <div class="fade-up fade-d3 flex items-center justify-center gap-4 mb-4">
+      <a href="#" class="btn-hero text-white px-10 py-4 rounded-2xl font-semibold text-[16px] tracking-[-0.01em] inline-flex items-center gap-2">Start building — free <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+      <a href="#" class="text-[14px] font-medium text-slate-400 hover:text-slate-600 transition flex items-center gap-1.5">
+        Watch demo
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </a>
+    </div>
+    <p class="fade-up fade-d3 text-[13px] text-slate-400 mb-16">No credit card. No install. Browser-based.</p>
+  </div>
+
+  <!-- Product screenshot mock -->
+  <div class="max-w-5xl mx-auto px-6 pb-24 relative z-10">
+    <div class="product-frame">
+      <!-- Mock toolbar -->
+      <div class="flex items-center gap-2 px-5 py-3 border-b border-black/[0.04] bg-slate-50/50">
+        <div class="flex gap-1.5">
+          <div class="w-3 h-3 rounded-full bg-slate-200"></div>
+          <div class="w-3 h-3 rounded-full bg-slate-200"></div>
+          <div class="w-3 h-3 rounded-full bg-slate-200"></div>
+        </div>
+        <div class="flex-1 text-center">
+          <span class="text-[11px] text-slate-400 bg-slate-100 px-4 py-1 rounded-md">deals.acme.buildclear.dev</span>
+        </div>
+      </div>
+      <!-- Mock app content -->
+      <div class="p-8 bg-[#f8f9fb]">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <div class="text-[18px] font-bold text-slate-800 mb-0.5">Deal Desk Queue</div>
+            <div class="text-[12px] text-slate-400">Discount approval workflow &middot; 18 users</div>
+          </div>
+          <div class="flex gap-2">
+            <div class="bg-white border border-black/[0.06] text-slate-500 text-[11px] px-3 py-1.5 rounded-lg font-medium">All Requests</div>
+            <div class="bg-indigo-500 text-white text-[11px] px-3 py-1.5 rounded-lg font-medium">+ New Request</div>
+          </div>
+        </div>
+
+        <!-- Form area -->
+        <div class="bg-white rounded-xl border border-black/[0.04] shadow-sm p-5 mb-5">
+          <div class="text-[12px] font-semibold text-slate-600 mb-3">Submit a discount request</div>
+          <div class="grid grid-cols-3 gap-3 mb-3">
+            <div>
+              <div class="text-[10px] text-slate-400 mb-1">Customer</div>
+              <div class="bg-slate-50 border border-black/[0.06] rounded-lg px-3 py-2 text-[12px] text-slate-800">Acme Health</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-slate-400 mb-1">Discount</div>
+              <div class="bg-slate-50 border border-black/[0.06] rounded-lg px-3 py-2 text-[12px] text-slate-800">30%</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-slate-400 mb-1">Reason</div>
+              <div class="bg-slate-50 border border-black/[0.06] rounded-lg px-3 py-2 text-[12px] text-slate-800">Renewal — 3 year commitment</div>
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <div class="bg-indigo-500 text-white text-[11px] px-4 py-1.5 rounded-lg font-medium">Submit for Approval</div>
+          </div>
+        </div>
+
+        <!-- Requests table -->
+        <div class="bg-white rounded-xl border border-black/[0.04] shadow-sm overflow-hidden">
+          <div class="grid grid-cols-[1fr_80px_140px_90px_80px] gap-3 px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-black/[0.03]">
+            <div>Customer</div><div>Discount</div><div>Reason</div><div>Submitted</div><div>Status</div>
+          </div>
+          <div class="grid grid-cols-[1fr_80px_140px_90px_80px] gap-3 px-4 py-3 text-[12px] text-slate-600 border-b border-black/[0.03] bg-amber-50/30">
+            <div class="font-medium text-slate-800">Acme Health</div><div>30%</div><div class="text-slate-400">Renewal, 3yr</div><div class="text-slate-400">2 hrs ago</div>
+            <div><span class="bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Pending</span></div>
+          </div>
+          <div class="grid grid-cols-[1fr_80px_140px_90px_80px] gap-3 px-4 py-3 text-[12px] text-slate-600 border-b border-black/[0.03]">
+            <div class="font-medium text-slate-800">TechFlow</div><div>25%</div><div class="text-slate-400">Expansion</div><div class="text-slate-400">Yesterday</div>
+            <div><span class="bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Pending</span></div>
+          </div>
+          <div class="grid grid-cols-[1fr_80px_140px_90px_80px] gap-3 px-4 py-3 text-[12px] text-slate-600 border-b border-black/[0.03]">
+            <div class="font-medium text-slate-800">Rivian</div><div>15%</div><div class="text-slate-400">Enterprise deal</div><div class="text-slate-400">3 days ago</div>
+            <div><span class="bg-emerald-100 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Approved</span></div>
+          </div>
+          <div class="grid grid-cols-[1fr_80px_140px_90px_80px] gap-3 px-4 py-3 text-[12px] text-slate-600">
+            <div class="font-medium text-slate-800">Notion</div><div>10%</div><div class="text-slate-400">Volume pricing</div><div class="text-slate-400">Last week</div>
+            <div><span class="bg-emerald-100 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Approved</span></div>
+          </div>
+        </div>
+
+        <!-- AI summary callout -->
+        <div class="mt-4 bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-3.5 flex items-start gap-3">
+          <div class="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/></svg>
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-indigo-700 mb-0.5">Agent Summary</div>
+            <div class="text-[12px] text-indigo-600/70 leading-relaxed">Acme Health requests 30% for a 3-year renewal. Their last discount was 20% (2024). Precedent supports up to 25%. Recommend counter at 25% or approve with 3-year lock-in clause.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Proof strip -->
+<div class="proof-strip py-6">
+  <div class="max-w-4xl mx-auto px-6 flex items-center justify-center gap-12 text-[13px] text-slate-400 font-medium">
+    <span>Source code you can actually read</span>
+    <span class="w-1 h-1 rounded-full bg-slate-200"></span>
+    <span>Same output every time</span>
+    <span class="w-1 h-1 rounded-full bg-slate-200"></span>
+    <span>AI agents built in</span>
+    <span class="w-1 h-1 rounded-full bg-slate-200"></span>
+    <span>One fix improves every app</span>
+  </div>
+</div>
+
+<!-- 5 Apps Bento -->
+<section id="apps" class="py-24">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="max-w-2xl mb-14">
+      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
+        Five apps your company needs.<br>
+        <span class="text-slate-400">All stuck in spreadsheets today.</span>
+      </h2>
+      <p class="text-slate-400 text-[15px] leading-relaxed">
+        Every B2B company with 100+ people has these five workflows hacked together
+        in Airtable, Zapier, and Slack threads. Build each one in an afternoon.
+      </p>
+    </div>
+
+    <div class="bento">
+      <!-- Approval Queue -->
+      <div class="bento-card bento-1">
+        <div class="icon-ring bg-indigo-100/80">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="2" stroke-linecap="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <h3 class="text-[16px] font-bold mb-2">Approval Queue</h3>
+        <p class="text-[13px] text-slate-500 leading-relaxed mb-3">Discounts, expenses, PTO, vendor purchases. Routes to the right approver based on amount and type.</p>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="text-[10px] font-medium text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">email notifications</span>
+          <span class="text-[10px] font-medium text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">role-based access</span>
+        </div>
+      </div>
+
+      <!-- Lead Router -->
+      <div class="bento-card bento-2">
+        <div class="icon-ring bg-emerald-100/80">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+        </div>
+        <h3 class="text-[16px] font-bold mb-2">Lead Router</h3>
+        <p class="text-[13px] text-slate-500 leading-relaxed mb-3">Score inbound leads, enrich from company data, route to the right AE by territory and segment.</p>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">webhooks</span>
+          <span class="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">charts + dashboards</span>
+        </div>
+      </div>
+
+      <!-- Onboarding -->
+      <div class="bento-card bento-3">
+        <div class="icon-ring bg-amber-100/80">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <h3 class="text-[16px] font-bold mb-2">Onboarding Tracker</h3>
+        <p class="text-[13px] text-slate-500 leading-relaxed mb-3">Track every new customer through your steps. See who's stuck, how long, and which CSM owns it.</p>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">scheduled reminders</span>
+          <span class="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">email nudges</span>
+        </div>
+      </div>
+
+      <!-- Support Triage -->
+      <div class="bento-card bento-4">
+        <div class="icon-ring bg-rose-100/80">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h3 class="text-[16px] font-bold mb-2">Support Triage</h3>
+        <p class="text-[13px] text-slate-500 leading-relaxed mb-3">Classify incoming tickets, route by category, track SLA. What Zendesk does, at 1/10th the cost.</p>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="text-[10px] font-medium text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">search</span>
+          <span class="text-[10px] font-medium text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">CSV export</span>
+        </div>
+      </div>
+
+      <!-- Internal Requests — spans 2 cols -->
+      <div class="bento-card bento-5">
+        <div class="flex items-start gap-6">
+          <div>
+            <div class="icon-ring bg-violet-100/80">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+            </div>
+            <h3 class="text-[16px] font-bold mb-2">Internal Request Queue</h3>
+            <p class="text-[13px] text-slate-500 leading-relaxed max-w-sm mb-3">
+              Legal review, design request, IT help, data pull — any cross-team request
+              queue with turnaround metrics and SLA tracking. Currently buried in Slack DMs.
+            </p>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="text-[10px] font-medium text-violet-500 bg-violet-50 px-2 py-0.5 rounded-full">validation rules</span>
+              <span class="text-[10px] font-medium text-violet-500 bg-violet-50 px-2 py-0.5 rounded-full">charts</span>
+              <span class="text-[10px] font-medium text-violet-500 bg-violet-50 px-2 py-0.5 rounded-full">scheduled reports</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Why Clear, not Lovable/Bolt/Retool -->
+<section class="diff-section py-24">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="max-w-2xl mb-14">
+      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
+        Change it yourself.<br>
+        <span class="text-slate-400">No engineer required.</span>
+      </h2>
+      <p class="text-slate-400 text-[15px] leading-relaxed">
+        Retool needs a developer — "a marketing manager tried to build a dashboard and gave up
+        within an hour." Lovable "gets you 70% of the way there" but the last 30% burns credits.
+        Superblocks reviewers call the lack of automated testing "a deal breaker."
+        Clear gives you code you can read, change, and ship yourself.
+      </p>
+    </div>
+
+    <div class="space-y-6 max-w-4xl">
+
+      <!-- 1: Modify it yourself -->
+      <div class="diff-card diff-card-1">
+        <div class="flex flex-col md:flex-row gap-10 items-start">
+          <div class="flex-1">
+            <div class="text-[13px] font-bold text-indigo-400 mb-2">01</div>
+            <h3 class="text-xl font-bold mb-3">Need a new feature? Add it in English.</h3>
+            <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+              Want to add a "reason" field to your approval form? Add one line.
+              Need email notifications? Two more lines. Recompile. Done.
+              No waiting on engineering. No filing a ticket. You just do it.
+            </p>
+            <p class="text-[13px] text-slate-500">
+              Bolt users report that "when you ask it to fix a simple bug, it rewrites the entire
+              file, breaks your UI, and still fails to fix the original problem." Clear changes
+              only what you changed.
+            </p>
+          </div>
+          <div class="flex-1 w-full">
+            <div class="compare-us rounded-xl p-6">
+              <div class="font-medium text-emerald-700 text-[12px] mb-3">Adding a feature in Clear</div>
+              <div class="code-line" style="color: #94a3b8; font-style: italic">/* existing code */</div>
+              <div class="code-line"><span style="color: #059669; font-weight: 500">when user sends data to</span> <span style="color: #047857">/api/requests:</span></div>
+              <div class="code-line pl-6"><span style="color: #059669; font-weight: 500">requires login</span></div>
+              <div class="code-line pl-6">new_request = <span style="color: #059669; font-weight: 500">save</span> data <span style="color: #059669; font-weight: 500">as new</span> Request</div>
+              <div class="code-line mt-3" style="color: #94a3b8; font-style: italic">/* you add these two lines: */</div>
+              <div class="code-line" style="background: rgba(5,150,105,0.08); margin: 4px -24px; padding: 2px 24px; border-left: 3px solid #059669;"><span style="color: #059669; font-weight: 600">  if</span> new_request's discount <span style="color: #059669; font-weight: 600">is over</span> 20</div>
+              <div class="code-line" style="background: rgba(5,150,105,0.08); margin: 4px -24px; padding: 2px 24px; border-left: 3px solid #059669;"><span style="color: #059669; font-weight: 600">    send email to</span> <span style="color: #047857">'cro@acme.com'</span>:</div>
+              <div class="code-line" style="background: rgba(5,150,105,0.08); margin: 4px -24px; padding: 2px 24px; border-left: 3px solid #059669;">      subject <span style="color: #059669; font-weight: 600">is</span> <span style="color: #047857">'Discount needs approval'</span></div>
+              <div class="code-line" style="background: rgba(5,150,105,0.08); margin: 4px -24px; padding: 2px 24px; border-left: 3px solid #059669;">      body <span style="color: #059669; font-weight: 600">is</span> <span style="color: #047857">'{new_request's rep} wants {new_request's discount}% off'</span></div>
+              <div class="code-line mt-3" style="color: #94a3b8; font-style: italic">/* recompile. deployed. */</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2: Read and trust it -->
+      <div class="diff-card diff-card-2">
+        <div class="flex flex-col md:flex-row gap-10 items-start">
+          <div class="flex-1">
+            <div class="text-[13px] font-bold text-violet-400 mb-2">02</div>
+            <h3 class="text-xl font-bold mb-3">Read exactly what your app does. In English.</h3>
+            <p class="text-[14px] text-slate-500 leading-relaxed mb-4">
+              Open the .clear file. Read it top to bottom. You'll know every field it stores,
+              every rule it enforces, every email it sends. Share it with your CTO.
+              Hand it to a new hire on their first day.
+            </p>
+            <p class="text-[13px] text-slate-500">
+              Lovable users report being "unable to diagnose problems hidden deep within code
+              they couldn't read." Retool apps are "nearly impossible to test aside from manually."
+              Clear source is English. Debug it by reading it.
+            </p>
+          </div>
+          <div class="flex-1 w-full space-y-3">
+            <div class="compare-them rounded-xl p-6">
+              <div class="font-medium text-red-700 text-[12px] mb-3">What Lovable gives you</div>
+              <div class="code-line" style="color: #b87070">const handleSubmit = async (e) =&gt; {</div>
+              <div class="code-line pl-6" style="color: #b87070">e.preventDefault();</div>
+              <div class="code-line pl-6" style="color: #b87070">const res = await fetch('/api/req', {</div>
+              <div class="code-line pl-10" style="color: #b87070">method: 'POST',</div>
+              <div class="code-line pl-10" style="color: #b87070">headers: { 'Content-Type':</div>
+              <div class="code-line pl-14" style="color: #b87070">'application/json' },</div>
+              <div class="code-line pl-10" style="color: #b87070">body: JSON.stringify(formData)</div>
+              <div class="code-line pl-6" style="color: #b87070">});</div>
+              <div class="code-line" style="color: #d4a0a0; font-style: italic">// ...1,993 more lines</div>
+            </div>
+            <div class="compare-us rounded-xl p-6">
+              <div class="font-medium text-emerald-700 text-[12px] mb-3">What Clear gives you</div>
+              <div class="code-line"><span style="color: #059669; font-weight: 500">when user sends data to</span> <span style="color: #047857">/api/requests:</span></div>
+              <div class="code-line pl-6"><span style="color: #059669; font-weight: 500">requires login</span></div>
+              <div class="code-line pl-6">new_request = <span style="color: #059669; font-weight: 500">save</span> data <span style="color: #059669; font-weight: 500">as new</span> Request</div>
+              <div class="code-line pl-6"><span style="color: #059669; font-weight: 500">send back</span> new_request</div>
+              <div class="code-line" style="color: #86efac; font-style: italic">/* that's the whole endpoint. */</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3: Security and guardrails -->
+      <div class="diff-card diff-card-1">
+        <div class="flex flex-col md:flex-row gap-10 items-start">
+          <div class="flex-1">
+            <div class="text-[13px] font-bold text-indigo-400 mb-2">03</div>
+            <h3 class="text-xl font-bold mb-3">Guardrails you type in English. Security you can't skip.</h3>
+            <p class="text-[14px] text-slate-500 leading-relaxed mb-5">
+              You write plain words. The compiler enforces them. No security configuration, no checklists,
+              no hoping the AI remembered to add auth.
+            </p>
+            <div class="space-y-3 mb-5">
+              <div class="flex items-start gap-3">
+                <div class="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="text-[13px] text-slate-600"><span class="font-semibold">requires login</span> — endpoint won't compile without auth</div>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="text-[13px] text-slate-600"><span class="font-semibold">requires role 'admin'</span> — only managers can approve or delete</div>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="text-[13px] text-slate-600"><span class="font-semibold">block arguments matching 'delete|drop'</span> — agent can never destroy data, even if asked</div>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="text-[13px] text-slate-600"><span class="font-semibold">block prompt injection</span> — users can't trick the AI into doing something it shouldn't</div>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="text-[13px] text-slate-600"><span class="font-semibold">log every request</span> — every API call logged with method, path, status, timing</div>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="text-[13px] text-slate-600"><span class="font-semibold">SQL injection, XSS, input validation</span> — prevented automatically by the compiler</div>
+              </div>
+            </div>
+            <p class="text-[13px] text-slate-500">
+              Lovable users report "burning through credits trying to fix the same issue the AI
+              just insisted it solved." In Clear, compile is free, instant, and deterministic.
+            </p>
+          </div>
+          <div class="flex-1 w-full">
+            <div class="compare-us rounded-xl p-6">
+              <div class="font-medium text-emerald-700 text-[12px] mb-3">What you type</div>
+              <div class="code-line"><span style="color: #059669; font-weight: 500">allow signup and login</span></div>
+              <div class="code-line"><span style="color: #059669; font-weight: 500">log every request</span></div>
+              <div class="code-line mt-3"><span style="color: #059669; font-weight: 500">when user deletes request at</span> <span style="color: #047857">/api/requests/:id:</span></div>
+              <div class="code-line pl-6" style="background: rgba(5,150,105,0.08); margin: 4px -24px; padding: 2px 24px; border-left: 3px solid #059669;"><span style="color: #059669; font-weight: 600">requires login</span></div>
+              <div class="code-line pl-6"><span style="color: #059669; font-weight: 500">delete the</span> Request <span style="color: #059669; font-weight: 500">with this id</span></div>
+              <div class="code-line pl-6"><span style="color: #059669; font-weight: 500">send back</span> <span style="color: #047857">'deleted'</span></div>
+              <div class="code-line mt-4" style="color: #94a3b8; font-style: italic">/* the compiler adds: parameterized queries, */</div>
+              <div class="code-line" style="color: #94a3b8; font-style: italic">/* input validation, field filtering, PII     */</div>
+              <div class="code-line" style="color: #94a3b8; font-style: italic">/* redaction, and XSS escaping. automatically. */</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4: Every app gets better automatically -->
+      <div class="diff-card diff-card-3">
+        <div class="text-[13px] font-bold text-emerald-400 mb-2">04</div>
+        <h3 class="text-xl font-bold mb-3">Every app gets better every time we update the compiler.</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed max-w-xl mb-4">
+          We fix a security hole? Recompile — it's fixed. We speed up generated code?
+          Recompile — it's faster. Your apps improve without you touching them.
+        </p>
+        <p class="text-[13px] text-slate-500 max-w-xl">
+          Bolt users report spending "$1,000+ on tokens just debugging" generated code.
+          Retool apps are "extremely cumbersome to maintain" at scale.
+          Superblocks reviewers call the lack of automated testing "a deal breaker."
+          Clear compiles with tests built in.
+        </p>
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+<!-- Agent section -->
+<section class="agent-section py-24">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="agent-card p-10 md:p-14 flex flex-col md:flex-row gap-12 items-start">
+      <div class="flex-1">
+        <div class="inline-flex items-center gap-2 text-[12px] font-semibold text-indigo-500 bg-indigo-50 rounded-full px-3 py-1 mb-5">Optional</div>
+        <h2 class="text-2xl md:text-3xl font-extrabold tracking-tight mb-4">
+          Add an AI agent<br>to any app.
+        </h2>
+        <p class="text-[15px] text-slate-400 leading-relaxed mb-6">
+          One section of Clear code gives your app an agent that classifies tickets,
+          drafts summaries, nudges stalled customers, or routes requests.
+          You control exactly what it can and can't do.
+        </p>
+        <p class="text-[13px] text-slate-400">
+          The app works without the agent. The agent makes it better.
+        </p>
+      </div>
+      <div class="flex-1 w-full">
+        <div class="bg-slate-50 border border-slate-100 rounded-xl p-6">
+          <div class="text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-4">main.clear</div>
+          <div class="code-line"><span class="code-kw">agent</span> <span class="code-str">'Helpdesk'</span> receives question:</div>
+          <div class="code-line pl-6"><span class="code-kw">has tools:</span> lookup_product, create_ticket</div>
+          <div class="code-line pl-6"><span class="code-kw">knows about:</span> Products</div>
+          <div class="code-line pl-6"><span class="code-kw">remember</span> conversation context</div>
+          <div class="code-line pl-6"><span class="code-kw">block arguments matching</span> <span class="code-str">'delete|drop|truncate'</span></div>
+          <div class="code-line pl-6">response = <span class="code-kw">ask claude</span> <span class="code-str">'You are a customer support</span></div>
+          <div class="code-line pl-10"><span class="code-str">agent for this store. Help with products,</span></div>
+          <div class="code-line pl-10"><span class="code-str">orders, and account issues.'</span> with question</div>
+          <div class="code-line pl-6"><span class="code-kw">send back</span> response</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Why not X? -->
+<section class="py-24" style="background: #fff; border-top: 1px solid rgba(0,0,0,0.04); border-bottom: 1px solid rgba(0,0,0,0.04);">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="max-w-2xl mb-12">
+      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
+        "Why not just use...?"
+      </h2>
+      <p class="text-slate-400 text-[15px]">We get it. Here's what real users say.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-5">
+
+      <!-- Retool -->
+      <div class="rounded-2xl border border-slate-100 p-6" style="background: linear-gradient(135deg, #fafbfd, #f5f5ff);">
+        <div class="text-[13px] font-bold text-slate-800 mb-3">Why not Retool?</div>
+        <div class="text-[13px] text-slate-500 leading-relaxed mb-4" style="border-left: 3px solid #e2e8f0; padding-left: 12px; font-style: italic;">
+          "A marketing manager tried to build a simple dashboard and gave up within an hour.
+          What could be a 30-minute task for ops becomes a two-week project on the engineering roadmap."
+        </div>
+        <div class="text-[13px] text-slate-600">
+          Retool requires JavaScript and SQL. Clear requires English.
+        </div>
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">$50/seat for SSO</span>
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">developer required</span>
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">can't test automatically</span>
+        </div>
+      </div>
+
+      <!-- Lovable -->
+      <div class="rounded-2xl border border-slate-100 p-6" style="background: linear-gradient(135deg, #fafbfd, #fff5f5);">
+        <div class="text-[13px] font-bold text-slate-800 mb-3">Why not Lovable?</div>
+        <div class="text-[13px] text-slate-500 leading-relaxed mb-4" style="border-left: 3px solid #e2e8f0; padding-left: 12px; font-style: italic;">
+          "Gets you at most 70% of the way there. Non-technical users were unable to diagnose
+          problems hidden deep within code they couldn't read."
+        </div>
+        <div class="text-[13px] text-slate-600">
+          Lovable generates code you can't read. Clear source is English you can.
+        </div>
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">credits burn on AI mistakes</span>
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">breaks when you fix bugs</span>
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">can't read the output</span>
+        </div>
+      </div>
+
+      <!-- Bolt -->
+      <div class="rounded-2xl border border-slate-100 p-6" style="background: linear-gradient(135deg, #fafbfd, #f5fff5);">
+        <div class="text-[13px] font-bold text-slate-800 mb-3">Why not Bolt?</div>
+        <div class="text-[13px] text-slate-500 leading-relaxed mb-4" style="border-left: 3px solid #e2e8f0; padding-left: 12px; font-style: italic;">
+          "When you ask it to fix a simple bug, it rewrites the entire file, breaks your UI,
+          and still fails to fix the original problem." Users report spending $1,000+ just debugging.
+        </div>
+        <div class="text-[13px] text-slate-600">
+          Bolt rewrites everything. Clear changes only what you changed.
+        </div>
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">$1K+ token burn</span>
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">breaks at 15+ components</span>
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">rewrites whole files</span>
+        </div>
+      </div>
+
+      <!-- Spreadsheets -->
+      <div class="rounded-2xl border border-slate-100 p-6" style="background: linear-gradient(135deg, #fafbfd, #fffef5);">
+        <div class="text-[13px] font-bold text-slate-800 mb-3">Why not just keep using spreadsheets?</div>
+        <div class="text-[13px] text-slate-500 leading-relaxed mb-4" style="border-left: 3px solid #e2e8f0; padding-left: 12px; font-style: italic;">
+          "Anyone with the link can edit anything. Someone typed 'TBD' in the discount column
+          and broke every formula downstream. Nobody got notified. We found out three weeks later."
+        </div>
+        <div class="text-[13px] text-slate-600">
+          Spreadsheets have no permissions, no validation, no notifications, and no agents. Clear does.
+        </div>
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">no permissions</span>
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">no validation</span>
+          <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">breaks silently</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- For / Get / Pay -->
+<section class="py-24">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="grid md:grid-cols-3 gap-12 md:gap-16">
+      <div>
+        <div class="fgp-label">For</div>
+        <h3 class="text-[18px] font-bold mb-3 leading-snug">Ops people whose backlog grows faster than their eng team.</h3>
+        <p class="text-[14px] text-slate-400 leading-relaxed">
+          RevOps. BizOps. Anyone hacking together Airtable + Zapier + Slack and praying it holds through the quarter.
+        </p>
+      </div>
+      <div>
+        <div class="fgp-label">Get</div>
+        <h3 class="text-[18px] font-bold mb-3 leading-snug">Real apps in plain English. Deploy in one click.</h3>
+        <p class="text-[14px] text-slate-400 leading-relaxed">
+          Database, login, pages, charts, validation — compiled from one readable file.
+          Add an AI agent when you're ready.
+        </p>
+      </div>
+      <div>
+        <div class="fgp-label">Pay</div>
+        <h3 class="text-[18px] font-bold mb-3 leading-snug">Free to start. Pay as your team grows.</h3>
+        <p class="text-[14px] text-slate-400 leading-relaxed">
+          Your code is yours. Security baked in by default. Cancel anytime.
+          <a href="#" class="text-indigo-500 font-medium hover:text-indigo-600 transition">See pricing</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section py-24 relative">
+  <div class="max-w-3xl mx-auto px-6 text-center relative z-10">
+    <h2 class="text-3xl md:text-[44px] font-extrabold text-white tracking-[-0.03em] leading-tight mb-5">
+      Stop hacking spreadsheets.<br>Start shipping real tools.
+    </h2>
+    <p class="text-indigo-200/70 text-lg mb-10 font-light">
+      Build the internal app your team actually needs. In an afternoon.
+    </p>
+    <a href="#" class="btn-white text-[16px] px-10 py-4 rounded-2xl font-semibold inline-flex items-center gap-2">Open Studio — free <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+    <p class="text-indigo-300/40 text-[13px] mt-4">No credit card. No install. Browser-based.</p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-black/[0.04] py-10 bg-white">
+  <div class="max-w-5xl mx-auto px-6 flex items-center justify-between">
+    <div class="text-[14px] font-semibold text-slate-800">Clear</div>
+    <div class="flex gap-8 text-[13px] text-slate-400 font-medium">
+      <a href="#" class="hover:text-slate-500 transition">Templates</a>
+      <a href="#" class="hover:text-slate-500 transition">Pricing</a>
+      <a href="#" class="hover:text-slate-500 transition">Docs</a>
+      <a href="#" class="hover:text-slate-500 transition">Changelog</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

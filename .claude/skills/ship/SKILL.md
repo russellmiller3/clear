@@ -133,4 +133,4 @@ Tell the user:
 End with a "What We Accomplished" section that:
 1. Summarizes today's work in plain language (not technical jargon)
 2. Explains how it connects to the bigger picture — where Clear is going, what this unlocks
-3. Lists what's next (Open Claw Rule — suggest next tasks with priority order)
+3. Lists what's next (Next Steps Rule — suggest next tasks with priority order)
