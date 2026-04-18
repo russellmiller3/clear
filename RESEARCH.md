@@ -193,7 +193,7 @@ The re-ranker captures global context by extracting **structured app-level featu
 
 | Feature | Type | Source |
 |---------|------|--------|
-| `archetype` | categorical (8 values) | Nearest match of: todo, crm, blog, chat, agent, booking, expense, ecom |
+| `archetype` | categorical (~15 values) | See archetype table below |
 | `num_tables` | bucketed (1, 2-3, 4-6, 7+) | Count of `TABLE_DEF` nodes |
 | `num_endpoints` | bucketed | Count of `ENDPOINT` nodes |
 | `num_pages` | bucketed | Count of `PAGE_DEF` nodes |
@@ -204,6 +204,43 @@ The re-ranker captures global context by extracting **structured app-level featu
 | `has_upload` | boolean | File upload endpoints |
 | `runtime` | categorical | SQLite / Postgres (from `build for` directive) |
 | `multi_tenant` | boolean | `belongs to user` appears on any table |
+
+**Archetype taxonomy (~15 values, covers Marcus's 5 + core 8 + backend-only patterns):**
+
+The archetype classifier maps any Clear app to its nearest shape-of-work. These aren't the template names — they're the *behavioral patterns* the parser can detect. Multiple templates can share an archetype (both `helpdesk-agent` and `support-triage` are `agent_workflow`).
+
+| Archetype | Shape of Work | Example Apps | Detection Signal |
+|-----------|---------------|--------------|------------------|
+| `queue_workflow` | State machine with approval/routing | Approval Queue, Internal Request Queue, Onboarding Tracker | Tables with `status` field + multiple state transitions + notification blocks |
+| `routing_engine` | Rules-driven classification + assignment | Lead Router, Support Triage | Conditional assignment logic + multi-owner routing |
+| `agent_workflow` | AI-assisted classification or generation | Helpdesk, Support Triage, summarizer | `AGENT_DEF` / `ASK_AI` + downstream actions |
+| `dashboard` | Read-heavy data viz with charts/filters | CRM Pro, analytics views | Multiple `CHART` nodes + aggregations + filter UI |
+| `crud_app` | Standard create/read/update/delete | Todo, expense, bookmark, contact book | CRUD endpoints on 1-3 tables, minimal logic |
+| `content_app` | Public + admin pages, rich display | Blog, landing pages, docs sites | `belongs_to` relationships + public routes + admin routes |
+| `realtime_app` | Live updates via websocket | Live chat, presence, notifications | `SUBSCRIBE` / `BROADCAST` nodes |
+| `booking_app` | Scheduling / reservation | Booking, appointment, resource scheduling | Time-slot logic + availability checks |
+| `ecommerce` | Catalog + cart + checkout | ecom-agent, storefront | `order` / `cart` / `payment` table patterns |
+| **`api_service`** | **Backend-only REST API, no UI** | Rate-limited API, validated forms, data API | Endpoints only, no `PAGE_DEF` nodes |
+| **`etl_pipeline`** | **Scheduled data transformation** | Nightly sync, report generation | `CRON` + external data source + write pattern |
+| **`webhook_handler`** | **Receives external events, processes** | Stripe webhook, GitHub handler, Slack bot | Single endpoint + signature verification + downstream actions |
+| **`batch_job`** | **Scheduled background work, no UI** | Cleanup, aggregation, reminders | `CRON` + no user-facing endpoints |
+| **`data_sync`** | **Syncs between two systems** | CRM ↔ email, Postgres ↔ S3 | Two `SERVICE_CALL` / adapter patterns + reconciliation |
+| `general` | Catch-all when nothing dominates | Early-stage scratch apps | Falls through when no pattern scores above threshold |
+
+**How archetype is detected:**
+
+Not from template name — from structural signal. A decision-tree rule chain over parser output:
+1. `num_pages == 0` AND `has_cron` → `batch_job` or `etl_pipeline` (differentiated by external adapter presence)
+2. `num_pages == 0` AND no cron → `api_service` or `webhook_handler` (differentiated by endpoint count and signature verification)
+3. `has_websocket` → `realtime_app`
+4. `has_agent` AND workflow pattern → `agent_workflow`
+5. `has_chart` count > 2 AND aggregations → `dashboard`
+6. Tables have `status` field + state transitions → `queue_workflow`
+7. Conditional assignment across multiple owners → `routing_engine`
+8. ... (remaining rules for content/crud/ecom/booking)
+9. No signal dominates → `general`
+
+This classifier is deterministic, runs in milliseconds, and is interpretable — you can log "detected `queue_workflow` because tables have status field and 3 state transitions." When the classifier is wrong, you add a rule. No ML needed.
 
 **Local context features (per compile cycle):**
 
@@ -217,14 +254,25 @@ The re-ranker captures global context by extracting **structured app-level featu
 **Retrieval query with global context:**
 ```
 SELECT * FROM code_actions
-WHERE archetype = 'crm'                  ← only look at CRM-shaped apps
+WHERE archetype = 'queue_workflow'       ← only look at Marcus-style approval apps
   AND error_category = 'validation'      ← same error category
   AND has_auth = 1                       ← same auth posture
 ORDER BY test_score DESC
 LIMIT 50
 ```
 
-That's engineer-like. "In CRM-shaped apps with auth, when a validation error hits, what fixes worked?" — not "what fixed this error string in any app ever."
+That's engineer-like. "In approval-queue apps with auth, when a validation error hits, what fixes worked?" — not "what fixed this error string in any app ever."
+
+Another example — a webhook handler hitting a signature error:
+```
+SELECT * FROM code_actions
+WHERE archetype = 'webhook_handler'
+  AND error_category = 'signature_mismatch'
+ORDER BY test_score DESC
+LIMIT 50
+```
+
+Webhook bugs look very different from CRUD bugs. Keeping archetypes separate prevents noisy retrieval.
 
 **Why this still works with XGBoost:**
 
