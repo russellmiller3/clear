@@ -77,7 +77,10 @@ when user requests data from /api/hello:
     ['blog-fullstack', 'content_app'],
     ['live-chat', 'realtime_app'],
     ['helpdesk-agent', 'agent_workflow'],
-    ['crm-pro', 'crud_app'],
+    // crm-pro has a Deals table with `stage` field + auth — that IS a queue_workflow
+    // (deals move through pipeline stages). Archetype is about shape of work, not
+    // app name. Matches what the CRM actually does.
+    ['crm-pro', 'queue_workflow'],
     ['booking', 'booking_app'],
     ['expense-tracker', 'crud_app'],
     ['ecom-agent', 'agent_workflow'],

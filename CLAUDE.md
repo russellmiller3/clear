@@ -346,3 +346,23 @@ The quality bar is HIGH for everything in this repo unless there's a good reason
 
 ## Next-Moves Go In ROADMAP (MANDATORY)
 Whenever you surface "what's next" suggestions, next steps, or follow-up ideas, add them to `ROADMAP.md` immediately — never leave them only in chat. Chat scrolls away; ROADMAP is what future sessions read. If you suggest three next moves to Russell, the SAME three moves must appear in ROADMAP before the session ends. Put them under the "What's Next" section, priority-ordered.
+
+## Meph Failures Are Bug Reports on the System (MANDATORY — HITL Rule)
+
+When Meph fails at a task, the failure is not just data for the Factor DB — it is a bug report on the WHOLE pipeline. Always diagnose WHERE the system broke and fix it at the right layer:
+
+| Symptom | Root cause layer | Where to fix |
+|---------|-----------------|--------------|
+| Meph writes wrong syntax | He doesn't know the right syntax | `AI-INSTRUCTIONS.md` or `playground/system-prompt.md` |
+| Error message is confusing | Compiler error quality | `compiler.js` error messages |
+| Meph loops on same error 3+ times | Missing pattern in Meph's knowledge | `AI-INSTRUCTIONS.md` — add "gotcha" section |
+| Meph reaches for a feature that doesn't exist | Missing feature OR docs imply it exists | Either build it, or fix the docs that misled him |
+| Meph writes code that parses but runs wrong | Validator gap OR runtime coercion bug | `validator.js` or `runtime/db.js` / runtime layer |
+| Docs say X but code does Y | Doc drift | Whichever is wrong (usually docs lag behind) |
+| Meph can't debug a runtime error | Error message doesn't tell him what to check | Improve error string OR add logging at runtime |
+
+**Claude is the HITL (human in the loop).** When running training sweeps or watching Meph build an app, review his output like a senior engineer reviews a junior's PR. Don't just accept the failure — absorb it into the system so the next Meph session doesn't hit it.
+
+**Merge-as-you-go:** Fix one root cause at a time, commit it, move on. Don't batch 10 fixes into one mega-commit. Test suite must stay green at every step.
+
+**The rule for Marcus apps and training runs:** Every failed app build triggers a fix loop. Don't move to the next app until the current one's blockers are resolved at the system level. The goal isn't to produce 5 working apps — the goal is to produce a compiler + system prompt + docs that can build any app like this.

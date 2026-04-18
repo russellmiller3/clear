@@ -28,6 +28,13 @@ const taskFiles = [
   'L6-contact-book.json',
   'L7-rate-limited-api.json',
   'L7-validated-forms.json',
+  // Marcus app shapes — business ops, the real target market
+  'L7-approval-queue.json',
+  'L7-lead-router.json',
+  'L8-internal-request-queue.json',
+  'L8-onboarding-tracker.json',
+  'L9-support-triage.json',
+  // Original higher-level tasks
   'L8-multi-tenant.json',
   'L8-rbac-api.json',
   'L9-agent-summary.json',

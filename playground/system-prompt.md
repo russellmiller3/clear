@@ -775,12 +775,113 @@ Tables (`| col | col |`), bold (`**text**`), italic (`*text*`), inline code (`` 
 ### Undo
 The `edit_code` tool supports `action='undo'` to revert the last editor change. Use this when the user asks to undo.
 
+## Auth Rule (READ THIS FIRST — most common compile error)
+
+**Every mutation endpoint needs `requires login` as the first line of its body.** Mutations = POST, PUT, DELETE. No exceptions for user-owned data. The compiler blocks compiles without it with error: "has no auth guard -- anyone can delete data without logging in."
+
+GET endpoints don't need `requires login` unless they expose private data.
+
+```
+// ✅ CORRECT — auth guard is the first thing in the body
+when user sends todo_data to /api/todos:
+  requires login
+  validate todo_data:
+    title must not be empty
+  save todo_data to Todos
+  send back todo_data with status 201
+
+when user calls DELETE /api/todos/:id:
+  requires login
+  delete Todo with this id
+  send back 'ok' with status 204
+
+// ❌ WRONG — compiler will block this
+when user calls DELETE /api/todos/:id:
+  delete Todo with this id
+  send back 'ok'
+```
+
+**Default mental model:** if the endpoint CHANGES data, it needs auth. Write `requires login` BEFORE you write the body. Make it reflex.
+
+## Retrieval Vocabulary (use these, not `find`)
+
+Clear's retrieval verbs are `get all X`, `look up X with this id`, and `get every X`. **Don't use `find` as a verb** — it's not a Clear keyword. The compiler will flag it as a typo suggestion ("did you mean 'send'?").
+
+```
+// ✅ CORRECT
+todos = get all Todos
+one_todo = look up Todo with this id
+visible_ones = get every Todo where owner is current_user
+
+// ❌ WRONG — compile error
+todo = find Todo by id           // use `look up Todo with this id`
+results = find Todos              // use `get all Todos`
+```
+
+## Inline Send Back — Shorthand for Trivial Returns
+
+For endpoints that just fetch and return, skip the throwaway variable:
+
+```
+// ✅ PREFERRED — reads like English
+when user calls GET /api/users:
+  send back all Users
+
+when user calls GET /api/users/:id:
+  send back the User with this id
+
+when user calls GET /api/active:
+  send back all Users where active is true
+
+// Also valid (longer, use when you need to transform)
+when user calls GET /api/users:
+  users = get all Users
+  send back users
+```
+
+**Rule:** trivial returns use shorthand. If you filter/map/group the result first, use longhand with a named intermediate.
+
+## URL Path Parameters — Use `this X`, Not Bare `X`
+
+When an endpoint path has a parameter like `/:id`, access it as **`this id`** inside the body. Bare `id` is NOT in scope and will error with "Did you mean 'if'?".
+
+```
+// ✅ CORRECT
+when user calls DELETE /api/todos/:id:
+  requires login
+  delete Todo with this id             // `this id` = the :id from the URL
+  send back 'ok'
+
+when user calls GET /api/workspaces/:id/items:
+  items = get all Items where workspace_id is this id
+  send back items
+
+// ❌ WRONG — bare `id` is undefined
+when user calls GET /api/workspaces/:id/items:
+  items = get all Items where workspace_id is id    // compile error
+```
+
+Same pattern for any named path param: `/users/:user_id` → `this user_id`. `/orders/:order_number` → `this order_number`.
+
+## Variable Names That Trip the Tokenizer
+
+These English words LOOK like keywords to the tokenizer. If you use them as bare variable names on their own line, the compiler will suggest a keyword typo ("Did you mean 'if'?"). Rename or use in context that disambiguates.
+
+| Word | Tokenizer thinks | Fix |
+|------|-----------------|-----|
+| `id` | typo of `if` | rename to `item_id`, `user_id`, `post_id`, etc. |
+| `name` | typo of `page` | rename to `user_name`, `title`, `label`, etc. |
+| `create` | typo of `create a table` | don't use as a variable; pick a different verb |
+| `login` | reserved keyword context | rename the variable (e.g. `login_attempt`) |
+| `search` | variable-used-before-defined | define it first, OR rename to `query_text` |
+
+Safer: always use multi-word variable names. `todo_id` never collides; `id` sometimes does.
+
 ## Common Mistakes to Avoid
 
 - DON'T use double quotes (use single quotes)
 - DON'T chain operations (one per line)
 - DON'T use dot notation (use possessive: person's name)
-- DON'T forget `requires login` on POST/PUT/DELETE endpoints
 - DON'T forget `database is local memory` for apps with tables
 - DON'T use `receiving` (use `receives`)
 - DON'T use `returning:` alone (use `returning JSON text:`)

@@ -30,6 +30,13 @@ function sha1(str) {
 // Infer task_type from app name — maps to the error categories the re-ranker will use
 function inferTaskType(appName) {
   const map = {
+    // Marcus 5
+    'approval-queue': 'add_approval_flow',
+    'lead-router': 'add_routing_rules',
+    'onboarding-tracker': 'add_multistep_workflow',
+    'support-triage': 'add_ai_classification',
+    'internal-request-queue': 'add_request_triage',
+    // Core 8
     'todo-fullstack': 'add_crud',
     'crm-pro': 'add_dashboard',
     'blog-fullstack': 'add_content_app',
@@ -60,6 +67,10 @@ async function run() {
   console.log('\n=== Pass 1: Core templates ===\n');
 
   const templateNames = [
+    // Marcus 5 — business ops
+    'approval-queue', 'lead-router', 'onboarding-tracker',
+    'support-triage', 'internal-request-queue',
+    // Core 8
     'todo-fullstack', 'crm-pro', 'blog-fullstack', 'live-chat',
     'helpdesk-agent', 'booking', 'expense-tracker', 'ecom-agent',
   ];

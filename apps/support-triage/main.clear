@@ -1,0 +1,132 @@
+/*
+Support Triage — AI-assisted ticket classification and routing
+
+  ┌──────────┐  submit   ┌──────────┐  classify  ┌──────────┐
+  │ Customer │ ────────► │  Server  │ ─────────► │  Claude  │
+  └──────────┘           └──────────┘            └──────────┘
+                               │                      │
+                               │ set category +       │
+                               │ priority             │
+                               ▼                      │
+                        ┌──────────┐ ◄────────────────┘
+                        │ Tickets  │
+                        └──────────┘
+                               │
+                               ▼
+                        ┌──────────┐
+                        │  Agent   │ picks up by priority
+                        └──────────┘
+*/
+
+build for web and javascript backend
+database is local memory
+
+# Database
+
+create a Tickets table:
+  subject, required
+  body
+  from_email
+  category, default 'General'
+  priority, default 'Normal'
+  status, default 'open'
+  assigned_to
+  created_at_date, auto
+
+# Backend
+
+## Agent
+
+agent 'Triage' receives ticket:
+  response = ask claude 'You are a support triage classifier. Read the ticket subject and body below and respond with ONLY a JSON object like {"category": "Billing", "priority": "High"}. category must be one of: Billing, Technical, Account, Bug, Feature Request, General. priority must be one of: Urgent, High, Normal, Low.' with ticket
+  send back response
+
+## Middleware
+
+allow cross-origin requests
+allow signup and login
+log every request
+
+## Endpoints
+
+when user requests data from /api/tickets:
+  send back all Tickets
+
+when user requests data from /api/tickets/open:
+  send back all Tickets where status is 'open'
+
+when user sends ticket_data to /api/tickets:
+  validate ticket_data:
+    subject is text, required, min 1, max 300
+  classification = call 'Triage' with ticket_data
+  new_ticket = save ticket_data as new Ticket
+  send back new_ticket with success message
+
+when user updates update_data at /api/tickets/:id:
+  requires login
+  save update_data to Tickets
+  send back 'updated' with success message
+
+## Seed Data
+
+when user sends data to /api/seed:
+  create t1:
+    subject is 'Cannot log in since this morning'
+    body is 'Keep getting a 401 error on the login page. Tried clearing cookies.'
+    from_email is 'customer1@example.com'
+    category is 'Technical'
+    priority is 'High'
+    status is 'open'
+  save t1 as new Ticket
+  create t2:
+    subject is 'Billing charge seems wrong'
+    body is 'I was charged 99 but my plan is 49. Please refund.'
+    from_email is 'customer2@example.com'
+    category is 'Billing'
+    priority is 'Normal'
+    status is 'open'
+  save t2 as new Ticket
+  create t3:
+    subject is 'Feature idea: dark mode'
+    body is 'Would love a dark mode option for long sessions.'
+    from_email is 'customer3@example.com'
+    category is 'Feature Request'
+    priority is 'Low'
+    status is 'open'
+  save t3 as new Ticket
+  send back 'seeded' with success message
+
+# Frontend
+
+page 'Support Triage' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get tickets from '/api/tickets/open'
+
+  section 'Header' centered, padded:
+    heading 'Support Triage'
+    total = count of tickets
+    text '{total} open tickets'
+
+  section 'New Ticket' with style card_bordered:
+    'Subject' as text input saves to subject
+    'Body' as text input saves to body
+    'Your email' as text input saves to from_email
+    button 'Submit ticket':
+      send subject, body, and from_email to '/api/tickets'
+      get tickets from '/api/tickets/open'
+      subject is ''
+      body is ''
+
+  section 'Open Tickets':
+    display tickets as table showing subject, category, priority, from_email
+
+# Tests
+
+test:
+  can user submit a ticket with subject is 'Test issue', body is 'Testing'
+  expect it succeeds
+  expect response has id
+
+test:
+  updating a ticket should require login

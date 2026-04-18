@@ -439,11 +439,34 @@ function validateForwardReferences(body, errors) {
     'configure', 'connect', 'query', 'fetch', 'scrape', 'predict', 'train',
   ];
 
+  // Curated intent hints — common English words Meph (or a human) reaches for
+  // that aren't Clear keywords. Return the full phrasing Meph should use.
+  // These beat Levenshtein because `find` → `send` (edit distance 2) is a
+  // terrible suggestion; `find` → `use `look up X with this id`` is the real fix.
+  const INTENT_HINTS = {
+    find: "use `look up X with this id` for one record, or `get all X` for a list",
+    fetch: "use `get all X` or `look up X with this id`",
+    query: "use `get all X where ...` for filtering, or `look up X with this id`",
+    lookup: "use `look up X with this id` (two words: `look up`, not `lookup`)",
+    select: "use `get all X` or `get all X where ...`",
+    retrieve: "use `get all X` or `look up X with this id`",
+    filter: "use `get all X where condition` — `filter` isn't a Clear verb",
+    list: "use `get all X` (returns a list)",
+    create: "use `save X as new Y` — `create` is reserved for `create a Y table:`",
+    insert: "use `save X as new Y`",
+    add: "use `save X as new Y` for creating records",
+    remove: "use `delete Y with this id` — `remove` isn't a Clear verb",
+    destroy: "use `delete Y with this id`",
+    update: "use `update Y ...` — `update` is a Clear verb but needs a target",
+  };
+
   function suggestKeyword(name, scope) {
     const lower = name.toLowerCase();
     // Skip reserved words — 'a', 'an', 'the' etc. are never typos
     const RESERVED = new Set(['a', 'an', 'the', 'in', 'on', 'to', 'by', 'as', 'at', 'of', 'or', 'is', 'it', 'do', 'no']);
     if (RESERVED.has(lower)) return null;
+    // Intent hints take priority over Levenshtein — they're curated and actionable
+    if (INTENT_HINTS[lower]) return { kind: 'intent', hint: INTENT_HINTS[lower] };
     let best = null, bestDist = 3; // max distance 2
     // Check keywords
     for (const kw of KEYWORDS) {
@@ -460,7 +483,7 @@ function validateForwardReferences(body, errors) {
         if (d < bestDist && Math.abs(lower.length - v.length) <= 1) { bestDist = d; best = v; }
       }
     }
-    return best;
+    return best ? { kind: 'keyword', name: best } : null;
   }
 
   // Levenshtein distance (compact, only compute up to max 2)
@@ -502,10 +525,15 @@ function validateForwardReferences(body, errors) {
             break;
           }
           const suggestion = suggestKeyword(expr.name, scope);
-          if (suggestion) {
+          if (suggestion && suggestion.kind === 'intent') {
             errors.push({
               line: line,
-              message: `Did you mean '${suggestion}'? '${expr.name}' on line ${line} looks like a typo. Clear keywords are lowercase -- check the spelling.`
+              message: `'${expr.name}' isn't a Clear keyword on line ${line}. ${suggestion.hint}.`
+            });
+          } else if (suggestion && suggestion.kind === 'keyword') {
+            errors.push({
+              line: line,
+              message: `Did you mean '${suggestion.name}'? '${expr.name}' on line ${line} looks like a typo. Clear keywords are lowercase -- check the spelling.`
             });
           } else {
             errors.push({
@@ -899,13 +927,12 @@ function validateSecurity(body, errors, warnings) {
 
       // Check 1: Destructive endpoints without auth -- this is an error, not a warning
       if ((method === 'DELETE' || method === 'PUT') && !hasAuth) {
-        const fixLine = `  requires login`;
         errors.push({
           line: node.line,
           patchable: true,
-          fix: [fixLine],
+          fix: [`  requires login`],
           insertAfter: node.line,
-          message: `${method} ${node.path} has no auth guard -- anyone can ${method === 'DELETE' ? 'delete' : 'modify'} data without logging in. Fix:\n${fixLine}`
+          message: `${method} ${node.path} needs 'requires login' as the first line of its body — right now anyone can ${method === 'DELETE' ? 'delete' : 'modify'} data without logging in. All mutation endpoints (POST, PUT, DELETE) must have 'requires login' unless explicitly public. Example:\n  when user calls ${method} ${node.path}:\n    requires login\n    <rest of body>`
         });
       }
 

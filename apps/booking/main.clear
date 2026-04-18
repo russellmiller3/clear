@@ -89,8 +89,7 @@ when user sends data to /api/seed:
 ## Endpoints
 
 when user requests data from /api/rooms:
-  all_rooms = get all Rooms
-  send back all_rooms
+  send back all Rooms
 
 when user sends room_data to /api/rooms:
   requires login
@@ -107,8 +106,7 @@ when user deletes room at /api/rooms/:id:
   send back 'deleted' with success message
 
 when user requests data from /api/bookings:
-  all_bookings = get all Bookings
-  send back all_bookings
+  send back all Bookings
 
 when user sends booking_data to /api/bookings:
   requires login

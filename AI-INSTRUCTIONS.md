@@ -472,6 +472,103 @@ test 'tax rounds to two decimals':
 
 **When a test fails, read the error message — it's plain English and names the fix.** The compiler emits friendly errors like `"POST /api/notes returned 404 — that endpoint doesn't exist on the server. Check the path."` for every status mismatch (200/201/204/400/401/403/404/409/422/429/5xx). Each carries `[clear:N]` pointing at the exact line. Don't re-run tests just to "see" them — the snapshot Meph gets in his context already contains the failures. Read the error, make the smallest edit that fixes it, run once to confirm.
 
+## Auth Guards on Mutations (MANDATORY — top source of compile errors)
+
+**Every mutation endpoint needs `requires login` as the first line.** Mutations = POST, PUT, DELETE. The compiler blocks builds without it.
+
+```clear
+// ✅ CORRECT
+when user calls DELETE /api/todos/:id:
+  requires login
+  delete Todo with this id
+  send back 'ok' with status 204
+
+when user sends new_data to /api/todos:
+  requires login
+  validate new_data:
+    title must not be empty
+  save new_data to Todos
+  send back new_data with status 201
+
+// ❌ WRONG — compiler blocks this
+when user calls DELETE /api/todos/:id:
+  delete Todo with this id
+```
+
+GET endpoints only need `requires login` if they expose private data. Mutations always need it.
+
+## URL Path Parameters — `this X`, Not Bare `X`
+
+When an endpoint path has a parameter (like `/:id` or `/:user_id`), access it inside the body with `this X`, not bare `X`. Bare names like `id` look like typos to the tokenizer and trigger "Did you mean 'if'?".
+
+```clear
+// ✅ CORRECT
+when user calls DELETE /api/todos/:id:
+  requires login
+  delete Todo with this id
+  send back 'ok'
+
+when user calls GET /api/workspaces/:id/items:
+  items = get all Items where workspace_id is this id
+  send back items
+
+// ❌ WRONG — bare `id` isn't in scope, compiler errors
+when user calls GET /api/workspaces/:id/items:
+  items = get all Items where workspace_id is id
+```
+
+The pattern generalizes: `/:user_id` → `this user_id`, `/:order_number` → `this order_number`.
+
+## Retrieval Verbs — `get all`, `look up`, NOT `find`
+
+Clear's retrieval verbs are `get all X`, `look up X with this id`, and `get every X`. **Never use `find` as a verb** — it's not a Clear keyword and the compiler will flag it as a typo.
+
+```clear
+// ✅ CORRECT
+todos = get all Todos
+one_todo = look up Todo with this id
+visible = get every Todo where owner is current user
+
+// ❌ WRONG
+todo = find Todo by id          // use `look up Todo with this id`
+results = find Todos             // use `get all Todos`
+```
+
+## Inline Send Back — Shorthand for Trivial Returns
+
+For endpoints that just fetch and return, skip the throwaway variable:
+
+```clear
+// ✅ PREFERRED — reads like English
+when user calls GET /api/users:
+  send back all Users
+
+when user calls GET /api/users/:id:
+  send back the User with this id
+
+when user calls GET /api/active:
+  send back all Users where active is true
+
+// Also valid (longer, use when you need to transform)
+when user calls GET /api/users:
+  users = get all Users
+  send back users
+```
+
+**Rule of thumb:** if there's no transformation between retrieval and response, use the shorthand. If you filter/map/group the result first, use the longhand with a named intermediate. Shorthand reads naturally. Longhand makes the transformation obvious.
+
+## Variable Names the Tokenizer Mistakes for Keywords
+
+A few plain English words look like keyword typos to Clear's tokenizer. Using them as bare variable names produces errors like `Did you mean 'if'? 'id' on line 25 looks like a typo`. Rule: **always prefer multi-word variable names** for identifiers. `todo_id` never collides; `id` sometimes does.
+
+| Avoid | Why | Use instead |
+|-------|-----|-------------|
+| `id` as a bare variable | Tokenizer suggests `if` | `todo_id`, `user_id`, `post_id` |
+| `name` as a bare variable | Tokenizer suggests `page` | `user_name`, `title`, `label` |
+| `create` as a variable | Reserved in `create a X table` context | pick a different verb (`make`, `build`, `add`) |
+| `login` as a variable | Reserved keyword context | `login_attempt`, `login_event` |
+| `search` as a bare variable | Looks like a forward-reference | define it first OR use `query_text` |
+
 ## Common Mistakes (read this before writing Clear)
 
 | Wrong | Right | Why |
