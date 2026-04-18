@@ -466,6 +466,16 @@ function validateForwardReferences(body, errors) {
     this: "`this` needs a URL parameter name after it (e.g., `this id`, `this user_id`). For the current user in a logged-in endpoint, use `current user`",
     // `password` as a bare variable also triggers this
     password: "Use `password, required` in a table definition for password fields. Reference a user's password with possessive (e.g., `user's password`), not bare `password`",
+    // AI generation verbs — Meph reaches for these when he needs LLM output.
+    // Canonical form: `ask claude 'prompt' with input_var` OR `agent 'Name' receives X:`
+    generate: "for AI generation, use `ask claude 'your prompt' with input_var`. Example: `summary = ask claude 'summarize this' with ticket_body`. Or define an agent: `agent 'Name' receives X:` then inside: `response = ask claude ... with X`",
+    summarize: "use `ask claude 'summarize this: ...' with input_text` to get an AI summary",
+    classify: "use `ask claude 'classify this into X/Y/Z' with input_text`, or define a classifier agent",
+    extract: "use `ask claude 'extract Y from this text' with input_text`",
+    translate: "use `ask claude 'translate to french: ...' with input_text`",
+    rewrite: "use `ask claude 'rewrite in formal style: ...' with input_text`",
+    analyze: "use `ask claude 'analyze this: ...' with input_data`",
+    predict: "for ML models, use `predict X with model_name using features`. For LLM-based predictions, use `ask claude ...`",
   };
 
   function suggestKeyword(name, scope) {
