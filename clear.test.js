@@ -23621,6 +23621,7 @@ await import('./lib/edit-tools.test.js');
 await import('./lib/proposal.test.js');
 await import('./lib/ship.test.js');
 await import('./lib/edit-api.test.js');
+await import('./lib/meph-adapter.test.js');
 
 run();
 

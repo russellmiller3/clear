@@ -224,3 +224,30 @@ If classifier eats more than a day, push e2e coverage of crm/blog to Phase B. Do
 ## Definition of done
 
 Marcus (the user) opens the running todo template, clicks "Edit this app," types a sentence, clicks Ship, and sees the change live within 3 seconds of clicking. He can do this three times in a row without any rollback-due-to-breakage. Non-owners see no edit surface at all.
+
+---
+
+## Implementation status — 2026-04-18
+
+**Landed (67 new tests, all green):**
+- `lib/change-classifier.js` — AST-diff classifier with hide-not-delete taxonomy
+- `lib/live-edit-auth.js` — requireOwner middleware
+- `lib/edit-tools.js` — three propose_* tools with double-layer safety
+- `lib/proposal.js` — dispatcher + Anthropic tool schema (no delete/rewrite surface)
+- `lib/ship.js` — applyShip with write/compile/spawn + rollback on failure
+- `lib/edit-api.js` — createEditApi registers all three /__meph__ routes with DI
+- `lib/meph-adapter.js` — buildMephRequest / parseMephResponse / callMeph for Anthropic SDK
+- `runtime/meph-widget.js` — browser-side widget (syntax-checked)
+
+**Remaining for full Phase A (cycles 10–12):**
+- Studio integration: mount `/__meph__/*` routes on `playground/server.js`'s Express app when a Clear app is running. Wire `deps.readSource` to the current loaded source, `deps.callMeph` to the real `callMeph` adapter using Studio's stored API key, and `deps.applyShip` to Studio's existing compile-and-restart flow.
+- Compiler change: when the source contains an owner (e.g. a user record with `role: 'owner'`) and `allow signup and login` is present, emit a `<script src="/__meph__/widget.js"></script>` tag in the compiled HTML.
+- Template updates: flag one user as `role: 'owner'` in `todo-fullstack`, `crm-pro`, and `blog-fullstack` for e2e testing.
+- Playwright e2e: owner-session → widget mounts → propose → ship → verify new field/page/endpoint present on reload.
+- Playwright e2e: non-owner session → no widget, `/__meph__/*` returns 403.
+- Refusal test: owner asks "remove the notes field" → widget shows the Phase B "not yet available" error.
+
+**Decision notes from this session:**
+- Semantics lock-in: "remove = hide, not delete" written into the plan, ROADMAP LAE-3, and the landing page. Phase B will flip `hidden: true` in the AST via an expand-then-hide tool; Phase C adds explicit permanent-delete.
+- runtime/ is CommonJS; lib/ is ESM. Cycles 1–9 live in lib/ because they're compile-time/Studio-time code, not child-process runtime. The browser widget is the only piece in runtime/ and it's plain browser JS.
+- Severity ordering: classifier returns the **worst** severity across all detected changes. One destructive change in a diff with 20 additive ones = destructive overall.

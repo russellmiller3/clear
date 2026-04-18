@@ -1,54 +1,67 @@
-# Handoff — 2026-04-18 (Session 38 — Live App Editing strategy)
+# Handoff — 2026-04-18 (Session 39 — Live App Editing Phase A foundation + landing page)
 
 ## Current State
-- **Branch:** `claude/ai-app-customization-YD518` (merged into main this session)
+- **Branch:** `feature/live-editing-phase-a` (pushed; not yet merged to main)
+- **Previous branch:** `claude/elegant-wescoff-4c3a50` was renamed to the above and deleted on the remote
+- **Main:** has the new `landing/live-editing.html` from earlier in the session (commit 70f318d)
 - **Working tree:** clean
-- **Type:** strategy / roadmap session — no code changes
 
 ## What Was Done This Session
 
-Captured the **Live App Editing** flagship feature as a fully-specified roadmap entry, backed by competitive research across 8 internal-tool builders and AI app generators.
+### 1. Landing page — `landing/live-editing.html`
+Framed around Marcus's terror moment: CEO walks over, asks for a new field on the running deal-desk app with 18 active users. Page answers each fear mechanically: change classifier with chip taxonomy, patch-not-rewrite, in-flight state preservation, dry-run URL. Expand-and-contract safety section. Competitor table pulls quotes from the ROADMAP research — Lovable/Bolt/v0 can't live-edit, Retool gates it behind a developer, Clear wins on owner-only plain-English in-browser edits. Matches `landing/marcus.html` style (Inter/JetBrains Mono, Tailwind CDN, Lucide SVG only — no emoji). Merged to main mid-session.
 
-The conversation started philosophical (per-user app forks — should they exist?) and converged on the actual product: **the app owner alone can modify a running prod app via chat with Meph, and nothing breaks.** Per-user forks were explicitly ruled out.
+### 2. Design decision — "hide, not delete"
+Locked in semantic behavior for remove/rename/destructive commands:
+- **Default "remove" = hide**, not delete. Field stays in the database, UI stops showing it, one-click un-hide. Classified as `reversible`.
+- **Default "rename" = expand + copy + hide.** Add new field, copy data, hide old. Classified as `reversible`.
+- **Explicit "permanently delete"** is a separate, gated command requiring second-tier confirmation + snapshot + audit. Classified as `destructive`.
 
-Live App Editing is now Clear's most strategically defensible feature on the roadmap. No competitor combines (a) conversational modification, (b) Retool's release-manager safety, and (c) Airtable's additive-by-construction guarantees. The slot is open for roughly 12-18 months before Retool likely bolts a real AI agent onto Release Manager.
+Propagated to: `plans/plan-live-editing-phase-a-04-18-2026.md` (new "What 'remove' means in Clear" section), `ROADMAP.md` (LAE-3 reworded), and `landing/live-editing.html` (Fear 1 chips).
 
-### Files changed
-- **`ROADMAP.md`** — Added two new sections to "What's Next":
-  1. **Live App Editing (Flagship)** — Marcus user story, 10 numbered requirements (LAE-1 through LAE-10), 4-phase delivery plan, success metric, positioning ("never lose a user's form data when you change the app"), and competitive snapshot table across 8 competitors with source quotes.
-  2. **Per-user app forks** added to "Not Building" with rationale.
-- **`HANDOFF.md`** — this file.
+### 3. Phase A implementation — cycles 1–9 via TDD
+**67 new tests, all green.** Runs as part of `node clear.test.js` (total: 2037 pass, 2 pre-existing failures unrelated to this branch).
 
-### Why the positioning matters
-Every competitor already claims "live editing" generically. The defensible promise is the specific one: *"never lose a user's form data when you change the app."* The technical commitment backing it is **additive-by-default with expand-and-contract migrations** — new column before old one drops, dual-write during transitions, old schema readable until every consumer moves over. Airtable-grade safety with Lovable-grade conversational interface.
+| File | Cycle | Purpose |
+|---|---|---|
+| `lib/change-classifier.js` | 1–2 | AST-diff classifier: additive / reversible / destructive. Returns worst severity across all changes. |
+| `lib/live-edit-auth.js` | 3 | `requireOwner` Express middleware. Phase A is strictly owner-only. |
+| `lib/edit-tools.js` | 4–6 | Three `propose_*` tools (add_field, add_endpoint, add_page). Each inserts text, parses, runs classifier, rejects anything non-additive. |
+| `lib/proposal.js` | 7 | Dispatcher + Anthropic tool schema. Asserted: no tool exposes delete/rewrite/remove/drop/edit_code. |
+| `lib/ship.js` | 8 | `applyShip` with write → compile → spawn, rolls back the file on compile or spawn failure. |
+| `lib/edit-api.js` | 9 | `createEditApi(app, deps)` registers POST `/propose`, POST `/ship`, GET `/widget.js`. Full DI for testability. |
+| `lib/meph-adapter.js` | — | Anthropic SDK adapter: `buildMephRequest` + `parseMephResponse` + `callMeph`. |
+| `runtime/meph-widget.js` | 9 | Browser-side widget (floating badge + dark chat panel). Self-gates on `role === 'owner'` in JWT. Syntax-checked. |
 
-### Competitive findings (full table in ROADMAP)
-- **Lovable / Bolt / v0:** No live edit story. Their #1 complaint is destructive regeneration — Bolt has GitHub issue #9016 literally titled "Files Glitching as they are being rewritten." v0 explicitly errors *"Cannot edit a published generation."*
-- **Retool:** Closest real answer — Release Manager has draft-vs-published + millisecond rollback. But developer-gated. Non-devs can't push schema changes; AI can't edit a live Retool app.
-- **Superblocks Clark:** Modifies source, not running instances.
-- **Airtable / Notion:** The prior art. Additive-only schema edits on running bases. API explicitly forbids creating tables/columns — schema edits are UI-only for safety.
+**Two layers of safety lock in:** (a) the tool palette can't produce non-additive diffs because the three tools literally only add; (b) the classifier runs as a second check and rejects anything marked reversible or destructive. Even if Meph calls a tool with bad args, it can't remove data.
 
 ## What's Next (priority order)
 
-### 1. Build `landing/live-editing.html` (started this session, not finished)
-Frame around Marcus's terror moment: CEO walks over and asks for a new field on the deal-desk approval app *after* 18 users are already submitting requests. Marcus is rightly afraid of: (1) breaking the app, (2) AI deleting other code, (3) losing in-flight user data, (4) no preview before pushing live. The page answers each fear directly, shows the in-browser Meph edit widget, demonstrates dry-run preview mode, and ends with the additive-by-default safety guarantee. Match `landing/marcus.html` style. Use Lucide SVG icons (no emoji per CLAUDE.md). Pull competitor quotes from the ROADMAP research.
+### 1. Finish Phase A — Studio integration + compiler tag + e2e (cycles 10–12)
+The plumbing is all tested. What's left is integration:
+1. **Mount `/__meph__/*` on Studio's express app** (`playground/server.js`). Wire `deps.readSource` to the currently-loaded source in the IDE, `deps.callMeph` to `callMeph()` using Studio's stored API key, and `deps.applyShip` to Studio's existing compile + spawn flow.
+2. **Compiler change**: when the source declares an owner (a user with `role: 'owner'`) and has `allow signup and login`, emit `<script src="/__meph__/widget.js">` in the compiled HTML.
+3. **Template updates**: flag one seed user as `role: 'owner'` in `todo-fullstack`, `crm-pro`, `blog-fullstack`.
+4. **Playwright e2e** on all three templates: owner → widget → propose → ship → verify effect on reload. Plus non-owner gets no widget. Plus refusal test ("remove notes field" → "Phase B only" error).
 
-### 2. Spike Phase A of Live App Editing (LAE-1, LAE-2, LAE-3 additive-only, LAE-7)
-Owner-gated in-browser Meph widget that proposes additive changes (add field, add page, add endpoint) and ships them live with a diff preview. ~1 week of work. Proves the core loop without taking on the harder safety problems (live-reload contract, schema migration planner, snapshot/rollback) until the basic UX feels right.
+Estimated effort: 1 session (maybe 1.5 with Playwright flake). All the hard logic is already done.
 
-### 3. Add "Retool + AI agent" to monthly competitive watch
-Retool is the realistic threat to the Live App Editing positioning. If they ship a Clark-style AI on top of Release Manager, the window closes fast. Set a monthly grep of Retool changelog + LinkedIn announcements.
+### 2. Phase 85a infrastructure (still blocked from Session 37)
+One-click deploy code shipped but Fly Trust Verified, Stripe, Anthropic org key, and `buildclear.dev` domain haven't been provisioned. Russell needs to do the account pass.
 
-### 4. Phase 85a still blocking real Phase 85 deploys
-From last session — the one-click deploy code shipped, but the infrastructure (Fly Trust Verified, Stripe signup, Anthropic org key, buildclear.dev domain) hasn't been provisioned. Until Russell does the account-setup pass, Deploy works in tests but has nowhere to deploy to.
+### 3. Fix the 2 pre-existing compiler test failures
+`send back all Users compiles to lookup + respond` and `longhand still works (backward compat)` have been failing on main for a while. Not caused by this branch, but someone should fix them.
+
+### 4. Competitive watch — Retool + AI agent
+Monthly grep on Retool changelog + LinkedIn. If they bolt Clark (their AI product) onto Release Manager, the Live App Editing positioning window closes fast.
 
 ## Key Decisions Made
 
-- **Owner-only modification, not per-user forks.** Per-user app forks destroy the shared ontology that justified building a shared app, create audit/compliance nightmares, and aren't what Marcus actually wants. The right answer is owner-initiated changes that ship to everyone.
-- **Position around data safety, not "live editing."** The defensible promise is *"never lose a user's form data when you change the app."*
-- **Additive-by-default with expand-and-contract migrations.** New column before old one drops, dual-write during transition. Compiler-enforced, not opt-in. This is the technical moat.
-- **Watch Retool, not Lovable.** Lovable can't structurally do this (regenerates whole files). Retool can — and probably will. They're the realistic threat.
+- **runtime/ stays CommonJS, lib/ stays ESM.** Live-editing logic lives in lib/ because it's Studio-time / compile-time code. The browser widget is the only piece in runtime/ and it's plain browser JS with no node semantics.
+- **Ship flow restarts the process**, doesn't hot-swap. Hot-swap is Phase B's problem. Phase A's known limitation: in-flight form state is lost on reload. Documented in plan + Fear 3 of the landing page answers this for Phase B onward.
+- **Reuse `role: 'owner'`, don't invent a new `owner` keyword.** Every second spent on parser work is a second not spent proving the loop. Can upgrade to dedicated syntax later if UX demands it.
+- **No new compiler syntax for `hidden: true` fields in Phase A.** The classifier handles hidden-flag transitions even though Phase A never produces them — Phase B's edit tool will just flip the flag.
 
 ## Resume Prompt
 
-"We just merged Session 38 — the Live App Editing flagship is now fully specified in ROADMAP with user story, 10 requirements, 4 phases, competitive research, and positioning. The next move is building `landing/live-editing.html` framed around Marcus's terror moment (CEO asks for a new field on a running app, Marcus afraid of breaking it). Match `landing/marcus.html` style, no emoji, Lucide SVG icons. After that, spike Phase A of Live App Editing — additive-only edits via in-browser Meph widget — to prove the core loop in about a week. Tell me which one to start."
+"We just landed Phase A cycles 1–9 of Live App Editing on branch feature/live-editing-phase-a: 67 new tests, all green (2037 total in clear.test.js). Everything is tested via DI. What's left for full Phase A is the Studio integration plus a tiny compiler change to inject the widget script tag plus Playwright e2e on the three core templates. The plan in plans/plan-live-editing-phase-a-04-18-2026.md has the exact integration points. Pick up with cycle 10 — mount /__meph__/* on playground/server.js and wire callMeph to use Studio's stored API key."
