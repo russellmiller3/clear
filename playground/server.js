@@ -22,6 +22,13 @@ if (existsSync(envPath)) {
     if (eq > 0 && !line.startsWith('#')) process.env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
   });
 }
+// Worker mode: --port=345X --session-id=workerX (set before .env is read above)
+const _argv = process.argv.slice(2);
+const _portArg = _argv.find(a => a.startsWith('--port='));
+const _sessionArg = _argv.find(a => a.startsWith('--session-id='));
+if (_portArg) process.env.PORT = _portArg.split('=')[1];
+if (_sessionArg) process.env.SESSION_ID = _sessionArg.split('=')[1];
+
 const APPS_DIR = join(ROOT_DIR, 'apps');
 const BUILD_DIR = join(__dirname, '.playground-build');
 const SESSIONS_DIR = join(__dirname, 'sessions');
@@ -1459,6 +1466,10 @@ app.post('/api/run-evals', async (req, res) => {
 // Store API key server-side so child processes (compiled apps with agents) can use it
 let storedApiKey = process.env.ANTHROPIC_API_KEY || '';
 let mephTodos = [];
+
+// Shadow vars for supervisor polling — mirrored from /api/chat per-request locals
+let _workerLastSource = '';
+let _workerLastErrors = [];
 app.post('/api/set-key', (req, res) => {
   storedApiKey = req.body.key || '';
   res.json({ ok: true });
@@ -2324,10 +2335,12 @@ app.post('/api/chat', async (req, res) => {
         }
         if (input.action === 'write') {
           currentSource = input.code;
+          _workerLastSource = currentSource;
           // Auto-compile when code is written
           try {
             const r = compileProgram(input.code);
             currentErrors = r.errors;
+            _workerLastErrors = currentErrors;
             lastCompileResult = r;
             return JSON.stringify({ applied: true, errors: r.errors, warnings: r.warnings });
           } catch (err) {
@@ -2345,6 +2358,7 @@ app.post('/api/chat', async (req, res) => {
         try {
           const r = compileProgram(currentSource);
           currentErrors = r.errors;
+          _workerLastErrors = currentErrors;
           lastCompileResult = r;
           // Always return compiled output alongside errors — Meph needs to
           // inspect generated code to diagnose bugs, especially when there ARE errors
@@ -2618,6 +2632,7 @@ app.post('/api/chat', async (req, res) => {
         const result = patch(currentSource, ops);
         if (result.applied > 0) {
           currentSource = result.source;
+          _workerLastSource = currentSource;
           // Push updated source to editor via SSE
           send({ type: 'code_update', code: result.source });
         }
@@ -3232,6 +3247,27 @@ async function shutdown(signal) {
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// =============================================================================
+// SUPERVISOR WORKER ENDPOINTS
+// =============================================================================
+// These are thin read-only endpoints for the supervisor to poll.
+// module-level shadow vars (_workerLastSource/_workerLastErrors) are mirrored
+// from the per-request locals inside /api/chat — safe to read here.
+
+app.get('/api/current-source', (req, res) => {
+  res.json({ source: _workerLastSource, errors: _workerLastErrors });
+});
+
+app.get('/api/worker-heartbeat', (req, res) => {
+  res.json({
+    sessionId: process.env.SESSION_ID || 'default',
+    appRunning: !!runningChild,
+    appPort: runningPort,
+    lastMephAction: terminalBuffer.filter(l => l.includes('[meph]')).slice(-1)[0] || null,
+    ts: Date.now()
+  });
+});
 
 // =============================================================================
 // START
