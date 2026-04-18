@@ -2639,7 +2639,18 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
     return ctx.i + 1;
   }
 
-  if (!['create', 'view', 'delete', 'update', 'search'].includes(action)) return undefined;
+  // Normalize natural-English verbs to canonical test actions.
+  // Meph reaches for "submit" on approval-queue apps, "post" on forums,
+  // "edit" on admin UIs — all semantically identical for test intent purposes.
+  const TEST_VERB_ALIAS = {
+    submit: 'create', add: 'create', post: 'create', send: 'create', make: 'create',
+    see: 'view', read: 'view', get: 'view', list: 'view',
+    remove: 'delete',
+    edit: 'update', change: 'update', modify: 'update',
+    find: 'search',
+  };
+  const canonicalAction = TEST_VERB_ALIAS[action] || action;
+  if (!['create', 'view', 'delete', 'update', 'search'].includes(canonicalAction)) return undefined;
   let pos = 3;
   // skip articles: a, an, the, new
   while (pos < ctx.tokens.length && ['a', 'an', 'the', 'new', 'all'].includes(ctx.tokens[pos].value)) pos++;
@@ -2679,7 +2690,7 @@ CANONICAL_DISPATCH.set('can', (ctx) => {
       }
     }
   }
-  ctx.body.push({ type: NodeType.TEST_INTENT, intent: action, resource, fields, expectFailure, line: ctx.line });
+  ctx.body.push({ type: NodeType.TEST_INTENT, intent: canonicalAction, resource, fields, expectFailure, line: ctx.line });
   return ctx.i + 1;
 });
 

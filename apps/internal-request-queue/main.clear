@@ -1,0 +1,146 @@
+/*
+Internal Request Queue — employees submit requests, ops triages and assigns
+
+  ┌──────────┐  submit   ┌──────────┐    save    ┌──────────┐
+  │ Employee │ ────────► │  Server  │ ─────────► │ Requests │
+  └──────────┘           └──────────┘            └──────────┘
+                                                       │
+                                                       │ filter by category
+                                                       │
+                          ┌──────────┐                 │
+                          │    IT    │ ◄───────────────┤
+                          └──────────┘                 │
+                          ┌──────────┐                 │
+                          │    HR    │ ◄───────────────┤
+                          └──────────┘                 │
+                          ┌──────────┐                 │
+                          │   Ops    │ ◄───────────────┘
+                          └──────────┘
+
+                   Categories: IT, HR, Facilities, Finance
+                   Status: new → in_progress → resolved
+*/
+
+build for web and javascript backend
+database is local memory
+
+# Database
+
+create a Requests table:
+  title, required
+  description
+  category, default 'IT'
+  priority, default 'Normal'
+  submitter, required
+  assigned_to
+  status, default 'new'
+  resolution
+  created_at_date, auto
+
+# Backend
+
+## Middleware
+
+allow cross-origin requests
+allow signup and login
+log every request
+
+## Endpoints
+
+when user requests data from /api/requests:
+  send back all Requests
+
+when user requests data from /api/requests/new:
+  send back all Requests where status is 'new'
+
+when user requests data from /api/requests/my:
+  send back all Requests
+
+when user sends request_data to /api/requests:
+  validate request_data:
+    title is text, required, min 1, max 200
+    submitter is text, required
+  new_request = save request_data as new Request
+  send back new_request with success message
+
+when user updates update_data at /api/requests/:id:
+  requires login
+  save update_data to Requests
+  send back 'updated' with success message
+
+## Seed Data
+
+when user sends data to /api/seed:
+  create r1:
+    title is 'New laptop — mine is overheating'
+    description is 'MacBook keeps shutting down during video calls. Replacement needed.'
+    category is 'IT'
+    priority is 'High'
+    submitter is 'sarah.j'
+    status is 'new'
+  save r1 as new Request
+  create r2:
+    title is 'Update direct deposit info'
+    description is 'Switched banks last week, need to update payroll.'
+    category is 'HR'
+    priority is 'Normal'
+    submitter is 'mike.l'
+    status is 'in_progress'
+    assigned_to is 'hr-team'
+  save r2 as new Request
+  create r3:
+    title is 'Replace conference room projector'
+    description is 'Projector in Madison room has a dead pixel.'
+    category is 'Facilities'
+    priority is 'Low'
+    submitter is 'alex.p'
+    status is 'new'
+  save r3 as new Request
+  create r4:
+    title is 'Reimburse client dinner'
+    description is 'Had dinner with 3 people at Acme Corp. Receipt attached.'
+    category is 'Finance'
+    priority is 'Normal'
+    submitter is 'jamie.k'
+    status is 'resolved'
+    assigned_to is 'ap-team'
+    resolution is 'Approved and processed'
+  save r4 as new Request
+  send back 'seeded' with success message
+
+# Frontend
+
+page 'Request Queue' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get new_requests from '/api/requests/new'
+
+  section 'Header' centered, padded:
+    heading 'Internal Request Queue'
+    total = count of new_requests
+    text '{total} new requests awaiting triage'
+
+  section 'Submit Request' with style card_bordered:
+    'Title' as text input saves to title
+    'Description' as text input saves to description
+    'Category' is a dropdown with ['IT', 'HR', 'Facilities', 'Finance'] saved as a category
+    'Priority' is a dropdown with ['Urgent', 'High', 'Normal', 'Low'] saved as a priority
+    'Your name' as text input saves to submitter
+    button 'Submit':
+      send title, description, category, priority, and submitter to '/api/requests'
+      get new_requests from '/api/requests/new'
+      title is ''
+      description is ''
+
+  section 'New Requests':
+    display new_requests as table showing title, category, priority, submitter
+
+# Tests
+
+test:
+  can user submit a request with title is 'Test', submitter is 'tester'
+  expect it succeeds
+  expect response has id
+
+test:
+  updating a request should require login
