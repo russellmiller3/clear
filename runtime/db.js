@@ -7,8 +7,9 @@
 //
 // API:
 //   db.createTable(name, schema)          — CREATE TABLE IF NOT EXISTS
-//   db.findAll(table, filter?)            — SELECT * with optional WHERE
+//   db.findAll(table, filter?, options?)  — SELECT * with optional WHERE + LIMIT
 //   db.findOne(table, filter)             — SELECT * WHERE ... LIMIT 1
+//   db.aggregate(table, fn, field, filter?) — SELECT FN(col) ... with equality filter
 //   db.insert(table, record)              — INSERT, returns record with id
 //   db.update(table, filterOrRecord, data?) — UPDATE matching records
 //   db.remove(table, filter?)             — DELETE matching records
@@ -213,11 +214,21 @@ function buildWhere(filter) {
 // CRUD OPERATIONS
 // =============================================================================
 
-function findAll(table, filter) {
+function parseLimit(n) {
+  const v = parseInt(n, 10);
+  return (v > 0 && v < 10000) ? v : null;
+}
+
+function findAll(table, filter, options) {
   const tableName = table.toLowerCase();
   const schema = _schemas[tableName] || {};
   const w = buildWhere(filter);
-  const rows = _db.prepare('SELECT * FROM ' + tableName + ' ' + w.clause).all(w.params);
+  let sql = 'SELECT * FROM ' + tableName + ' ' + w.clause;
+  if (options && options.limit) {
+    const lim = parseLimit(options.limit);
+    if (lim) sql += ' LIMIT ' + lim;
+  }
+  const rows = _db.prepare(sql).all(w.params);
   return rows.map(function(r) { return coerceRecord(r, schema); });
 }
 

@@ -7,8 +7,9 @@
 //
 // API (matches db.js exactly):
 //   db.createTable(name, schema)  — registers schema, lazy-creates on first query
-//   db.findAll(table, filter?)    — SELECT * with optional WHERE
+//   db.findAll(table, filter?, options?) — SELECT * with optional WHERE + LIMIT
 //   db.findOne(table, filter)     — SELECT * WHERE ... LIMIT 1
+//   db.aggregate(table, fn, field, filter?) — SELECT FN(col) ... with equality filter
 //   db.insert(table, record)      — INSERT ... RETURNING *
 //   db.update(table, filter, data?)— UPDATE matching records
 //   db.remove(table, filter?)     — DELETE matching records
@@ -224,11 +225,21 @@ function buildWhere(filter) {
 // CRUD OPERATIONS
 // =============================================================================
 
-async function findAll(table, filter) {
+function parseLimit(n) {
+  var v = parseInt(n, 10);
+  return (v > 0 && v < 10000) ? v : null;
+}
+
+async function findAll(table, filter, options) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
   var w = buildWhere(filter);
-  var res = await getPool().query('SELECT * FROM ' + tableName + ' ' + w.clause, w.params);
+  var sql = 'SELECT * FROM ' + tableName + ' ' + w.clause;
+  if (options && options.limit) {
+    var lim = parseLimit(options.limit);
+    if (lim) sql += ' LIMIT ' + lim;
+  }
+  var res = await getPool().query(sql, w.params);
   return res.rows;
 }
 
