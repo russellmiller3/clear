@@ -358,6 +358,7 @@ export const NodeType = Object.freeze({
 
   // Full text search (Phase 46)
   SEARCH: 'search',
+  SQL_AGGREGATE: 'sql_aggregate',
 
   // Advanced features (Phase 28)
   TEXT_BLOCK: 'text_block',
@@ -8616,6 +8617,44 @@ function parsePrimary(tokens, pos, line, end) {
     const fnName = collectionOps[tok.canonical];
     const operand = parsePrimary(tokens, pos + 1, line, maxPos);
     if (operand.error) return operand;
+    // NEW: "sum of field from Table" -> SQL_AGGREGATE. Must come BEFORE the
+    // "in variable" check because `from` canonicalizes to `in` (synonyms.js
+    // line 57). Gate on rawValue === 'from' AND capitalized identifier.
+    const sqlFns = { sum: 1, avg: 1, count: 1, max: 1, min: 1 };
+    if (sqlFns[fnName] &&
+        operand.nextPos < maxPos &&
+        tokens[operand.nextPos].rawValue === 'from') {
+      const tablePos = operand.nextPos + 1;
+      if (tablePos < maxPos &&
+          tokens[tablePos].type === TokenType.IDENTIFIER &&
+          /^[A-Z]/.test(tokens[tablePos].value)) {
+        const fieldName = operand.node.name;
+        const tableName = tokens[tablePos].value;
+        let nextPos = tablePos + 1;
+        // Optional WHERE clause for filtered aggregates
+        let condition = null;
+        if (nextPos < maxPos && tokens[nextPos].canonical === 'where') {
+          nextPos++;
+          const condExpr = parseExpression(tokens, nextPos, line);
+          if (!condExpr.error) {
+            condition = condExpr.node;
+            if (typeof condExpr.nextPos === 'number') nextPos = condExpr.nextPos;
+            else nextPos = maxPos;
+          }
+        }
+        return {
+          node: {
+            type: NodeType.SQL_AGGREGATE,
+            fn: fnName,
+            field: fieldName,
+            table: tableName,
+            condition,
+            line
+          },
+          nextPos
+        };
+      }
+    }
     // Check for "field in list" pattern: sum of amount in orders
     if (operand.nextPos < maxPos && tokens[operand.nextPos].canonical === 'in') {
       const fieldName = operand.node.name; // extract field name from variable ref

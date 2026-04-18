@@ -7090,6 +7090,51 @@ export function exprToCode(expr, ctx) {
       return `(await db.findAll('${table}', {})).filter(_r => Object.values(_r).some(_v => String(_v).toLowerCase().includes(String(${query}).toLowerCase()))).slice(0, ${DEFAULT_SEARCH_LIMIT})`;
     }
 
+    case NodeType.SQL_AGGREGATE: {
+      const table = pluralizeName(expr.table).toLowerCase();
+      const fn = expr.fn.toUpperCase();
+      const field = expr.field;
+      // Build filter object from optional where-condition. extractEqPairs
+      // returns [] for non-equality conditions (like > or <) — emit a
+      // runtime error string so user gets a clear message at request time.
+      let filterArg = '{}';
+      if (expr.condition) {
+        const pairs = extractEqPairs(expr.condition, ctx);
+        if (pairs.length === 0) {
+          return `(() => { throw new Error('SQL aggregates only support equality filters. Use look up all then aggregate in memory for complex filters like > or <.'); })()`;
+        }
+        if (ctx.lang === 'python') {
+          const entries = pairs.map(([k, v]) => `"${k}": ${v}`).join(', ');
+          filterArg = `{${entries}}`;
+        } else {
+          const entries = pairs.map(([k, v]) => `${k}: ${v}`).join(', ');
+          filterArg = `{ ${entries} }`;
+        }
+      }
+      // Supabase: no aggregate API — fall back to client-side reduce
+      if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+        if (fn === 'COUNT') {
+          return `(((await supabase.from('${table}').select('*')).data) || []).length`;
+        }
+        const fnMap = { SUM: '_clear_sum_field', AVG: '_clear_avg_field' };
+        const jsFn = fnMap[fn] || '_clear_sum_field';
+        return `${jsFn}(((await supabase.from('${table}').select('*')).data) || [], '${field}')`;
+      }
+      // Python: no db.aggregate — fetch-then-reduce
+      if (ctx.lang === 'python') {
+        if (fn === 'COUNT') {
+          return `len(await db.query('${table}', ${filterArg}))`;
+        }
+        if (fn === 'AVG') {
+          return `(lambda _r: sum(_r)/len(_r) if _r else 0)([r['${field}'] or 0 for r in await db.query('${table}', ${filterArg})])`;
+        }
+        const op = fn === 'SUM' ? 'sum' : fn === 'MIN' ? 'min' : 'max';
+        return `${op}([r['${field}'] or 0 for r in await db.query('${table}', ${filterArg})])`;
+      }
+      // JS default (SQLite/Postgres): delegate to db.aggregate
+      return `await db.aggregate('${table}', '${fn}', '${field}', ${filterArg})`;
+    }
+
     case NodeType.LOAD_CSV: {
       const safePath = JSON.stringify(expr.path);
       if (ctx.lang === 'python') {

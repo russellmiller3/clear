@@ -240,6 +240,29 @@ function findOne(table, filter) {
   return row ? coerceRecord(row, schema) : null;
 }
 
+function validateAggregateArgs(fn, field) {
+  const allowedFns = { SUM: 1, AVG: 1, MIN: 1, MAX: 1, COUNT: 1 };
+  if (!allowedFns[fn]) throw new Error('Unsupported aggregate function: ' + fn);
+  if (fn !== 'COUNT' && !/^[a-z_][a-z0-9_]*$/i.test(field)) {
+    throw new Error('Invalid field name: ' + field);
+  }
+}
+
+function aggregate(table, fn, field, filter) {
+  const tableName = table.toLowerCase();
+  validateAggregateArgs(fn, field);
+  const w = buildWhere(filter);
+  const col = fn === 'COUNT' ? '*' : field;
+  const sql = 'SELECT ' + fn + '(' + col + ') as result FROM ' + tableName + ' ' + w.clause;
+  try {
+    const row = _db.prepare(sql).get(w.params);
+    return row ? (row.result || 0) : 0;
+  } catch (e) {
+    console.warn('[clear] db.aggregate failed:', e.message);
+    return 0;
+  }
+}
+
 function insert(table, record) {
   const tableName = table.toLowerCase();
   const schema = _schemas[tableName] || {};
@@ -359,6 +382,7 @@ module.exports = {
   insert,
   update,
   remove,
+  aggregate,
   run,
   execute,
   save,

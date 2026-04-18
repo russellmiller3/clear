@@ -251,6 +251,30 @@ async function findOne(table, filter) {
   return res.rows[0] || null;
 }
 
+function validateAggregateArgs(fn, field) {
+  var allowedFns = { SUM: 1, AVG: 1, MIN: 1, MAX: 1, COUNT: 1 };
+  if (!allowedFns[fn]) throw new Error('Unsupported aggregate function: ' + fn);
+  if (fn !== 'COUNT' && !/^[a-z_][a-z0-9_]*$/i.test(field)) {
+    throw new Error('Invalid field name: ' + field);
+  }
+}
+
+async function aggregate(table, fn, field, filter) {
+  var tableName = table.toLowerCase();
+  await ensureTable(tableName);
+  validateAggregateArgs(fn, field);
+  var w = buildWhere(filter);
+  var col = fn === 'COUNT' ? '*' : field;
+  var sql = 'SELECT ' + fn + '(' + col + ') as result FROM ' + tableName + ' ' + w.clause;
+  try {
+    var res = await getPool().query(sql, w.params);
+    return res.rows[0] ? (res.rows[0].result || 0) : 0;
+  } catch (e) {
+    console.warn('[clear] db.aggregate failed:', e.message);
+    return 0;
+  }
+}
+
 async function insert(table, record) {
   var tableName = table.toLowerCase();
   var schema = _schemas[tableName] || {};
@@ -402,6 +426,7 @@ module.exports = {
   insert: insert,
   update: update,
   remove: remove,
+  aggregate: aggregate,
   run: run,
   execute: execute,
   save: save,
