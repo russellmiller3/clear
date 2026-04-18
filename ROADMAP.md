@@ -423,7 +423,7 @@ Today, the moment Marcus's approval app ships to his five employees, it's frozen
 |---|-------------|----------------|
 | LAE-1 | **Owner-only authorization.** Live edits require the authenticated owner (or admin role) of the app. Non-owners see the app normally, with no edit UI. | Prevents chaos, prevents audit-log disasters, prevents employees quietly reshaping the workflow they're supposed to follow. |
 | LAE-2 | **In-browser edit surface.** A floating Meph chat widget on the running app (not Studio, not a separate tool). Marcus opens his app at `approvals.buildclear.dev` and edits it in place. | The whole point is "talk to your running app." Forcing Marcus back to Studio breaks the promise. |
-| LAE-3 | **Change classifier.** Every proposed diff is classified: `additive` (add field, add endpoint, add page — ships instantly), `reversible` (rename field, change label, reorder columns — ships with 1-click undo), or `destructive` (remove field, change type, remove endpoint — requires explicit confirmation + migration plan + backup). | Safety comes from never letting Marcus accidentally cause a destructive change without seeing it. |
+| LAE-3 | **Change classifier with hide-by-default semantics.** Every proposed diff is classified: `additive` (add field/page/endpoint — ships instantly); `reversible` (**remove = hide**, rename = expand+copy+hide, relabel, reorder — data never physically leaves the database, one-click un-hide); `destructive` (only the explicit "permanently delete" command or unavoidable type coercion — requires second-tier confirmation + snapshot + audit entry). Soft-hide is the default for "remove" because non-engineers think of deletion like a desktop trash can, not an incinerator. | Safety comes from making the default reversible. Data is only physically dropped when the user explicitly opts in to destroying it. |
 | LAE-4 | **Live-reload contract — preserve in-flight work.** When a change ships, connected browser sessions get the new version without losing unsaved form state, filled-in inputs, scroll position, or open modals. New fields appear empty; existing user input survives. | If Jenna loses her half-filled approval because Marcus added a field, the feature is dead on arrival. |
 | LAE-5 | **Schema-change migration planner.** Type changes (`text → number`, `string → dropdown`, nullable → required) trigger a migration preview: "12 rows don't parse — coerce / default / reject?" Marcus picks; migration runs transactionally. | Data corruption is the #1 risk. No schema change ships without Marcus seeing what happens to existing rows. |
 | LAE-6 | **Snapshot + 1-sentence rollback.** Every live edit creates a named checkpoint (source + schema + data snapshot). "Meph, undo the last change" or "Meph, go back to this morning" restores source, schema, and data in one command. | This is the safety net that makes Marcus edit bravely. Without it, every change feels terrifying. |
@@ -443,8 +443,8 @@ Today, the moment Marcus's approval app ships to his five employees, it's frozen
 | Phase | Scope | Rough effort |
 |-------|-------|--------------|
 | Phase A | LAE-1, LAE-2, LAE-3 (additive changes only), LAE-7 — Marcus adds fields/pages/endpoints live, with preview. | ~1 week |
-| Phase B | LAE-4 (live-reload contract), LAE-6 (snapshot + rollback) | ~1 week |
-| Phase C | LAE-5 (schema migration planner), LAE-3 for destructive changes | ~1.5 weeks |
+| Phase B | LAE-4 (live-reload contract), LAE-6 (snapshot + rollback), LAE-3 for reversible changes (hide, rename, relabel, reorder) | ~1 week |
+| Phase C | LAE-5 (schema migration planner), LAE-3 for destructive changes (explicit permanent-delete + unavoidable type coercion) | ~1.5 weeks |
 | Phase D | LAE-8 (audit log), LAE-9 (concurrent guard), LAE-10 (dry-run) | ~1 week |
 
 **Success metric:** Marcus ships 3+ live edits to his prod app in his first week without a single rollback-due-to-breakage. That's the bar.

@@ -23614,5 +23614,10 @@ describe('Weak assertion lint — single assertion yellow flag', () => {
   });
 });
 
+// Live App Editing — Phase A test files
+await import('./lib/change-classifier.test.js');
+await import('./lib/live-edit-auth.test.js');
+await import('./lib/edit-tools.test.js');
+
 run();
 
