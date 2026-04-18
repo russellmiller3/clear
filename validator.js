@@ -458,6 +458,14 @@ function validateForwardReferences(body, errors) {
     remove: "use `delete Y with this id` — `remove` isn't a Clear verb",
     destroy: "use `delete Y with this id`",
     update: "use `update Y ...` — `update` is a Clear verb but needs a target",
+    // Path-param access patterns — Meph often writes bare `id` for `:id`
+    id: "URL path parameters are accessed with `this id` (e.g., `delete Todo with this id`), not bare `id`",
+    // Reserved-keyword collision: Meph reaches for `login` as a bare verb
+    login: "Use `allow signup and login` at the top of your file to enable auth, and `requires login` inside endpoint bodies. `login` as a bare variable or verb isn't valid",
+    // `this` standalone — user forgot the param name after it
+    this: "`this` needs a URL parameter name after it (e.g., `this id`, `this user_id`). For the current user in a logged-in endpoint, use `current user`",
+    // `password` as a bare variable also triggers this
+    password: "Use `password, required` in a table definition for password fields. Reference a user's password with possessive (e.g., `user's password`), not bare `password`",
   };
 
   function suggestKeyword(name, scope) {
