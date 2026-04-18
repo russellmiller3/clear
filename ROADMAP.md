@@ -405,6 +405,50 @@ Ordered by impact. Three tracks: **go-to-market**, **language completeness**, an
 | GTM-6 | Builder mode (Studio simple-UI) | Chat + preview only. "Show code" toggle. P1 for ~Q3 2026. Blocks Sara expansion. |
 | GTM-7 | Instrument Studio | First-click tracking, time-to-first-app, where signups bounce. Data drives Builder mode priorities. |
 
+### Live App Editing (Flagship — "Change your app while it's running")
+
+**The promise to Marcus:** *"Your app evolves with your business by talking to it. Nothing breaks."*
+
+Today, the moment Marcus's approval app ships to his five employees, it's frozen — adding a field means opening Studio, editing source, recompiling, redeploying, and hoping nobody loses in-flight work. Live App Editing collapses that loop: Marcus chats with Meph about his running prod app, Meph proposes a change with a preview, Marcus approves, and the change ships to his team live with data and sessions intact. This is the single feature that separates Clear from every other internal-tool builder: Retool, Superblocks, Zite, and Lovable all force a rebuild-and-redeploy cycle, and none of them can safely reshape a running app because their source isn't human-readable. Ours is. The compiler owns the whole stack — source, schema, endpoints, UI — so it can reason about every change holistically, the way Rails/Django cannot.
+
+**User story (Marcus, day 34 of using Clear):**
+
+> Marcus's deal-desk approval app has been running for a month. His CRO walks over and says "we need a 'region' field on every approval so we can route EMEA separately." Marcus opens his live app in the browser — not Studio, not an IDE — clicks the little 🔧 badge in the corner, and types into Meph: *"add a region field to approvals, required, options are NA / EMEA / APAC, default NA."* Meph reads the running app, reports back: *"This is an additive change. I'll add 'region' to the Approvals table with default 'NA' for 12 existing rows, add a dropdown to the submission form, and a column to the admin view. Ship it?"* Marcus clicks Ship. The change goes live in 4 seconds. Jenna, who was mid-way through submitting an approval, sees the new field appear empty in her form — her amount and notes are still there. Nothing broke. Marcus tells the CRO "done" before the CRO has finished his coffee.
+
+**Why only Marcus:** This feature is role-gated — only the app owner (and explicitly-granted admins) can push live modifications. Employees can't fork their own versions. The app is singular; the *evolution* is conversational. Per-user forks are explicitly out of scope (see "Not Building" below) because they destroy the shared ontology that justified building a shared app in the first place.
+
+**Requirements:**
+
+| # | Requirement | Why it matters |
+|---|-------------|----------------|
+| LAE-1 | **Owner-only authorization.** Live edits require the authenticated owner (or admin role) of the app. Non-owners see the app normally, with no edit UI. | Prevents chaos, prevents audit-log disasters, prevents employees quietly reshaping the workflow they're supposed to follow. |
+| LAE-2 | **In-browser edit surface.** A floating Meph chat widget on the running app (not Studio, not a separate tool). Marcus opens his app at `approvals.buildclear.dev` and edits it in place. | The whole point is "talk to your running app." Forcing Marcus back to Studio breaks the promise. |
+| LAE-3 | **Change classifier.** Every proposed diff is classified: `additive` (add field, add endpoint, add page — ships instantly), `reversible` (rename field, change label, reorder columns — ships with 1-click undo), or `destructive` (remove field, change type, remove endpoint — requires explicit confirmation + migration plan + backup). | Safety comes from never letting Marcus accidentally cause a destructive change without seeing it. |
+| LAE-4 | **Live-reload contract — preserve in-flight work.** When a change ships, connected browser sessions get the new version without losing unsaved form state, filled-in inputs, scroll position, or open modals. New fields appear empty; existing user input survives. | If Jenna loses her half-filled approval because Marcus added a field, the feature is dead on arrival. |
+| LAE-5 | **Schema-change migration planner.** Type changes (`text → number`, `string → dropdown`, nullable → required) trigger a migration preview: "12 rows don't parse — coerce / default / reject?" Marcus picks; migration runs transactionally. | Data corruption is the #1 risk. No schema change ships without Marcus seeing what happens to existing rows. |
+| LAE-6 | **Snapshot + 1-sentence rollback.** Every live edit creates a named checkpoint (source + schema + data snapshot). "Meph, undo the last change" or "Meph, go back to this morning" restores source, schema, and data in one command. | This is the safety net that makes Marcus edit bravely. Without it, every change feels terrifying. |
+| LAE-7 | **Diff preview before ship.** Before applying, Meph shows the source diff (human-readable `.clear` changes) and the effective-change summary ("adds 1 field, 1 dropdown, 1 column, migrates 12 rows"). | Marcus's trust compounds when he can see what's about to happen. |
+| LAE-8 | **Change log (audit trail).** Every live edit is recorded: who, what (diff + summary), when, who approved, rollback availability. Viewable per-app in Studio. | Compliance. When Marcus's CFO asks "why did the approval limit change on March 3rd," the answer is one query away. |
+| LAE-9 | **Concurrent-edit guard.** If two admins try to edit live at the same time, the second one gets blocked or queued — never silently overwritten. | Split-brain is worse than slow. |
+| LAE-10 | **Dry-run mode.** Marcus can preview a change against a staging copy of the app without shipping to employees. "Try this change for 10 minutes on a private URL, then decide." | Lets Marcus validate complex changes without risking a revert. |
+
+**Out of scope (explicit non-goals):**
+- Per-user forks of the app (different employees seeing fundamentally different apps).
+- Per-user schema changes (Jenna can't add her own field that only she sees).
+- Employee-initiated requests ("Jenna asks Meph to add a field, Marcus approves" is a future feature, not MVP).
+- Preferences/sort/filter/theme/saved-views — those are normal product polish, not Live Editing.
+
+**Phasing:**
+
+| Phase | Scope | Rough effort |
+|-------|-------|--------------|
+| Phase A | LAE-1, LAE-2, LAE-3 (additive changes only), LAE-7 — Marcus adds fields/pages/endpoints live, with preview. | ~1 week |
+| Phase B | LAE-4 (live-reload contract), LAE-6 (snapshot + rollback) | ~1 week |
+| Phase C | LAE-5 (schema migration planner), LAE-3 for destructive changes | ~1.5 weeks |
+| Phase D | LAE-8 (audit log), LAE-9 (concurrent guard), LAE-10 (dry-run) | ~1 week |
+
+**Success metric:** Marcus ships 3+ live edits to his prod app in his first week without a single rollback-due-to-breakage. That's the bar.
+
 ### Language Completeness
 
 Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it compiles to working software. If the LLM needs a feature to build what Russell asked for, Clear needs it.
@@ -587,6 +631,7 @@ That combination is unique. The gap to close is platform: hosting, compliance, i
 | Push notifications | Service workers + VAPID keys. Too much plumbing. |
 | Drag and drop | HTML5 events via `script:`. Niche. |
 | Infinite scroll | IntersectionObserver via `script:`. Performance concern, not language feature. |
+| Per-user app forks | Every employee seeing a fundamentally different version of the app destroys the shared ontology that justified building a shared app. Audit/compliance nightmare. Save for 2028 if the social dynamics flip. See Live App Editing for the right answer: owner-initiated changes that ship to everyone. |
 
 ---
 
