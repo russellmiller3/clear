@@ -44,6 +44,11 @@ Plan: `plans/plan-supervisor-multi-session-04-17-2026.md` (historical)
 | `playground/supervisor/archetype.test.js` | 13 tests passing (all 8 templates classify correctly) |
 | `playground/supervisor/cold-start.js` | Seeds DB with 8 templates + 20 curriculum |
 | `playground/supervisor/factor-db-integration.test.js` | 3 tests — log/update/multi-archetype |
+| `playground/supervisor/curriculum-sweep.js` | Drives all 20 curriculum tasks through N parallel workers. CLI + library. |
+| `playground/supervisor/curriculum-sweep.test.js` | 9 tests — partition, prompt build, dry-run |
+| `playground/eval-parallel.js` | Runs the 16 Meph eval scenarios across N workers (3x speedup) |
+| `playground/eval-scenarios.js` | Shared scenario definitions (imported by eval-meph + eval-parallel) |
+| `playground/supervisor/eval-parallel.test.js` | 7 tests — contiguous slice, SCENARIOS shape, dry-run |
 
 ## Files Modified
 
@@ -61,7 +66,8 @@ Plan: `plans/plan-supervisor-multi-session-04-17-2026.md` (historical)
 
 ## What's Next
 
-1. **Phase 4 end-to-end** — actually kick off 3 workers building 3 Marcus apps in parallel, confirm rows accumulate in Factor DB
-2. **Studio Supervisor panel (Phase 7)** — SSE endpoint already returns session table; wire a UI tab
-3. **Factor DB suggestion injection** — when Meph hits a compile error, query Factor DB for top-3 similar fixes and inject into next Meph turn
-4. **Phase 6 merge step** — only needed once multi-worker builds produce conflicting outputs worth merging
+1. **Run a real curriculum sweep** — `node playground/supervisor/curriculum-sweep.js --workers=3` with ANTHROPIC_API_KEY set. First real accumulation of error → fix trajectories. ~$0.20–1.00, gets us toward the 200-passing-row re-ranker threshold.
+2. **Integrate eval-parallel into pre-push hook** — swap from `eval-meph.js` to `eval-parallel.js` for 3x speedup on every push. Build both into husky/pre-push.
+3. **Factor DB suggestion injection** — when Meph hits a compile error, query Factor DB for top-3 similar fixes and inject into next Meph turn. This is the final flywheel loop closure.
+4. **Studio Supervisor panel (Phase 7)** — SSE endpoint already returns session table; wire a UI tab.
+5. **Phase 6 merge step** — only needed once multi-worker builds produce conflicting outputs worth merging.
