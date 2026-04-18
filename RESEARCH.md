@@ -5,6 +5,28 @@ Updated: 2026-04-18 (Session 37: flywheel live, Factor DB wired).
 
 ---
 
+## Read This First — Plain English Version
+
+**What's the point of all this?** To make Meph get better at building apps over time, without needing access to re-train Claude itself.
+
+**How it works in one paragraph.** Every time Meph compiles code in Studio, a row gets written to a database — what he was building, what error he hit (if any), whether it compiled, whether the tests passed. When he hits a compile error in a future session, the system looks at past rows where someone hit the same error and fixed it successfully, and hands Meph 3 working examples. He pattern-matches off them and tries again. Over months of usage, the database fills up with labeled examples. Eventually it trains a small ranking model (XGBoost, not a language model) that picks the best examples more intelligently than keyword match.
+
+**What's actually live right now:**
+- A live dashboard in Studio ("Flywheel" tab) showing the database growing
+- 107 training rows accumulated so far, 38 of them passing end-to-end
+- Every Meph compile auto-logs
+- Every compile error auto-retrieves 3 past working examples and hands them to Meph
+- A classifier that tags each app by shape (queue workflow, CRUD app, AI agent, etc.) so retrieval can filter by app type
+- 5 new template apps (approval queue, lead router, onboarding tracker, support triage, internal request queue) that match what Marcus's team actually builds
+
+**What this buys you.** Meph makes the same mistake once, then never again — the fix is stored and returned to future sessions automatically. You don't manually teach him. The more people use Clear, the smarter Meph gets for everyone.
+
+**What this doesn't buy you.** Claude itself doesn't change. The LLM is the same. What improves is the information Meph has in his context window before he writes code. Fine-tuning would be a bigger win, but we don't have access — this is the best version of "training" available without it.
+
+**The bottleneck:** we need ~200 rows where tests passed before we can train the ranker (currently 38). Every Meph session adds a few. Every curriculum sweep (automated test against practice tasks) adds ~8 passing rows. We're roughly 20 sweeps away.
+
+---
+
 ## The Core Insight: Meph Solves the Oracle Problem
 
 Every AI code generation system has the same problem: **who grades the output?**
