@@ -5301,7 +5301,9 @@ when user calls GET /api/todos:
   todos = look up all Todos
   send back todos
     `);
-    expect(result.javascript).toContain("db.findAll('todos')");
+    expect(result.javascript).toContain("db.findAll('todos'");
+    // PERF-1: default LIMIT 50 on look up all
+    expect(result.javascript).toContain('limit: 50');
   });
 
   it('uses findOne for look up where id is', () => {
@@ -5322,6 +5324,52 @@ when user calls GET /api/posts:
   send back posts
     `);
     expect(result.javascript).toContain("db.findAll('posts'");
+  });
+});
+
+describe('PERF-1 - Default pagination', () => {
+  it('get all Users compiles with LIMIT 50', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+when user calls GET /api/users:
+  users = get all Users
+  send back users
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.findAll('users', {}, { limit: 50 })");
+  });
+
+  it('look up all Users compiles with LIMIT 50', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+when user calls GET /api/users:
+  users = look up all Users
+  send back users
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('{ limit: 50 }');
+  });
+
+  it('get all Users where status is "active" keeps filter + LIMIT 50', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+  status
+when user calls GET /api/users:
+  active = look up all Users where status is 'active'
+  send back active
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('{ limit: 50 }');
+    expect(result.javascript).toContain('status');
   });
 });
 
@@ -5849,7 +5897,7 @@ when user calls GET /api/links:
   send back all_links
     `);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain("db.findAll('links')");
+    expect(result.javascript).toContain("db.findAll('links'");
   });
 
   it('compiles collection operations in backend context', () => {
@@ -5936,7 +5984,7 @@ when user calls POST /api/todos:
     `;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain("db.findAll('todos')");
+    expect(result.javascript).toContain("db.findAll('todos'");
     expect(result.javascript).toContain("db.insert('todos'");
     expect(result.javascript).toContain('try {');
     expect(result.javascript).toContain("db.createTable('todos'");

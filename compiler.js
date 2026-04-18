@@ -120,6 +120,15 @@ import { NodeType, parse } from './parser.js';
 
 const CLEAR_VERSION = '1.0';
 
+// Default row cap on `get all` / `look up all`. Large enough for typical list
+// views, small enough that a 50K-row table can't kill the browser. Opt out
+// with `get every X` / `look up every X` when you truly need all rows.
+const DEFAULT_QUERY_LIMIT = 50;
+// Default cap on `search X for query`. Search is fetch-all-then-filter; this
+// at least keeps the returned payload bounded. A future pass should push
+// search to SQL LIKE so the LIMIT applies server-side.
+const DEFAULT_SEARCH_LIMIT = 100;
+
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -3320,6 +3329,8 @@ function compileCrud(node, ctx, pad) {
         const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
         const page = typeof node.page === 'number' ? node.page : `(${exprToCode({ type: NodeType.VARIABLE_REF, name: String(node.page) }, ctx)})`;
         query += `.range((${page} - 1) * ${perPage}, ${page} * ${perPage} - 1)`;
+      } else if (!isSingle && !node.noLimit) {
+        query += `.limit(${DEFAULT_QUERY_LIMIT})`;
       }
       return `${pad}const { data: ${varName}, error: _err } = await ${query};\n${pad}if (_err) throw _err;`;
     }
@@ -3349,9 +3360,15 @@ function compileCrud(node, ctx, pad) {
   if (node.operation === 'lookup') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
-    let lookupCode = isSingleLookup
-      ? `${pad}const ${sanitizeName(node.variable)} = _revive(await db.findOne('${table}'${where}));`
-      : `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}'${where})).map(_revive);`;
+    let lookupCode;
+    if (isSingleLookup) {
+      lookupCode = `${pad}const ${sanitizeName(node.variable)} = _revive(await db.findOne('${table}'${where}));`;
+    } else if (node.noLimit) {
+      lookupCode = `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}'${where})).map(_revive);`;
+    } else {
+      const filterArg = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
+      lookupCode = `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}', ${filterArg}, { limit: ${DEFAULT_QUERY_LIMIT} })).map(_revive);`;
+    }
     // Pagination: slice the result array
     if (node.page && node.perPage && !isSingleLookup) {
       const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
