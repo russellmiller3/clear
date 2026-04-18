@@ -239,8 +239,15 @@ Marcus (the user) opens the running todo template, clicks "Edit this app," types
 - `lib/meph-adapter.js` — buildMephRequest / parseMephResponse / callMeph for Anthropic SDK
 - `runtime/meph-widget.js` — browser-side widget (syntax-checked)
 
-**Remaining for full Phase A (cycles 10–12):**
-- Studio integration: mount `/__meph__/*` routes on `playground/server.js`'s Express app when a Clear app is running. Wire `deps.readSource` to the current loaded source, `deps.callMeph` to the real `callMeph` adapter using Studio's stored API key, and `deps.applyShip` to Studio's existing compile-and-restart flow.
+**Cycle 10a landed — Studio integration (smoke-tested live):**
+- `/__meph__/widget.js` mounted on Studio, serves `runtime/meph-widget.js`
+- `/__meph__/api/propose` mounted, owner-gated, wired to real Anthropic via `callMeph` and Studio's stored API key
+- `/__meph__/api/ship` mounted, owner-gated (ship-flow impl is a stub — see 10b below)
+- Bearer-JWT auth middleware parses tokens matching `runtime/auth.js` format
+- Verified end-to-end: `GET widget.js` returns the bundle; `POST propose` without auth returns 403 "owner role required"
+
+**Remaining for full Phase A (cycle 10b, 11, 12):**
+- **10b.** Wire `applyShip` to Studio's real compile+write+respawn path (currently a stub that echoes newSource back).
 - Compiler change: when the source contains an owner (e.g. a user record with `role: 'owner'`) and `allow signup and login` is present, emit a `<script src="/__meph__/widget.js"></script>` tag in the compiled HTML.
 - Template updates: flag one user as `role: 'owner'` in `todo-fullstack`, `crm-pro`, and `blog-fullstack` for e2e testing.
 - Playwright e2e: owner-session → widget mounts → propose → ship → verify new field/page/endpoint present on reload.

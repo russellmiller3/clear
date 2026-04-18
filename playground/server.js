@@ -12,6 +12,8 @@ import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './e
 import { wireDeploy } from './deploy.js';
 import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
+import { createEditApi } from '../lib/edit-api.js';
+import { callMeph } from '../lib/meph-adapter.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -58,6 +60,73 @@ app.use(express.static(__dirname, { etag: false, lastModified: false, dotfiles: 
 // already mounted above. Uses an in-memory tenant store by default — swap to
 // Postgres-backed store in production via wireDeploy({ store }).
 wireDeploy(app);
+
+// =============================================================================
+// LIVE APP EDITING — PHASE A (Studio integration)
+// =============================================================================
+// Mounts POST /__meph__/api/propose, POST /__meph__/api/ship, and
+// GET /__meph__/widget.js on Studio's Express app. The widget bundle
+// self-gates on the caller's JWT role === 'owner'. For Phase A the ship
+// flow is still a stub — it echoes the newSource back so the spike can
+// demo the propose loop. Wiring ship to Studio's actual compile+respawn
+// path is cycle 10b (next session).
+const LIVE_EDIT_WIDGET_PATH = join(ROOT_DIR, 'runtime', 'meph-widget.js');
+let _liveEditWidgetSource = '';
+try {
+  _liveEditWidgetSource = readFileSync(LIVE_EDIT_WIDGET_PATH, 'utf8');
+} catch (e) {
+  console.warn('[live-edit] widget.js not found at ' + LIVE_EDIT_WIDGET_PATH);
+}
+
+// Middleware that populates req.user from a Bearer JWT using Studio's
+// existing eval secret. Matches the shape runtime/auth.js produces.
+function liveEditAuth(req, res, next) {
+  const h = req.headers.authorization || '';
+  if (!h.startsWith('Bearer ')) {
+    req.user = null;
+    return next();
+  }
+  const token = h.slice(7);
+  const parts = token.split('.');
+  if (parts.length !== 2) {
+    req.user = null;
+    return next();
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
+    if (payload.exp && payload.exp < Date.now()) {
+      req.user = null;
+    } else {
+      req.user = payload;
+    }
+  } catch {
+    req.user = null;
+  }
+  next();
+}
+
+app.use('/__meph__', liveEditAuth);
+
+createEditApi(app, {
+  readSource: async (req) => {
+    // Phase A: source comes from the request body (Studio IDE sends it).
+    // Cycle 10b will wire this to Studio's loaded-file state.
+    return (req.body && req.body.source) || '';
+  },
+  callMeph: async ({ prompt, source }) => {
+    const key = storedApiKey || process.env.ANTHROPIC_API_KEY || '';
+    if (!key) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
+    }
+    return await callMeph({ prompt, source, apiKey: key });
+  },
+  applyShip: async (newSource) => {
+    // Phase A stub: return ok with the echoed source. Cycle 10b hooks
+    // this to /api/compile + /api/run for the real write+compile+respawn.
+    return { ok: true, elapsed_ms: 0, newSource };
+  },
+  widgetScript: _liveEditWidgetSource,
+});
 
 // =============================================================================
 // COMPILE
