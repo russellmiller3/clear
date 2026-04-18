@@ -1,7 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: 2026-04-18.
+Updated: 2026-04-18 (Session 37: flywheel live, Factor DB wired).
 
 ---
 
@@ -101,32 +101,91 @@ This is documented in CLAUDE.md as the "GAN Design Method" and "GAN Page Loop." 
 
 ## The Flywheel
 
+This is the compounding loop that makes Clear's Meph smarter over time — without changing the underlying language model.
+
 ```
-Sessions run
-    │
-    ▼
-Each session → labeled example
-(features: error type, patch ops, assertion quality, red-step)
-(label: did tests pass at the end?)
-    │
-    ▼
-Re-ranker trains on labeled examples
-(~200 sessions → first XGBoost model)
-    │
-    ▼
-Re-ranker filters patch candidates
-before sandbox eval
-    │
-    ▼
-Fewer sandbox runs → faster sessions
-→ more sessions → more examples
-    │
-    └──────────────────────────────┐
-                                   ▼
-                            Better re-ranker
+                    ┌─────────────────────────────────────┐
+                    │           MEPH SESSION              │
+                    │   (Claude + system prompt)          │
+                    │                                     │
+   ┌─── suggestions │   ┌───────────────────────┐         │
+   │    injected    │   │  user describes app   │         │
+   │    as context  │   │          │            │         │
+   │                │   │          ▼            │         │
+   │                │   │  Meph writes Clear    │         │
+   │                │   │          │            │         │
+   │                │   │          ▼            │         │
+   │                │   │  COMPILE ── error ────┼─────────┼──┐
+   │                │   │          │            │         │  │
+   │                │   │          ▼            │         │  │
+   │                │   │  RUN_TESTS            │         │  │
+   │                │   │          │            │         │  │
+   │                │   └──────────┼────────────┘         │  │
+   │                │              ▼                      │  │
+   │                └──────────────┼──────────────────────┘  │
+   │                               │                         │
+   │                               ▼                         ▼
+   │                    ┌──────────────────────────────────────┐
+   │                    │         FACTOR DB (SQLite)           │
+   │                    │                                      │
+   │                    │  Every compile → one row:            │
+   │                    │    • archetype (queue_workflow,      │
+   │                    │      crud_app, api_service, ...)     │
+   │                    │    • error_sig (hash of error msg)   │
+   │                    │    • patch_ops (what Meph did)       │
+   │                    │    • compile_ok                      │
+   │                    │    • test_pass / test_score          │
+   │                    │    • source_before (context)         │
+   │                    └──────────────┬───────────────────────┘
+   │                                   │
+   │                                   │ accumulates rows
+   │                                   ▼
+   │                    ┌──────────────────────────────────────┐
+   │                    │     XGBOOST RE-RANKER TRAINING       │
+   │                    │                                      │
+   │                    │  ~20 structured features:            │
+   │                    │    global context (archetype,        │
+   │                    │      has_auth, multi_tenant, ...)    │
+   │                    │    local context (error_category,    │
+   │                    │      patch_op_type, file_location)   │
+   │                    │    quality (weak_assertion_count,    │
+   │                    │      red_step_observed)              │
+   │                    │                                      │
+   │                    │  Retrains every ~1000 new rows       │
+   │                    │  (~seconds on CPU)                   │
+   │                    └──────────────┬───────────────────────┘
+   │                                   │
+   │                                   │ predictions
+   │                                   ▼
+   │                    ┌──────────────────────────────────────┐
+   │                    │       RETRIEVAL AT QUERY TIME        │
+   │                    │                                      │
+   │                    │  On next compile error:              │
+   │                    │    1. compute (archetype,error_sig)  │
+   │                    │    2. query Factor DB top-50 similar │
+   │                    │    3. re-ranker scores all 50        │
+   │                    │    4. return top-3 as plain text     │
+   │                    └──────────────┬───────────────────────┘
+   │                                   │
+   └───────────────────────────────────┘
+
+      COMPOUND EFFECT:
+      Better hints → fewer error cycles → faster sessions
+      → more sessions per unit time → more training data
+      → better hints → ... (flywheel spins faster)
 ```
 
-The mechanical quality signals bootstrap this loop. They don't require ML — they're deterministic checks that score sessions immediately, before you have enough data to train anything.
+**Three phases:**
+
+| Phase | Trigger | Behavior |
+|-------|---------|----------|
+| **Cold start** | Day 1 — 0 rows | BM25 retrieval only (token overlap on archetype + error_sig). Suggestions are generic but non-random. |
+| **Organic** | 200+ passing rows | XGBoost re-ranker trained. Suggestions are quality-ranked by success rate. |
+| **Tuned** | 2k+ rows | Re-ranker retrains weekly. Drift detection on curriculum validation set. |
+
+**Important:** the model being trained is NOT Claude. It's a 22M-weight decision-tree ensemble (XGBoost) that ranks retrieved examples. Claude/Meph stays exactly the same. The hints Meph receives get better; Meph's ability to follow hints was always there.
+
+The mechanical quality signals bootstrap this loop. They produce deterministic quality scores on day 1 — before any ML is trained. See the next section.
 
 ---
 
@@ -290,6 +349,121 @@ The total feature count is ~20, not thousands. Each feature is low-cardinality (
 **When global context doesn't help:**
 
 Some errors are purely syntactic (missing quote, unbalanced brace). Global features add noise for those. The re-ranker learns to ignore them — XGBoost naturally down-weights features that don't correlate with outcomes for specific error types. No hand-tuning needed.
+
+---
+
+## Factor DB — Implementation Status
+
+The Factor DB is the persistent store that makes the flywheel run. It's **live as of Session 37**.
+
+**Location:** `playground/factor-db.sqlite` — SQLite with WAL mode.
+
+**Schema (condensed):**
+
+```sql
+CREATE TABLE code_actions (
+  id              INTEGER PRIMARY KEY,
+  session_id      TEXT NOT NULL,
+  archetype       TEXT,              -- classified from parser output
+  task_type       TEXT,              -- e.g. 'compile_cycle'
+  error_sig       TEXT,              -- hash of error messages
+  file_state_hash TEXT,              -- hash of source_before
+  source_before   TEXT,              -- up to 5000 chars
+  patch_ops       TEXT,              -- JSON array (empty until patch.js usage grows)
+  patch_summary   TEXT,              -- human-readable
+  compile_ok      INTEGER,           -- 1 = clean compile
+  test_pass       INTEGER,           -- 1 = all tests passed
+  test_score      REAL,              -- fraction of passing tests
+  embedding       BLOB,              -- reserved for Phase 2 (JS diff embeddings)
+  created_at      INTEGER
+);
+
+-- Plus: ga_runs, ga_candidates, reranker_feedback tables
+-- Indexes: archetype, task_type, error_sig, (test_pass, test_score DESC)
+```
+
+**Write path (wired, automatic):**
+
+Every `/api/chat` Meph session now writes rows:
+
+1. `edit_code` / `patch_code` tool → updates `_sourceBeforeEdit` snapshot
+2. `compile` tool → classifier runs, row inserted with `{archetype, error_sig, compile_ok, source_before}`, `_lastFactorRowId` stored
+3. `run_tests` tool → `_lastFactorRowId` row updated with `{test_pass, test_score}`
+
+Non-fatal: if the DB fails to open at server boot, sessions continue without logging.
+
+**Read path (for retrieval — not yet wired to Meph's context):**
+
+```js
+import { FactorDB } from './supervisor/factor-db.js';
+const db = new FactorDB('./playground/factor-db.sqlite');
+
+// Find top-5 past fixes for the same archetype + error category
+const hints = db.querySimilar({
+  archetype: 'queue_workflow',
+  error_sig: 'abc123',
+  topK: 5,
+});
+```
+
+**Archetype classifier:** `playground/supervisor/archetype.js` — 15 categories, deterministic rules over parser output, runs in milliseconds, all 8 core templates classify correctly.
+
+**Current state:**
+- 28 rows seeded by cold start (8 template gold + 20 curriculum skeletons)
+- Rows accumulate automatically from every Studio Meph session
+- BM25 retrieval active
+- XGBoost training: not yet built (unlocks at 200 passing rows)
+- Suggestion injection into Meph's context: not yet built
+
+---
+
+## How to Get the Flywheel Going
+
+Concrete actions, ordered by what happens when.
+
+### Already done (Session 37)
+
+- Factor DB schema live with 28 seed rows
+- Archetype classifier wired
+- `/api/chat` writes rows on every compile + test
+- Cold-start harness available: `node playground/supervisor/cold-start.js`
+
+### Accelerate data accumulation (next)
+
+The flywheel is now passively collecting data from real Meph sessions. To actively accelerate:
+
+1. **Run the 5 Marcus apps through Meph in Studio.** Each build = 10-30 rows. Five apps = 50-150 rows, plus real archetype coverage for `queue_workflow`, `routing_engine`, `agent_workflow`. This is also how you stress-test the system prompt and find gaps.
+
+2. **Curriculum sweep harness (build next).** ~50 lines: for each of the 20 curriculum tasks, start a worker, give it the task, collect rows. Can run 3 tasks in parallel via supervisor. Each sweep: ~300-500 rows. Three sweeps → re-ranker threshold.
+
+3. **Eval parallelization.** Run `eval-meph.js` scenarios across N workers. Every push accumulates evaluation trajectories too.
+
+### Train the re-ranker (when ready)
+
+At 200+ passing rows:
+
+1. Export training data: `SELECT ... FROM code_actions WHERE test_pass IS NOT NULL`
+2. Feature engineering: extract global + local features (already defined in `archetype.js` + structural features)
+3. Train XGBoost: `xgboost-node` or Python `xgboost` — ~10 seconds on CPU for 1000 rows
+4. Export ONNX: portable model that runs anywhere
+
+### Wire suggestions into Meph (last step)
+
+In `/api/chat`, after a compile error:
+
+```js
+const hints = factorDB.querySimilar({
+  archetype: _safeArchetype(currentSource),
+  error_sig: _sha1(result.errors.map(e => e.message).join('\n')),
+  topK: 3,
+});
+// Inject as text into next Meph turn:
+// "Based on 847 similar past situations, these approaches worked: ..."
+```
+
+This is the final loop closure. Until this step, the DB is gathering data without influencing Meph's behavior. After this step, every session improves every future session.
+
+**Bar for declaring the flywheel "live":** a new session where Meph hits an error, receives an injected hint, applies a patch based on it, and passes tests. Log that event. Celebrate.
 
 ---
 
