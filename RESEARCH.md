@@ -21,6 +21,33 @@ Cursor generates code and you validate. Clear generates, self-validates, and the
 
 ---
 
+## TDD as Reversed GAN
+
+Standard GAN (Generative Adversarial Network): generator produces, discriminator grades. Generator improves by learning to fool the discriminator. Discriminator improves by learning to catch the generator. Adversarial loop.
+
+TDD inverts this — and more importantly, **freezes the discriminator before the generator runs.**
+
+```
+Standard GAN:
+  Generator → output → Discriminator → grade → Generator improves
+  (discriminator and generator evolve together, discriminator can drift)
+
+TDD / Meph:
+  Discriminator (test) written first → FROZEN
+  Generator (code) runs against frozen discriminator
+  Red = fail, Green = pass
+  No retroactive discriminator changes allowed
+```
+
+This is stronger than standard GAN for code because:
+1. **No mode collapse.** The discriminator (test) is written for a specific behavior. The generator can't collapse to a trivial solution that "looks" right without being right.
+2. **The discriminator can't be gamed.** In a standard GAN, a clever generator finds holes in the discriminator. In TDD, the discriminator is frozen and authored before the generator knows the solution.
+3. **The training signal is clean.** Red→green is binary and deterministic. No probability distribution, no gradient estimation, no "sort of close."
+
+**The analogy isn't perfect.** In a real GAN, both networks train simultaneously. In TDD, the "discriminator" (test) doesn't update — it's fixed. That means Meph's discriminator doesn't get harder over time the way a real GAN discriminator would. The curriculum (L1→L10) fills that role: harder tasks = harder discriminators.
+
+---
+
 ## Meph as Actor and Critic — Reversed
 
 Standard actor-critic in RL: actor proposes actions, critic grades them.
@@ -36,6 +63,39 @@ The red→green sequence is the training signal:
 - **Green step:** function written. Test passes.
 
 A red→green sequence with no cheating (no test rewrite between red and green) is a clean, self-supervised training example. **No human needed.**
+
+---
+
+## GAN as a UI Development Process
+
+We use GAN thinking directly when building UI — not just as a metaphor.
+
+The setup:
+
+```
+Static HTML mock  →  Discriminator (frozen visual target)
+Compiler output   →  Generator (what the compiler produces)
+```
+
+The loop:
+1. Build a static HTML/CSS mock with DaisyUI — no compiler, pure visual target
+2. Screenshot the running compiler output
+3. Grade section by section (header, cards, sidebar, etc.)
+4. Find the worst-looking section
+5. Fix it in the compiler. Run tests (0 regressions).
+6. Go to 1.
+
+Iterate until visual parity. The mock is the discriminator. The compiler is the generator. The discriminator doesn't move — you're always trying to close the gap between compiler output and the static target.
+
+**Why this works:**
+- The mock is fast to build (pure HTML, no compilation)
+- The mock can be pixel-perfect — no compiler constraints
+- The compiler fix is always one targeted change (one "worst section" per round)
+- The test suite catches regressions — you can't make the sidebar better by breaking the header
+
+**The anti-pattern:** editing the compiler output HTML directly to "make it look better." That's like training the discriminator instead of the generator. The discriminator must stay frozen. Fix the generator (compiler) until it matches.
+
+This is documented in CLAUDE.md as the "GAN Design Method" and "GAN Page Loop." The theoretical framing is here.
 
 ---
 
@@ -131,24 +191,188 @@ Beam search finds the answer to the problem you tested. GA finds solutions that 
 
 ---
 
-## The RL Gym: What's Built vs What's Missing
+## The RL Gym: What's Built
 
-Clear's deterministic compiler, structured errors, constrained action space (patch.js), and built-in test syntax make it a natural RL gym.
+Clear's deterministic compiler, structured errors, constrained action space, and built-in test syntax make it a natural RL gym. Everything below is working code, not planned.
+
+### 1. Constrained Action Space — `patch.js`
+
+11 structured edit operations. An episode is a sequence of these ops applied to a Clear skeleton:
+
+| Op | What it does |
+|----|-------------|
+| `add_endpoint` | Append a new API route block |
+| `add_field` | Add a field to a table definition |
+| `remove_field` | Remove a field from a table |
+| `add_test` | Append a test block |
+| `fix_line` | Replace a specific line |
+| `insert_line` | Insert a line at a position |
+| `remove_line` | Delete a specific line |
+| `add_validation` | Add validation rules to an endpoint |
+| `add_table` | Add a new data table |
+| `add_agent` | Add an agent definition |
+
+Result shape: `{ source, applied, skipped, errors }`. Failed ops are non-fatal — they're skipped and logged. The episode continues.
+
+**Why this matters for RL:** free-form text generation has an infinite action space. Patch ops constrain it to ~11 types × bounded parameters. Easier to learn, easier to evaluate, failures are interpretable.
+
+---
+
+### 2. Curriculum — `curriculum/`
+
+20 benchmark tasks across 10 difficulty levels. Each task is a JSON file with:
+- `id`, `level`, `title`, `description`
+- `skeleton` — a partial Clear program the agent must complete
+- `tests[]` — HTTP assertions that grade the result
+
+```
+L1: Hello World, Greeting (static endpoints)
+L2: Echo, Calculator (input → output)
+L3: Counter, Key-Value Store (state)
+L4: Todo CRUD, Bookmark Manager (full CRUD)
+L5: Auth Todo, User Profiles (authentication)
+L6: Blog Search, Contact Book (search + relations)
+L7: Rate-Limited API, Validated Forms (middleware)
+L8: Multi-Tenant, RBAC API (authorization)
+L9: Agent Summary, Agent Categorizer (LLM agents)
+L10: Full SaaS, Dashboard API (full apps, auth + relations + agents)
+```
+
+The L10 skeleton is already ~20 lines. The agent must complete it to ~100 lines that pass 8–12 HTTP assertions. That's the hardest training signal in the curriculum.
+
+---
+
+### 3. Sandbox Runner — `playground/server.js`
+
+Isolated child process that compiles and runs Clear programs. The eval infrastructure:
+
+- `ensureEvalChild(serverJS)` — spawns a child Node server on port 4999. Reuses if already running the same code. Kills and respawns on template switch.
+- `killEvalChildAndWait()` — graceful shutdown with 2s SIGKILL fallback + 200ms grace period (Windows holds ports briefly after exit). Prevents port conflicts on rapid respawn.
+- `EVAL_IDLE_MS = 300_000` — child killed after 5 min idle. Chosen to exceed the longest eval suite.
+- Process exits (SIGINT, SIGTERM, `exit`) cleanly kill the child.
+
+The child runs the compiled JS, exposes REST endpoints, and the test runner hits those endpoints. All in-process — no Docker, no VMs. Fast enough for RL loops.
+
+---
+
+### 4. Structured Eval API — `compileProgram()`
+
+`index.js` — the compiler entry point returns a fully structured result:
+
+```js
+{
+  errors: [],           // compile errors with line numbers
+  warnings: [],         // lint warnings (security, quality)
+  javascript: "...",    // compiled server JS
+  browserServer: "...", // compiled browser JS
+  tests: "...",         // compiled test suite (Playwright or HTTP)
+  ast: [...],           // full AST for inspection
+  dbBackend: "sqlite",  // detected database target
+  stats: {
+    nodeCount: 47,
+    tableCount: 2,
+    endpointCount: 8,
+    // ...
+  }
+}
+```
+
+Errors are machine-readable: `{ message, line, col, code }`. The agent can read `errors[0].line` and issue a `fix_line` patch op directly. No parsing required.
+
+---
+
+### 5. Source Maps — compiler
+
+Runtime errors map back to Clear line numbers. A JS `TypeError` on line 312 of compiled output traces to Clear line 7. The compiler embeds this mapping in comments in the generated JS:
+
+```js
+// [Clear line 7] send back user
+res.json(user);
+```
+
+The sandbox runner reads these markers from stack traces. The agent sees "Clear line 7" not "server.js:312".
+
+---
+
+### 6. Built-in Test Syntax (self-supervised reward signal)
+
+The `test` block compiles to real assertions:
+
+```
+test 'discount math':
+  result = apply_discount(100, 0.10)
+  expect result is 10
+```
+
+Compiles to `_unitAssert(result, 'eq', 10, 7, 'result')` with rich error messages. Full operator set: `eq`, `neq`, `gt`, `lt`, `gte`, `lte`, `empty`, `not_empty`.
+
+For backend apps, the `call` block hits live HTTP endpoints:
+
+```
+call GET /api/todos
+expect response status is 200
+expect response has todos
+```
+
+These are the reward functions. `ok: true` = pass, `ok: false` + error message = fail. The agent gets structured feedback, not just exit codes.
+
+---
+
+### 7. Meph Tool Eval — `playground/eval-meph.js`
+
+16 scenarios covering every Meph tool. Drives a live Meph session over the `/api/chat` SSE endpoint. Each scenario:
+1. Sends a prompt designed to trigger a specific tool
+2. Parses the SSE stream for tool calls
+3. Grades: did Meph call the expected tool? Did it self-report success?
+
+**Tools covered:** `edit_code` (read + write), `compile`, `run_app`, `http_request`, `read_terminal`, `run_tests`, `read_file`, `browse_templates`, `source_map`, `highlight_code`, `todo`, `read_actions`, `read_dom`, `screenshot_output`, `stop_app`
+
+Cost ~$0.10–0.30 per run, ~90–180s. Catches schema mismatches, hallucinated tool names, broken dispatch, malformed JSON outputs.
+
+---
+
+### 8. Full-Loop Eval — `playground/eval-fullloop-suite.js`
+
+3 complex apps built end-to-end by Meph from a one-line prompt. Meph must: write the Clear code, compile, run, test, fix errors, pass all assertions. Scored automatically. ~3 min, ~$0.50–1.00 per run.
+
+---
+
+### 9. TDD Loop Integration Test — `playground/test-tdd-loop.js`
+
+Drives a live Meph session with: "build apply_discount using TDD." Asserts:
+1. `edit_code` called before first `run_tests` (wrote test first)
+2. First `run_tests` failed (red step observed)
+3. Final `run_tests` passed (green step)
+4. Total tool call sequence is well-ordered
+
+Passes 5/5 assertions. This is the mechanical verification that Meph's TDD mandate actually holds at runtime — not just in theory.
+
+---
+
+### 10. Security Lint — `clear lint`
+
+27 security + quality checks embedded in the compiler. Examples:
+- SQL injection via raw string interpolation
+- Auth endpoints with no password hashing
+- Public endpoints that expose admin data
+- Missing input validation on user-facing routes
+
+Output: `warnings[]` in `compileProgram()` result. Same infrastructure that'll carry the weak assertion lint (next piece).
+
+---
+
+### What's Missing
 
 | Component | Status |
 |-----------|--------|
-| Sandbox runner | ✅ Built — isolated child process, timeout, memory limit |
-| Curriculum | ✅ Built — 20 benchmarks, 10 difficulty levels |
-| Structured eval API | ✅ Built — `compileProgram()` returns JSON scores/stats/warnings |
-| Patch API | ✅ Built — 11 structured edit operations = constrained action space |
-| Source maps | ✅ Built — runtime errors map to Clear line numbers |
-| HTTP test assertions | ✅ Built — `call POST /path`, `expect response status` = reward function |
 | Mechanical quality signals | 🔜 Next — static + process lint, session JSON storage |
 | Session registry | 🔜 Supervisor plan phase 1 |
 | Re-ranker (XGBoost) | 🔜 Needs ~200 labeled sessions first |
+| Supervisor loop | 🔜 Supervisor plan phase 2–3 |
+| GA candidate generation | 🔜 Supervisor plan phase 4 |
 | Fine-tuning | ❌ No access yet — retrieval/memory bridge until then |
 
-**Current blocker:** no fine-tuning access. The gym is ready. Can't train athletes yet. The supervisor + GA + re-ranker plan is the bridge — it uses retrieval/memory instead of fine-tuning, so it works today. Fine-tuning slots in on top when available.
+**Current blocker:** no fine-tuning access. The gym is complete. Can't train athletes yet. The supervisor + GA + re-ranker plan is the bridge — retrieval/memory instead of gradient descent. Fine-tuning slots in on top when available.
 
 ---
 
