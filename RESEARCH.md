@@ -467,6 +467,60 @@ This is the final loop closure. Until this step, the DB is gathering data withou
 
 ---
 
+## Multi-Session Supervisor — When and Where to Use It
+
+The supervisor architecture (`playground/supervisor.js` + `supervisor/*`) spawns N worker servers on sequential ports and coordinates them via HTTP. It's built. But the value is internal, not user-facing. Ranked by leverage:
+
+### 1. Eval suite parallelization (HIGH leverage — use immediately)
+
+`playground/eval-meph.js` runs 16 Meph scenarios sequentially. Typical time ~90s per push. With 3 workers building in parallel, each handling ~5 scenarios: ~30s. The speedup compounds — every CI run, every push, every eval sweep. Amortized over a year of development, this is hours of time saved for maybe an afternoon of work building the harness.
+
+**Build shape:** partition scenarios into N chunks, POST to each worker's `/api/chat`, aggregate JSON results. ~50 lines.
+
+### 2. Curriculum sweep for Factor DB acceleration (HIGH leverage — on demand)
+
+The 20-task curriculum (`curriculum/tasks/*.json`) covers L1–L10 difficulty. Running each task through a real Meph session produces 5–30 compile cycles → 5–30 Factor DB rows. Across 20 tasks serial: ~400 rows per sweep. With 3 workers parallel: same ~400 rows but in 1/3 the time.
+
+Three sweeps (60 tasks) → ~1200 rows → past the XGBoost training threshold. Without multi-session, this takes days of elapsed time and human attention. With it, a weekend.
+
+**This is the fastest path to a live re-ranker.** Organic session traffic (Russell + a few users) won't hit 200 passing rows for months. Curriculum sweeps get there in hours.
+
+### 3. Compiler adversarial testing (MEDIUM leverage — ad hoc)
+
+Point 5 workers at deliberately weird prompts simultaneously:
+- "Build a todo app that uses every synonym for every keyword"
+- "Build an app with 50 tables, all with `belongs_to`"
+- "Build an RBAC-heavy app with no auth"
+
+Each worker is an independent Meph instance — different Claude sampling, different exploration paths. Novel Clear programs surface compiler edge cases you'd never write unit tests for. This is self-play bug hunting: the 1947-test compiler suite covers known patterns; the workers find the unknown ones.
+
+**This is how Clear's reliability ladder keeps climbing.** Every regression caught here is a Marcus incident prevented.
+
+### 4. Design variant generation (LOW leverage — requires theme system first)
+
+Once `design like 'linear'` ships as a Clear directive, the "show me 3 options" flow becomes: 3 workers build the same app spec with different themes. User picks one in the UI. This is the only direct user-facing use for multi-session — and it's not for Marcus. It's for Sara-tier users who care about design variety.
+
+Don't build this until the theme system exists and a real user asks for it.
+
+### What multi-session is NOT for
+
+- **"Faster Marcus app build."** Solo Meph builds one app at a time; Russell watches one build at a time. Running 3 parallel Mephs on 3 apps produces 3 apps at the same pace as sequential — you can't watch or judge 3 simultaneously.
+- **"Collective intelligence."** Workers are independent Claude sessions. No shared hidden state. Three heads are not better than one on a single task — they're three parallel attempts at the same task, not a collaborative build.
+- **"Building apps for users."** Multi-session is infrastructure for Clear's development speed. Users see single-session Meph.
+
+### Summary
+
+| Use | When | Leverage | Built? |
+|-----|------|----------|--------|
+| Eval parallelization | Every CI run | High | No — ~1 hour of harness work |
+| Curriculum sweep | Weekly, or to accelerate flywheel | High | No — ~1 hour of harness work |
+| Adversarial testing | Before major ships | Medium | No — prompts need to be written |
+| Design variants | After theme system | Low | No, and blocked on theme system |
+
+The supervisor itself is built. What's left is a thin scheduling layer per use case — each ~50 lines. Not blocking the flywheel; enabling specific speedups.
+
+---
+
 ## The GA: Why Genetic, Not Beam Search
 
 Standard beam search exploits what works and stops exploring. It finds local optima fast — good for discount calculators, bad for L7–L10 curriculum tasks that require exploration.
