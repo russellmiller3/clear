@@ -2478,13 +2478,20 @@ app.post('/api/chat', async (req, res) => {
               const errorSig = r.errors.length > 0
                 ? _sha1(r.errors.map(e => e.message).join('\n') + '\x00' + _sha1(currentSource))
                 : null;
+              // source_before captures what Meph compiled. If he called
+              // edit_code+compile in sequence, _sourceBeforeEdit has the pre-edit
+              // state. Fall back to currentSource so we always have SOMETHING —
+              // otherwise we lose the whole point of the trajectory row.
+              const sourceForLog = _sourceBeforeEdit && _sourceBeforeEdit.length > 0
+                ? _sourceBeforeEdit
+                : currentSource;
               _lastFactorRowId = _factorDB.logAction({
                 session_id: sessionId,
                 archetype: _safeArchetype(currentSource),
                 task_type: 'compile_cycle',
                 error_sig: errorSig,
                 file_state_hash: _sha1(currentSource),
-                source_before: _sourceBeforeEdit.slice(0, 5000),
+                source_before: sourceForLog.slice(0, 5000),
                 patch_ops: [],
                 patch_summary: r.errors.length === 0
                   ? `Clean compile (${currentSource.split('\n').length} lines)`
