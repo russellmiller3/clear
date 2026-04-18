@@ -1,7 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: 2026-04-17.
+Updated: 2026-04-18.
 
 ---
 
@@ -173,8 +173,123 @@ The re-ranker is a **bouncer** — it filters patch candidates before the expens
 **Why JS embeddings, not Clear embeddings:**
 Clear is a tiny corpus. JS has billions of examples in every model's training data. Embedding the compiled JS diff puts you in a rich semantic space. Clear source → JS → embed is a better path than Clear source → embed directly.
 
-**Why structured features first:**
-XGBoost on 5–10 features trains in seconds, is interpretable (you can see which features matter), and works with 200 examples. Don't jump to neural embeddings until you need them.
+**Why structured features first — and why the model stays small:**
+
+The input space here is genuinely tiny. `task_type` has ~15 values. Error categories have ~30-50 distinct patterns. `patch_op_type` has 11 values (from patch.js). That's a structured tabular problem, not a language understanding problem.
+
+What the re-ranker is actually doing: **a lookup table with uncertainty.** "Given error pattern X on task type Y, which of these 5 past fixes has the best track record?" A decision tree captures this cleanly. XGBoost on 5-10 features trains in seconds, runs in microseconds, and is interpretable — you can see which features matter.
+
+A 22M-parameter cross-encoder (e.g. ms-marco-MiniLM) is trained on millions of web search queries to understand free-form natural language. That's not the problem here. Using it would be like using a sledgehammer to push a thumbtack. It would train more slowly, require more data, and give you less insight into what's actually driving predictions.
+
+**The upgrade path only triggers if XGBoost plateaus** — i.e., you have 2k+ sessions and accuracy on the validation curriculum isn't improving. At that point, JS embeddings on the compiled diff add signal. But you may never need them. The feature space might be fully captured by structured inputs alone.
+
+### Global context: how the re-ranker thinks like an engineer
+
+A real engineer hitting a validation error doesn't just see the error — they know this is a multi-tenant CRM with auth and Postgres, which completely changes the right fix. A bare `error_sig` misses all of that.
+
+The re-ranker captures global context by extracting **structured app-level features** from the parser output, once per session. These become additional XGBoost inputs alongside the local error features.
+
+**Global context features (per app, re-computed on each compile):**
+
+| Feature | Type | Source |
+|---------|------|--------|
+| `archetype` | categorical (~15 values) | See archetype table below |
+| `num_tables` | bucketed (1, 2-3, 4-6, 7+) | Count of `TABLE_DEF` nodes |
+| `num_endpoints` | bucketed | Count of `ENDPOINT` nodes |
+| `num_pages` | bucketed | Count of `PAGE_DEF` nodes |
+| `has_auth` | boolean | Parser detects auth blocks |
+| `has_agent` | boolean | `AGENT_DEF` or `ASK_AI` nodes present |
+| `has_scheduler` | boolean | `CRON` nodes present |
+| `has_websocket` | boolean | `SUBSCRIBE` / `BROADCAST` nodes |
+| `has_upload` | boolean | File upload endpoints |
+| `runtime` | categorical | SQLite / Postgres (from `build for` directive) |
+| `multi_tenant` | boolean | `belongs to user` appears on any table |
+
+**Archetype taxonomy (~15 values, covers Marcus's 5 + core 8 + backend-only patterns):**
+
+The archetype classifier maps any Clear app to its nearest shape-of-work. These aren't the template names — they're the *behavioral patterns* the parser can detect. Multiple templates can share an archetype (both `helpdesk-agent` and `support-triage` are `agent_workflow`).
+
+| Archetype | Shape of Work | Example Apps | Detection Signal |
+|-----------|---------------|--------------|------------------|
+| `queue_workflow` | State machine with approval/routing | Approval Queue, Internal Request Queue, Onboarding Tracker | Tables with `status` field + multiple state transitions + notification blocks |
+| `routing_engine` | Rules-driven classification + assignment | Lead Router, Support Triage | Conditional assignment logic + multi-owner routing |
+| `agent_workflow` | AI-assisted classification or generation | Helpdesk, Support Triage, summarizer | `AGENT_DEF` / `ASK_AI` + downstream actions |
+| `dashboard` | Read-heavy data viz with charts/filters | CRM Pro, analytics views | Multiple `CHART` nodes + aggregations + filter UI |
+| `crud_app` | Standard create/read/update/delete | Todo, expense, bookmark, contact book | CRUD endpoints on 1-3 tables, minimal logic |
+| `content_app` | Public + admin pages, rich display | Blog, landing pages, docs sites | `belongs_to` relationships + public routes + admin routes |
+| `realtime_app` | Live updates via websocket | Live chat, presence, notifications | `SUBSCRIBE` / `BROADCAST` nodes |
+| `booking_app` | Scheduling / reservation | Booking, appointment, resource scheduling | Time-slot logic + availability checks |
+| `ecommerce` | Catalog + cart + checkout | ecom-agent, storefront | `order` / `cart` / `payment` table patterns |
+| **`api_service`** | **Backend-only REST API, no UI** | Rate-limited API, validated forms, data API | Endpoints only, no `PAGE_DEF` nodes |
+| **`etl_pipeline`** | **Scheduled data transformation** | Nightly sync, report generation | `CRON` + external data source + write pattern |
+| **`webhook_handler`** | **Receives external events, processes** | Stripe webhook, GitHub handler, Slack bot | Single endpoint + signature verification + downstream actions |
+| **`batch_job`** | **Scheduled background work, no UI** | Cleanup, aggregation, reminders | `CRON` + no user-facing endpoints |
+| **`data_sync`** | **Syncs between two systems** | CRM ↔ email, Postgres ↔ S3 | Two `SERVICE_CALL` / adapter patterns + reconciliation |
+| `general` | Catch-all when nothing dominates | Early-stage scratch apps | Falls through when no pattern scores above threshold |
+
+**How archetype is detected:**
+
+Not from template name — from structural signal. Lives at [`playground/supervisor/archetype.js`](playground/supervisor/archetype.js). A decision-tree rule chain over parser output:
+
+1. `num_pages == 0` AND `has_cron` → `etl_pipeline` / `data_sync` / `batch_job` (differentiated by external adapter count)
+2. `num_pages == 0` AND single endpoint with signature or webhook path → `webhook_handler`
+3. `num_pages == 0` with endpoints → `api_service`
+4. `has_websocket` (SUBSCRIBE / BROADCAST nodes) → `realtime_app`
+5. `has_agent` (AGENT / RUN_AGENT / ASK_AI nodes) → `agent_workflow`
+6. `has_status_field` + `has_auth` + `has_routing_logic` → `routing_engine`
+7. `has_status_field` + `has_auth` → `queue_workflow`
+8. `num_charts >= 2` → `dashboard`
+9. Tables match ecommerce pattern (`order`, `cart`, `payment`, `product`, `invoice`) → `ecommerce`
+10. Fields match booking pattern (`slot`, `appointment`, `start_time`, `booking`) → `booking_app`
+11. `has_belongs_to` (fieldType=`fk`) AND `num_pages >= 2` → `content_app`
+12. `num_tables >= 1` + `num_endpoints >= 2` + `num_pages >= 1` → `crud_app`
+13. No signal dominates → `general`
+
+This classifier is deterministic, runs in milliseconds, and is interpretable — you can log "detected `queue_workflow` because tables have a `status` field and the app has auth policies." When the classifier is wrong, you add a rule. No ML needed.
+
+**Stored as:** a column on `code_actions` in the Factor DB. Backfilled at row-insert time by calling `classifyArchetype(parse(source))`. Indexed for fast `WHERE archetype = ?` filtering.
+
+**Validation:** all 8 core templates classify to the correct archetype (see `playground/supervisor/archetype.test.js`).
+
+**Local context features (per compile cycle):**
+
+| Feature | Type |
+|---------|------|
+| `error_category` | categorical — ~30-50 values (validation, missing_endpoint, type_error, auth_failure, etc.) |
+| `patch_op_type` | categorical — 11 values from patch.js |
+| `file_location` | categorical — database / backend / frontend section |
+| `table_involved` | categorical — which table the error relates to |
+
+**Retrieval query with global context:**
+```
+SELECT * FROM code_actions
+WHERE archetype = 'queue_workflow'       ← only look at Marcus-style approval apps
+  AND error_category = 'validation'      ← same error category
+  AND has_auth = 1                       ← same auth posture
+ORDER BY test_score DESC
+LIMIT 50
+```
+
+That's engineer-like. "In approval-queue apps with auth, when a validation error hits, what fixes worked?" — not "what fixed this error string in any app ever."
+
+Another example — a webhook handler hitting a signature error:
+```
+SELECT * FROM code_actions
+WHERE archetype = 'webhook_handler'
+  AND error_category = 'signature_mismatch'
+ORDER BY test_score DESC
+LIMIT 50
+```
+
+Webhook bugs look very different from CRUD bugs. Keeping archetypes separate prevents noisy retrieval.
+
+**Why this still works with XGBoost:**
+
+The total feature count is ~20, not thousands. Each feature is low-cardinality (booleans, small categoricals). XGBoost handles this natively, captures feature interactions (e.g. "has_auth=true AND error=validation → prefer middleware patches"), and stays interpretable — you can literally print feature importance and understand what the model learned.
+
+**When global context doesn't help:**
+
+Some errors are purely syntactic (missing quote, unbalanced brace). Global features add noise for those. The re-ranker learns to ignore them — XGBoost naturally down-weights features that don't correlate with outcomes for specific error types. No hand-tuning needed.
 
 ---
 

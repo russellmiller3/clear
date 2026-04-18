@@ -1,5 +1,6 @@
 import express from 'express';
 import { compileProgram } from '../index.js';
+import { parse } from '../parser.js';
 import { patch } from '../patch.js';
 import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
@@ -9,6 +10,8 @@ import { createHash } from 'crypto';
 import { chromium } from 'playwright';
 import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './eval-auth.js';
 import { wireDeploy } from './deploy.js';
+import { FactorDB } from './supervisor/factor-db.js';
+import { classifyArchetype } from './supervisor/archetype.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -1473,6 +1476,23 @@ let mephTodos = [];
 // Shadow vars for supervisor polling — mirrored from /api/chat per-request locals
 let _workerLastSource = '';
 let _workerLastErrors = [];
+
+// Factor DB — every compile+test cycle logs a row. Becomes re-ranker training data.
+// Non-fatal: if the DB fails to open, sessions still work, just no logging.
+const FACTOR_DB_PATH = process.env.FACTOR_DB_PATH || join(__dirname, 'factor-db.sqlite');
+let _factorDB = null;
+try { _factorDB = new FactorDB(FACTOR_DB_PATH); }
+catch (err) { console.warn('[FACTOR_DB] disabled:', err.message); }
+
+function _sha1(str) {
+  return createHash('sha1').update(str).digest('hex').slice(0, 16);
+}
+
+// Compute archetype from source, defensively — never let classifier errors fail a compile
+function _safeArchetype(source) {
+  try { return classifyArchetype(parse(source)); }
+  catch { return 'general'; }
+}
 app.post('/api/set-key', (req, res) => {
   storedApiKey = req.body.key || '';
   res.json({ ok: true });
@@ -2191,6 +2211,11 @@ app.post('/api/chat', async (req, res) => {
   const sessionStartedAt = Math.floor(Date.now() / 1000);
   const sessionTestCalls = []; // { ok, error } for each run_tests call
 
+  // Factor DB trajectory tracking — one row per compile, updated by subsequent run_tests
+  // Each compile cycle emits a new row. Test results update the most recent row for this session.
+  let _lastFactorRowId = null;
+  let _sourceBeforeEdit = currentSource; // captured before each patch/write, used as source_before
+
   // Tool execution
   // Mirror every Meph tool call to the terminal pane so the user can watch
   // exactly what Meph is doing — no hidden actions.
@@ -2337,6 +2362,7 @@ app.post('/api/chat', async (req, res) => {
           return JSON.stringify({ source: currentSource, errors: currentErrors });
         }
         if (input.action === 'write') {
+          _sourceBeforeEdit = currentSource;
           currentSource = input.code;
           _workerLastSource = currentSource;
           // Auto-compile when code is written
@@ -2363,6 +2389,35 @@ app.post('/api/chat', async (req, res) => {
           currentErrors = r.errors;
           _workerLastErrors = currentErrors;
           lastCompileResult = r;
+
+          // ── Factor DB: log this compile attempt ─────────────────────────
+          // One row per compile. test_pass gets updated by a subsequent run_tests.
+          if (_factorDB && currentSource) {
+            try {
+              const compileOk = r.errors.length === 0 ? 1 : 0;
+              const errorSig = r.errors.length > 0
+                ? _sha1(r.errors.map(e => e.message).join('\n') + '\x00' + _sha1(currentSource))
+                : null;
+              _lastFactorRowId = _factorDB.logAction({
+                session_id: sessionId,
+                archetype: _safeArchetype(currentSource),
+                task_type: 'compile_cycle',
+                error_sig: errorSig,
+                file_state_hash: _sha1(currentSource),
+                source_before: _sourceBeforeEdit.slice(0, 5000),
+                patch_ops: [],
+                patch_summary: r.errors.length === 0
+                  ? `Clean compile (${currentSource.split('\n').length} lines)`
+                  : `Compile with ${r.errors.length} error(s): ${r.errors[0]?.message?.slice(0, 120) || 'unknown'}`,
+                compile_ok: compileOk,
+                test_pass: 0,
+                test_score: 0.0,
+                score_delta: 0.0,
+              });
+            } catch { /* non-fatal */ }
+          }
+          // ────────────────────────────────────────────────────────────────
+
           // Always return compiled output alongside errors — Meph needs to
           // inspect generated code to diagnose bugs, especially when there ARE errors
           const result = {
@@ -2632,6 +2687,7 @@ app.post('/api/chat', async (req, res) => {
         if (!currentSource) return JSON.stringify({ error: 'No code in editor. Write code first.' });
         const ops = input.operations;
         if (!Array.isArray(ops) || ops.length === 0) return JSON.stringify({ error: 'Need an operations array. Example: [{ op: "fix_line", line: 5, replacement: "  send back user" }]' });
+        _sourceBeforeEdit = currentSource;
         const result = patch(currentSource, ops);
         if (result.applied > 0) {
           currentSource = result.source;
@@ -3073,11 +3129,26 @@ app.post('/api/chat', async (req, res) => {
           result = await executeTool(tb.name, input);
         }
 
-        // Track run_tests outcomes for session quality signals
+        // Track run_tests outcomes for session quality signals + Factor DB
         if (tb.name === 'run_tests') {
           try {
             const tr = typeof result === 'string' ? JSON.parse(result) : result;
             sessionTestCalls.push({ ok: tr.ok === true, error: tr.error || null });
+
+            // ── Factor DB: update latest compile row with test outcome ──
+            if (_factorDB && _lastFactorRowId) {
+              const passed = Number(tr.passed || 0);
+              const failed = Number(tr.failed || 0);
+              const total = passed + failed;
+              const testScore = total > 0 ? passed / total : (tr.ok === true ? 1.0 : 0.0);
+              const testPass = (tr.ok === true && failed === 0 && total > 0) ? 1 : 0;
+              try {
+                _factorDB._db.prepare(`
+                  UPDATE code_actions SET test_pass = ?, test_score = ? WHERE id = ?
+                `).run(testPass, testScore, _lastFactorRowId);
+              } catch { /* non-fatal */ }
+            }
+            // ──────────────────────────────────────────────────────────────
           } catch { sessionTestCalls.push({ ok: false, error: 'parse error' }); }
         }
 

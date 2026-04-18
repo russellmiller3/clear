@@ -30,6 +30,7 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 - [Where is the curriculum?](#where-is-the-curriculum)
 - [Where does the playground bundle come from?](#where-does-the-playground-bundle-come-from)
 - [Where does the supervisor plan live?](#where-does-the-supervisor-plan-live)
+- [Where does the archetype classifier live?](#where-does-the-archetype-classifier-live)
 
 **How do I do X?**
 - [How do I add a new node type?](#how-do-i-add-a-new-node-type)
@@ -220,16 +221,32 @@ CREATE TABLE sessions (
 
 ### Where does the re-ranker get its training signal?
 
-From the sessions table. Each completed session is one training example:
+From the `code_actions` table in the Factor DB. Each logged compile+test cycle is one training example.
 
-- **Features:** `error_category` (compile/test/runtime), `patch_op_type`, `node_types_touched`, `weak_assertion_count`, `red_step_observed`
-- **Label:** did the final `run_tests` show `ok: true`?
+**Global context features (per app — from the parser):**
+- `archetype` (~15 values, from `archetype.js`)
+- `num_tables`, `num_endpoints`, `num_pages` (bucketed)
+- `has_auth`, `has_agent`, `has_scheduler`, `has_websocket`, `has_upload`
+- `runtime` (SQLite / Postgres)
+- `multi_tenant`
 
-Short term: structured features only, no embeddings. XGBoost or similar. Works with ~200 examples.
+**Local context features (per compile cycle):**
+- `error_category`, `patch_op_type`, `file_location`, `table_involved`
 
-Medium term: add embedding of the compiled JS diff (not raw Clear — JS has massive training data behind it). Use `text-embedding-3-small` on the before/after diff.
+**Quality features (from the test quality signals work):**
+- `weak_assertion_count`, `red_step_observed`
 
-Long term: fine-tune on Clear specifically once you have 5k+ sessions.
+**Label:** did the final `run_tests` show `ok: true`?
+
+~20 structured features total. XGBoost territory — small tree-based model, trains in seconds on 200 examples, interpretable. NOT a 22M-param cross-encoder. The input space is tiny (low-cardinality categoricals + booleans); using a large language model would be overkill.
+
+Retrieval query: "in apps with this archetype AND this error category, what fixed it?" — NOT "what fixed this error anywhere."
+
+**Upgrade path (only if XGBoost plateaus):**
+- Medium term: add embedding of the compiled JS diff. Use `text-embedding-3-small` on before/after diff. Needs ~2k sessions.
+- Long term: fine-tune on Clear once you have 5k+ sessions. Probably never needed.
+
+See `RESEARCH.md` for the full architecture rationale.
 
 ---
 
@@ -309,11 +326,43 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 
 ### Where does the supervisor plan live?
 
-`plans/plan-supervisor-multi-session-04-17-2026.md`
+`plans/plan-supervisor-multi-session-04-17-2026.md` — the original plan. Historical now; implementation has started.
 
-Covers: session registry, supervisor loop, task distribution, merge step, shared memory, observability, GA-based candidate generation, re-ranker, mechanical quality signals. Red-teamed. Not yet implemented.
+**What's built (Session 37, `feature/supervisor-multi-session`):**
 
-Branch when ready: `feature/supervisor-multi-session`
+| File | What it does |
+|------|--------------|
+| `playground/supervisor.js` | Supervisor entry point — spawns N workers, serves REST/SSE API |
+| `playground/supervisor/registry.js` | Session registry (SQLite, WAL mode) — tracks worker state |
+| `playground/supervisor/spawner.js` | Worker process spawner (port availability check, killAll) |
+| `playground/supervisor/loop.js` | Poll loop + state machine (TASK COMPLETE / STUCK detection) + SSE |
+| `playground/supervisor/factor-db.js` | Factor DB — code_actions, ga_runs, ga_candidates, reranker_feedback |
+| `playground/supervisor/archetype.js` | Shape-of-work classifier (see below) |
+| `playground/supervisor/cold-start.js` | Seeds Factor DB with 8 template rows + 20 curriculum skeletons |
+
+Server.js extended: `--port=` / `--session-id=` CLI args, `_workerLastSource` module-level shadow var, `/api/current-source`, `/api/worker-heartbeat`.
+
+22 tests across 4 modules, all green. 1947 compiler tests still green.
+
+Pending from the plan: Phase 4 (task distribution — `assignTask` is stubbed but not wired to `/api/chat`), Phase 6 (merge step), Phase 7 (Studio UI panel).
+
+---
+
+### Where does the archetype classifier live?
+
+`playground/supervisor/archetype.js` — takes a parsed Clear program and returns one of 15 archetypes describing the *shape of work*:
+
+**UI-forward:** `queue_workflow`, `routing_engine`, `agent_workflow`, `dashboard`, `crud_app`, `content_app`, `realtime_app`, `booking_app`, `ecommerce`
+
+**Backend-only:** `api_service`, `etl_pipeline`, `webhook_handler`, `batch_job`, `data_sync`
+
+**Fallback:** `general`
+
+Deterministic rules over parser output. No ML. Runs in milliseconds. Interpretable — you can log "classified as `queue_workflow` because tables have a `status` field and the app has auth policies."
+
+The archetype is stored as a column on `code_actions` in the Factor DB (indexed). Used by `querySimilar({ archetype })` to filter retrieval — "in queue_workflow apps with auth, when validation fails, what fixed it?" That's the engineer-parity: real engineers don't fix errors in isolation, they know the app shape.
+
+Validation: all 8 core templates classify to the correct archetype (see `archetype.test.js`). See `RESEARCH.md` for the full rule chain and upgrade path.
 
 ---
 
