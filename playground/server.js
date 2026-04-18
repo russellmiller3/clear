@@ -2,7 +2,7 @@ import express from 'express';
 import { compileProgram } from '../index.js';
 import { parse } from '../parser.js';
 import { patch } from '../patch.js';
-import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync, openSync, closeSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
@@ -2196,6 +2196,144 @@ app.get('/api/flywheel-stats', async (req, res) => {
   } catch (err) {
     res.json({ enabled: false, error: err.message });
   }
+});
+
+// ─── SUPERVISOR DASHBOARD ENDPOINTS ──────────────────────────────
+// Backs the "Supervisor" tab in Studio. Session browser + sweep control.
+
+// List of recent sessions with aggregated stats. For the session table.
+app.get('/api/supervisor/sessions', (req, res) => {
+  if (!_factorDB) return res.json({ sessions: [] });
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '30', 10), 100);
+    const sessions = _factorDB._db.prepare(`
+      SELECT
+        session_id,
+        COUNT(*) AS rows,
+        SUM(compile_ok) AS compiles_ok,
+        SUM(test_pass) AS tests_pass,
+        MIN(created_at) AS started_at,
+        MAX(created_at) AS last_at,
+        (SELECT archetype FROM code_actions WHERE session_id = ca.session_id
+          AND archetype IS NOT NULL ORDER BY created_at DESC LIMIT 1) AS archetype
+      FROM code_actions ca
+      GROUP BY session_id
+      ORDER BY last_at DESC
+      LIMIT ?
+    `).all(limit);
+    res.json({ sessions });
+  } catch (err) {
+    res.json({ sessions: [], error: err.message });
+  }
+});
+
+// All rows for a specific session — trajectory drill-down.
+app.get('/api/supervisor/session/:id', (req, res) => {
+  if (!_factorDB) return res.status(404).json({ error: 'Factor DB unavailable' });
+  try {
+    const rows = _factorDB._db.prepare(`
+      SELECT id, archetype, compile_ok, test_pass, test_score,
+        patch_summary, source_before, error_sig, created_at
+      FROM code_actions
+      WHERE session_id = ?
+      ORDER BY created_at ASC
+    `).all(req.params.id);
+    if (rows.length === 0) return res.status(404).json({ error: 'Session not found' });
+    res.json({ session_id: req.params.id, rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sweep control — kick off a curriculum sweep from the Studio UI.
+// Spawns the CLI script detached, writes progress to a temp log we can read.
+let _activeSweep = null; // { runId, child, logPath, startedAt }
+
+app.post('/api/supervisor/start-sweep', (req, res) => {
+  if (_activeSweep) {
+    return res.status(409).json({ error: 'A sweep is already running', runId: _activeSweep.runId });
+  }
+  const workers = Math.max(1, Math.min(parseInt(req.body?.workers || '3', 10), 5));
+  const tasks = typeof req.body?.tasks === 'string' ? req.body.tasks : null;
+  const timeout = Math.max(30, Math.min(parseInt(req.body?.timeout || '150', 10), 600));
+
+  const runId = `sweep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const logPath = join(__dirname, '..', '.clear-sweep-logs');
+  try { mkdirSync(logPath, { recursive: true }); } catch {}
+  const logFile = join(logPath, runId + '.log');
+
+  const args = [
+    join(__dirname, 'supervisor', 'curriculum-sweep.js'),
+    `--workers=${workers}`,
+    `--timeout=${timeout}`,
+  ];
+  if (tasks) args.push(`--tasks=${tasks}`);
+
+  const fd = openSync(logFile, 'w');
+  const child = spawn('node', args, {
+    stdio: ['ignore', fd, fd],
+    detached: false,
+    env: { ...process.env },
+  });
+  closeSync(fd);
+
+  _activeSweep = {
+    runId,
+    child,
+    logPath: logFile,
+    startedAt: Date.now(),
+    workers,
+    tasks,
+    timeout,
+  };
+
+  child.on('exit', (code) => {
+    if (_activeSweep && _activeSweep.runId === runId) {
+      _activeSweep.exitCode = code;
+      _activeSweep.endedAt = Date.now();
+    }
+  });
+
+  res.json({ runId, workers, tasks: tasks || 'all', startedAt: _activeSweep.startedAt });
+});
+
+// Sweep progress — poll the log file + exit state.
+app.get('/api/supervisor/sweep-progress', (req, res) => {
+  if (!_activeSweep) return res.json({ active: false });
+  let log = '';
+  try { log = readFileSync(_activeSweep.logPath, 'utf8'); } catch {}
+
+  // Parse task completions from log lines like: "  [✅] L1 hello-world — 30.7s"
+  const taskLines = (log.match(/\[(✅|❌|🔶|⏱️)\][^\n]+/g) || []).map(line => {
+    const m = line.match(/\[(\S+)\]\s+(L\d+)\s+(\S+)\s+—\s+([\d.]+)s/);
+    return m ? { status: m[1], level: m[2], task: m[3], duration: parseFloat(m[4]) } : { raw: line };
+  });
+
+  const finished = _activeSweep.exitCode !== undefined;
+  res.json({
+    active: true,
+    finished,
+    runId: _activeSweep.runId,
+    workers: _activeSweep.workers,
+    startedAt: _activeSweep.startedAt,
+    endedAt: _activeSweep.endedAt || null,
+    exitCode: _activeSweep.exitCode,
+    elapsedMs: (_activeSweep.endedAt || Date.now()) - _activeSweep.startedAt,
+    tasksCompleted: taskLines.length,
+    tasks: taskLines,
+    logTail: log.split('\n').slice(-40).join('\n'),
+  });
+});
+
+// Clear the active sweep record so a new one can start.
+// (If the child exited, we can clear. If still running, this 409s.)
+app.post('/api/supervisor/clear-sweep', (req, res) => {
+  if (!_activeSweep) return res.json({ cleared: false });
+  if (_activeSweep.exitCode === undefined) {
+    return res.status(409).json({ error: 'Sweep still running. Wait or kill first.' });
+  }
+  _activeSweep = null;
+  res.json({ cleared: true });
 });
 
 // Dev-only: session quality records for re-ranker debugging.
