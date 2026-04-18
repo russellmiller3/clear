@@ -1,0 +1,12 @@
+{
+  "name": "clear-deploy-builder",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Clear deploy builder — accepts Clear source tarballs, produces live Fly URLs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node server.test.js"
+  },
+  "dependencies": {}
+}

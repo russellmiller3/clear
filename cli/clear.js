@@ -41,6 +41,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { resolve, dirname, basename, extname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { execSync, spawn } from 'child_process';
+import { packageBundle } from '../lib/packaging.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COMPILER_PATH = pathToFileURL(resolve(__dirname, '..', 'index.js')).href;
@@ -880,77 +881,9 @@ async function packageCommand(args) {
   }
 
   const outDir = flags.outDir || resolve(dirname(loaded.filePath), 'deploy');
-  mkdirSync(outDir, { recursive: true });
-  const files = [];
-
-  const serverCode = result.serverJS || result.javascript;
-  writeFileSync(resolve(outDir, 'server.js'), serverCode);
-  files.push('server.js');
-
-  if (result.html) {
-    writeFileSync(resolve(outDir, 'index.html'), result.html);
-    files.push('index.html');
-  }
-  if (result.tests) {
-    writeFileSync(resolve(outDir, 'test.js'), result.tests);
-    files.push('test.js');
-  }
-
-  // Runtime — copy the correct db adapter based on database backend
-  const runtimeDir = resolve(outDir, 'clear-runtime');
-  mkdirSync(runtimeDir, { recursive: true });
-  const runtimeSrc = resolve(__dirname, '..', 'runtime');
-  const isPostgres = (result.dbBackend || '').includes('postgres');
-
-  // Copy db adapter — Postgres gets db-postgres.js renamed to db.js
-  if (isPostgres) {
-    copyFileSync(resolve(runtimeSrc, 'db-postgres.js'), resolve(runtimeDir, 'db.js'));
-  } else {
-    copyFileSync(resolve(runtimeSrc, 'db.js'), resolve(runtimeDir, 'db.js'));
-  }
-  for (const f of ['auth.js', 'rateLimit.js']) {
-    const src = resolve(runtimeSrc, f);
-    if (existsSync(src)) copyFileSync(src, resolve(runtimeDir, f));
-  }
-  files.push('clear-runtime/');
-
-  // package.json — collect npm packages from USE nodes
-  const npmDeps = {};
-  const collectNpm = (nodes) => {
-    if (!Array.isArray(nodes)) return;
-    for (const n of nodes) {
-      if (n && n.type === 'use' && n.isNpm && n.npmPackage) {
-        npmDeps[n.npmPackage] = '*'; // latest; user can pin in their own package.json
-      }
-      if (n && n.body) collectNpm(n.body);
-      if (n && n.pages) collectNpm(n.pages);
-    }
-  };
-  collectNpm(result.ast?.body || []);
-  const appName = basename(file, extname(file)).replace(/[^a-z0-9-]/g, '-');
-  const dbDep = isPostgres ? { pg: '^8.13.0' } : { 'better-sqlite3': '^12.8.0' };
-  const pkg = {
-    name: `clear-${appName}`,
-    version: '1.0.0',
-    description: 'Built with Clear language',
-    main: 'server.js',
-    scripts: { start: 'node server.js', test: 'node test.js' },
-    dependencies: { express: '^4.18.0', ...dbDep, ...npmDeps },
-  };
-  writeFileSync(resolve(outDir, 'package.json'), JSON.stringify(pkg, null, 2));
-  files.push('package.json');
-
-  // Dockerfile — Postgres apps use node:20-slim (no native deps), SQLite uses alpine
-  const dockerfile = isPostgres
-    ? 'FROM node:20-slim\nWORKDIR /app\nCOPY package.json .\nRUN npm install --production\nCOPY . .\nEXPOSE 3000\nCMD ["node", "server.js"]'
-    : 'FROM node:20-alpine\nWORKDIR /app\nCOPY package.json .\nRUN npm install --production\nCOPY . .\nEXPOSE 3000\nCMD ["node", "server.js"]';
-  writeFileSync(resolve(outDir, 'Dockerfile'), dockerfile);
-  files.push('Dockerfile');
-
-  writeFileSync(resolve(outDir, '.dockerignore'), 'node_modules\nclear-data.db\nclear-data.db-wal\nclear-data.db-shm\n');
-  files.push('.dockerignore');
-
-  output({ ok: true, files, outDir, message: `Packaged ${files.length} files to ${outDir}/` }, flags);
+  const appName = basename(file, extname(file));
+  const res = packageBundle(result, outDir, { sourceText: loaded.source, appName });
+  output({ ok: true, files: res.files, outDir: res.outDir, message: `Packaged ${res.files.length} files to ${res.outDir}/` }, flags);
 }
 
 async function deployCommand(args) {

@@ -495,12 +495,14 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
+    <button id="deploy-btn" class="toolbar-btn primary" onclick="doDeploy()" title="Ship to a live URL" style="display:none">Deploy</button>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doSave()" title="Save to Desktop">Save</button>
     <button id="download-btn" class="toolbar-btn" onclick="doDownload()" title="Download compiled HTML" style="display:none">Download</button>
     <button class="toolbar-btn" onclick="openDocs('syntax')" title="Syntax reference">Syntax</button>
     <button class="toolbar-btn" onclick="openDocs('user-guide')" title="User guide">Guide</button>
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
+    <span id="plan-badge" class="plan-badge" style="display:none" onclick="window.location='/billing'" title="Click to manage billing"></span>
     <span id="compile-stats-badge" class="compile-stats-badge"></span>
     <span id="tests-stats-badge" class="compile-stats-badge tests-stats-badge"></span>
     <span id="status" class="status-ok">Ready</span>
@@ -1222,6 +1224,15 @@ async function autoCompile() {
       // Show Run/Stop now that we have a compiled result
       document.getElementById('run-btn').style.display = '';
       document.getElementById('stop-btn').style.display = '';
+      // Deploy button is visible on compile success when the customer has an active plan
+      (async () => {
+        try {
+          const tr = await fetch('/api/tenant').then(r => r.ok ? r.json() : null).catch(() => null);
+          const canDeploy = tr && tr.ok && tr.plan && tr.plan !== 'cancelled';
+          document.getElementById('deploy-btn').style.display = canDeploy ? '' : 'none';
+          updatePlanBadge(tr);
+        } catch { /* no tenant yet — hide Deploy */ }
+      })();
       // Show/hide contextual tabs and meta chips
       const srcInfo = parseSourceInfo();
       document.getElementById('data-tab-btn').style.display = srcInfo.tables.length > 0 ? '' : 'none';
@@ -2576,6 +2587,128 @@ window.doStop = async function() {
   setStatus('ok', 'Stopped');
   runningPort = null;
   if (activeTab === 'output') showOutput();
+};
+
+// ==========================================================================
+// DEPLOY (one-click deploy to Fly.io via builder service)
+// ==========================================================================
+function updatePlanBadge(t) {
+  const el = document.getElementById('plan-badge');
+  if (!el) return;
+  if (!t || !t.ok) { el.style.display = 'none'; return; }
+  const spent = (t.ai_spent_cents / 100).toFixed(2);
+  const credit = (t.ai_credit_cents / 100).toFixed(2);
+  el.textContent = `${t.apps_deployed}/${t.plan === 'pro' ? 25 : 1} • $${spent}/$${credit}`;
+  el.title = `Plan: ${t.plan}`;
+  el.style.display = '';
+  const over = (t.ai_spent_cents > t.ai_credit_cents) || (t.plan === 'pro' && t.apps_deployed >= 25);
+  el.style.color = over ? '#e74c3c' : 'var(--tx2)';
+}
+
+function deployStageLabel(status) {
+  if (!status) return 'starting…';
+  const s = status.status || status;
+  if (s === 'queued') return 'queued';
+  if (s === 'running') return 'building + pushing…';
+  if (s === 'ok') return 'live';
+  if (s === 'failed') return 'failed';
+  return String(s);
+}
+
+function escHtmlLocal(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+window.doDeploy = async function() {
+  const source = (typeof getSource === 'function') ? getSource() : (window.editor ? window.editor.state.doc.toString() : '');
+  if (!source) { alert('Nothing to deploy — compile first.'); return; }
+
+  const appSlugDefault = 'app-' + Math.random().toString(36).slice(2, 6);
+  const modal = document.getElementById('deploy-modal');
+  modal.style.display = 'flex';
+  modal.innerHTML = `
+    <div class="deploy-box">
+      <div class="deploy-title">Deploy to a live URL</div>
+      <label>App name</label>
+      <input id="deploy-app-slug" type="text" value="${appSlugDefault}">
+      <label>Custom domain (optional)</label>
+      <input id="deploy-domain" type="text" placeholder="deals.acme.com">
+      <div id="deploy-secret-fields"></div>
+      <div class="deploy-actions">
+        <button id="deploy-cancel-btn">Cancel</button>
+        <button id="deploy-submit-btn" class="primary">Ship it</button>
+      </div>
+      <div id="deploy-progress"></div>
+    </div>`;
+  document.getElementById('deploy-cancel-btn').onclick = () => { modal.style.display = 'none'; };
+
+  document.getElementById('deploy-submit-btn').onclick = async () => {
+    const appSlug = document.getElementById('deploy-app-slug').value.trim();
+    const domain = document.getElementById('deploy-domain').value.trim();
+    const progress = document.getElementById('deploy-progress');
+    progress.textContent = 'packaging…';
+
+    const secrets = {};
+    document.querySelectorAll('#deploy-secret-fields input').forEach(inp => {
+      if (inp.value) secrets[inp.dataset.key] = inp.value;
+    });
+
+    let r;
+    try {
+      r = await fetch('/api/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, appSlug, secrets, domain: domain || undefined }),
+      }).then(x => x.json().then(j => ({ status: x.status, body: j })));
+    } catch (e) {
+      progress.innerHTML = `<span style="color:#e74c3c">Network error: ${escHtmlLocal(e.message)}</span>`;
+      return;
+    }
+
+    if (r.status === 400 && r.body.needsSecrets) {
+      progress.innerHTML = `<span>This app needs secrets: ${r.body.needsSecrets.join(', ')}. Fill them and re-submit.</span>`;
+      const f = document.getElementById('deploy-secret-fields');
+      f.innerHTML = r.body.needsSecrets.map(k =>
+        `<label>${escHtmlLocal(k)}</label><input data-key="${escHtmlLocal(k)}" type="password" placeholder="paste value">`,
+      ).join('');
+      return;
+    }
+    if (r.status === 402) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'quota exceeded')}</span>`; return; }
+    if (r.status === 503) { progress.innerHTML = `<span style="color:#e74c3c">Deploy service down — try again in a minute.</span>`; return; }
+    if (!r.body.ok) { progress.innerHTML = `<span style="color:#e74c3c">${escHtmlLocal(r.body.error || 'deploy failed')}</span>`; return; }
+
+    const jobId = r.body.jobId;
+    progress.textContent = 'deploying…';
+    const poll = async () => {
+      const s = await fetch(`/api/deploy-status/${encodeURIComponent(jobId)}`).then(x => x.ok ? x.json() : null).catch(() => null);
+      if (!s) { setTimeout(poll, 2000); return; }
+      progress.textContent = deployStageLabel(s);
+      if (s.status === 'ok') {
+        const url = s.result?.url || `https://${s.result?.appName || 'app'}.fly.dev`;
+        progress.innerHTML = `<div style="margin-top:12px">Live: <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
+          <button onclick="navigator.clipboard.writeText('${url}')">Copy</button></div>`;
+        if (domain) {
+          fetch('/api/custom-domain', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appName: s.result?.appName, domain }),
+          }).then(x => x.json()).then(c => {
+            if (c.ok) progress.innerHTML += `<div style="margin-top:8px">DNS records: <pre>${escHtmlLocal(c.stdout || '')}</pre></div>`;
+          });
+        }
+        return;
+      }
+      if (s.status === 'failed') {
+        const err = s.result || {};
+        const tail = (err.stderr || '').split('\n').slice(-20).join('\n');
+        progress.innerHTML = `<div style="color:#e74c3c">Failed at stage: ${escHtmlLocal(err.stage || '?')} — ${escHtmlLocal(err.reason || '')}</div><pre>${escHtmlLocal(tail)}</pre>
+          <button onclick="doDeploy()">Retry</button>`;
+        return;
+      }
+      setTimeout(poll, 2000);
+    };
+    poll();
+  };
 };
 
 // ==========================================================================
@@ -4266,6 +4399,29 @@ window.toggleChat = function() {
 // Boot
 loadTemplates();
 // Ready message is shown after /api/config resolves (see fetch above)
+
+// Fetch tenant info on boot — drives Deploy button visibility + plan badge
+(async () => {
+  try {
+    const t = await fetch('/api/tenant').then(r => r.ok ? r.json() : null).catch(() => null);
+    updatePlanBadge(t);
+  } catch {}
+})();
 </script>
+<!-- Deploy modal — injected populated by doDeploy() -->
+<div id="deploy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center"></div>
+<style>
+.plan-badge { font-size:11px; padding:3px 8px; border:1px solid var(--bd); border-radius:10px; color:var(--tx2); cursor:pointer; font-family:ui-monospace,monospace; }
+.plan-badge:hover { border-color: var(--accent); color: var(--accent); }
+#deploy-modal .deploy-box { background: var(--bg1); color: var(--tx1); padding: 24px; border-radius: 10px; border: 1px solid var(--bd); width: 460px; max-width: 90vw; font-family: ui-sans-serif, system-ui, sans-serif; }
+#deploy-modal .deploy-title { font-size: 18px; font-weight: 600; margin-bottom: 14px; }
+#deploy-modal label { display:block; font-size: 11px; color: var(--tx2); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+#deploy-modal input { width: 100%; padding: 7px 10px; border: 1px solid var(--bd); background: var(--bg2); color: var(--tx1); border-radius: 6px; font-family: ui-monospace, monospace; font-size: 13px; box-sizing: border-box; }
+#deploy-modal .deploy-actions { display:flex; justify-content:flex-end; gap:8px; margin-top: 18px; }
+#deploy-modal button { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--bd); background: var(--bg2); color: var(--tx1); cursor: pointer; font-size: 13px; }
+#deploy-modal button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+#deploy-modal #deploy-progress { margin-top: 14px; font-size: 13px; color: var(--tx2); word-break: break-all; }
+#deploy-modal pre { background: var(--bg2); padding: 8px; border-radius: 4px; font-size: 11px; max-height: 180px; overflow: auto; }
+</style>
 </body>
 </html>

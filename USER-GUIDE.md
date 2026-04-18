@@ -2875,6 +2875,69 @@ In Clear, it's one file that you can read top to bottom in two minutes.
 
 ## What's Next? (You Did It!)
 
+## Chapter 20.5: Ship It — One-Click Deploy
+
+You built it. It runs on your laptop. Now put it on the internet so the rest of your team can use it.
+
+### The Deploy button
+
+Open your app in Clear Studio. Compile. Click **Deploy** in the toolbar. You'll see a modal asking for:
+
+- **App name** — lowercase letters, numbers, hyphens. 3–32 characters. This becomes part of your URL.
+- **Custom domain (optional)** — `deals.acme.com` if you own one, otherwise leave blank and you'll get a `*.fly.dev` URL.
+- **Secrets** — if your app uses `requires login`, a JWT signing secret is auto-generated. If you used `use stripe` / `use twilio` / `use sendgrid`, you'll be prompted for each API key.
+
+Click Ship It. In roughly 15 seconds you'll see:
+
+```
+Live: https://clear-acme-todos-a7b3c9.fly.dev   [Copy]
+```
+
+That URL is real. Open it in any browser. Send it to your team.
+
+### What just happened
+
+Under the hood, five things ran in sequence:
+
+1. Studio re-packaged your compiled app (server.js, package.json, a Dockerfile, the runtime helpers) into a tarball.
+2. A shared **builder machine** we run inside Fly's network received the tarball, ran `docker build` and `docker push` to Fly's registry.
+3. `flyctl` created a new app for you in our `clear-apps` org, attached a volume for SQLite apps (or a Postgres database for Postgres apps), set your secrets, and deployed the image.
+4. The builder waited for Fly to report the machine as `started`, then returned the public URL.
+5. Studio wired your app name to your tenant so re-deploys land on the same URL.
+
+You don't need a Fly account. You don't see Docker. You don't write a `fly.toml`. You clicked a button.
+
+### AI calls in deployed apps
+
+If your app uses `ask claude` or `define agent`, those calls route through Clear's metered AI proxy on deployed apps — no Anthropic key paste required. The plan badge in Studio (`0/25 • $0.00/$10.00`) shows apps deployed out of your plan limit and AI spend out of monthly credit.
+
+### Custom domains
+
+If you typed a domain in the Deploy modal, Clear calls `flyctl certs create` for you and returns the DNS records to point at Fly. Copy the A/AAAA records into your DNS provider (Cloudflare, Route 53, etc.) and the cert auto-renews.
+
+### Rollback
+
+Every deploy produces a new release. Open the **Deploy History** drawer, pick any prior release, click Rollback. The live URL flips back to that version in seconds. Your data stays put — rollback only swaps the code.
+
+### Plans
+
+- **Free** — 1 app, no AI credit. Good for learning.
+- **Pro ($99/mo)** — 25 apps, $10/mo of AI credit included, custom domains.
+- **Team ($299/mo)** — 100 apps, $50/mo of AI credit, 10 seats.
+
+Overage on AI credit bills at cost through Stripe metered billing.
+
+### What Clear won't let you do
+
+- Deploy apps with shell metacharacters in the name (rejected at Studio, never reaches the builder).
+- Roll back or change cert on an app belonging to another tenant (403 CROSS_TENANT).
+- Upload tarballs with `..` paths or absolute paths or symlinks (builder rejects PATH_ESCAPE).
+- Run up an AI bill after your quota is gone (proxy returns 402 "Upgrade or top up").
+
+These are not feature requests — they're guarantees. Every customer app is isolated in its own Firecracker VM.
+
+---
+
 ## Chapter 21: Policies (Safety Guardrails)
 
 Your AI agent is smart. But smart doesn't mean safe. What happens when it
