@@ -45,6 +45,22 @@ const WORKER_BASE_PORT = 3490;
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Poll a worker's heartbeat until it responds or we time out.
+// Replaces fixed-duration sleep (unreliable on slow startup).
+async function waitForWorkerReady(port, maxMs = 15000) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`http://localhost:${port}/api/worker-heartbeat`, {
+        signal: AbortSignal.timeout(500),
+      });
+      if (r.ok) return true;
+    } catch { /* not ready yet */ }
+    await wait(250);
+  }
+  return false;
+}
+
 // Split an array into N roughly-equal chunks
 export function partitionTasks(items, n) {
   const buckets = Array.from({ length: n }, () => []);
@@ -189,8 +205,15 @@ export async function runSweep({
   try {
     console.log(`Spawning ${workers} workers...`);
     await spawner.spawnAll(workers, WORKER_BASE_PORT);
-    console.log(`Waiting for workers to bind...`);
-    await wait(3500);
+    console.log(`Waiting for workers to be ready...`);
+    const readyChecks = await Promise.all(
+      Array.from({ length: workers }, (_, i) => waitForWorkerReady(WORKER_BASE_PORT + i))
+    );
+    const notReady = readyChecks.map((ok, i) => ok ? null : `worker-${i + 1}`).filter(Boolean);
+    if (notReady.length > 0) {
+      throw new Error(`Workers not ready after 15s: ${notReady.join(', ')}`);
+    }
+    console.log(`All ${workers} workers ready.`);
 
     const t0 = Date.now();
 
@@ -202,7 +225,8 @@ export async function runSweep({
           : result.stuck ? '🔶 STUCK'
             : result.timedOut ? '⏱️  TIMEOUT'
               : '❌';
-        console.log(`  [${status}] L${task.level} ${task.id} — ${(elapsed / 1000).toFixed(1)}s`);
+        const detail = result.error ? ` — ${result.error.slice(0, 120)}` : '';
+        console.log(`  [${status}] L${task.level} ${task.id} — ${(elapsed / 1000).toFixed(1)}s${detail}`);
       });
     }));
 

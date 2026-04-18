@@ -49,6 +49,20 @@ const WORKER_BASE_PORT = 3495;
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+async function waitForWorkerReady(port, maxMs = 15000) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`http://localhost:${port}/api/worker-heartbeat`, {
+        signal: AbortSignal.timeout(500),
+      });
+      if (r.ok) return true;
+    } catch {}
+    await wait(250);
+  }
+  return false;
+}
+
 // Drive one scenario on a specific worker. Returns { ok, graded, calls, selfReport, elapsedMs }
 async function runScenarioOnWorker(port, scenario, apiKey, timeoutMs) {
   const fullPrompt = `${scenario.prompt}
@@ -204,7 +218,12 @@ export async function runReplicatedEval({
   try {
     console.log(`\nSpawning ${trials} workers...`);
     await spawner.spawnAll(trials, WORKER_BASE_PORT);
-    await wait(3500);
+    const readyChecks = await Promise.all(
+      Array.from({ length: trials }, (_, i) => waitForWorkerReady(WORKER_BASE_PORT + i))
+    );
+    const notReady = readyChecks.map((ok, i) => ok ? null : `worker-${i + 1}`).filter(Boolean);
+    if (notReady.length > 0) throw new Error(`Workers not ready after 15s: ${notReady.join(', ')}`);
+    console.log(`All ${trials} workers ready.`);
 
     const t0 = Date.now();
     console.log(`Running ${trials} parallel trials of ${SCENARIOS.length} scenarios each...\n`);
