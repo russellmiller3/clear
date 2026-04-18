@@ -18,7 +18,7 @@ Ship the current feature branch. This is a comprehensive ship process for the Cl
 
 **THE RULE: If a feature exists in the compiler but not in the docs, it doesn't exist for anyone but us. Every feature ships with documentation or it doesn't ship.**
 
-For EVERY new or changed feature on this branch, verify it appears in ALL FIVE documentation surfaces:
+For EVERY new or changed feature on this branch, verify it appears in ALL NINE documentation surfaces:
 
 | # | File | What to check | If missing |
 |---|------|--------------|------------|
@@ -28,15 +28,16 @@ For EVERY new or changed feature on this branch, verify it appears in ALL FIVE d
 | 4 | **`USER-GUIDE.md`** | Tutorial coverage with a worked example | Add to an existing chapter or create a new section. Must be teachable. |
 | 5 | **`.claude/skills/write-clear/SKILL.md`** | Meph knows how to use this feature | Add syntax pattern and example if it's something Meph would write |
 | 5b | **`playground/system-prompt.md`** | Meph's live system prompt in Studio — this is what actually ships to users. The write-clear SKILL tells Claude how to write Clear; the system-prompt tells Meph how to write Clear when helping a human in Studio. If a new syntax/behavior is added, Meph must know about it here or users see stale guidance. | Add syntax example + when to use it, matching existing prompt style |
+| 6 | **`ROADMAP.md`** | Completed phases marked, line counts updated, new phases added | ALWAYS update — this is the SOURCE OF TRUTH for what Clear can do. Mark what was built, what phase it falls under, update test/line counts. |
+| 7 | **`FAQ.md`** | "Where does X live?", "How do I Y?", "Why did we Z?" entries for any touched subsystem. First-stop reference before grep. | Add "Where / How / Why" questions for new infrastructure. Update existing entries when you change the answer. |
+| 8 | **`RESEARCH.md`** | Theory / flywheel / re-ranker / training signal — anything that affects how Meph learns across sessions | Update if you touched Factor DB schema, archetype classifier, hint retrieval, curriculum, eval pipeline, or added a new capability. Keep the "Read This First" plain-English section current — it's the capability surface for non-technical readers. |
 
 **How to audit:** For each `.js` file changed on this branch:
 1. `git diff main -- parser.js | grep "+.*NodeType\."` — find new node types
 2. `git diff main -- parser.js | grep "+.*canonical =\|+.*CANONICAL_DISPATCH"` — find new dispatch entries
 3. `git diff main -- compiler.js | grep "+.*case NodeType\."` — find new compiler cases
 4. `git diff main -- synonyms.js | grep "+.*Object.freeze"` — find new synonyms
-5. For EACH finding, grep all 5 doc files. If missing from any, add it.
-
-| 6 | **`ROADMAP.md`** | Completed phases marked, line counts updated, new phases added | ALWAYS update — this is the SOURCE OF TRUTH for what Clear can do. If it's not in the roadmap, future sessions won't know it exists. Mark what was built, what phase it falls under, update test/line counts. |
+5. For EACH finding, grep all 9 doc files. If missing from any, add it.
 
 **Also update these as needed:**
 - **`learnings.md`** — Tricky bugs, compiler gotchas, design decisions
@@ -44,6 +45,7 @@ For EVERY new or changed feature on this branch, verify it appears in ALL FIVE d
 - **`design-system.md`** — Theme changes, new presets, component patterns
 - **`HANDOFF.md`** — Rewrite: what was done, what's next, key decisions, resume prompt
 - **`CLAUDE.md`** — New rules, update test count if tests were added
+- **`PROGRESS.md`** — If on a multi-session branch, update phase status + HITL fix table
 
 ### Step 1: Rebuild playground bundle
 
