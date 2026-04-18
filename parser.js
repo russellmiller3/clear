@@ -5247,12 +5247,14 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
       if (fPos < fieldTokens.length && fieldTokens[fPos].type === TokenType.RPAREN) fPos++;
     }
 
-    // Parse modifiers: required, unique, default 'x', auto, has many
+    // Parse modifiers: required, unique, default 'x', auto, has many, hidden, renamed to
     let required = false;
     let unique = false;
     let auto = false;
     let defaultValue = null;
     let hasMany = null;
+    let hidden = false;
+    let renamedTo = null;
 
     while (fPos < fieldTokens.length) {
       if (fieldTokens[fPos].type === TokenType.COMMA) { fPos++; continue; }
@@ -5262,6 +5264,15 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
       if (mod === 'required') { required = true; fPos++; }
       else if (mod === 'unique') { unique = true; fPos++; }
       else if (mod === 'auto') { auto = true; fPos++; }
+      else if (mod === 'hidden') { hidden = true; fPos++; }
+      else if (mod === 'renamed' && fPos + 1 < fieldTokens.length &&
+               typeof fieldTokens[fPos + 1].value === 'string' && fieldTokens[fPos + 1].value.toLowerCase() === 'to') {
+        fPos += 2;
+        if (fPos < fieldTokens.length) {
+          renamedTo = fieldTokens[fPos].value;
+          fPos++;
+        }
+      }
       else if (mod === 'default') {
         fPos++;
         if (fPos < fieldTokens.length) {
@@ -5322,6 +5333,8 @@ function parseDataShape(lines, startIdx, blockIndent, errors) {
       required, unique, auto, defaultValue, fk,
     };
     if (hasMany) fieldObj.hasMany = hasMany;
+    if (hidden) fieldObj.hidden = true;
+    if (renamedTo) fieldObj.renamedTo = renamedTo;
     fields.push(fieldObj);
     j++;
   }
