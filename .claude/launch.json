@@ -6,7 +6,8 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["playground/server.js"],
       "port": 3456,
-      "autoPort": false
+      "autoPort": false,
+      "env": { "CLEAR_ALLOW_SEED": "1" }
     },
     {
       "name": "startup-landing",

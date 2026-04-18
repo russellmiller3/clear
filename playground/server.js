@@ -8,6 +8,7 @@ import { spawn, execSync } from 'child_process';
 import { createHash } from 'crypto';
 import { chromium } from 'playwright';
 import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './eval-auth.js';
+import { wireDeploy } from './deploy.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -39,6 +40,11 @@ app.get('/', (req, res) => {
   res.sendFile(join(__dirname, 'ide.html'));
 });
 app.use(express.static(__dirname, { etag: false, lastModified: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+
+// Deploy + billing endpoints (Phase 85 — one-click deploy). Needs express.json
+// already mounted above. Uses an in-memory tenant store by default — swap to
+// Postgres-backed store in production via wireDeploy({ store }).
+wireDeploy(app);
 
 // =============================================================================
 // COMPILE

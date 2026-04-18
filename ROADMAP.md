@@ -353,12 +353,20 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Eval child shutdown race | `killEvalChildAndWait()` awaits exit + 200ms OS socket grace before respawn | Done — sync kill was racing the next spawn on port 4999, surfacing as cascading "fetch failed." |
 | Extended eval idle timer | `EVAL_IDLE_MS` 60s → 300s | Done — multi-agent suites run 3+ min; child was being reaped mid-run when grader bursts spanned 60s between probe hits. |
 | **Agent+auth template evals all pass** | page-analyzer, lead-scorer, helpdesk-agent, ecom-agent, multi-agent-research | **29/29** specs pass end-to-end (was 15/29 at session 32 baseline). Real-API validation of the whole eval stack. |
+| **Phase 85 — One-click deploy (Studio → Fly)** | Session 37 | Deploy button in Studio ships compiled apps to a live URL in seconds. Shared builder + metered AI proxy + tenant/billing layer + cross-tenant isolation. 72 passing tests across packaging, builder, proxy, billing, deploy, security. External prerequisites (Fly sales email, Stripe signup, domain registration, Anthropic org key) still required before first real deploy. |
 
 ---
 
 ## What's Next
 
 Ordered by impact. Three tracks: **go-to-market**, **language completeness**, and **platform quality**.
+
+### One-click deploy follow-ups (Phase 85 shipped)
+1. **Phase 85a — Provision the real stack.** Register buildclear.dev, apply for Fly Trust Verified status with 10k-machine quota, sign up for Stripe, generate Anthropic org key, wire Postgres for the tenants DB, and run `deploy-builder.sh` + `deploy-proxy.sh` once. Until this is done Deploy works end-to-end in tests but has nowhere to deploy to.
+2. **Phase 86 — Per-tenant usage dashboard.** The plan badge is a teaser; a full breakdown page (spend by day, top apps by AI spend, upgrade CTA) turns the badge into a billing conversion surface.
+3. **Phase 87 — Meph-driven deploy.** Meph gains a `deploy_app` tool so "ship it" from chat does the right thing: prompts for secrets, picks a domain, calls `/api/deploy`, streams progress into the chat bubble.
+4. **Phase 88 — Deploy history drawer.** Rollback API exists; surface it in the UI as a per-app drawer with version + diff preview.
+5. **Phase 89 — Multi-region + custom-domain polish.** Region picker at deploy time, cert-status polling, one-click DNS record copy. Everything is `iad`-only today.
 
 ### Go-To-Market & Positioning (locked Session 35)
 
