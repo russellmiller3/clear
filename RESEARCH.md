@@ -229,18 +229,27 @@ The archetype classifier maps any Clear app to its nearest shape-of-work. These 
 
 **How archetype is detected:**
 
-Not from template name — from structural signal. A decision-tree rule chain over parser output:
-1. `num_pages == 0` AND `has_cron` → `batch_job` or `etl_pipeline` (differentiated by external adapter presence)
-2. `num_pages == 0` AND no cron → `api_service` or `webhook_handler` (differentiated by endpoint count and signature verification)
-3. `has_websocket` → `realtime_app`
-4. `has_agent` AND workflow pattern → `agent_workflow`
-5. `has_chart` count > 2 AND aggregations → `dashboard`
-6. Tables have `status` field + state transitions → `queue_workflow`
-7. Conditional assignment across multiple owners → `routing_engine`
-8. ... (remaining rules for content/crud/ecom/booking)
-9. No signal dominates → `general`
+Not from template name — from structural signal. Lives at [`playground/supervisor/archetype.js`](playground/supervisor/archetype.js). A decision-tree rule chain over parser output:
 
-This classifier is deterministic, runs in milliseconds, and is interpretable — you can log "detected `queue_workflow` because tables have status field and 3 state transitions." When the classifier is wrong, you add a rule. No ML needed.
+1. `num_pages == 0` AND `has_cron` → `etl_pipeline` / `data_sync` / `batch_job` (differentiated by external adapter count)
+2. `num_pages == 0` AND single endpoint with signature or webhook path → `webhook_handler`
+3. `num_pages == 0` with endpoints → `api_service`
+4. `has_websocket` (SUBSCRIBE / BROADCAST nodes) → `realtime_app`
+5. `has_agent` (AGENT / RUN_AGENT / ASK_AI nodes) → `agent_workflow`
+6. `has_status_field` + `has_auth` + `has_routing_logic` → `routing_engine`
+7. `has_status_field` + `has_auth` → `queue_workflow`
+8. `num_charts >= 2` → `dashboard`
+9. Tables match ecommerce pattern (`order`, `cart`, `payment`, `product`, `invoice`) → `ecommerce`
+10. Fields match booking pattern (`slot`, `appointment`, `start_time`, `booking`) → `booking_app`
+11. `has_belongs_to` (fieldType=`fk`) AND `num_pages >= 2` → `content_app`
+12. `num_tables >= 1` + `num_endpoints >= 2` + `num_pages >= 1` → `crud_app`
+13. No signal dominates → `general`
+
+This classifier is deterministic, runs in milliseconds, and is interpretable — you can log "detected `queue_workflow` because tables have a `status` field and the app has auth policies." When the classifier is wrong, you add a rule. No ML needed.
+
+**Stored as:** a column on `code_actions` in the Factor DB. Backfilled at row-insert time by calling `classifyArchetype(parse(source))`. Indexed for fast `WHERE archetype = ?` filtering.
+
+**Validation:** all 8 core templates classify to the correct archetype (see `playground/supervisor/archetype.test.js`).
 
 **Local context features (per compile cycle):**
 

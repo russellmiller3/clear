@@ -9,7 +9,9 @@
 // Run: node playground/supervisor/cold-start.js
 
 import { compileProgram } from '../../index.js';
+import { parse } from '../../parser.js';
 import { FactorDB } from './factor-db.js';
+import { classifyArchetype } from './archetype.js';
 import { tasks } from '../../curriculum/index.js';
 import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
@@ -78,22 +80,26 @@ async function run() {
       ? sha1(result.errors.map(e => e.message).join('\n') + '\x00' + sha1(source))
       : null;
 
+    let archetype = 'general';
+    try { archetype = classifyArchetype(parse(source)); } catch {}
+
     const id = db.logAction({
       session_id: 'cold-start',
       task_type: inferTaskType(name),
+      archetype,
       error_sig: errorSig,
       file_state_hash: sha1(source),
       source_before: source.slice(0, 5000),
       patch_ops: [],
       patch_summary: `Cold-start seed: ${name} template (${source.split('\n').length} lines)`,
       compile_ok: compileOk,
-      test_pass: compileOk,  // assume: clean compile = passing (no HTTP runner yet)
+      test_pass: compileOk,
       test_score: compileOk ? 1.0 : 0.0,
       score_delta: 0.0,
     });
 
     const errStr = result.errors.length > 0 ? ` — ${result.errors.length} errors` : ' — clean';
-    console.log(`  ${compileOk ? '✅' : '❌'} ${name}${errStr} (row ${id})`);
+    console.log(`  ${compileOk ? '✅' : '❌'} ${name} [${archetype}]${errStr} (row ${id})`);
     inserted++;
   }
 
@@ -110,22 +116,26 @@ async function run() {
       ? sha1(result.errors.map(e => e.message).join('\n') + '\x00' + sha1(source))
       : null;
 
+    let archetype = 'general';
+    try { archetype = classifyArchetype(parse(source)); } catch {}
+
     const id = db.logAction({
       session_id: 'cold-start',
       task_type: inferTaskTypeFromLevel(task.level),
+      archetype,
       error_sig: errorSig,
       file_state_hash: sha1(source),
       source_before: source,
       patch_ops: [],
       patch_summary: `Cold-start seed: L${task.level} skeleton — ${task.title}`,
       compile_ok: compileOk,
-      test_pass: 0,  // skeletons aren't complete apps — don't claim pass
+      test_pass: 0,
       test_score: 0.0,
       score_delta: 0.0,
     });
 
     const errStr = result.errors.length > 0 ? ` — ${result.errors.length} errors` : ' — clean skeleton';
-    console.log(`  ${compileOk ? '✅' : '⚠️ '} L${task.level} ${task.id}${errStr} (row ${id})`);
+    console.log(`  ${compileOk ? '✅' : '⚠️ '} L${task.level} ${task.id} [${archetype}]${errStr} (row ${id})`);
     inserted++;
   }
 

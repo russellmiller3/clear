@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS code_actions (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id       TEXT NOT NULL,
   task_type        TEXT,
+  archetype        TEXT,
   error_sig        TEXT,
   file_state_hash  TEXT,
   source_before    TEXT,
@@ -19,6 +20,7 @@ CREATE TABLE IF NOT EXISTS code_actions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_task_type   ON code_actions(task_type);
+CREATE INDEX IF NOT EXISTS idx_archetype   ON code_actions(archetype);
 CREATE INDEX IF NOT EXISTS idx_error_sig   ON code_actions(error_sig);
 CREATE INDEX IF NOT EXISTS idx_test_pass   ON code_actions(test_pass, test_score DESC);
 CREATE INDEX IF NOT EXISTS idx_created_at  ON code_actions(created_at);
@@ -75,18 +77,24 @@ export class FactorDB {
     this._db.pragma('journal_mode = WAL');
     this._db.pragma('synchronous = NORMAL');
     this._db.exec(SCHEMA);
+    // Migration: add archetype column if upgrading from pre-archetype schema
+    const cols = this._db.prepare('PRAGMA table_info(code_actions)').all();
+    if (!cols.some(c => c.name === 'archetype')) {
+      this._db.exec('ALTER TABLE code_actions ADD COLUMN archetype TEXT');
+      this._db.exec('CREATE INDEX IF NOT EXISTS idx_archetype ON code_actions(archetype)');
+    }
   }
 
-  logAction({ session_id, task_type = null, error_sig = null, file_state_hash = null,
+  logAction({ session_id, task_type = null, archetype = null, error_sig = null, file_state_hash = null,
     source_before = '', patch_ops = [], patch_summary = null,
     compile_ok = 0, test_pass = 0, test_score = 0.0, score_delta = 0.0 }) {
     const now = Date.now();
     const result = this._db.prepare(`
       INSERT INTO code_actions
-        (session_id, task_type, error_sig, file_state_hash, source_before,
+        (session_id, task_type, archetype, error_sig, file_state_hash, source_before,
          patch_ops, patch_summary, compile_ok, test_pass, test_score, score_delta, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(session_id, task_type, error_sig, file_state_hash, source_before,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(session_id, task_type, archetype, error_sig, file_state_hash, source_before,
       JSON.stringify(patch_ops), patch_summary, compile_ok ? 1 : 0,
       test_pass ? 1 : 0, test_score, score_delta, now);
     return result.lastInsertRowid;
@@ -99,10 +107,11 @@ export class FactorDB {
     return row;
   }
 
-  // BM25-style retrieval: filter by task_type and/or error_sig, rank by test_score
-  querySimilar({ task_type = null, error_sig = null, topK = 10 } = {}) {
+  // BM25-style retrieval: filter by archetype/task_type/error_sig, rank by test_score
+  querySimilar({ archetype = null, task_type = null, error_sig = null, topK = 10 } = {}) {
     let sql = 'SELECT * FROM code_actions WHERE 1=1';
     const params = [];
+    if (archetype) { sql += ' AND archetype = ?'; params.push(archetype); }
     if (task_type) { sql += ' AND task_type = ?'; params.push(task_type); }
     if (error_sig) { sql += ' AND error_sig = ?'; params.push(error_sig); }
     sql += ' ORDER BY test_score DESC LIMIT ?';

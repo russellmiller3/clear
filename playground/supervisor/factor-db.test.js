@@ -56,6 +56,21 @@ describe('FactorDB', () => {
     cleanup();
   });
 
+  it('filters query by archetype', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    db.logAction({ session_id: 'w1', archetype: 'queue_workflow', task_type: 'fix_validation', test_pass: 1, test_score: 0.9, compile_ok: 1, patch_ops: [], patch_summary: 'Fix A (queue)', error_sig: 'e1', file_state_hash: 'h1', source_before: '' });
+    db.logAction({ session_id: 'w1', archetype: 'crud_app', task_type: 'fix_validation', test_pass: 1, test_score: 0.9, compile_ok: 1, patch_ops: [], patch_summary: 'Fix B (crud)', error_sig: 'e2', file_state_hash: 'h2', source_before: '' });
+    db.logAction({ session_id: 'w1', archetype: 'queue_workflow', task_type: 'fix_validation', test_pass: 1, test_score: 0.8, compile_ok: 1, patch_ops: [], patch_summary: 'Fix C (queue)', error_sig: 'e3', file_state_hash: 'h3', source_before: '' });
+
+    const queueOnly = db.querySimilar({ archetype: 'queue_workflow' });
+    expect(queueOnly.length).toEqual(2);
+    for (const r of queueOnly) expect(r.archetype).toEqual('queue_workflow');
+
+    db.close();
+    cleanup();
+  });
+
   it('creates a GA run and logs candidates', () => {
     cleanup();
     const db = new FactorDB(TEST_DB);
