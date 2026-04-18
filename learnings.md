@@ -41,6 +41,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 25b: Core 7 Templates + E2E Testing](#session-25b-core-7-templates--e2e-testing-2026-04-12) | GET req.query vs req.body, one-op-per-line enforcement, npm dep auto-install, synonym propagation, typo suggestion guards, Playwright selector scoping |
 | [Session 27: Studio Bridge + Friendly Tests + Unified Terminal](#session-27-studio-bridge--friendly-tests--unified-terminal-2026-04-14) | postMessage bridge gate needs dual check (`?param` AND `<meta>` for srcdoc iframes), helpers compiled outside `run()` can't see `let`s inside it (module-scope or bust), friendly errors need `_lastCall` tracker, `[clear:N]` tag in error string round-trips through stdout parser into IDE click handler, two competing SIGTERM handlers on Windows = `UV_HANDLE_CLOSING` libuv assertion, `_response`/`_responseBody`/`_lastCall` must be module-scope for `_expectStatus` shim |
 | [Session 36: Function TDD + Supervisor Plan](#session-36-function-tdd--supervisor-plan-2026-04-17) | `insideFunction: true` required for `define function` body ctx, user functions shadow builtins via pre-scan, SSE `tool_start` fires twice (state-flag dedup), API key must match how server reads it, Playwright e2e push from main repo not worktree |
+| [Session 37: Supervisor Multi-Session Architecture](#session-37-supervisor-multi-session-architecture-2026-04-17) | Multi-process over session globals, module-level shadow vars for polling, WAL mode registry, port availability check, async test timeouts, state machine monkey-patch testing |
 
 ---
 
@@ -1068,3 +1069,21 @@ User actions, Meph tool calls, browser console errors all mirrored into `termina
 - **Fix:** When shipping from a worktree, get the HEAD SHA, go to the main repo, `git merge <SHA> --no-ff`, push from there.
 - **Lesson:** Git worktrees are good for isolation, but e2e Playwright tests are environment-sensitive. Treat the main repo checkout as the canonical push environment.
 
+
+## Session 37: Supervisor Multi-Session Architecture (2026-04-17)
+
+### Architecture
+
+- **Multi-process over session-scoped globals.** Partitioning an existing server's globals (runningChild, terminalBuffer, etc.) across sessions is a high-risk refactor with a long tail of missed assignments. Instead, each Worker is a separate `node playground/server.js` process on its own port. The Supervisor speaks HTTP to workers. Workers are dumb — they don't know they're in a swarm. Zero risk of data bleed between sessions.
+
+- **Module-level shadow vars for supervisor polling.** `/api/current-source` must return the last source a worker's Meph wrote, but `currentSource` is a per-request local inside the `/api/chat` SSE handler. Fix: declare `let _workerLastSource = ''` at module scope, mirror it at every `currentSource =` assignment site. The endpoint reads the shadow var, not the in-request local.
+
+- **WAL mode in SQLite session registry.** `db.pragma('journal_mode = WAL')` + `db.pragma('synchronous = NORMAL')` — matches the pattern in `runtime/db.js`. WAL allows concurrent readers while a writer is active and survives process crashes without full recovery. Essential for a registry that both the supervisor and worker processes need to read.
+
+- **Port availability check before spawning.** Before spawning a worker on a port, bind a TCP socket to that port and listen for 'error' vs 'listening'. If already in use, throw. Prevents silent collisions where two workers spawn on the same port and one silently fails to start.
+
+### Testing
+
+- **Async test timeouts.** Spawner and loop tests that actually start child processes need 10–15s timeouts. Child process TCP bind takes ~2-3s to be ready for connections. `await wait(2500)` before the first `fetch` to the worker is the minimum safe delay. Tests that poll a not-yet-ready server will get ECONNREFUSED, not a test failure.
+
+- **State machine test via monkey-patching.** To test that `pollOne` marks a session 'completed' when TASK COMPLETE is detected — without actually injecting terminal output into a live worker — temporarily override `loop.detectComplete = () => true`, call `pollOne`, restore. Tests the state machine cleanly without needing a full integration harness.
