@@ -55,16 +55,13 @@ log every request
 ## Endpoints
 
 when user requests data from /api/authors:
-  all_authors = get all Authors
-  send back all_authors
+  send back all Authors
 
 when user requests data from /api/categories:
-  all_categories = get all Categories
-  send back all_categories
+  send back all Categories
 
 when user requests data from /api/posts:
-  all_posts = get all Posts
-  send back all_posts
+  send back all Posts
 
 when user requests data from /api/posts/:id:
   post = look up records in Posts table where id is incoming's id

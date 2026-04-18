@@ -261,6 +261,9 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
 
 <span class="text-indigo-400">allow</span> signup and login
 
+<span class="text-indigo-400">when user calls</span> GET /api/expenses:
+  <span class="text-amber-400">send back all</span> Expenses
+
 <span class="text-indigo-400">when user sends</span> data <span class="text-indigo-400">to</span> /api/expenses:
   <span class="text-amber-400">requires login</span>          <span class="text-zinc-600"># &#8592; without this = won't compile</span>
   <span class="text-amber-400">validate</span> data:

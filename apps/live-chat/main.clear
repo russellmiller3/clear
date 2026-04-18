@@ -35,8 +35,7 @@ log every request
 ## Endpoints
 
 when user requests data from /api/messages:
-  all_messages = get all Messages
-  send back all_messages
+  send back all Messages
 
 when user sends message_data to /api/messages:
   requires login

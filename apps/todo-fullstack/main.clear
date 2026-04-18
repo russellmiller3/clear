@@ -39,8 +39,7 @@ log every request
 ## Endpoints
 
 when user requests data from /api/todos:
-  all_todos = get all Todos
-  send back all_todos
+  send back all Todos
 
 when user sends todo_data to /api/todos:
   requires login
@@ -60,8 +59,7 @@ when user deletes todo at /api/todos/:id:
   send back 'deleted' with success message
 
 when user requests data from /api/categories:
-  all_categories = get all Categories
-  send back all_categories
+  send back all Categories
 
 when user requests data from /api/search:
   results = search Todos for incoming's q

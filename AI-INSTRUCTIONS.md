@@ -497,6 +497,28 @@ when user calls DELETE /api/todos/:id:
 
 GET endpoints only need `requires login` if they expose private data. Mutations always need it.
 
+## URL Path Parameters — `this X`, Not Bare `X`
+
+When an endpoint path has a parameter (like `/:id` or `/:user_id`), access it inside the body with `this X`, not bare `X`. Bare names like `id` look like typos to the tokenizer and trigger "Did you mean 'if'?".
+
+```clear
+// ✅ CORRECT
+when user calls DELETE /api/todos/:id:
+  requires login
+  delete Todo with this id
+  send back 'ok'
+
+when user calls GET /api/workspaces/:id/items:
+  items = get all Items where workspace_id is this id
+  send back items
+
+// ❌ WRONG — bare `id` isn't in scope, compiler errors
+when user calls GET /api/workspaces/:id/items:
+  items = get all Items where workspace_id is id
+```
+
+The pattern generalizes: `/:user_id` → `this user_id`, `/:order_number` → `this order_number`.
+
 ## Retrieval Verbs — `get all`, `look up`, NOT `find`
 
 Clear's retrieval verbs are `get all X`, `look up X with this id`, and `get every X`. **Never use `find` as a verb** — it's not a Clear keyword and the compiler will flag it as a typo.
@@ -511,6 +533,29 @@ visible = get every Todo where owner is current user
 todo = find Todo by id          // use `look up Todo with this id`
 results = find Todos             // use `get all Todos`
 ```
+
+## Inline Send Back — Shorthand for Trivial Returns
+
+For endpoints that just fetch and return, skip the throwaway variable:
+
+```clear
+// ✅ PREFERRED — reads like English
+when user calls GET /api/users:
+  send back all Users
+
+when user calls GET /api/users/:id:
+  send back the User with this id
+
+when user calls GET /api/active:
+  send back all Users where active is true
+
+// Also valid (longer, use when you need to transform)
+when user calls GET /api/users:
+  users = get all Users
+  send back users
+```
+
+**Rule of thumb:** if there's no transformation between retrieval and response, use the shorthand. If you filter/map/group the result first, use the longhand with a named intermediate. Shorthand reads naturally. Longhand makes the transformation obvious.
 
 ## Variable Names the Tokenizer Mistakes for Keywords
 
