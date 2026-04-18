@@ -22,15 +22,44 @@ import { FactorDB } from './factor-db.js';
 import { tasks as allTasks } from '../../curriculum/index.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { unlinkSync, realpathSync } from 'fs';
+import { readFileSync, unlinkSync, realpathSync, existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..', '..');
+
+// Load .env so ANTHROPIC_API_KEY is available (workers load it too via server.js)
+const _envPath = join(ROOT, '.env');
+if (existsSync(_envPath)) {
+  readFileSync(_envPath, 'utf8').split('\n').forEach(rawLine => {
+    const line = rawLine.replace(/\r$/, '');
+    const eq = line.indexOf('=');
+    if (eq > 0 && !line.startsWith('#')) {
+      const k = line.slice(0, eq).trim();
+      if (!process.env[k]) process.env[k] = line.slice(eq + 1).trim();
+    }
+  });
+}
 const FACTOR_DB_PATH = join(__dirname, '..', 'factor-db.sqlite');
 const SWEEP_REGISTRY_PATH = '/tmp/sweep-registry.db';
 const WORKER_BASE_PORT = 3490;
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Poll a worker's heartbeat until it responds or we time out.
+// Replaces fixed-duration sleep (unreliable on slow startup).
+async function waitForWorkerReady(port, maxMs = 15000) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`http://localhost:${port}/api/worker-heartbeat`, {
+        signal: AbortSignal.timeout(500),
+      });
+      if (r.ok) return true;
+    } catch { /* not ready yet */ }
+    await wait(250);
+  }
+  return false;
+}
 
 // Split an array into N roughly-equal chunks
 export function partitionTasks(items, n) {
@@ -176,8 +205,15 @@ export async function runSweep({
   try {
     console.log(`Spawning ${workers} workers...`);
     await spawner.spawnAll(workers, WORKER_BASE_PORT);
-    console.log(`Waiting for workers to bind...`);
-    await wait(3500);
+    console.log(`Waiting for workers to be ready...`);
+    const readyChecks = await Promise.all(
+      Array.from({ length: workers }, (_, i) => waitForWorkerReady(WORKER_BASE_PORT + i))
+    );
+    const notReady = readyChecks.map((ok, i) => ok ? null : `worker-${i + 1}`).filter(Boolean);
+    if (notReady.length > 0) {
+      throw new Error(`Workers not ready after 15s: ${notReady.join(', ')}`);
+    }
+    console.log(`All ${workers} workers ready.`);
 
     const t0 = Date.now();
 
@@ -189,7 +225,8 @@ export async function runSweep({
           : result.stuck ? '🔶 STUCK'
             : result.timedOut ? '⏱️  TIMEOUT'
               : '❌';
-        console.log(`  [${status}] L${task.level} ${task.id} — ${(elapsed / 1000).toFixed(1)}s`);
+        const detail = result.error ? ` — ${result.error.slice(0, 120)}` : '';
+        console.log(`  [${status}] L${task.level} ${task.id} — ${(elapsed / 1000).toFixed(1)}s${detail}`);
       });
     }));
 
