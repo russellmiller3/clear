@@ -303,6 +303,32 @@ page 'App' at '/':
     display todos as table
 ```
 
+## Pagination and Aggregates (read before writing dashboards)
+
+**`get all X` and `look up all X` cap results at 50 rows.** If you need more, use `get every X` or `look up every X`. This is a safety default — Marcus could compile an app that queries 50K rows and kill the browser.
+
+**Don't do `length of all_orders` for stats.** When you fetch with `get all` you get at most 50. `length of all_orders` is capped. For dashboard counts and sums, use server-side SQL aggregates:
+
+```clear
+# WRONG — capped at 50, wrong on real data
+orders = get all Orders
+total_orders = length of orders
+total_revenue = sum of total in orders
+
+# RIGHT — single SQL query, correct at any scale
+total_orders = count of id from Orders
+total_revenue = sum of total from Orders
+```
+
+**Filtered aggregates** use `where`:
+
+```clear
+paid_revenue = sum of total from Orders where status is 'paid'
+support_avg = avg of score from Tickets where team is 'support' and priority is 'high'
+```
+
+Only equality filters (`is X`, `A is X and B is Y`) work with `from Table` aggregates. For `>` / `<` / ranges, use `look up every X where ...` then aggregate the in-memory list.
+
 ## Build Targets
 
 - `build for web` — HTML only (frontend)

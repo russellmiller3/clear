@@ -119,14 +119,22 @@ remaining = rest of items
 all_names = each user's name in users
 merged = combine defaults with overrides
 
-# Field extraction from a list of records
+# Field extraction from a list of records (in-memory variable)
 total_revenue = sum of amount in orders
 avg_price = average of price in products
 highest_score = max of score in results
 lowest_score = min of score in results
+
+# Server-side SQL aggregates (capitalized table name after "from")
+total_revenue = sum of amount from Orders
+paid_total = sum of amount from Orders where status is 'paid'
+support_avg = avg of score from Tickets where team is 'support' and priority is 'high'
+order_count = count of id from Orders
 ```
 
-`sum of amount in orders` extracts the `amount` field from each record in `orders` and sums them. Works with `sum of`, `average of`, `max of`, `min of`. Without `in`, operates on a flat array as before.
+**In memory vs SQL:** `in variable` reduces over data you already have (`Array.reduce`). `from Table` runs a single SQL `SELECT FN(col) FROM ...` — no rows are fetched into memory. Use `from Table` for dashboard stats and anything that aggregates a whole table.
+
+Filtered aggregates (`where ...`) support equality only — `is X` and `A is X and B is Y`. For complex filters (`>`, `<`, ranges), fetch with `look up every X where ...` and aggregate the result in memory.
 
 ## Functions
 
@@ -1150,8 +1158,12 @@ create a Users table:
 
 # Backend
 when user requests data from /api/users:
-  all_users = get all Users
+  all_users = get all Users          # returns up to 50 rows (default cap)
   send back all_users
+
+when user requests data from /api/users/all:
+  every_user = get every User         # no cap — use when you actually need every row
+  send back every_user
 
 when user requests data from /api/users/:id:
   define user as: look up records in Users table where id is incoming's id
