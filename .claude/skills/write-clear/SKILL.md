@@ -298,7 +298,7 @@ The `[clear:N]` tag is the source line. Every status code (200, 201, 204, 400, 4
 
 **Policies (Enact Guards):** `policy:` block with 30+ runtime guards — database safety (block DDL, protect tables, filter-required deletes), prompt injection detection, access control (require role, block sensitive reads), code freeze, email (no mass emails), Slack (channel allowlist, block DMs), filesystem (restrict paths, block extensions), git safety (block push to main), CRM (no duplicate contacts), cloud storage (require human approval for deletes)
 
-**Data:** in-memory DB, PostgreSQL/SQLite declaration, table schemas with constraints, row-level security, migrations, CSV load/save/filter/sort/group, JSON parse/stringify
+**Data:** in-memory DB, PostgreSQL/SQLite declaration, table schemas with constraints, row-level security, migrations, CSV load/save/filter/sort/group, JSON parse/stringify. Field modifiers include `required`, `unique`, `default VALUE`, `auto` (timestamp), `(number)` type hint, FK by capitalized name, `hidden` (column kept but stripped from API + UI — the safe "remove"), `renamed to NEW_NAME` (pair with a new field for non-destructive renames — use when the user says "remove X" or "rename X to Y" so data is preserved)
 
 **AI Agents:** agent definitions, ask claude, tool use, skills, guardrails, conversation memory, user preferences, RAG, observability, pipelines, parallel agents, human-in-the-loop, agent testing, streaming
 

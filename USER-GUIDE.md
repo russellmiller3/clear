@@ -429,6 +429,26 @@ create a Todos table:
 - `completed, default false` — boolean field, starts as false
 - `created_at, auto` — timestamp, set automatically
 
+**Hiding a field instead of deleting it.** When your app is running and real users have typed real data, deleting a field takes that data with it. Clear's safe default is to mark the field `hidden`:
+
+```clear
+create a Users table:
+  name
+  email, unique
+  notes, hidden           # column stays; data preserved; just not shown anywhere
+```
+
+Hidden fields stay in the database but disappear from API responses and UI renderers. Un-hiding is a one-line change — remove the `, hidden` marker. Marcus (the owner) uses this through the Live App Editing widget: when he says "remove the notes field," the compiler adds `, hidden`, the column stays, and rolling back is one click.
+
+For renames, keep the old field around (hidden) AND add the new one:
+
+```clear
+create a Users table:
+  name
+  notes, hidden, renamed to reason   # old field — data preserved
+  reason                              # new field — copied on read
+```
+
 ### The Backend Section
 
 ```clear

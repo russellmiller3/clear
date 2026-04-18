@@ -146,7 +146,9 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | `CRUD` | `save X as User` / `look up all records in Users table` / `remove from Users where ...` | In-memory DB or SQL. **`look up all` / `get all` caps results at 50 by default.** Use `look up every` / `get every` to return all rows. |
 | `SQL_AGGREGATE` | `sum of price from Orders` / `avg of score from Reviews where team is 'support'` | Server-side aggregation: compiles to `db.aggregate(table, fn, field, filter)` → `SELECT FN(col) FROM ... WHERE ...`. Distinguished from `sum of X in variable` (client-side JS reduce) by capitalized table name after `from`. Only supports equality filters (`is X`, `is 'Y' and Z is W`) — non-equality like `>` emits a runtime error. |
 
-Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `(number)` type hint, FK by capitalized name.
+Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hidden`, `renamed to NEW_NAME`, `(number)` type hint, FK by capitalized name.
+
+**`hidden` and `renamed to` (Phase B Live App Editing)** — `a notes, hidden` keeps the column in the database but strips it from API responses and UI renderers; `db.findAll` / `findOne` filter hidden fields by default (opt-in `{ includeHidden: true }` for admin/backend code). `a notes, hidden, renamed to reason` marks an old field hidden and records the new name — paired with a separately-declared `reason` field, this is how renames preserve data via expand + copy + hide. Both modifiers are classified as `reversible` by the change classifier — un-hiding is a one-line source edit.
 
 ### Validation (Phase 16)
 

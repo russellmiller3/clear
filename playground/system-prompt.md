@@ -305,6 +305,34 @@ page 'App' at '/':
     display todos as table
 ```
 
+## Hidden Fields — Safe "Remove" for Running Apps
+
+When a user says "remove field X" on an app with real data, DO NOT physically delete the field. Add `, hidden` to it instead:
+
+```clear
+create a Users table:
+  name
+  email, unique
+  notes, hidden        # column stays in DB, stripped from API + UI responses
+```
+
+Hidden fields:
+- Stay in the database (data preserved)
+- Disappear from API responses (`db.findAll` / `findOne` strip them by default)
+- Disappear from UI renderers
+- Can be un-hidden by removing `, hidden` (one-line change, full data intact)
+
+For renames, pair a hidden-with-`renamed to` marker on the old field with a new field declaration:
+
+```clear
+create a Users table:
+  name
+  notes, hidden, renamed to reason   # old field retained
+  reason                              # new field, app reads + writes here going forward
+```
+
+Use this pattern whenever the app has users and real data — physical deletion is for an explicit, gated "permanently delete" command only (not yet exposed).
+
 ## Pagination and Aggregates (read before writing dashboards)
 
 **`get all X` and `look up all X` cap results at 50 rows.** If you need more, use `get every X` or `look up every X`. This is a safety default — Marcus could compile an app that queries 50K rows and kill the browser.

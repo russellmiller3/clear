@@ -818,6 +818,38 @@ A 200-line file with clear section comments is better than 5 files with
 40 lines each where the reader has to jump between files to understand
 the flow.
 
+## Hiding Fields Instead of Deleting Them
+
+Never remove a field from a table that already has data unless the user
+explicitly asks to PERMANENTLY DELETE it. The safe default is `hidden`:
+
+```clear
+create a Users table:
+  name
+  email, unique
+  notes, hidden           # column stays in the DB; stripped from API + UI
+```
+
+**Why:** existing rows keep their `notes` values. Un-hiding is a one-line
+source edit. Compare to physically removing the field — rows are irrevocably
+short one column, and you can't get them back.
+
+**When a user says "remove X"** in any context where an app has real data
+— Live App Editing, migrations, schema edits — prefer `hidden`. Only reach
+for actual deletion when the user types DELETE to confirm (that path is
+reserved for compliance/PII erasure and has its own gated command).
+
+**For renames:** add the new field AND flag the old one with `hidden,
+renamed to NEW_NAME`. The old column stays, data is preserved, rollback
+is free.
+
+```clear
+create a Users table:
+  name
+  notes, hidden, renamed to reason
+  reason                  # new name, empty to start
+```
+
 ## Infrastructure Lines
 
 **Always explain infrastructure lines with a comment.**

@@ -291,6 +291,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 
 | Feature | Syntax | Status |
 |---------|--------|--------|
+| **Live App Editing — Phase A** (LAE-1, LAE-2, LAE-3 additive, LAE-7) | Studio `/__meph__/widget.js` + `/propose` + `/ship` endpoints; owner-gated Meph widget; 3 additive tools (field/endpoint/page); AST-diff classifier with additive/reversible/destructive taxonomy | Done — 67 tests + 10/10 real-Meph eval |
+| **Live App Editing — Phase B** (LAE-3 reversible, LAE-4, LAE-6) | `, hidden` and `, renamed to X` field modifiers; `db.findAll`/`findOne` strip hidden by default; snapshot + rollback primitives; ship auto-snapshots; `/__meph__/api/rollback` + `/snapshots`; widget Undo button; sessionStorage form-state preservation across reload | Done — 44 more tests + 11/11 real-Meph eval |
 | Intent classification | `classify X as 'a', 'b', 'c'` | Done — Claude Haiku call |
 | Extended RAG | `knows about: 'https://url'`, `'file.pdf'`, `'doc.docx'` | Done — URLs + files + tables |
 | Send email inline | `send email to X:` + subject/body block | Done |
@@ -440,12 +442,17 @@ Today, the moment Marcus's approval app ships to his five employees, it's frozen
 
 **Phasing:**
 
-| Phase | Scope | Rough effort |
-|-------|-------|--------------|
-| Phase A | LAE-1, LAE-2, LAE-3 (additive changes only), LAE-7 — Marcus adds fields/pages/endpoints live, with preview. | ~1 week |
-| Phase B | LAE-4 (live-reload contract), LAE-6 (snapshot + rollback), LAE-3 for reversible changes (hide, rename, relabel, reorder) | ~1 week |
-| Phase C | LAE-5 (schema migration planner), LAE-3 for destructive changes (explicit permanent-delete + unavoidable type coercion) | ~1.5 weeks |
-| Phase D | LAE-8 (audit log), LAE-9 (concurrent guard), LAE-10 (dry-run) | ~1 week |
+| Phase | Scope | Rough effort | Status |
+|-------|-------|--------------|--------|
+| Phase A | LAE-1, LAE-2, LAE-3 (additive changes only), LAE-7 — Marcus adds fields/pages/endpoints live, with preview. | ~1 week | **Done 2026-04-18** (67 tests, 10/10 real-Meph eval) |
+| Phase B | LAE-4 (live-reload contract), LAE-6 (snapshot + rollback), LAE-3 for reversible changes (hide, rename, relabel, reorder) | ~1 week | **Done 2026-04-18** (44 tests, 11/11 real-Meph eval) |
+| Phase C | LAE-5 (schema migration planner), LAE-3 for destructive changes (explicit permanent-delete + unavoidable type coercion) | ~1.5 weeks | Not started |
+| Phase D | LAE-8 (audit log), LAE-9 (concurrent guard), LAE-10 (dry-run) | ~1 week | Not started |
+
+**Still needed to finish the Live App Editing flagship:**
+- Compiler change: emit `<script src="/__meph__/widget.js">` in compiled HTML when source declares a `role: 'owner'` user; emit a tiny `/__meph__/*` proxy in generated server.js so the widget is same-origin with the app (solves CORS with Studio).
+- Browser Playwright e2e covering owner→widget→ship/hide/undo on the three templates.
+- Security: Studio's `liveEditAuth` middleware currently parses JWTs without HMAC verify — fine for the single-owner spike, must use `runtime/auth.js`'s `verifyToken` before any multi-user demo.
 
 **Success metric:** Marcus ships 3+ live edits to his prod app in his first week without a single rollback-due-to-breakage. That's the bar.
 

@@ -1140,6 +1140,35 @@ create a Comments table:
 
 `belongs to` declares a foreign key relationship. The field stores the related record's ID and compiles to an INTEGER column with `REFERENCES`. When you `get all Posts`, the compiler auto-stitches related records by looking up each FK.
 
+## Hidden fields (Phase B — Live App Editing)
+
+When a field is marked `hidden`, the column stays in the database but is stripped from API responses and UI renderers. Data is preserved; un-hiding is a one-line source edit. This is how Clear implements "remove" without destroying data.
+
+```clear
+create a Users table:
+  name
+  email, unique
+  notes, hidden              # column kept; data preserved; stripped from responses
+```
+
+For renames, add the new field AND mark the old one hidden with `renamed to`:
+
+```clear
+create a Users table:
+  name
+  notes, hidden, renamed to reason   # old field kept, flagged as renamed
+  reason                             # new field; runtime can copy data on first read
+```
+
+**Runtime behavior.** `db.findAll(table)` and `db.findOne(table, filter)` drop hidden columns from every row they return. Admin/backend code that legitimately needs the full row opts in explicitly:
+
+```js
+db.findAll('Users', filter, { includeHidden: true });
+db.findOne('Users', { id: 1 }, { includeHidden: true });
+```
+
+**Classification.** Adding `, hidden` to an existing field is a `reversible` change (not destructive) — the change classifier detects it and the Live App Editing widget ships it through the reversible path. `renamed to` is also reversible because the data never leaves the table.
+
 ## Backend
 
 ```clear
