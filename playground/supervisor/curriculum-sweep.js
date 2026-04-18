@@ -22,10 +22,23 @@ import { FactorDB } from './factor-db.js';
 import { tasks as allTasks } from '../../curriculum/index.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { unlinkSync, realpathSync } from 'fs';
+import { readFileSync, unlinkSync, realpathSync, existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..', '..');
+
+// Load .env so ANTHROPIC_API_KEY is available (workers load it too via server.js)
+const _envPath = join(ROOT, '.env');
+if (existsSync(_envPath)) {
+  readFileSync(_envPath, 'utf8').split('\n').forEach(rawLine => {
+    const line = rawLine.replace(/\r$/, '');
+    const eq = line.indexOf('=');
+    if (eq > 0 && !line.startsWith('#')) {
+      const k = line.slice(0, eq).trim();
+      if (!process.env[k]) process.env[k] = line.slice(eq + 1).trim();
+    }
+  });
+}
 const FACTOR_DB_PATH = join(__dirname, '..', 'factor-db.sqlite');
 const SWEEP_REGISTRY_PATH = '/tmp/sweep-registry.db';
 const WORKER_BASE_PORT = 3490;
