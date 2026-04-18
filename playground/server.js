@@ -78,6 +78,13 @@ app.post('/api/compile', (req, res) => {
 // TEMPLATES
 // =============================================================================
 const FEATURED_TEMPLATES = [
+  // Marcus 5 — business ops apps (RevOps, approvals, routing, onboarding, support)
+  'approval-queue',         // Approval workflow: submit → pending → approved/rejected
+  'lead-router',            // Routing: intake + rules + assign by size (SMB/Mid/Enterprise)
+  'onboarding-tracker',     // Customer onboarding: multi-step checklist per customer
+  'support-triage',         // AI-assisted: classifies tickets by category + priority
+  'internal-request-queue', // IT/HR/Facilities/Finance request triage
+
   // Core 8 — Playwright-tested, showcase all features
   'todo-fullstack',    // CRUD basics: tables, endpoints, auth, validation, search
   'crm-pro',           // Data dashboard: charts, search, aggregates, relationships

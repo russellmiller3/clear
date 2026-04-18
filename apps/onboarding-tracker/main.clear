@@ -1,0 +1,168 @@
+/*
+Onboarding Tracker — multi-step progress for each new customer
+
+  ┌──────────┐            ┌──────────┐  has many   ┌──────────┐
+  │  Ops     │ ─► CRUD ─► │Customers │ ──────────► │  Steps   │
+  └──────────┘            └──────────┘             └──────────┘
+       │                       │
+       │                       │ progress % computed from
+       │                       │ completed_steps / total_steps
+       │                       │
+       └── view ────────────►  │
+                               │
+                      Status: onboarding / active / churned
+*/
+
+build for web and javascript backend
+database is local memory
+
+# Database
+
+create a Customers table:
+  name, required
+  company, required
+  email
+  status, default 'onboarding'
+  started_at_date, auto
+  account_manager
+  notes
+
+create a OnboardingSteps table:
+  customer_id, required
+  step_name, required
+  completed, default false
+  completed_at_date
+  customer belongs to Customers
+
+# Backend
+
+## Middleware
+
+allow cross-origin requests
+allow signup and login
+log every request
+
+## Endpoints
+
+when user requests data from /api/customers:
+  send back all Customers
+
+when user requests data from /api/customers/onboarding:
+  send back all Customers where status is 'onboarding'
+
+when user sends customer_data to /api/customers:
+  requires login
+  validate customer_data:
+    name is text, required
+    company is text, required
+  new_customer = save customer_data as new Customer
+  send back new_customer with success message
+
+when user updates update_data at /api/customers/:id:
+  requires login
+  save update_data to Customers
+  send back 'updated' with success message
+
+when user requests data from /api/steps:
+  send back all OnboardingSteps
+
+when user sends step_data to /api/steps:
+  requires login
+  new_step = save step_data as new OnboardingStep
+  send back new_step with success message
+
+when user updates step_update at /api/steps/:id:
+  requires login
+  save step_update to OnboardingSteps
+  send back 'updated' with success message
+
+## Seed Data
+
+when user sends data to /api/seed:
+  create c1:
+    name is 'Priya Shah'
+    company is 'Acme Corp'
+    email is 'priya@acmecorp.com'
+    status is 'onboarding'
+    account_manager is 'sarah.j'
+  save c1 as new Customer
+  create c2:
+    name is 'Marcus Jones'
+    company is 'Shopify Shops'
+    email is 'mj@shopify-shops.com'
+    status is 'onboarding'
+    account_manager is 'mike.l'
+  save c2 as new Customer
+  create c3:
+    name is 'Jenna Liu'
+    company is 'Tiny Studio'
+    email is 'jenna@tinystudio.co'
+    status is 'active'
+    account_manager is 'sarah.j'
+  save c3 as new Customer
+  create s1:
+    customer_id is c1's id
+    step_name is 'Kickoff call'
+    completed is true
+  save s1 as new OnboardingStep
+  create s2:
+    customer_id is c1's id
+    step_name is 'Technical setup'
+    completed is true
+  save s2 as new OnboardingStep
+  create s3:
+    customer_id is c1's id
+    step_name is 'First campaign launched'
+    completed is false
+  save s3 as new OnboardingStep
+  create s4:
+    customer_id is c2's id
+    step_name is 'Kickoff call'
+    completed is true
+  save s4 as new OnboardingStep
+  create s5:
+    customer_id is c2's id
+    step_name is 'Technical setup'
+    completed is false
+  save s5 as new OnboardingStep
+  send back 'seeded' with success message
+
+# Frontend
+
+page 'Onboarding Tracker' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get customers from '/api/customers/onboarding'
+    get steps from '/api/steps'
+
+  section 'Header' centered, padded:
+    heading 'Onboarding Tracker'
+    total = count of customers
+    text '{total} customers actively onboarding'
+
+  section 'New Customer' with style card_bordered:
+    'Customer name' as text input saves to name
+    'Company' as text input saves to company
+    'Email' as text input saves to email
+    'Account manager' as text input saves to account_manager
+    button 'Add Customer':
+      send name, company, email, and account_manager to '/api/customers'
+      get customers from '/api/customers/onboarding'
+      name is ''
+      company is ''
+
+  section 'Onboarding Customers':
+    display customers as table showing company, name, account_manager, status
+
+  section 'All Steps':
+    display steps as table showing customer_id, step_name, completed
+
+# Tests
+
+test:
+  can user create a customer with name is 'Test', company is 'TestCo'
+  expect it succeeds
+  expect response has id
+
+test:
+  creating a customer should require login

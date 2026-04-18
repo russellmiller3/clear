@@ -1,0 +1,147 @@
+/*
+Lead Router — intake form, apply rules, assign to owner
+
+  ┌──────────┐  submit   ┌──────────┐   rules    ┌──────────┐
+  │ Prospect │ ────────► │  Server  │ ─────────► │  Leads   │
+  └──────────┘           └──────────┘            └──────────┘
+                               │                      │
+                               │ route by size        │
+                               ▼                      │
+                        SMB → Alice                   │
+                        Mid → Bob                     │
+                        Enterprise → Charlie          │
+                                                      │
+                          ┌──────────┐                │
+                          │   Ops    │ ◄──────────────┘
+                          │   View   │
+                          └──────────┘
+*/
+
+build for web and javascript backend
+database is local memory
+
+# Database
+
+create a Leads table:
+  name, required
+  email, required
+  company
+  size, default 'SMB'
+  source
+  assigned_to
+  status, default 'new'
+  created_at_date, auto
+
+# Backend
+
+## Middleware
+
+allow cross-origin requests
+allow signup and login
+log every request
+
+## Endpoints
+
+when user requests data from /api/leads:
+  send back all Leads
+
+when user requests data from /api/leads/new:
+  send back all Leads where status is 'new'
+
+when user sends lead_data to /api/leads:
+  validate lead_data:
+    name is text, required, min 1, max 100
+    email is text, required
+    size is text
+  if lead_data's size is 'Enterprise':
+    lead_data's assigned_to is 'charlie'
+  if lead_data's size is 'Mid-market':
+    lead_data's assigned_to is 'bob'
+  if lead_data's size is 'SMB':
+    lead_data's assigned_to is 'alice'
+  new_lead = save lead_data as new Lead
+  send back new_lead with success message
+
+when user updates update_data at /api/leads/:id:
+  requires login
+  save update_data to Leads
+  send back 'updated' with success message
+
+## Seed Data
+
+when user sends data to /api/seed:
+  create l1:
+    name is 'Priya Shah'
+    email is 'priya@acmecorp.com'
+    company is 'Acme Corp'
+    size is 'Enterprise'
+    source is 'webinar'
+    assigned_to is 'charlie'
+    status is 'new'
+  save l1 as new Lead
+  create l2:
+    name is 'Marcus Jones'
+    email is 'mj@shopify-shops.com'
+    company is 'Shopify Shops'
+    size is 'Mid-market'
+    source is 'content'
+    assigned_to is 'bob'
+    status is 'new'
+  save l2 as new Lead
+  create l3:
+    name is 'Jenna Liu'
+    email is 'jenna@tinystudio.co'
+    company is 'Tiny Studio'
+    size is 'SMB'
+    source is 'referral'
+    assigned_to is 'alice'
+    status is 'new'
+  save l3 as new Lead
+  create l4:
+    name is 'Derek Patel'
+    email is 'dp@biginc.com'
+    company is 'Big Inc'
+    size is 'Enterprise'
+    source is 'outbound'
+    assigned_to is 'charlie'
+    status is 'qualified'
+  save l4 as new Lead
+  send back 'seeded' with success message
+
+# Frontend
+
+page 'Lead Router' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get new_leads from '/api/leads/new'
+
+  section 'Header' centered, padded:
+    heading 'Lead Router'
+    total = count of new_leads
+    text '{total} new leads awaiting follow-up'
+
+  section 'New Lead' with style card_bordered:
+    'Name' as text input saves to name
+    'Email' as text input saves to email
+    'Company' as text input saves to company
+    'Size' is a dropdown with ['SMB', 'Mid-market', 'Enterprise'] saved as a size
+    'Source' as text input saves to source
+    button 'Add Lead':
+      send name, email, company, size, and source to '/api/leads'
+      get new_leads from '/api/leads/new'
+      name is ''
+      email is ''
+      company is ''
+
+  section 'New Leads':
+    display new_leads as table showing name, company, size, source, assigned_to
+
+# Tests
+
+test:
+  can user submit a lead with name is 'Test', email is 'test@x.com', size is 'SMB'
+  expect it succeeds
+  expect response has id
+
+test:
+  updating a lead should require login

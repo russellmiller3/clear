@@ -1,0 +1,132 @@
+/*
+Approval Queue — submit requests, route to approver, approve or reject
+
+  ┌──────────┐  submit   ┌──────────┐  save   ┌──────────┐
+  │ Submitter│ ────────► │  Server  │ ──────► │ Requests │
+  └──────────┘           └──────────┘         └──────────┘
+  ┌──────────┐  approve  ┌──────────┐  update      │
+  │ Approver │ ────────► │  Server  │ ─────────────┘
+  └──────────┘           └──────────┘
+                                 │
+                           Auth (JWT)
+                           Status: pending → approved / rejected
+*/
+
+build for web and javascript backend
+database is local memory
+
+# Database
+
+create a Requests table:
+  title, required
+  description
+  amount (number), default 0
+  status, default 'pending'
+  notes
+  requester
+  created_at_date, auto
+
+# Backend
+
+## Middleware
+
+allow cross-origin requests
+allow signup and login
+log every request
+
+## Endpoints
+
+when user requests data from /api/requests:
+  send back all Requests
+
+when user requests data from /api/requests/pending:
+  send back all Requests where status is 'pending'
+
+when user sends request_data to /api/requests:
+  validate request_data:
+    title is text, required, min 1, max 200
+    amount is number, min 0
+  new_request = save request_data as new Request
+  send back new_request with success message
+
+when user updates update_data at /api/requests/:id:
+  requires login
+  save update_data to Requests
+  send back 'updated' with success message
+
+## Seed Data
+
+when user sends data to /api/seed:
+  create r1:
+    title is 'Quarterly software budget — Acme Corp'
+    description is 'Standard renewal, 15 seats'
+    amount is 4500
+    status is 'pending'
+    requester is 'sarah.j'
+  save r1 as new Request
+  create r2:
+    title is 'Travel expenses — sales conference'
+    description is 'Airfare and hotel for 2 reps'
+    amount is 2800
+    status is 'pending'
+    requester is 'mike.l'
+  save r2 as new Request
+  create r3:
+    title is 'Contractor engagement — design'
+    description is 'Design contractor, 3 months'
+    amount is 18000
+    status is 'pending'
+    requester is 'alex.p'
+  save r3 as new Request
+  create r4:
+    title is 'New office chairs'
+    description is 'Ergonomic chairs for 8 desks'
+    amount is 2400
+    status is 'approved'
+    requester is 'jamie.k'
+  save r4 as new Request
+  create r5:
+    title is 'Expired credit card'
+    description is 'Card expired last week, need replacement'
+    amount is 0
+    status is 'rejected'
+    requester is 'taylor.w'
+  save r5 as new Request
+  send back 'seeded' with success message
+
+# Frontend
+
+page 'Approval Queue' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get pending from '/api/requests/pending'
+
+  section 'Header' centered, padded:
+    heading 'Approval Queue'
+    total = count of pending
+    text '{total} pending requests'
+
+  section 'New Request' with style card_bordered:
+    'Title' as text input saves to title
+    'Description' as text input saves to description
+    'Amount ($)' as number input saves to amount
+    'Requester' as text input saves to requester
+    button 'Submit':
+      send title, description, amount, and requester to '/api/requests'
+      get pending from '/api/requests/pending'
+      title is ''
+      description is ''
+      amount is 0
+
+  section 'Pending Requests':
+    display pending as table showing title, requester, amount, description
+
+# Tests
+
+test:
+  can user submit a request with title is 'Budget approval', amount is 500
+  expect it succeeds
+  expect response has id
+
+test:
+  updating a request should require login
