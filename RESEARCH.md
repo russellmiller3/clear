@@ -183,6 +183,57 @@ A 22M-parameter cross-encoder (e.g. ms-marco-MiniLM) is trained on millions of w
 
 **The upgrade path only triggers if XGBoost plateaus** — i.e., you have 2k+ sessions and accuracy on the validation curriculum isn't improving. At that point, JS embeddings on the compiled diff add signal. But you may never need them. The feature space might be fully captured by structured inputs alone.
 
+### Global context: how the re-ranker thinks like an engineer
+
+A real engineer hitting a validation error doesn't just see the error — they know this is a multi-tenant CRM with auth and Postgres, which completely changes the right fix. A bare `error_sig` misses all of that.
+
+The re-ranker captures global context by extracting **structured app-level features** from the parser output, once per session. These become additional XGBoost inputs alongside the local error features.
+
+**Global context features (per app, re-computed on each compile):**
+
+| Feature | Type | Source |
+|---------|------|--------|
+| `archetype` | categorical (8 values) | Nearest match of: todo, crm, blog, chat, agent, booking, expense, ecom |
+| `num_tables` | bucketed (1, 2-3, 4-6, 7+) | Count of `TABLE_DEF` nodes |
+| `num_endpoints` | bucketed | Count of `ENDPOINT` nodes |
+| `num_pages` | bucketed | Count of `PAGE_DEF` nodes |
+| `has_auth` | boolean | Parser detects auth blocks |
+| `has_agent` | boolean | `AGENT_DEF` or `ASK_AI` nodes present |
+| `has_scheduler` | boolean | `CRON` nodes present |
+| `has_websocket` | boolean | `SUBSCRIBE` / `BROADCAST` nodes |
+| `has_upload` | boolean | File upload endpoints |
+| `runtime` | categorical | SQLite / Postgres (from `build for` directive) |
+| `multi_tenant` | boolean | `belongs to user` appears on any table |
+
+**Local context features (per compile cycle):**
+
+| Feature | Type |
+|---------|------|
+| `error_category` | categorical — ~30-50 values (validation, missing_endpoint, type_error, auth_failure, etc.) |
+| `patch_op_type` | categorical — 11 values from patch.js |
+| `file_location` | categorical — database / backend / frontend section |
+| `table_involved` | categorical — which table the error relates to |
+
+**Retrieval query with global context:**
+```
+SELECT * FROM code_actions
+WHERE archetype = 'crm'                  ← only look at CRM-shaped apps
+  AND error_category = 'validation'      ← same error category
+  AND has_auth = 1                       ← same auth posture
+ORDER BY test_score DESC
+LIMIT 50
+```
+
+That's engineer-like. "In CRM-shaped apps with auth, when a validation error hits, what fixes worked?" — not "what fixed this error string in any app ever."
+
+**Why this still works with XGBoost:**
+
+The total feature count is ~20, not thousands. Each feature is low-cardinality (booleans, small categoricals). XGBoost handles this natively, captures feature interactions (e.g. "has_auth=true AND error=validation → prefer middleware patches"), and stays interpretable — you can literally print feature importance and understand what the model learned.
+
+**When global context doesn't help:**
+
+Some errors are purely syntactic (missing quote, unbalanced brace). Global features add noise for those. The re-ranker learns to ignore them — XGBoost naturally down-weights features that don't correlate with outcomes for specific error types. No hand-tuning needed.
+
 ---
 
 ## The GA: Why Genetic, Not Beam Search
