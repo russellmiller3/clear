@@ -2125,6 +2125,47 @@ app.get('/api/config', (req, res) => {
   res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
 });
 
+// Flywheel dashboard — Factor DB stats for the Supervisor tab in Studio.
+// Read-only; public within Studio so the UI can poll it. Shows training-data
+// accumulation in real time as Meph sessions generate rows.
+app.get('/api/flywheel-stats', (req, res) => {
+  if (!_factorDB) {
+    return res.json({ enabled: false, total: 0, passing: 0, byArchetype: [], recent: [] });
+  }
+  try {
+    const stats = _factorDB.stats();
+    const byArchetype = _factorDB._db.prepare(`
+      SELECT archetype,
+        COUNT(*) AS total,
+        SUM(compile_ok) AS compiles_ok,
+        SUM(test_pass) AS tests_pass
+      FROM code_actions
+      WHERE archetype IS NOT NULL
+      GROUP BY archetype
+      ORDER BY total DESC
+    `).all();
+    const recent = _factorDB._db.prepare(`
+      SELECT id, session_id, archetype, compile_ok, test_pass, test_score,
+        patch_summary, created_at
+      FROM code_actions
+      ORDER BY created_at DESC
+      LIMIT 20
+    `).all();
+    const threshold = 200;
+    res.json({
+      enabled: true,
+      total: stats.total,
+      passing: stats.passing,
+      threshold,
+      percentToThreshold: Math.min(100, Math.round((stats.passing / threshold) * 100)),
+      byArchetype,
+      recent,
+    });
+  } catch (err) {
+    res.json({ enabled: false, error: err.message });
+  }
+});
+
 // Dev-only: session quality records for re-ranker debugging.
 // Hidden from Studio UI. Not shown to Meph. Training signal only.
 app.get('/api/session-quality', (req, res) => {
