@@ -20482,6 +20482,69 @@ describe('Type annotations — JSDoc output', () => {
   });
 });
 
+// ============================================================
+// Function def: send back compiles to return, not res.json
+// ============================================================
+
+describe('define function — send back compiles to plain return', () => {
+  it('send back inside function compiles to return, not res.json', () => {
+    const r = compileProgram("build for javascript backend\ndefine function double(x):\n  send back x * 2");
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('return (x * 2)');
+    expect(r.javascript).not.toContain('res.json');
+  });
+
+  it('send back a string literal inside function compiles to return, not res.json', () => {
+    const r = compileProgram("build for javascript backend\ndefine function greet(name):\n  send back 'hello'");
+    expect(r.errors).toHaveLength(0);
+    // compiler emits double-quoted strings; just check it returns and doesn't use res.json
+    expect(r.javascript).toContain('return "hello"');
+    expect(r.javascript).not.toContain('res.json({ message:');
+  });
+
+  it('function callable from test block with unit assertion', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "define function add(a, b):\n" +
+      "  send back a + b\n" +
+      "test \"add works\":\n" +
+      "  set result to add(2, 3)\n" +
+      "  expect result is 5"
+    );
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('function add(a, b)');
+    expect(r.javascript).toContain('return (a + b)');
+    expect(r.javascript).toContain('let result = add(2, 3)');
+    expect(r.javascript).toContain('_unitAssert(result, "eq", 5');
+  });
+
+  it('user-defined function named "sum" shadows the built-in sum alias', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "define function sum(a, b):\n" +
+      "  send back a + b\n" +
+      "test \"sum works\":\n" +
+      "  set result to sum(2, 3)\n" +
+      "  expect result is 5"
+    );
+    expect(r.errors).toHaveLength(0);
+    // call site must use the user's function, not _clear_sum
+    expect(r.javascript).toContain('let result = sum(2, 3)');
+    expect(r.javascript).not.toContain('_clear_sum(2, 3)');
+  });
+
+  it('send back in endpoint still uses res.json (no regression)', () => {
+    const r = compileProgram(
+      "build for javascript backend\n" +
+      "when user calls GET /api/hello:\n" +
+      "  send back 'world'"
+    );
+    expect(r.errors).toHaveLength(0);
+    // for backend target, compiled output is in r.javascript (not serverJS)
+    expect(r.javascript).toContain('res.json');
+  });
+});
+
 
 // ============================================================
 // GP Phase 5: Typed Error Handling
@@ -23109,6 +23172,103 @@ describe('Unit assertions — compiler emits _unitAssert in test harness', () =>
     expect(r.errors).toHaveLength(0);
     // HTTP assertions should NOT produce _unitAssert — they use _expectSuccess etc.
     expect(r.tests).not.toContain('_unitAssert(');
+  });
+});
+
+// =============================================================================
+// MECHANICAL TEST QUALITY SIGNALS — Static lint on weak assertions
+// =============================================================================
+
+describe('Weak assertion lint — not_empty check', () => {
+  const base = `build for javascript backend\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n`;
+
+  it('warns when assertion only checks not empty (not the actual value)', () => {
+    const src = base + `\ntest 'weak':\n  result is 'hello'\n  expect result is not empty\n  expect result is not empty\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns.length).toBeGreaterThan(0);
+  });
+
+  it('warns for each not_empty assertion separately', () => {
+    const src = base + `\ntest 'two weak':\n  a is 'x'\n  b is 'y'\n  expect a is not empty\n  expect b is not empty\n`;
+    const r = compileProgram(src);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns.length).toBe(2);
+  });
+
+  it('does NOT warn for specific value check (not_empty is only problem)', () => {
+    const src = base + `\ntest 'strong':\n  x is 42\n  expect x is 42\n`;
+    const r = compileProgram(src);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns).toHaveLength(0);
+  });
+});
+
+describe('Weak assertion lint — bare boolean check', () => {
+  const base = `build for javascript backend\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n`;
+
+  it('warns when assertion checks eq true (bare boolean)', () => {
+    const src = base + `\ntest 'bool':\n  flag is true\n  expect flag is true\n`;
+    const r = compileProgram(src);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT warn for eq false (false is specific, meaningful)', () => {
+    const src = base + `\ntest 'false check':\n  flag is false\n  expect flag is false\n`;
+    const r = compileProgram(src);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns).toHaveLength(0);
+  });
+});
+
+describe('Weak assertion lint — single assertion yellow flag', () => {
+  const base = `build for javascript backend\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n`;
+
+  it('warns when test block has only one assertion', () => {
+    const src = base + `\ntest 'single':\n  x is 5\n  expect x is 5\n`;
+    const r = compileProgram(src);
+    const singleWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('single assertion');
+    });
+    expect(singleWarns.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT warn when test block has multiple assertions', () => {
+    const src = base + `\ntest 'multi':\n  x is 5\n  y is 10\n  expect x is 5\n  expect y is 10\n`;
+    const r = compileProgram(src);
+    const singleWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('single assertion');
+    });
+    expect(singleWarns).toHaveLength(0);
+  });
+
+  it('does NOT warn for single HTTP assertion (only unit assertions)', () => {
+    const src = base + `\ntest 'http only':\n  can user view all items\n  expect it succeeds\n`;
+    const r = compileProgram(src);
+    const singleWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('single assertion');
+    });
+    expect(singleWarns).toHaveLength(0);
   });
 });
 

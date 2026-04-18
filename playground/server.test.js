@@ -268,7 +268,7 @@ try {
     // Test fetch proxy
     const fetchResult = await post('/api/fetch', { method: 'GET', path: '/api/health' });
     assert(fetchResult.status === 200, 'fetch proxy reaches running app');
-    assert(fetchResult.data.data === 'ok' || JSON.stringify(fetchResult.data.data).includes('ok'), 'app responds correctly');
+    assert(fetchResult.data.data === 'ok' || JSON.stringify(fetchResult.data.data || '').includes('ok'), 'app responds correctly');
 
     // Test POST
     const postResult = await post('/api/fetch', { method: 'POST', path: '/api/items', body: { name: 'test item' } });
@@ -824,6 +824,30 @@ try {
     });
     assert(r.status === 400, 'unknown format returns 400');
   }
+
+// =============================================================================
+// SESSION QUALITY — /api/session-quality endpoint
+// =============================================================================
+{
+  console.log('\n📦 Session quality endpoint');
+
+  // Must return 200 with an array
+  const r = await getJson('/api/session-quality');
+  assert(r.status === 200, 'GET /api/session-quality returns 200');
+  assert(Array.isArray(r.data), 'response is an array');
+
+  // After compiling a source with weak assertions via /api/compile,
+  // the session quality endpoint should reflect the latest quality data.
+  // (Full /api/chat session testing requires a live API key — skip here.)
+  // Just verify the endpoint shape is correct.
+  if (Array.isArray(r.data) && r.data.length > 0) {
+    const s = r.data[0];
+    assert(typeof s.id === 'string', 'session has id');
+    assert(typeof s.started_at === 'number', 'session has started_at');
+    assert(typeof s.weak_assertion_count === 'number', 'session has weak_assertion_count');
+    assert(typeof s.red_step_observed === 'boolean', 'session has red_step_observed');
+  }
+}
 
 } catch (err) {
   console.error('\n💥 Test crash:', err.message);

@@ -37,6 +37,7 @@ Then read each doc file and identify gaps:
 
 ### Files to check (in order):
 
+0. **`FAQ.md`** — system internals, architecture decisions, how-to answers. Update when new subsystems are added, ports change, or architectural decisions are made. This is the first place future sessions will look.
 1. **`intent.md`** — authoritative spec. Every node type needs a row. Every syntax form needs an example.
 2. **`SYNTAX.md`** — complete syntax reference. Every feature needs syntax + example.
 3. **`AI-INSTRUCTIONS.md`** — conventions for AI writing Clear. When to use each feature, gotchas.

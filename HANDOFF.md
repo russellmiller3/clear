@@ -1,85 +1,71 @@
-# Handoff — 2026-04-17 (Session 35 — Positioning + Perf plan)
+# Handoff — 2026-04-17 (Session 37 — Mechanical Quality Signals + RESEARCH.md)
 
 ## Current State
-- **Branch:** `feature/perf-pagination` (just created, no commits yet)
-- **Last commit on main:** `749ace5` — docs(rule + roadmap): next-moves always go in ROADMAP
-- **Working tree:** DIRTY. Uncommitted changes on this branch:
-  - Modified: `.claude/settings.local.json`, `.claude/skills/ship/SKILL.md`, `CLAUDE.md`, `ROADMAP.md` (major additions), `apps/todo-fullstack/clear-runtime/db.js`
-  - Untracked: `landing/dashboard.html`, `landing/marcus.html`, `landing/lab.html`, `plans/plan-fly-deploy-04-16-2026.md`, `plans/plan-perf-pagination-aggregation-04-16-2026.md`, `.clear-build/`
+- **Branch:** `main` (merged from `feature/test-quality-signals`)
+- **Last commit on main:** session quality signals + RESEARCH.md docs
+- **Working tree:** CLEAN on main
 
 ## What Was Done This Session
 
-- **Full go-to-market positioning locked.** Marcus (RevOps at 100–500 person B2B SaaS) is the long-term anchor, not just the 6-month beachhead. Chose Marcus over Sara (non-technical ops) based on LTV math + Vercel/Stripe historical analog. Sara is 2027 expansion via future "Builder mode."
-- **Competitive research with sourced data.** Full G2/Reddit/blog dive on Retool, Lovable, Bolt, Superblocks, Zite, Appsmith, Budibase, Softr, Noloco. Real user complaints woven into landing page differentiator cards. Documented in ROADMAP under "Competitive Landscape."
-- **Three landing pages built:**
-  - `landing/marcus.html` — Marcus GTM page. Light theme, dark-indigo buttons, 5 app bento grid, guardrails section, "Why not X?" comparison with sourced quotes, FOR/GET/PAY.
-  - `landing/dashboard.html` — post-signup dashboard mock. Light theme, per-app stats + sparklines + activity feed + status lines.
-  - `landing/lab.html` — Crystallized research lab page. Dark→light-blue-gray (has SVG visibility bugs, see Known Issues). Thesis: "Solving alignment at compile time."
-- **Big thesis locked in ROADMAP:** Clear as alignment-layer-at-compile-time. "Move intelligence from the fluid model to the crystal compiler." Company name: **Crystallized** (company), Clear (language). Domain: `buildclear.dev` confirmed — clear.dev/app/build/studio all taken.
-- **Two plans written:**
-  - `plans/plan-perf-pagination-aggregation-04-16-2026.md` — PERF-1 (default LIMIT 50 on `get all`) + PERF-2 (SQL aggregations via `sum of price from Orders`). Red-teamed once. **Filtered aggregates update is INCOMPLETE** — see "What's In Progress."
-  - `plans/plan-fly-deploy-04-16-2026.md` — Fly.io deploy pipeline. NOT red-teamed yet.
-- **Performance gaps documented in ROADMAP** (PERF-1 through PERF-4): no pagination, client-side aggregations, no search limits, no virtual scrolling.
-- **Rule updates to `~/.claude/CLAUDE.md` (global):**
-  - `Ross Perot Rule` promoted to first rule
-  - `ADHD-Friendly Output (HARD RULE)` — bullets, <15 words, bold load-bearing words
-  - `No Guessing About the External World (HARD RULE)` — always search for market/competitor claims
-- **Rule rename in project CLAUDE.md:** "Open Claw Rule" → "Next Steps Rule."
+### Fix: `send back` in `define function` now compiles to `return`
 
-## What's In Progress
+**The bug:** Writing `send back x` inside a `define function` block was emitting `res.json(x)` instead of `return x`. This caused runtime crashes when calling user-defined functions from test blocks or other code.
 
-**Filtered aggregates addition to PERF plan — PARTIAL.** Russell explicitly called out I dropped filtered aggregates from the plan as a "stretch goal" and told me to add them back as first-class. One edit made (updated the 🔧 THE FIX section to include filtered aggregates as REQUIRED, reusing existing `conditionToFilter` helper at compiler.js line 2863). Remaining work:
+**Root cause:** `compileBody` was called without `insideFunction: true`, so `compileRespond()` fell through to the HTTP path.
 
-1. Update Cycle 5 test code to include a `where` clause test case
-2. Add NEW Cycle 6: `sum of price from Orders where status is 'paid'` → `db.aggregate('orders', 'SUM', 'price', { status: 'paid' })`
-3. Update parser code snippet in Cycle 5 to check for `where` after table name and parse a condition expression
-4. Update compiler `exprToCode` `sql_aggregate` case to pass filter through
-5. Update `db.aggregate` runtime body to use `buildWhere(filter)` for WHERE clause
-6. Re-run red-team-plan on updated plan
-7. Then execute — branch `feature/perf-pagination` already created
+**The fix (two lines):**
+1. `compileRespond()` now checks `ctx.insideFunction || ctx.insideAgent` before deciding between `return` and `res.json`
+2. `FUNCTION_DEF` case now passes `{ insideFunction: true }` to `compileBody`
+
+**User-defined function shadowing:** Added `_findUserFunctions` pre-scan (mirrors `_findAsyncFunctions` pattern). User-defined names now take priority over ALL built-in aliases in CALL resolution. Writing `define function sum(a, b):` works — it doesn't get rerouted to `_clear_sum`.
+
+### Feat: UNIT_ASSERT value-level assertions in test blocks
+
+`expect result is 5`, `expect x is greater than 10`, `expect name is not empty` etc. compile to `_unitAssert(value, 'eq', 5, line, 'x')` calls with rich error messages. Full operator set: eq, neq, gt, lt, gte, lte, empty, not_empty.
+
+### Docs: Full documentation update across all surfaces
+- `intent.md` — UNIT_ASSERT rows added
+- `SYNTAX.md` — function TDD section added
+- `AI-INSTRUCTIONS.md` — TDD-first for functions, shadowing rules, gotchas
+- `USER-GUIDE.md` — "TDD with Functions" tutorial added to Chapter 17
+- `playground/system-prompt.md` — Meph now knows TDD with `define function`
+- `.claude/skills/write-clear/SKILL.md` — function TDD pattern added
+- `ROADMAP.md` — phase marked complete
+
+### Integration test: Meph TDD loop verified
+`playground/test-tdd-loop.js` — drives a live Meph session with task "build apply_discount using TDD." Checks that Meph: writes test first (edit_code before first run_tests), sees RED on first run, then GREEN on final run. Passes 5/5 assertions.
+
+### Plan: Supervisor multi-session architecture
+`plans/plan-supervisor-multi-session-04-17-2026.md` — comprehensive plan for running N worker Meph sessions orchestrated by a supervisor. Covers session registry, supervisor loop, task distribution, merge step, shared memory discipline, observability, and GA-based candidate generation. Red-teamed and patched. Not implemented yet.
 
 ## Key Decisions Made
 
-- **Marcus is the strategic anchor, not just the beachhead.** Sara gets $0 marketing until 2027. Sara's templates = demo assets only. Vercel/Stripe pattern: technical-first wins, non-technical expansion from a position of strength. Bubble pattern (broad-first) stuck at $30M ARR after 12 years.
-- **Don't commit pricing on the landing page yet.** Russell pushed back on "$99/mo for your whole team" — he hasn't decided between per-seat, usage-based, flat. Page says "Free to start. Pay as your team grows." with "See pricing" link.
-- **Agents are SECONDARY for Marcus, not primary.** He cares about the tool working. Agent is gravy. Landing page order: Apps → Differentiators → Agents → FOR/GET/PAY.
-- **Readable source + deterministic compilation + compiler-accumulates-quality is the real moat** against Lovable/Bolt/Zite — not just Retool. Zite is closest competitor (AI-native, unlimited users on $0/$15/$55 plans, SOC 2, Salesforce integration) but generates a black box. Clear source is readable English the user can modify directly.
-- **Fly.io over Railway** for hosting. Scale-to-zero economics: Fly ~$12/mo for 25 idle apps vs Railway ~$125/mo 24/7. Railway would be negative margin on $99/mo plan.
-- **No backward compatibility for default pagination.** Per project CLAUDE.md: no users yet, do it right. `get all` now returns max 50. `get every` is the opt-out.
-- **"Solving alignment at compile time" is the lab page thesis.** Company = Crystallized. Language = Clear. Product = Clear Studio. AI output is fluid (unaligned), compiler output is crystal (constrained). Compiler = phase transition.
+- **No backward compat for `sum` collision.** User-defined functions always shadow built-ins. CALL resolution checks `_userFunctions` before `mapFunctionNameJS`. Clean and correct.
+- **`send back` → `return` is the canonical path for pure functions.** Previously it only worked correctly inside agents. Now it works for any `define function` block.
+- **Integration test lives in `playground/test-tdd-loop.js`**, not in the main test suite. Needs a live server + API key. Run manually or via CI with key set.
 
-## Known Issues / Bugs
+## Also Done This Session (Session 37)
 
-- **`landing/lab.html` SVG visibility broken.** After bg color change from dark → light blue-gray, the crystallization SVG has bugs:
-  - Crystal grid dots OVERLAY text labels on the right side — should be at edges or removed
-  - Fluid lines on left too faint on light bg
-  - Arrow connectors too pale
-  - Russell saw it and said "never mind, move on to perf" — SVG needs redesign for light theme or revert page to dark.
-- **Plan update for filtered aggregates is incomplete.** See "What's In Progress."
-- **`.clear-build/` is untracked.** Probably build artifacts — verify gitignore before staging.
+- **RESEARCH.md** — standalone research doc: oracle problem, TDD as reversed GAN, GAN UI dev process, full RL gym inventory (10 built components), flywheel, re-ranker architecture, GA rationale, honest "what this doesn't buy" assessment
+- **FAQ.md** — quality signals sections updated to reflect built status. Big Thesis condensed to pointer to RESEARCH.md.
+- **Mechanical test quality signals** — 3 pieces shipped (`feature/test-quality-signals`):
+  - Static lint: `not_empty`, `eq true`, single assertion → `r.warnings[]` with `code:'weak_assertion'|'single_assertion'`
+  - Process lint: `sessionTestCalls[]` per `/api/chat`, tracks `run_tests` ok/fail
+  - Session JSON: `playground/sessions/[id].json` written at session end
+  - Dev endpoint: `GET /api/session-quality` (last N sessions, hidden from Studio UI)
+- **ROADMAP.md** — mechanical quality signals marked complete, next steps updated
 
-## Next Steps (Priority Order)
+## What's Next (priority order)
 
-1. **Finish filtered aggregates in PERF plan** — follow the 6-step list in "What's In Progress." Russell was explicit: "why would you drop that? i explicitly told you to do that."
-2. **Red-team the updated plan** — run `red-team-plan` skill again on `plans/plan-perf-pagination-aggregation-04-16-2026.md`. Focus: `from Table` vs `from 'url'` token collision, filter expression parsing reuse, compiled-output-vs-runtime-db sync (BOTH `runtime/db.js` and `clear-runtime/db.js` must get the `aggregate()` method).
-3. **Execute PERF plan on `feature/perf-pagination`** — start Phase 1 Cycle 1 (db.findAll limit option). Strict TDD. Commit after each cycle. `node clear.test.js` after each change.
-4. **Template smoke test** after Phase 1 — audit all 8 core templates for `get all` that assumed unlimited. Change to `get every` where needed.
-5. **Red-team and execute Fly deploy plan** (`plans/plan-fly-deploy-04-16-2026.md`). Separate branch: `feature/fly-deploy`.
-6. **After perf + deploy ship:** revisit `landing/lab.html` SVG — redesign for light theme OR revert to dark.
+### 1. Execute the Supervisor plan
+`plans/plan-supervisor-multi-session-04-17-2026.md`. Branch: `feature/supervisor-multi-session`. Start with Phase 1 (session registry + `/api/sessions` endpoint). The mechanical quality signals now plug directly into the sessions table.
 
-## Files to Read First
+### 2. Execute the PERF plan
+`plans/plan-perf-pagination-aggregation-04-16-2026.md`. Branch: `feature/perf-pagination`. Default LIMIT 50 on `get all` + SQL aggregations.
 
-| File | Why |
-|------|-----|
-| `ROADMAP.md` | Full Session 35 state: GTM positioning (Marcus), competitive landscape, PERF-1–4 gaps, alignment thesis, company naming (Crystallized) |
-| `plans/plan-perf-pagination-aggregation-04-16-2026.md` | Plan to execute next. Filtered aggregates need to be added back first (see "In Progress"). |
-| `plans/plan-fly-deploy-04-16-2026.md` | Second plan, not yet red-teamed |
-| `landing/marcus.html` | Marcus GTM page. Real sourced competitive claims, "Why not X?" section, guardrails. |
-| `compiler.js` (lines 3225-3400, compileCrud) | Where PERF-1 changes go. Default LIMIT 50 for `lookupAll`. |
-| `parser.js` (lines 5502-5557 and 8115-8139) | Two places `get all`/`look up all` are parsed. Both need `every` opt-out. |
-| `runtime/db.js` (line 216) | Needs 3rd arg `options` with `limit`. Plus NEW `aggregate()` method for PERF-2. |
-| `clear-runtime/db.js` | Second copy. MUST stay in sync with `runtime/db.js` — both ship with compiled apps. |
+### 3. Fly.io deploy
+`plans/plan-fly-deploy-04-16-2026.md`. Needs one more red-team pass first.
 
 ## Resume Prompt
 
-> I'm on branch `feature/perf-pagination`. Read `HANDOFF.md`, then finish adding filtered aggregates to `plans/plan-perf-pagination-aggregation-04-16-2026.md` (see "What's In Progress" — 6-step list). Then red-team the updated plan. Then execute Phase 1 Cycle 1 on this branch with strict TDD. Commit after each cycle. After Phase 1, template smoke test across all 8 core templates. DO NOT skip filtered aggregates — Russell was explicit.
+"Session 37 shipped: RESEARCH.md (full RL/GAN/oracle theory doc), mechanical test quality signals (static weak assertion lint + red-step process lint + session JSON storage). All 3 pieces on main. Next: supervisor multi-session plan execution — branch `feature/supervisor-multi-session`. Start with Phase 1 (session registry + /api/sessions endpoint). See `plans/plan-supervisor-multi-session-04-17-2026.md`."

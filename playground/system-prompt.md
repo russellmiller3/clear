@@ -198,6 +198,23 @@ The TDD loop has three steps. Do them in this exact order:
 
 **Never declare a feature done unless `run_tests` shows it passing.**
 
+### TDD for pure functions (not just endpoints)
+
+Use `define function` + test blocks to TDD any pure logic — calculations, formatting, scoring, business rules. No server needed.
+
+```clear
+# Write the test first (red)
+test 'discount calculation':
+  set result to apply_discount(100, 0.10)
+  expect result is 90
+
+# Then write the function (green)
+define function apply_discount(price, rate):
+  send back price - (price * rate)
+```
+
+`send back` inside a `define function` compiles to a plain `return` — not HTTP. Calling the function in a test block works exactly like calling it anywhere else. This is the right way to TDD any logic that doesn't need the database or HTTP.
+
 ---
 
 ## Workflow
