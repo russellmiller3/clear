@@ -449,6 +449,33 @@ Today, the moment Marcus's approval app ships to his five employees, it's frozen
 
 **Success metric:** Marcus ships 3+ live edits to his prod app in his first week without a single rollback-due-to-breakage. That's the bar.
 
+**Positioning (don't generic-pitch "live editing" — every competitor claims that):**
+
+> **"Never lose a user's form data when you change the app."**
+
+The technical backing is **additive-by-default with expand-and-contract migrations**: new column before old one drops, dual-write during transitions, old schema still readable until every consumer moves over. Airtable-grade safety with Lovable-grade conversational interface — a combination nobody ships today.
+
+**Competitive snapshot (researched Session 38):**
+
+| Competitor | Live edit? | Schema safety | Session preservation | Rollback | Primary complaint |
+|---|---|---|---|---|---|
+| **Lovable** | No (publish = new snapshot) | Destructive; no preview | No | Third-party only | "Changes not reaching prod" after 2.0; 1.x→2.x regression |
+| **Bolt.new** | No (every deploy live) | None; rewrites whole files | No | Git only | GitHub issue #9016 "Files Glitching as they are being rewritten"; 1.4/5 Trustpilot |
+| **Retool** | **Partial** — Release Manager: draft vs. published | Manual schema migrations between envs | Not guaranteed | ✅ millisecond DB record swap | Developer-gated; non-devs can't push changes; "app reverting on its own" threads |
+| **Superblocks / Clark** | No — Clark modifies source, not running instance | Enterprise governance gates; no live DDL | No | Git-based | AI edits source, not live apps |
+| **Zite** | Partial (post-publish edits) | No public doc | No public evidence | No public evidence | Slow iteration on prompts |
+| **v0** | No — explicit *"Cannot edit a published generation"* | N/A (frontend only) | Client reload kicks users off | Vercel deployment history | Can't edit after publish |
+| **Budibase / Appsmith / ToolJet** | No (staging→prod via git) | Manual, connector-dependent | Not addressed | Git tags | Developer-gated |
+| **Airtable / Notion** | ✅ Additive only | Additive-by-construction (API forbids table/column creation) | ✅ Yes | Revision history | (This is the prior art — replicate their safety model) |
+
+**Verdict:** Real gap, defensible. The "chat-to-modify-live-app-without-breaking-users" slot is unowned. Primary risk: Retool bolts a real AI agent onto Release Manager. Window is roughly 12-18 months to plant the flag.
+
+**Source quotes for landing page:**
+- Bolt.new: *"rewrites the entire file, breaks your UI/UX structure, and still fails to fix the original problem"* (YeasiTech; GitHub #9016)
+- Vibe-coding incidents: *"wiped production databases while explicitly instructed not to"* — 7 documented cases in 2025-2026 (Autonoma)
+- Lovable 2.0: *"none of my changes are getting pushed to prod even after updating"* (Trustpilot)
+- v0: *"Cannot edit a published generation"* (Vercel community)
+
 ### Language Completeness
 
 Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it compiles to working software. If the LLM needs a feature to build what Russell asked for, Clear needs it.
