@@ -471,17 +471,27 @@ This is the final loop closure. Until this step, the DB is gathering data withou
 
 The supervisor architecture (`playground/supervisor.js` + `supervisor/*`) spawns N worker servers on sequential ports and coordinates them via HTTP. It's built. But the value is internal, not user-facing. Ranked by leverage:
 
-### 1. Eval suite parallelization (HIGH leverage — use immediately)
+### 1. Eval suite parallelization (HIGH leverage — BUILT)
 
-`playground/eval-meph.js` runs 16 Meph scenarios sequentially. Typical time ~90s per push. With 3 workers building in parallel, each handling ~5 scenarios: ~30s. The speedup compounds — every CI run, every push, every eval sweep. Amortized over a year of development, this is hours of time saved for maybe an afternoon of work building the harness.
+`playground/eval-parallel.js` runs 16 Meph scenarios across N workers with contiguous slicing (preserves editor-state dependencies within each slice). Typical: 3 workers → ~30s vs ~90s sequential.
 
-**Build shape:** partition scenarios into N chunks, POST to each worker's `/api/chat`, aggregate JSON results. ~50 lines.
+```
+node playground/eval-parallel.js --workers=3
+```
 
-### 2. Curriculum sweep for Factor DB acceleration (HIGH leverage — on demand)
+Shared scenario definitions live in `playground/eval-scenarios.js`, imported by both the sequential `eval-meph.js` and the parallel version. Swap in pre-push hook when ready.
 
-The 20-task curriculum (`curriculum/tasks/*.json`) covers L1–L10 difficulty. Running each task through a real Meph session produces 5–30 compile cycles → 5–30 Factor DB rows. Across 20 tasks serial: ~400 rows per sweep. With 3 workers parallel: same ~400 rows but in 1/3 the time.
+### 2. Curriculum sweep for Factor DB acceleration (HIGH leverage — BUILT)
 
-Three sweeps (60 tasks) → ~1200 rows → past the XGBoost training threshold. Without multi-session, this takes days of elapsed time and human attention. With it, a weekend.
+`playground/supervisor/curriculum-sweep.js` drives all 20 curriculum tasks (`curriculum/tasks/*.json`, L1–L10) through N parallel workers. Each task → 5–30 compile cycles → 5–30 Factor DB rows via the `/api/chat` hook.
+
+```
+node playground/supervisor/curriculum-sweep.js --workers=3
+node playground/supervisor/curriculum-sweep.js --tasks=hello-world,echo --workers=2
+node playground/supervisor/curriculum-sweep.js --dry-run
+```
+
+Budget: ~$0.20–1.00 per full sweep. Three sweeps (60 task attempts) → ~1200 rows → past the XGBoost training threshold.
 
 **This is the fastest path to a live re-ranker.** Organic session traffic (Russell + a few users) won't hit 200 passing rows for months. Curriculum sweeps get there in hours.
 
@@ -512,12 +522,12 @@ Don't build this until the theme system exists and a real user asks for it.
 
 | Use | When | Leverage | Built? |
 |-----|------|----------|--------|
-| Eval parallelization | Every CI run | High | No — ~1 hour of harness work |
-| Curriculum sweep | Weekly, or to accelerate flywheel | High | No — ~1 hour of harness work |
-| Adversarial testing | Before major ships | Medium | No — prompts need to be written |
-| Design variants | After theme system | Low | No, and blocked on theme system |
+| Eval parallelization | Every CI run | High | ✅ `playground/eval-parallel.js` |
+| Curriculum sweep | Weekly, or to accelerate flywheel | High | ✅ `playground/supervisor/curriculum-sweep.js` |
+| Adversarial testing | Before major ships | Medium | ⬜ — prompts need to be written |
+| Design variants | After theme system | Low | ⬜ and blocked on theme system |
 
-The supervisor itself is built. What's left is a thin scheduling layer per use case — each ~50 lines. Not blocking the flywheel; enabling specific speedups.
+Both high-leverage harnesses shipped Session 37. Two remaining items are lower priority — adversarial testing is valuable but not time-critical; design variants blocked on theme infrastructure.
 
 ---
 
