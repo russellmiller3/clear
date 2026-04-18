@@ -49,6 +49,32 @@ const WORKER_BASE_PORT = 3495;
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Same preflight as curriculum-sweep — catch API exhaustion before spawning workers
+async function preflightApiCheck(apiKey) {
+  if (!apiKey) return 'ANTHROPIC_API_KEY not set';
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 5,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (r.ok) return null;
+    const body = await r.text();
+    return `API pre-flight failed: HTTP ${r.status} — ${body.slice(0, 200)}`;
+  } catch (err) {
+    return `API pre-flight errored: ${err.message}`;
+  }
+}
+
 async function waitForWorkerReady(port, maxMs = 15000) {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
@@ -210,6 +236,15 @@ export async function runReplicatedEval({
   }
 
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY required (or --dry-run).');
+
+  console.log('\nPre-flight API check...');
+  const preflightError = await preflightApiCheck(apiKey);
+  if (preflightError) {
+    console.error(`\n❌ ${preflightError}`);
+    console.error('Eval aborted — all trials would fail.');
+    throw new Error('Pre-flight API check failed');
+  }
+  console.log('API reachable ✓');
 
   try { unlinkSync(REGISTRY_PATH); } catch {}
   const registry = new SessionRegistry(REGISTRY_PATH);

@@ -2125,14 +2125,54 @@ app.get('/api/config', (req, res) => {
   res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
 });
 
+// Lightweight cache for API health — checked at most once per 5 min.
+// Calling Anthropic on every dashboard poll would waste quota.
+let _apiHealth = { status: 'unknown', message: null, checkedAt: 0 };
+
+async function _checkApiHealth() {
+  const key = storedApiKey;
+  if (!key) {
+    _apiHealth = { status: 'no_key', message: 'No API key configured', checkedAt: Date.now() };
+    return;
+  }
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': key,
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 5,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (r.ok) {
+      _apiHealth = { status: 'ok', message: 'API reachable', checkedAt: Date.now() };
+    } else {
+      const body = await r.text();
+      _apiHealth = { status: 'error', message: `HTTP ${r.status}: ${body.slice(0, 300)}`, checkedAt: Date.now() };
+    }
+  } catch (err) {
+    _apiHealth = { status: 'error', message: err.message, checkedAt: Date.now() };
+  }
+}
+
 // Flywheel dashboard — Factor DB stats for the Supervisor tab in Studio.
 // Read-only; public within Studio so the UI can poll it. Shows training-data
 // accumulation in real time as Meph sessions generate rows.
-app.get('/api/flywheel-stats', (req, res) => {
+app.get('/api/flywheel-stats', async (req, res) => {
   if (!_factorDB) {
     return res.json({ enabled: false, total: 0, passing: 0, byArchetype: [], recent: [] });
   }
   try {
+    // Refresh API health at most every 5 min — cheap check, visible signal
+    if (Date.now() - _apiHealth.checkedAt > 5 * 60 * 1000) {
+      await _checkApiHealth();
+    }
     const stats = _factorDB.stats();
     const byArchetype = _factorDB._db.prepare(`
       SELECT archetype,
@@ -2160,6 +2200,7 @@ app.get('/api/flywheel-stats', (req, res) => {
       percentToThreshold: Math.min(100, Math.round((stats.passing / threshold) * 100)),
       byArchetype,
       recent,
+      apiHealth: _apiHealth,
     });
   } catch (err) {
     res.json({ enabled: false, error: err.message });

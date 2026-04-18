@@ -1754,8 +1754,27 @@ async function renderFlywheel() {
       </tr>`;
   }).join('');
 
+  // API health banner — red/yellow/green
+  const health = data.apiHealth || { status: 'unknown' };
+  const healthBanner = (() => {
+    if (health.status === 'ok') {
+      return `<div style="padding:8px 12px;background:#064e3b;color:#6ee7b7;border-radius:6px;font-size:11px;margin-bottom:12px">✓ Anthropic API reachable — sweeps will work</div>`;
+    }
+    if (health.status === 'no_key') {
+      return `<div style="padding:8px 12px;background:#78350f;color:#fcd34d;border-radius:6px;font-size:11px;margin-bottom:12px">⚠ No API key configured — set one in the chat panel</div>`;
+    }
+    if (health.status === 'error') {
+      return `<div style="padding:8px 12px;background:#7f1d1d;color:#fca5a5;border-radius:6px;font-size:11px;margin-bottom:12px">
+        <div style="font-weight:600;margin-bottom:4px">⚠ API unavailable — sweeps will fail</div>
+        <div style="font-family:var(--mono);font-size:10px;word-break:break-word;opacity:0.9">${escapeHTML((health.message || '').slice(0, 300))}</div>
+      </div>`;
+    }
+    return '';
+  })();
+
   el.innerHTML = `
     <div style="padding:24px;overflow-y:auto;height:100%">
+      ${healthBanner}
       <div style="margin-bottom:20px">
         <div style="font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Training Signal Flywheel</div>
         <div style="font-size:24px;font-weight:600;color:var(--tx);margin-bottom:2px">${data.total} rows · ${data.passing} passing</div>
