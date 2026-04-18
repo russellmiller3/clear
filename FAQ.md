@@ -197,7 +197,7 @@ Two places, two different signals:
 
 ### Where is session data stored?
 
-**Short term (not yet built):** `playground/sessions/[session-id].json` — one file per session, written at end of `/api/chat`.
+**Short term (built):** `playground/sessions/[session-id].json` — one file per session, written at end of `/api/chat`. Readable via `GET /api/session-quality` (dev-only, not in Studio UI).
 
 **Medium term (supervisor plan, Phase 1):** `playground/sessions.db` — SQLite. Sessions table schema:
 
@@ -235,12 +235,12 @@ Long term: fine-tune on Clear specifically once you have 5k+ sessions.
 
 ### Where does weak assertion lint run?
 
-`compiler.js` — in the `UNIT_ASSERT` compile case. Weak patterns to flag:
-- `check === 'neq'` AND right is `nothing` or `empty` → weak
-- `check === 'eq'` AND right is `true` (bare, no context) → weak
-- Single assertion in entire test block → yellow flag
+`compiler.js` — in `generateE2ETests()`, before the test body is compiled. Weak patterns detected on the AST:
+- `check === 'not_empty'` → existence-only check, doesn't verify actual value → `code: 'weak_assertion'`
+- `check === 'eq'` AND `right.type === 'literal_boolean'` AND `right.value === true` → bare boolean → `code: 'weak_assertion'`
+- `unitAsserts.length === 1` in a test block → `code: 'single_assertion'`
 
-Output: `r.warnings[]`. Same infrastructure as existing `clear lint` warnings.
+Output: `r.warnings[]` with `{ line, severity: 'quality', code, message }`. Not shown to Meph or user.
 
 ---
 
