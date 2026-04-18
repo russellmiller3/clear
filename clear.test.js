@@ -23624,6 +23624,7 @@ await import('./lib/edit-api.test.js');
 await import('./lib/meph-adapter.test.js');
 await import('./lib/hidden-field-syntax.test.js');
 await import('./lib/edit-tools-phase-b.test.js');
+await import('./lib/db-hidden-fields.test.js');
 
 run();
 

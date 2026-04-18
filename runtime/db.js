@@ -224,9 +224,31 @@ function parseOffset(n) {
   return (v >= 0 && v < 1000000) ? v : null;
 }
 
+// Strip fields marked hidden:true in the schema. Used by default on every
+// read path so API callers never see columns the app owner has hidden.
+// Pass { includeHidden: true } when internal/admin code legitimately needs
+// the full row.
+function stripHidden(row, schema) {
+  if (!row || !schema) return row;
+  let hidden = null;
+  for (const field in schema) {
+    if (schema[field] && schema[field].hidden) {
+      if (!hidden) hidden = [];
+      hidden.push(field);
+    }
+  }
+  if (!hidden) return row;
+  const out = {};
+  for (const k in row) {
+    if (hidden.indexOf(k) === -1) out[k] = row[k];
+  }
+  return out;
+}
+
 function findAll(table, filter, options) {
   const tableName = table.toLowerCase();
   const schema = _schemas[tableName] || {};
+  const includeHidden = !!(options && options.includeHidden);
   const w = buildWhere(filter);
   let sql = 'SELECT * FROM ' + tableName + ' ' + w.clause;
   if (options && options.limit) {
@@ -238,15 +260,21 @@ function findAll(table, filter, options) {
     if (off) sql += ' OFFSET ' + off;
   }
   const rows = _db.prepare(sql).all(w.params);
-  return rows.map(function(r) { return coerceRecord(r, schema); });
+  return rows.map(function(r) {
+    const coerced = coerceRecord(r, schema);
+    return includeHidden ? coerced : stripHidden(coerced, schema);
+  });
 }
 
-function findOne(table, filter) {
+function findOne(table, filter, options) {
   const tableName = table.toLowerCase();
   const schema = _schemas[tableName] || {};
+  const includeHidden = !!(options && options.includeHidden);
   const w = buildWhere(filter);
   const row = _db.prepare('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1').get(w.params);
-  return row ? coerceRecord(row, schema) : null;
+  if (!row) return null;
+  const coerced = coerceRecord(row, schema);
+  return includeHidden ? coerced : stripHidden(coerced, schema);
 }
 
 function validateAggregateArgs(fn, field) {

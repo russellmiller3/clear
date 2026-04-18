@@ -4673,6 +4673,7 @@ function compileDataShape(node, ctx, pad) {
     if (f.defaultValue !== null && f.defaultValue !== undefined) props.push(`default: ${JSON.stringify(f.defaultValue)}`);
     if (f.auto) props.push('auto: true');
     if (f.fk) props.push(`ref: "${f.fk}"`);
+    if (f.hidden) props.push('hidden: true');
     return `  ${sanitizeName(f.name)}: { ${props.join(', ')} }`;
   }).join(',\n');
   const tableName = pluralizeName(node.name);
