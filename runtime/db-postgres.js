@@ -230,6 +230,11 @@ function parseLimit(n) {
   return (v > 0 && v < 10000) ? v : null;
 }
 
+function parseOffset(n) {
+  var v = parseInt(n, 10);
+  return (v >= 0 && v < 1000000) ? v : null;
+}
+
 async function findAll(table, filter, options) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
@@ -238,6 +243,10 @@ async function findAll(table, filter, options) {
   if (options && options.limit) {
     var lim = parseLimit(options.limit);
     if (lim) sql += ' LIMIT ' + lim;
+  }
+  if (options && options.offset) {
+    var off = parseOffset(options.offset);
+    if (off) sql += ' OFFSET ' + off;
   }
   var res = await getPool().query(sql, w.params);
   return res.rows;

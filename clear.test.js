@@ -5512,6 +5512,40 @@ when user calls GET /api/stats:
     expect(result.javascript).toContain('priority: "high"');
   });
 
+  it('PERF-5: explicit page N, M per page emits SQL LIMIT/OFFSET not client slice', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create an Items table:
+  name, required
+when user calls GET /api/items:
+  page_n = incoming's page
+  items = get all Items page page_n, 25 per page
+  send back items
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('limit: 25');
+    expect(result.javascript).toContain('offset:');
+    // Must NOT use the old client-side fetch-then-slice pattern
+    expect(result.javascript).not.toContain('_all_items');
+  });
+
+  it('PERF-5: literal page number emits SQL LIMIT/OFFSET', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create an Items table:
+  name, required
+when user calls GET /api/items:
+  items = get all Items page 3, 10 per page
+  send back items
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('limit: 10');
+    expect(result.javascript).toContain('offset: 20');
+    expect(result.javascript).not.toContain('.slice');
+  });
+
   it('filtered aggregate with non-equality emits runtime error string', () => {
     const result = compileProgram(`
 build for javascript backend
@@ -12789,11 +12823,12 @@ describe('Phase 34 - pagination', () => {
     expect(crud.perPage).toBe(25);
   });
 
-  it('compiles pagination to array slice for local memory', () => {
+  it('compiles pagination to SQL LIMIT/OFFSET for local memory (PERF-5)', () => {
     const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items page 1, 10 per page\n  send back items`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('.slice(');
+    expect(result.javascript).toContain('limit: 10');
+    expect(result.javascript).toContain('offset: 0');
   });
 
   it('compiles pagination to .range() for supabase', () => {

@@ -219,6 +219,11 @@ function parseLimit(n) {
   return (v > 0 && v < 10000) ? v : null;
 }
 
+function parseOffset(n) {
+  const v = parseInt(n, 10);
+  return (v >= 0 && v < 1000000) ? v : null;
+}
+
 function findAll(table, filter, options) {
   const tableName = table.toLowerCase();
   const schema = _schemas[tableName] || {};
@@ -227,6 +232,10 @@ function findAll(table, filter, options) {
   if (options && options.limit) {
     const lim = parseLimit(options.limit);
     if (lim) sql += ' LIMIT ' + lim;
+  }
+  if (options && options.offset) {
+    const off = parseOffset(options.offset);
+    if (off) sql += ' OFFSET ' + off;
   }
   const rows = _db.prepare(sql).all(w.params);
   return rows.map(function(r) { return coerceRecord(r, schema); });

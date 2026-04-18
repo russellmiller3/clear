@@ -3369,13 +3369,20 @@ function compileCrud(node, ctx, pad) {
       const filterArg = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
       lookupCode = `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}', ${filterArg}, { limit: ${DEFAULT_QUERY_LIMIT} })).map(_revive);`;
     }
-    // Pagination: slice the result array
+    // PERF-5: explicit pagination pushes LIMIT + OFFSET into SQL instead of
+    // fetching all rows then slicing client-side. Works for literal page
+    // numbers (offset precomputed) and runtime variables (offset expression).
     if (node.page && node.perPage && !isSingleLookup) {
       const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
       const varName = sanitizeName(node.variable);
-      const pageExpr = typeof node.page === 'number' ? node.page : sanitizeName(String(node.page));
-      lookupCode = `${pad}const _all_${varName} = await db.findAll('${table}'${where});\n`;
-      lookupCode += `${pad}const ${varName} = _all_${varName}.slice((${pageExpr} - 1) * ${perPage}, ${pageExpr} * ${perPage});`;
+      const filterArg = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
+      let offsetExpr;
+      if (typeof node.page === 'number') {
+        offsetExpr = String((node.page - 1) * perPage);
+      } else {
+        offsetExpr = `(${sanitizeName(String(node.page))} - 1) * ${perPage}`;
+      }
+      lookupCode = `${pad}const ${varName} = (await db.findAll('${table}', ${filterArg}, { limit: ${perPage}, offset: ${offsetExpr} })).map(_revive);`;
     }
     // FK join stitching: for each FK field, load the related record
     if (!isSingleLookup && ctx.schemaMap) {
@@ -7116,7 +7123,7 @@ export function exprToCode(expr, ctx) {
         if (fn === 'COUNT') {
           return `(((await supabase.from('${table}').select('*')).data) || []).length`;
         }
-        const fnMap = { SUM: '_clear_sum_field', AVG: '_clear_avg_field' };
+        const fnMap = { SUM: '_clear_sum_field', AVG: '_clear_avg_field', MIN: '_clear_min_field', MAX: '_clear_max_field' };
         const jsFn = fnMap[fn] || '_clear_sum_field';
         return `${jsFn}(((await supabase.from('${table}').select('*')).data) || [], '${field}')`;
       }
