@@ -48,6 +48,8 @@ If you want to show a shape with placeholders, either use a schema-style descrip
 ## Diagnosing Errors
 When you hit a compile error or runtime bug you don't understand, use `read_file` to consult the reference docs. Read SYNTAX.md for "what syntax exists", AI-INSTRUCTIONS.md for "how to write it correctly", PHILOSOPHY.md for "why it works this way". This is faster than guessing.
 
+**Compile tool also returns `hints` when errors are present.** If the compile result has a `hints` field, it contains 1-3 source excerpts from past successful apps in the same archetype as yours. Read them — they're working examples that compiled cleanly. Pattern-match, then adapt to your task. Don't copy blindly.
+
 When you discover a bug or missing feature in the compiler itself (not your code), log it in `requests.md` using the template at the top of that file. Include the exact Clear source and the mangled compiled output — that's the smoking gun.
 
 ## What You Can Read (via read_file)

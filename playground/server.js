@@ -2435,6 +2435,35 @@ app.post('/api/chat', async (req, res) => {
             hasJavascript: !!r.javascript,
             hasPython: !!r.python,
           };
+
+          // ── Factor DB suggestion injection (flywheel closes here) ──
+          // When compile fails, retrieve up-to-3 similar past successful sessions
+          // from the Factor DB and include excerpts of their source as hints.
+          // BM25 filter by archetype + test_pass=1 (gold rows only — apps that
+          // actually worked). This is the first loop closure: the DB's
+          // accumulated data starts steering Meph's next turn.
+          if (_factorDB && r.errors.length > 0 && currentSource) {
+            try {
+              const archetype = _safeArchetype(currentSource);
+              const hintRows = _factorDB.querySimilar({
+                archetype,
+                topK: 3,
+              }).filter(row => row.compile_ok === 1 && row.test_pass === 1);
+              if (hintRows.length > 0) {
+                result.hints = {
+                  note: `Based on ${hintRows.length} past ${archetype} apps that compiled and ran cleanly, here are reference snippets. Use them as inspiration for what works — don't copy blindly; adapt to this task.`,
+                  references: hintRows.map(h => ({
+                    summary: (h.patch_summary || '').slice(0, 100),
+                    score: h.test_score,
+                    // Truncate source to keep context lean (800 chars ≈ 20 lines)
+                    source_excerpt: (h.source_before || '').slice(0, 800),
+                  })),
+                };
+              }
+            } catch { /* non-fatal */ }
+          }
+          // ────────────────────────────────────────────────────────────
+
           // Include actual compiled code (truncated to avoid blowing context)
           if (r.serverJS) result.serverJS = r.serverJS.slice(0, 8000);
           if (r.javascript) result.javascript = r.javascript.slice(0, 8000);
