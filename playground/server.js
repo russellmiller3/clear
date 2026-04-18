@@ -44,9 +44,12 @@ app.use(express.json({ limit: '1mb' }));
 // No-cache headers so edits show on browser refresh without server restart
 app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.sendFile(join(__dirname, 'ide.html'));
+  // dotfiles:'allow' is needed when the checkout lives under a dotted path
+  // (e.g. a worktree in .claude/worktrees/...) — without it send's default
+  // dotfile protection 404s the whole response.
+  res.sendFile(join(__dirname, 'ide.html'), { dotfiles: 'allow' });
 });
-app.use(express.static(__dirname, { etag: false, lastModified: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+app.use(express.static(__dirname, { etag: false, lastModified: false, dotfiles: 'allow', setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 
 // Deploy + billing endpoints (Phase 85 — one-click deploy). Needs express.json
 // already mounted above. Uses an in-memory tenant store by default — swap to
