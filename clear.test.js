@@ -5400,6 +5400,21 @@ when user calls GET /api/users:
     expect(result.errors.length).toBe(0);
     expect(result.javascript).not.toContain('limit');
   });
+
+  it('search X for q compiles with .slice(0, 100)', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Products table:
+  name, required
+  description
+when user calls GET /api/search:
+  results = search Products for incoming's q
+  send back results
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('.slice(0, 100)');
+  });
 });
 
 describe('Compiler - save vs update', () => {

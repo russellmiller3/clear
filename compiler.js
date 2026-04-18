@@ -7085,9 +7085,9 @@ export function exprToCode(expr, ctx) {
       const table = expr.table ? pluralizeName(expr.table) : 'unknown';
       const query = exprToCode(expr.query, ctx);
       if (ctx.lang === 'python') {
-        return `[r for r in await db.find_all('${table}', {}) if ${query}.lower() in ' '.join(str(v) for v in r.values()).lower()]`;
+        return `[r for r in await db.find_all('${table}', {}) if ${query}.lower() in ' '.join(str(v) for v in r.values()).lower()][:${DEFAULT_SEARCH_LIMIT}]`;
       }
-      return `(await db.findAll('${table}', {})).filter(_r => Object.values(_r).some(_v => String(_v).toLowerCase().includes(String(${query}).toLowerCase())))`;
+      return `(await db.findAll('${table}', {})).filter(_r => Object.values(_r).some(_v => String(_v).toLowerCase().includes(String(${query}).toLowerCase()))).slice(0, ${DEFAULT_SEARCH_LIMIT})`;
     }
 
     case NodeType.LOAD_CSV: {
