@@ -10098,6 +10098,24 @@ describe('Error messages - keyword typo detection', () => {
   });
 });
 
+describe('Error messages - intent hints beat Levenshtein for common wrong words', () => {
+  it('suggests look up / get all when Meph writes find', () => {
+    const result = compileProgram("x = find\nshow x");
+    expect(result.errors.length).toBeGreaterThan(0);
+    const msg = result.errors[0].message;
+    expect(msg.includes('look up')).toEqual(true);
+    expect(msg.includes('get all')).toEqual(true);
+    // Critically: does NOT say "Did you mean 'send'" anymore (that was the old bad suggestion)
+    expect(msg.includes("Did you mean 'send'")).toEqual(false);
+  });
+
+  it('suggests save X as new Y when Meph writes create as bare verb', () => {
+    const result = compileProgram("x = create\nshow x");
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message.includes('save')).toEqual(true);
+  });
+});
+
 describe('Error messages - duplicate endpoint detection', () => {
   it('warns on duplicate GET endpoint', () => {
     const result = compileProgram("build for javascript backend\nwhen user calls GET /api/x:\n  send back 1\nwhen user calls GET /api/x:\n  send back 2");
