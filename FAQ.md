@@ -7,6 +7,34 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## New Capabilities (Session 37 — plain English)
+
+**Meph now learns across sessions.** Before, every Meph chat started with zero memory. Now every compile he does writes to a local database (`playground/factor-db.sqlite`). When he hits an error, the system finds 3 past sessions where someone hit the same error and fixed it, and shows them to Meph as hints. He stops re-discovering the same bugs.
+
+**A live dashboard in Studio.** Open the IDE, click the new **Flywheel** tab. Shows the database growing, which kinds of apps are being built (approval queues, CRUDs, AI agents...), progress toward the re-ranker training threshold, and a banner telling you whether the Anthropic API is reachable. Updates every 3 seconds.
+
+**5 new template apps in the dropdown.** Open Studio, pick one — all working in 10 seconds:
+- **Approval Queue** — submit → pending → approved/rejected
+- **Lead Router** — intake + auto-assign by company size
+- **Onboarding Tracker** — customer + step checklist
+- **Support Triage** — AI classifies tickets into categories + priority
+- **Internal Request Queue** — IT/HR/Facilities triage
+
+These match what Marcus's RevOps team actually builds. They're the demo.
+
+**Meph writes cleaner Clear.** Around ten specific things he used to get wrong now come with targeted compiler suggestions or new syntax support:
+- Write `send back all Users` — no more throwaway intermediate variables
+- Use `this id` anywhere in an expression, not just in specific forms
+- The compiler tells him "use `look up X with this id`" instead of guessing "did you mean 'send'?" when he writes `find`
+- Auth-required mutations get a corrected example showing exactly where to put `requires login`
+- Test blocks accept natural English: `can user submit a request`, `can user add a lead`, etc.
+
+**The compounding part.** Every time we fix a bug at the system level (compiler, docs, system prompt), every future Meph session benefits for free. Every successful Meph session also feeds the database. Over months, the accumulated wins compound.
+
+**What's blocking full value realization:** we need ~200 rows where Meph built something that passed its tests before the ranking model becomes useful. We have 38. At ~8 per automated sweep, we're roughly 20 sweeps away. Or fewer if real users build real apps (richer trajectories than curriculum skeletons).
+
+---
+
 ## Table of Contents
 
 **Where is X?**
