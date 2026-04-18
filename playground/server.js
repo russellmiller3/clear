@@ -23,6 +23,8 @@ if (existsSync(envPath)) {
 }
 const APPS_DIR = join(ROOT_DIR, 'apps');
 const BUILD_DIR = join(__dirname, '.playground-build');
+const SESSIONS_DIR = join(__dirname, 'sessions');
+if (!existsSync(SESSIONS_DIR)) mkdirSync(SESSIONS_DIR, { recursive: true });
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -2076,6 +2078,25 @@ app.get('/api/config', (req, res) => {
   res.json({ hasServerKey: !!process.env.ANTHROPIC_API_KEY });
 });
 
+// Dev-only: session quality records for re-ranker debugging.
+// Hidden from Studio UI. Not shown to Meph. Training signal only.
+app.get('/api/session-quality', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+    const files = readdirSync(SESSIONS_DIR)
+      .filter(f => f.endsWith('.json'))
+      .sort()
+      .slice(-limit);
+    const records = files.map(f => {
+      try { return JSON.parse(readFileSync(join(SESSIONS_DIR, f), 'utf8')); }
+      catch { return null; }
+    }).filter(Boolean);
+    res.json(records);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
 // Memory file endpoints (for UI button — Meph also accesses via edit_file tool)
 app.post('/api/read-file', (req, res) => {
   const fname = String(req.body.filename || '').replace(/[^a-zA-Z0-9._-]/g, '-');
@@ -2144,6 +2165,11 @@ app.post('/api/chat', async (req, res) => {
   let currentSource = editorContent || '';
   let currentErrors = editorErrors || [];
   let lastCompileResult = null;
+
+  // Session quality tracking — internal training signal, never sent to client or Meph
+  const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sessionStartedAt = Math.floor(Date.now() / 1000);
+  const sessionTestCalls = []; // { ok, error } for each run_tests call
 
   // Tool execution
   // Mirror every Meph tool call to the terminal pane so the user can watch
@@ -2925,6 +2951,7 @@ app.post('/api/chat', async (req, res) => {
       if (accText) assistantContent.push({ type: 'text', text: accText });
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
+        writeSessionQuality();
         send({ type: 'done', toolResults, source: currentSource });
         res.end();
         return;
@@ -3020,6 +3047,14 @@ app.post('/api/chat', async (req, res) => {
           }
         } else {
           result = await executeTool(tb.name, input);
+        }
+
+        // Track run_tests outcomes for session quality signals
+        if (tb.name === 'run_tests') {
+          try {
+            const tr = typeof result === 'string' ? JSON.parse(result) : result;
+            sessionTestCalls.push({ ok: tr.ok === true, error: tr.error || null });
+          } catch { sessionTestCalls.push({ ok: false, error: 'parse error' }); }
         }
 
         // Log every tool call to terminal so the user can see what's happening
@@ -3149,11 +3184,28 @@ app.post('/api/chat', async (req, res) => {
     }
 
     send({ type: 'context_usage', ...estimateContextUsage() });
+    writeSessionQuality();
     send({ type: 'done', toolResults, source: currentSource });
     res.end();
   } catch (err) {
     send({ type: 'error', message: err.message });
     res.end();
+  }
+
+  function writeSessionQuality() {
+    try {
+      const qualityWarnings = (lastCompileResult?.warnings || []).filter(w => w.code === 'weak_assertion');
+      const record = {
+        id: sessionId,
+        task: (messages[0]?.content || '').slice(0, 500),
+        started_at: sessionStartedAt,
+        ended_at: Math.floor(Date.now() / 1000),
+        weak_assertion_count: qualityWarnings.length,
+        red_step_observed: sessionTestCalls.some(t => !t.ok || t.error),
+        final_source: currentSource.slice(0, 10000),
+      };
+      writeFileSync(join(SESSIONS_DIR, `${sessionId}.json`), JSON.stringify(record, null, 2));
+    } catch { /* non-fatal — don't crash the session */ }
   }
 });
 

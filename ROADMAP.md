@@ -437,6 +437,20 @@ Every internal tool builder has performance problems at scale. Retool chokes bec
 | P9 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
 | P10 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
 
+### Mechanical Test Quality Signals (Session 36b — Complete)
+
+Three pieces shipped on `feature/test-quality-signals`:
+
+| # | Piece | Status | Location |
+|---|-------|--------|----------|
+| 1 | Static lint on weak assertions | ✅ Done | `compiler.js` — `generateE2ETests()`, `qualityWarnings[]` |
+| 2 | Process lint: red-step tracking | ✅ Done | `playground/server.js` — `sessionTestCalls[]` per `/api/chat` |
+| 3 | Session JSON storage | ✅ Done | `playground/sessions/[id].json`, `GET /api/session-quality` |
+
+These are the mechanical bootstrap for the re-ranker. See `RESEARCH.md` for full flywheel design.
+
+**Next:** Supervisor multi-session plan — `feature/supervisor-multi-session`. See `plans/plan-supervisor-multi-session-04-17-2026.md`.
+
 ### Next Up (Session 34 Next Steps)
 
 Ordered by impact.
