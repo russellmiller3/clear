@@ -1,74 +1,54 @@
-# Handoff — 2026-04-17 (Session 37 — One-Click Deploy)
+# Handoff — 2026-04-18 (Session 38 — Live App Editing strategy)
 
 ## Current State
-- **Branch:** `feature/one-click-deploy` (about to merge into main)
-- **Working tree:** 8 modified + 12 new files, all tests green
+- **Branch:** `claude/ai-app-customization-YD518` (merged into main this session)
+- **Working tree:** clean
+- **Type:** strategy / roadmap session — no code changes
 
 ## What Was Done This Session
 
-Built Phase 85 — one-click deploy end-to-end. Studio now has a Deploy button that compiles + packages + ships an app to a live Fly URL, through a shared builder machine and a metered AI proxy, with Stripe-backed tenant billing and multi-tenant isolation.
+Captured the **Live App Editing** flagship feature as a fully-specified roadmap entry, backed by competitive research across 8 internal-tool builders and AI app generators.
 
-91 new tests pass across 6 test files. 1939 compiler tests unaffected. Deploy button + plan badge verified live in Studio via preview eval.
+The conversation started philosophical (per-user app forks — should they exist?) and converged on the actual product: **the app owner alone can modify a running prod app via chat with Meph, and nothing breaks.** Per-user forks were explicitly ruled out.
 
-### New files
+Live App Editing is now Clear's most strategically defensible feature on the roadmap. No competitor combines (a) conversational modification, (b) Retool's release-manager safety, and (c) Airtable's additive-by-construction guarantees. The slot is open for roughly 12-18 months before Retool likely bolts a real AI agent onto Release Manager.
 
-- **`lib/packaging.js`** — shared packager used by both `clear package` CLI and Studio deploy. Detects needed secrets (JWT, Stripe/Twilio/SendGrid) and AI calls. 16 tests.
-- **`playground/builder/`** — always-on Fly machine that accepts tarballs, runs `docker build` → `docker push` → `flyctl deploy`. Zip-slip-safe tar extractor, per-customer mutex, shard failover across three Fly orgs. 19 tests.
-- **`playground/ai-proxy/`** — metered Claude forwarder. Fail-closed if DB unreachable (no free inference). Per-tenant rate limit, usage metering, JWT-verified tenant identity. 15 tests.
-- **`playground/plans.js`** — single source of truth for plan tiers (free / pro / team).
-- **`playground/tenants.js`** — tenant model with in-memory store.
-- **`playground/billing.js`** — Stripe Checkout + webhook handler + metered usage. Webhook dedup'd by event id so replays don't double-bill. 16 tests.
-- **`playground/deploy.js`** — Studio-side plumbing. Packages + tars + POSTs to builder. Wires `/api/deploy`, `/api/deploy-status/:jobId`, `/api/custom-domain`, `/api/rollback`, `/api/deploy-history/:app`, `/api/tenant`, `/api/checkout-session`, `/api/stripe-webhook`. 8 tests.
-- **`playground/sanitize.js`** — app-name / slug / domain validators + `assertOwnership`. 17 tests.
+### Files changed
+- **`ROADMAP.md`** — Added two new sections to "What's Next":
+  1. **Live App Editing (Flagship)** — Marcus user story, 10 numbered requirements (LAE-1 through LAE-10), 4-phase delivery plan, success metric, positioning ("never lose a user's form data when you change the app"), and competitive snapshot table across 8 competitors with source quotes.
+  2. **Per-user app forks** added to "Not Building" with rationale.
+- **`HANDOFF.md`** — this file.
 
-### Modified files
+### Why the positioning matters
+Every competitor already claims "live editing" generically. The defensible promise is the specific one: *"never lose a user's form data when you change the app."* The technical commitment backing it is **additive-by-default with expand-and-contract migrations** — new column before old one drops, dual-write during transitions, old schema readable until every consumer moves over. Airtable-grade safety with Lovable-grade conversational interface.
 
-- **`cli/clear.js`** — `packageCommand` is now a thin wrapper around `packageBundle`.
-- **`playground/server.js`** — imports `wireDeploy` and calls it to mount all deploy endpoints.
-- **`playground/ide.html`** — Deploy button in toolbar, plan badge `apps/25 • $spent/$credit`, deploy modal with secrets prompts, progress polling, custom domain copy.
-- **`intent.md`** — added "Studio Capabilities" section describing hosted deploy + AI proxy + tenant/billing + multi-tenant isolation as non-language features.
-- **`SYNTAX.md`** — added "Deploying your app" section with the end-to-end flow.
-- **`AI-INSTRUCTIONS.md`** — "Deploy-ready apps (Phase 85)" rules: don't paste Anthropic keys, use lowercase alphanumeric names, expected auto-secret flow.
-- **`USER-GUIDE.md`** — Chapter 20.5 "Ship It — One-Click Deploy" with the full walk-through.
-- **`ROADMAP.md`** — Phase 85 marked complete, added follow-ups (85a–89) under What's Next.
-- **`.claude/launch.json`** — added `CLEAR_ALLOW_SEED=1` env to the playground config so test-tenant seeding works in preview.
+### Competitive findings (full table in ROADMAP)
+- **Lovable / Bolt / v0:** No live edit story. Their #1 complaint is destructive regeneration — Bolt has GitHub issue #9016 literally titled "Files Glitching as they are being rewritten." v0 explicitly errors *"Cannot edit a published generation."*
+- **Retool:** Closest real answer — Release Manager has draft-vs-published + millisecond rollback. But developer-gated. Non-devs can't push schema changes; AI can't edit a live Retool app.
+- **Superblocks Clark:** Modifies source, not running instances.
+- **Airtable / Notion:** The prior art. Additive-only schema edits on running bases. API explicitly forbids creating tables/columns — schema edits are UI-only for safety.
 
 ## What's Next (priority order)
 
-### 1. Phase 85a — provision the real stack (blocks every real deploy)
+### 1. Build `landing/live-editing.html` (started this session, not finished)
+Frame around Marcus's terror moment: CEO walks over and asks for a new field on the deal-desk approval app *after* 18 users are already submitting requests. Marcus is rightly afraid of: (1) breaking the app, (2) AI deleting other code, (3) losing in-flight user data, (4) no preview before pushing live. The page answers each fear directly, shows the in-browser Meph edit widget, demonstrates dry-run preview mode, and ends with the additive-by-default safety guarantee. Match `landing/marcus.html` style. Use Lucide SVG icons (no emoji per CLAUDE.md). Pull competitor quotes from the ROADMAP research.
 
-The code is done. The infrastructure isn't. Before a single customer can click Deploy and get a URL, Russell needs to:
+### 2. Spike Phase A of Live App Editing (LAE-1, LAE-2, LAE-3 additive-only, LAE-7)
+Owner-gated in-browser Meph widget that proposes additive changes (add field, add page, add endpoint) and ships them live with a diff preview. ~1 week of work. Proves the core loop without taking on the harder safety problems (live-reload contract, schema migration planner, snapshot/rollback) until the basic UX feels right.
 
-1. Register `buildclear.dev` (or pick another domain).
-2. Email `sales@fly.io` the Trust Verified request in `plans/plan-one-click-deploy-04-17-2026.md` Phase 0. Ask for 10k machine quota across `clear-apps-01/02/03`.
-3. Generate Fly org-scoped tokens: `flyctl auth token --org clear-apps-01` × 3. Store as Vercel env.
-4. Sign up for Stripe. Create a $99/mo Pro product + metered usage add-on. Save keys.
-5. Generate an Anthropic org API key. Only the AI proxy ever sees this.
-6. Provision a Postgres database for Studio's tenants table (Fly Postgres is fine).
-7. Run `./playground/builder/deploy-builder.sh` once.
-8. Run `./playground/ai-proxy/deploy-proxy.sh` once.
-9. Set `BUILDER_URL`, `BUILDER_SHARED_SECRET`, `PROXY_URL`, `PROXY_SHARED_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TENANT_JWT_SECRET`, `DATABASE_URL` in Vercel.
+### 3. Add "Retool + AI agent" to monthly competitive watch
+Retool is the realistic threat to the Live App Editing positioning. If they ship a Clark-style AI on top of Release Manager, the window closes fast. Set a monthly grep of Retool changelog + LinkedIn announcements.
 
-### 2. Phase 86 — Per-tenant usage dashboard
-The plan badge is a teaser. A full billing surface (spend by day, top apps by AI spend, upgrade CTA) is the conversion moment for free → pro.
-
-### 3. Phase 87 — Meph-driven deploy
-Meph gains a `deploy_app` tool. "Ship it" from chat prompts for secrets, picks a domain, calls `/api/deploy`, streams progress into the chat bubble.
-
-### 4. Phase 88 — Deploy history drawer UI
-Rollback API exists. Needs a drawer in Studio with version list + diff preview.
-
-### 5. Phase 89 — Multi-region + custom-domain polish
-Region picker at deploy time. Cert-status polling. One-click DNS record copy.
+### 4. Phase 85a still blocking real Phase 85 deploys
+From last session — the one-click deploy code shipped, but the infrastructure (Fly Trust Verified, Stripe signup, Anthropic org key, buildclear.dev domain) hasn't been provisioned. Until Russell does the account-setup pass, Deploy works in tests but has nowhere to deploy to.
 
 ## Key Decisions Made
 
-- **Builder and proxy are Clear-owned Fly machines, not customer resources.** Customers never see Fly, never need a Fly account. Clear pays Fly, bills customers through Stripe.
-- **Fail-closed on the AI proxy.** If the tenants DB is unreachable, return 503 — don't forward to Anthropic. One leaky proxy would cost more than an hour of downtime.
-- **Shard tenants across three orgs from day one.** Fly's default org quota is ~100 machines; we'd hit it at ~4 Marcus-sized customers. Design sharding into v1, not v2.
-- **In-memory tenant store for now.** Tests run without Postgres. Production swaps the store interface for a Postgres-backed one in Phase 85a.
-- **Past_due is a payment status, not a plan tier.** Keeps pro-level limits during the 7-day grace window so a temporarily failed card doesn't lock the customer out of their own apps.
+- **Owner-only modification, not per-user forks.** Per-user app forks destroy the shared ontology that justified building a shared app, create audit/compliance nightmares, and aren't what Marcus actually wants. The right answer is owner-initiated changes that ship to everyone.
+- **Position around data safety, not "live editing."** The defensible promise is *"never lose a user's form data when you change the app."*
+- **Additive-by-default with expand-and-contract migrations.** New column before old one drops, dual-write during transition. Compiler-enforced, not opt-in. This is the technical moat.
+- **Watch Retool, not Lovable.** Lovable can't structurally do this (regenerates whole files). Retool can — and probably will. They're the realistic threat.
 
 ## Resume Prompt
 
-"We just shipped Phase 85 (one-click deploy) to main. Code is done end-to-end — 91 new tests pass, Deploy button verified live. Infrastructure is NOT done: Fly sales email, Stripe signup, Anthropic org key, domain registration all need Russell to do them. Options: (1) Phase 85a provisioning (if Russell is ready to set up the accounts), (2) Phase 86 usage dashboard, (3) Phase 87 Meph deploy tool. Tell me which one."
+"We just merged Session 38 — the Live App Editing flagship is now fully specified in ROADMAP with user story, 10 requirements, 4 phases, competitive research, and positioning. The next move is building `landing/live-editing.html` framed around Marcus's terror moment (CEO asks for a new field on a running app, Marcus afraid of breaking it). Match `landing/marcus.html` style, no emoji, Lucide SVG icons. After that, spike Phase A of Live App Editing — additive-only edits via in-browser Meph widget — to prove the core loop in about a week. Tell me which one to start."
