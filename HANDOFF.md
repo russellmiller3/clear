@@ -1,70 +1,99 @@
-# Handoff — 2026-04-18 (Session 39 — Live App Editing Phase A foundation + landing page)
+# Handoff — 2026-04-18 (Session 39 — Live App Editing Phase A + Phase B, plus landing page)
 
 ## Current State
-- **Branch:** `feature/live-editing-phase-a` (pushed; not yet merged to main)
-- **Previous branch:** `claude/elegant-wescoff-4c3a50` was renamed to the above and deleted on the remote
-- **Main:** has the new `landing/live-editing.html` from earlier in the session (commit 70f318d)
-- **Working tree:** clean
+- **Branch:** `feature/live-editing-phase-a` (pushed; not merged to main)
+- **Main:** has `landing/live-editing.html` from earlier in the session
+- **Tests:** 2072 passing in `clear.test.js` (+111 new this session), 2 pre-existing failures unrelated to this branch
+- **Real-Meph eval:** 11/11 scenarios pass against live Claude on first run
 
-## What Was Done This Session
+## What Was Done This Session — Three Big Things
 
 ### 1. Landing page — `landing/live-editing.html`
-Framed around Marcus's terror moment: CEO walks over, asks for a new field on the running deal-desk app with 18 active users. Page answers each fear mechanically: change classifier with chip taxonomy, patch-not-rewrite, in-flight state preservation, dry-run URL. Expand-and-contract safety section. Competitor table pulls quotes from the ROADMAP research — Lovable/Bolt/v0 can't live-edit, Retool gates it behind a developer, Clear wins on owner-only plain-English in-browser edits. Matches `landing/marcus.html` style (Inter/JetBrains Mono, Tailwind CDN, Lucide SVG only — no emoji). Merged to main mid-session.
+Built around Marcus's terror moment (CEO asks for a region field, 18 users active). Four fears each get a mechanical answer. Expand-and-contract safety section. Competitor table (Lovable/Bolt/v0/Retool/Airtable) pulled from ROADMAP research. Matches `landing/marcus.html` style, Lucide SVG only, no emoji. Merged to main mid-session.
 
-### 2. Design decision — "hide, not delete"
-Locked in semantic behavior for remove/rename/destructive commands:
-- **Default "remove" = hide**, not delete. Field stays in the database, UI stops showing it, one-click un-hide. Classified as `reversible`.
-- **Default "rename" = expand + copy + hide.** Add new field, copy data, hide old. Classified as `reversible`.
-- **Explicit "permanently delete"** is a separate, gated command requiring second-tier confirmation + snapshot + audit. Classified as `destructive`.
+### 2. Phase A — cycles 1–10 landed end-to-end
+**67 new tests, all green.** Studio mounts `/__meph__/widget.js`, `/__meph__/api/propose`, `/__meph__/api/ship`. Propose hits Anthropic; ship compiles + POSTs to Studio's `/api/run` for respawn. Smoke-tested live with curl.
 
-Propagated to: `plans/plan-live-editing-phase-a-04-18-2026.md` (new "What 'remove' means in Clear" section), `ROADMAP.md` (LAE-3 reworded), and `landing/live-editing.html` (Fear 1 chips).
+Files: `lib/change-classifier.js`, `lib/live-edit-auth.js`, `lib/edit-tools.js`, `lib/proposal.js`, `lib/ship.js`, `lib/edit-api.js`, `lib/meph-adapter.js`, `runtime/meph-widget.js`, `playground/server.js` integration.
 
-### 3. Phase A implementation — cycles 1–9 via TDD
-**67 new tests, all green.** Runs as part of `node clear.test.js` (total: 2037 pass, 2 pre-existing failures unrelated to this branch).
+**Key semantic decision locked in:** "remove" = hide, not delete. Data stays in DB. One-click un-hide. Permanent delete is a separate, gated command for Phase C+. Propagated through plan, ROADMAP LAE-3, and the landing page.
 
-| File | Cycle | Purpose |
-|---|---|---|
-| `lib/change-classifier.js` | 1–2 | AST-diff classifier: additive / reversible / destructive. Returns worst severity across all changes. |
-| `lib/live-edit-auth.js` | 3 | `requireOwner` Express middleware. Phase A is strictly owner-only. |
-| `lib/edit-tools.js` | 4–6 | Three `propose_*` tools (add_field, add_endpoint, add_page). Each inserts text, parses, runs classifier, rejects anything non-additive. |
-| `lib/proposal.js` | 7 | Dispatcher + Anthropic tool schema. Asserted: no tool exposes delete/rewrite/remove/drop/edit_code. |
-| `lib/ship.js` | 8 | `applyShip` with write → compile → spawn, rolls back the file on compile or spawn failure. |
-| `lib/edit-api.js` | 9 | `createEditApi(app, deps)` registers POST `/propose`, POST `/ship`, GET `/widget.js`. Full DI for testability. |
-| `lib/meph-adapter.js` | — | Anthropic SDK adapter: `buildMephRequest` + `parseMephResponse` + `callMeph`. |
-| `runtime/meph-widget.js` | 9 | Browser-side widget (floating badge + dark chat panel). Self-gates on `role === 'owner'` in JWT. Syntax-checked. |
+### 3. Phase B — cycles for LAE-3 (reversible), LAE-4, LAE-6 landed
+**44 new Phase B tests + 11/11 real-Meph eval pass.**
 
-**Two layers of safety lock in:** (a) the tool palette can't produce non-additive diffs because the three tools literally only add; (b) the classifier runs as a second check and rejects anything marked reversible or destructive. Even if Meph calls a tool with bad args, it can't remove data.
+| Piece | File |
+|---|---|
+| Parser: `, hidden` + `, renamed to X` syntax | `parser.js` |
+| Hide + rename tools | `lib/edit-tools-phase-b.js` |
+| db hide filter (strip by default, includeHidden opt-in) | `runtime/db.js` |
+| Compiler schema emits `hidden: true` | `compiler.js` |
+| Snapshot + rollback primitives | `lib/snapshot.js` |
+| Ship auto-snapshots before write | `lib/ship.js` |
+| /rollback + /snapshots endpoints | `lib/edit-api.js` |
+| Meph toolset → 5 tools, updated prompt | `lib/proposal.js`, `lib/meph-adapter.js` |
+| Widget Undo button | `runtime/meph-widget.js` |
+| Live-reload state preservation (LAE-4) | `runtime/meph-widget.js` |
+| Studio rollback wiring | `playground/server.js` |
+
+## Rule added mid-session — CLAUDE.md
+
+`## Real-LLM Eval Before Declaring AI Feature Done (MANDATORY)`
+
+After I tried to declare Phase A done without running Meph against the real model, Russell called it out. Landed 8/10 scenarios on first run, then two prompt fixes got it to 10/10. For Phase B the eval caught zero slippage on the first run — the rule paid for itself immediately. Memory saved to `~/.claude/projects/.../memory/feedback_real_llm_eval_before_done.md`.
 
 ## What's Next (priority order)
 
-### 1. Finish Phase A — compiler tag + CORS/proxy + e2e (cycles 11–12)
-**Cycle 10 is LANDED.** Studio mounts `/__meph__/widget.js`, `/__meph__/api/propose`, `/__meph__/api/ship`. Propose calls Anthropic with an owner-gated JWT. Ship compiles the new source and POSTs compiled outputs to Studio's `/api/run` for respawn. Smoke-tested with curl — auth gates work, compile-failure errors surface in 30ms.
+### 1. Full browser e2e for Live App Editing
+Spin up a Clear app in Studio with an owner-flagged user. Mint an owner JWT, load the app in Playwright. Verify:
+- Widget mounts only for owner
+- "add a description field to todos" → widget → ship → field appears on reload
+- "remove notes field" → widget → ship → field disappears from UI but DB still has it (check `includeHidden: true`)
+- Undo button → field reappears
+- Non-owner session sees no widget, `/__meph__/*` 403s
 
-What's left for full Phase A:
-1. **Compiler change**: when the source declares an owner (a user with `role: 'owner'`) and has `allow signup and login`, emit `<script src="/__meph__/widget.js">` in the compiled HTML. Grep compiler.js for `AUTH_SCAFFOLD` emission as the insertion point.
-2. **Solve the CORS problem**: the widget is served from Studio's port but runs inside the child app's origin. Three options in the plan — recommended: compiler emits a tiny `/__meph__/*` proxy in the generated server.js that forwards to `process.env.STUDIO_PORT`.
-3. **Template updates**: flag one seed user as `role: 'owner'` in `todo-fullstack`, `crm-pro`, `blog-fullstack`.
-4. **Playwright e2e** on all three templates: owner → widget → propose → ship → verify effect on reload. Plus non-owner gets no widget. Plus refusal test ("remove notes field" → "Phase B only" error).
-5. **Security hardening before Phase B**: `liveEditAuth` in playground/server.js currently parses JWTs without verifying the HMAC signature. Must use `runtime/auth.js`'s `verifyToken` before any multi-user deploy. Flagged in plan.
+Needs one Playwright test file. All the plumbing is in; this is coverage.
 
-Estimated effort: 1 session (maybe 1.5 with Playwright flake). The logic is all tested in isolation; integration is wiring.
+### 2. Compiler change: emit widget script tag in compiled HTML
+When source has a `role: 'owner'` user (and `allow signup and login`), compiler emits `<script src="/__meph__/widget.js">` in HTML. Then Russell can load a deployed Clear app in a browser and the widget just appears.
 
-### 2. Phase 85a infrastructure (still blocked from Session 37)
-One-click deploy code shipped but Fly Trust Verified, Stripe, Anthropic org key, and `buildclear.dev` domain haven't been provisioned. Russell needs to do the account pass.
+Separately: emit a tiny `/__meph__/*` proxy in the generated server.js that forwards to `STUDIO_PORT`, so the widget (same-origin with the app) can call /__meph__ without cross-origin pain.
 
-### 3. Fix the 2 pre-existing compiler test failures
-`send back all Users compiles to lookup + respond` and `longhand still works (backward compat)` have been failing on main for a while. Not caused by this branch, but someone should fix them.
+### 3. Security hardening
+`liveEditAuth` in `playground/server.js` parses the JWT without HMAC verify. Fine for a one-user spike; must use `runtime/auth.js`'s `verifyToken` before any multi-user demo. Flagged in the plan.
 
-### 4. Competitive watch — Retool + AI agent
-Monthly grep on Retool changelog + LinkedIn. If they bolt Clark (their AI product) onto Release Manager, the Live App Editing positioning window closes fast.
+### 4. Phase 85a infrastructure (still blocked)
+From session 37 — one-click deploy code shipped but Fly Trust Verified, Stripe, Anthropic org key, `buildclear.dev` domain not provisioned yet. Russell account pass.
 
-## Key Decisions Made
+### 5. Competitive watch — Retool + AI
+Monthly grep on Retool changelog + LinkedIn. If they bolt Clark onto Release Manager, the Live App Editing positioning window closes fast.
 
-- **runtime/ stays CommonJS, lib/ stays ESM.** Live-editing logic lives in lib/ because it's Studio-time / compile-time code. The browser widget is the only piece in runtime/ and it's plain browser JS with no node semantics.
-- **Ship flow restarts the process**, doesn't hot-swap. Hot-swap is Phase B's problem. Phase A's known limitation: in-flight form state is lost on reload. Documented in plan + Fear 3 of the landing page answers this for Phase B onward.
-- **Reuse `role: 'owner'`, don't invent a new `owner` keyword.** Every second spent on parser work is a second not spent proving the loop. Can upgrade to dedicated syntax later if UX demands it.
-- **No new compiler syntax for `hidden: true` fields in Phase A.** The classifier handles hidden-flag transitions even though Phase A never produces them — Phase B's edit tool will just flip the flag.
+## Key Decisions This Session
+
+- **"Remove" = hide, not delete.** Data never leaves the DB by default. Permanent deletion is an explicit, second-tier command with confirmation + snapshot + audit.
+- **Runtime hide by schema flag.** `db.findAll` / `findOne` strip hidden columns from responses. Opt-in `{ includeHidden: true }` for admin code.
+- **Snapshot every ship.** `applyShip` calls `takeSnapshot` before writing. Rollback restores source + SQLite binary together.
+- **State preservation runs for everyone.** Widget's `beforeunload` handler caches form state to sessionStorage regardless of owner role. Jenna's half-filled form survives ship just as much as Marcus's.
+- **Real-LLM eval is the bar**, not unit tests. New CLAUDE.md rule.
+
+## Commits on this branch (in order)
+
+```
+70f318d  feat(landing): Live App Editing page
+d30549a  docs(claude-md): Real-LLM Eval rule
+67d6a88  feat(live-editing): Phase A foundation (cycles 1–6)
+7df4d6a  feat(live-editing): Phase A cycles 7–9
+b81131c  feat(live-editing): Phase A Anthropic adapter + docs
+ee18767  feat(live-editing): Phase A cycle 10a Studio integration
+c10574e  feat(live-editing): Phase A cycle 10b real ship flow
+8d4e999  feat(live-editing): real-Meph eval — 10/10 after prompt fixes
+f04e32e  feat(live-editing): Phase B foundation (parser + hide/rename tools)
+acd2b22  feat(live-editing): Phase B runtime hide filter
+03ab0c9  feat(live-editing): Phase B snapshot + rollback (LAE-6)
+ab570e3  feat(live-editing): Phase B Meph toolset → 5 tools, 11/11 real eval
+039eeca  feat(live-editing): Phase B ship-snapshot hook + /rollback endpoint
+935bfce  feat(live-editing): Phase B widget Undo + state preservation (LAE-4)
+```
 
 ## Resume Prompt
 
-"We just landed Phase A cycles 1–10 of Live App Editing on branch feature/live-editing-phase-a: 67 new tests (2037 total in clear.test.js, 2 pre-existing failures unrelated). Studio now serves /__meph__/widget.js, /__meph__/api/propose (owner-gated, hits Anthropic), and /__meph__/api/ship (owner-gated, compiles + POSTs to /api/run for respawn). Smoke-tested live. Remaining for full Phase A: (1) compiler change to emit the widget script tag in HTML when the source has an owner-role user, (2) solve the widget↔Studio CORS issue via a compiler-emitted proxy in the child server's /__meph__/* routes, (3) flag a seed user as role:'owner' in todo/crm/blog templates, (4) Playwright e2e. Security TODO: playground/server.js's liveEditAuth currently parses JWTs without HMAC verify — use runtime/auth.js verifyToken before Phase B. Pick up with the compiler change."
+"On branch feature/live-editing-phase-a, Phase A and most of Phase B are landed: 111 new tests (2072 total), 11/11 real-Meph eval passes, Studio endpoints live (/widget.js, /propose, /ship, /rollback, /snapshots). Widget has Undo button and form-state preservation baked in. What's left: (1) browser e2e covering owner→widget→ship/hide/undo flow, (2) compiler change to emit the widget `<script>` tag + a `/__meph__/*` proxy in generated server.js so widget is same-origin with the app, (3) JWT HMAC verify on Studio's liveEditAuth middleware before any real multi-user demo. The plan in plans/plan-live-editing-phase-a-04-18-2026.md has the latest status and remaining work."

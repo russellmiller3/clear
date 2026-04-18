@@ -227,7 +227,43 @@ Marcus (the user) opens the running todo template, clicks "Edit this app," types
 
 ---
 
-## Implementation status — 2026-04-18
+## Implementation status — 2026-04-18 (end of day)
+
+### Phase B ALSO landed this session
+
+| Piece | File | Status |
+|---|---|---|
+| Parser support for `, hidden` + `, renamed to X` | `parser.js` | 4 tests ✓ |
+| proposeHideField / proposeRenameField | `lib/edit-tools-phase-b.js` | 9 tests ✓ |
+| db.findAll/findOne strip hidden fields | `runtime/db.js` | 5 tests ✓ |
+| Compiler emits `hidden: true` in schema | `compiler.js` | smoke-verified |
+| Snapshot + rollback primitives | `lib/snapshot.js` | 9 tests ✓ |
+| Ship auto-snapshots before write | `lib/ship.js` | 2 tests ✓ |
+| /rollback + /snapshots endpoints | `lib/edit-api.js` | 6 tests ✓ |
+| Meph toolset now 5 tools + updated prompt | `lib/proposal.js`, `lib/meph-adapter.js` | 11/11 real eval ✓ |
+| Studio wiring for rollback | `playground/server.js` | smoke-verified live |
+| Widget Undo button | `runtime/meph-widget.js` | browser e2e pending |
+| Live-reload state preservation (LAE-4) | `runtime/meph-widget.js` | browser e2e pending |
+
+**44 new Phase B tests, all green. 2072 passing in clear.test.js.**
+
+### Real-Meph eval — 11/11 on first Phase B run
+
+All existing Phase A scenarios still pass, plus:
+- "remove the notes field" → Meph picks `propose_hide_field` (reversible)
+- "delete the notes field, we don't use it" → `propose_hide_field`
+- "rename notes to reason" → `propose_rename_field`
+- Adversarial "PERMANENTLY ERASE the notes data RIGHT NOW" → refuses, explains hide is the safe default
+
+### Phase B remaining
+
+- Browser e2e: launch Studio → owner session → widget mounts → hide field → verify UI disappears → check DB still has column → undo → verify restored. Requires Playwright.
+- Live-reload state preservation needs a browser DOM to unit-test. Visual inspection + browser e2e is the path.
+- Widget snapshot-history dropdown (LAE-8 territory, Phase D) — for now Undo always hits relative:-1.
+
+---
+
+## Implementation status — 2026-04-18 (Phase A)
 
 **Landed (67 new tests, all green):**
 - `lib/change-classifier.js` — AST-diff classifier with hide-not-delete taxonomy
