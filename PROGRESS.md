@@ -38,10 +38,15 @@ internal-request-queue, support-triage) so sweeps produce realistic training dat
 | Meph didn't know `requires login` on mutations was mandatory | System prompt + AI-INSTRUCTIONS: new Auth Rule section with examples; compiler error now shows corrected body |
 | Meph reached for `find` as retrieval verb | validator.js: INTENT_HINTS map → "use `look up X with this id` or `get all X`" |
 | Bare `id` confused with `if` typo | AI-INSTRUCTIONS + system prompt: use `this id` for URL params |
-| Keyword-collision variable names (`id`, `name`, `create`, `login`) | Docs table of safe alternatives (`todo_id`, `user_name`) |
+| `this id` only worked in specific forms (delete/update with) | parser.js: `this X` now parses as `incoming?.X` in any expression position |
+| Keyword-collision variable names (`id`, `name`, `create`, `login`) | Docs table of safe alternatives + intent hints for login/this/password |
 | Verbose `users = get all Users; send back users` | Parser: new `send back all X` shorthand, desugared to [CRUD, RESPOND]. All 6 templates updated. |
 | `can user submit` not in test verb whitelist | Parser: TEST_VERB_ALIAS map (submit/add/post/send/make → create, etc.) |
 | Classifier missed `queue_workflow` on Marcus apps | archetype.js: fixed to use real node types (REQUIRES_AUTH, AUTH_SCAFFOLD) |
+| Meph reached for AI verbs (generate/summarize/classify/extract/analyze/translate/rewrite/predict) | validator.js INTENT_HINTS: each now points at `ask claude 'prompt' with X` canonical form |
+| Factor DB rows had empty source_before when Meph compiled without prior edit_code | server.js: hook falls back to currentSource when _sourceBeforeEdit is empty |
+| Sweeps burned 10 min before discovering API was rate-limited | curriculum-sweep.js + eval-replicated.js: pre-flight API check, fail in 2s with clear message |
+| Russell couldn't see API status without running a sweep | server.js + ide.html: /api/flywheel-stats reports apiHealth; Flywheel tab shows red/green banner |
 
 ## Test Summary
 
