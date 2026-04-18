@@ -1,0 +1,25 @@
+{
+  "id": "support-triage",
+  "level": 9,
+  "title": "Support Triage (AI-assisted)",
+  "description": "Build a support ticket triage system. Tickets have subject, body, from_email, category, priority, status. Use a Claude agent named 'Triage' that receives a ticket and returns a JSON object with {category, priority}. When a new ticket is POSTed, call the Triage agent to classify it before saving. Need: POST /api/tickets (auto-classifies), GET /api/tickets (list), GET /api/tickets/open.",
+  "skeleton": "build for javascript backend\n\ncreate a Tickets table:\n  subject, required\n  body\n  from_email\n  category, default 'General'\n  priority, default 'Normal'\n  status, default 'open'\n\n# Define a Triage agent using: agent 'Triage' receives ticket: ...\n# Then have POST /api/tickets call the agent to classify\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/tickets",
+      "body": { "subject": "Cannot log in", "body": "401 on every request", "from_email": "a@example.com" },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tickets",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tickets/open",
+      "expect": { "status": 200 }
+    }
+  ]
+}

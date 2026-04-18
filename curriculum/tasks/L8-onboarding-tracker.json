@@ -1,0 +1,25 @@
+{
+  "id": "onboarding-tracker",
+  "level": 8,
+  "title": "Onboarding Tracker",
+  "description": "Build a customer onboarding tracker. Two tables: Customers (name, company, status) and OnboardingSteps (customer_id, step_name, completed). Steps belong to Customers. Need: full CRUD on customers (auth required on mutations), full CRUD on steps (auth required on mutations), GET /api/customers/onboarding to filter by status='onboarding'.",
+  "skeleton": "build for javascript backend\n\ncreate a Customers table:\n  name, required\n  company, required\n  status, default 'onboarding'\n\ncreate a OnboardingSteps table:\n  customer_id, required\n  step_name, required\n  completed, default false\n\nallow signup and login\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/customers",
+      "body": { "name": "Test Customer", "company": "Test Co" },
+      "expect": { "status": 401 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/customers",
+      "expect": { "status": 200 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/customers/onboarding",
+      "expect": { "status": 200 }
+    }
+  ]
+}

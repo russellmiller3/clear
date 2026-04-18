@@ -1,0 +1,32 @@
+{
+  "id": "lead-router",
+  "level": 7,
+  "title": "Lead Router",
+  "description": "Build a lead routing API. Prospects submit leads (name, email, company, size). The server applies routing rules: SMB → alice, Mid-market → bob, Enterprise → charlie — set assigned_to automatically before saving. Need: POST /api/leads (submit + auto-route), GET /api/leads (list), GET /api/leads/new (only status='new').",
+  "skeleton": "build for javascript backend\n\ncreate a Leads table:\n  name, required\n  email, required\n  size, default 'SMB'\n  assigned_to\n  status, default 'new'\n\n# Your endpoints here\n",
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/leads",
+      "body": { "name": "Alice Smith", "email": "a@acmecorp.com", "size": "Enterprise" },
+      "expect": { "status": 201, "bodyHas": ["id", "assigned_to"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/leads",
+      "body": { "name": "Bob Jones", "email": "b@tinyco.com", "size": "SMB" },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/leads",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/leads",
+      "body": {},
+      "expect": { "status": 400 }
+    }
+  ]
+}

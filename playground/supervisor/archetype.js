@@ -49,13 +49,17 @@ function hasType(body, type) {
   return countByType(body, type) > 0;
 }
 
-// Detect auth signals (RLS policies, requires login, login/signup setup)
+// Detect auth signals: RLS policies, 'requires login' in endpoints,
+// 'allow signup and login' directive (produces AUTH_SCAFFOLD).
+// Note: the 'requires login' line parses to NodeType.REQUIRES_AUTH, not
+// REQUIRES_LOGIN — REQUIRES_LOGIN isn't a real node type. Earlier bug.
 function hasAuth(body) {
   let found = false;
   walk(body, n => {
     if (n.type === NodeType.DATA_SHAPE && Array.isArray(n.policies) && n.policies.length > 0) found = true;
     if (n.type === NodeType.DIRECTIVE && typeof n.value === 'string' && /login|signup|auth/i.test(n.value)) found = true;
-    if (n.type === NodeType.REQUIRES_LOGIN) found = true;
+    if (n.type === NodeType.REQUIRES_AUTH || n.type === NodeType.REQUIRES_ROLE) found = true;
+    if (n.type === NodeType.AUTH_SCAFFOLD) found = true;
   });
   return found;
 }
