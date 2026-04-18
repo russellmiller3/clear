@@ -14,6 +14,11 @@ import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
+import {
+  takeSnapshot as _takeSnapshot,
+  listSnapshots as _listSnapshots,
+  restoreSnapshot as _restoreSnapshot,
+} from '../lib/snapshot.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -160,6 +165,45 @@ createEditApi(app, {
     }
   },
   widgetScript: _liveEditWidgetSource,
+  listSnapshots: async () => _listSnapshots(),
+  applyRollback: async (ref) => {
+    // Rollback restores source + SQLite data to a prior snapshot.
+    // Uses Studio's BUILD_DIR paths so Studio respawn sees the
+    // restored files on the next /api/run call.
+    const sourcePath = join(BUILD_DIR, 'source.clear');
+    const dataPath = join(BUILD_DIR, 'clear-data.db');
+    const r = _restoreSnapshot(ref, { sourcePath, dataPath });
+    if (!r.ok) return r;
+    // Recompile from restored source and respawn the child.
+    let compiled;
+    try {
+      const restoredSource = readFileSync(sourcePath, 'utf8');
+      compiled = compileProgram(restoredSource);
+    } catch (err) {
+      return { ok: false, error: `recompile after rollback failed: ${err.message}` };
+    }
+    if (compiled.errors && compiled.errors.length) {
+      return {
+        ok: false,
+        error: 'restored source failed to compile: ' + compiled.errors.map((e) => e.message).join('; '),
+      };
+    }
+    const studioPort = process.env.PORT || '3456';
+    try {
+      await fetch(`http://localhost:${studioPort}/api/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serverJS: compiled.serverJS,
+          html: compiled.html,
+          css: compiled.css || '',
+        }),
+      });
+    } catch (err) {
+      return { ok: false, error: `respawn after rollback failed: ${err.message}` };
+    }
+    return { ok: true, restoredId: r.restoredId, ts: r.ts, label: r.label };
+  },
 });
 
 // =============================================================================
