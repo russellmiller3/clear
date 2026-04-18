@@ -40,6 +40,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 25: Roadmap 5-12 + Click-to-Highlight](#session-25-roadmap-5-12--click-to-highlight-2026-04-12) | CM6 virtual rendering, param format normalization, postamble injection order, compile animation timing, `sourceMap: true` for frontend markers |
 | [Session 25b: Core 7 Templates + E2E Testing](#session-25b-core-7-templates--e2e-testing-2026-04-12) | GET req.query vs req.body, one-op-per-line enforcement, npm dep auto-install, synonym propagation, typo suggestion guards, Playwright selector scoping |
 | [Session 27: Studio Bridge + Friendly Tests + Unified Terminal](#session-27-studio-bridge--friendly-tests--unified-terminal-2026-04-14) | postMessage bridge gate needs dual check (`?param` AND `<meta>` for srcdoc iframes), helpers compiled outside `run()` can't see `let`s inside it (module-scope or bust), friendly errors need `_lastCall` tracker, `[clear:N]` tag in error string round-trips through stdout parser into IDE click handler, two competing SIGTERM handlers on Windows = `UV_HANDLE_CLOSING` libuv assertion, `_response`/`_responseBody`/`_lastCall` must be module-scope for `_expectStatus` shim |
+| [Session 36: Function TDD + Supervisor Plan](#session-36-function-tdd--supervisor-plan-2026-04-17) | `insideFunction: true` required for `define function` body ctx, user functions shadow builtins via pre-scan, SSE `tool_start` fires twice (state-flag dedup), API key must match how server reads it, Playwright e2e push from main repo not worktree |
 
 ---
 
@@ -1034,4 +1035,36 @@ User actions, Meph tool calls, browser console errors all mirrored into `termina
 ### Dependent Fixes Surface in Dependency Order
 - **Pattern:** Fixing the SSE structured-payload drain (session 34 early) looked like it helped only 1 template out of 5. But it UNMASKED three other bugs: generic probe shapes, sampled-value refusals, shutdown races. Each had been hiding behind "empty response from streaming endpoint." Fixing them in order got every template to pass.
 - **Lesson:** When a single bug has wide blast radius, fixing it is a force multiplier — but expect cascading discovery. Budget time for 2-3 follow-up bugs that the first fix was hiding. Prioritize fixes that unblock more surface area over those that fix one spec.
+
+## Session 36: Function TDD + Supervisor Plan (2026-04-17)
+
+### `send back` in `define function` Must Pass `insideFunction: true` to `compileBody`
+
+- **Bug:** Writing `send back x` inside a `define function` block emitted `res.json(x)` instead of `return x`. `compileRespond()` already had an `insideAgent` check that routes to `return` — but `FUNCTION_DEF` never set `insideFunction: true`, so calls fell through to the HTTP path. Caused runtime crashes when functions were called from test blocks.
+- **Fix:** Two lines: `compileRespond()` checks `ctx.insideFunction || ctx.insideAgent` before deciding return vs res.json; `FUNCTION_DEF` passes `{ insideFunction: true }` to `compileBody`.
+- **Lesson:** Every new body-compilation context (`FUNCTION_DEF`, `AGENT`, `BACKGROUND_JOB`, etc.) must explicitly declare its routing mode. The default falls through to HTTP. Missing the flag is silent and catastrophic.
+
+### User-Defined Functions Must Shadow Built-In Aliases in CALL Resolution
+
+- **Bug:** A user writing `define function sum(a, b): send back a + b` had their function silently rerouted to `_clear_sum(a, b)` (the built-in array-sum helper) at call sites. `mapFunctionNameJS()` mapped `sum` to `_clear_sum` regardless of whether the user defined their own `sum`.
+- **Fix:** Pre-scan AST for all `FUNCTION_DEF` nodes (`_findUserFunctions`, mirrors `_findAsyncFunctions`). In `exprToCode` CALL case, check `ctx._userFunctions.has(name)` BEFORE calling `mapFunctionNameJS`. User wins.
+- **Lesson:** Any symbol that exists in both the built-in synonym table AND the user's source should resolve to the user's definition. Always check user-defined names first. Lexical scoping: inner scope shadows outer.
+
+### SSE `tool_start` Fires Twice Per Tool Call — Dedup With a State Flag, Not ID
+
+- **Bug:** Integration test for Meph's TDD loop captured zero tool calls. The SSE parser was deduplicating by `obj._id` — always `undefined`. The server emits `tool_start` TWICE per tool call (bare, then with summary). `find()` dedup caught nothing.
+- **Fix:** Boolean `_inTool` flag. Flip to `true` on first `tool_start` (`!_inTool`), flip back on `tool_done`. Captures exactly one entry per tool call.
+- **Lesson:** When an SSE protocol is undocumented, inspect the raw event stream before writing the parser. State-machine approaches (flag between start/end brackets) beat identity-based dedup when IDs aren't guaranteed.
+
+### API Key Must Match How the Server Actually Consumes It
+
+- **Bug:** Integration test on Windows couldn't find the API key. `export $(cat .env | xargs)` doesn't set env vars for Node subprocesses on Windows. Test passed the key via `process.env`; the server reads `req.body.apiKey`.
+- **Fix:** Load key from `.env` file directly in the test, pass as `apiKey` in the JSON request body.
+- **Lesson:** On Windows, shell `export` doesn't propagate to Node. Always check HOW the server consumes credentials before deciding how to thread them.
+
+### Playwright Worktree Tests Fail — Push From Main Repo Checkout Instead
+
+- **Pattern:** The pre-push Playwright e2e test fails in a git worktree. Same test passes 77/77 from the main repo checkout.
+- **Fix:** When shipping from a worktree, get the HEAD SHA, go to the main repo, `git merge <SHA> --no-ff`, push from there.
+- **Lesson:** Git worktrees are good for isolation, but e2e Playwright tests are environment-sensitive. Treat the main repo checkout as the canonical push environment.
 
