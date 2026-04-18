@@ -23618,6 +23618,9 @@ describe('Weak assertion lint — single assertion yellow flag', () => {
 await import('./lib/change-classifier.test.js');
 await import('./lib/live-edit-auth.test.js');
 await import('./lib/edit-tools.test.js');
+await import('./lib/proposal.test.js');
+await import('./lib/ship.test.js');
+await import('./lib/edit-api.test.js');
 
 run();
 
