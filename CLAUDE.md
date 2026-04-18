@@ -14,6 +14,15 @@ Then load tools and read the rest of the startup files below.
 Run ToolSearch for these before doing anything else:
 `mcp__computer-use__screenshot`, `mcp__computer-use__zoom`, `mcp__Claude_in_Chrome__computer`, `mcp__Claude_in_Chrome__tabs_context_mcp`, `mcp__Claude_in_Chrome__navigate`, `mcp__Claude_in_Chrome__get_page_text`
 
+## FAQ.md — Search This First
+Before grepping, check **`FAQ.md`** at repo root. It has:
+- Where every subsystem lives (ports, files, functions)
+- How to add node types, synonyms, tools
+- Why key architectural decisions were made
+- Known broken things
+
+If you can't find the answer there, grep — then add the answer to FAQ.md.
+
 ## On Startup -- Read These First
 1. **`intent.md`** -- the authoritative spec. All 119+ node types, build targets, compiler passes, synonym collisions, validation rules. If it's not in intent.md, it doesn't exist. **Always check the parser too** -- intent.md has historically lagged behind the implementation.
 2. **`learnings.md`** -- scan the TOC before any work. Engineering gotchas: synonym traps, tokenizer quirks, CRUD parse shapes, parser ordering, runtime coercion. Every section is a bug someone already hit.
