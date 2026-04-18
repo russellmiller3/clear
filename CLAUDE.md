@@ -366,3 +366,7 @@ When Meph fails at a task, the failure is not just data for the Factor DB — it
 **Merge-as-you-go:** Fix one root cause at a time, commit it, move on. Don't batch 10 fixes into one mega-commit. Test suite must stay green at every step.
 
 **The rule for Marcus apps and training runs:** Every failed app build triggers a fix loop. Don't move to the next app until the current one's blockers are resolved at the system level. The goal isn't to produce 5 working apps — the goal is to produce a compiler + system prompt + docs that can build any app like this.
+
+## Real-LLM Eval Before Declaring AI Feature Done (MANDATORY)
+
+For any feature whose behavior depends on an LLM — system prompts, tool-use routing, Meph tools, agent flows, Claude-in-the-loop helpers — write a real-LLM eval harness alongside the unit tests and run it before declaring the feature done. Unit tests with mocked LLM responses prove the plumbing; only the real model proves the feature. Minimum scenario set: happy path, edge cases (required fields, ambiguous inputs), explicit refusals, and at least one adversarial/social-engineering input. Iterate on the prompt until all scenarios pass on real Claude. Mocks hide the failure modes that matter most — tool mis-routing, reflexive refusals, and prompt-injection-style slips.
