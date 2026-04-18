@@ -239,15 +239,18 @@ Marcus (the user) opens the running todo template, clicks "Edit this app," types
 - `lib/meph-adapter.js` — buildMephRequest / parseMephResponse / callMeph for Anthropic SDK
 - `runtime/meph-widget.js` — browser-side widget (syntax-checked)
 
-**Cycle 10a landed — Studio integration (smoke-tested live):**
+**Cycle 10 landed end-to-end (smoke-tested live):**
 - `/__meph__/widget.js` mounted on Studio, serves `runtime/meph-widget.js`
 - `/__meph__/api/propose` mounted, owner-gated, wired to real Anthropic via `callMeph` and Studio's stored API key
-- `/__meph__/api/ship` mounted, owner-gated (ship-flow impl is a stub — see 10b below)
+- `/__meph__/api/ship` mounted, owner-gated. Compiles newSource via `compileProgram`, POSTs compiled outputs to Studio's own `/api/run` to respawn the child app. Returns the new child port.
 - Bearer-JWT auth middleware parses tokens matching `runtime/auth.js` format
-- Verified end-to-end: `GET widget.js` returns the bundle; `POST propose` without auth returns 403 "owner role required"
+- Verified end-to-end: widget served, 403 without owner JWT, compile-failure on broken source returns the real compiler error in 30ms
 
-**Remaining for full Phase A (cycle 10b, 11, 12):**
-- **10b.** Wire `applyShip` to Studio's real compile+write+respawn path (currently a stub that echoes newSource back).
+**Security TODO for Phase B:**
+The Studio-side auth middleware (`liveEditAuth` in `playground/server.js`) parses the JWT payload without verifying the HMAC signature. Fine for Phase A spike where the same user owns Studio and the browser session, but before any real multi-user deploy we must use `runtime/auth.js`'s `verifyToken` (or re-mint with `createToken`) so forged tokens are rejected.
+
+**Remaining for full Phase A (cycles 11–12):**
+- Compiler change so the compiled HTML emits `<script src="/__meph__/widget.js">` when the source declares an owner user. Today the widget is served from Studio's port; browser-side CORS means the widget needs to live on the child app's origin to call `/__meph__/*` without preflight headaches. Options: (a) proxy `/__meph__/*` through the compiled server; (b) add CORS on the Studio endpoints; (c) serve the widget from the child directly via a compiler-emitted route.
 - Compiler change: when the source contains an owner (e.g. a user record with `role: 'owner'`) and `allow signup and login` is present, emit a `<script src="/__meph__/widget.js"></script>` tag in the compiled HTML.
 - Template updates: flag one user as `role: 'owner'` in `todo-fullstack`, `crm-pro`, and `blog-fullstack` for e2e testing.
 - Playwright e2e: owner-session → widget mounts → propose → ship → verify new field/page/endpoint present on reload.

@@ -121,9 +121,43 @@ createEditApi(app, {
     return await callMeph({ prompt, source, apiKey: key });
   },
   applyShip: async (newSource) => {
-    // Phase A stub: return ok with the echoed source. Cycle 10b hooks
-    // this to /api/compile + /api/run for the real write+compile+respawn.
-    return { ok: true, elapsed_ms: 0, newSource };
+    // Cycle 10b: compile the new source, then POST to Studio's own /api/run
+    // to write files and respawn the child app. Returns the new port so
+    // the widget can reload to the right URL.
+    const t0 = Date.now();
+    let compiled;
+    try {
+      compiled = compileProgram(newSource);
+    } catch (err) {
+      return { ok: false, error: `compile threw: ${err.message}`, elapsed_ms: Date.now() - t0 };
+    }
+    if (compiled.errors && compiled.errors.length) {
+      const msgs = compiled.errors.map((e) => e.message || String(e)).join('; ');
+      return { ok: false, error: `compile failed: ${msgs}`, elapsed_ms: Date.now() - t0 };
+    }
+    const studioPort = process.env.PORT || '3456';
+    try {
+      const r = await fetch(`http://localhost:${studioPort}/api/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serverJS: compiled.serverJS,
+          html: compiled.html,
+          css: compiled.css || '',
+        }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        return {
+          ok: false,
+          error: body.error || `/api/run returned ${r.status}`,
+          elapsed_ms: Date.now() - t0,
+        };
+      }
+      return { ok: true, elapsed_ms: Date.now() - t0, port: body.port };
+    } catch (err) {
+      return { ok: false, error: `ship fetch failed: ${err.message}`, elapsed_ms: Date.now() - t0 };
+    }
   },
   widgetScript: _liveEditWidgetSource,
 });
