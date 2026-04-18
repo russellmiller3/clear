@@ -8625,8 +8625,10 @@ function parsePrimary(tokens, pos, line, end) {
         operand.nextPos < maxPos &&
         tokens[operand.nextPos].rawValue === 'from') {
       const tablePos = operand.nextPos + 1;
+      // Accept identifier OR keyword (some table names like "Returns" happen
+      // to be synonyms). Only requirement: starts with a capital letter.
       if (tablePos < maxPos &&
-          tokens[tablePos].type === TokenType.IDENTIFIER &&
+          typeof tokens[tablePos].value === 'string' &&
           /^[A-Z]/.test(tokens[tablePos].value)) {
         const fieldName = operand.node.name;
         const tableName = tokens[tablePos].value;
