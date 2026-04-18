@@ -540,6 +540,17 @@ Multi-word keywords that can shadow variable names: `page` (page declaration), `
 | `runtime/auth.js` | JWT auth + middleware | ~120 |
 | `runtime/rateLimit.js` | Request rate limiting | ~50 |
 
+## Studio Capabilities (not language features)
+
+These are Studio (`playground/server.js`) features, not Clear language primitives. They don't add node types — they add runtime behavior around already-compiled apps.
+
+| Capability | Where | What it does |
+|------------|-------|--------------|
+| **Hosted deploy** | `playground/deploy.js`, `playground/builder/` | `POST /api/deploy` packages the current source, tars it, POSTs to a shared builder machine that runs `docker build` → `docker push registry.fly.io` → `flyctl deploy` and returns a live URL. Customer never sees Fly. |
+| **AI proxy routing** | `playground/ai-proxy/` | Every `ask claude` in a deployed app routes through a metered proxy that holds the only Anthropic key. Usage attributed to the tenant, billed via Stripe metered add-on. |
+| **Tenant + billing** | `playground/tenants.js`, `playground/billing.js` | One row per paying customer. Plan limits come from `plans.js`. Stripe Checkout creates tenants; webhook updates plan. Dedup'd by event_id so webhook replays don't double-bill. |
+| **Multi-tenant isolation** | `playground/sanitize.js` | Every app name starts with `clear-<tenantSlug>-`. Rollback, history, cert endpoints assert ownership before calling the builder. Per-app Firecracker VM isolation is Fly's default. |
+
 ## Apps (Stress Tests)
 
 | App | Lines | What It Proves |

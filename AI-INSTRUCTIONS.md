@@ -2672,3 +2672,12 @@ when user sends deploy_request to /api/deploy:
   run command 'npm run build'
   send back 'Deployed successfully'
 ```
+
+## Deploy-ready apps (Phase 85)
+
+Apps Meph builds should be deploy-ready out of the box. The Deploy button in Studio takes whatever is currently compiled and ships it to a live URL via the shared builder. Key rules:
+
+- **Don't paste API keys in source.** For `ask claude` / `define agent`, skip the Anthropic key — Clear routes those calls through the metered AI proxy automatically on deployed apps. If the customer wants to use their own key, they set `CLEAR_AI_URL=""` in Fly secrets after deploy.
+- **Name apps with lowercase alphanumeric + hyphens.** Studio rejects anything else before talking to the builder. 3–32 chars. No shell metacharacters, no spaces.
+- **Plan for secrets the app will need.** `requires login` auto-gets a `JWT_SECRET`. `use stripe` / `use twilio` / `use sendgrid` prompt the customer for the matching key in the Deploy modal.
+- **Avoid direct `use '@anthropic-ai/sdk'`.** The `ask claude` helper is the canonical way to call Claude — direct SDK use bypasses metering and the customer's own Anthropic key gets billed instead of their plan credit.

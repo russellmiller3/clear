@@ -1,0 +1,12 @@
+{
+  "name": "clear-ai-proxy",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Metered Claude proxy for Clear deployed apps",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node server.test.js"
+  },
+  "dependencies": {}
+}

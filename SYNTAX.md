@@ -2851,3 +2851,22 @@ show audio 'https://example.com/podcast.mp3'
 ```
 
 Video compiles to `<video controls>` with source. Audio compiles to `<audio controls>` with source. Both support standard web media formats.
+
+## Deploying your app
+
+Deployment is a Studio feature, not a language primitive — you don't write deploy instructions in `.clear` source, you click the **Deploy** button in Clear Studio. Behind the button:
+
+1. Studio calls `packageBundle()` on your compiled app (the same logic `clear package` uses in the CLI).
+2. The bundle (server.js, index.html, package.json, Dockerfile, runtime) is tarred and POSTed to the shared builder machine.
+3. The builder runs `docker build` → `docker push registry.fly.io/<app>:<sha>` → `flyctl deploy` and returns a live URL.
+4. You get back something like `https://clear-acme-todos-a7b3c9.fly.dev` in seconds.
+
+**Secrets.** `requires login` triggers auto-generation of a random `JWT_SECRET`. Blocks like `use stripe` prompt for the matching API key in the Deploy modal.
+
+**AI calls.** `ask claude` and `define agent` route through Clear's metered AI proxy in deployed apps — no need to paste an Anthropic key, and usage shows up in the plan badge `$spent/$credit`.
+
+**Custom domain.** Type your domain in the Deploy modal — Studio calls `flyctl certs create` and returns the DNS records to point at Fly. Certs auto-renew.
+
+**Rollback.** The Deploy History drawer lists the last 10 releases. Click Rollback on any of them.
+
+**Limits.** Pro plan: 25 apps, $10/mo of AI credits included, $99/mo. See `plans.js` for the source of truth.

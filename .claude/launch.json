@@ -1,4 +1,48 @@
 {
   "version": "0.0.1",
-  "configurations": []
+  "configurations": [
+    {
+      "name": "playground",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["playground/server.js"],
+      "port": 3456,
+      "autoPort": false,
+      "env": { "CLEAR_ALLOW_SEED": "1" }
+    },
+    {
+      "name": "startup-landing",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--input-type=module", "--eval", "import{compileProgram}from'./index.js';import fs from'fs';import http from'http';const r=compileProgram(fs.readFileSync('apps/startup-landing/main.clear','utf8'));const s=http.createServer((_,res)=>{res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});res.end(r.html||'');});s.listen(5001,()=>console.log('ready'));"],
+      "port": 5001,
+      "autoPort": false
+    },
+    {
+      "name": "saas-landing",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--input-type=module", "--eval", "import{compileProgram}from'./index.js';import fs from'fs';import http from'http';const r=compileProgram(fs.readFileSync('apps/saas-landing/main.clear','utf8'));const s=http.createServer((_,res)=>{res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});res.end(r.html||'');});s.listen(5002,()=>console.log('ready'));"],
+      "port": 5002,
+      "autoPort": false
+    },
+    {
+      "name": "store-ops",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/store-ops/server.js"],
+      "port": 4031,
+      "autoPort": false
+    },
+    {
+      "name": "landing-apps",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "landing", "-p", "5010"],
+      "port": 5010,
+      "autoPort": false
+    },
+    {
+      "name": "devtool-landing",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--input-type=module", "--eval", "import{compileProgram}from'./index.js';import fs from'fs';import http from'http';const r=compileProgram(fs.readFileSync('apps/devtool-landing/main.clear','utf8'));const s=http.createServer((_,res)=>{res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});res.end(r.html||'');});s.listen(5003,()=>console.log('ready'));"],
+      "port": 5003,
+      "autoPort": false
+    }
+  ]
 }
