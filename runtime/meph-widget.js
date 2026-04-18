@@ -116,6 +116,13 @@
 				background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.2);
 				padding: 2px 8px; border-radius: 999px;
 			}
+			.clear-meph-undo {
+				font-size: 11px; font-weight: 600; color: #cbd5e1;
+				background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+				padding: 4px 10px; border-radius: 8px; cursor: pointer;
+				margin-left: 8px;
+			}
+			.clear-meph-undo:hover { background: rgba(255,255,255,.08); color: #fff; }
 			.clear-meph-messages { flex:1; overflow-y:auto; padding: 14px; display:flex; flex-direction:column; gap:10px; }
 			.clear-meph-msg-user {
 				background: rgba(99,102,241,.12); border: 1px solid rgba(99,102,241,.2);
@@ -277,6 +284,25 @@
 		addBot('Cancelled.');
 	}
 
+	async function undoLast() {
+		addBot('Undoing the last change...');
+		try {
+			const r = await api('rollback', { relative: -1 });
+			if (!r.ok) {
+				addBot([el('div', { class: 'clear-meph-err' }, [r.body.error || 'Undo failed'])]);
+				return;
+			}
+			addBot(
+				'Restored' +
+					(r.body.label ? ' "' + r.body.label + '"' : '') +
+					'. Reloading...',
+			);
+			setTimeout(() => window.location.reload(), 1000);
+		} catch (err) {
+			addBot([el('div', { class: 'clear-meph-err' }, ['Undo error: ' + err.message])]);
+		}
+	}
+
 	// --------------------------------------------------------------------
 	// Mount
 	// --------------------------------------------------------------------
@@ -287,6 +313,15 @@
 		const panel = el('div', { class: 'clear-meph-panel' }, []);
 		const head = el('div', { class: 'clear-meph-head' }, [
 			el('div', { class: 'clear-meph-title' }, ['Meph · Edit this app']),
+			el(
+				'button',
+				{
+					class: 'clear-meph-undo',
+					onclick: undoLast,
+					title: 'Undo the last change. Source + data restored.',
+				},
+				['↶ Undo'],
+			),
 			el('div', { class: 'clear-meph-owner-chip' }, ['owner']),
 		]);
 		messagesEl = el('div', { class: 'clear-meph-messages' }, []);
@@ -319,6 +354,100 @@
 
 		addBot('Hi — tell me what to add. I can add fields, endpoints, or pages. Phase A is additive-only.');
 	}
+
+	// --------------------------------------------------------------------
+	// Live-reload state preservation (LAE-4)
+	// --------------------------------------------------------------------
+	// When the app restarts after a ship or rollback, connected clients
+	// reload the page. Without preservation, every user's in-flight form
+	// data would vanish. We fix that by:
+	//
+	//   1. Before unload, snapshotting every input/textarea/select value
+	//      into sessionStorage, keyed by (path, field identifier).
+	//   2. After reload, re-applying the snapshot onto matching elements
+	//      and clearing it.
+	//
+	// This runs for EVERY session — owner and non-owner alike — because
+	// Jenna needs her form back as badly as Marcus does.
+
+	function formCacheKey() {
+		return 'clear:form-cache:' + window.location.pathname;
+	}
+
+	function elemKey(el) {
+		// Prefer explicit id or name; fall back to a DOM path so unnamed
+		// inputs still round-trip. Path is enough because forms are stable
+		// across the same-version reload.
+		if (el.id) return 'id:' + el.id;
+		if (el.name) return 'name:' + el.name;
+		let path = el.tagName.toLowerCase();
+		let node = el;
+		while (node.parentElement && node !== document.body) {
+			const parent = node.parentElement;
+			const idx = Array.prototype.indexOf.call(parent.children, node);
+			path = parent.tagName.toLowerCase() + '>' + idx + '>' + path;
+			node = parent;
+		}
+		return 'path:' + path;
+	}
+
+	function snapshotFormState() {
+		try {
+			const snap = {};
+			const nodes = document.querySelectorAll('input, textarea, select');
+			for (const el of nodes) {
+				if (el.type === 'password' || el.type === 'hidden') continue;
+				if (el.type === 'checkbox' || el.type === 'radio') {
+					snap[elemKey(el)] = { checked: el.checked, value: el.value };
+				} else {
+					if (el.value === '') continue;
+					snap[elemKey(el)] = { value: el.value };
+				}
+			}
+			if (Object.keys(snap).length > 0) {
+				sessionStorage.setItem(formCacheKey(), JSON.stringify(snap));
+			}
+		} catch {}
+	}
+
+	function restoreFormState() {
+		try {
+			const raw = sessionStorage.getItem(formCacheKey());
+			if (!raw) return;
+			const snap = JSON.parse(raw);
+			const nodes = document.querySelectorAll('input, textarea, select');
+			for (const el of nodes) {
+				if (el.type === 'password' || el.type === 'hidden') continue;
+				const saved = snap[elemKey(el)];
+				if (!saved) continue;
+				if (el.type === 'checkbox' || el.type === 'radio') {
+					el.checked = !!saved.checked;
+					if (saved.value) el.value = saved.value;
+				} else {
+					el.value = saved.value;
+				}
+				el.dispatchEvent(new Event('input', { bubbles: true }));
+				el.dispatchEvent(new Event('change', { bubbles: true }));
+			}
+			sessionStorage.removeItem(formCacheKey());
+		} catch {}
+	}
+
+	// Listen for the unload that our own ship/rollback triggers. We
+	// snapshot defensively on every unload so a user-initiated refresh
+	// also benefits — losing a half-typed request across F5 was always
+	// bad UX, not just when Marcus ships.
+	window.addEventListener('beforeunload', snapshotFormState);
+
+	function initStatePreservation() {
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', restoreFormState);
+		} else {
+			restoreFormState();
+		}
+	}
+
+	initStatePreservation();
 
 	// --------------------------------------------------------------------
 	// Bootstrap
