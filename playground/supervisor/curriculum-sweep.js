@@ -143,6 +143,35 @@ export async function driveTaskOnWorker(port, prompt, timeoutMs) {
   }
 }
 
+// Pre-flight: send a 1-token probe to Anthropic's API. If it fails with 400
+// (usage limit / invalid request) or 401 (bad key), bail before spending an
+// hour spawning workers that will all fail instantly. Returns null on OK,
+// error message on failure.
+async function preflightApiCheck(apiKey) {
+  if (!apiKey) return 'ANTHROPIC_API_KEY not set';
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 5,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (r.ok) return null;
+    const body = await r.text();
+    return `API pre-flight failed: HTTP ${r.status} — ${body.slice(0, 200)}`;
+  } catch (err) {
+    return `API pre-flight errored: ${err.message}`;
+  }
+}
+
 async function processBucket(port, bucketTasks, timeoutMs, onTaskDone) {
   const results = [];
   for (const task of bucketTasks) {
@@ -191,6 +220,18 @@ export async function runSweep({
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY not set — required for real sweep. Use --dry-run to preview.');
   }
+
+  console.log('\nPre-flight API check...');
+  const preflightError = await preflightApiCheck(process.env.ANTHROPIC_API_KEY);
+  if (preflightError) {
+    console.error(`\n❌ ${preflightError}`);
+    console.error('\nSweep aborted — all tasks would fail. Common causes:');
+    console.error('  • API usage limit exceeded (check https://console.anthropic.com/settings/limits)');
+    console.error('  • Invalid API key');
+    console.error('  • Anthropic API outage');
+    throw new Error('Pre-flight API check failed');
+  }
+  console.log('API reachable ✓');
 
   // Count rows before the sweep so we can report delta
   const factorDB = new FactorDB(FACTOR_DB_PATH);
