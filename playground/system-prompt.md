@@ -818,6 +818,51 @@ todo = find Todo by id           // use `look up Todo with this id`
 results = find Todos              // use `get all Todos`
 ```
 
+## Inline Send Back — Shorthand for Trivial Returns
+
+For endpoints that just fetch and return, skip the throwaway variable:
+
+```
+// ✅ PREFERRED — reads like English
+when user calls GET /api/users:
+  send back all Users
+
+when user calls GET /api/users/:id:
+  send back the User with this id
+
+when user calls GET /api/active:
+  send back all Users where active is true
+
+// Also valid (longer, use when you need to transform)
+when user calls GET /api/users:
+  users = get all Users
+  send back users
+```
+
+**Rule:** trivial returns use shorthand. If you filter/map/group the result first, use longhand with a named intermediate.
+
+## URL Path Parameters — Use `this X`, Not Bare `X`
+
+When an endpoint path has a parameter like `/:id`, access it as **`this id`** inside the body. Bare `id` is NOT in scope and will error with "Did you mean 'if'?".
+
+```
+// ✅ CORRECT
+when user calls DELETE /api/todos/:id:
+  requires login
+  delete Todo with this id             // `this id` = the :id from the URL
+  send back 'ok'
+
+when user calls GET /api/workspaces/:id/items:
+  items = get all Items where workspace_id is this id
+  send back items
+
+// ❌ WRONG — bare `id` is undefined
+when user calls GET /api/workspaces/:id/items:
+  items = get all Items where workspace_id is id    // compile error
+```
+
+Same pattern for any named path param: `/users/:user_id` → `this user_id`. `/orders/:order_number` → `this order_number`.
+
 ## Variable Names That Trip the Tokenizer
 
 These English words LOOK like keywords to the tokenizer. If you use them as bare variable names on their own line, the compiler will suggest a keyword typo ("Did you mean 'if'?"). Rename or use in context that disambiguates.

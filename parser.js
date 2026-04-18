@@ -975,6 +975,12 @@ const CANONICAL_DISPATCH = new Map([
     return parsed.endIdx;
   }],
   ['send_back', (ctx) => {
+    // First try inline retrieval shorthand ("send back all Users" etc.)
+    const inline = tryInlineSendBackRetrieval(ctx.tokens, ctx.line);
+    if (inline) {
+      for (const n of inline) ctx.body.push(n);
+      return ctx.i + 1;
+    }
     const parsed = parseRespond(ctx.tokens, ctx.line);
     if (parsed.error) ctx.errors.push({ line: ctx.line, message: parsed.error });
     else ctx.body.push(parsed.node);
@@ -7114,6 +7120,84 @@ function parseEndpoint(lines, startIdx, blockIndent, errors) {
 // =============================================================================
 // CANONICAL: respond with data
 //            respond with "Not found" status 404
+
+// Inline retrieval shorthand for `send back`:
+//   "send back all Todos"                    → implicit lookup + respond
+//   "send back all Todos where owner is ..."  → filtered lookup + respond
+//   "send back the Todo with this id"         → single-record lookup + respond
+//
+// Returns an array of nodes [CRUD, RESPOND] if it matched, null otherwise.
+// The dispatcher appends both nodes to the body. Desugars to what the user
+// would write longhand:
+//   todos = get all Todos
+//   send back todos
+//
+// Why this exists: `send back all Users` reads like an English sentence.
+// Requiring `users = get all Users; send back users` forces the author to
+// invent a throwaway variable name. Every other web framework (Rails,
+// Flask, SQL) supports inline returns — this aligns Clear with that
+// convention for the common case. Long form is still valid and required
+// when the retrieval result needs transformation before responding.
+function tryInlineSendBackRetrieval(tokens, line) {
+  if (tokens.length < 3) return null;
+  const t1 = tokens[1];
+  const t2 = tokens[2];
+  if (!t1 || !t2) return null;
+
+  // Pattern A: "send back all <Table>" with optional "where <cond>"
+  if (t1.value === 'all' && typeof t2.value === 'string' && /^[A-Z]/.test(t2.value)) {
+    const tableName = t2.value;
+    const autoVar = `_resp_${line}`;
+    const crud = crudNode('lookup', autoVar, tableName, null, line);
+    crud.lookupAll = true;
+
+    // Optional "where <cond>" — parse everything from after `where` to end
+    let cPos = 3;
+    if (cPos < tokens.length && tokens[cPos].canonical === 'where') {
+      cPos++;
+      const expr = parseExpression(tokens, cPos, line);
+      if (!expr.error) crud.condition = expr.node;
+    }
+
+    const respond = {
+      type: NodeType.RESPOND,
+      expression: { type: NodeType.VARIABLE_REF, name: autoVar, line },
+      line,
+    };
+    return [crud, respond];
+  }
+
+  // Pattern B: "send back the <Table> with this <X>" (single record lookup by URL param)
+  // Also accepts "whose" as a synonym for "with", and "that" for "this".
+  if (t1.value === 'the' && tokens.length >= 6 && typeof t2.value === 'string' && /^[A-Z]/.test(t2.value)) {
+    const withTok = tokens[3];
+    const thisTok = tokens[4];
+    const paramTok = tokens[5];
+    if ((withTok.value === 'with' || withTok.value === 'whose') &&
+        (thisTok.value === 'this' || thisTok.value === 'that') &&
+        paramTok && typeof paramTok.value === 'string') {
+      const tableName = t2.value;
+      const paramName = paramTok.value;
+      const autoVar = `_resp_${line}`;
+      const condition = {
+        type: NodeType.BINARY_OP,
+        operator: '==',
+        left: { type: NodeType.VARIABLE_REF, name: paramName, line },
+        right: { type: NodeType.MEMBER_ACCESS, object: { type: NodeType.VARIABLE_REF, name: 'incoming', line }, member: paramName, line },
+        line,
+      };
+      const crud = crudNode('lookup', autoVar, tableName, condition, line);
+      const respond = {
+        type: NodeType.RESPOND,
+        expression: { type: NodeType.VARIABLE_REF, name: autoVar, line },
+        line,
+      };
+      return [crud, respond];
+    }
+  }
+
+  return null;
+}
 
 function parseRespond(tokens, line) {
   let pos = 1; // skip first token

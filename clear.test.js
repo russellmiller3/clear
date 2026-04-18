@@ -2184,10 +2184,10 @@ page 'App':
   heading 'Todos'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("app.get('/api/todos'");
-    expect(r.serverJS).toContain("app.post('/api/todos'");
-    expect(r.serverJS).toContain("app.put('/api/todos/:id'");
-    expect(r.serverJS).toContain("app.delete('/api/todos/:id'");
+    expect((r.serverJS || r.javascript)).toContain("app.get('/api/todos'");
+    expect((r.serverJS || r.javascript)).toContain("app.post('/api/todos'");
+    expect((r.serverJS || r.javascript)).toContain("app.put('/api/todos/:id'");
+    expect((r.serverJS || r.javascript)).toContain("app.delete('/api/todos/:id'");
   });
 
   it('path with multiple params works', () => {
@@ -10378,6 +10378,49 @@ describe('Error messages - keyword typo detection', () => {
   });
 });
 
+describe('Inline send back — retrieval shorthand', () => {
+  it('send back all Users compiles to lookup + respond', () => {
+    const src = `build for javascript backend\ncreate a Users table:\n  name, required\nwhen user calls GET /api/users:\n  send back all Users`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect((r.serverJS || r.javascript).includes("db.findAll('users')")).toEqual(true);
+    expect((r.serverJS || r.javascript).includes('res.json(')).toEqual(true);
+  });
+
+  it('send back the User with this id compiles to single-record lookup + respond', () => {
+    const src = `build for javascript backend\ncreate a Users table:\n  name, required\nwhen user calls GET /api/users/:id:\n  send back the User with this id`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Should reference findOne or findAll with a filter
+    expect((r.serverJS || r.javascript).includes('users')).toEqual(true);
+    expect((r.serverJS || r.javascript).includes('res.json(')).toEqual(true);
+  });
+
+  it('send back all Users where condition compiles with filter', () => {
+    const src = `build for javascript backend\ncreate a Users table:\n  name, required\n  active\nwhen user calls GET /api/users:\n  send back all Users where active is true`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect((r.serverJS || r.javascript).includes("'users'")).toEqual(true);
+  });
+
+  it('longhand still works (backward compat)', () => {
+    const src = `build for javascript backend\ncreate a Users table:\n  name, required\nwhen user calls GET /api/users:\n  users = get all Users\n  send back users`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect((r.serverJS || r.javascript).includes("db.findAll('users')")).toEqual(true);
+  });
+
+  it('send back literal still works (not just retrieval)', () => {
+    const src = `build for javascript backend\nwhen user calls GET /api/health:\n  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Compiler wraps bare string in { message: "..." } — standard response shape
+    const js = r.serverJS || r.javascript || '';
+    expect(js.includes('"ok"') || js.includes("'ok'")).toEqual(true);
+    expect(js.includes('res.json(')).toEqual(true);
+  });
+});
+
 describe('Error messages - intent hints beat Levenshtein for common wrong words', () => {
   it('suggests look up / get all when Meph writes find', () => {
     const result = compileProgram("x = find\nshow x");
@@ -14742,8 +14785,8 @@ when user calls POST /api/seed:
   send back 'ok'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("db.insert('models'");
-    expect(r.serverJS).not.toContain("db.update('as'");
+    expect((r.serverJS || r.javascript)).toContain("db.insert('models'");
+    expect((r.serverJS || r.javascript)).not.toContain("db.update('as'");
   });
 
   it('multiple seed saves all compile to db.insert', () => {
@@ -14764,9 +14807,9 @@ when user calls POST /api/seed:
   send back 'seeded'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    const insertCount = (r.serverJS.match(/db\.insert/g) || []).length;
+    const insertCount = ((r.serverJS || r.javascript).match(/db\.insert/g) || []).length;
     expect(insertCount).toBe(2);
-    expect(r.serverJS).not.toContain("db.update('as'");
+    expect((r.serverJS || r.javascript)).not.toContain("db.update('as'");
   });
 
   it('save X to Y still compiles to db.update (not insert)', () => {
@@ -14780,7 +14823,7 @@ when user calls PUT /api/models/:id sending update_data:
   send back 'updated'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("db.update('models'");
+    expect((r.serverJS || r.javascript)).toContain("db.update('models'");
   });
 });
 
@@ -14797,8 +14840,8 @@ when user calls PUT /api/tasks/:id sending update_data:
   send back 'updated'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain('update_data.id = req.params.id');
-    expect(r.serverJS).toContain("db.update('tasks'");
+    expect((r.serverJS || r.javascript)).toContain('update_data.id = req.params.id');
+    expect((r.serverJS || r.javascript)).toContain("db.update('tasks'");
   });
 
   it('save to X in POST (no :id) does NOT inject params.id', () => {
@@ -14812,8 +14855,8 @@ when user calls POST /api/tasks sending task_data:
   send back new_task with success message`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).not.toContain('params.id');
-    expect(r.serverJS).toContain("db.insert('tasks'");
+    expect((r.serverJS || r.javascript)).not.toContain('params.id');
+    expect((r.serverJS || r.javascript)).toContain("db.insert('tasks'");
   });
 });
 
@@ -15002,17 +15045,17 @@ page 'CRM' at '/':
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     // Seed uses insert not update
-    expect(r.serverJS).toContain("db.insert('contacts'");
-    expect(r.serverJS).toContain("db.insert('deals'");
+    expect((r.serverJS || r.javascript)).toContain("db.insert('contacts'");
+    expect((r.serverJS || r.javascript)).toContain("db.insert('deals'");
     // PUT uses params.id injection
-    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    expect((r.serverJS || r.javascript)).toContain('update_data.id = req.params.id');
     // HTML has proper layout
     expect(r.html).not.toContain('max-w-2xl');
     expect(r.html).toContain('data-theme="midnight"');
     // Has chart
     expect(r.html).toContain('echarts');
     // compound unique constraint compiles
-    expect(r.serverJS).toContain('contacttags');
+    expect((r.serverJS || r.javascript)).toContain('contacttags');
   });
 });
 
@@ -15073,10 +15116,10 @@ page 'Invoices' at '/':
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     // Seed inserts correctly
-    expect(r.serverJS).toContain("db.insert('invoices'");
-    expect(r.serverJS).not.toContain("db.update('as'");
+    expect((r.serverJS || r.javascript)).toContain("db.insert('invoices'");
+    expect((r.serverJS || r.javascript)).not.toContain("db.update('as'");
     // PUT injects ID
-    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    expect((r.serverJS || r.javascript)).toContain('update_data.id = req.params.id');
     // Layout correct
     expect(r.html).not.toContain('max-w-2xl');
   });
@@ -15135,9 +15178,9 @@ page 'BookIt' at '/':
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     // Both seed saves use insert
-    const inserts = (r.serverJS.match(/db\.insert/g) || []).length;
+    const inserts = ((r.serverJS || r.javascript).match(/db\.insert/g) || []).length;
     expect(inserts >= 2).toBe(true);
-    expect(r.serverJS).not.toContain("db.update('as'");
+    expect((r.serverJS || r.javascript)).not.toContain("db.update('as'");
   });
 });
 
@@ -15154,10 +15197,10 @@ when user calls POST /api/seed:
   send back 'ok'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("db.insert('activities'");
-    expect(r.serverJS).toContain('ActivitiesSchema');
-    expect(r.serverJS).not.toContain("'activitys'");
-    expect(r.serverJS).not.toContain('ActivitySchema');
+    expect((r.serverJS || r.javascript)).toContain("db.insert('activities'");
+    expect((r.serverJS || r.javascript)).toContain('ActivitiesSchema');
+    expect((r.serverJS || r.javascript)).not.toContain("'activitys'");
+    expect((r.serverJS || r.javascript)).not.toContain('ActivitySchema');
   });
 
   it('Category table pluralizes to categories', () => {
@@ -15172,8 +15215,8 @@ when user calls POST /api/seed:
   send back 'ok'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("db.insert('categories'");
-    expect(r.serverJS).not.toContain("'categorys'");
+    expect((r.serverJS || r.javascript)).toContain("db.insert('categories'");
+    expect((r.serverJS || r.javascript)).not.toContain("'categorys'");
   });
 
   it('Address table pluralizes to addresses', () => {
@@ -15186,7 +15229,7 @@ when user calls GET /api/addresses:
   send back all_addresses`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("'addresses'");
+    expect((r.serverJS || r.javascript)).toContain("'addresses'");
   });
 });
 
@@ -15202,7 +15245,7 @@ when user calls POST /api/items sending item_data:
   send back new_item with success message`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("db.insert('items'");
+    expect((r.serverJS || r.javascript)).toContain("db.insert('items'");
   });
 
   it('save data as X (without new keyword) still inserts', () => {
@@ -15217,7 +15260,7 @@ when user calls POST /api/seed:
   send back 'ok'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("db.insert('items'");
+    expect((r.serverJS || r.javascript)).toContain("db.insert('items'");
   });
 
   it('save data to X (update syntax) compiles to update', () => {
@@ -15231,8 +15274,8 @@ when user calls PUT /api/items/:id sending data:
   send back 'ok'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("db.update('items'");
-    expect(r.serverJS).toContain('data.id = req.params.id');
+    expect((r.serverJS || r.javascript)).toContain("db.update('items'");
+    expect((r.serverJS || r.javascript)).toContain('data.id = req.params.id');
   });
 });
 
@@ -15258,10 +15301,10 @@ when user calls POST /api/items sending item_data:
     const resolver = (name) => name === 'backend' ? backendSrc : null;
     const r = compileProgram(mainSrc, { moduleResolver: resolver });
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("db.createTable('items'");
-    expect(r.serverJS).toContain("app.get('/api/items'");
-    expect(r.serverJS).toContain("app.post('/api/items'");
-    expect(r.serverJS).toContain("db.insert('items'");
+    expect((r.serverJS || r.javascript)).toContain("db.createTable('items'");
+    expect((r.serverJS || r.javascript)).toContain("app.get('/api/items'");
+    expect((r.serverJS || r.javascript)).toContain("app.post('/api/items'");
+    expect((r.serverJS || r.javascript)).toContain("db.insert('items'");
   });
 
   it('use everything from frontend inlines pages and UI', () => {
@@ -15287,7 +15330,7 @@ when user calls GET /api/todos:
     };
     const r = compileProgram(mainSrc, { moduleResolver: resolver });
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain("app.get('/api/todos'");
+    expect((r.serverJS || r.javascript)).toContain("app.get('/api/todos'");
     expect(r.html).toContain('Todo App');
     expect(r.html).toContain('data-theme="midnight"');
   });
@@ -15324,7 +15367,7 @@ when user calls GET /api/items:
     const resolver = (name) => name === 'backend' ? backendSrc : null;
     const r = compileProgram(mainSrc, { moduleResolver: resolver });
     expect(r.errors).toHaveLength(0);
-    const getCount = (r.serverJS.match(/app\.get\('\/api\/items'/g) || []).length;
+    const getCount = ((r.serverJS || r.javascript).match(/app\.get\('\/api\/items'/g) || []).length;
     expect(getCount).toBe(1);
   });
 });
@@ -15379,8 +15422,8 @@ when user calls GET /api/stream:
     send back 'heartbeat'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain('text/event-stream');
-    expect(r.serverJS).toContain("app.get('/api/stream'");
+    expect((r.serverJS || r.javascript)).toContain('text/event-stream');
+    expect((r.serverJS || r.javascript)).toContain("app.get('/api/stream'");
   });
 });
 
@@ -15450,8 +15493,8 @@ page 'Settings' at '/settings':
     // Chart
     expect(r.html).toContain('echarts');
     // Server features
-    expect(r.serverJS).toContain("db.insert('items'");
-    expect(r.serverJS).toContain('update_data.id = req.params.id');
+    expect((r.serverJS || r.javascript)).toContain("db.insert('items'");
+    expect((r.serverJS || r.javascript)).toContain('update_data.id = req.params.id');
     // Layout
     expect(r.html).not.toContain('max-w-2xl');
     expect(r.html).toContain('data-theme="midnight"');
@@ -15683,8 +15726,8 @@ page 'App' at '/':
     send nothing to '/api/charge'`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.serverJS).toContain('api.stripe.com');
-    expect(r.serverJS).toContain('api.sendgrid.com');
+    expect((r.serverJS || r.javascript)).toContain('api.stripe.com');
+    expect((r.serverJS || r.javascript)).toContain('api.sendgrid.com');
     expect(r.html).toContain('Store');
   });
 });
@@ -16336,8 +16379,8 @@ page 'App' at '/':
       const r = compileProgram(src);
       expect(r.errors).toHaveLength(0);
       // Server should have both _clearMap and _clearError
-      expect(r.serverJS).toContain('_clearMap');
-      expect(r.serverJS).toContain('_clearError');
+      expect((r.serverJS || r.javascript)).toContain('_clearMap');
+      expect((r.serverJS || r.javascript)).toContain('_clearError');
       // Frontend should have clear:LINE context
       expect(r.html).toContain('[clear:');
     });
@@ -17796,14 +17839,14 @@ when user calls POST /api/run sending data:
   it('without evalMode, zero /_eval/ handlers leak into compiled serverJS', () => {
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    const js = r.javascript || r.serverJS || '';
+    const js = r.javascript || (r.serverJS || r.javascript) || '';
     expect(js.includes('/_eval/agent_')).toBe(false);
   });
 
   it('with evalMode, emits /_eval/agent_<name> for every agent natively', () => {
     const r = compileProgram(src, { evalMode: true });
     expect(r.errors).toHaveLength(0);
-    const js = r.javascript || r.serverJS || '';
+    const js = r.javascript || (r.serverJS || r.javascript) || '';
     expect(js).toContain("app.post('/_eval/agent_scorer'");
     expect(js).toContain("app.post('/_eval/agent_coordinator'");
     // Synthetic handlers handle both streaming (generator) and plain (await)
@@ -17819,7 +17862,7 @@ when user calls POST /api/run sending data:
       const source = fs.readFileSync(path.join(process.cwd(), 'apps', name, 'main.clear'), 'utf8');
       const r = compileProgram(source);
       expect(r.errors).toHaveLength(0);
-      const js = r.javascript || r.serverJS || '';
+      const js = r.javascript || (r.serverJS || r.javascript) || '';
       expect(js.includes('/_eval/agent_')).toBe(false);
     }
   });
@@ -20694,7 +20737,7 @@ describe('First-class functions — pass fn as argument', () => {
       "  send back doubled"
     ].join('\n');
     const r = compileProgram(source);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(r.errors).toHaveLength(0);
     // Function is passed by reference, not called
     expect(js).toContain('map_list(nums, double)');
@@ -22080,7 +22123,7 @@ describe('T2: CRON scheduled task error handling', () => {
       "build for javascript backend\n\nevery 5 minutes:\n  show 'running cleanup'"
     );
     expect(r.errors).toHaveLength(0);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('try {');
     expect(js).toContain('catch (_err)');
     expect(js).toContain("console.error('Scheduled task error:'");
@@ -22091,7 +22134,7 @@ describe('T2: CRON scheduled task error handling', () => {
       "build for javascript backend\n\nevery day at 9am:\n  show 'morning report'"
     );
     expect(r.errors).toHaveLength(0);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('try {');
     expect(js).toContain('catch (_err)');
     expect(js).toContain("console.error('Scheduled task error:'");
@@ -22195,7 +22238,7 @@ on POST '/upload':
 `;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     // multer require should be at the top (module scope), not inside the handler
     const multerRequireIdx = js.indexOf("require('multer')");
     const appExpressIdx = js.indexOf("const app = express()");
@@ -22293,7 +22336,7 @@ agent 'Helper' receives question:
   response = ask claude 'Help' with question
   send back response`;
     const r = compileProgram(src);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     const yieldIdx = js.indexOf('yield _chunk');
     // The ASSISTANT save must come after the yield loop
     const assistantSaveIdx = js.indexOf("_history.push({ role: 'assistant'");
@@ -22310,7 +22353,7 @@ agent 'Helper' receives question:
   response = ask claude 'Help' with question
   send back response`;
     const r = compileProgram(src);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     const yieldIdx = js.indexOf('yield _chunk');
     const dbUpdateIdx = js.indexOf('db.update');
     expect(dbUpdateIdx).not.toBe(-1);
@@ -22331,7 +22374,7 @@ agent 'Support' receives question:
   response = ask claude 'Help' with question
   send back response`;
     const r = compileProgram(src);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('"email"');
     expect(js).not.toContain('[object Object]');
   });
@@ -22347,7 +22390,7 @@ agent 'Bot' receives q:
   response = ask claude 'Help' with q
   send back response`;
     const r = compileProgram(src);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('order_id');
     expect(js).toContain('customer');
     expect(js).not.toContain('[object Object]');
@@ -22392,7 +22435,7 @@ subscribe to 'chat':
 subscribe to 'chat':
   broadcast to all message`;
     const r = compileProgram(src);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('clients');
     expect(js).toContain('forEach');
   });
@@ -22613,7 +22656,7 @@ agent 'Builder' receives task:
   response = ask claude 'Build' with task
   send back response`;
     const r = compileProgram(src);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('rm -rf');
     expect(js).toContain('drop table');
     expect(js).toContain('Blocked by guardrail');
@@ -22636,7 +22679,7 @@ describe('classify intent', () => {
 
   it('compiles classify to _classifyIntent call', () => {
     const r = compileProgram("build for javascript backend\nintent = classify message as 'order', 'return'");
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('_classifyIntent');
     expect(js).toContain('"order"');
     expect(js).toContain('"return"');
@@ -22649,7 +22692,7 @@ agent 'Router' receives msg:
   send back intent`;
     const r = compileProgram(src);
     expect(r.errors.length).toBe(0);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('_classifyIntent');
   });
 
@@ -22662,19 +22705,19 @@ agent 'Router' receives msg:
   it('classify with variable input works', () => {
     const r = compileProgram("build for javascript backend\ntext is 'hello'\nresult = classify text as 'positive', 'negative'");
     expect(r.errors.length).toBe(0);
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('_classifyIntent(text,');
   });
 
   it('_classifyIntent utility is included when classify is used', () => {
     const r = compileProgram("build for javascript backend\nintent = classify message as 'a', 'b'");
-    const js = r.serverJS || r.javascript;
+    const js = (r.serverJS || r.javascript) || r.javascript;
     expect(js).toContain('async function _classifyIntent');
   });
 
   it('_classifyIntent utility is NOT included when classify is not used', () => {
     const r = compileProgram("build for javascript backend\nx = 5");
-    expect(r.serverJS || '').not.toContain('_classifyIntent');
+    expect((r.serverJS || r.javascript) || '').not.toContain('_classifyIntent');
   });
 });
 
@@ -23052,24 +23095,24 @@ page 'App':
   // Phase 1: Backend streaming endpoint tests
   it('T1: streaming agent endpoint emits SSE headers', () => {
     const r = compileProgram(streamingSrc);
-    expect(r.serverJS).toContain("'Content-Type': 'text/event-stream'");
+    expect((r.serverJS || r.javascript)).toContain("'Content-Type': 'text/event-stream'");
   });
 
   it('T2: streaming agent endpoint iterates generator', () => {
     const r = compileProgram(streamingSrc);
-    expect(r.serverJS).toContain('for await');
-    expect(r.serverJS).toContain('_chunk');
+    expect((r.serverJS || r.javascript)).toContain('for await');
+    expect((r.serverJS || r.javascript)).toContain('_chunk');
   });
 
   it('T3: streaming agent endpoint accumulates _fullResponse', () => {
     const r = compileProgram(streamingSrc);
-    expect(r.serverJS).toContain('_fullResponse');
+    expect((r.serverJS || r.javascript)).toContain('_fullResponse');
   });
 
   it('T4: streaming agent endpoint ends with res.end', () => {
     const r = compileProgram(streamingSrc);
-    expect(r.serverJS).toContain('[DONE]');
-    expect(r.serverJS).toContain('res.end()');
+    expect((r.serverJS || r.javascript)).toContain('[DONE]');
+    expect((r.serverJS || r.javascript)).toContain('res.end()');
   });
 
   it('T4c: ask-claude var inside repeat-until stays non-streaming if reassigned', () => {
@@ -23091,7 +23134,7 @@ agent 'Refiner' receives findings:
   send back draft`;
     const r = compileProgram(srcRefinement);
     expect(r.errors).toHaveLength(0);
-    const js = r.javascript || r.serverJS || '';
+    const js = r.javascript || (r.serverJS || r.javascript) || '';
     // Find the first assignment — must be an awaited string, not a stream
     // generator. If it's \`_askAIStream\`, the loop body will pass a
     // generator as the \`with\` value and the second call gets garbage.
@@ -23122,7 +23165,7 @@ when user calls POST /api/score sending lead:
     expect(r.errors).toHaveLength(0);
     // compileProgram returns either `javascript` (pure backend) or `serverJS`
     // (web+backend). Check both.
-    const js = r.javascript || r.serverJS || '';
+    const js = r.javascript || (r.serverJS || r.javascript) || '';
     expect(js.length).toBeGreaterThan(0);
     // The auth branch must keep `res.end(); return;` under the `if (!req.user)` guard.
     // Before the fix, the compiler emitted three unbraced statements and only
@@ -23133,13 +23176,13 @@ when user calls POST /api/score sending lead:
 
   it('T5: non-streaming agent uses await + res.json (no regression)', () => {
     const r = compileProgram(nonStreamingSrc);
-    expect(r.serverJS).not.toContain("'Content-Type': 'text/event-stream'");
-    expect(r.serverJS).toContain('res.json(');
+    expect((r.serverJS || r.javascript)).not.toContain("'Content-Type': 'text/event-stream'");
+    expect((r.serverJS || r.javascript)).toContain('res.json(');
   });
 
   it('T6: streaming agent diagram shows [streaming] tag', () => {
     const r = compileProgram(streamingSrc);
-    expect(r.serverJS).toContain('[streaming]');
+    expect((r.serverJS || r.javascript)).toContain('[streaming]');
   });
 
   // Phase 2: _chatSendStream utility tests
@@ -23203,7 +23246,7 @@ when user calls POST /api/score sending lead:
 
   it('T17: streaming backend has SSE headers', () => {
     const r = compileProgram(streamingSrc);
-    expect(r.serverJS).toContain('text/event-stream');
+    expect((r.serverJS || r.javascript)).toContain('text/event-stream');
   });
 
   it('T18: streaming frontend has _chatSendStream', () => {
@@ -23217,7 +23260,7 @@ when user calls POST /api/score sending lead:
     const r = compileProgram(src);
     expect(r.javascript).toContain('_chatSend(');
     expect(r.javascript).not.toContain('_chatSendStream(');
-    expect(r.serverJS).not.toContain('text/event-stream');
+    expect((r.serverJS || r.javascript)).not.toContain('text/event-stream');
   });
 });
 
