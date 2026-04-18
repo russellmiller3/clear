@@ -37,14 +37,17 @@ Propagated to: `plans/plan-live-editing-phase-a-04-18-2026.md` (new "What 'remov
 
 ## What's Next (priority order)
 
-### 1. Finish Phase A — Studio integration + compiler tag + e2e (cycles 10–12)
-The plumbing is all tested. What's left is integration:
-1. **Mount `/__meph__/*` on Studio's express app** (`playground/server.js`). Wire `deps.readSource` to the currently-loaded source in the IDE, `deps.callMeph` to `callMeph()` using Studio's stored API key, and `deps.applyShip` to Studio's existing compile + spawn flow.
-2. **Compiler change**: when the source declares an owner (a user with `role: 'owner'`) and has `allow signup and login`, emit `<script src="/__meph__/widget.js">` in the compiled HTML.
+### 1. Finish Phase A — compiler tag + CORS/proxy + e2e (cycles 11–12)
+**Cycle 10 is LANDED.** Studio mounts `/__meph__/widget.js`, `/__meph__/api/propose`, `/__meph__/api/ship`. Propose calls Anthropic with an owner-gated JWT. Ship compiles the new source and POSTs compiled outputs to Studio's `/api/run` for respawn. Smoke-tested with curl — auth gates work, compile-failure errors surface in 30ms.
+
+What's left for full Phase A:
+1. **Compiler change**: when the source declares an owner (a user with `role: 'owner'`) and has `allow signup and login`, emit `<script src="/__meph__/widget.js">` in the compiled HTML. Grep compiler.js for `AUTH_SCAFFOLD` emission as the insertion point.
+2. **Solve the CORS problem**: the widget is served from Studio's port but runs inside the child app's origin. Three options in the plan — recommended: compiler emits a tiny `/__meph__/*` proxy in the generated server.js that forwards to `process.env.STUDIO_PORT`.
 3. **Template updates**: flag one seed user as `role: 'owner'` in `todo-fullstack`, `crm-pro`, `blog-fullstack`.
 4. **Playwright e2e** on all three templates: owner → widget → propose → ship → verify effect on reload. Plus non-owner gets no widget. Plus refusal test ("remove notes field" → "Phase B only" error).
+5. **Security hardening before Phase B**: `liveEditAuth` in playground/server.js currently parses JWTs without verifying the HMAC signature. Must use `runtime/auth.js`'s `verifyToken` before any multi-user deploy. Flagged in plan.
 
-Estimated effort: 1 session (maybe 1.5 with Playwright flake). All the hard logic is already done.
+Estimated effort: 1 session (maybe 1.5 with Playwright flake). The logic is all tested in isolation; integration is wiring.
 
 ### 2. Phase 85a infrastructure (still blocked from Session 37)
 One-click deploy code shipped but Fly Trust Verified, Stripe, Anthropic org key, and `buildclear.dev` domain haven't been provisioned. Russell needs to do the account pass.
@@ -64,4 +67,4 @@ Monthly grep on Retool changelog + LinkedIn. If they bolt Clark (their AI produc
 
 ## Resume Prompt
 
-"We just landed Phase A cycles 1–9 of Live App Editing on branch feature/live-editing-phase-a: 67 new tests, all green (2037 total in clear.test.js). Everything is tested via DI. What's left for full Phase A is the Studio integration plus a tiny compiler change to inject the widget script tag plus Playwright e2e on the three core templates. The plan in plans/plan-live-editing-phase-a-04-18-2026.md has the exact integration points. Pick up with cycle 10 — mount /__meph__/* on playground/server.js and wire callMeph to use Studio's stored API key."
+"We just landed Phase A cycles 1–10 of Live App Editing on branch feature/live-editing-phase-a: 67 new tests (2037 total in clear.test.js, 2 pre-existing failures unrelated). Studio now serves /__meph__/widget.js, /__meph__/api/propose (owner-gated, hits Anthropic), and /__meph__/api/ship (owner-gated, compiles + POSTs to /api/run for respawn). Smoke-tested live. Remaining for full Phase A: (1) compiler change to emit the widget script tag in HTML when the source has an owner-role user, (2) solve the widget↔Studio CORS issue via a compiler-emitted proxy in the child server's /__meph__/* routes, (3) flag a seed user as role:'owner' in todo/crm/blog templates, (4) Playwright e2e. Security TODO: playground/server.js's liveEditAuth currently parses JWTs without HMAC verify — use runtime/auth.js verifyToken before Phase B. Pick up with the compiler change."
