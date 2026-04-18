@@ -360,10 +360,20 @@ async function buildCommand(args) {
   if (result.serverJS) {
     writeFileSync(resolve(dir, 'server.js'), result.serverJS);
     files.push('server.js');
+    // P5: ensure Node treats server.js as CommonJS even if the parent project's
+    // package.json declares "type": "module". Without this shield, the user
+    // gets "require is not defined in ES module scope" when they clear serve
+    // inside an ESM project. Write a tiny package.json next to the server.
+    writeFileSync(resolve(dir, 'package.json'), '{"type":"commonjs"}\n');
+    if (!files.includes('package.json')) files.push('package.json');
   } else if (result.javascript) {
     const jsName = result.javascript.includes('express') ? 'server.js' : `${name}.js`;
     writeFileSync(resolve(dir, jsName), result.javascript);
     files.push(jsName);
+    if (jsName === 'server.js' || result.javascript.includes('require(')) {
+      writeFileSync(resolve(dir, 'package.json'), '{"type":"commonjs"}\n');
+      if (!files.includes('package.json')) files.push('package.json');
+    }
   }
   if (result.html) {
     const htmlName = result.serverJS ? 'index.html' : `${name}.html`;

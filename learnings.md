@@ -59,6 +59,12 @@ PERF-1 added a default LIMIT 50 to `get all`. Any template that did `orders = ge
 ### Runtime files are COPIED at build, not imported
 `runtime/db.js` and `runtime/db-postgres.js` aren't imported by the compiler — they're copied into each compiled app's `clear-runtime/` dir by the CLI. The initial plan confused the source location (`runtime/db.js`) with a supposed second file (`clear-runtime/db.js`) that doesn't exist. **Lesson:** before editing runtime files, run `find . -name "db.js"` — there might be only one source and the rest are build artifacts.
 
+### `package.json` next to generated code shields CommonJS require()
+When `clear build` produces `server.js` using `require()`, Node walks up the directory tree looking for the nearest `package.json`. If the user's project has `"type": "module"` (normal in modern Node projects), the generated file fails with "require is not defined in ES module scope." Fix: write a tiny `{"type":"commonjs"}` sibling `package.json` in the build output dir. Node stops walking at the sibling and treats the file as CJS. **Lesson:** when you generate code with a specific module system, ship a scope-asserting `package.json` next to it. Don't assume the parent directory's config is compatible.
+
+### Virtual scrolling: DOM count decouples from data count
+Fixed-height virtualization (40px rows, 560px container) keeps DOM rows bounded: 500-row table renders ~24 `<tr>`, 50,000-row table renders the same ~24. Top and bottom `<tr>` padding rows reserve scrollable height so the scrollbar geometry stays intact. Scroll event listener must bind ONCE per element (via `el._clear_virt_bound` flag) — a reactive re-render that re-binds on every paint would leak handlers. **Lesson:** when DOM cost is O(N) but only O(1) is visible, windowed render + sentinel padding cells + bind-once scroll listener is the canonical fix. Works even in vanilla JS, no framework needed.
+
 ### Literal vs runtime pagination need different codegen
 PERF-5 pushes `page N, M per page` into SQL `LIMIT/OFFSET`. When `page` is a literal number, the offset can be precomputed at compile time: `(3 - 1) * 10 = 20` → `offset: 20`. When `page` is a variable (`incoming's page`), the offset must be a runtime expression: `offset: (page_n - 1) * 25`. The type guard (`typeof node.page === 'number'`) branches on this. **Lesson:** when a compile-time optimization and a runtime expression both go through the same slot, branch on AST node type, not a string template that silently inserts `undefined` or `NaN` for the wrong shape.
 

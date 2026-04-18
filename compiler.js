@@ -196,6 +196,51 @@ export const UTILITY_FUNCTIONS = [
   setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(1rem)'; setTimeout(() => el.remove(), 300); }, 4000);
 }`, deps: [] },
   { name: '_esc', code: "function _esc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }", deps: [] },
+  // PERF-4: virtual scrolling for large tables. Below 100 rows: render everything
+  // (DOM handles it fine). At 100+ rows: fixed 40px row height, scroll-triggered
+  // windowed render of visible rows + 5-row buffer. Padding rows above/below
+  // preserve scroll geometry. Re-binds scroll listener once per element; on
+  // reactive re-renders, only the visible slice is repainted.
+  { name: '_clear_render_table', code: `function _clear_render_table(tableEl, data, renderHead, renderRow) {
+  if (!tableEl) return;
+  var thead = tableEl.querySelector('thead tr');
+  var tbody = tableEl.querySelector('tbody');
+  if (!Array.isArray(data) || data.length === 0) {
+    if (thead) thead.innerHTML = '';
+    if (tbody) tbody.innerHTML = '';
+    return;
+  }
+  if (thead) thead.innerHTML = renderHead(data);
+  var VIRT_THRESHOLD = 100;
+  if (data.length <= VIRT_THRESHOLD) {
+    tbody.innerHTML = data.map(renderRow).join('');
+    return;
+  }
+  var ROW_HEIGHT = 40;
+  var BUFFER = 5;
+  var scroller = tableEl.parentElement;
+  if (!scroller) { tbody.innerHTML = data.map(renderRow).join(''); return; }
+  scroller.style.maxHeight = '560px';
+  scroller.style.overflowY = 'auto';
+  function paint() {
+    var top = scroller.scrollTop;
+    var h = scroller.clientHeight || 560;
+    var first = Math.max(0, Math.floor(top / ROW_HEIGHT) - BUFFER);
+    var last = Math.min(data.length, Math.ceil((top + h) / ROW_HEIGHT) + BUFFER);
+    var topPad = first * ROW_HEIGHT;
+    var botPad = (data.length - last) * ROW_HEIGHT;
+    var html = '';
+    if (topPad > 0) html += '<tr style="height:' + topPad + 'px"><td></td></tr>';
+    for (var i = first; i < last; i++) html += renderRow(data[i], i);
+    if (botPad > 0) html += '<tr style="height:' + botPad + 'px"><td></td></tr>';
+    tbody.innerHTML = html;
+  }
+  if (!scroller._clear_virt_bound) {
+    scroller._clear_virt_bound = true;
+    scroller.addEventListener('scroll', paint, { passive: true });
+  }
+  paint();
+}`, deps: [] },
   { name: '_pick', code: 'function _pick(obj, schema) { return Object.fromEntries(Object.entries(obj).filter(([k]) => k in schema).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v])); }', deps: [] },
   { name: '_revive', code: 'function _revive(record) { if (!record) return record; const out = {}; for (const [k, v] of Object.entries(record)) { if (typeof v === "string" && (v[0] === "{" || v[0] === "[")) { try { out[k] = JSON.parse(v); } catch(_) { out[k] = v; } } else { out[k] = v; } } return out; }', deps: [] },
   { name: '_validate', code: `function _validate(body, rules) {
@@ -7791,23 +7836,21 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       const hasDelete = actions.includes('delete');
       const hasUpdate = actions.includes('edit');
       const hasActions = hasDelete || hasUpdate;
-      const deleteUrl = hasDelete ? deleteEndpoints[resourceKey] : null;
-      const updateInfo = hasUpdate ? updateEndpoints[resourceKey] : null;
 
-      // Reactive table: render array of objects as HTML table
-      lines.push(`  {`);
-      lines.push(`    const _tableEl = document.getElementById('${outputId}_table');`);
-      lines.push(`    const _data = ${val};`);
-      const colsCode = disp.columns
-        ? JSON.stringify(disp.columns)
-        : 'Object.keys(_data[0])';
-      lines.push(`    if (_tableEl && Array.isArray(_data) && _data.length > 0) {`);
-      lines.push(`      const _keys = ${colsCode};`);
+      // Reactive table: delegate to _clear_render_table which handles virtual
+      // scrolling for large datasets (100+ rows). Head renderer produces the
+      // <th> row, row renderer produces one <tr> per item.
+      // Column keys: either explicit list or Object.keys of first row.
+      // The row renderer needs to derive keys from its OWN row (since data
+      // may be empty in the helper's no-op path). Two separate expressions.
+      const headKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(d[0])';
+      const rowKeysExpr = disp.columns ? JSON.stringify(disp.columns) : 'Object.keys(row)';
       const thClass = 'text-xs uppercase tracking-widest font-semibold text-base-content/50';
       const tdClass = 'text-sm text-base-content';
       const trClass = 'border-base-300/20 hover:bg-base-200/60 transition-colors even:bg-base-300/5';
       const headCols = `_keys.map(k => '<th class="${thClass}">' + _esc(k) + '</th>').join('')`;
       const dataCols = `_keys.map(k => '<td class="${tdClass}">' + _esc(row[k] != null ? row[k] : '') + '</td>').join('')`;
+      let rowHtmlExpr;
       if (hasActions) {
         let actionBtns = '';
         if (hasUpdate) {
@@ -7817,17 +7860,17 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
           if (actionBtns) actionBtns += ` + ' ' + `;
           actionBtns += `'<button class="btn btn-ghost btn-xs text-error" data-delete-id="' + _esc(row.id) + '">Delete</button>'`;
         }
-        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = ${headCols} + '<th class="${thClass}"></th>';`);
-        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="${trClass}">' + ${dataCols} + '<td class="text-right">' + ${actionBtns} + '</td>' + '</tr>').join('');`);
+        rowHtmlExpr = `'<tr class="${trClass}">' + ${dataCols} + '<td class="text-right">' + ${actionBtns} + '</td>' + '</tr>'`;
       } else {
-        lines.push(`      _tableEl.querySelector('thead tr').innerHTML = ${headCols};`);
-        lines.push(`      _tableEl.querySelector('tbody').innerHTML = _data.map(row => '<tr class="${trClass}">' + ${dataCols} + '</tr>').join('');`);
+        rowHtmlExpr = `'<tr class="${trClass}">' + ${dataCols} + '</tr>'`;
       }
-      lines.push(`    } else if (_tableEl) {`);
-      lines.push(`      _tableEl.querySelector('thead tr').innerHTML = '';`);
-      lines.push(`      _tableEl.querySelector('tbody').innerHTML = '';`);
-      lines.push(`    }`);
-      lines.push(`  }`);
+      const extraHead = hasActions ? ` + '<th class="${thClass}"></th>'` : '';
+      lines.push(`  _clear_render_table(`);
+      lines.push(`    document.getElementById('${outputId}_table'),`);
+      lines.push(`    ${val},`);
+      lines.push(`    function(d) { var _keys = ${headKeysExpr}; return ${headCols}${extraHead}; },`);
+      lines.push(`    function(row) { var _keys = ${rowKeysExpr}; return ${rowHtmlExpr}; }`);
+      lines.push(`  );`);
     } else if (disp.format === 'cards') {
       // Reactive card grid: render array of objects as styled cards
       lines.push(`  {`);

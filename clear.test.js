@@ -5546,6 +5546,50 @@ when user calls GET /api/items:
     expect(result.javascript).not.toContain('.slice');
   });
 
+  it('PERF-4: display X as table emits _clear_render_table call', () => {
+    const result = compileProgram(`
+build for web
+page 'App':
+  items is an empty list
+  on page load get items from '/api/items'
+  display items as table
+`);
+    expect(result.errors.length).toBe(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('_clear_render_table(');
+    expect(out).toContain('function _clear_render_table(');
+    expect(out).toContain('VIRT_THRESHOLD');
+  });
+
+  it('PERF-4: display X as table with columns passes column list to helper', () => {
+    const result = compileProgram(`
+build for web
+page 'App':
+  users is an empty list
+  on page load get users from '/api/users'
+  display users as table showing name, email
+`);
+    expect(result.errors.length).toBe(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('_clear_render_table(');
+    expect(out).toContain('["name","email"]');
+  });
+
+  it('PERF-4: display X as table with delete/edit actions still renders action column', () => {
+    const result = compileProgram(`
+build for web
+page 'App':
+  contacts is an empty list
+  on page load get contacts from '/api/contacts'
+  display contacts as table showing name with delete and edit
+`);
+    expect(result.errors.length).toBe(0);
+    const out = result.html || result.javascript || '';
+    expect(out).toContain('_clear_render_table(');
+    expect(out).toContain('data-delete-id');
+    expect(out).toContain('data-edit-id');
+  });
+
   it('filtered aggregate with non-equality emits runtime error string', () => {
     const result = compileProgram(`
 build for javascript backend
