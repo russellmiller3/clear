@@ -120,6 +120,15 @@ import { NodeType, parse } from './parser.js';
 
 const CLEAR_VERSION = '1.0';
 
+// Default row cap on `get all` / `look up all`. Large enough for typical list
+// views, small enough that a 50K-row table can't kill the browser. Opt out
+// with `get every X` / `look up every X` when you truly need all rows.
+const DEFAULT_QUERY_LIMIT = 50;
+// Default cap on `search X for query`. Search is fetch-all-then-filter; this
+// at least keeps the returned payload bounded. A future pass should push
+// search to SQL LIKE so the LIMIT applies server-side.
+const DEFAULT_SEARCH_LIMIT = 100;
+
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -3338,6 +3347,8 @@ function compileCrud(node, ctx, pad) {
         const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
         const page = typeof node.page === 'number' ? node.page : `(${exprToCode({ type: NodeType.VARIABLE_REF, name: String(node.page) }, ctx)})`;
         query += `.range((${page} - 1) * ${perPage}, ${page} * ${perPage} - 1)`;
+      } else if (!isSingle && !node.noLimit) {
+        query += `.limit(${DEFAULT_QUERY_LIMIT})`;
       }
       return `${pad}const { data: ${varName}, error: _err } = await ${query};\n${pad}if (_err) throw _err;`;
     }
@@ -3367,16 +3378,29 @@ function compileCrud(node, ctx, pad) {
   if (node.operation === 'lookup') {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     const isSingleLookup = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
-    let lookupCode = isSingleLookup
-      ? `${pad}const ${sanitizeName(node.variable)} = _revive(await db.findOne('${table}'${where}));`
-      : `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}'${where})).map(_revive);`;
-    // Pagination: slice the result array
+    let lookupCode;
+    if (isSingleLookup) {
+      lookupCode = `${pad}const ${sanitizeName(node.variable)} = _revive(await db.findOne('${table}'${where}));`;
+    } else if (node.noLimit) {
+      lookupCode = `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}'${where})).map(_revive);`;
+    } else {
+      const filterArg = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
+      lookupCode = `${pad}const ${sanitizeName(node.variable)} = (await db.findAll('${table}', ${filterArg}, { limit: ${DEFAULT_QUERY_LIMIT} })).map(_revive);`;
+    }
+    // PERF-5: explicit pagination pushes LIMIT + OFFSET into SQL instead of
+    // fetching all rows then slicing client-side. Works for literal page
+    // numbers (offset precomputed) and runtime variables (offset expression).
     if (node.page && node.perPage && !isSingleLookup) {
       const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
       const varName = sanitizeName(node.variable);
-      const pageExpr = typeof node.page === 'number' ? node.page : sanitizeName(String(node.page));
-      lookupCode = `${pad}const _all_${varName} = await db.findAll('${table}'${where});\n`;
-      lookupCode += `${pad}const ${varName} = _all_${varName}.slice((${pageExpr} - 1) * ${perPage}, ${pageExpr} * ${perPage});`;
+      const filterArg = node.condition ? conditionToFilter(node.condition, ctx) : '{}';
+      let offsetExpr;
+      if (typeof node.page === 'number') {
+        offsetExpr = String((node.page - 1) * perPage);
+      } else {
+        offsetExpr = `(${sanitizeName(String(node.page))} - 1) * ${perPage}`;
+      }
+      lookupCode = `${pad}const ${varName} = (await db.findAll('${table}', ${filterArg}, { limit: ${perPage}, offset: ${offsetExpr} })).map(_revive);`;
     }
     // FK join stitching: for each FK field, load the related record
     if (!isSingleLookup && ctx.schemaMap) {
@@ -7086,9 +7110,54 @@ export function exprToCode(expr, ctx) {
       const table = expr.table ? pluralizeName(expr.table) : 'unknown';
       const query = exprToCode(expr.query, ctx);
       if (ctx.lang === 'python') {
-        return `[r for r in await db.find_all('${table}', {}) if ${query}.lower() in ' '.join(str(v) for v in r.values()).lower()]`;
+        return `[r for r in await db.find_all('${table}', {}) if ${query}.lower() in ' '.join(str(v) for v in r.values()).lower()][:${DEFAULT_SEARCH_LIMIT}]`;
       }
-      return `(await db.findAll('${table}', {})).filter(_r => Object.values(_r).some(_v => String(_v).toLowerCase().includes(String(${query}).toLowerCase())))`;
+      return `(await db.findAll('${table}', {})).filter(_r => Object.values(_r).some(_v => String(_v).toLowerCase().includes(String(${query}).toLowerCase()))).slice(0, ${DEFAULT_SEARCH_LIMIT})`;
+    }
+
+    case NodeType.SQL_AGGREGATE: {
+      const table = pluralizeName(expr.table).toLowerCase();
+      const fn = expr.fn.toUpperCase();
+      const field = expr.field;
+      // Build filter object from optional where-condition. extractEqPairs
+      // returns [] for non-equality conditions (like > or <) — emit a
+      // runtime error string so user gets a clear message at request time.
+      let filterArg = '{}';
+      if (expr.condition) {
+        const pairs = extractEqPairs(expr.condition, ctx);
+        if (pairs.length === 0) {
+          return `(() => { throw new Error('SQL aggregates only support equality filters. Use look up all then aggregate in memory for complex filters like > or <.'); })()`;
+        }
+        if (ctx.lang === 'python') {
+          const entries = pairs.map(([k, v]) => `"${k}": ${v}`).join(', ');
+          filterArg = `{${entries}}`;
+        } else {
+          const entries = pairs.map(([k, v]) => `${k}: ${v}`).join(', ');
+          filterArg = `{ ${entries} }`;
+        }
+      }
+      // Supabase: no aggregate API — fall back to client-side reduce
+      if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
+        if (fn === 'COUNT') {
+          return `(((await supabase.from('${table}').select('*')).data) || []).length`;
+        }
+        const fnMap = { SUM: '_clear_sum_field', AVG: '_clear_avg_field', MIN: '_clear_min_field', MAX: '_clear_max_field' };
+        const jsFn = fnMap[fn] || '_clear_sum_field';
+        return `${jsFn}(((await supabase.from('${table}').select('*')).data) || [], '${field}')`;
+      }
+      // Python: no db.aggregate — fetch-then-reduce
+      if (ctx.lang === 'python') {
+        if (fn === 'COUNT') {
+          return `len(await db.query('${table}', ${filterArg}))`;
+        }
+        if (fn === 'AVG') {
+          return `(lambda _r: sum(_r)/len(_r) if _r else 0)([r['${field}'] or 0 for r in await db.query('${table}', ${filterArg})])`;
+        }
+        const op = fn === 'SUM' ? 'sum' : fn === 'MIN' ? 'min' : 'max';
+        return `${op}([r['${field}'] or 0 for r in await db.query('${table}', ${filterArg})])`;
+      }
+      // JS default (SQLite/Postgres): delegate to db.aggregate
+      return `await db.aggregate('${table}', '${fn}', '${field}', ${filterArg})`;
     }
 
     case NodeType.LOAD_CSV: {

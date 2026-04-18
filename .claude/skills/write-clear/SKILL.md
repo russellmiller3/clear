@@ -176,11 +176,27 @@ create a Posts table:
   author belongs to Users    # FK → INTEGER REFERENCES users(id), auto-stitches on lookup
 ```
 
-### Aggregate Field Extraction
+### Aggregate Field Extraction (in-memory)
 ```
 total_revenue = sum of amount in orders       # extracts 'amount' from each record, sums
 avg_price = average of price in products      # same for average
 highest = max of score in results             # and max/min
+```
+
+### SQL Aggregates (server-side) — prefer for dashboards and stats endpoints
+```
+total_revenue = sum of amount from Orders                              # single SQL query, no rows fetched
+paid_revenue = sum of amount from Orders where status is 'paid'        # filtered — equality only
+support_avg = avg of score from Tickets where team is 'support'        # works with sum/avg/count/min/max
+ticket_count = count of id from Tickets                                # COUNT(*) under the hood
+```
+Capitalized table name after `from` is the trigger. Use `from Table` instead of `in variable` whenever the source is a table — never do `rows = get all X` then `sum of field in rows` for a stat, because `get all` caps at 50 and the total will be wrong.
+
+### Pagination defaults
+```
+all_todos = get all Todos                     # default LIMIT 50 — safety cap
+every_todo = get every Todo                   # opt out — returns all rows
+page_of_items = get all Items page 2, 25 per page   # SQL LIMIT 25 OFFSET 25
 ```
 
 ### Has Many Relationships

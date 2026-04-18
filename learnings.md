@@ -42,6 +42,29 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 27: Studio Bridge + Friendly Tests + Unified Terminal](#session-27-studio-bridge--friendly-tests--unified-terminal-2026-04-14) | postMessage bridge gate needs dual check (`?param` AND `<meta>` for srcdoc iframes), helpers compiled outside `run()` can't see `let`s inside it (module-scope or bust), friendly errors need `_lastCall` tracker, `[clear:N]` tag in error string round-trips through stdout parser into IDE click handler, two competing SIGTERM handlers on Windows = `UV_HANDLE_CLOSING` libuv assertion, `_response`/`_responseBody`/`_lastCall` must be module-scope for `_expectStatus` shim |
 | [Session 36: Function TDD + Supervisor Plan](#session-36-function-tdd--supervisor-plan-2026-04-17) | `insideFunction: true` required for `define function` body ctx, user functions shadow builtins via pre-scan, SSE `tool_start` fires twice (state-flag dedup), API key must match how server reads it, Playwright e2e push from main repo not worktree |
 | [Session 37: Supervisor Multi-Session Architecture](#session-37-supervisor-multi-session-architecture-2026-04-17) | Multi-process over session globals, module-level shadow vars for polling, WAL mode registry, port availability check, async test timeouts, state machine monkey-patch testing |
+| [Session 37: PERF-1 + PERF-2 pagination and aggregates](#session-37-perf-1--perf-2-pagination-and-server-side-aggregates-2026-04-17) | `from` canonicalizes to `in` (must use rawValue), table names can tokenize as keywords not identifiers, `length of get all` is wrong when list is capped — use SQL aggregate, runtime files are build-time copies not imports, `extractEqPairs` (SQL) vs `conditionToFilter` (in-memory) are different helpers |
+
+---
+
+## Session 37: PERF-1 + PERF-2 pagination and server-side aggregates (2026-04-17)
+
+### `from` tokenizes to `in` — parser must use raw value
+`synonyms.js` maps `in`, `of`, and `from` all to canonical `in`. When adding the SQL aggregate branch (`sum of price from Orders` vs `sum of price in orders`), the parser cannot distinguish via `token.canonical`. Must use `token.rawValue === 'from'`. **Lesson:** when canonicalization collapses user-visible distinctions the parser needs to preserve, reach for `rawValue` — that's what it's there for. Don't hack around by adding new canonicals.
+
+### Singular data shape names can tokenize as keywords
+The `Returns` table in ecom-agent tokenizes as `{value: 'Returns', canonical: 'responds_with', type: 'keyword'}` — not an identifier. A type guard like `tokens[pos].type === TokenType.IDENTIFIER` rejects it. The existing `get all X` shorthand (parser.js line 8186) never had this problem because it only reads `.value`, no type check. **Lesson:** when parsing table names, only require capital-first — don't require IDENTIFIER type, because English words that match synonyms get tokenized as keywords even when used as proper nouns.
+
+### `length of orders` becomes wrong when `get all` is capped
+PERF-1 added a default LIMIT 50 to `get all`. Any template that did `orders = get all Orders` then `length of orders` for dashboard counts now reports max 50. The fix isn't `get every` (wasteful — fetches all rows just to count them); it's `count of id from Orders` — a single-row SQL aggregate. PERF-1 and PERF-2 are a package deal: pagination is safe only if aggregates don't need to fetch the list. **Lesson:** a safety default that corrupts existing behavior (capped counts in dashboards) needs a clean workaround shipped at the same time, not "coming later."
+
+### Runtime files are COPIED at build, not imported
+`runtime/db.js` and `runtime/db-postgres.js` aren't imported by the compiler — they're copied into each compiled app's `clear-runtime/` dir by the CLI. The initial plan confused the source location (`runtime/db.js`) with a supposed second file (`clear-runtime/db.js`) that doesn't exist. **Lesson:** before editing runtime files, run `find . -name "db.js"` — there might be only one source and the rest are build artifacts.
+
+### Literal vs runtime pagination need different codegen
+PERF-5 pushes `page N, M per page` into SQL `LIMIT/OFFSET`. When `page` is a literal number, the offset can be precomputed at compile time: `(3 - 1) * 10 = 20` → `offset: 20`. When `page` is a variable (`incoming's page`), the offset must be a runtime expression: `offset: (page_n - 1) * 25`. The type guard (`typeof node.page === 'number'`) branches on this. **Lesson:** when a compile-time optimization and a runtime expression both go through the same slot, branch on AST node type, not a string template that silently inserts `undefined` or `NaN` for the wrong shape.
+
+### conditionToFilter vs extractEqPairs — two helpers, different callers
+`conditionToFilter` wraps complex conditions in a filter function (fine for in-memory `.filter()`). `extractEqPairs` extracts only equality pairs into a flat array (for SQL `.eq()` chains). SQL aggregates MUST use `extractEqPairs` — a function-filter can't compile to WHERE clause. When extractEqPairs returns `[]`, emit a compile-time error string rather than silently falling back. **Lesson:** when wiring a condition AST into a new sink (SQL, Supabase, in-memory), pick the helper that matches the sink's capabilities, not whichever one your neighbor used.
 
 ---
 

@@ -358,6 +358,7 @@ export const NodeType = Object.freeze({
 
   // Full text search (Phase 46)
   SEARCH: 'search',
+  SQL_AGGREGATE: 'sql_aggregate',
 
   // Advanced features (Phase 28)
   TEXT_BLOCK: 'text_block',
@@ -5573,11 +5574,19 @@ function parseDefineAs(tokens, line) {
 // Also: todos = look up all records in Posts table
 function parseLookUpAssignment(name, tokens, pos, line) {
   pos++; // skip "look up"
-  // Optional "all"
+  // Optional "all" or "every" (every = opt out of default LIMIT 50)
   let lookupAll = false;
-  if (pos < tokens.length && (typeof tokens[pos].value === 'string' && tokens[pos].value.toLowerCase() === 'all')) {
-    lookupAll = true;
-    pos++;
+  let noLimit = false;
+  if (pos < tokens.length && typeof tokens[pos].value === 'string') {
+    const valLower = tokens[pos].value.toLowerCase();
+    if (valLower === 'all') {
+      lookupAll = true;
+      pos++;
+    } else if (valLower === 'every') {
+      lookupAll = true;
+      noLimit = true;
+      pos++;
+    }
   }
   if (pos >= tokens.length) {
     return { error: 'Look up needs a data shape name. Example: todos = look up all Todos' };
@@ -5611,6 +5620,7 @@ function parseLookUpAssignment(name, tokens, pos, line) {
 
   const node = crudNode('lookup', name, target, condition, line);
   node.lookupAll = lookupAll;
+  if (noLimit) node.noLimit = true;
   // Optional pagination: "page N, M per page"
   if (pos < tokens.length && tokens[pos].value === 'page') {
     pos++;
@@ -8183,14 +8193,18 @@ function parseAssignment(tokens, line) {
     return { name, expression: { type: NodeType.REGEX_REPLACE, pattern, source: srcExpr.node, replacement: replExpr.node, line } };
   }
 
-  // Shorthand: "get all Todos" -> CRUD lookup all
+  // Shorthand: "get all Todos" / "get every Todo" -> CRUD lookup all
   // Also: "get all Todos page 2, 25 per page" -> paginated lookup
+  // "every" sets noLimit (opt out of default LIMIT 50)
   if (pos < tokens.length && tokens[pos].canonical === 'get_key' &&
-      pos + 1 < tokens.length && tokens[pos + 1].value === 'all' &&
+      pos + 1 < tokens.length &&
+      (tokens[pos + 1].value === 'all' || tokens[pos + 1].value === 'every') &&
       pos + 2 < tokens.length) {
+    const isEvery = tokens[pos + 1].value === 'every';
     const tableName = tokens[pos + 2].value;
     const node = crudNode('lookup', name, tableName, null, line);
     node.lookupAll = true;
+    if (isEvery) node.noLimit = true;
     // Optional pagination: "page N, M per page"
     let pPos = pos + 3;
     if (pPos < tokens.length && tokens[pPos].value === 'page') {
@@ -8603,6 +8617,46 @@ function parsePrimary(tokens, pos, line, end) {
     const fnName = collectionOps[tok.canonical];
     const operand = parsePrimary(tokens, pos + 1, line, maxPos);
     if (operand.error) return operand;
+    // NEW: "sum of field from Table" -> SQL_AGGREGATE. Must come BEFORE the
+    // "in variable" check because `from` canonicalizes to `in` (synonyms.js
+    // line 57). Gate on rawValue === 'from' AND capitalized identifier.
+    const sqlFns = { sum: 1, avg: 1, count: 1, max: 1, min: 1 };
+    if (sqlFns[fnName] &&
+        operand.nextPos < maxPos &&
+        tokens[operand.nextPos].rawValue === 'from') {
+      const tablePos = operand.nextPos + 1;
+      // Accept identifier OR keyword (some table names like "Returns" happen
+      // to be synonyms). Only requirement: starts with a capital letter.
+      if (tablePos < maxPos &&
+          typeof tokens[tablePos].value === 'string' &&
+          /^[A-Z]/.test(tokens[tablePos].value)) {
+        const fieldName = operand.node.name;
+        const tableName = tokens[tablePos].value;
+        let nextPos = tablePos + 1;
+        // Optional WHERE clause for filtered aggregates
+        let condition = null;
+        if (nextPos < maxPos && tokens[nextPos].canonical === 'where') {
+          nextPos++;
+          const condExpr = parseExpression(tokens, nextPos, line);
+          if (!condExpr.error) {
+            condition = condExpr.node;
+            if (typeof condExpr.nextPos === 'number') nextPos = condExpr.nextPos;
+            else nextPos = maxPos;
+          }
+        }
+        return {
+          node: {
+            type: NodeType.SQL_AGGREGATE,
+            fn: fnName,
+            field: fieldName,
+            table: tableName,
+            condition,
+            line
+          },
+          nextPos
+        };
+      }
+    }
     // Check for "field in list" pattern: sum of amount in orders
     if (operand.nextPos < maxPos && tokens[operand.nextPos].canonical === 'in') {
       const fieldName = operand.node.name; // extract field name from variable ref

@@ -5301,7 +5301,9 @@ when user calls GET /api/todos:
   todos = look up all Todos
   send back todos
     `);
-    expect(result.javascript).toContain("db.findAll('todos')");
+    expect(result.javascript).toContain("db.findAll('todos'");
+    // PERF-1: default LIMIT 50 on look up all
+    expect(result.javascript).toContain('limit: 50');
   });
 
   it('uses findOne for look up where id is', () => {
@@ -5322,6 +5324,240 @@ when user calls GET /api/posts:
   send back posts
     `);
     expect(result.javascript).toContain("db.findAll('posts'");
+  });
+});
+
+describe('PERF-1 - Default pagination', () => {
+  it('get all Users compiles with LIMIT 50', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+when user calls GET /api/users:
+  users = get all Users
+  send back users
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.findAll('users', {}, { limit: 50 })");
+  });
+
+  it('look up all Users compiles with LIMIT 50', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+when user calls GET /api/users:
+  users = look up all Users
+  send back users
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('{ limit: 50 }');
+  });
+
+  it('get all Users where status is "active" keeps filter + LIMIT 50', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+  status
+when user calls GET /api/users:
+  active = look up all Users where status is 'active'
+  send back active
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('{ limit: 50 }');
+    expect(result.javascript).toContain('status');
+  });
+
+  it('get every User compiles without limit (opt-out)', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+when user calls GET /api/users:
+  users = get every User
+  send back users
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.findAll('users')");
+    expect(result.javascript).not.toContain('limit');
+  });
+
+  it('look up every User also has no limit (opt-out)', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+when user calls GET /api/users:
+  users = look up every User
+  send back users
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).not.toContain('limit');
+  });
+
+  it('search X for q compiles with .slice(0, 100)', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Products table:
+  name, required
+  description
+when user calls GET /api/search:
+  results = search Products for incoming's q
+  send back results
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('.slice(0, 100)');
+  });
+});
+
+describe('PERF-2 - SQL aggregations', () => {
+  it('sum of field from Table compiles to db.aggregate', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create an Orders table:
+  product, required
+  price (number)
+when user calls GET /api/stats:
+  total = sum of price from Orders
+  send back total
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.aggregate('orders', 'SUM', 'price'");
+  });
+
+  it('avg of score from Reviews compiles to db.aggregate', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Reviews table:
+  score (number)
+when user calls GET /api/stats:
+  average = avg of score from Reviews
+  send back average
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.aggregate('reviews', 'AVG', 'score'");
+  });
+
+  it('count of tickets from Tickets uses COUNT', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Tickets table:
+  subject, required
+when user calls GET /api/stats:
+  total = count of tickets from Tickets
+  send back total
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.aggregate('tickets', 'COUNT'");
+  });
+
+  it('sum of field in variable stays client-side (backward compat)', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create an Orders table:
+  price (number)
+when user calls GET /api/stats:
+  orders = get every Order
+  total = sum of price in orders
+  send back total
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('_clear_sum_field(orders');
+    expect(result.javascript).not.toContain('db.aggregate');
+  });
+
+  it('filtered aggregate: sum where status is "paid"', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create an Orders table:
+  product, required
+  price (number)
+  status, default 'pending'
+when user calls GET /api/stats:
+  paid_total = sum of price from Orders where status is 'paid'
+  send back paid_total
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.aggregate('orders', 'SUM', 'price'");
+    expect(result.javascript).toContain('status: "paid"');
+  });
+
+  it('filtered aggregate with AND: two equality conditions', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Tickets table:
+  team, required
+  priority
+  score (number)
+when user calls GET /api/stats:
+  hot_avg = avg of score from Tickets where team is 'support' and priority is 'high'
+  send back hot_avg
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.aggregate('tickets', 'AVG', 'score'");
+    expect(result.javascript).toContain('team: "support"');
+    expect(result.javascript).toContain('priority: "high"');
+  });
+
+  it('PERF-5: explicit page N, M per page emits SQL LIMIT/OFFSET not client slice', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create an Items table:
+  name, required
+when user calls GET /api/items:
+  page_n = incoming's page
+  items = get all Items page page_n, 25 per page
+  send back items
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('limit: 25');
+    expect(result.javascript).toContain('offset:');
+    // Must NOT use the old client-side fetch-then-slice pattern
+    expect(result.javascript).not.toContain('_all_items');
+  });
+
+  it('PERF-5: literal page number emits SQL LIMIT/OFFSET', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create an Items table:
+  name, required
+when user calls GET /api/items:
+  items = get all Items page 3, 10 per page
+  send back items
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('limit: 10');
+    expect(result.javascript).toContain('offset: 20');
+    expect(result.javascript).not.toContain('.slice');
+  });
+
+  it('filtered aggregate with non-equality emits runtime error string', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create an Orders table:
+  price (number)
+when user calls GET /api/stats:
+  big = sum of price from Orders where price is greater than 100
+  send back big
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain('SQL aggregates only support equality filters');
   });
 });
 
@@ -5849,7 +6085,7 @@ when user calls GET /api/links:
   send back all_links
     `);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain("db.findAll('links')");
+    expect(result.javascript).toContain("db.findAll('links'");
   });
 
   it('compiles collection operations in backend context', () => {
@@ -5936,7 +6172,7 @@ when user calls POST /api/todos:
     `;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain("db.findAll('todos')");
+    expect(result.javascript).toContain("db.findAll('todos'");
     expect(result.javascript).toContain("db.insert('todos'");
     expect(result.javascript).toContain('try {');
     expect(result.javascript).toContain("db.createTable('todos'");
@@ -12587,11 +12823,12 @@ describe('Phase 34 - pagination', () => {
     expect(crud.perPage).toBe(25);
   });
 
-  it('compiles pagination to array slice for local memory', () => {
+  it('compiles pagination to SQL LIMIT/OFFSET for local memory (PERF-5)', () => {
     const src = `build for javascript backend\ndatabase is local memory\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items page 1, 10 per page\n  send back items`;
     const result = compileProgram(src);
     expect(result.errors).toHaveLength(0);
-    expect(result.javascript).toContain('.slice(');
+    expect(result.javascript).toContain('limit: 10');
+    expect(result.javascript).toContain('offset: 0');
   });
 
   it('compiles pagination to .range() for supabase', () => {

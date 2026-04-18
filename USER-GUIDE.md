@@ -566,6 +566,31 @@ page 'Expense Tracker':
 - `define total_spent as: sum of expenses` — computes the sum of all expense amounts
 - `display total_spent as dollars` — formats as currency ($123.45)
 
+### A Note on Performance: Server-Side Aggregates
+
+The example above uses `sum of expenses` — that sums a list the app already has in memory. Works great for this demo (5 expenses). But imagine a real expense tracker with 50,000 expenses: fetching them all just to compute one number is wasteful.
+
+Clear has a faster form for that case:
+
+```clear
+# In-memory: fetches everything, sums in JavaScript (good for small lists)
+expenses = get every Expense
+total = sum of amount in expenses
+
+# Server-side: runs a single SQL query, never loads the list (good for real scale)
+total = sum of amount from Expenses
+```
+
+**Rule of thumb:** `in variable` reduces data you already have. `from Table` (capitalized) runs the aggregate in the database. Same works for `avg`, `count`, `min`, `max`, with optional filters:
+
+```clear
+paid_total = sum of amount from Expenses where category is 'business'
+support_avg = avg of score from Tickets where team is 'support' and priority is 'high'
+ticket_count = count of id from Tickets
+```
+
+**`get all` vs `get every`:** `get all Contacts` returns at most 50 rows by default — a safety cap so your browser doesn't die on a big table. If you genuinely need every row, use `get every Contact`. For real list views with tons of records, use `get all Contacts page 2, 25 per page` — that compiles to SQL `LIMIT 25 OFFSET 25`, only 25 rows touch your server.
+
 ---
 
 ## Chapter 8: Multi-Page Apps (Because One Page Is Never Enough)

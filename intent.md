@@ -143,7 +143,8 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `DATA_SHAPE` | `create a Users table:` + fields | Table schema with constraints |
-| `CRUD` | `save X as User` / `look up all records in Users table` / `remove from Users where ...` | In-memory DB or SQL |
+| `CRUD` | `save X as User` / `look up all records in Users table` / `remove from Users where ...` | In-memory DB or SQL. **`look up all` / `get all` caps results at 50 by default.** Use `look up every` / `get every` to return all rows. |
+| `SQL_AGGREGATE` | `sum of price from Orders` / `avg of score from Reviews where team is 'support'` | Server-side aggregation: compiles to `db.aggregate(table, fn, field, filter)` → `SELECT FN(col) FROM ... WHERE ...`. Distinguished from `sum of X in variable` (client-side JS reduce) by capitalized table name after `from`. Only supports equality filters (`is X`, `is 'Y' and Z is W`) — non-equality like `>` emits a runtime error. |
 
 Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `(number)` type hint, FK by capitalized name.
 
@@ -393,7 +394,10 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 
 | Syntax | Equivalent | Notes |
 |--------|-----------|-------|
-| `all_todos = get all Todos` | `look up all records in Todos table` | CRUD shorthand |
+| `all_todos = get all Todos` | `look up all records in Todos table` | CRUD shorthand. **Default LIMIT 50** — use `get every Todo` for no limit. |
+| `every_todo = get every Todo` | `look up every Todo` (no LIMIT) | Explicit opt-out of default 50-row cap |
+| `total = sum of price from Orders` | `db.aggregate('orders', 'SUM', 'price', {})` | Server-side SQL aggregate (capitalized table name) |
+| `paid = sum of price from Orders where status is 'paid'` | `db.aggregate('orders', 'SUM', 'price', { status: 'paid' })` | Filtered aggregate — equality only |
 | `new_todo = save X as new Todo` | `save X as Todo` | "new" is optional clarity |
 | `send back X with success message` | `send back X status 201` | Wraps with `message` field |
 | `delete the Todo with this id` | `remove from Todos where id is incoming's id` | URL param auto-bound |

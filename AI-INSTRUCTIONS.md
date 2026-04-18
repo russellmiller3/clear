@@ -941,8 +941,10 @@ when user deletes user at /api/users/:id:
 **`needs login`** on a page redirects to /login if no JWT token is present.
 **`belongs to Users`** in a table field declaration creates a foreign key relationship.
 **`Users has many Posts`** declares a one-to-many relationship and auto-generates nested endpoints (e.g., `GET /api/users/:id/posts`).
-**`sum of amount in orders`** extracts a field from each record and aggregates it.
-**`search Posts for query`** filters records where any field contains the search term (case-insensitive).
+**`sum of amount in orders`** extracts a field from each record in an in-memory list and sums it (client-side JS reduce).
+**`sum of amount from Orders`** runs a server-side SQL aggregate — `SELECT SUM(amount) FROM orders`. Capitalized table name after `from` is the trigger. Supports `sum / avg / count / max / min`. Filtered with `where field is value` (equality only).
+**`get all Todos`** returns **up to 50 rows** (default cap, prevents browser death on large tables). Use **`get every Todo`** or **`look up every Todo`** when you actually need all rows. Explicit pagination (`page N, M per page`) overrides the default.
+**`search Posts for query`** filters records where any field contains the search term (case-insensitive). Caps at 100 results.
 **`broadcast to all message`** inside a WebSocket handler sends the value to all connected clients.
 **`block arguments matching 'pattern'`** in an agent adds a regex guard on tool inputs — rejects matching arguments before execution.
 

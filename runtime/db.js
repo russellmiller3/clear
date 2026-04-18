@@ -7,8 +7,9 @@
 //
 // API:
 //   db.createTable(name, schema)          — CREATE TABLE IF NOT EXISTS
-//   db.findAll(table, filter?)            — SELECT * with optional WHERE
+//   db.findAll(table, filter?, options?)  — SELECT * with optional WHERE + LIMIT
 //   db.findOne(table, filter)             — SELECT * WHERE ... LIMIT 1
+//   db.aggregate(table, fn, field, filter?) — SELECT FN(col) ... with equality filter
 //   db.insert(table, record)              — INSERT, returns record with id
 //   db.update(table, filterOrRecord, data?) — UPDATE matching records
 //   db.remove(table, filter?)             — DELETE matching records
@@ -213,11 +214,30 @@ function buildWhere(filter) {
 // CRUD OPERATIONS
 // =============================================================================
 
-function findAll(table, filter) {
+function parseLimit(n) {
+  const v = parseInt(n, 10);
+  return (v > 0 && v < 10000) ? v : null;
+}
+
+function parseOffset(n) {
+  const v = parseInt(n, 10);
+  return (v >= 0 && v < 1000000) ? v : null;
+}
+
+function findAll(table, filter, options) {
   const tableName = table.toLowerCase();
   const schema = _schemas[tableName] || {};
   const w = buildWhere(filter);
-  const rows = _db.prepare('SELECT * FROM ' + tableName + ' ' + w.clause).all(w.params);
+  let sql = 'SELECT * FROM ' + tableName + ' ' + w.clause;
+  if (options && options.limit) {
+    const lim = parseLimit(options.limit);
+    if (lim) sql += ' LIMIT ' + lim;
+  }
+  if (options && options.offset) {
+    const off = parseOffset(options.offset);
+    if (off) sql += ' OFFSET ' + off;
+  }
+  const rows = _db.prepare(sql).all(w.params);
   return rows.map(function(r) { return coerceRecord(r, schema); });
 }
 
@@ -227,6 +247,29 @@ function findOne(table, filter) {
   const w = buildWhere(filter);
   const row = _db.prepare('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1').get(w.params);
   return row ? coerceRecord(row, schema) : null;
+}
+
+function validateAggregateArgs(fn, field) {
+  const allowedFns = { SUM: 1, AVG: 1, MIN: 1, MAX: 1, COUNT: 1 };
+  if (!allowedFns[fn]) throw new Error('Unsupported aggregate function: ' + fn);
+  if (fn !== 'COUNT' && !/^[a-z_][a-z0-9_]*$/i.test(field)) {
+    throw new Error('Invalid field name: ' + field);
+  }
+}
+
+function aggregate(table, fn, field, filter) {
+  const tableName = table.toLowerCase();
+  validateAggregateArgs(fn, field);
+  const w = buildWhere(filter);
+  const col = fn === 'COUNT' ? '*' : field;
+  const sql = 'SELECT ' + fn + '(' + col + ') as result FROM ' + tableName + ' ' + w.clause;
+  try {
+    const row = _db.prepare(sql).get(w.params);
+    return row ? (row.result || 0) : 0;
+  } catch (e) {
+    console.warn('[clear] db.aggregate failed:', e.message);
+    return 0;
+  }
 }
 
 function insert(table, record) {
@@ -348,6 +391,7 @@ module.exports = {
   insert,
   update,
   remove,
+  aggregate,
   run,
   execute,
   save,

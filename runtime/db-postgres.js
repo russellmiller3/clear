@@ -7,8 +7,9 @@
 //
 // API (matches db.js exactly):
 //   db.createTable(name, schema)  — registers schema, lazy-creates on first query
-//   db.findAll(table, filter?)    — SELECT * with optional WHERE
+//   db.findAll(table, filter?, options?) — SELECT * with optional WHERE + LIMIT
 //   db.findOne(table, filter)     — SELECT * WHERE ... LIMIT 1
+//   db.aggregate(table, fn, field, filter?) — SELECT FN(col) ... with equality filter
 //   db.insert(table, record)      — INSERT ... RETURNING *
 //   db.update(table, filter, data?)— UPDATE matching records
 //   db.remove(table, filter?)     — DELETE matching records
@@ -224,11 +225,30 @@ function buildWhere(filter) {
 // CRUD OPERATIONS
 // =============================================================================
 
-async function findAll(table, filter) {
+function parseLimit(n) {
+  var v = parseInt(n, 10);
+  return (v > 0 && v < 10000) ? v : null;
+}
+
+function parseOffset(n) {
+  var v = parseInt(n, 10);
+  return (v >= 0 && v < 1000000) ? v : null;
+}
+
+async function findAll(table, filter, options) {
   var tableName = table.toLowerCase();
   await ensureTable(tableName);
   var w = buildWhere(filter);
-  var res = await getPool().query('SELECT * FROM ' + tableName + ' ' + w.clause, w.params);
+  var sql = 'SELECT * FROM ' + tableName + ' ' + w.clause;
+  if (options && options.limit) {
+    var lim = parseLimit(options.limit);
+    if (lim) sql += ' LIMIT ' + lim;
+  }
+  if (options && options.offset) {
+    var off = parseOffset(options.offset);
+    if (off) sql += ' OFFSET ' + off;
+  }
+  var res = await getPool().query(sql, w.params);
   return res.rows;
 }
 
@@ -238,6 +258,30 @@ async function findOne(table, filter) {
   var w = buildWhere(filter);
   var res = await getPool().query('SELECT * FROM ' + tableName + ' ' + w.clause + ' LIMIT 1', w.params);
   return res.rows[0] || null;
+}
+
+function validateAggregateArgs(fn, field) {
+  var allowedFns = { SUM: 1, AVG: 1, MIN: 1, MAX: 1, COUNT: 1 };
+  if (!allowedFns[fn]) throw new Error('Unsupported aggregate function: ' + fn);
+  if (fn !== 'COUNT' && !/^[a-z_][a-z0-9_]*$/i.test(field)) {
+    throw new Error('Invalid field name: ' + field);
+  }
+}
+
+async function aggregate(table, fn, field, filter) {
+  var tableName = table.toLowerCase();
+  await ensureTable(tableName);
+  validateAggregateArgs(fn, field);
+  var w = buildWhere(filter);
+  var col = fn === 'COUNT' ? '*' : field;
+  var sql = 'SELECT ' + fn + '(' + col + ') as result FROM ' + tableName + ' ' + w.clause;
+  try {
+    var res = await getPool().query(sql, w.params);
+    return res.rows[0] ? (res.rows[0].result || 0) : 0;
+  } catch (e) {
+    console.warn('[clear] db.aggregate failed:', e.message);
+    return 0;
+  }
 }
 
 async function insert(table, record) {
@@ -391,6 +435,7 @@ module.exports = {
   insert: insert,
   update: update,
   remove: remove,
+  aggregate: aggregate,
   run: run,
   execute: execute,
   save: save,
