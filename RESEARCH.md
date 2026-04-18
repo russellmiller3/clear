@@ -1,7 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: 2026-04-17.
+Updated: 2026-04-18.
 
 ---
 
@@ -173,8 +173,15 @@ The re-ranker is a **bouncer** — it filters patch candidates before the expens
 **Why JS embeddings, not Clear embeddings:**
 Clear is a tiny corpus. JS has billions of examples in every model's training data. Embedding the compiled JS diff puts you in a rich semantic space. Clear source → JS → embed is a better path than Clear source → embed directly.
 
-**Why structured features first:**
-XGBoost on 5–10 features trains in seconds, is interpretable (you can see which features matter), and works with 200 examples. Don't jump to neural embeddings until you need them.
+**Why structured features first — and why the model stays small:**
+
+The input space here is genuinely tiny. `task_type` has ~15 values. Error categories have ~30-50 distinct patterns. `patch_op_type` has 11 values (from patch.js). That's a structured tabular problem, not a language understanding problem.
+
+What the re-ranker is actually doing: **a lookup table with uncertainty.** "Given error pattern X on task type Y, which of these 5 past fixes has the best track record?" A decision tree captures this cleanly. XGBoost on 5-10 features trains in seconds, runs in microseconds, and is interpretable — you can see which features matter.
+
+A 22M-parameter cross-encoder (e.g. ms-marco-MiniLM) is trained on millions of web search queries to understand free-form natural language. That's not the problem here. Using it would be like using a sledgehammer to push a thumbtack. It would train more slowly, require more data, and give you less insight into what's actually driving predictions.
+
+**The upgrade path only triggers if XGBoost plateaus** — i.e., you have 2k+ sessions and accuracy on the validation curriculum isn't improving. At that point, JS embeddings on the compiled diff add signal. But you may never need them. The feature space might be fully captured by structured inputs alone.
 
 ---
 
