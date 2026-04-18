@@ -23412,5 +23412,102 @@ describe('Unit assertions — compiler emits _unitAssert in test harness', () =>
   });
 });
 
+// =============================================================================
+// MECHANICAL TEST QUALITY SIGNALS — Static lint on weak assertions
+// =============================================================================
+
+describe('Weak assertion lint — not_empty check', () => {
+  const base = `build for javascript backend\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n`;
+
+  it('warns when assertion only checks not empty (not the actual value)', () => {
+    const src = base + `\ntest 'weak':\n  result is 'hello'\n  expect result is not empty\n  expect result is not empty\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns.length).toBeGreaterThan(0);
+  });
+
+  it('warns for each not_empty assertion separately', () => {
+    const src = base + `\ntest 'two weak':\n  a is 'x'\n  b is 'y'\n  expect a is not empty\n  expect b is not empty\n`;
+    const r = compileProgram(src);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns.length).toBe(2);
+  });
+
+  it('does NOT warn for specific value check (not_empty is only problem)', () => {
+    const src = base + `\ntest 'strong':\n  x is 42\n  expect x is 42\n`;
+    const r = compileProgram(src);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns).toHaveLength(0);
+  });
+});
+
+describe('Weak assertion lint — bare boolean check', () => {
+  const base = `build for javascript backend\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n`;
+
+  it('warns when assertion checks eq true (bare boolean)', () => {
+    const src = base + `\ntest 'bool':\n  flag is true\n  expect flag is true\n`;
+    const r = compileProgram(src);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT warn for eq false (false is specific, meaningful)', () => {
+    const src = base + `\ntest 'false check':\n  flag is false\n  expect flag is false\n`;
+    const r = compileProgram(src);
+    const weakWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('weak assertion');
+    });
+    expect(weakWarns).toHaveLength(0);
+  });
+});
+
+describe('Weak assertion lint — single assertion yellow flag', () => {
+  const base = `build for javascript backend\ncreate a Items table:\n  name, required\nwhen user calls GET /api/items:\n  items = get all Items\n  send back items\n`;
+
+  it('warns when test block has only one assertion', () => {
+    const src = base + `\ntest 'single':\n  x is 5\n  expect x is 5\n`;
+    const r = compileProgram(src);
+    const singleWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('single assertion');
+    });
+    expect(singleWarns.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT warn when test block has multiple assertions', () => {
+    const src = base + `\ntest 'multi':\n  x is 5\n  y is 10\n  expect x is 5\n  expect y is 10\n`;
+    const r = compileProgram(src);
+    const singleWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('single assertion');
+    });
+    expect(singleWarns).toHaveLength(0);
+  });
+
+  it('does NOT warn for single HTTP assertion (only unit assertions)', () => {
+    const src = base + `\ntest 'http only':\n  can user view all items\n  expect it succeeds\n`;
+    const r = compileProgram(src);
+    const singleWarns = r.warnings.filter(w => {
+      const msg = typeof w === 'string' ? w : w.message;
+      return msg && msg.toLowerCase().includes('single assertion');
+    });
+    expect(singleWarns).toHaveLength(0);
+  });
+});
+
 run();
 

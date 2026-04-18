@@ -438,6 +438,20 @@ Every internal tool builder has performance problems at scale. Retool chokes bec
 | P9 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
 | P10 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
 
+### Mechanical Test Quality Signals (Session 36b — Complete)
+
+Three pieces shipped on `feature/test-quality-signals`:
+
+| # | Piece | Status | Location |
+|---|-------|--------|----------|
+| 1 | Static lint on weak assertions | ✅ Done | `compiler.js` — `generateE2ETests()`, `qualityWarnings[]` |
+| 2 | Process lint: red-step tracking | ✅ Done | `playground/server.js` — `sessionTestCalls[]` per `/api/chat` |
+| 3 | Session JSON storage | ✅ Done | `playground/sessions/[id].json`, `GET /api/session-quality` |
+
+These are the mechanical bootstrap for the re-ranker. See `RESEARCH.md` for full flywheel design.
+
+**Next:** Supervisor multi-session plan — `feature/supervisor-multi-session`. See `plans/plan-supervisor-multi-session-04-17-2026.md`.
+
 ### Next Up (Session 34 Next Steps)
 
 Ordered by impact.
@@ -512,94 +526,15 @@ That combination is unique. The gap to close is platform: hosting, compliance, i
 
 ---
 
-## The Big Thesis: Alignment at Compile Time
+## The Big Thesis
 
-Clear isn't a tool builder. It's an alignment layer for AI-generated software. The Marcus stuff — approval queues, internal tools — that's the go-to-market. What Clear actually is, if you follow the thread all the way out: **the first programming language where the compiler IS the alignment mechanism for autonomous AI.**
+→ See **[FAQ.md — What is Clear's big thesis?](FAQ.md#what-is-clears-big-thesis)** for the full thesis, fundraising sequence, and company name rationale.
 
-### The pieces already built
-
-```
-AI WRITES CODE          COMPILER CONSTRAINS         EVALS GRADE
-────────────            ────────────────            ────────────
-LLM generates           27 security checks          Auto-generated tests
-  .clear files           Auth bypass? Won't compile  Structured scoring API
-                         SQL injection? Impossible   Curriculum (20 tasks,
-Patch API gives          Mass assignment? Stripped     10 difficulty levels)
-  structured edits       Agent guardrails enforced   HTTP assertions as
-  (11 operations =       PII auto-redacted            reward function
-   constrained           XSS escaped
-   action space)         Deterministic output        Sandbox runner with
-                                                      timeout + memory limit
-```
-
-That's not an app builder. That's a **closed-loop system** where AI writes software, the compiler prevents it from shipping anything dangerous, and evals measure whether what it built actually works.
-
-### Why this is AGI-shaped
-
-The hard problem with AI writing software isn't speed — LLMs are already faster than humans. The hard problem is **trust.** How do you know the AI didn't ship a security hole? How do you know the agent won't delete your database? How do you know the output is the same as yesterday's?
-
-Every other AI code generator (Lovable, Bolt, Copilot, Cursor, Devin) answers this with: **"hope."** Clear answers it with: **"the compiler won't let it."**
-
-```
-LOVABLE/BOLT/DEVIN                    CLEAR
-──────────────────                    ─────
-AI generates code ──→ ship it         AI generates .clear ──→ compile
-                      (hope it works)                          │
-                                                    ┌──────────┤
-                                                    │ 27 security checks
-                                                    │ Auto-generated tests
-                                                    │ Deterministic output
-                                                    │ Agent guardrails
-                                                    │ Structured eval
-                                                    └──→ THEN ship it
-```
-
-The compiler is the **alignment layer** between AI capability and human trust. As AI gets more capable, the compiler gets more important — it's the thing that ensures the AI's output is safe, correct, and auditable.
-
-### The hard takeoff scenario
-
-1. **Today:** AI writes 100-line .clear files. Compiler catches bugs. Human reviews. Ships.
-2. **Next year:** AI writes 500-line .clear files with multi-agent coordination. Compiler catches bugs. Evals grade quality. Human reviews exceptions. Ships.
-3. **Year 3:** AI writes, compiles, tests, deploys, monitors, and fixes .clear apps autonomously. The compiler constrains what it can ship. Evals flag regressions. Humans set policy (`block arguments matching`, `must not:`, `requires role`) and the compiler enforces it. The AI handles everything else.
-4. **Year 5:** AI writes agents that write .clear files. Meta-programming. Self-improving software factory, constrained by a deterministic compiler that prevents unsafe output. The compiler IS the alignment mechanism.
-
-Every step, the human moves from **writing code** to **setting constraints.** The compiler turns constraints into guarantees.
-
-### Why this is defensible
-
-Anyone can build an AI code generator. GPT-wrapper + templates. That's Lovable and Bolt — and they're already in a race to the bottom.
-
-**Nobody can easily replicate "deterministic compiler with 27 security guarantees + structured eval + constrained action space + readable output."** That's years of engineering in the compiler, parser, validator. You can't bolt it on after the fact. You'd have to build a language from scratch.
-
-The RL gym, the curriculum, the patch API — those aren't features. They're the **training infrastructure for the next generation of AI systems that write software.** When fine-tuning access opens up, Clear is the environment they train in. Not "generate React and hope." Generate Clear, compile, test, get a reward signal, improve.
-
-### The one-liner
-
-> **Clear is the language AI writes when the output has to be safe.**
-
-That's bigger than Marcus. That's bigger than internal tools. That's the thesis for why this matters at scale.
-
-### The sequence
-
-- **$3M seed (Marcus landing page):** "We built a compiler that prevents AI from shipping unsafe code. Here are 200 companies using it for internal tools."
-- **$40M Series A (Crystallized lab page):** "500 companies run apps compiled by Clear. The compiler catches 50K unsafe patterns/month. Here's our alignment thesis. Here's our RL environment. We want to generalize this to all AI-generated code."
-
-The Marcus page IS the path to the lab page. Every Marcus running an approval queue generates data — compiler catches, security patterns, agent guardrail triggers. That data IS the alignment research, generated by real production usage.
-
-### Company name: Crystallized
-
-AI model output is **fluid** — probabilistic, shifting, unaligned by nature. We **crystallize** it. The compiler is the phase transition. Fluid intelligence in, crystallized safety out. Intelligence moves from the model (fluid, can be unaligned) to the compiler (crystal, constrained, lawful good).
-
-- **Crystallized** = the company
-- **Clear** = the language
-- **Clear Studio** = the product Marcus uses
-- **crystallized.dev** or **crystallized.ai** = the domain
-
----
+**One-liner:** Clear is the language AI writes when the output has to be safe.
 
 ## RL Training Environment (Speculative)
 
-Clear's deterministic compiler, structured errors, constrained action space, and built-in test syntax make it a natural RL gym.
+→ See **[FAQ.md — What is the RL training environment?](FAQ.md#what-is-the-rl-training-environment)** for the full status table.
 
 | Built | Status |
 |-------|--------|

@@ -2429,6 +2429,7 @@ function generateE2ETests(body) {
   // === USER-WRITTEN TEST BLOCKS ===
   // Collect TEST_DEF nodes from the AST and compile them into the test harness
   const testDefs = body.filter(n => n.type === NodeType.TEST_DEF);
+  const qualityWarnings = []; // mechanical quality signals — internal only, not shown to user
   if (testDefs.length > 0) {
     lines.push('  // --- User-Written Tests (from test blocks in .clear source) ---');
     lines.push('  const _baseUrl = BASE;');
@@ -2443,6 +2444,23 @@ function generateE2ETests(body) {
 
     for (const td of testDefs) {
       const bodyNodes = td.body.filter(n => n.type !== NodeType.MOCK_AI);
+
+      // --- Mechanical test quality signals (training signal, not shown to user) ---
+      const unitAsserts = bodyNodes.filter(n => n.type === NodeType.UNIT_ASSERT);
+      for (const ua of unitAsserts) {
+        if (ua.check === 'not_empty') {
+          qualityWarnings.push({ line: ua.line || td.line || 0, severity: 'quality', code: 'weak_assertion',
+            message: `Weak assertion: 'expect ${ua.rawLeft} is not empty' only checks existence, not the actual value. Assert the specific value instead.` });
+        } else if (ua.check === 'eq' && ua.right?.type === 'literal_boolean' && ua.right?.value === true) {
+          qualityWarnings.push({ line: ua.line || td.line || 0, severity: 'quality', code: 'weak_assertion',
+            message: `Weak assertion: 'expect ${ua.rawLeft} is true' is a bare boolean check. Assert the specific value or behavior instead.` });
+        }
+      }
+      if (unitAsserts.length === 1) {
+        qualityWarnings.push({ line: td.line || 0, severity: 'quality', code: 'single_assertion',
+          message: `Single assertion in test '${td.name}'. Consider adding a second assertion to verify a related behavior.` });
+      }
+
       const bodyLines = bodyNodes.map(n => compileNode(n, { ...testCtx, indent: 2 })).filter(Boolean);
       lines.push(`  await test(${JSON.stringify(td.name)}, async () => {`);
       for (const bl of bodyLines) {
@@ -2621,7 +2639,7 @@ function generateE2ETests(body) {
     });
   }
 
-  return { script: lines.join('\n'), warnings };
+  return { script: lines.join('\n'), warnings: [...warnings, ...qualityWarnings] };
 }
 
 /**

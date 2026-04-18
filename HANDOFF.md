@@ -1,8 +1,8 @@
-# Handoff — 2026-04-17 (Session 36 — Function TDD + Supervisor Plan)
+# Handoff — 2026-04-17 (Session 37 — Mechanical Quality Signals + RESEARCH.md)
 
 ## Current State
-- **Branch:** `main` (just merged from `fix/function-def-return`)
-- **Last commit on main:** the merge of `fix/function-def-return`
+- **Branch:** `main` (merged from `feature/test-quality-signals`)
+- **Last commit on main:** session quality signals + RESEARCH.md docs
 - **Working tree:** CLEAN on main
 
 ## What Was Done This Session
@@ -44,12 +44,28 @@
 - **`send back` → `return` is the canonical path for pure functions.** Previously it only worked correctly inside agents. Now it works for any `define function` block.
 - **Integration test lives in `playground/test-tdd-loop.js`**, not in the main test suite. Needs a live server + API key. Run manually or via CI with key set.
 
+## Also Done This Session (Session 37)
+
+- **RESEARCH.md** — standalone research doc: oracle problem, TDD as reversed GAN, GAN UI dev process, full RL gym inventory (10 built components), flywheel, re-ranker architecture, GA rationale, honest "what this doesn't buy" assessment
+- **FAQ.md** — quality signals sections updated to reflect built status. Big Thesis condensed to pointer to RESEARCH.md.
+- **Mechanical test quality signals** — 3 pieces shipped (`feature/test-quality-signals`):
+  - Static lint: `not_empty`, `eq true`, single assertion → `r.warnings[]` with `code:'weak_assertion'|'single_assertion'`
+  - Process lint: `sessionTestCalls[]` per `/api/chat`, tracks `run_tests` ok/fail
+  - Session JSON: `playground/sessions/[id].json` written at session end
+  - Dev endpoint: `GET /api/session-quality` (last N sessions, hidden from Studio UI)
+- **ROADMAP.md** — mechanical quality signals marked complete, next steps updated
+
 ## What's Next (priority order)
 
-1. **Execute the Supervisor plan** — `plans/plan-supervisor-multi-session-04-17-2026.md`. Branch: `feature/supervisor-multi-session`. Start with Phase 1 (session registry + `/api/sessions` endpoint).
-2. **Execute the PERF plan** — `plans/plan-perf-pagination-aggregation-04-16-2026.md`. Branch: `feature/perf-pagination`. Default LIMIT 50 on `get all` + SQL aggregations.
-3. **Fly.io deploy plan** — `plans/plan-fly-deploy-04-16-2026.md`. Needs red-teaming first.
+### 1. Execute the Supervisor plan
+`plans/plan-supervisor-multi-session-04-17-2026.md`. Branch: `feature/supervisor-multi-session`. Start with Phase 1 (session registry + `/api/sessions` endpoint). The mechanical quality signals now plug directly into the sessions table.
+
+### 2. Execute the PERF plan
+`plans/plan-perf-pagination-aggregation-04-16-2026.md`. Branch: `feature/perf-pagination`. Default LIMIT 50 on `get all` + SQL aggregations.
+
+### 3. Fly.io deploy
+`plans/plan-fly-deploy-04-16-2026.md`. Needs one more red-team pass first.
 
 ## Resume Prompt
 
-"We just shipped `fix/function-def-return` to main. The `send back` → `return` fix works, UNIT_ASSERT is live, all 5 doc surfaces updated, 1939 tests passing. Ready for next task — options are: (1) start executing the Supervisor multi-session plan, (2) execute the PERF pagination plan, (3) red-team + execute the Fly.io deploy plan. Tell me which one."
+"Session 37 shipped: RESEARCH.md (full RL/GAN/oracle theory doc), mechanical test quality signals (static weak assertion lint + red-step process lint + session JSON storage). All 3 pieces on main. Next: supervisor multi-session plan execution — branch `feature/supervisor-multi-session`. Start with Phase 1 (session registry + /api/sessions endpoint). See `plans/plan-supervisor-multi-session-04-17-2026.md`."
