@@ -9,6 +9,13 @@
       "autoPort": false
     },
     {
+      "name": "playground-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["playground/server.js", "--port=3488", "--session-id=dev"],
+      "port": 3488,
+      "autoPort": false
+    },
+    {
       "name": "startup-landing",
       "runtimeExecutable": "node",
       "runtimeArgs": ["--input-type=module", "--eval", "import{compileProgram}from'./index.js';import fs from'fs';import http from'http';const r=compileProgram(fs.readFileSync('apps/startup-landing/main.clear','utf8'));const s=http.createServer((_,res)=>{res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});res.end(r.html||'');});s.listen(5001,()=>console.log('ready'));"],

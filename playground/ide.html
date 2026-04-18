@@ -583,6 +583,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
       <button class="prev-tab" onclick="showTab('api')" id="api-tab-btn" style="display:none">API</button>
       <button class="prev-tab" onclick="showTab('terminal')">Terminal</button>
       <button class="prev-tab" onclick="showTab('tests')">Tests</button>
+      <button class="prev-tab" onclick="showTab('flywheel')" title="Factor DB training signal — rows accumulated from every Meph session">Flywheel</button>
       <button class="prev-tab" onclick="clearTerminal()" title="Clear terminal output" style="font-size:10px;padding:2px 6px;opacity:0.6;">Clear Terminal</button>
     </div>
     <div id="meta-chips"></div>
@@ -1677,7 +1678,123 @@ window.showTab = function(tab) {
   else if (tab === 'data') showData();
   else if (tab === 'api') showApiTab();
   else if (tab === 'tests') showTests();
+  else if (tab === 'flywheel') showFlywheel();
 };
+
+// ==========================================================================
+// FLYWHEEL TAB — Factor DB training signal dashboard
+// Polls /api/flywheel-stats and shows DB growth + archetype distribution.
+// Updates live so Russell can watch the flywheel spin as Meph builds.
+// ==========================================================================
+let _flywheelPollTimer = null;
+function showFlywheel() {
+  const el = document.getElementById('preview-content');
+  el.innerHTML = '<div style="padding:24px;color:var(--tx3)">Loading flywheel stats...</div>';
+  renderFlywheel();
+  if (_flywheelPollTimer) clearInterval(_flywheelPollTimer);
+  _flywheelPollTimer = setInterval(() => {
+    if (activeTab === 'flywheel') renderFlywheel();
+    else { clearInterval(_flywheelPollTimer); _flywheelPollTimer = null; }
+  }, 3000);
+}
+
+async function renderFlywheel() {
+  const el = document.getElementById('preview-content');
+  if (!el || activeTab !== 'flywheel') return;
+  let data;
+  try {
+    const r = await fetch('/api/flywheel-stats');
+    data = await r.json();
+  } catch (err) {
+    el.innerHTML = `<div style="padding:24px;color:var(--tx3)">Error loading: ${err.message}</div>`;
+    return;
+  }
+  if (!data.enabled) {
+    el.innerHTML = `<div style="padding:24px;color:var(--tx3)">Factor DB not available in this Studio instance.</div>`;
+    return;
+  }
+
+  const pct = data.percentToThreshold || 0;
+  const barColor = pct >= 100 ? '#22c55e' : pct >= 50 ? '#3b82f6' : '#8b5cf6';
+
+  const archetypeRows = (data.byArchetype || []).map(a => {
+    const passRate = a.total > 0 ? Math.round((a.tests_pass / a.total) * 100) : 0;
+    return `
+      <tr>
+        <td style="padding:6px 12px;font-family:var(--mono);font-size:12px;color:var(--accent)">${escapeHTML(a.archetype || 'null')}</td>
+        <td style="padding:6px 12px;text-align:right;font-variant-numeric:tabular-nums">${a.total}</td>
+        <td style="padding:6px 12px;text-align:right;color:var(--tx2);font-variant-numeric:tabular-nums">${a.compiles_ok}</td>
+        <td style="padding:6px 12px;text-align:right;color:${passRate > 50 ? '#22c55e' : 'var(--tx3)'};font-variant-numeric:tabular-nums">${a.tests_pass} (${passRate}%)</td>
+      </tr>`;
+  }).join('');
+
+  const recentRows = (data.recent || []).map(r => {
+    const icon = r.compile_ok === 1 && r.test_pass === 1 ? '✅'
+      : r.compile_ok === 1 ? '🔵'
+      : '❌';
+    const ts = new Date(r.created_at).toLocaleTimeString();
+    const summary = escapeHTML((r.patch_summary || '').slice(0, 90));
+    return `
+      <tr style="border-bottom:1px solid var(--bd)">
+        <td style="padding:4px 8px;font-size:11px">${icon}</td>
+        <td style="padding:4px 8px;font-size:11px;color:var(--tx3);font-family:var(--mono)">${ts}</td>
+        <td style="padding:4px 8px;font-size:11px;color:var(--accent);font-family:var(--mono)">${escapeHTML(r.archetype || 'null')}</td>
+        <td style="padding:4px 8px;font-size:11px;color:var(--tx2)">${summary}</td>
+      </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="padding:24px;overflow-y:auto;height:100%">
+      <div style="margin-bottom:20px">
+        <div style="font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Training Signal Flywheel</div>
+        <div style="font-size:24px;font-weight:600;color:var(--tx);margin-bottom:2px">${data.total} rows · ${data.passing} passing</div>
+        <div style="font-size:12px;color:var(--tx3)">Every compile by Meph adds a row. Every http_request 2xx marks a row passing.</div>
+      </div>
+
+      <div style="margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--tx3);margin-bottom:6px">
+          <span>Path to XGBoost re-ranker (${data.passing} / ${data.threshold})</span>
+          <span>${pct}%</span>
+        </div>
+        <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${barColor};transition:width .3s"></div>
+        </div>
+        ${pct >= 100 ? '<div style="font-size:11px;color:#22c55e;margin-top:6px">✓ Threshold reached. Ready to train.</div>' : ''}
+      </div>
+
+      <div style="margin-bottom:20px">
+        <div style="font-size:12px;font-weight:600;color:var(--tx);margin-bottom:8px">Distribution by archetype</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid var(--bd);border-radius:6px;overflow:hidden">
+          <thead>
+            <tr style="background:var(--bg2);border-bottom:1px solid var(--bd)">
+              <th style="padding:8px 12px;text-align:left;font-weight:600;color:var(--tx3);font-size:11px;text-transform:uppercase">Archetype</th>
+              <th style="padding:8px 12px;text-align:right;font-weight:600;color:var(--tx3);font-size:11px;text-transform:uppercase">Rows</th>
+              <th style="padding:8px 12px;text-align:right;font-weight:600;color:var(--tx3);font-size:11px;text-transform:uppercase">Compiled</th>
+              <th style="padding:8px 12px;text-align:right;font-weight:600;color:var(--tx3);font-size:11px;text-transform:uppercase">Passing</th>
+            </tr>
+          </thead>
+          <tbody>${archetypeRows || '<tr><td colspan="4" style="padding:12px;color:var(--tx3);text-align:center">No archetype data yet</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--tx);margin-bottom:8px">Recent activity</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <tbody>${recentRows || '<tr><td style="padding:12px;color:var(--tx3);text-align:center">No rows yet</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:20px;padding:12px;background:var(--bg2);border-radius:6px;font-size:11px;color:var(--tx3);line-height:1.5">
+        <strong style="color:var(--tx2)">How to grow the DB:</strong> Chat with Meph to build an app (every compile/test adds a row). Or run a sweep: <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">node playground/supervisor/curriculum-sweep.js --workers=3</code> — ~\$0.50 per sweep, ~20 rows per task, ~10 min wall clock.
+      </div>
+    </div>
+  `;
+}
+
+function escapeHTML(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // ==========================================================================
 // TESTS TAB — run and display compiler + app test results
