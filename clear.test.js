@@ -5371,6 +5371,35 @@ when user calls GET /api/users:
     expect(result.javascript).toContain('{ limit: 50 }');
     expect(result.javascript).toContain('status');
   });
+
+  it('get every User compiles without limit (opt-out)', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+when user calls GET /api/users:
+  users = get every User
+  send back users
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).toContain("db.findAll('users')");
+    expect(result.javascript).not.toContain('limit');
+  });
+
+  it('look up every User also has no limit (opt-out)', () => {
+    const result = compileProgram(`
+build for javascript backend
+database is local memory
+create a Users table:
+  name, required
+when user calls GET /api/users:
+  users = look up every User
+  send back users
+`);
+    expect(result.errors.length).toBe(0);
+    expect(result.javascript).not.toContain('limit');
+  });
 });
 
 describe('Compiler - save vs update', () => {
