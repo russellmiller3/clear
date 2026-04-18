@@ -3,6 +3,8 @@
 How the system works, where things live, and why we made key decisions.
 Search this before grepping. If the answer isn't here, add it after you find it.
 
+**For RL, self-play, re-ranker architecture, and the oracle problem — see [RESEARCH.md](RESEARCH.md).**
+
 ---
 
 ## Table of Contents
@@ -473,33 +475,27 @@ This mirrors lexical scoping: inner scope shadows outer. Applies to any built-in
 
 ### Why write the test before the function?
 
-**Practical:** forces you to state what "done" looks like before writing code. The test is a frozen spec — you can't game it by writing code first and then writing a test that passes your code.
+**Practical:** forces you to state what "done" looks like before writing code. The test is a frozen spec — you can't game it by writing code first.
 
-**Research:** the test becomes a machine-readable oracle. In the supervisor/GA loop, the fitness function is "does it pass the tests Meph wrote first?" No human judgment needed. The agent authors its own success criterion. Cursor generates and you validate. Clear generates, self-validates, and the validation is written before the generation.
+**Research:** the test becomes a machine-readable oracle. The agent authors its own success criterion before knowing the implementation. Self-supervised training signal — no human labels needed. Full explanation: **[RESEARCH.md — The Core Insight](RESEARCH.md#the-core-insight-meph-solves-the-oracle-problem)**
 
 ---
 
 ### Why mechanical signals before ML for test quality?
 
-ML needs labeled training data. You don't have it yet.
-
-Mechanical signals (weak assertion patterns, red-step check) are deterministic — no training required. They produce a quality score immediately. As sessions accumulate, each scored session becomes a labeled training example. Once you have ~200 examples, you can train a re-ranker. The mechanical signals bootstrap the ML signal and never go away — they become features in the learned model rather than the whole model.
+ML needs labeled data. You don't have it yet. Mechanical signals (weak assertion patterns, red-step check) are deterministic — they produce a quality score immediately and become features in the learned model later. Full explanation: **[RESEARCH.md — Mechanical Quality Signals](RESEARCH.md#mechanical-quality-signals-the-bootstrap)**
 
 ---
 
 ### Why a re-ranker before the sandbox, not after?
 
-The sandbox (compile + run + test) costs 5–30 seconds per candidate. The GA generates N candidates. Without filtering, you run all N. With a re-ranker, you run only the top K it predicts will pass. Even a weak re-ranker (60% accuracy) cuts sandbox cost significantly. The re-ranker is trained on past (error, patch, outcome) triples — every sandbox run is a new training example.
+The sandbox costs 5–30s per candidate. The re-ranker filters before the sandbox runs — even 60% accuracy cuts cost significantly. Full architecture: **[RESEARCH.md — The Re-Ranker](RESEARCH.md#the-re-ranker-architecture-recommendation)**
 
 ---
 
 ### Why is the supervisor plan GA-based?
 
-Standard beam search exploits what works and stops exploring. Local optima, fast.
-
-A genetic algorithm adds recombination — splice two successful patch sequences together to get a candidate neither parent would have produced. Plus LLM-as-mutation (AlphaEvolve/FunSearch pattern): rewrite one patch-op differently, validate via Jaccard similarity before sandbox eval.
-
-MAP-Elites preserves diversity: a behavioral grid where each cell (task_type × error_category) keeps its best-fitness resident. This matters because L7–L10 curriculum tasks require exploration, not just exploitation. Beam search finds discount calculators. GA finds the edge cases.
+Beam search exploits, stops exploring. GA adds recombination + LLM-as-mutation (AlphaEvolve/FunSearch pattern) + MAP-Elites diversity grid. Full explanation: **[RESEARCH.md — The GA](RESEARCH.md#the-ga-why-genetic-not-beam-search)**
 
 ---
 
@@ -517,28 +513,6 @@ Clear is an alignment layer for AI-generated software — not just an app builde
 
 Every other AI code generator (Lovable, Bolt, Cursor, Devin) answers "how do you know the AI shipped safe code?" with: **hope.** Clear answers it with: **the compiler won't let it.**
 
-```
-LOVABLE/BOLT/DEVIN                    CLEAR
-──────────────────                    ─────
-AI generates code ──→ ship it         AI generates .clear ──→ compile
-                      (hope it works)                          │
-                                                  ┌────────────┤
-                                                  │ 27 security checks
-                                                  │ Auto-generated tests
-                                                  │ Deterministic output
-                                                  │ Agent guardrails
-                                                  │ Structured eval
-                                                  └──→ THEN ship it
-```
-
-The compiler is the alignment layer between AI capability and human trust. As AI gets more capable, the compiler gets more important — it's the thing that ensures AI output is safe, correct, and auditable.
-
-**The hard takeoff scenario:**
-1. Today: AI writes 100-line .clear files. Compiler catches bugs. Human reviews.
-2. Next year: AI writes 500-line files with multi-agent coordination. Evals grade quality. Human reviews exceptions.
-3. Year 3: AI writes, compiles, tests, deploys autonomously. Compiler constrains what it can ship. Humans set policy; compiler enforces it.
-4. Year 5: AI writes agents that write .clear files. Self-improving software factory, constrained by a deterministic compiler. The compiler IS the alignment mechanism.
-
 **The one-liner:** Clear is the language AI writes when the output has to be safe.
 
 **Company:** Crystallized (company) / Clear (language) / Clear Studio (product)
@@ -546,6 +520,8 @@ The compiler is the alignment layer between AI capability and human trust. As AI
 **Fundraising sequence:**
 - $3M seed: "We built a compiler that prevents AI from shipping unsafe code. Here are 200 companies using it for internal tools."
 - $40M Series A: "500 companies run apps compiled by Clear. We want to generalize this to all AI-generated code."
+
+Full thesis + hard takeoff scenario + research arc: **[RESEARCH.md](RESEARCH.md)**
 
 ---
 
@@ -564,7 +540,7 @@ Clear's deterministic compiler, structured errors, constrained action space (pat
 
 **Current blocker:** No fine-tuning access. The gym is ready but can't train athletes yet.
 
-The plan (supervisor + GA + re-ranker) is the bridge — it uses retrieval/memory instead of fine-tuning, so it works today. Fine-tuning becomes available later and slots in on top.
+Full RL architecture, re-ranker design, and what this doesn't buy: **[RESEARCH.md](RESEARCH.md)**
 
 ---
 
