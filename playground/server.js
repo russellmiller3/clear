@@ -2478,25 +2478,33 @@ app.post('/api/chat', async (req, res) => {
           };
 
           // ── Factor DB suggestion injection (flywheel closes here) ──
-          // When compile fails, retrieve up-to-3 similar past successful sessions
-          // from the Factor DB and include excerpts of their source as hints.
-          // BM25 filter by archetype + test_pass=1 (gold rows only — apps that
-          // actually worked). This is the first loop closure: the DB's
-          // accumulated data starts steering Meph's next turn.
+          // When compile fails, retrieve up-to-3 hints using layered retrieval:
+          //   Tier 1: exact same error_sig previously fixed in this archetype
+          //   Tier 2: exact same error_sig previously fixed anywhere
+          //   Tier 3: same-archetype passing gold rows (archetype-only fallback)
+          // Tier is attached to each hint so Meph sees which signal produced it.
           if (_factorDB && r.errors.length > 0 && currentSource) {
             try {
               const archetype = _safeArchetype(currentSource);
-              const hintRows = _factorDB.querySimilar({
+              const errorSig = _sha1(r.errors.map(e => e.message).join('\n') + '\x00' + _sha1(currentSource));
+              const hintRows = _factorDB.querySuggestions({
                 archetype,
+                error_sig: errorSig,
                 topK: 3,
-              }).filter(row => row.compile_ok === 1 && row.test_pass === 1);
+              });
               if (hintRows.length > 0) {
+                // Build note based on the best-tier match we got
+                const tiers = hintRows.map(h => h.tier);
+                const hasExact = tiers.some(t => t.startsWith('exact_error'));
+                const note = hasExact
+                  ? `Found ${hintRows.length} past session(s) that hit this exact error and fixed it. Study the reference snippets and adapt the fix.`
+                  : `No past session hit this exact error yet. Here are ${hintRows.length} working ${archetype} apps for shape-level reference.`;
                 result.hints = {
-                  note: `Based on ${hintRows.length} past ${archetype} apps that compiled and ran cleanly, here are reference snippets. Use them as inspiration for what works — don't copy blindly; adapt to this task.`,
+                  note,
                   references: hintRows.map(h => ({
+                    tier: h.tier,
                     summary: (h.patch_summary || '').slice(0, 100),
                     score: h.test_score,
-                    // Truncate source to keep context lean (800 chars ≈ 20 lines)
                     source_excerpt: (h.source_before || '').slice(0, 800),
                   })),
                 };

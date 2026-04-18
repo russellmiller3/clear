@@ -119,6 +119,74 @@ export class FactorDB {
     return this._db.prepare(sql).all(...params);
   }
 
+  // Hint retrieval for compile errors. Layered fallback — best match first,
+  // graceful degradation as specificity drops. Returns up to topK rows with
+  // a `source` tag indicating which tier matched.
+  //
+  //   Tier 1: same error_sig, session that LATER compiled clean in same archetype
+  //           → "this exact error was fixed in a similar app"
+  //   Tier 2: same error_sig, session that LATER compiled clean (any archetype)
+  //           → "this exact error was fixed somewhere"
+  //   Tier 3: same archetype + compile_ok=1 + test_pass=1
+  //           → "here are working apps of the same shape" (v1 fallback)
+  //
+  // Never returns the same source row twice. Stops as soon as topK is reached.
+  querySuggestions({ archetype = null, error_sig = null, topK = 3 } = {}) {
+    const seen = new Set();
+    const results = [];
+
+    const addRow = (row, tier) => {
+      if (!row || seen.has(row.id)) return;
+      seen.add(row.id);
+      results.push({ ...row, tier });
+    };
+
+    // Tier 1 + 2: find sessions that hit error_sig, then grab their NEXT
+    // successful compile in the same session. Strong signal — "how was this
+    // specific error actually resolved?"
+    if (error_sig) {
+      const failingSessions = this._db.prepare(`
+        SELECT DISTINCT session_id, created_at
+        FROM code_actions
+        WHERE error_sig = ? AND compile_ok = 0
+        ORDER BY created_at DESC
+        LIMIT 20
+      `).all(error_sig);
+
+      for (const fs of failingSessions) {
+        if (results.length >= topK) break;
+        // Find next compile_ok=1 row in the same session after the failure
+        const fix = this._db.prepare(`
+          SELECT * FROM code_actions
+          WHERE session_id = ? AND created_at > ? AND compile_ok = 1
+          ORDER BY created_at ASC
+          LIMIT 1
+        `).get(fs.session_id, fs.created_at);
+        if (fix) {
+          const tier = archetype && fix.archetype === archetype ? 'exact_error_same_archetype' : 'exact_error';
+          addRow(fix, tier);
+        }
+      }
+    }
+
+    // Tier 3: archetype fallback. Only gold rows (compile AND test passed).
+    if (archetype && results.length < topK) {
+      const need = topK - results.length;
+      const golds = this._db.prepare(`
+        SELECT * FROM code_actions
+        WHERE archetype = ? AND compile_ok = 1 AND test_pass = 1
+        ORDER BY test_score DESC, created_at DESC
+        LIMIT ?
+      `).all(archetype, need * 3); // fetch more, filter seen
+      for (const g of golds) {
+        if (results.length >= topK) break;
+        addRow(g, 'same_archetype_gold');
+      }
+    }
+
+    return results;
+  }
+
   stats() {
     const total = this._db.prepare('SELECT COUNT(*) AS n FROM code_actions').get().n;
     const passing = this._db.prepare('SELECT COUNT(*) AS n FROM code_actions WHERE test_pass = 1').get().n;
