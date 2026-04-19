@@ -10279,6 +10279,13 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   if (hasAuthScaffold) {
     lines.push('// Auth scaffolding: JWT secret, middleware, signup/login/me endpoints');
     lines.push("const _JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');");
+    // The app may declare an owner email — the one user who gets role:'owner'
+    // at signup and unlocks the Live App Editing widget. Everyone else
+    // signs up as role:'user'.
+    const ownerDecl = body.find(n => n.type === NodeType.OWNER_DECL);
+    if (ownerDecl) {
+      lines.push(`const _OWNER_EMAIL = ${JSON.stringify(ownerDecl.email)};`);
+    }
     lines.push('const _users = [];');
     lines.push('');
     lines.push('// JWT middleware — extracts user from token on every request');
@@ -10299,7 +10306,14 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });");
     lines.push("    if (_users.find(u => u.email === email)) return res.status(400).json({ error: 'Email already registered' });");
     lines.push('    const password_hash = await bcrypt.hash(password, 10);');
-    lines.push("    const user = { id: _users.length + 1, email, password_hash, role: 'user', created_at: new Date().toISOString() };");
+    // If the app declared an owner, check it at signup time. Otherwise
+    // everyone is a plain user and no one can reach the Live App Editing
+    // widget (it self-gates on role === 'owner').
+    if (body.find(n => n.type === NodeType.OWNER_DECL)) {
+      lines.push("    const user = { id: _users.length + 1, email, password_hash, role: email === _OWNER_EMAIL ? 'owner' : 'user', created_at: new Date().toISOString() };");
+    } else {
+      lines.push("    const user = { id: _users.length + 1, email, password_hash, role: 'user', created_at: new Date().toISOString() };");
+    }
     lines.push('    _users.push(user);');
     lines.push('    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, _JWT_SECRET, { expiresIn: "7d" });');
     lines.push('    res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role } });');

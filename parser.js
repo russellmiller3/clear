@@ -167,6 +167,7 @@ export const NodeType = Object.freeze({
 
   // Database declaration
   DATABASE_DECL: 'database_decl',
+  OWNER_DECL: 'owner_decl',
 
   // Toast notification
   TOAST: 'toast',
@@ -2221,6 +2222,19 @@ CANONICAL_DISPATCH.set('database', (ctx) => {
       else connectionExpr = connectionExpr.node;
     }
     ctx.body.push({ type: NodeType.DATABASE_DECL, backend: backend.toLowerCase(), connection: connectionExpr, line: ctx.line });
+    return ctx.i + 1;
+});
+// `owner is 'email'` — declares who can edit a running app via the Live
+// App Editing widget. Only fires at top level and only when the line is
+// exactly "owner is <string>". The word "owner" is also valid inside
+// policies for RLS rules ("owner can read"); that path is handled deeper
+// by the table parser and never reaches this dispatch.
+CANONICAL_DISPATCH.set('owner', (ctx) => {
+    if (ctx.tokens.length < 3) return undefined;
+    if (!(ctx.tokens[1].canonical === 'is' || ctx.tokens[1].type === TokenType.ASSIGN)) return undefined;
+    const emailTok = ctx.tokens[2];
+    if (emailTok.type !== TokenType.STRING) return undefined;
+    ctx.body.push({ type: NodeType.OWNER_DECL, email: emailTok.value, line: ctx.line });
     return ctx.i + 1;
 });
 CANONICAL_DISPATCH.set('chart', (ctx) => {

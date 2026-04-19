@@ -294,7 +294,7 @@ The `[clear:N]` tag is the source line. Every status code (200, 201, 204, 400, 4
 
 **Frontend:** pages, inputs (text/number/checkbox/dropdown/textarea), buttons, sections with inline layout, components, conditional UI, on-page-load, reactive tables with column whitelist, tabs, collapsible, slide-out panels, modals, toast notifications, ECharts (bar/line/pie/area with subtitle/stacked), images
 
-**Backend:** REST endpoints, validation, auth guards, role-based access, rate limiting, CORS, logging, webhooks (HMAC), OAuth, Stripe checkout, background jobs, SSE streaming, WebSocket, broadcast, full text search, has many relationships
+**Backend:** REST endpoints, validation, auth guards, role-based access, rate limiting, CORS, logging, webhooks (HMAC), OAuth, Stripe checkout, background jobs, SSE streaming, WebSocket, broadcast, full text search, has many relationships. `owner is 'email@domain.com'` at the top of an auth-enabled app pins that email to role:'owner' at signup — unlocks the in-app Live App Editing widget for that user only. Add this line to every app that has `allow signup and login` so the owner can actually edit their running app.
 
 **Policies (Enact Guards):** `policy:` block with 30+ runtime guards — database safety (block DDL, protect tables, filter-required deletes), prompt injection detection, access control (require role, block sensitive reads), code freeze, email (no mass emails), Slack (channel allowlist, block DMs), filesystem (restrict paths, block extensions), git safety (block push to main), CRM (no duplicate contacts), cloud storage (require human approval for deletes)
 

@@ -150,6 +150,8 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hid
 
 **`hidden` and `renamed to` (Phase B Live App Editing)** — `a notes, hidden` keeps the column in the database but strips it from API responses and UI renderers; `db.findAll` / `findOne` filter hidden fields by default (opt-in `{ includeHidden: true }` for admin/backend code). `a notes, hidden, renamed to reason` marks an old field hidden and records the new name — paired with a separately-declared `reason` field, this is how renames preserve data via expand + copy + hide. Both modifiers are classified as `reversible` by the change classifier — un-hiding is a one-line source edit.
 
+**`owner is 'email'` (top-level declaration, Phase A Live App Editing)** — pins which email address signs up as `role: 'owner'` instead of the default `role: 'user'`. Only the owner sees the in-browser Meph edit widget; every other user sees the app normally. Emits `const _OWNER_EMAIL = '…';` at the top of the compiled server and conditionally sets role on signup. Without this declaration, `allow signup and login` produces apps where no user can ever reach the widget — the safe default when the Clear author hasn't decided who owns the app. Parser node: `OWNER_DECL`.
+
 ### Validation (Phase 16)
 
 | Node Type | Syntax | Notes |

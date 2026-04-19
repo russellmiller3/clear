@@ -1140,6 +1140,20 @@ create a Comments table:
 
 `belongs to` declares a foreign key relationship. The field stores the related record's ID and compiles to an INTEGER column with `REFERENCES`. When you `get all Posts`, the compiler auto-stitches related records by looking up each FK.
 
+## Declaring the owner (Phase A — Live App Editing)
+
+Every auth-enabled Clear app should declare who the owner is. The owner is the one user who sees the Meph edit widget on the running app. Everyone else uses the app normally with no edit surface.
+
+```clear
+build for web and javascript backend
+database is local memory
+owner is 'marcus@acme.com'
+
+allow signup and login
+```
+
+When Marcus signs up with that email, his JWT carries `role: 'owner'` and the widget mounts. Anyone else signing up gets `role: 'user'` and the widget stays silent. If you omit the `owner is` line, nobody can ever reach the widget — that's the safe default when the author hasn't decided who owns the app.
+
 ## Hidden fields (Phase B — Live App Editing)
 
 When a field is marked `hidden`, the column stays in the database but is stripped from API responses and UI renderers. Data is preserved; un-hiding is a one-line source edit. This is how Clear implements "remove" without destroying data.

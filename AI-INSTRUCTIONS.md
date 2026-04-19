@@ -818,6 +818,23 @@ A 200-line file with clear section comments is better than 5 files with
 40 lines each where the reader has to jump between files to understand
 the flow.
 
+## Declaring the Owner (for Live App Editing)
+
+Any Clear app with `allow signup and login` should ALSO declare its owner. Without this, the Live App Editing widget never reaches any user, because nobody's JWT carries `role: 'owner'`.
+
+```clear
+build for web and javascript backend
+database is local memory
+owner is 'marcus@acme.com'
+
+allow signup and login
+```
+
+Place `owner is 'email'` at the top of the file, alongside `database is ...`. When that email signs up, the compiled app gives them `role: 'owner'` and the edit widget mounts for them only. Everyone else signs up as a normal user.
+
+**Do:** declare one owner per app that owns `allow signup and login`.
+**Don't:** leave auth-enabled apps without an owner — the widget won't work and Marcus will wonder why.
+
 ## Hiding Fields Instead of Deleting Them
 
 Never remove a field from a table that already has data unless the user

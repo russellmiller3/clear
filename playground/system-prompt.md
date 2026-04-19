@@ -305,6 +305,17 @@ page 'App' at '/':
     display todos as table
 ```
 
+## Declaring the Owner (MANDATORY for any auth-enabled app)
+
+Every app with `allow signup and login` MUST also declare an owner:
+
+```clear
+owner is 'marcus@acme.com'
+allow signup and login
+```
+
+Without `owner is`, no user can reach the Live App Editing widget — it gates on JWT role:'owner' and the default signup role is 'user'. When the user asks you to build any auth-enabled app, add `owner is` at the top with whatever email they used (or ask if you don't know).
+
 ## Hidden Fields — Safe "Remove" for Running Apps
 
 When a user says "remove field X" on an app with real data, DO NOT physically delete the field. Add `, hidden` to it instead:

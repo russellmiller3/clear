@@ -1196,12 +1196,15 @@ One line gets you a full auth system with signup, login, and JWT tokens:
 
 ```clear
 build for javascript backend
+owner is 'marcus@acme.com'
 allow signup and login
 
 when user calls GET /api/dashboard:
   requires login
   send back 'Welcome!'
 ```
+
+The `owner is` line pins which email becomes the app owner. When Marcus signs up with that email, he's the only person who sees the "Edit this app" badge in the corner — the Live App Editing widget that lets him change the app in plain English while his team keeps using it. Every other user signs up as a normal user with no edit surface.
 
 This generates:
 - `POST /auth/signup` — creates user with bcrypt-hashed password, returns JWT

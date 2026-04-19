@@ -23627,6 +23627,7 @@ await import('./lib/edit-tools-phase-b.test.js');
 await import('./lib/db-hidden-fields.test.js');
 await import('./lib/snapshot.test.js');
 await import('./lib/widget-injection.test.js');
+await import('./lib/owner-decl.test.js');
 
 run();
 
