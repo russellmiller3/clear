@@ -14,6 +14,7 @@ export const ARCHETYPES = Object.freeze([
   'routing_engine',
   'agent_workflow',
   'dashboard',
+  'kpi',
   'crud_app',
   'content_app',
   'realtime_app',
@@ -152,6 +153,42 @@ function hasExternalServices(body) {
   return count;
 }
 
+// Count aggregate expressions — the "big headline number" pattern that defines
+// a KPI page. Two shapes to catch:
+//   1. `sum|average of X from Y` → sql_aggregate node
+//   2. `count of Y` → call node with name 'count'
+// The default walk() only descends into body/thenBranch/otherwiseBranch — aggregates
+// live inside an assign's `expression`, so we need our own traversal.
+function countAggregates(body) {
+  let count = 0;
+  const aggNames = /^(count|sum|average|avg|min|max)$/i;
+  const visit = (n) => {
+    if (!n || typeof n !== 'object') return;
+    if (n.type === 'sql_aggregate') count++;
+    else if (n.type === 'call' && typeof n.name === 'string' && aggNames.test(n.name)) count++;
+    if (Array.isArray(n.body)) n.body.forEach(visit);
+    if (Array.isArray(n.thenBranch)) n.thenBranch.forEach(visit);
+    if (Array.isArray(n.otherwiseBranch)) n.otherwiseBranch.forEach(visit);
+    if (n.expression) visit(n.expression);
+    if (Array.isArray(n.args)) n.args.forEach(visit);
+  };
+  if (Array.isArray(body)) body.forEach(visit);
+  return count;
+}
+
+// Does ANY endpoint have a webhook-like path? Needed because a webhook app
+// often has admin/health endpoints alongside the webhook itself — we can't
+// gate on numEndpoints === 1.
+function hasWebhookPath(body) {
+  let found = false;
+  walk(body, n => {
+    if (n.type === NodeType.ENDPOINT && typeof n.path === 'string' && /webhook|hook|callback/i.test(n.path)) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 // Detect webhook signature verification pattern
 function hasSignatureVerification(body) {
   let found = false;
@@ -189,19 +226,10 @@ export function classifyArchetype(program) {
       return 'batch_job'; // cron but no external calls → cleanup/aggregation
     }
 
-    // Single endpoint + signature verification → webhook_handler
-    if (numEndpoints === 1 && hasSignatureVerification(body)) return 'webhook_handler';
-
-    // Single endpoint with webhook-y path pattern (heuristic)
-    if (numEndpoints === 1) {
-      let isWebhookPath = false;
-      walk(body, n => {
-        if (n.type === NodeType.ENDPOINT && typeof n.path === 'string' && /webhook|hook|callback/i.test(n.path)) {
-          isWebhookPath = true;
-        }
-      });
-      if (isWebhookPath) return 'webhook_handler';
-    }
+    // Webhook handler — ANY endpoint with a webhook-like path qualifies.
+    // (RL-3: old rule required numEndpoints === 1, misrouting apps that
+    // also have /health or /admin alongside the real webhook.)
+    if (hasWebhookPath(body) || hasSignatureVerification(body)) return 'webhook_handler';
 
     // Multiple endpoints, no UI → pure API service
     if (numEndpoints > 0) return 'api_service';
@@ -227,6 +255,15 @@ export function classifyArchetype(program) {
 
   // Dashboard — 2+ charts is the signal
   if (numCharts >= 2) return 'dashboard';
+
+  // KPI — single chart + aggregates, OR no charts + 2+ aggregates. This is the
+  // "big headline number(s) page" pattern — either one trend chart next to
+  // summary numbers, or a pure stat-card view with no chart at all. RL-3:
+  // these previously fell through to crud_app/general, so the training DB
+  // had no signal for the most common Marcus reporting shape.
+  const numAggregates = countAggregates(body);
+  if (numCharts === 1 && numAggregates >= 1) return 'kpi';
+  if (numCharts === 0 && numAggregates >= 2) return 'kpi';
 
   // Ecommerce — order/cart/payment pattern
   if (hasEcommercePattern(body)) return 'ecommerce';

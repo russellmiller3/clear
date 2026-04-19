@@ -13,10 +13,11 @@ function classifyFromSource(src) {
 }
 
 describe('classifyArchetype', () => {
-  it('exports 15 archetype values', () => {
-    expect(ARCHETYPES.length).toEqual(15);
+  it('exports 16 archetype values', () => {
+    expect(ARCHETYPES.length).toEqual(16);
     expect(ARCHETYPES.includes('queue_workflow')).toEqual(true);
     expect(ARCHETYPES.includes('api_service')).toEqual(true);
+    expect(ARCHETYPES.includes('kpi')).toEqual(true);
     expect(ARCHETYPES.includes('general')).toEqual(true);
   });
 
@@ -51,6 +52,91 @@ when user sends payload to /webhook/stripe:
   send back { received: true }
 `;
     expect(classifyFromSource(src)).toEqual('webhook_handler');
+  });
+
+  // RL-3: webhook apps often have health checks or admin endpoints alongside
+  // the webhook itself. The old `numEndpoints === 1` guard misrouted them to
+  // api_service. The webhook-path check now triggers regardless of endpoint count.
+  it('classifies multi-endpoint webhook app as webhook_handler', () => {
+    const src = `build for javascript backend
+
+create a Events table:
+  event_type, required
+  amount (number)
+
+when user calls POST /webhook/stripe sending payload:
+  saved = save payload to Events
+  send back { received: true }
+
+when user calls GET /api/health:
+  send back { ok: true }
+`;
+    expect(classifyFromSource(src)).toEqual('webhook_handler');
+  });
+
+  it('classifies webhook on /hook path as webhook_handler', () => {
+    const src = `build for javascript backend
+
+create a Events table:
+  event_type, required
+
+when user calls POST /hook/github sending payload:
+  saved = save payload to Events
+  send back { ok: true }
+`;
+    expect(classifyFromSource(src)).toEqual('webhook_handler');
+  });
+
+  // RL-3: KPI page = page with aggregates (big headline numbers) and ≤1 chart.
+  // Previously these fell through to crud_app or general. Training rows need
+  // their own bucket so we can learn KPI-specific patterns.
+  it('classifies single-chart + aggregates page as kpi', () => {
+    const src = `build for javascript backend and web
+
+create a Sales table:
+  amount (number)
+
+page 'KPIs' at '/':
+  total_sales = sum of amount from Sales
+  order_count = count of Sales
+  heading 'Summary'
+  display total_sales
+  display order_count
+  chart 'Revenue' as line showing total_sales
+`;
+    expect(classifyFromSource(src)).toEqual('kpi');
+  });
+
+  it('classifies no-chart + multi-aggregate page as kpi', () => {
+    const src = `build for javascript backend and web
+
+create a Orders table:
+  amount (number)
+
+page 'Today' at '/':
+  total = sum of amount from Orders
+  cnt = count of Orders
+  avg_amount = average of amount from Orders
+  heading 'Today'
+  display total
+  display cnt
+  display avg_amount
+`;
+    expect(classifyFromSource(src)).toEqual('kpi');
+  });
+
+  it('still classifies 2+ charts as dashboard (not kpi)', () => {
+    const src = `build for javascript backend and web
+
+create a Sales table:
+  amount (number)
+
+page 'Dashboard' at '/':
+  heading 'Metrics'
+  chart 'Revenue' as line showing sales_data
+  chart 'Orders' as bar showing order_data
+`;
+    expect(classifyFromSource(src)).toEqual('dashboard');
   });
 
   // Synthetic tests removed — they required fragile hand-written Clear syntax.
