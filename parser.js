@@ -8632,6 +8632,31 @@ function parsePrimary(tokens, pos, line, end) {
     return { node: variableRef('_current_user', line), nextPos: pos + 1 };
   }
 
+  // "this X" → URL path parameter access (e.g. "this id" → incoming.id).
+  // Lets Meph write natural English expressions: `workspace_id is this id`,
+  // `items = get all Items where owner is this user_id`. Previously this
+  // only worked inside specific forms (delete/update/look up with this X).
+  // Now it works in any expression position.
+  if (tok.value === 'this' && pos + 1 < maxPos) {
+    const nextTok = tokens[pos + 1];
+    // Only match if the next token is a plausible identifier name.
+    // Skip if it's punctuation, a keyword we shouldn't consume, etc.
+    if (nextTok && typeof nextTok.value === 'string' && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(nextTok.value)) {
+      // Don't match multi-word patterns owned by other parsers (e.g. "this id" already
+      // consumed inside "delete the X with this id"). Those are matched BEFORE parseExpression
+      // runs, so if we're here, the caller genuinely wants this as an expression.
+      return {
+        node: {
+          type: NodeType.MEMBER_ACCESS,
+          object: { type: NodeType.VARIABLE_REF, name: 'incoming', line },
+          member: nextTok.value,
+          line,
+        },
+        nextPos: pos + 2,
+      };
+    }
+  }
+
   if (tok.canonical === 'true') {
     return { node: literalBoolean(true, line), nextPos: pos + 1 };
   }
