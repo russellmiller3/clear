@@ -139,6 +139,28 @@ page 'Dashboard' at '/':
     expect(classifyFromSource(src)).toEqual('dashboard');
   });
 
+  // Regression: a dashboard with a status column + auth (dashboard-metrics task)
+  // was classified as queue_workflow because the status+auth check fired before
+  // the chart-count check. Charts are a stronger signal — dashboard wins.
+  it('classifies dashboard-with-status+auth as dashboard (not queue_workflow)', () => {
+    const src = `build for web and javascript backend
+
+create a Orders table:
+  amount (number), required
+  status, default 'pending'
+
+allow signup and login
+
+page 'Dashboard' at '/':
+  requires login
+  heading 'Metrics'
+  chart 'Status' as pie showing orders_by_status
+  chart 'Timeline' as line showing orders_over_time
+  chart 'Amounts' as bar showing amount_by_status
+`;
+    expect(classifyFromSource(src)).toEqual('dashboard');
+  });
+
   // Synthetic tests removed — they required fragile hand-written Clear syntax.
   // The real-template integration tests below are the acceptance signal
   // (they prove the classifier works on actual working apps).

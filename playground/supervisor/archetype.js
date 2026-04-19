@@ -244,6 +244,12 @@ export function classifyArchetype(program) {
   // Agent-driven workflow (AI classification/generation feeding downstream)
   if (hasAgent(body)) return 'agent_workflow';
 
+  // Dashboard — 2+ charts is the signal. Runs BEFORE queue_workflow because
+  // dashboards often have status columns (filtered chart segments) and auth
+  // (login-gated reports), which would otherwise misroute them. Charts are
+  // a stronger, more distinctive signal than status+auth.
+  if (numCharts >= 2) return 'dashboard';
+
   // Queue workflow — tables with status field + auth (approval/routing/tracking)
   if (hasStatusField(body) && hasAuth(body) && numTables >= 1) {
     if (hasRoutingLogic(body)) return 'routing_engine';
@@ -252,9 +258,6 @@ export function classifyArchetype(program) {
 
   // Routing engine without status (Lead Router style)
   if (hasRoutingLogic(body)) return 'routing_engine';
-
-  // Dashboard — 2+ charts is the signal
-  if (numCharts >= 2) return 'dashboard';
 
   // KPI — single chart + aggregates, OR no charts + 2+ aggregates. This is the
   // "big headline number(s) page" pattern — either one trend chart next to
