@@ -1,99 +1,75 @@
-# Handoff — 2026-04-18 (Session 39 — Live App Editing Phase A + Phase B, plus landing page)
+# Handoff — 2026-04-18 (Session 39 — Live App Editing A + B + compiler integration + landing page)
 
 ## Current State
-- **Branch:** `feature/live-editing-phase-a` (pushed; not merged to main)
-- **Main:** has `landing/live-editing.html` from earlier in the session
-- **Tests:** 2072 passing in `clear.test.js` (+111 new this session), 2 pre-existing failures unrelated to this branch
-- **Real-Meph eval:** 11/11 scenarios pass against live Claude on first run
+- **Branch:** `feature/widget-in-compiled-apps` → already on main as of commit `4e115ec`
+- **Tests:** 2079 passing in `clear.test.js` (2 pre-existing failures unrelated to this branch)
+- **Real-Meph eval:** 11/11 widget-mode + 15/16 Studio-mode (one context-dependent, not a regression)
 
-## What Was Done This Session — Three Big Things
+## What Shipped This Session
+
+Three big things.
 
 ### 1. Landing page — `landing/live-editing.html`
-Built around Marcus's terror moment (CEO asks for a region field, 18 users active). Four fears each get a mechanical answer. Expand-and-contract safety section. Competitor table (Lovable/Bolt/v0/Retool/Airtable) pulled from ROADMAP research. Matches `landing/marcus.html` style, Lucide SVG only, no emoji. Merged to main mid-session.
+Story-driven 5-section rewrite in Marcus's voice. Opens on "Tuesday, 2:47pm. Your CRO walks over." Running-app mock with owner-only Edit badge. Small Meph chat panel showing the one-sentence request → additive diff → Ship. "Four seconds. Done." Three-rule explanation (Only you can edit / Nothing is ever gone / Undo always works). Three real competitor quotes. CTA.
 
-### 2. Phase A — cycles 1–10 landed end-to-end
-**67 new tests, all green.** Studio mounts `/__meph__/widget.js`, `/__meph__/api/propose`, `/__meph__/api/ship`. Propose hits Anthropic; ship compiles + POSTs to Studio's `/api/run` for respawn. Smoke-tested live with curl.
+Zero engineer jargon: no classifier taxonomy, no expand-contract, no "rollback", no `.clear` source snippets, no fours-of-fears grid. All seven landing pages now ship pre-built `tailwind.css` (27KB) instead of the CDN script — fixes the flash-of-unstyled-content.
 
-Files: `lib/change-classifier.js`, `lib/live-edit-auth.js`, `lib/edit-tools.js`, `lib/proposal.js`, `lib/ship.js`, `lib/edit-api.js`, `lib/meph-adapter.js`, `runtime/meph-widget.js`, `playground/server.js` integration.
+### 2. Live App Editing — Phase A + Phase B (logic + Studio integration)
+- **Phase A (cycles 1–10):** owner-gated Meph widget, 3 additive tools (field/endpoint/page), AST-diff classifier, ship flow with rollback on failure, Studio endpoints live. 67 tests + 10/10 real-LLM eval.
+- **Phase B (reversible + state preservation + snapshot):** `, hidden` and `, renamed to X` field syntax; `db.findAll`/`findOne` strip hidden by default; snapshot + rollback primitives; ship auto-snapshots; 5-tool Meph prompt; widget Undo button; sessionStorage form preservation. 44 more tests + 11/11 real-LLM eval.
 
-**Key semantic decision locked in:** "remove" = hide, not delete. Data stays in DB. One-click un-hide. Permanent delete is a separate, gated command for Phase C+. Propagated through plan, ROADMAP LAE-3, and the landing page.
+Semantic lock-in: **"remove" = hide, not delete.** Propagated through plan, ROADMAP LAE-3, landing page, docs.
 
-### 3. Phase B — cycles for LAE-3 (reversible), LAE-4, LAE-6 landed
-**44 new Phase B tests + 11/11 real-Meph eval pass.**
+### 3. Compiler integration — widget ships with every auth-enabled app
+The big finish. Before today, Live App Editing only worked inside Studio. Now:
+- Compiler emits `<script src="/__meph__/widget.js" defer>` in HTML whenever source has `allow signup and login`.
+- Compiler emits `GET /__meph__/widget.js` serving the widget file from `clear-runtime/`.
+- Compiler emits `ALL /__meph__/api/:action` proxy forwarding to `process.env.STUDIO_PORT`.
+- Proxy returns a clean 503 in production (no `STUDIO_PORT` set).
+- Studio copies `runtime/meph-widget.js` into `clear-runtime/` on every `/api/run` and passes `STUDIO_PORT` in the child's env.
 
-| Piece | File |
-|---|---|
-| Parser: `, hidden` + `, renamed to X` syntax | `parser.js` |
-| Hide + rename tools | `lib/edit-tools-phase-b.js` |
-| db hide filter (strip by default, includeHidden opt-in) | `runtime/db.js` |
-| Compiler schema emits `hidden: true` | `compiler.js` |
-| Snapshot + rollback primitives | `lib/snapshot.js` |
-| Ship auto-snapshots before write | `lib/ship.js` |
-| /rollback + /snapshots endpoints | `lib/edit-api.js` |
-| Meph toolset → 5 tools, updated prompt | `lib/proposal.js`, `lib/meph-adapter.js` |
-| Widget Undo button | `runtime/meph-widget.js` |
-| Live-reload state preservation (LAE-4) | `runtime/meph-widget.js` |
-| Studio rollback wiring | `playground/server.js` |
+7 new unit tests in `lib/widget-injection.test.js`. All 8 Core templates still compile clean.
 
-## Rule added mid-session — CLAUDE.md
+## Rule Added Mid-Session — CLAUDE.md
 
 `## Real-LLM Eval Before Declaring AI Feature Done (MANDATORY)`
 
-After I tried to declare Phase A done without running Meph against the real model, Russell called it out. Landed 8/10 scenarios on first run, then two prompt fixes got it to 10/10. For Phase B the eval caught zero slippage on the first run — the rule paid for itself immediately. Memory saved to `~/.claude/projects/.../memory/feedback_real_llm_eval_before_done.md`.
+After I declared Phase A "done" on unit tests alone and Russell called it out ("SMH"), I wrote the eval harness, caught two prompt bugs, fixed them, re-ran. For Phase B the eval caught zero slippage on the first run — rule paid for itself immediately. Memory also saved at `~/.claude/.../memory/feedback_real_llm_eval_before_done.md`.
 
 ## What's Next (priority order)
 
-### 1. Full browser e2e for Live App Editing
-Spin up a Clear app in Studio with an owner-flagged user. Mint an owner JWT, load the app in Playwright. Verify:
-- Widget mounts only for owner
-- "add a description field to todos" → widget → ship → field appears on reload
-- "remove notes field" → widget → ship → field disappears from UI but DB still has it (check `includeHidden: true`)
-- Undo button → field reappears
-- Non-owner session sees no widget, `/__meph__/*` 403s
+### 1. Playwright e2e in a real browser
+The plumbing is done; the logic is tested; the widget injects into compiled apps. What's left is a browser test that actually clicks the badge, types a request, clicks Ship, and verifies the effect. One Playwright test file covering todo/crm/blog templates. Plus a refusal test ("remove notes field" → hide-not-delete flow end-to-end).
 
-Needs one Playwright test file. All the plumbing is in; this is coverage.
+### 2. Security hardening before any multi-user demo
+`liveEditAuth` in `playground/server.js` parses JWTs without verifying the HMAC signature. Fine for the single-owner spike; replace with `runtime/auth.js`'s `verifyToken` before any real user touches this.
 
-### 2. Compiler change: emit widget script tag in compiled HTML
-When source has a `role: 'owner'` user (and `allow signup and login`), compiler emits `<script src="/__meph__/widget.js">` in HTML. Then Russell can load a deployed Clear app in a browser and the widget just appears.
+### 3. Phase C — destructive path
+LAE-5 schema migration planner for type changes ("12 rows don't parse — coerce / default / reject?"). Plus the explicit "permanently delete" command with type-DELETE confirmation.
 
-Separately: emit a tiny `/__meph__/*` proxy in the generated server.js that forwards to `STUDIO_PORT`, so the widget (same-origin with the app) can call /__meph__ without cross-origin pain.
+### 4. Phase D — audit + concurrency + dry-run
+LAE-8 change log, LAE-9 concurrent-edit guard, LAE-10 real dry-run staging URLs.
 
-### 3. Security hardening
-`liveEditAuth` in `playground/server.js` parses the JWT without HMAC verify. Fine for a one-user spike; must use `runtime/auth.js`'s `verifyToken` before any multi-user demo. Flagged in the plan.
+### 5. Phase 85a infrastructure (still blocked from Session 37)
+Fly Trust Verified, Stripe, Anthropic org key, `buildclear.dev` domain. Russell account pass needed before Phase 85 one-click deploy actually deploys anywhere.
 
-### 4. Phase 85a infrastructure (still blocked)
-From session 37 — one-click deploy code shipped but Fly Trust Verified, Stripe, Anthropic org key, `buildclear.dev` domain not provisioned yet. Russell account pass.
+### 6. Competitive watch — Retool + AI
+Monthly Retool changelog grep. If they bolt Clark onto Release Manager, the Live App Editing window closes fast.
 
-### 5. Competitive watch — Retool + AI
-Monthly grep on Retool changelog + LinkedIn. If they bolt Clark onto Release Manager, the Live App Editing positioning window closes fast.
-
-## Key Decisions This Session
-
-- **"Remove" = hide, not delete.** Data never leaves the DB by default. Permanent deletion is an explicit, second-tier command with confirmation + snapshot + audit.
-- **Runtime hide by schema flag.** `db.findAll` / `findOne` strip hidden columns from responses. Opt-in `{ includeHidden: true }` for admin code.
-- **Snapshot every ship.** `applyShip` calls `takeSnapshot` before writing. Rollback restores source + SQLite binary together.
-- **State preservation runs for everyone.** Widget's `beforeunload` handler caches form state to sessionStorage regardless of owner role. Jenna's half-filled form survives ship just as much as Marcus's.
-- **Real-LLM eval is the bar**, not unit tests. New CLAUDE.md rule.
-
-## Commits on this branch (in order)
+## Commits on main from this session
 
 ```
-70f318d  feat(landing): Live App Editing page
+4e115ec  feat(live-editing): compile widget into every auth-enabled app + drop engineer jargon
+71dd851  (merge from origin/main with Session 37 Supervisor work)
+1200a15  copy(landing): bare-bones live-editing page
+c02f484  copy(landing): rewrite live-editing in Marcus's voice
+d82d648  fix(landing): ship static Tailwind CSS, drop CDN
+16f753d  docs: document Phase A + Phase B across all doc surfaces
 d30549a  docs(claude-md): Real-LLM Eval rule
-67d6a88  feat(live-editing): Phase A foundation (cycles 1–6)
-7df4d6a  feat(live-editing): Phase A cycles 7–9
-b81131c  feat(live-editing): Phase A Anthropic adapter + docs
-ee18767  feat(live-editing): Phase A cycle 10a Studio integration
-c10574e  feat(live-editing): Phase A cycle 10b real ship flow
-8d4e999  feat(live-editing): real-Meph eval — 10/10 after prompt fixes
-f04e32e  feat(live-editing): Phase B foundation (parser + hide/rename tools)
-acd2b22  feat(live-editing): Phase B runtime hide filter
-03ab0c9  feat(live-editing): Phase B snapshot + rollback (LAE-6)
-ab570e3  feat(live-editing): Phase B Meph toolset → 5 tools, 11/11 real eval
-039eeca  feat(live-editing): Phase B ship-snapshot hook + /rollback endpoint
-935bfce  feat(live-editing): Phase B widget Undo + state preservation (LAE-4)
+675679d  docs(handoff): session 39 mid-point
+(13 earlier feature commits — Phase A foundations, Phase B primitives, eval harness)
 ```
 
 ## Resume Prompt
 
-"On branch feature/live-editing-phase-a, Phase A and most of Phase B are landed: 111 new tests (2072 total), 11/11 real-Meph eval passes, Studio endpoints live (/widget.js, /propose, /ship, /rollback, /snapshots). Widget has Undo button and form-state preservation baked in. What's left: (1) browser e2e covering owner→widget→ship/hide/undo flow, (2) compiler change to emit the widget `<script>` tag + a `/__meph__/*` proxy in generated server.js so widget is same-origin with the app, (3) JWT HMAC verify on Studio's liveEditAuth middleware before any real multi-user demo. The plan in plans/plan-live-editing-phase-a-04-18-2026.md has the latest status and remaining work."
+"On main. Live App Editing Phase A + Phase B + compiler integration all landed — 2079 tests passing, widget auto-injects into any compiled Clear app with `allow signup and login`, Studio runs the /__meph__ endpoints with a clean 503 fallback in production. Landing page is story-driven in Marcus's voice, no jargon. Next up: Playwright browser e2e of the full flow on todo/crm/blog templates, then JWT HMAC verify on Studio's middleware before multi-user demo. Phase C (destructive path) is the next logical build."

@@ -293,6 +293,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 |---------|--------|--------|
 | **Live App Editing — Phase A** (LAE-1, LAE-2, LAE-3 additive, LAE-7) | Studio `/__meph__/widget.js` + `/propose` + `/ship` endpoints; owner-gated Meph widget; 3 additive tools (field/endpoint/page); AST-diff classifier with additive/reversible/destructive taxonomy | Done — 67 tests + 10/10 real-Meph eval |
 | **Live App Editing — Phase B** (LAE-3 reversible, LAE-4, LAE-6) | `, hidden` and `, renamed to X` field modifiers; `db.findAll`/`findOne` strip hidden by default; snapshot + rollback primitives; ship auto-snapshots; `/__meph__/api/rollback` + `/snapshots`; widget Undo button; sessionStorage form-state preservation across reload | Done — 44 more tests + 11/11 real-Meph eval |
+| **Live App Editing — compiler integration** | Widget script + `/__meph__/*` proxy auto-injected into every compiled Clear app that declares `allow signup and login`. `STUDIO_PORT` env var wires the child's proxy to Studio; clean 503 in production. Studio copies `runtime/meph-widget.js` into `clear-runtime/` on every `/api/run`. | Done — 7 tests, landing page rewritten in Marcus's voice |
 | Intent classification | `classify X as 'a', 'b', 'c'` | Done — Claude Haiku call |
 | Extended RAG | `knows about: 'https://url'`, `'file.pdf'`, `'doc.docx'` | Done — URLs + files + tables |
 | Send email inline | `send email to X:` + subject/body block | Done |
@@ -481,7 +482,7 @@ Today, the moment Marcus's approval app ships to his five employees, it's frozen
 | Phase D | LAE-8 (audit log), LAE-9 (concurrent guard), LAE-10 (dry-run) | ~1 week | Not started |
 
 **Still needed to finish the Live App Editing flagship:**
-- Compiler change: emit `<script src="/__meph__/widget.js">` in compiled HTML when source declares a `role: 'owner'` user; emit a tiny `/__meph__/*` proxy in generated server.js so the widget is same-origin with the app (solves CORS with Studio).
+- ~~Compiler change: emit widget script + `/__meph__/*` proxy in compiled apps.~~ **Done 2026-04-18** — any compiled Clear app with `allow signup and login` now auto-includes the edit widget and proxies `/__meph__/api/*` to `STUDIO_PORT` (with a clean 503 when the env var is absent in production). 7 tests in `lib/widget-injection.test.js`.
 - Browser Playwright e2e covering owner→widget→ship/hide/undo on the three templates.
 - Security: Studio's `liveEditAuth` middleware currently parses JWTs without HMAC verify — fine for the single-owner spike, must use `runtime/auth.js`'s `verifyToken` before any multi-user demo.
 

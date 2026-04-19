@@ -90,6 +90,16 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 
 ## Where is X?
 
+### Where does the Live App Editing widget live?
+
+**The widget source:** `runtime/meph-widget.js` (pure browser JS, no imports). Gets copied into `clear-runtime/meph-widget.js` inside each compiled app's build directory on every Studio `/api/run`. Served at `/__meph__/widget.js` from the compiled app.
+
+**The compiler emission** that makes this work: `compiler.js` function `compileToHTML` checks `hasAuthForWidget` (any `AUTH_SCAFFOLD` node in the body) and appends a `<script src="/__meph__/widget.js" defer>` tag right after the nav-items script. The `compileToJSBackend` function emits two routes inside the `hasAuthScaffold` block — `GET /__meph__/widget.js` reads the file from `clear-runtime/`, and `ALL /__meph__/api/:action` proxies to `process.env.STUDIO_PORT` (503s cleanly if unset).
+
+**The Studio side that feeds this:** `playground/server.js` in the `/api/run` handler copies `runtime/meph-widget.js` into the child's `clear-runtime/` and injects `STUDIO_PORT` into the child's env, pointing at Studio's own port.
+
+**The Studio endpoints the proxy forwards to:** `/__meph__/api/propose`, `/ship`, `/rollback`, `/snapshots`. Wired by `createEditApi(app, deps)` from `lib/edit-api.js`, mounted near the top of `playground/server.js`.
+
 ### Where does the Studio server run?
 
 ```
