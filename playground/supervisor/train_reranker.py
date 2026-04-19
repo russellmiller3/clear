@@ -66,21 +66,50 @@ def export_ebm_to_json(model, feature_cols, out_path):
       }
     """
     global_exp = model.explain_global()
+    import numpy as np
+
+    def _to_jsonable(val):
+        """Coerce numpy scalars, arrays, or Python primitives to JSON-safe values."""
+        if val is None:
+            return None
+        if isinstance(val, np.ndarray):
+            return [_to_jsonable(v) for v in val.tolist()]
+        if isinstance(val, (list, tuple)):
+            return [_to_jsonable(v) for v in val]
+        if isinstance(val, (np.integer,)):
+            return int(val)
+        if isinstance(val, (np.floating,)):
+            return float(val)
+        if isinstance(val, (np.bool_,)):
+            return bool(val)
+        if isinstance(val, (str, int, float, bool)):
+            return val
+        return str(val)  # last resort
+
+    # EBMs expose intercept_ as a 1-element array for regression
+    raw_intercept = getattr(model, 'intercept_', 0.0)
+    if hasattr(raw_intercept, '__len__') and len(raw_intercept) > 0:
+        intercept = float(raw_intercept[0])
+    else:
+        intercept = float(raw_intercept)
 
     bundle = {
-        "intercept": float(model.intercept_) if hasattr(model, 'intercept_') else 0.0,
+        "intercept": intercept,
         "features": [],
         "interactions": [],
         "feature_order": list(feature_cols),
     }
 
     for idx, name in enumerate(model.feature_names_in_):
+        # Use `is not None` instead of truthy check — numpy arrays bomb on bool()
         data = global_exp.data(idx)
+        names = data.get("names") if data is not None else None
+        scores = data.get("scores") if data is not None else None
         feat_entry = {
             "name": str(name),
             "type": str(model.feature_types_in_[idx]),
-            "bin_edges": [float(x) for x in (data.get("names") or [])],
-            "scores": [float(x) for x in (data.get("scores") or [])],
+            "bin_edges": _to_jsonable(names) if names is not None else [],
+            "scores": _to_jsonable(scores) if scores is not None else [],
         }
         if feat_entry["type"] == "interaction":
             bundle["interactions"].append(feat_entry)
@@ -179,11 +208,11 @@ def main():
     json_path = f'{args.out}.json'
     with open(pkl_path, 'wb') as f:
         pickle.dump(model, f)
-    print(f'\nExported EBM pickle → {pkl_path}')
+    print(f'\nExported EBM pickle -> {pkl_path}')
 
     try:
         export_ebm_to_json(model, feature_cols, json_path)
-        print(f'Exported EBM as JSON lookup → {json_path}')
+        print(f'Exported EBM as JSON lookup -> {json_path}')
         print(f'  Feature order for JS inference: {feature_cols}')
     except Exception as e:
         print(f'JSON export failed: {e}')

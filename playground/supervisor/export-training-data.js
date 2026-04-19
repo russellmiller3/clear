@@ -10,16 +10,21 @@
 //   node playground/supervisor/export-training-data.js --stats      # just print summary
 //
 // Feature space (~15 columns, matches RESEARCH.md spec):
-//   archetype           (categorical, 15 values)
+//   archetype           (categorical, 16 values incl. kpi)
+//   error_category      (categorical, short string — "validation" / "syntax" / etc, parsed from patch_summary)
+//   step_index          (int, 0-N, which milestone Meph has hit; -1 if task has no steps)
+//   step_name           (categorical, human-readable milestone name)
 //   num_errors          (int, from error count in patch_summary)
 //   compile_ok          (bool)
 //   source_length       (int, lines in source_before)
 //   has_auth_keyword    (bool, source mentions `requires login`)
 //   has_agent_keyword   (bool, source mentions `agent` or `ask claude`)
 //   has_crud_keyword    (bool, source mentions `save` or `get all`)
+//   has_webhook_keyword (bool, source has /webhook/ or /hook/ path)
+//   has_schedule_keyword (bool, source has `every day at`)
+//   has_chart_keyword   (bool, source has `chart '...' as`)
 //   patch_op_count      (int, length of patch_ops array)
 //   session_attempt     (int, 1..N — which attempt in this session)
-//   (more can be added as the DB grows)
 //
 // Label: test_score (0.0–1.0)
 
@@ -30,6 +35,23 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = join(__dirname, '..', 'factor-db.sqlite');
+
+// Parse a rough error category from the compiler's first error message in
+// patch_summary. We bucket into ~8 coarse categories for EBM training, more
+// useful than leaving it unlabeled.
+function classifyError(summary) {
+  if (!summary) return 'none';
+  const s = summary.toLowerCase();
+  if (s.startsWith('clean compile')) return 'none';
+  if (/hasn'?t been (created|defined)|not defined/.test(s)) return 'undefined_var';
+  if (/doesn'?t understand|expected|unexpected|syntax/.test(s)) return 'syntax';
+  if (/table|column|field/.test(s)) return 'schema';
+  if (/auth|login|permission/.test(s)) return 'auth';
+  if (/validate|required|missing/.test(s)) return 'validation';
+  if (/endpoint|route|path/.test(s)) return 'routing';
+  if (/chart|display|page/.test(s)) return 'ui';
+  return 'other';
+}
 
 function featurize(row, sessionAttemptIdx) {
   const source = row.source_before || '';
@@ -43,21 +65,27 @@ function featurize(row, sessionAttemptIdx) {
   try { patchOps = JSON.parse(row.patch_ops || '[]'); } catch {}
 
   return {
-    // features
-    archetype: row.archetype || 'null',
+    // features (EBM trains on these)
+    archetype: row.archetype || 'unknown',
+    error_category: classifyError(summary),
+    step_index: row.step_index !== null && row.step_index !== undefined ? row.step_index : -1,
+    step_name: row.step_name || 'none',
     num_errors: numErrors,
-    compile_ok: row.compile_ok,
+    compile_ok: row.compile_ok ? 1 : 0,
     source_length: lineCount,
     has_auth_keyword: /requires\s+login|allow\s+signup/i.test(source) ? 1 : 0,
     has_agent_keyword: /\bagent\b|ask\s+claude/i.test(source) ? 1 : 0,
     has_crud_keyword: /\bsave\b|get\s+all|look\s+up/i.test(source) ? 1 : 0,
+    has_webhook_keyword: /\/(webhook|hook|callback)\b/i.test(source) ? 1 : 0,
+    has_schedule_keyword: /every\s+(day|hour|minute)\s+at|every\s+\d+\s+(hour|minute)/i.test(source) ? 1 : 0,
+    has_chart_keyword: /chart\s+['"][^'"]+['"]\s+as\s+\w+/i.test(source) ? 1 : 0,
     patch_op_count: Array.isArray(patchOps) ? patchOps.length : 0,
     session_attempt: sessionAttemptIdx,
     // metadata (not for training, for debugging/joining)
     _id: row.id,
     _session_id: row.session_id,
     _error_sig: row.error_sig,
-    // label
+    // labels
     test_score: row.test_score,
     test_pass: row.test_pass,
   };
