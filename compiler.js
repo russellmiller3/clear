@@ -9604,6 +9604,11 @@ function formatInlineText(text) {
  */
 function compileToHTML(body, compiledJS) {
   const { pageTitle, htmlBody, pages, inlineStyleBlocks, hasChart, hasMap, hasQR, hasRichText } = buildHTML(body);
+  // Live App Editing: whenever the app has login, emit the Meph edit widget
+  // script. The widget self-gates on role === 'owner' in the JWT, so
+  // including it for every auth-enabled app is safe — non-owners never see
+  // anything mount.
+  const hasAuthForWidget = body.some(n => n.type === NodeType.AUTH_SCAFFOLD);
   const styles = extractStyles(body);
   // Collect top-level variables for style resolution (e.g. primary_color is '#2563eb')
   const styleVars = {};
@@ -9765,6 +9770,8 @@ ${htmlBody.includes('data-nav-item') ? `  <script>
     });
   });
   <\/script>` : ''}
+${hasAuthForWidget ? `  <!-- Live App Editing: Meph edit widget. Self-gates on role === 'owner'. -->
+  <script src="/__meph__/widget.js" defer><\/script>` : ''}
   <!-- ============================================================== -->
   <!-- CLEAR STUDIO BRIDGE — postMessage co-presence with Meph        -->
   <!-- Active only when loaded inside Studio iframe with ?clear-bridge=1 -->
@@ -10319,6 +10326,35 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push("  const user = _users.find(u => u.id === req.user.id);");
     lines.push("  if (!user) return res.status(404).json({ error: 'User not found' });");
     lines.push('  res.json({ id: user.id, email: user.email, role: user.role, created_at: user.created_at });');
+    lines.push('});');
+    lines.push('');
+    lines.push('// --- Live App Editing routes (Meph edit widget) ---');
+    lines.push('// Widget is served from a static file in clear-runtime/. API calls');
+    lines.push('// proxy to Studio (when STUDIO_PORT is set in the environment). In');
+    lines.push('// a standalone deploy STUDIO_PORT is unset and the API path 503s.');
+    lines.push("const _MEPH_WIDGET_PATH = require('path').join(__dirname, 'clear-runtime', 'meph-widget.js');");
+    lines.push("app.get('/__meph__/widget.js', (req, res) => {");
+    lines.push('  try {');
+    lines.push("    res.type('application/javascript').send(require('fs').readFileSync(_MEPH_WIDGET_PATH, 'utf8'));");
+    lines.push("  } catch(e) { res.status(404).send('// widget bundle not found'); }");
+    lines.push('});');
+    lines.push("app.all('/__meph__/api/:action', async (req, res) => {");
+    lines.push('  const studioPort = process.env.STUDIO_PORT;');
+    lines.push('  if (!studioPort) {');
+    lines.push("    return res.status(503).json({ error: 'Live editing is not available in this environment (STUDIO_PORT not set)' });");
+    lines.push('  }');
+    lines.push('  try {');
+    lines.push("    const upstream = 'http://localhost:' + studioPort + '/__meph__/api/' + req.params.action;");
+    lines.push('    const r = await fetch(upstream, {');
+    lines.push('      method: req.method,');
+    lines.push("      headers: { 'Content-Type': 'application/json', 'Authorization': req.headers.authorization || '' },");
+    lines.push("      body: req.method === 'GET' || req.method === 'HEAD' ? undefined : JSON.stringify(req.body || {}),");
+    lines.push('    });');
+    lines.push('    const body = await r.text();');
+    lines.push("    res.status(r.status).type(r.headers.get('content-type') || 'application/json').send(body);");
+    lines.push('  } catch(e) {');
+    lines.push("    res.status(502).json({ error: 'Proxy to Studio failed: ' + e.message });");
+    lines.push('  }');
     lines.push('});');
   } else if (usesAuth) {
     lines.push('app.use(auth.middleware());');

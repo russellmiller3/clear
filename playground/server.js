@@ -1712,9 +1712,11 @@ app.post('/api/run', async (req, res) => {
   if (html) writeFileSync(join(BUILD_DIR, 'index.html'), html);
   writeFileSync(join(BUILD_DIR, 'style.css'), css || '');
 
-  // Copy runtime files
+  // Copy runtime files. meph-widget.js ships with every auth-enabled app
+  // so the owner's browser can load the Live App Editing widget directly
+  // from the compiled app's origin (no CORS dance against Studio).
   const runtimeDir = join(ROOT_DIR, 'runtime');
-  for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
+  for (const f of ['db.js', 'auth.js', 'rateLimit.js', 'meph-widget.js']) {
     if (existsSync(join(runtimeDir, f))) copyFileSync(join(runtimeDir, f), join(rtDir, f));
   }
 
@@ -1723,9 +1725,10 @@ app.post('/api/run', async (req, res) => {
   if (runningPort > 4100) runningPort = 4001;
 
   // Start child. JWT_SECRET pinned so the e2e test harness can sign tokens that
-  // the compiled app accepts. Without this, the app generates a random secret
-  // on every startup and auth tests can't send a valid token.
-  const env = { ...process.env, PORT: String(runningPort), JWT_SECRET: process.env.JWT_SECRET || 'clear-test-secret', ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
+  // the compiled app accepts. STUDIO_PORT tells the emitted /__meph__/api/*
+  // proxy where to forward edit-widget calls — in prod this is unset and
+  // the proxy 503s cleanly.
+  const env = { ...process.env, PORT: String(runningPort), STUDIO_PORT: String(process.env.PORT || 3456), JWT_SECRET: process.env.JWT_SECRET || 'clear-test-secret', ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
   const child = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
   runningChild = child;
 
