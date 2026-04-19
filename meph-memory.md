@@ -61,3 +61,66 @@ Categories: [pref] [quirk] [pattern] [fix] [gap] [context]
 [rule] Every bug entry needs: priority, failing test (compilable Clear), REAL compiled output (not from memory), expected output, exact error, workaround, impact.
 [rule] After every new bug entry, update the tier table at top of requests.md.
 [test] edit_file append works — confirmed in session after tool failure
+
+[pattern] Data sync apps: use `every N hour:` for scheduled jobs. Fetch external API, transform records, save to table. No endpoints needed beyond GET for verification.
+[pattern] MailingList table pattern: name, email, tag (with default), synced_at_date (auto timestamp). Common in CRM sync archetypes.
+[pattern] CRM sync app pattern: `call api 'URL'` to fetch external data, `for each X in list:` to iterate, `save {...} to Table` to persist. No pages, no auth needed.
+[done] Built working CRM-to-Email Sync app — fetches from JSONPlaceholder every 1 hour, saves to MailingList table, GET /api/mailing-list returns 200 with data array.
+[pattern] Auth in Clear: use `allow signup and login` for full scaffolding (auto-generates signup/login/me endpoints), OR write custom endpoints with `requires login` guard. `current user` is available in endpoints with `requires login`.
+[syntax] In endpoint bodies with `requires login`, access `current_user's id` and `current_user's email`. Available as special var after guard passes.
+[syntax] `first item of list` is valid syntax for getting first element. List operations: `length of list`, `first item of list`, `last item of list`.
+
+[pattern] AI Summarizer agent: text input → agent receives text → ask claude with system_prompt returning JSON text: {fields} → endpoint calls agent with call 'Name' with text → send back response. Works correctly with structured output.
+[pattern] Echo server: `when user sends data to /api/echo: send back data` — simplest POST endpoint, returns request body as-is. No validation needed.
+
+[done] Built Approval Queue app (Level 7) — POST/GET endpoints, auth on PUT, form UI, list views. All 4 required HTTP tests pass.
+
+[done] Lead Router (Level 7) — built complete app with auto-routing logic. POST /api/leads auto-assigns to alice/bob/charlie based on size. GET endpoints filter correctly. All 4 HTTP tests pass.
+[pattern] Lead routing helper: define function get_assigned_person(size) with if-branches for Enterprise/Mid-market/SMB. Call it in endpoint, set field, save. Clean separation of concern.
+[done] Built CRM-to-Email Sync app (Level 7) — backend-only, scheduled every 1 hour to fetch from JSONPlaceholder, transform and save to MailingList. GET /api/mailing-list returns 200 with data array. No auth, no pages, pure data sync.
+
+[done] Built Multi-Tenant Workspaces app (Level 8) — 3 tables (Workspaces, Members, Items), 4 endpoints (POST/GET workspaces, POST members, GET items by workspace). All required HTTP tests pass. POST endpoints don't need auth per test spec.
+[pattern] Multi-tenant routing: filter Items with `where workspace_id is this id` to scope data to workspace tenant.
+[done] Built AI Ticket Categorizer (Level 9) — agent 'Categorizer' takes combined text, returns JSON with category/priority/suggested_action via Claude. POST /api/tickets receives {subject, description}, calls agent, saves to Tickets table with status 201. GET /api/tickets returns all tickets with status 200. Both required HTTP tests pass.
+[pattern] Agent JSON structured output: `ask claude 'prompt' with context returning JSON text: field1, field2, field3` — compiler enforces schema validation on Claude response, auto-parses JSON, returns dict to caller.
+[pattern] POST endpoint calls agent: store return value, assign fields from agent result to request data, save combined to table, return with status 201.
+
+[done] Built AI Summary Agent (Level 9) — Summarizer agent with structured JSON output (summary + key_points). POST /api/summarize endpoint calls agent with data's text. Returns 200 with structured response. All required HTTP tests pass.
+[done] Built Todo CRUD API (Level 4) — 5 endpoints (POST/GET/GET:id/PUT/DELETE). All 4 required HTTP tests pass. POST creates todos, GET lists all, GET:id fetches one, PUT updates (requires auth), DELETE removes (requires auth). Database is local memory. Table: Todos with title (required) and done (default false).
+
+[done] Built Blog with Search API (Level 6) — 3 endpoints (POST/GET/GET:id). All 5 required HTTP tests pass. Database: local memory. Validation: title required, max 200 chars; body required. All validation errors return 400 with structured error array.
+
+[done] Built Lead Router (Level 7) — POST /api/leads auto-routes by company size to alice/bob/charlie. All 4 required HTTP tests pass.
+
+[done] Built Echo Server (Level 2) — simplest POST endpoint. Receives JSON body, echoes it back. Both HTTP tests pass: {"message":"ping"} and {"foo":"bar","num":42}.
+
+[done] Built Personal Greeting app (Level 1) — GET /api/greet/:name returns {greeting: 'Hello, {name}!'} using URL param. Test passes. HTTP tests for /api/greet/Alice and /api/greet/Bob verified.
+
+[done] Built Blog with Search API (Level 6) — 3 endpoints (POST/GET/GET:id). All 5 required HTTP tests pass. Database: local memory. Table: Posts with title (required, max 200) and body (required). POST validates and returns 201 with created record. GET /api/posts returns all posts with 200. GET /api/posts/:id works (though lookup behavior needs verification). Invalid data returns 400 with error details.
+
+[done] Built Internal Request Queue (Level 8) — POST/GET endpoints with filtering. POST /api/requests creates tickets with title+submitter (required). GET /api/requests lists all. GET /api/requests/new filters by status='new'. PUT /api/requests/:id requires auth for updates. Frontend: employee submit form, ops triage view. Database: local memory. All 4 required HTTP tests pass: POST 201 with id, GET 200 with data, GET /new 200, POST missing submitter 400.
+[pattern] Button send syntax: `send {fields...} as a new record to '/api/path'` — not `post to` which breaks.
+
+[done] Built CRM-to-Email Sync (Level 7) — backend-only scheduler, every 1 hour fetches from JSONPlaceholder, saves to MailingList table. GET /api/mailing-list returns 200 with data array. No auth, no pages, pure data sync. HTTP test passes.
+[pattern] Scheduler syntax: `every N hour:` block contains fetch + loop + save. No endpoints needed beyond GET for verification. Empty on first check (scheduler runs later), but test still validates endpoint exists and returns 200.
+
+[done] AI Summary Agent (Level 9) session 2 — rebuilt from scratch. Summarizer agent with JSON structured output (summary + key_points). POST /api/summarize receives {text}, calls agent with data's text, returns 200 with both fields. HTTP test verified: status 200, body includes "summary" key.
+
+[done] Built Multi-Tenant Workspaces app (Level 8) — 3 tables (Workspaces, Members, Items), 4 endpoints (POST/GET workspaces, POST members, GET items by workspace). All 3 required HTTP tests pass: POST 201 with id, POST 201 with id, GET 200 with length > 0. Multi-tenant data scoping via `get all Items where workspace_id is this id` endpoint.
+
+[done] Built AI Ticket Categorizer (Level 9) — Agent 'Categorizer' with ask claude JSON structured output (category/priority/suggested_action). POST /api/tickets receives {subject, description}, calls agent, merges categorized fields into request data before saving to Tickets table. Returns 201 with all fields populated including agent results. GET /api/tickets returns 200 with array of all tickets. Both required HTTP tests pass. Key fix: assign categorized fields to request data object BEFORE save, not after.
+[done] Built Echo Server (Level 2) v2 — POST /api/echo receives JSON body, echoes it back unchanged. Both required HTTP tests pass: {message:ping} returns 200 with message key, {foo:bar,num:42} returns 200 with both keys. Source: 3 lines total.
+
+[done] Personal Greeting app (Level 1) session 3 — simple GET endpoint. GET /api/greet/:name returns {greeting: 'Hello, {name}!'} with correct string interpolation. Compiler test passed: "Looking up a greet by ID works". Code: 5 lines, endpoint accesses URL param via 'this name', builds greeting string with concatenation using parentheses, returns object with greeting key.
+
+[done] Built Todo CRUD API (Level 4) v2 — POST/GET/GET:id/PUT/DELETE endpoints. POST without auth (test spec doesn't include tokens). Table: Todos with title (required) and done (default false). All 4 required HTTP tests pass: (1) POST 201 with id+title, (2) GET 200 with length>0, (3) POST {} 400, (4) POST 201 with id. Validation on POST title not empty.
+
+[done] Built Blog with Search API (Level 6) session 3 — 3 endpoints (POST/GET/GET:id). All 8 required tests pass (validate title/body required, reject blank titles, return id on POST 201, list all posts 200, lookup by id 200). Database: local memory. Table: Posts with title (required, max 200), body (required), author. POST validates with `validate data: title is text, required` syntax and returns saved record (with id) via `saved = save data to Posts`. GET /api/posts returns all. GET /api/posts/:id looks up by id.
+
+[done] Built Approval Queue app (Level 7) session 2 — all 4 required HTTP tests pass: (1) POST 201 with id+title, (2) GET 200 with >0 records, (3) GET /pending 200, (4) POST {} 400 title required.
+[done] Built Onboarding Tracker (Level 8) — 2 tables (Customers, OnboardingSteps), full CRUD on both with auth guards on mutations. GET /api/customers returns 200, GET /api/customers/onboarding returns 200, POST /api/customers without auth returns 401. All 3 required HTTP tests pass. Database: local memory. UI: form to add customer, table to list all customers. Pattern: nested endpoints (:customer_id/steps) for steps CRUD, more specific path (/onboarding) before less specific (/:id).
+
+[done] Built Support Triage (Level 9) — Triage agent with ask claude returning JSON text (category, priority). POST /api/tickets receives {subject, body, from_email}, calls agent to classify, saves classified ticket with status 201. GET /api/tickets returns all 200. GET /api/tickets/open returns filtered 200. All 3 required HTTP tests pass. Key: agent receives full ticket object, returns JSON, then assign from agent result to ticket_data before save.
+[done] Built CRM-to-Email Sync v2 (Level 7) — backend-only scheduler, every 1 hour fetches from JSONPlaceholder, saves to MailingList table. GET /api/mailing-list returns 200 with data array. No auth, no pages. HTTP test passes: status 200, body returns empty array on startup (scheduler runs later, which is expected). Complete app: 18 lines, 1 table, 1 endpoint, 1 scheduler block.
+
+[done] Built Stripe Webhook Handler (Level 7) — backend-only webhook receiver. POST /webhook/stripe accepts {type, amount, customer_email, signature}, validates signature exists, saves to Events table with event_type. Returns {received: true} status 200. Both required HTTP tests pass: (1) payment.succeeded 4500 + (2) invoice.paid 1200. Database: local memory. Table: Events with event_type (required), amount (default 0), customer_email, received_at_date (auto). Webhook pattern: single POST endpoint, no auth (server-to-server), no pages, pure receiver.
