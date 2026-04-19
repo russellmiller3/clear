@@ -3,208 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clear — Change Your App While It's Running</title>
+<title>Clear — Edit your app while your team is using it</title>
 <link rel="stylesheet" href="tailwind.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-*, *::before, *::after { box-sizing: border-box; }
-body { font-family: 'Inter', sans-serif; background: #fafbfd; color: #0f172a; -webkit-font-smoothing: antialiased; margin: 0; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #fafbfd; color: #0f172a; -webkit-font-smoothing: antialiased; margin: 0; }
+  nav { background: rgba(250,251,253,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
 
-/* Hero mesh gradient — amber/rose for "tense moment" instead of Marcus blue/violet */
-.hero-bg {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(135deg, #fff7ed 0%, #fafbfd 40%, #fff1f2 70%, #fafbfd 100%);
-}
-.hero-bg::before {
-  content: '';
-  position: absolute;
-  top: -40%; right: -20%;
-  width: 80%; height: 120%;
-  background: radial-gradient(ellipse at center, rgba(251,146,60,0.08) 0%, transparent 70%);
-  pointer-events: none;
-}
-.hero-bg::after {
-  content: '';
-  position: absolute;
-  bottom: -30%; left: -10%;
-  width: 60%; height: 80%;
-  background: radial-gradient(ellipse at center, rgba(244,63,94,0.06) 0%, transparent 70%);
-  pointer-events: none;
-}
+  .btn-primary {
+    background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #4f46e5 100%);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 4px 16px rgba(67,97,238,.25), inset 0 1px 0 rgba(255,255,255,.1);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,.15), 0 10px 28px rgba(67,97,238,.35), inset 0 1px 0 rgba(255,255,255,.15); }
 
-/* Product frame — Marcus's running app */
-.product-frame {
-  background: #fff;
-  border-radius: 16px;
-  border: 1px solid rgba(0,0,0,0.08);
-  box-shadow:
-    0 2px 4px rgba(0,0,0,0.02),
-    0 8px 24px rgba(0,0,0,0.04),
-    0 24px 48px rgba(0,0,0,0.06),
-    0 48px 96px rgba(0,0,0,0.04);
-  overflow: hidden;
-  position: relative;
-}
-
-/* Floating Meph badge on the app */
-.meph-badge {
-  position: absolute;
-  bottom: 24px;
-  right: 24px;
-  background: linear-gradient(135deg, #1e1b4b 0%, #4338ca 50%, #6366f1 100%);
-  color: #fff;
-  border-radius: 16px;
-  padding: 10px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 8px 24px rgba(67,97,238,0.3), 0 2px 4px rgba(0,0,0,0.1);
-  z-index: 10;
-  cursor: pointer;
-}
-
-/* Meph chat widget */
-.meph-widget {
-  background: #0f172a;
-  border-radius: 20px;
-  border: 1px solid rgba(255,255,255,0.08);
-  overflow: hidden;
-  box-shadow: 0 24px 64px rgba(15,23,42,0.3), 0 8px 24px rgba(15,23,42,0.2);
-}
-.meph-msg-user {
-  background: rgba(99,102,241,0.12);
-  border: 1px solid rgba(99,102,241,0.2);
-  border-radius: 14px;
-  padding: 12px 16px;
-  color: #e0e7ff;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.meph-msg-bot {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 14px;
-  padding: 14px 18px;
-  color: #cbd5e1;
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-/* Fears bento */
-.fears-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-.fear-card {
-  padding: 32px 28px;
-  border-radius: 20px;
-  border: 1px solid rgba(0,0,0,0.05);
-  background: #fff;
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.3s, box-shadow 0.3s;
-}
-.fear-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.06); }
-.fear-icon {
-  width: 48px; height: 48px;
-  border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 20px;
-}
-
-/* Diff card (additive/reversible/destructive) */
-.diff-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 999px;
-  letter-spacing: 0.02em;
-}
-.chip-additive { background: #ecfdf5; color: #047857; border: 1px solid rgba(5,150,105,0.2); }
-.chip-reversible { background: #fff7ed; color: #c2410c; border: 1px solid rgba(194,65,12,0.2); }
-.chip-destructive { background: #fef2f2; color: #b91c1c; border: 1px solid rgba(185,28,28,0.2); }
-
-/* Code */
-.code-line { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.9; }
-.code-kw { color: #4361ee; font-weight: 500; }
-.code-str { color: #059669; }
-.code-cmt { color: #94a3b8; font-style: italic; }
-.code-add { background: rgba(5,150,105,0.08); border-left: 3px solid #059669; margin-left: -18px; padding-left: 15px; }
-
-/* Competitor table */
-.competitor-row {
-  display: grid;
-  grid-template-columns: 160px 1fr 220px;
-  gap: 16px;
-  padding: 20px 24px;
-  border-bottom: 1px solid rgba(0,0,0,0.05);
-  align-items: center;
-}
-.competitor-row:last-child { border-bottom: 0; }
-
-/* CTA */
-.cta-section {
-  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #3730a3 100%);
-  position: relative;
-  overflow: hidden;
-}
-.cta-section::before {
-  content: '';
-  position: absolute;
-  top: -50%; right: -30%;
-  width: 80%; height: 200%;
-  background: radial-gradient(ellipse, rgba(129,140,248,0.15) 0%, transparent 60%);
-}
-
-/* Buttons */
-.btn-hero {
-  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #4f46e5 100%);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 4px 16px rgba(67,97,238,0.25), inset 0 1px 0 rgba(255,255,255,0.1);
-  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
-  letter-spacing: -0.01em;
-}
-.btn-hero:hover {
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 8px 32px rgba(67,97,238,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
-  transform: translateY(-2px);
-}
-.btn-white {
-  background: #fff;
-  color: #1e1b4b;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.1);
-  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
-}
-.btn-white:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1), 0 16px 40px rgba(0,0,0,0.15); }
-
-/* Nav */
-nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
-
-/* Fade */
-.fade-up { animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) both; }
-.fade-d1 { animation-delay: 0.1s; }
-.fade-d2 { animation-delay: 0.2s; }
-.fade-d3 { animation-delay: 0.35s; }
-@keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-
-/* Timeline pulse */
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(1.15); }
-}
-.live-dot {
-  width: 8px; height: 8px;
-  background: #10b981;
-  border-radius: 50%;
-  animation: pulse-dot 1.8s ease-in-out infinite;
-  box-shadow: 0 0 0 4px rgba(16,185,129,0.2);
-}
-
-@media (max-width: 768px) {
-  .fears-grid { grid-template-columns: 1fr; }
-  .competitor-row { grid-template-columns: 1fr; gap: 8px; }
-}
+  .product-frame {
+    background: #fff; border-radius: 16px;
+    border: 1px solid rgba(0,0,0,.06);
+    box-shadow: 0 2px 4px rgba(0,0,0,.02), 0 12px 32px rgba(0,0,0,.05), 0 36px 80px rgba(0,0,0,.06);
+    overflow: hidden;
+  }
+  .meph-panel {
+    background: #0f172a; color: #cbd5e1;
+    border-radius: 16px; border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 20px 48px rgba(15,23,42,.35);
+    font-size: 13px; line-height: 1.6;
+  }
+  .cta-bg {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #3730a3 100%);
+  }
+  .live-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 0 3px rgba(16,185,129,.2); animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 </style>
 </head>
 <body>
@@ -215,680 +46,210 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
     <div class="flex items-center gap-10">
       <div class="text-[18px] font-bold tracking-tight">Clear</div>
       <div class="hidden md:flex items-center gap-7 text-[13px] font-medium text-slate-400">
-        <a href="marcus.html" class="hover:text-slate-600 transition">Apps</a>
-        <a href="#" class="hover:text-slate-600 transition">Pricing</a>
-        <a href="#" class="hover:text-slate-600 transition">Docs</a>
-        <a href="#" class="hover:text-slate-600 transition">Changelog</a>
+        <a href="marcus.html" class="hover:text-slate-600">Apps</a>
+        <a href="#" class="hover:text-slate-600">Pricing</a>
+        <a href="#" class="hover:text-slate-600">Docs</a>
       </div>
     </div>
-    <div class="flex items-center gap-4">
-      <a href="#" class="text-[13px] font-medium text-slate-500 hover:text-slate-700 transition hidden md:block">Sign in</a>
-      <a href="#" class="btn-hero text-white text-[13px] px-5 py-2.5 rounded-xl font-semibold">Open Studio</a>
-    </div>
+    <a href="#" class="btn-primary text-[13px] px-5 py-2.5 rounded-xl font-semibold">Open Studio</a>
   </div>
 </nav>
 
-<!-- Hero -->
-<section class="hero-bg">
-  <div class="max-w-5xl mx-auto px-6 pt-24 pb-10 text-center relative z-10">
-    <div class="fade-up inline-flex items-center gap-2 text-[13px] font-medium text-rose-600 bg-rose-50 border border-rose-100 rounded-full px-4 py-1.5 mb-8">
-      <span class="live-dot"></span>
-      Change a live app. 18 people using it right now. Nobody loses their work.
-    </div>
-    <h1 class="fade-up fade-d1 text-5xl md:text-[64px] font-extrabold leading-[1.05] tracking-[-0.035em] mb-6 max-w-4xl mx-auto">
-      Your CEO wants a new field.<br>
-      <span class="bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 bg-clip-text text-transparent">Your app is already running.</span>
+<!-- 1. HERO -->
+<section class="pt-24 pb-16 px-6">
+  <div class="max-w-4xl mx-auto text-center">
+    <div class="text-[13px] font-semibold text-slate-500 uppercase tracking-[0.18em] mb-6">Tuesday, 2:47pm.</div>
+    <h1 class="text-5xl md:text-6xl font-extrabold leading-[1.05] tracking-[-0.035em] mb-6">
+      Your CRO walks over<br>
+      and asks for a new field.
     </h1>
-    <p class="fade-up fade-d2 text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed font-light">
-      Type the change in plain English. See what'll happen before it ships.
-      Push it live in four seconds. Everyone's in-flight work survives.
+    <p class="text-xl text-slate-500 max-w-2xl mx-auto mb-10 font-light leading-relaxed">
+      Your app is live. Eighteen people are using it.
+      On Clear, you ship the change in four seconds —
+      without losing a single character anyone has typed.
     </p>
-    <div class="fade-up fade-d3 flex items-center justify-center gap-4 mb-4">
-      <a href="#how" class="btn-hero text-white px-10 py-4 rounded-2xl font-semibold text-[16px] tracking-[-0.01em] inline-flex items-center gap-2">
-        See how it works
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    <div class="flex items-center justify-center gap-5 mb-3">
+      <a href="#" class="btn-primary text-[15px] px-8 py-3.5 rounded-2xl font-semibold inline-flex items-center gap-2">
+        Start free
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <a href="#how" class="text-[14px] font-medium text-slate-500 hover:text-slate-700 inline-flex items-center gap-1.5">
+        Watch the demo
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       </a>
     </div>
-    <p class="fade-up fade-d3 text-[13px] text-slate-400 mb-16">
-      Only you can edit. See what'll change before it ships. One-click undo, always.
-    </p>
+    <p class="text-[13px] text-slate-400">No credit card. Browser-based.</p>
   </div>
 
-  <!-- Hero mock: Marcus's running app with floating Meph badge -->
-  <div class="max-w-5xl mx-auto px-6 pb-24 relative z-10">
+  <!-- Product shot -->
+  <div class="max-w-4xl mx-auto mt-16">
     <div class="product-frame">
-      <!-- Mock toolbar -->
-      <div class="flex items-center gap-2 px-5 py-3 border-b border-black/[0.04] bg-slate-50/50">
-        <div class="flex gap-1.5">
-          <div class="w-3 h-3 rounded-full bg-slate-200"></div>
-          <div class="w-3 h-3 rounded-full bg-slate-200"></div>
-          <div class="w-3 h-3 rounded-full bg-slate-200"></div>
-        </div>
-        <div class="flex-1 text-center">
-          <span class="text-[11px] text-slate-400 bg-slate-100 px-4 py-1 rounded-md">approvals.acme.buildclear.dev</span>
-        </div>
-        <div class="flex items-center gap-1.5 text-[10px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-md">
-          <span class="live-dot" style="width: 6px; height: 6px; box-shadow: 0 0 0 3px rgba(16,185,129,0.2);"></span>
-          18 live
+      <div class="flex items-center gap-3 px-5 py-3 border-b border-black/[0.04] bg-slate-50/60">
+        <div class="flex gap-1.5"><div class="w-3 h-3 rounded-full bg-slate-200"></div><div class="w-3 h-3 rounded-full bg-slate-200"></div><div class="w-3 h-3 rounded-full bg-slate-200"></div></div>
+        <div class="flex-1 text-center"><span class="text-[11px] text-slate-400 bg-slate-100 px-4 py-1 rounded-md">approvals.acme.com</span></div>
+        <div class="flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-md">
+          <span class="live-dot"></span> 18 live
         </div>
       </div>
-      <!-- Mock app content -->
-      <div class="p-8 bg-[#f8f9fb] min-h-[440px]">
+      <div class="p-8 bg-[#f8f9fb]">
         <div class="flex items-center justify-between mb-6">
-          <div>
-            <div class="text-[18px] font-bold text-slate-800 mb-0.5">Discount Approvals</div>
-            <div class="text-[12px] text-slate-400">Deal-desk workflow &middot; Day 34</div>
-          </div>
-          <div class="flex gap-2">
-            <div class="bg-white border border-black/[0.06] text-slate-500 text-[11px] px-3 py-1.5 rounded-lg font-medium">All Requests</div>
-            <div class="bg-indigo-500 text-white text-[11px] px-3 py-1.5 rounded-lg font-medium">+ New Request</div>
+          <div class="text-[16px] font-bold text-slate-800">Discount Approvals</div>
+          <div class="bg-indigo-500 text-white text-[11px] px-3 py-1.5 rounded-lg font-medium">+ New</div>
+        </div>
+        <div class="bg-white rounded-xl border border-amber-200 shadow-sm p-4 mb-4 relative">
+          <div class="absolute -top-2 left-3 bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Jenna is typing</div>
+          <div class="grid grid-cols-3 gap-3 mt-1 text-[12px]">
+            <div><div class="text-[10px] text-slate-400 mb-1">Customer</div><div class="text-slate-800 font-medium">Globex Health</div></div>
+            <div><div class="text-[10px] text-slate-400 mb-1">Discount</div><div class="text-slate-800 font-medium">22%</div></div>
+            <div><div class="text-[10px] text-slate-400 mb-1">Reason</div><div class="text-slate-800 font-medium">Multi-year renewal</div></div>
           </div>
         </div>
-
-        <!-- Jenna's in-progress form — highlighted to show "in-flight work" -->
-        <div class="bg-white rounded-xl border-2 border-amber-200 shadow-sm p-5 mb-5 relative">
-          <div class="absolute -top-2 left-4 bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Jenna is typing...</div>
-          <div class="text-[12px] font-semibold text-slate-600 mb-3 mt-1">Submit a discount request</div>
-          <div class="grid grid-cols-3 gap-3 mb-3">
-            <div>
-              <div class="text-[10px] text-slate-400 mb-1">Customer</div>
-              <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[12px] text-slate-800">Globex Health</div>
-            </div>
-            <div>
-              <div class="text-[10px] text-slate-400 mb-1">Discount %</div>
-              <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[12px] text-slate-800">22</div>
-            </div>
-            <div>
-              <div class="text-[10px] text-slate-400 mb-1">Reason</div>
-              <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[12px] text-slate-800">Multi-year renewal</div>
-            </div>
-          </div>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-1.5 text-[11px] text-amber-700 font-medium">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              Not yet submitted
-            </div>
-            <div class="bg-indigo-500 text-white text-[11px] px-4 py-1.5 rounded-lg font-medium">Submit for Approval</div>
-          </div>
-        </div>
-
-        <!-- Requests table -->
         <div class="bg-white rounded-xl border border-black/[0.04] shadow-sm overflow-hidden">
-          <div class="grid grid-cols-[1fr_80px_1fr_90px_80px] gap-3 px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-black/[0.03]">
-            <div>Customer</div><div>Discount</div><div>Reason</div><div>Submitted</div><div>Status</div>
-          </div>
-          <div class="grid grid-cols-[1fr_80px_1fr_90px_80px] gap-3 px-4 py-3 text-[12px] text-slate-600 border-b border-black/[0.03]">
-            <div class="font-medium text-slate-800">Acme Health</div><div>30%</div><div class="text-slate-400">Renewal, 3yr</div><div class="text-slate-400">2 hrs ago</div>
-            <div><span class="bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Pending</span></div>
-          </div>
-          <div class="grid grid-cols-[1fr_80px_1fr_90px_80px] gap-3 px-4 py-3 text-[12px] text-slate-600 border-b border-black/[0.03]">
-            <div class="font-medium text-slate-800">TechFlow</div><div>25%</div><div class="text-slate-400">Expansion</div><div class="text-slate-400">Yesterday</div>
-            <div><span class="bg-emerald-100 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Approved</span></div>
-          </div>
-          <div class="grid grid-cols-[1fr_80px_1fr_90px_80px] gap-3 px-4 py-3 text-[12px] text-slate-600">
-            <div class="font-medium text-slate-800">Rivian</div><div>15%</div><div class="text-slate-400">Enterprise</div><div class="text-slate-400">3 days ago</div>
-            <div><span class="bg-emerald-100 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Approved</span></div>
-          </div>
+          <div class="grid grid-cols-[1fr_80px_100px] gap-3 px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-black/[0.03]"><div>Customer</div><div>Discount</div><div>Status</div></div>
+          <div class="grid grid-cols-[1fr_80px_100px] gap-3 px-4 py-2.5 text-[12px] text-slate-600 border-b border-black/[0.03]"><div class="font-medium text-slate-800">Acme Health</div><div>30%</div><div><span class="bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Pending</span></div></div>
+          <div class="grid grid-cols-[1fr_80px_100px] gap-3 px-4 py-2.5 text-[12px] text-slate-600"><div class="font-medium text-slate-800">TechFlow</div><div>25%</div><div><span class="bg-emerald-100 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">Approved</span></div></div>
         </div>
       </div>
-
-      <!-- Floating Meph badge (owner-only) -->
-      <div class="meph-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
-        Edit this app
+      <!-- Owner badge -->
+      <div class="relative">
+        <div class="absolute right-6 -top-12 bg-slate-900 text-white text-[12px] font-semibold px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          Edit this app
+        </div>
       </div>
     </div>
-    <p class="text-center text-[12px] text-slate-400 mt-5 italic">
-      Only Marcus sees the edit badge. Jenna, Tim, and the 16 others just see the app.
-    </p>
+    <p class="text-center text-[12.5px] text-slate-400 italic mt-4">Only the owner sees the Edit button. Jenna, Tim, the 16 others — they just see the app.</p>
   </div>
 </section>
-<!-- How it works -->
-<section id="how" class="py-24" style="background: #fff; border-top: 1px solid rgba(0,0,0,0.04); border-bottom: 1px solid rgba(0,0,0,0.04);">
-  <div class="max-w-5xl mx-auto px-6">
-    <div class="max-w-2xl mb-14">
-      <div class="text-[11px] font-bold text-rose-500 uppercase tracking-[0.12em] mb-3">The terror moment</div>
-      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
-        The CRO walks over.<br>
-        <span class="text-slate-400">"We need a region field on approvals."</span>
-      </h2>
-      <p class="text-slate-500 text-[15px] leading-relaxed max-w-xl">
-        Marcus's app has been running for 34 days. Eighteen people depend on it.
-        On any other platform, this conversation ends with "I'll get back to you Friday."
-        On Clear, Marcus opens the app and talks to Meph.
-      </p>
-    </div>
 
-    <div class="grid md:grid-cols-2 gap-10 items-start">
+<!-- 2. HOW IT WORKS -->
+<section id="how" class="py-24 border-t border-slate-100 bg-white">
+  <div class="max-w-4xl mx-auto px-6">
+    <h2 class="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-center mb-4">Here's what happens next.</h2>
+    <p class="text-[16px] text-slate-500 text-center max-w-xl mx-auto mb-12 font-light">Marcus clicks the badge. Types one sentence.</p>
 
-      <!-- Left: Meph chat -->
-      <div class="meph-widget">
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.06]">
-          <div class="flex items-center gap-2.5">
-            <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
-            </div>
-            <div>
-              <div class="text-[13px] font-semibold text-white">Meph</div>
-              <div class="text-[10px] text-slate-400">Editing approvals.acme.buildclear.dev</div>
-            </div>
+    <div class="max-w-lg mx-auto">
+      <div class="meph-panel overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+          <div class="flex items-center gap-2">
+            <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600"></div>
+            <div class="text-white font-semibold text-[13px]">Meph · Edit this app</div>
           </div>
           <div class="text-[10px] font-semibold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-0.5 rounded-full">owner</div>
         </div>
-        <div class="p-5 space-y-3">
-          <div class="meph-msg-user">
-            add a region field to approvals, required, options are NA / EMEA / APAC, default NA
+        <div class="p-4 space-y-3">
+          <div class="bg-indigo-500/10 border border-indigo-500/20 text-indigo-100 rounded-lg px-3 py-2 text-[13px]">
+            add a region field, NA / EMEA / APAC, default NA
           </div>
-          <div class="meph-msg-bot">
-            <div class="flex items-center gap-2 mb-2.5">
-              <span class="diff-chip chip-additive">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Safe to ship &middot; only adds new stuff
-              </span>
-            </div>
-            <div class="mb-2.5">Here's what I'll do:</div>
-            <ul class="space-y-1.5 text-[12.5px] pl-1">
-              <li class="flex gap-2"><span class="text-emerald-400">+</span> Add <span class="text-indigo-300 font-mono">region</span> field to <span class="text-indigo-300 font-mono">Approvals</span> table</li>
-              <li class="flex gap-2"><span class="text-emerald-400">+</span> Dropdown on the submission form: NA / EMEA / APAC</li>
-              <li class="flex gap-2"><span class="text-emerald-400">+</span> Region column on the admin view</li>
-              <li class="flex gap-2"><span class="text-emerald-400">+</span> Backfill 12 existing rows with default <span class="text-indigo-300 font-mono">'NA'</span></li>
+          <div class="bg-white/[0.04] border border-white/[0.06] rounded-lg px-4 py-3">
+            <div class="text-slate-300 text-[12.5px] mb-2">Here's what I'll do:</div>
+            <ul class="space-y-1 text-[12.5px] text-slate-400">
+              <li><span class="text-emerald-400">+</span> Add "region" to Approvals</li>
+              <li><span class="text-emerald-400">+</span> Dropdown on the submission form</li>
+              <li><span class="text-emerald-400">+</span> Column on the admin view</li>
+              <li><span class="text-emerald-400">+</span> Fill 12 existing rows with "NA"</li>
             </ul>
-            <div class="mt-3 pt-3 border-t border-white/[0.06] flex items-center gap-2 text-[11px] text-slate-400">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>
-              Jenna's in-progress form will keep its amount and notes.
+            <div class="mt-3 pt-3 border-t border-white/[0.06] text-[11.5px] text-slate-500">Jenna's half-typed form stays exactly as she left it.</div>
+            <div class="flex gap-2 mt-3">
+              <button class="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white text-[12px] font-semibold py-2 rounded-lg">Ship it</button>
+              <button class="bg-white/5 text-slate-300 text-[12px] font-medium py-2 px-4 rounded-lg">Cancel</button>
             </div>
-            <div class="flex gap-2 mt-4">
-              <button class="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white text-[12px] font-semibold py-2 rounded-lg transition">Ship it</button>
-              <button class="bg-white/5 hover:bg-white/10 text-slate-300 text-[12px] font-medium py-2 px-4 rounded-lg transition">Dry run</button>
-              <button class="text-slate-500 hover:text-slate-300 text-[12px] font-medium py-2 px-3 rounded-lg transition">Edit</button>
-            </div>
-          </div>
-        </div>
-        <div class="border-t border-white/[0.06] p-4 flex items-center gap-2.5">
-          <div class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-[12px] text-slate-500">Ask Meph to change something&hellip;</div>
-          <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </div>
         </div>
       </div>
 
-      <!-- Right: the 4-second timeline -->
-      <div class="pl-0 md:pl-4">
-        <div class="text-[11px] font-bold text-indigo-500 uppercase tracking-[0.12em] mb-3">After Marcus clicks "Ship it"</div>
-        <h3 class="text-2xl font-extrabold tracking-tight mb-6">Live in four seconds.</h3>
+      <div class="text-center mt-10">
+        <div class="text-[32px] font-extrabold tracking-tight text-slate-800">Four seconds. Done.</div>
+        <p class="text-slate-500 text-[15px] leading-relaxed max-w-md mx-auto mt-3 font-light">
+          Jenna's tab reloads. Her customer, her amount, her reason — still there.
+          A new dropdown sits waiting for her to pick.
+        </p>
+        <p class="text-slate-400 text-[13px] mt-4 italic">Marcus tells the CRO "done" before the coffee cools.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-        <div class="space-y-5">
-          <div class="flex gap-4">
-            <div class="flex flex-col items-center">
-              <div class="w-8 h-8 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center text-emerald-700 font-bold text-[12px]">0s</div>
-              <div class="w-0.5 flex-1 bg-emerald-200 my-1"></div>
-            </div>
-            <div class="pb-5 pt-1">
-              <div class="font-semibold text-slate-800 text-[14px] mb-1">Meph writes to your <span class="font-mono text-indigo-600 text-[13px]">main.clear</span></div>
-              <div class="text-[13px] text-slate-500 leading-relaxed">Adds seven lines of source. Compiles in 180ms. Every change shows up as a readable diff you can revert in one click.</div>
-            </div>
-          </div>
+<!-- 3. THREE RULES -->
+<section class="py-24">
+  <div class="max-w-5xl mx-auto px-6">
+    <h2 class="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-center mb-16">Why nothing can go wrong.</h2>
+    <div class="grid md:grid-cols-3 gap-6">
 
-          <div class="flex gap-4">
-            <div class="flex flex-col items-center">
-              <div class="w-8 h-8 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center text-emerald-700 font-bold text-[12px]">1s</div>
-              <div class="w-0.5 flex-1 bg-emerald-200 my-1"></div>
-            </div>
-            <div class="pb-5 pt-1">
-              <div class="font-semibold text-slate-800 text-[14px] mb-1">The database grows a column</div>
-              <div class="text-[13px] text-slate-500 leading-relaxed">New <span class="font-mono text-indigo-600 text-[13px]">region</span> column is added next to the old ones — nothing is removed or renamed. Existing rows get the default.</div>
-            </div>
-          </div>
-
-          <div class="flex gap-4">
-            <div class="flex flex-col items-center">
-              <div class="w-8 h-8 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center text-emerald-700 font-bold text-[12px]">3s</div>
-              <div class="w-0.5 flex-1 bg-emerald-200 my-1"></div>
-            </div>
-            <div class="pb-5 pt-1">
-              <div class="font-semibold text-slate-800 text-[14px] mb-1">Connected browsers receive the new version</div>
-              <div class="text-[13px] text-slate-500 leading-relaxed">Jenna's tab reloads the form. Her customer, discount, and reason stay filled in. The new dropdown appears empty, waiting for her pick.</div>
-            </div>
-          </div>
-
-          <div class="flex gap-4">
-            <div class="flex flex-col items-center">
-              <div class="w-8 h-8 rounded-full bg-indigo-500 border-2 border-indigo-600 flex items-center justify-center text-white font-bold text-[12px]">4s</div>
-            </div>
-            <div class="pt-1">
-              <div class="font-semibold text-slate-800 text-[14px] mb-1">Marcus tells the CRO "done"</div>
-              <div class="text-[13px] text-slate-500 leading-relaxed">Before the CRO has finished his coffee. Change log records who, what, when — one-click rollback available forever.</div>
-            </div>
-          </div>
+      <div class="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+        <div class="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-5">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         </div>
+        <h3 class="text-[18px] font-bold mb-2">Only you can edit</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed">
+          Your team sees the app normally. No edit button, no way in. The owner role is the entire guard.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+        <div class="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-5">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        </div>
+        <h3 class="text-[18px] font-bold mb-2">Nothing is ever gone</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed">
+          "Remove" works like the desktop trash, not an incinerator. Fields disappear from view; the data keeps sitting in the database.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+        <div class="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-5">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9"/><polyline points="3 5 3 12 10 12"/></svg>
+        </div>
+        <h3 class="text-[18px] font-bold mb-2">Undo always works</h3>
+        <p class="text-[14px] text-slate-500 leading-relaxed">
+          "Meph, undo that." Source, data, everything rewinds to where it was. One sentence, any time.
+        </p>
       </div>
 
     </div>
   </div>
 </section>
-<!-- Four Fears -->
-<section id="fears" class="py-24">
-  <div class="max-w-5xl mx-auto px-6">
-    <div class="max-w-2xl mb-14">
-      <div class="text-[11px] font-bold text-slate-500 uppercase tracking-[0.12em] mb-3">What Marcus is afraid of</div>
-      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
-        Four fears.<br>
-        <span class="text-slate-400">Four answers built into the compiler.</span>
-      </h2>
-      <p class="text-slate-500 text-[15px] leading-relaxed">
-        Every "live editing" tool claims this works. The question is what actually prevents disaster.
-        Here's what Clear does, mechanically, for each fear.
-      </p>
+
+<!-- 4. NOBODY ELSE DOES THIS -->
+<section class="py-24 bg-white border-y border-slate-100">
+  <div class="max-w-3xl mx-auto px-6">
+    <h2 class="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-center mb-12">Nobody else ships this.</h2>
+    <div class="space-y-5 mb-10">
+      <blockquote class="border-l-4 border-rose-300 pl-5 text-[15px] text-slate-600 leading-relaxed italic">
+        "Lovable rewrites entire files and breaks your UI."
+        <div class="text-[12px] text-slate-400 not-italic mt-1 font-medium">— G2 review</div>
+      </blockquote>
+      <blockquote class="border-l-4 border-rose-300 pl-5 text-[15px] text-slate-600 leading-relaxed italic">
+        "Retool needs a developer with JavaScript skills."
+        <div class="text-[12px] text-slate-400 not-italic mt-1 font-medium">— Reddit, r/nocode</div>
+      </blockquote>
+      <blockquote class="border-l-4 border-rose-300 pl-5 text-[15px] text-slate-600 leading-relaxed italic">
+        "Cannot edit a published generation."
+        <div class="text-[12px] text-slate-400 not-italic mt-1 font-medium">— v0 error message, verbatim</div>
+      </blockquote>
     </div>
-
-    <div class="fears-grid">
-
-      <!-- Fear 1: break the app -->
-      <div class="fear-card">
-        <div class="fear-icon bg-rose-100">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        </div>
-        <div class="text-[11px] font-bold text-rose-500 uppercase tracking-wider mb-2">Fear 1</div>
-        <h3 class="text-[19px] font-extrabold mb-3 leading-snug">"What if I break the app?"</h3>
-        <p class="text-[13.5px] text-slate-500 leading-relaxed mb-5">
-          Every proposed change is classified before it runs. You see what category it falls in
-          and exactly what it'll touch — before anything ships.
-        </p>
-        <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-2.5">
-          <div class="flex items-start gap-2.5">
-            <span class="diff-chip chip-additive mt-0.5">
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Just adds
-            </span>
-            <div class="text-[12px] text-slate-600 leading-relaxed">A new field, page, or button. Nothing old gets touched. <span class="text-slate-400">Ships in seconds.</span></div>
-          </div>
-          <div class="flex items-start gap-2.5">
-            <span class="diff-chip chip-reversible mt-0.5">
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9"/><polyline points="3 5 3 12 10 12"/></svg>
-              One-click undo
-            </span>
-            <div class="text-[12px] text-slate-600 leading-relaxed">"Remove" or "rename" a field. The data never actually leaves. <span class="text-slate-400">Change your mind anytime.</span></div>
-          </div>
-          <div class="flex items-start gap-2.5">
-            <span class="diff-chip chip-destructive mt-0.5">
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-              Actually delete
-            </span>
-            <div class="text-[12px] text-slate-600 leading-relaxed">Wipes data for good. You have to type DELETE first. A backup is taken first. <span class="text-slate-400">Almost never needed.</span></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Fear 2: AI deletes other code -->
-      <div class="fear-card">
-        <div class="fear-icon bg-amber-100">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><line x1="12" y1="17" x2="12" y2="17.01"/><path d="M12 10v4"/></svg>
-        </div>
-        <div class="text-[11px] font-bold text-amber-600 uppercase tracking-wider mb-2">Fear 2</div>
-        <h3 class="text-[19px] font-extrabold mb-3 leading-snug">"What if the AI deletes other code?"</h3>
-        <p class="text-[13.5px] text-slate-500 leading-relaxed mb-5">
-          Meph can't do what Bolt does &mdash; rewrite a whole file and accidentally delete your approval logic.
-          Meph's edit tool is a <span class="font-semibold text-slate-700">patch, not a rewrite</span>.
-        </p>
-        <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
-          <div class="flex items-center gap-2 text-[11px] font-semibold text-slate-500 mb-2">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            main.clear (changed lines only)
-          </div>
-          <div class="code-line text-slate-500">...</div>
-          <div class="code-line code-add"><span class="text-emerald-600 font-bold">+</span> <span class="code-kw">a</span> region <span class="code-kw">from</span> <span class="code-str">'NA'</span>, <span class="code-str">'EMEA'</span>, <span class="code-str">'APAC'</span></div>
-          <div class="code-line code-add"><span class="text-emerald-600 font-bold">+</span> <span class="code-kw">default</span> region <span class="code-kw">is</span> <span class="code-str">'NA'</span></div>
-          <div class="code-line text-slate-500">...</div>
-          <div class="mt-3 pt-3 border-t border-slate-200 text-[11.5px] text-slate-500 leading-relaxed">
-            Everything Meph did touches <span class="font-semibold text-slate-700">only</span> these lines. Your approval routing, email rules, and agent instructions are physically untouched &mdash; the compiler enforces it.
-          </div>
-        </div>
-      </div>
-
-      <!-- Fear 3: users lose in-flight work -->
-      <div class="fear-card">
-        <div class="fear-icon bg-violet-100">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
-        </div>
-        <div class="text-[11px] font-bold text-violet-600 uppercase tracking-wider mb-2">Fear 3</div>
-        <h3 class="text-[19px] font-extrabold mb-3 leading-snug">"What about Jenna's half-filled form?"</h3>
-        <p class="text-[13.5px] text-slate-500 leading-relaxed mb-5">
-          When the app reloads with the new version, the compiler preserves
-          every value the user already typed. New fields appear empty. Existing input survives.
-        </p>
-        <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
-          <div class="text-[11px] font-semibold text-slate-500 mb-3 uppercase tracking-wider">Before update &rarr; After update</div>
-          <div class="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
-            <div class="bg-white rounded-lg p-2.5 border border-slate-200 text-[11px]">
-              <div class="text-slate-400 mb-0.5">Customer</div><div class="text-slate-800 font-medium">Globex Health</div>
-            </div>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            <div class="bg-white rounded-lg p-2.5 border border-emerald-200 text-[11px]">
-              <div class="text-slate-400 mb-0.5">Customer</div><div class="text-slate-800 font-medium">Globex Health <span class="text-emerald-600">&check;</span></div>
-            </div>
-            <div class="bg-white rounded-lg p-2.5 border border-slate-200 text-[11px]">
-              <div class="text-slate-400 mb-0.5">Discount</div><div class="text-slate-800 font-medium">22</div>
-            </div>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            <div class="bg-white rounded-lg p-2.5 border border-emerald-200 text-[11px]">
-              <div class="text-slate-400 mb-0.5">Discount</div><div class="text-slate-800 font-medium">22 <span class="text-emerald-600">&check;</span></div>
-            </div>
-            <div class="bg-white/50 rounded-lg p-2.5 border border-dashed border-slate-300 text-[11px]">
-              <div class="text-slate-300 mb-0.5">(didn't exist)</div><div class="text-slate-300">&mdash;</div>
-            </div>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            <div class="bg-amber-50 rounded-lg p-2.5 border border-amber-200 text-[11px]">
-              <div class="text-slate-400 mb-0.5">Region (new)</div><div class="text-amber-700 font-medium italic">pick one &darr;</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Fear 4: no preview before ship -->
-      <div class="fear-card">
-        <div class="fear-icon bg-emerald-100">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </div>
-        <div class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-2">Fear 4</div>
-        <h3 class="text-[19px] font-extrabold mb-3 leading-snug">"Can I preview before I push?"</h3>
-        <p class="text-[13.5px] text-slate-500 leading-relaxed mb-5">
-          Every change has a <span class="font-semibold text-slate-700">Dry run</span> button.
-          Clear spins up a private copy of your app with the change applied. You try it, you share
-          the private URL with a coworker, you decide if it's right. Nothing ships until you say so.
-        </p>
-        <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            </div>
-            <div>
-              <div class="text-[12px] font-semibold text-slate-700">Private preview URL</div>
-              <div class="text-[10px] text-slate-400 font-mono">preview-a84c2.buildclear.dev</div>
-            </div>
-          </div>
-          <div class="text-[12px] text-slate-500 leading-relaxed">
-            Expires in 10 minutes unless you extend it. Nobody on your team can see it unless you share the link. Your real app never changed.
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-<!-- Competitor table -->
-<section class="py-24" style="background: #fff; border-top: 1px solid rgba(0,0,0,0.04); border-bottom: 1px solid rgba(0,0,0,0.04);">
-  <div class="max-w-5xl mx-auto px-6">
-    <div class="max-w-2xl mb-14">
-      <div class="text-[11px] font-bold text-slate-500 uppercase tracking-[0.12em] mb-3">"Who else does this?"</div>
-      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
-        Nobody. That's the point.
-      </h2>
-      <p class="text-slate-500 text-[15px] leading-relaxed">
-        Every tool in this space claims "live editing" somewhere on the landing page.
-        Read the actual reviews and you'll see the same pattern: either the AI rewrites the whole file,
-        or the live edit requires a developer, or editing a running app isn't even allowed.
-      </p>
-    </div>
-
-    <div class="bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden">
-
-      <!-- Header row -->
-      <div class="competitor-row bg-slate-100/60 border-b border-slate-200">
-        <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tool</div>
-        <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">What happens when you edit a running app</div>
-        <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Who can do it</div>
-      </div>
-
-      <!-- Lovable -->
-      <div class="competitor-row">
-        <div>
-          <div class="font-bold text-slate-800 text-[14px]">Lovable</div>
-          <div class="text-[11px] text-slate-400">AI app builder</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-slate-700 leading-relaxed mb-1">AI regenerates entire files. Users call this "destructive regeneration."</div>
-          <div class="text-[11.5px] text-slate-500 italic leading-relaxed">"Unable to diagnose problems hidden deep within code they couldn't read."</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-rose-600 font-semibold">No live edit</div>
-          <div class="text-[11px] text-slate-400">Rebuild + redeploy required</div>
-        </div>
-      </div>
-
-      <!-- Bolt -->
-      <div class="competitor-row">
-        <div>
-          <div class="font-bold text-slate-800 text-[14px]">Bolt</div>
-          <div class="text-[11px] text-slate-400">AI app builder</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-slate-700 leading-relaxed mb-1">GitHub issue literally titled <span class="font-mono text-[12px] text-slate-500">"Files Glitching as they are being rewritten"</span>.</div>
-          <div class="text-[11.5px] text-slate-500 italic leading-relaxed">"Rewrites the entire file, breaks your UI, still fails to fix the original bug."</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-rose-600 font-semibold">No live edit</div>
-          <div class="text-[11px] text-slate-400">Rebuild + redeploy required</div>
-        </div>
-      </div>
-
-      <!-- v0 -->
-      <div class="competitor-row">
-        <div>
-          <div class="font-bold text-slate-800 text-[14px]">v0 (Vercel)</div>
-          <div class="text-[11px] text-slate-400">AI app builder</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-slate-700 leading-relaxed mb-1">Explicitly errors out when you try:</div>
-          <div class="text-[11.5px] text-slate-500 italic leading-relaxed font-mono">"Cannot edit a published generation."</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-rose-600 font-semibold">Blocked entirely</div>
-          <div class="text-[11px] text-slate-400">Must fork + redeploy</div>
-        </div>
-      </div>
-
-      <!-- Retool -->
-      <div class="competitor-row">
-        <div>
-          <div class="font-bold text-slate-800 text-[14px]">Retool</div>
-          <div class="text-[11px] text-slate-400">Internal-tool builder</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-slate-700 leading-relaxed mb-1">Release Manager has draft + published + millisecond rollback. Real product.</div>
-          <div class="text-[11.5px] text-slate-500 italic leading-relaxed">AI can't edit running Retool apps. Schema edits need a developer.</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-amber-600 font-semibold">Developer only</div>
-          <div class="text-[11px] text-slate-400">JavaScript + SQL required</div>
-        </div>
-      </div>
-
-      <!-- Superblocks -->
-      <div class="competitor-row">
-        <div>
-          <div class="font-bold text-slate-800 text-[14px]">Superblocks Clark</div>
-          <div class="text-[11px] text-slate-400">AI for internal tools</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-slate-700 leading-relaxed mb-1">AI edits the source file. Separate dev flow from the running app.</div>
-          <div class="text-[11.5px] text-slate-500 italic leading-relaxed">Reviewers call the lack of automated testing "a deal breaker."</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-amber-600 font-semibold">Source, not live</div>
-          <div class="text-[11px] text-slate-400">Deploy step required</div>
-        </div>
-      </div>
-
-      <!-- Airtable -->
-      <div class="competitor-row">
-        <div>
-          <div class="font-bold text-slate-800 text-[14px]">Airtable / Notion</div>
-          <div class="text-[11px] text-slate-400">Database tools</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-slate-700 leading-relaxed mb-1">Additive-only schema edits are the prior art. It's why Airtable feels safe.</div>
-          <div class="text-[11.5px] text-slate-500 italic leading-relaxed">Public API explicitly forbids creating tables/columns &mdash; UI-only for safety.</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-amber-600 font-semibold">Database only</div>
-          <div class="text-[11px] text-slate-400">No endpoints, no agents</div>
-        </div>
-      </div>
-
-      <!-- Clear -->
-      <div class="competitor-row" style="background: linear-gradient(135deg, #eef2ff, #f5f0ff); border-top: 2px solid #6366f1;">
-        <div>
-          <div class="font-extrabold text-indigo-700 text-[14px]">Clear</div>
-          <div class="text-[11px] text-indigo-500">Internal-tool builder</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-slate-800 leading-relaxed mb-1 font-medium">Owner opens the running app, talks to Meph, ships additive changes in seconds.</div>
-          <div class="text-[11.5px] text-slate-600 leading-relaxed">Diff preview, dry-run URL, one-sentence rollback. No dev required.</div>
-        </div>
-        <div>
-          <div class="text-[13px] text-emerald-700 font-bold">Owner only, in-browser</div>
-          <div class="text-[11px] text-slate-500">Plain English, zero code</div>
-        </div>
-      </div>
-    </div>
-
-    <p class="text-center text-[13px] text-slate-400 mt-6 italic max-w-2xl mx-auto">
-      Retool is the realistic threat &mdash; they already have the safety infrastructure and a separate AI product (Clark). If they bolt one onto the other, the window closes. We plan to stay a year ahead.
+    <p class="text-[16px] text-slate-700 leading-relaxed text-center max-w-xl mx-auto">
+      Clear lets the owner talk to a running app in plain English.
+      <span class="font-semibold text-slate-900">Nobody else has shipped this.</span>
     </p>
   </div>
 </section>
-<!-- The promise: your data is always safe -->
-<section class="py-24" style="background: linear-gradient(180deg, #fafbfd 0%, #f0f4ff 50%, #fafbfd 100%);">
-  <div class="max-w-5xl mx-auto px-6">
-    <div class="max-w-3xl mb-14 mx-auto text-center">
-      <div class="text-[11px] font-bold text-indigo-500 uppercase tracking-[0.12em] mb-3">The promise</div>
-      <h2 class="text-3xl md:text-[44px] font-extrabold tracking-[-0.03em] leading-[1.1] mb-5">
-        Nothing your team typed in<br>
-        <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-purple-500 bg-clip-text text-transparent">ever disappears.</span>
-      </h2>
-      <p class="text-slate-500 text-[16px] leading-relaxed max-w-2xl mx-auto">
-        Clear treats "remove" like a desktop trash can, not an incinerator.
-        Every change you make leaves the old data exactly where it was &mdash;
-        just out of sight. Change your mind? One click and it's back.
-      </p>
-    </div>
 
-    <div class="bg-white rounded-3xl border border-indigo-100 shadow-[0_8px_32px_rgba(67,97,238,0.06)] p-10 md:p-14">
-      <div class="grid md:grid-cols-3 gap-8">
-
-        <!-- Story 1: Add a field -->
-        <div class="relative">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </div>
-            <div class="font-bold text-slate-800 text-[15px]">Add a field</div>
-          </div>
-          <p class="text-[13.5px] text-slate-600 leading-relaxed mb-4">
-            The new field appears. Every existing row gets a sensible default. Nothing else changes.
-          </p>
-          <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
-            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Your approvals</div>
-            <div class="space-y-1.5">
-              <div class="text-[12.5px] text-slate-600">Customer</div>
-              <div class="text-[12.5px] text-slate-600">Discount</div>
-              <div class="text-[12.5px] text-slate-600">Reason</div>
-              <div class="text-[12.5px] text-emerald-700 font-semibold">Region <span class="text-emerald-600 text-[10px] font-bold uppercase tracking-wider ml-1">new</span></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Story 2: Rename a field -->
-        <div class="relative">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            </div>
-            <div class="font-bold text-slate-800 text-[15px]">Rename a field</div>
-          </div>
-          <p class="text-[13.5px] text-slate-600 leading-relaxed mb-4">
-            The new name shows up with all the old data already copied in. The old name sticks around, just out of sight &mdash; so undo is instant.
-          </p>
-          <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
-            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">"Notes" &rarr; "Reason"</div>
-            <div class="space-y-2 text-[12.5px]">
-              <div class="flex items-center gap-2">
-                <span class="text-emerald-600">&check;</span>
-                <span class="text-slate-600">Existing notes copy into "reason"</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-emerald-600">&check;</span>
-                <span class="text-slate-600">"Notes" is hidden but kept</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-emerald-600">&check;</span>
-                <span class="text-slate-600">Undo restores everything in one click</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Story 3: Remove a field -->
-        <div class="relative">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="2.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-            </div>
-            <div class="font-bold text-slate-800 text-[15px]">Remove a field</div>
-          </div>
-          <p class="text-[13.5px] text-slate-600 leading-relaxed mb-4">
-            It disappears from the screen. The data stays in the database, unseen. Changed your mind on Tuesday? It's all still there.
-          </p>
-          <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
-            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Like the desktop trash</div>
-            <p class="text-[12.5px] text-slate-600 leading-relaxed">
-              To actually destroy the data, you'd have to run a separate "permanently delete" command and type DELETE to confirm. Almost nobody ever does.
-            </p>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Bottom callout: snapshot -->
-      <div class="mt-10 pt-8 border-t border-slate-100 grid md:grid-cols-2 gap-8 items-center">
-        <div>
-          <div class="flex items-center gap-2 mb-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9"/><polyline points="3 5 3 12 10 12"/></svg>
-            <div class="text-[13px] font-bold text-indigo-600">Safety net: one-sentence rollback</div>
-          </div>
-          <p class="text-[14px] text-slate-600 leading-relaxed">
-            Every live edit creates a named checkpoint &mdash; source, schema, and data together.
-            Say "Meph, undo the last change" or "Meph, go back to 9am" and every layer rewinds at once.
-          </p>
-        </div>
-        <div class="bg-slate-900 rounded-xl p-5 font-mono">
-          <div class="text-[11px] text-slate-500 mb-2">Change log &middot; approvals.acme</div>
-          <div class="text-[12px] text-emerald-400 mb-1">&bull; 14:22 &mdash; added region field <span class="text-slate-500">(you)</span></div>
-          <div class="text-[12px] text-slate-400 mb-1">&bull; 11:07 &mdash; renamed "notes" &rarr; "reason" <span class="text-slate-500">(you)</span></div>
-          <div class="text-[12px] text-slate-400 mb-3">&bull; yesterday &mdash; added notifications <span class="text-slate-500">(you)</span></div>
-          <div class="text-[11px] text-indigo-400">&gt; Meph, undo the region field_</div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</section>
-<!-- CTA -->
-<section class="cta-section py-24 relative">
-  <div class="max-w-3xl mx-auto px-6 text-center relative z-10">
-    <h2 class="text-3xl md:text-[44px] font-extrabold text-white tracking-[-0.03em] leading-[1.1] mb-5">
-      Build it on Monday.<br>Change it on Wednesday.<br>
+<!-- 5. CTA -->
+<section class="cta-bg py-24 text-center relative overflow-hidden">
+  <div class="max-w-2xl mx-auto px-6 relative z-10">
+    <h2 class="text-3xl md:text-5xl font-extrabold text-white tracking-[-0.03em] leading-[1.1] mb-5">
+      Build it Monday.<br>Change it Wednesday.<br>
       <span class="text-indigo-300">Without a single rollback.</span>
     </h2>
-    <p class="text-indigo-200/70 text-lg mb-10 font-light max-w-2xl mx-auto">
-      That's the Clear promise. Talk to your running app. Ship changes live.
-      Let your team keep working while you do it.
+    <p class="text-indigo-200/70 text-lg mb-10 font-light">
+      Your tool, your team, your data — safe even while you change it.
     </p>
-    <a href="#" class="btn-white text-[16px] px-10 py-4 rounded-2xl font-semibold inline-flex items-center gap-2">
-      Start with a template &mdash; free
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    <a href="#" class="bg-white text-indigo-900 text-[15px] px-8 py-4 rounded-2xl font-semibold inline-flex items-center gap-2 hover:-translate-y-0.5 transition shadow-lg">
+      Start free
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
     </a>
-    <p class="text-indigo-300/40 text-[13px] mt-4">No credit card. Browser-based. Owner-only edits gated from day one.</p>
+    <p class="text-indigo-300/50 text-[13px] mt-4">No credit card. Browser-based. Owner-only edits from day one.</p>
   </div>
 </section>
 
@@ -897,10 +258,9 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
   <div class="max-w-5xl mx-auto px-6 flex items-center justify-between">
     <div class="text-[14px] font-semibold text-slate-800">Clear</div>
     <div class="flex gap-8 text-[13px] text-slate-400 font-medium">
-      <a href="#" class="hover:text-slate-500 transition">Templates</a>
-      <a href="#" class="hover:text-slate-500 transition">Pricing</a>
-      <a href="#" class="hover:text-slate-500 transition">Docs</a>
-      <a href="#" class="hover:text-slate-500 transition">Changelog</a>
+      <a href="#" class="hover:text-slate-500">Templates</a>
+      <a href="#" class="hover:text-slate-500">Pricing</a>
+      <a href="#" class="hover:text-slate-500">Docs</a>
     </div>
   </div>
 </footer>
