@@ -106,9 +106,14 @@ If you get stuck on the same error 3+ times, end with "STUCK: <reason>".`;
 // writes rows as Meph works; we collect them from the DB after the stream ends.
 // taskSteps (optional) labels each compile row with "which milestone Meph has hit."
 // Hidden from Meph by design — training signal, not guidance.
-export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = null) {
+// factorDB (optional) is used to grade the task by checking for any test_pass=1
+// row written during the task's time window — more reliable than string-matching
+// "TASK COMPLETE" in Meph's chat stream (Meph often forgets the magic phrase
+// even when the app works).
+export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = null, factorDB = null, taskStartMs = null) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const start = taskStartMs || Date.now();
 
   try {
     const body = {
@@ -127,19 +132,35 @@ export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = nul
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let taskComplete = false;
+    let saidTaskComplete = false;
     let stuck = false;
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = decoder.decode(value, { stream: true });
-      if (chunk.includes('TASK COMPLETE')) taskComplete = true;
+      if (chunk.includes('TASK COMPLETE')) saidTaskComplete = true;
       if (chunk.includes('STUCK:')) stuck = true;
     }
 
     clearTimeout(timeoutId);
-    return { ok: taskComplete, stuck, timedOut: false };
+
+    // Real grade: did ANY row with test_pass=1 land during this task's window?
+    // This catches the common case where Meph compiles, runs the app, verifies
+    // endpoints via http_request (which updates test_pass=1 on the latest row),
+    // but forgets to type "TASK COMPLETE" in his final message.
+    let dbPassed = false;
+    if (factorDB) {
+      try {
+        const row = factorDB._db
+          .prepare('SELECT 1 FROM code_actions WHERE test_pass = 1 AND created_at >= ? LIMIT 1')
+          .get(start);
+        dbPassed = !!row;
+      } catch { /* non-fatal */ }
+    }
+
+    const ok = dbPassed || saidTaskComplete;
+    return { ok, stuck, timedOut: false, dbPassed, saidTaskComplete };
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') return { ok: false, stuck: false, timedOut: true };
@@ -176,12 +197,12 @@ async function preflightApiCheck(apiKey) {
   }
 }
 
-async function processBucket(port, bucketTasks, timeoutMs, onTaskDone) {
+async function processBucket(port, bucketTasks, timeoutMs, onTaskDone, factorDB = null) {
   const results = [];
   for (const task of bucketTasks) {
     const prompt = buildPrompt(task);
     const t0 = Date.now();
-    const result = await driveTaskOnWorker(port, prompt, timeoutMs, task.steps);
+    const result = await driveTaskOnWorker(port, prompt, timeoutMs, task.steps, factorDB, t0);
     const elapsed = Date.now() - t0;
     results.push({ task: task.id, level: task.level, ...result, elapsedMs: elapsed });
     if (onTaskDone) onTaskDone(task, result, elapsed);
@@ -271,9 +292,16 @@ export async function runSweep({
           : result.stuck ? '🔶 STUCK'
             : result.timedOut ? '⏱️  TIMEOUT'
               : '❌';
+        // Show WHY the ✅ — explicit "TASK COMPLETE" or DB-inferred test pass
+        let whyOk = '';
+        if (result.ok) {
+          if (result.saidTaskComplete && result.dbPassed) whyOk = ' (said TC + DB pass)';
+          else if (result.saidTaskComplete) whyOk = ' (said TC)';
+          else if (result.dbPassed) whyOk = ' (DB-graded: test_pass=1)';
+        }
         const detail = result.error ? ` — ${result.error.slice(0, 120)}` : '';
-        console.log(`  [${status}] L${task.level} ${task.id} — ${(elapsed / 1000).toFixed(1)}s${detail}`);
-      });
+        console.log(`  [${status}] L${task.level} ${task.id} — ${(elapsed / 1000).toFixed(1)}s${whyOk}${detail}`);
+      }, factorDB);
     }));
 
     const elapsedTotal = Date.now() - t0;
