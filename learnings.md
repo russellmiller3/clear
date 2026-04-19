@@ -1122,7 +1122,7 @@ User actions, Meph tool calls, browser console errors all mirrored into `termina
 
 ### Reranker / ML
 
-- **At 180-500 rows + 20 features, Lasso beats EBM.** EBM needs 1000+ rows for its pairwise interactions to fit without overfitting. Lasso's L1 regularization auto-zeros weak features — safer at low data counts. Measured: val R² Lasso 0.39 vs EBM 0.30 on the same features. Revisit when the Factor DB hits 1000 passing rows; until then, keep Lasso in production.
+- **2-stage Lasso → EBM beats vanilla EBM.** Russell's suggestion, correctly interpreted: use Lasso as a feature-SELECTOR (not as a replacement model), then train EBM only on the survivors. Measured on 24 features / 393 training rows: vanilla EBM val R² 0.30, Lasso alone 0.39, Stage-2 EBM (on 13 Lasso-kept features) 0.335. Lasso dropped 11 features as pure noise at our data scale (num_endpoints, num_tables, num_charts, etc.) — none of them add signal until we have enough rows to populate their bin statistics. The 2-stage EBM beats vanilla EBM by +0.033 val R². Lasso alone still wins outright at Phase-1 scale because EBM's interactions don't earn their keep until 1000+ rows. At 1000+ rows, Stage-2 EBM should overtake Lasso.
 
 - **Whole-row features are not the reranker's real input.** The naive exporter produces one row per compile with "did this row's app pass?" as the label. That's a regression problem mostly already solved by `ORDER BY test_score DESC`. The actual reranker job is RANKING pairs: given Meph's current error + past candidate fix, is F_past likely to resolve E_now? That needs PAIRWISE features (archetype_match, error_sig_match, step_delta, similarity_score) computed at retrieval time. The current EBM/Lasso is a Phase-1 placeholder.
 

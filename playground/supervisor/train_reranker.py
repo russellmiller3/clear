@@ -207,16 +207,22 @@ def main():
     if val_score < 0.3:
         print('WARNING: val R² below 0.3 — model barely beats baseline. More diverse data needed.')
 
-    # ─── Lasso sanity check (Russell's suggestion) ──────────────────────────
-    # At 180-500 rows and 20+ features, Lasso is often the safer ranker than
-    # EBM. L1 regularization auto-zeros weak features — no manual feature
-    # selection needed. Lasso is also linear (no interactions), so if it
-    # beats EBM it's a signal our interactions aren't earning their keep yet.
-    # We report both and let the numbers pick.
-    print('\nLasso comparison (same features, one-hot + standardized):')
-    X_train_lasso = pd.get_dummies(X_train, columns=[c for c in feature_cols if c in KNOWN_CATEGORICAL or X_train[c].dtype == 'object'], drop_first=False)
-    X_val_lasso = pd.get_dummies(X_val, columns=[c for c in feature_cols if c in KNOWN_CATEGORICAL or X_val[c].dtype == 'object'], drop_first=False)
-    # Align columns (val may be missing some dummy cols)
+    # ─── 2-stage Lasso → EBM pipeline (Russell's suggestion) ───────────────
+    # Stage 1: run Lasso on one-hot-encoded features. L1 regularization
+    #   auto-zeros weak features. Aggregate per-dummy coefficients back to
+    #   source-feature importance: a source feature is "kept" if ANY of its
+    #   one-hot dummies has non-zero coefficient (or a continuous feature's
+    #   coefficient is non-zero).
+    # Stage 2: retrain EBM on ONLY the Lasso-selected source features.
+    #   Fewer features → less overfitting at low row counts, while still
+    #   getting EBM's non-linear shape functions and pairwise interactions.
+    # We report all three (EBM-on-all, Lasso alone, EBM-on-Lasso-selected)
+    # so you can see whether the 2-stage beats either alone.
+    print('\nStage 1: Lasso on one-hot features...')
+    # Categorical columns to one-hot: known categoricals + any object-dtype
+    cat_cols = [c for c in feature_cols if c in KNOWN_CATEGORICAL or X_train[c].dtype == 'object']
+    X_train_lasso = pd.get_dummies(X_train, columns=cat_cols, drop_first=False)
+    X_val_lasso = pd.get_dummies(X_val, columns=cat_cols, drop_first=False)
     X_val_lasso = X_val_lasso.reindex(columns=X_train_lasso.columns, fill_value=0)
     scaler = StandardScaler()
     X_train_lasso_s = scaler.fit_transform(X_train_lasso)
@@ -227,22 +233,80 @@ def main():
     lasso_train_r2 = lasso.score(X_train_lasso_s, y_train)
     lasso_val_r2 = lasso.score(X_val_lasso_s, y_val)
     nonzero = sum(1 for c in lasso.coef_ if abs(c) > 1e-8)
-    print(f'  Train R²: {lasso_train_r2:.3f}')
-    print(f'  Val R²:   {lasso_val_r2:.3f}')
-    print(f'  Nonzero coefficients: {nonzero} / {len(lasso.coef_)} (Lasso auto-selected these)')
-    print(f'  Chosen alpha: {lasso.alpha_:.4f}')
-    print(f'  Top Lasso features:')
-    lasso_feats = sorted(
-        [(col, coef) for col, coef in zip(X_train_lasso.columns, lasso.coef_) if abs(coef) > 1e-8],
-        key=lambda x: -abs(x[1])
-    )[:10]
-    for col, coef in lasso_feats:
-        print(f'    {coef:+.4f}  {col}')
+    print(f'  Lasso Train R²: {lasso_train_r2:.3f}')
+    print(f'  Lasso Val R²:   {lasso_val_r2:.3f}')
+    print(f'  Nonzero coefficients: {nonzero} / {len(lasso.coef_)}   (alpha={lasso.alpha_:.4f})')
 
-    if lasso_val_r2 > val_score:
-        print(f'\n>>> Lasso wins by {(lasso_val_r2 - val_score):.3f} val R². Consider using Lasso as the production reranker at this data scale.')
+    # Aggregate per-dummy importance back to source features.
+    # A source feature is "kept" if any of its one-hot dummies has a non-zero
+    # coefficient (or a continuous feature's coefficient is non-zero).
+    feature_importance_from_lasso = {f: 0.0 for f in feature_cols}
+    for dummy_name, coef in zip(X_train_lasso.columns, lasso.coef_):
+        if abs(coef) < 1e-8:
+            continue
+        # Find which source feature this dummy came from
+        if dummy_name in feature_importance_from_lasso:
+            feature_importance_from_lasso[dummy_name] = max(
+                feature_importance_from_lasso[dummy_name], abs(coef)
+            )
+        else:
+            # It's a one-hot dummy: look for the source categorical
+            for cat in cat_cols:
+                if dummy_name.startswith(f'{cat}_'):
+                    feature_importance_from_lasso[cat] = max(
+                        feature_importance_from_lasso[cat], abs(coef)
+                    )
+                    break
+
+    lasso_selected = [f for f, imp in feature_importance_from_lasso.items() if imp > 1e-8]
+    lasso_dropped = [f for f, imp in feature_importance_from_lasso.items() if imp <= 1e-8]
+    print(f'\n  Lasso-kept source features ({len(lasso_selected)}/{len(feature_cols)}):')
+    ranked = sorted(feature_importance_from_lasso.items(), key=lambda x: -x[1])
+    for f, imp in ranked:
+        if imp > 1e-8:
+            print(f'    {imp:+.4f}  {f}')
+    if lasso_dropped:
+        print(f'  Dropped (zero coefficient): {", ".join(lasso_dropped)}')
+
+    # ─── Stage 2: retrain EBM on ONLY Lasso-selected features ──────────────
+    print(f'\nStage 2: EBM on Lasso-selected features ({len(lasso_selected)} features)...')
+    if len(lasso_selected) < 2:
+        print('  Too few features selected by Lasso — skipping 2-stage EBM')
+        stage2_model = model
+        stage2_val_r2 = val_score
     else:
-        print(f'\n>>> EBM wins by {(val_score - lasso_val_r2):.3f} val R². EBM interactions are earning their keep.')
+        X_train_s2 = X_train[lasso_selected]
+        X_val_s2 = X_val[lasso_selected]
+        ft_s2 = [ft for f, ft in zip(feature_cols, feature_types) if f in lasso_selected]
+        stage2_model = ExplainableBoostingRegressor(
+            feature_types=ft_s2,
+            interactions=min(8, len(lasso_selected) * (len(lasso_selected) - 1) // 2),
+            max_bins=32,
+            min_samples_leaf=4,
+            learning_rate=0.01,
+            random_state=42,
+        )
+        stage2_model.fit(X_train_s2, y_train)
+        stage2_train_r2 = stage2_model.score(X_train_s2, y_train)
+        stage2_val_r2 = stage2_model.score(X_val_s2, y_val)
+        print(f'  Stage-2 EBM Train R²: {stage2_train_r2:.3f}')
+        print(f'  Stage-2 EBM Val R²:   {stage2_val_r2:.3f}')
+
+    # ─── Scorecard ─────────────────────────────────────────────────────────
+    print('\n=== Scorecard ===')
+    print(f'  EBM (all {len(feature_cols)} features):        val R² = {val_score:.3f}')
+    print(f'  Lasso alone (one-hot, L1-regularized):   val R² = {lasso_val_r2:.3f}')
+    print(f'  EBM on Lasso-selected features ({len(lasso_selected)}):   val R² = {stage2_val_r2:.3f}')
+    best = max([('EBM-all', val_score), ('Lasso-alone', lasso_val_r2), ('EBM-on-Lasso-selected', stage2_val_r2)], key=lambda x: x[1])
+    print(f'  >>> WINNER: {best[0]}  (val R² = {best[1]:.3f})')
+
+    # Switch production model to stage-2 EBM if it wins
+    if stage2_val_r2 > val_score and stage2_val_r2 > lasso_val_r2:
+        print(f'  2-stage pipeline wins. Using stage-2 EBM as production model.')
+        model = stage2_model
+        feature_cols = lasso_selected
+        feature_types = [ft for f, ft in zip([f for f in feature_importance_from_lasso.keys()], feature_types) if f in lasso_selected]
+        val_score = stage2_val_r2
     # ────────────────────────────────────────────────────────────────────────
 
     # Global feature importance — EBM gives this natively from the shape-fn magnitudes
