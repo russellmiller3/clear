@@ -3,7 +3,7 @@
   "level": 7,
   "title": "Lead Router",
   "description": "Build a lead routing API. Prospects submit leads (name, email, company, size). The server applies routing rules: SMB → alice, Mid-market → bob, Enterprise → charlie — set assigned_to automatically before saving. Need: POST /api/leads (submit + auto-route), GET /api/leads (list), GET /api/leads/new (only status='new').",
-  "skeleton": "build for javascript backend\n\ncreate a Leads table:\n  name, required\n  email, required\n  size, default 'SMB'\n  assigned_to\n  status, default 'new'\n\n# Your endpoints here\n",
+  "skeleton": "build for web and javascript backend\n\ncreate a Leads table:\n  name, required\n  email, required\n  size, default 'SMB'\n  assigned_to\n  status, default 'new'\n\nallow signup and login\n\n# Your endpoints + intake form page + routing rules here\n",
   "tests": [
     {
       "method": "POST",
