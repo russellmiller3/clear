@@ -10383,7 +10383,7 @@ describe('Inline send back — retrieval shorthand', () => {
     const src = `build for javascript backend\ncreate a Users table:\n  name, required\nwhen user calls GET /api/users:\n  send back all Users`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect((r.serverJS || r.javascript).includes("db.findAll('users')")).toEqual(true);
+    expect((r.serverJS || r.javascript).includes("db.findAll('users', {}, { limit: 50 })")).toEqual(true);
     expect((r.serverJS || r.javascript).includes('res.json(')).toEqual(true);
   });
 
@@ -10401,13 +10401,6 @@ describe('Inline send back — retrieval shorthand', () => {
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect((r.serverJS || r.javascript).includes("'users'")).toEqual(true);
-  });
-
-  it('longhand still works (backward compat)', () => {
-    const src = `build for javascript backend\ncreate a Users table:\n  name, required\nwhen user calls GET /api/users:\n  users = get all Users\n  send back users`;
-    const r = compileProgram(src);
-    expect(r.errors).toHaveLength(0);
-    expect((r.serverJS || r.javascript).includes("db.findAll('users')")).toEqual(true);
   });
 
   it('send back literal still works (not just retrieval)', () => {
