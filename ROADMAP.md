@@ -457,7 +457,7 @@ Today, the moment Marcus's approval app ships to his five employees, it's frozen
 |---|-------------|----------------|
 | LAE-1 | **Owner-only authorization.** Live edits require the authenticated owner (or admin role) of the app. Non-owners see the app normally, with no edit UI. | Prevents chaos, prevents audit-log disasters, prevents employees quietly reshaping the workflow they're supposed to follow. |
 | LAE-2 | **In-browser edit surface.** A floating Meph chat widget on the running app (not Studio, not a separate tool). Marcus opens his app at `approvals.buildclear.dev` and edits it in place. | The whole point is "talk to your running app." Forcing Marcus back to Studio breaks the promise. |
-| LAE-3 | **Change classifier with hide-by-default semantics.** Every proposed diff is classified: `additive` (add field/page/endpoint — ships instantly); `reversible` (**remove = hide**, rename = expand+copy+hide, relabel, reorder — data never physically leaves the database, one-click un-hide); `destructive` (only the explicit "permanently delete" command or unavoidable type coercion — requires second-tier confirmation + snapshot + audit entry). Soft-hide is the default for "remove" because non-engineers think of deletion like a desktop trash can, not an incinerator. | Safety comes from making the default reversible. Data is only physically dropped when the user explicitly opts in to destroying it. |
+| LAE-3 | **Change classifier with hide-by-default semantics.** Every proposed diff is classified: `additive` (add field/page/endpoint — ships instantly); `reversible` (**remove = hide**, rename = expand+copy+hide, relabel, reorder — data never physically leaves the database, one-click un-hide); `destructive` (only the explicit "permanently delete" command or unavoidable type coercion — requires second-tier confirmation, a mandatory `reason` string, and an audit entry; **NO data snapshot** for the compliance case, since keeping a copy defeats the purpose of erasure). Soft-hide is the default for "remove" because non-engineers think of deletion like a desktop trash can, not an incinerator. Destructive delete means actually gone — if Marcus wanted recoverable, hide was the right path. | Safety comes from making the default reversible. When the user reaches for destructive, the seat-belt is the confirm flow + audit trail, not a hidden copy. A snapshot would create false assurance and break GDPR/CCPA/HIPAA erasure obligations. |
 | LAE-4 | **Live-reload contract — preserve in-flight work.** When a change ships, connected browser sessions get the new version without losing unsaved form state, filled-in inputs, scroll position, or open modals. New fields appear empty; existing user input survives. | If Jenna loses her half-filled approval because Marcus added a field, the feature is dead on arrival. |
 | LAE-5 | **Schema-change migration planner.** Type changes (`text → number`, `string → dropdown`, nullable → required) trigger a migration preview: "12 rows don't parse — coerce / default / reject?" Marcus picks; migration runs transactionally. | Data corruption is the #1 risk. No schema change ships without Marcus seeing what happens to existing rows. |
 | LAE-6 | **Snapshot + 1-sentence rollback.** Every live edit creates a named checkpoint (source + schema + data snapshot). "Meph, undo the last change" or "Meph, go back to this morning" restores source, schema, and data in one command. | This is the safety net that makes Marcus edit bravely. Without it, every change feels terrifying. |
@@ -478,8 +478,26 @@ Today, the moment Marcus's approval app ships to his five employees, it's frozen
 |-------|-------|--------------|--------|
 | Phase A | LAE-1, LAE-2, LAE-3 (additive changes only), LAE-7 — Marcus adds fields/pages/endpoints live, with preview. | ~1 week | **Done 2026-04-18** (67 tests, 10/10 real-Meph eval) |
 | Phase B | LAE-4 (live-reload contract), LAE-6 (snapshot + rollback), LAE-3 for reversible changes (hide, rename, relabel, reorder) | ~1 week | **Done 2026-04-18** (44 tests, 11/11 real-Meph eval) |
-| Phase C | LAE-5 (schema migration planner), LAE-3 for destructive changes (explicit permanent-delete + unavoidable type coercion) | ~1.5 weeks | Not started |
+| Phase C | LAE-5 (schema migration planner), LAE-3 for destructive changes (explicit permanent-delete + unavoidable type coercion). **No data snapshot on destructive delete** — audit trail replaces it as the accountability surface (see design note below). | ~1.5 weeks | Not started |
 | Phase D | LAE-8 (audit log), LAE-9 (concurrent guard), LAE-10 (dry-run) | ~1 week | Not started |
+
+**Design note — why destructive delete has NO data snapshot (Phase C):**
+
+The safety model inverts between tiers.
+- **Reversible (Phase B, hide/rename):** snapshot the data because the whole point is "change your mind is free." Data doesn't move; undo is a markup toggle.
+- **Destructive (Phase C, permanently delete):** do NOT snapshot the data. If a regulator audits Marcus over a GDPR erasure request and finds the data sitting in a snapshot he controls, the deletion claim is invalid. A snapshot creates false assurance for Marcus and legal exposure for the app owner.
+
+What replaces the snapshot as the accountability mechanism: a **mandatory audit log entry** captured at destruction time, containing:
+- when (timestamp, UTC)
+- who (email + role at time of action)
+- what (table + column + row count affected)
+- references (every endpoint/page/agent that referenced the column)
+- reason (free-text string the user MUST provide — e.g., "GDPR erasure ticket #412")
+- confirmation method (must be "typed DELETE + click Confirm" — never one-click)
+
+Auditors inspect the trail, not the data. That's what compliance actually wants.
+
+Implementation corollary: every Phase C surface (permanent delete command, schema migration planner when the chosen path is lossy) requires the `reason` field before it'll ship. Meph refuses to proceed without one.
 
 **Still needed to finish the Live App Editing flagship:**
 - ~~Compiler change: emit widget script + `/__meph__/*` proxy in compiled apps.~~ **Done 2026-04-18** — any compiled Clear app with `allow signup and login` now auto-includes the edit widget and proxies `/__meph__/api/*` to `STUDIO_PORT` (with a clean 503 when the env var is absent in production). 7 tests in `lib/widget-injection.test.js`.
