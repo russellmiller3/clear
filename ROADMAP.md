@@ -407,6 +407,28 @@ The RL thesis moves forward in small, measurable steps. Each item below compound
 | RL-5 | **Sharpen the 5 archetype task descriptions.** Explicit archetype signals so Meph doesn't guess wrong on webhook/batch/sync/ETL/dashboard shapes. | Next (30 min) | Prevents classifier poisoning the DB |
 | RL-6 | **First full re-sweep with Haiku + steps + fixes.** Overnight run populating the Factor DB with step-labeled, cheap, well-routed rows. First training-ready dataset. | After RL-3/4/5 | Unlocks EBM training at 200 rows |
 
+### Compiler Flywheel — second-order moat (Session 38 idea, Phase 2)
+
+**The insight:** Today's flywheel makes *Meph* write better Clear over time. But we never measure whether the *JS/Python/HTML the compiler emits* is optimal. Every emit function is hand-written by Russell/Claude — "reasonable" but not proven best. A second flywheel, running at the compiler layer, can let production data pick the emit strategy that actually performs.
+
+**Four tiers by ROI:**
+
+| # | Tier | Cost | Unlock |
+|---|------|------|--------|
+| CF-1 | **Runtime instrumentation.** Compiled apps emit latency / error / memory beacons to a shared endpoint. Factor DB gains runtime-outcome columns per compile row. | 1 day | We finally *know* which compilation choices produce slow or crashy JS. Data-driven compiler bug-reports instead of gut-feel. |
+| CF-2 | **Candidate emitters + deterministic A/B.** For the top 10 emit patterns, define 2–3 JS/Py variants. Feature-flag which variant is emitted per app (deterministic at compile time, not runtime — preserves "same input = same output" rule within a build). After N apps run each variant, production data picks the winner. | 1 week | Quantitative answer to "which JS pattern is best for `get all X where Y`?" instead of whoever wrote the emitter first. |
+| CF-3 | **Compiler-strategy reranker.** EBM trained on (archetype, app shape, runtime outcome) → which emit variant should I pick? Same glass-box model as the Meph reranker, one layer deeper. | 2 weeks (after Meph reranker trained) | Per-pattern emit strategy auto-selects based on context. Compiler gets smarter per app. |
+| CF-4 | **GA-evolved compiler (research).** Mutate emit functions themselves. Fitness = curriculum pass rate + runtime perf. RESEARCH.md already has a GA for candidate Clear programs — this is the same idea one abstraction up: evolve the compiler. | 2+ months (research, not product) | The compiler becomes a learned artifact, not a hand-coded one. This is the moat nobody else architecturally can copy — a compiler that improves from usage. |
+
+**Error-message flywheel (bonus, easy):** Track which compile error messages correlate with STUCK sessions. Auto-flag "bad error messages" for rewrite. Already half-built via the existing Factor DB.
+
+**Why ship CF-1 soon, not CF-2-4:**
+- The Meph-level flywheel is not yet validated. Don't add a second flywheel before the first is proven.
+- Compiler quality is *not* the current bottleneck — Session 38's webhook bug proved the bottleneck is Meph writing broken Clear (parser gaps, wrong syntax), not the generated JS being suboptimal.
+- BUT: CF-1 is 20 lines of instrumentation that starts collecting data now. Cheap optionality. Data collection compounds before you decide to act.
+
+**Not-now but write it down:** CF-4 is a publishable research direction. If Augment Labs track becomes primary, this is where that work lives.
+
 ### One-click deploy follow-ups (Phase 85 shipped)
 1. **Phase 85a — Provision the real stack.** Register buildclear.dev, apply for Fly Trust Verified status with 10k-machine quota, sign up for Stripe, generate Anthropic org key, wire Postgres for the tenants DB, and run `deploy-builder.sh` + `deploy-proxy.sh` once. Until this is done Deploy works end-to-end in tests but has nowhere to deploy to.
 2. **Phase 86 — Per-tenant usage dashboard.** The plan badge is a teaser; a full breakdown page (spend by day, top apps by AI spend, upgrade CTA) turns the badge into a billing conversion surface.

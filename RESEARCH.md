@@ -1,7 +1,19 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: 2026-04-18 (Session 37: flywheel live, Factor DB wired).
+Updated: **2026-04-19 (Session 38: data-quality pass + EBM chosen + compiler flywheel drafted)**.
+
+## Session timeline (recent)
+
+| Session | Date | What shipped |
+|---------|------|--------------|
+| 35 | 2026-04-16 | Marcus GTM lock, competitive landscape research, deal-desk hero use case |
+| 36 | 2026-04-17 | Multi-session supervisor plan + curriculum harness skeleton |
+| 37 | 2026-04-18 | **Flywheel live.** Factor DB wired to `/api/chat`, archetype classifier (15 cats), Studio dashboard tab, cold-start harness, 5 Marcus curriculum tasks, cross-archetype curriculum diversity. 107 rows, 38 passing. |
+| **38** | **2026-04-19** | **Data-quality pass.** Haiku 4.5 default, step-decomposition, parser inline records `{}`, 16th archetype (kpi), classifier ordering fix, sweep DB grader, CLI clobber-proofing, iteration limit bump, EBM chosen over XGBoost (trainer rewritten), compiler-flywheel design. 149+ rows, 89+ passing as of mid-session. |
+
+The document below is structured **theory → architecture → current state → path forward**. Start with "Read This First" for the plain-English summary; dive into the specific section that matches your question.
+
 
 ---
 
@@ -126,6 +138,8 @@ This is documented in CLAUDE.md as the "GAN Design Method" and "GAN Page Loop." 
 
 This is the compounding loop that makes Clear's Meph smarter over time — without changing the underlying language model.
 
+> **Session 38 state (2026-04-19):** 149+ training rows, 89+ passing, 16 archetypes balanced, 30/30 curriculum tasks have step labels, Haiku 4.5 default (3× cheaper than Sonnet), parser accepts inline records `{ a is 1 }`, sweep grader now reads the DB (not Meph's stream), iteration limit 25, CLI can't clobber the repo root anymore. The system is producing ~20-30 rows and 15-30 passing rows per full 30-task sweep at ~$5/sweep. Next checkpoint: 200 passing rows → train the EBM re-ranker.
+
 ```
                     ┌─────────────────────────────────────┐
                     │           MEPH SESSION              │
@@ -164,18 +178,23 @@ This is the compounding loop that makes Clear's Meph smarter over time — witho
    │                                   │ accumulates rows
    │                                   ▼
    │                    ┌──────────────────────────────────────┐
-   │                    │     XGBOOST RE-RANKER TRAINING       │
+   │                    │     EBM RE-RANKER TRAINING           │
+   │                    │     (Explainable Boosting Machine)   │
    │                    │                                      │
-   │                    │  ~20 structured features:            │
+   │                    │  ~15 structured features:            │
    │                    │    global context (archetype,        │
    │                    │      has_auth, multi_tenant, ...)    │
    │                    │    local context (error_category,    │
    │                    │      patch_op_type, file_location)   │
+   │                    │    step context (step_id,            │
+   │                    │      step_index, step_name)          │
    │                    │    quality (weak_assertion_count,    │
-   │                    │      red_step_observed)              │
+   │                    │      red_step_observed, test_pass)   │
    │                    │                                      │
+   │                    │  Each feature → plottable shape fn   │
+   │                    │  + top-15 pairwise interactions      │
    │                    │  Retrains every ~1000 new rows       │
-   │                    │  (~seconds on CPU)                   │
+   │                    │  (~30-60s on CPU)                    │
    │                    └──────────────┬───────────────────────┘
    │                                   │
    │                                   │ predictions
@@ -209,6 +228,45 @@ This is the compounding loop that makes Clear's Meph smarter over time — witho
 **Important:** the model being trained is NOT Claude. It's an **Explainable Boosting Machine (EBM)** — a Generalized Additive Model that learns one shape function per feature (plus pairwise interactions). Each shape function is plottable: you can literally see "feature X contributed +0.4 to this score." That ranks retrieved examples transparently. Claude/Meph stays exactly the same. The hints Meph receives get better; Meph's ability to follow hints was always there.
 
 The mechanical quality signals bootstrap this loop. They produce deterministic quality scores on day 1 — before any ML is trained. See the next section.
+
+---
+
+## The Compiler Flywheel (Second-Order Moat)
+
+The Meph flywheel above makes *Meph write better Clear over time*. A **second, parallel flywheel** can make the *compiler emit better JS/Python/HTML over time*.
+
+### The question it answers
+
+Every emit function in `compiler.js` is hand-written. `create a Todos table:` compiles to `db.createTable('todos', ...)`. `get all Users where active is true` compiles to a specific SQL shape. Those choices are reasonable — nobody proved they're optimal. We never measured:
+
+- Which Clear patterns produce the slowest runtime queries?
+- Which compilation choices crash most under edge cases?
+- Does our `get all X where Y` pattern work as well on Postgres as on SQLite?
+- Are our compiler error messages the ones that resolve Meph's confusion fastest?
+
+### How it works
+
+Four tiers, by ROI:
+
+**CF-1. Runtime instrumentation.** Every compiled app emits latency / error / memory beacons to a shared endpoint. Factor DB gains runtime-outcome columns. Data drives the rest.
+
+**CF-2. Candidate emitters + deterministic A/B.** For each Clear pattern, define 2–3 JS variants. Feature-flag which variant is emitted per app (deterministic at compile time — preserves "same input = same output" within a build). After N apps run each variant, production data picks the winner.
+
+**CF-3. Compiler-strategy reranker.** Same EBM architecture as the Meph reranker, trained on (archetype, app shape, runtime outcome) → which emit variant should I pick. Glass-box per-pattern emit selection.
+
+**CF-4. GA-evolved compiler (research).** Mutate emit functions. Fitness = curriculum pass rate + runtime perf. The compiler becomes a learned artifact, not a hand-coded one. Genuinely novel — no existing commercial compiler works this way.
+
+### Why it matters strategically
+
+This is the deep moat nobody else architecturally can copy. Cursor, Replit, Lovable, Bolt — they all generate code directly via LLM at generation time. Their "compiler" IS the LLM. They can't evolve it with production data because there's nothing to mutate. Clear's deterministic compiler is an asset that can be improved by usage forever.
+
+### Why it's not built yet
+
+1. The Meph flywheel isn't validated. Don't build a second flywheel before the first is proven.
+2. Compiler quality is NOT today's bottleneck. Session 38's sweep failures were all Meph writing broken Clear (parser gaps, wrong syntax), not the generated JS being suboptimal.
+3. Tier 1 (instrumentation) is cheap and should ship soon — ~20 lines of code, starts collecting data in the background.
+
+See `plans/plan-compiler-flywheel-tier1-04-19-2026.md` for the concrete Tier-1 plan.
 
 ---
 
@@ -432,15 +490,19 @@ const hints = db.querySimilar({
 });
 ```
 
-**Archetype classifier:** `playground/supervisor/archetype.js` — 15 categories, deterministic rules over parser output, runs in milliseconds, all 8 core templates classify correctly.
+**Archetype classifier:** `playground/supervisor/archetype.js` — **16 categories** (added `kpi` in Session 38), deterministic rules over parser output, runs in milliseconds, all 8 core templates classify correctly. Session 38 also fixed the ordering bug where dashboards with `status` + auth were misrouting to `queue_workflow`.
 
-**Current state:**
-- 28 rows seeded by cold start (8 template gold + 20 curriculum skeletons)
-- Rows accumulate automatically from every Studio Meph session
+**Current state (Session 38 mid-sweep):**
+- **149+ rows total, 89+ passing** (was 28 cold-start → 107 post-Session-37 → 149+ Session 38)
+- Rows accumulate automatically from every Studio Meph session AND from curriculum sweeps
 - BM25 retrieval active
-- **Step-decomposition labeling active (Session 38)** — see below
-- EBM training: not yet built (unlocks at 200 passing rows)
-- Suggestion injection into Meph's context: not yet built
+- **Step-decomposition labeling active** — every compile row stamped with which task milestone Meph has hit
+- **Sweep grader uses DB signal, not chat-stream phrase-matching** — catches ~12 more ✅s per 30-task sweep that would otherwise be undercounted
+- **Haiku 4.5 is the default model** (via `MEPH_MODEL` env var) — 3× cheaper per row than Sonnet, within 6% of Sonnet's completion rate on `eval-meph` (15/16 vs 16/16)
+- **Parser accepts inline records** `{ a is 1 }` — was a silent blocker for every webhook task pre-Session 38
+- **CLI won't clobber repo root `package.json`** during Meph's `clear build` — was silently corrupting the worktree
+- EBM trainer written (`playground/supervisor/train_reranker.py`, uses InterpretML) — refuses to train below 200 passing, dormant until threshold
+- Suggestion injection into Meph's context: not yet built (post-threshold work)
 
 ---
 
@@ -494,22 +556,36 @@ const hints = db.querySimilar({
 
 Concrete actions, ordered by what happens when.
 
-### Already done (Session 37)
+### Already done (Sessions 37 + 38)
 
-- Factor DB schema live with 28 seed rows
-- Archetype classifier wired
+**Session 37 (2026-04-18):**
+- Factor DB schema live (28 → 107 rows)
+- Archetype classifier wired (15 categories)
 - `/api/chat` writes rows on every compile + test
 - Cold-start harness available: `node playground/supervisor/cold-start.js`
+- Multi-session curriculum sweep harness (`playground/supervisor/curriculum-sweep.js`)
+- Studio "Flywheel" tab showing DB growth live
 
-### Accelerate data accumulation (next)
+**Session 38 (2026-04-19) — data-quality pass:**
+- **Haiku 4.5** default via `MEPH_MODEL` — 3× cheaper, 94% of Sonnet's capability
+- **Step-decomposition** (schema + detection + seeding on all 30 tasks) — every compile row tagged with milestone
+- **16th archetype `kpi`** added, classifier ordering fixed (dashboards-with-status now route correctly)
+- **Parser inline records** `{ a is 1, b: 2 }` — unblocked every webhook task
+- **CLI clobber-proofed** — Meph's `clear build temp.clear` can't wreck the repo root anymore
+- **Sweep grader uses DB signal** — catches real test passes Meph forgets to announce
+- **Meph iteration limit 25** (was 15) — unblocks the L3-L6 dead zone
+- **EBM trainer written** (InterpretML), replaces XGBoost scaffold — dormant until 200 passing
+- **Factor DB: 149+ rows, 89+ passing** (live, mid-sweep)
 
-The flywheel is now passively collecting data from real Meph sessions. To actively accelerate:
+### Accelerate data accumulation (Session 39 and beyond)
 
-1. **Run the 5 Marcus apps through Meph in Studio.** Each build = 10-30 rows. Five apps = 50-150 rows, plus real archetype coverage for `queue_workflow`, `routing_engine`, `agent_workflow`. This is also how you stress-test the system prompt and find gaps.
+The Meph loop-sweep infrastructure now yields **~20-30 rows and 15-30 passing per full 30-task sweep** at ~$5/sweep. To reach the 200 passing threshold:
 
-2. **Curriculum sweep harness (build next).** ~50 lines: for each of the 20 curriculum tasks, start a worker, give it the task, collect rows. Can run 3 tasks in parallel via supervisor. Each sweep: ~300-500 rows. Three sweeps → re-ranker threshold.
+1. **Keep the loop running.** At current yield, 200 passing is 6-10 more sweeps = $30-50, ~90 minutes wall clock. `/tmp/loop-sweep.sh` runs this autonomously until threshold.
 
-3. **Eval parallelization.** Run `eval-meph.js` scenarios across N workers. Every push accumulates evaluation trajectories too.
+2. **Run the 5 Marcus apps through real Studio sessions.** Adds ~10-30 rows each AND covers archetypes the curriculum undersamples. Needed for "deep + broad" per the Session 38 plan.
+
+3. **Eval parallelization.** `eval-meph.js` + `eval-fullloop-suite.js` add evaluation trajectories on every push that has `ANTHROPIC_API_KEY` set.
 
 ### Train the re-ranker (when ready)
 
@@ -614,6 +690,41 @@ Standard beam search exploits what works and stops exploring. It finds local opt
 - **MAP-Elites for diversity:** a behavioral grid where each cell (task_type × error_category) keeps its best-fitness resident. Prevents the GA from collapsing to one successful strategy.
 
 Beam search finds the answer to the problem you tested. GA finds solutions that generalize.
+
+---
+
+## Cross-Domain Transfer (The Research Paper)
+
+**This is the finding nobody in the literature has published.** See `augment-labs-roadmap.md` Priority 4 for the full plan.
+
+The thesis: **an EBM reranker trained on domain A produces better generation-1 programs in domain B than a cold-start reranker.**
+
+**Why this would be a tier-1 research finding:**
+
+Every existing evolutionary code-gen system (FunSearch, AlphaEvolve, CodeEvolve, SOAR) trains per-domain. The reranker you train for fraud detection stays in fraud detection. SOAR explicitly calls out cross-domain generalization as a gap they haven't filled.
+
+Clear has a structural advantage other systems don't: **the EBM reranker learns over structural features of programs, not natural-language tokens.** Features like `has_auth`, `num_tables`, `branch_complexity`, `validate_block_present` are domain-agnostic. Shape functions learned on fraud classifiers tell the reranker something universal about *program structure* — guard clauses improve robustness, excessive nesting hurts fitness, confidence thresholds matter — and those principles *should* transfer.
+
+**Experiment plan (Priority 4 in augment-labs-roadmap.md):**
+
+1. Run a GA loop on the **Kaggle credit-card fraud dataset** (284K transactions, binary classification). 3 generations minimum. Save the trained EBM reranker.
+2. Run the **UCI heart disease dataset** (medical diagnosis) *twice*:
+   - Once with the fraud-trained reranker guiding generation 1
+   - Once cold-start (no reranker) as control
+3. Compare generation-1 F1. Is the transfer-guided run meaningfully better?
+4. Repeat across a third domain (loan approval / network intrusion / insurance).
+
+**What this unlocks:**
+- Proof that the system discovers domain-agnostic principles of good program design.
+- A publishable finding positioning Clear alongside FunSearch/AlphaEvolve — with a differentiator none of them have (Clear language + learned cross-domain priors).
+- Fundraising artifact: "Our reranker got smarter with every new problem domain. These improvements transfer to unseen domains."
+
+**Relationship to the Marcus flywheel:**
+Same infrastructure. Same Factor DB. Same EBM architecture. The difference is *what gets evolved*:
+- **Marcus track:** Meph evolves Clear apps (CRUD, workflows, agents). Reranker ranks past error-fixes.
+- **Augment Labs track:** Meph evolves Clear classifiers (fraud, medical, fraud). Reranker ranks past program structures.
+
+Same compiler, same data plumbing, different output surface. **Tier 1 compiler flywheel instrumentation serves both tracks.** Build the shared substrate; choose the publishing direction separately.
 
 ---
 
