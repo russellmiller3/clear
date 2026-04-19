@@ -12,6 +12,10 @@ import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './e
 import { wireDeploy } from './deploy.js';
 import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
+import { loadBundle as _loadEBM, rank as _rankEBM, featurizeFactorRow as _featurizeRow } from './supervisor/ebm-scorer.js';
+
+// EBM reranker bundle is loaded below, after __dirname is defined.
+let _ebmBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import {
@@ -22,6 +26,19 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
+
+// Load EBM reranker bundle. Non-fatal if absent — retrieval falls back to
+// raw BM25 ordering from querySuggestions(). After training, copy the
+// reranker.json from your training output into playground/supervisor/.
+try {
+  const ebmPath = join(__dirname, 'supervisor', 'reranker.json');
+  if (existsSync(ebmPath)) {
+    _ebmBundle = _loadEBM(ebmPath);
+    console.log(`  EBM reranker loaded: ${(_ebmBundle.features || []).length} features, intercept=${(_ebmBundle.intercept || 0).toFixed(3)}`);
+  }
+} catch (err) {
+  console.warn(`  EBM reranker load failed (non-fatal): ${err.message}`);
+}
 
 // Load .env from project root
 const envPath = join(ROOT_DIR, '.env');
@@ -2852,11 +2869,29 @@ app.post('/api/chat', async (req, res) => {
             try {
               const archetype = _safeArchetype(currentSource);
               const errorSig = _sha1(r.errors.map(e => e.message).join('\n') + '\x00' + _sha1(currentSource));
-              const hintRows = _factorDB.querySuggestions({
+              // Retrieve wider pool (topK=10) when an EBM bundle is loaded so
+              // the reranker has room to reorder. Without EBM, keep the
+              // historical topK=3 behavior so no regression from retrieval alone.
+              const retrievalK = _ebmBundle ? 10 : 3;
+              let hintRows = _factorDB.querySuggestions({
                 archetype,
                 error_sig: errorSig,
-                topK: 3,
+                topK: retrievalK,
               });
+              // EBM re-rank: score each candidate, sort by EBM score desc, take top-3.
+              // If bundle absent or scoring fails, leave BM25 order intact.
+              let rerankedBy = 'bm25';
+              if (_ebmBundle && hintRows.length > 0) {
+                try {
+                  const ranked = _rankEBM(_ebmBundle, hintRows, _featurizeRow);
+                  hintRows = ranked.slice(0, 3);
+                  rerankedBy = 'ebm';
+                } catch (err) {
+                  hintRows = hintRows.slice(0, 3);
+                }
+              } else {
+                hintRows = hintRows.slice(0, 3);
+              }
               if (hintRows.length > 0) {
                 // Build note based on the best-tier match we got
                 const tiers = hintRows.map(h => h.tier);
@@ -2866,10 +2901,12 @@ app.post('/api/chat', async (req, res) => {
                   : `No past session hit this exact error yet. Here are ${hintRows.length} working ${archetype} apps for shape-level reference.`;
                 result.hints = {
                   note,
+                  reranked_by: rerankedBy,
                   references: hintRows.map(h => ({
                     tier: h.tier,
                     summary: (h.patch_summary || '').slice(0, 100),
                     score: h.test_score,
+                    ebm_score: typeof h.ebm_score === 'number' ? Number(h.ebm_score.toFixed(4)) : undefined,
                     source_excerpt: (h.source_before || '').slice(0, 800),
                   })),
                 };
