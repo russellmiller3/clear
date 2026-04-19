@@ -14,6 +14,25 @@ Updated: **2026-04-19 (Session 38: data-quality pass + EBM chosen + compiler fly
 
 The document below is structured **theory → architecture → current state → path forward**. Start with "Read This First" for the plain-English summary; dive into the specific section that matches your question.
 
+## Table of contents
+
+- [Read This First — Plain English Version](#read-this-first--plain-english-version)
+- [The Core Insight: Meph Solves the Oracle Problem](#the-core-insight-meph-solves-the-oracle-problem)
+- [TDD as Reversed GAN](#tdd-as-reversed-gan)
+- [Meph as Actor and Critic — Reversed](#meph-as-actor-and-critic--reversed)
+- [GAN as a UI Development Process](#gan-as-a-ui-development-process)
+- [The Flywheel](#the-flywheel)
+- [The Compiler Flywheel (Second-Order Moat)](#the-compiler-flywheel-second-order-moat)
+- [Mechanical Quality Signals (The Bootstrap)](#mechanical-quality-signals-the-bootstrap)
+- **[The EBM Re-Ranker — What It Is, How It Works, How We Deploy It](#the-ebm-re-ranker--what-it-is-how-it-works-how-we-deploy-it)** ⭐ (jump here for the model chapter)
+- [Factor DB — Implementation Status](#factor-db--implementation-status)
+- [Step-Decomposition — 4x Signal Density per Sweep (Session 38)](#step-decomposition--4x-signal-density-per-sweep-session-38)
+- [How to Get the Flywheel Going](#how-to-get-the-flywheel-going)
+- [Multi-Session Supervisor — When and Where to Use It](#multi-session-supervisor--when-and-where-to-use-it)
+- [The GA: Why Genetic, Not Beam Search](#the-ga-why-genetic-not-beam-search)
+- [Cross-Domain Transfer (The Research Paper)](#cross-domain-transfer-the-research-paper)
+- [The RL Gym: What's Built](#the-rl-gym-whats-built)
+
 
 ---
 
@@ -293,7 +312,11 @@ Mechanical signals never go away. They become features in the learned model, not
 
 ---
 
-## The Re-Ranker: Architecture Recommendation
+## The EBM Re-Ranker — What It Is, How It Works, How We Deploy It
+
+**TL;DR:** A glass-box Generalized Additive Model that ranks retrieved past fixes by predicted success probability. Each feature's contribution is a plottable shape function you can audit directly. Matches Clear's "readable source, no magic" philosophy. Within 1-3% of XGBoost accuracy at our feature count (~15) and row count (200-2000). Drop-in replacement for any XGBoost reranker.
+
+### Why EBM (not XGBoost, not a neural net, not BM25 alone)
 
 The re-ranker is a **bouncer** — it filters patch candidates before the expensive sandbox (compile + run + test, 5–30s each) runs them. Even 60% accuracy cuts sandbox cost significantly.
 
@@ -322,6 +345,90 @@ What the re-ranker is actually doing: **a lookup table with uncertainty.** "Give
 A 22M-parameter cross-encoder (e.g. ms-marco-MiniLM) is trained on millions of web search queries to understand free-form natural language. That's not the problem here. Using it would be like using a sledgehammer to push a thumbtack. It would train more slowly, require more data, and give you less insight into what's actually driving predictions.
 
 **The upgrade path only triggers if EBM plateaus** — i.e., you have 2k+ sessions and accuracy on the validation curriculum isn't improving. At that point, JS embeddings on the compiled diff add signal. But you may never need them. The feature space might be fully captured by structured inputs alone.
+
+### What EBM actually is (mechanically)
+
+An EBM (Explainable Boosting Machine, InterpretML package, Microsoft Research) is a **Generalized Additive Model with pairwise interactions** (GA²M). The prediction is:
+
+```
+score = intercept + Σ f_i(feature_i) + Σ g_ij(feature_i, feature_j)
+```
+
+Where each `f_i` is a piecewise-constant **shape function** learned for that feature alone, and each `g_ij` is a learned 2-D shape function over a pair of features.
+
+Concretely for the reranker:
+
+```
+predicted_success = base_rate
+                  + shape(archetype)                 e.g. "kpi" adds +0.08
+                  + shape(error_category)            e.g. "validation" adds +0.12
+                  + shape(patch_op_type)             e.g. "add_validate_block" adds +0.15
+                  + shape(step_index)                e.g. step 2 adds +0.05, step 7 subtracts 0.20
+                  + interaction(archetype, error)    e.g. kpi + validation adds another +0.07
+                  + ... for each feature and pair
+```
+
+**This is not a decision tree ensemble** (XGBoost). It's a sum of 1D and 2D curves. Each curve is **plottable** — you can literally display "the contribution of `step_index` looks like this U-shaped curve, small values help, middle values hurt, large values help again."
+
+### Why this matters in practice
+
+- **Debug a bad hint in 30 seconds.** XGBoost: run SHAP, interpret local feature attributions, cross-reference. EBM: look up the shape function, see which bin the current value fell in, read the contribution. One plot, done.
+- **Catch data issues.** If `has_auth` shape function looks monotonic where you expected non-monotonic, your feature extraction has a bug.
+- **Defensible in regulated industries.** "Why did this classifier say reject?" has a direct answer: "feature X contributed +0.4, feature Y contributed -0.2, interaction(X,Y) added +0.1, so the score was 0.3 above threshold." No opaque "the model decided" — there is no model decision separate from the feature contributions.
+- **Glass-box matches Clear's philosophy.** The whole product thesis is "readable source, deterministic output, no magic." A black-box reranker inside a transparent compiler would be a contradiction.
+
+### How we train it (when threshold hits)
+
+Script: `playground/supervisor/train_reranker.py` (already written, dormant until 200 passing rows).
+
+```bash
+# Step 1: export training data from Factor DB
+node playground/supervisor/export-training-data.js --out=data.jsonl
+
+# Step 2: train
+python playground/supervisor/train_reranker.py data.jsonl --out reranker
+```
+
+Training pipeline (inside the script):
+1. Load JSONL rows, filter to those with `test_score` label
+2. Split 80/20 train/val
+3. Detect categorical vs continuous features automatically (object dtype → nominal)
+4. Fit `ExplainableBoostingRegressor(feature_types=..., interactions=15, max_bins=256)`
+5. Report `train_score`, `val_score` — warn if val R² < 0.3
+6. Extract top-10 features by shape-function magnitude
+7. Export pickle (Python-side inference) + JSON shape table (JS-side inference)
+
+Training time at 200-2000 rows on CPU: **30-60 seconds.** No GPU required.
+
+### How we deploy it (JS-side inference in Studio)
+
+EBM shape functions serialize cleanly to a JSON lookup table:
+
+```json
+{
+  "intercept": 0.42,
+  "features": [
+    { "name": "archetype", "type": "nominal",
+      "bin_edges": ["kpi", "api_service", "webhook_handler", ...],
+      "scores": [0.08, 0.02, -0.03, ...] },
+    { "name": "step_index", "type": "continuous",
+      "bin_edges": [0, 1, 2, 3, 4, 5, 6],
+      "scores": [0.00, 0.05, 0.05, 0.02, -0.10, -0.15, -0.20] },
+    ...
+  ],
+  "interactions": [
+    { "features": ["archetype", "error_category"],
+      "bin_edges_1": [...], "bin_edges_2": [...],
+      "scores": [[...2D grid...]] }
+  ]
+}
+```
+
+JS-side inference: for each row, look up the bin each feature falls into, sum the scores, add intercept. Pure arithmetic, no model loaded. ~10 lines of JS in Studio's server. Microsecond latency.
+
+### Cross-domain transfer (why EBM is the key unlock for the paper)
+
+See "Cross-Domain Transfer (The Research Paper)" section below. Short version: **EBM's shape functions learn over structural features (`has_auth`, `num_tables`, `step_index`, `branch_complexity`), not natural-language tokens.** Those features are domain-agnostic. A reranker trained on fraud classifier evolution should encode universal principles of program design — and those principles *should* transfer to medical diagnosis, loan approval, etc. That's the Augment Labs Priority 4 experiment.
 
 ### Global context: how the re-ranker thinks like an engineer
 
