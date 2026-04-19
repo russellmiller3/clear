@@ -397,6 +397,11 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | `new_todo = save X as new Todo` | `save X as Todo` | "new" is optional clarity |
 | `send back X with success message` | `send back X status 201` | Wraps with `message` field |
 | `delete the Todo with this id` | `remove from Todos where id is incoming's id` | URL param auto-bound |
+| `send back all Todos` | `x = get all Todos; send back x` | Inline retrieval shorthand (parser desugars to [CRUD, RESPOND]) |
+| `send back the User with this id` | `x = look up User with this id; send back x` | Inline single-record lookup |
+| `send back all Users where active is true` | `x = get all Users where active is true; send back x` | Inline filtered list |
+| `this id` (in expression position) | `incoming?.id` | URL path param access, works anywhere in expressions |
+| `this user_id` | `incoming?.user_id` | Same pattern for any named URL param |
 | `get todos from '/api/url'` | `get from '/api/url'` (into magic response) | Named state target |
 | `sending post_data` | `receiving post_data` | User perspective canonical |
 | `saved as a todo` | `saves to todo` | With optional article |

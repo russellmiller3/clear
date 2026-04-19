@@ -1150,13 +1150,19 @@ create a Users table:
 
 # Backend
 when user requests data from /api/users:
-  all_users = get all Users
-  send back all_users
+  send back all Users                 # Shorthand — inline retrieval
+
+when user requests data from /api/users/active:
+  send back all Users where active is true    # Shorthand — with filter
 
 when user requests data from /api/users/:id:
-  define user as: look up records in Users table where id is incoming's id
-  if user is nothing then send back 'Not found' status 404
-  send back user
+  send back the User with this id     # Shorthand — single record by URL param
+
+# Longhand still valid when you need to transform the result first:
+when user requests data from /api/users/summary:
+  users = get all Users
+  count = length of users
+  send back { total is count }
 
 when user sends user_data to /api/users:
   requires login
@@ -1182,6 +1188,28 @@ when user deletes user at /api/users/:id:
 ```
 
 > **Synonym:** `when user calls GET /api/users:`, `when user calls POST /api/users sending data:`, etc. still work. The English forms above are canonical.
+
+### URL Path Parameters — `this X`
+
+When an endpoint path has a parameter like `/:id` or `/:workspace_id`, access it with `this X` in any expression position. Works inside `look up`, `delete`, filter conditions, or as a standalone value:
+
+```clear
+when user calls GET /api/workspaces/:id/items:
+  send back all Items where workspace_id is this id
+
+when user calls DELETE /api/todos/:id:
+  requires login
+  delete the Todo with this id
+  send back 'ok'
+
+when user calls POST /api/teams/:team_id/members sending data:
+  requires login
+  data's team_id is this team_id       # Bind URL param into request body
+  save data as new Member
+  send back 'added'
+```
+
+`this X` compiles to `incoming?.X` (URL path params are exposed on `incoming`). Rule: always prefer multi-word param names (`this team_id`, `this post_id`) — bare `id` sometimes collides with the tokenizer's typo-detection for `if`.
 
 ## Auth Scaffolding
 
