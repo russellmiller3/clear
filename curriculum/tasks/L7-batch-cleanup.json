@@ -1,0 +1,20 @@
+{
+  "id": "batch-cleanup",
+  "level": 7,
+  "title": "Nightly Cleanup Batch Job",
+  "description": "Build a scheduled cleanup job. Every day at 2am, delete all Logs where created_at is older than 30 days. Also expose GET /api/logs so the test can verify rows exist before and after. No pages, no auth — just a scheduled batch job that prunes old data.",
+  "skeleton": "build for javascript backend\n\ncreate a Logs table:\n  message, required\n  level, default 'info'\n  created_at_date, auto\n\n# Your scheduled job + /api/logs endpoint here\n# Use: every day at '02:00 AM': ... delete old Logs ...\n",
+  "tests": [
+    {
+      "method": "GET",
+      "path": "/api/logs",
+      "expect": { "status": 200 }
+    },
+    {
+      "method": "POST",
+      "path": "/api/logs",
+      "body": { "message": "test" },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    }
+  ]
+}
