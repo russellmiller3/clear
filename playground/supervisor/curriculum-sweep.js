@@ -104,18 +104,22 @@ If you get stuck on the same error 3+ times, end with "STUCK: <reason>".`;
 // POST a task to a worker's /api/chat and consume the SSE stream until done OR timeout.
 // We don't need to parse the stream — just drain it. The Factor DB hook inside /api/chat
 // writes rows as Meph works; we collect them from the DB after the stream ends.
-export async function driveTaskOnWorker(port, prompt, timeoutMs) {
+// taskSteps (optional) labels each compile row with "which milestone Meph has hit."
+// Hidden from Meph by design — training signal, not guidance.
+export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = null) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const body = {
+      messages: [{ role: 'user', content: prompt }],
+      editorContent: '', // fresh editor per task
+    };
+    if (Array.isArray(taskSteps) && taskSteps.length > 0) body.taskSteps = taskSteps;
     const response = await fetch(`http://localhost:${port}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: prompt }],
-        editorContent: '', // fresh editor per task
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 
@@ -177,7 +181,7 @@ async function processBucket(port, bucketTasks, timeoutMs, onTaskDone) {
   for (const task of bucketTasks) {
     const prompt = buildPrompt(task);
     const t0 = Date.now();
-    const result = await driveTaskOnWorker(port, prompt, timeoutMs);
+    const result = await driveTaskOnWorker(port, prompt, timeoutMs, task.steps);
     const elapsed = Date.now() - t0;
     results.push({ task: task.id, level: task.level, ...result, elapsedMs: elapsed });
     if (onTaskDone) onTaskDone(task, result, elapsed);
@@ -236,6 +240,7 @@ export async function runSweep({
   // Count rows before the sweep so we can report delta
   const factorDB = new FactorDB(FACTOR_DB_PATH);
   const startStats = factorDB.stats();
+  const sweepStartMs = Date.now();
   console.log(`\nStarting Factor DB: ${startStats.total} rows (${startStats.passing} passing)\n`);
 
   // Fresh sweep registry (ephemeral)
@@ -283,6 +288,26 @@ export async function runSweep({
     console.log(`  Timed out: ${flatResults.filter(r => r.timedOut).length}`);
     console.log(`  Factor DB: ${startStats.total} → ${endStats.total} rows (+${endStats.total - startStats.total})`);
     console.log(`  Passing rows: ${startStats.passing} → ${endStats.passing} (+${endStats.passing - startStats.passing})`);
+
+    // Per-step rollup — only print when step rows exist. Tasks without steps[]
+    // fall into step_index = NULL and get collapsed into a single "unlabeled" line.
+    const stepRows = factorDB.stepStats({ sinceMs: sweepStartMs });
+    const labeled = stepRows.filter(r => r.step_index !== null);
+    if (labeled.length > 0) {
+      console.log(`\n=== Per-Step Rollup (this sweep) ===`);
+      console.log('  ' + 'step'.padEnd(32) + '  attempts  compiles  tests_passed');
+      console.log('  ' + '─'.repeat(32) + '  ────────  ────────  ────────────');
+      for (const r of labeled) {
+        const label = `${r.step_index + 1}. ${r.step_name || r.step_index}`.slice(0, 32).padEnd(32);
+        console.log(
+          `  ${label}  ${String(r.attempts).padStart(8)}  ${String(r.compiles_ok).padStart(8)}  ${String(r.tests_passed).padStart(12)}`
+        );
+      }
+      const unlabeled = stepRows.find(r => r.step_index === null);
+      if (unlabeled) {
+        console.log(`  (unlabeled — task had no steps[]): ${unlabeled.attempts} attempts`);
+      }
+    }
 
     return {
       tasksRun: flatResults.length,

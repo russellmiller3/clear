@@ -4,6 +4,14 @@
   "title": "Todo CRUD API",
   "description": "Build a full CRUD API for a Todos table with fields: title (required, text), done (boolean, defaults to false). POST /api/todos creates, GET /api/todos lists all, GET /api/todos/:id gets one, PUT /api/todos/:id updates, DELETE /api/todos/:id removes.",
   "skeleton": "build for javascript backend\n\ncreate a Todos table:\n  title, required\n  done\n\n# Your endpoints here\n",
+  "steps": [
+    { "id": "table",   "name": "Todos table defined", "sourceMatches": ["create\\s+a\\s+Todos\\s+table"] },
+    { "id": "create",  "name": "POST create endpoint", "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/todos['\"]?", "save\\s+.*\\s+to\\s+Todos"] },
+    { "id": "list",    "name": "GET list endpoint",   "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/todos['\"]?\\s*:", "get\\s+all\\s+Todos"] },
+    { "id": "get_one", "name": "GET single endpoint", "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/todos/:id['\"]?"] },
+    { "id": "update",  "name": "PUT update endpoint", "sourceMatches": ["calls\\s+PUT\\s+['\"]?/api/todos/:id['\"]?"] },
+    { "id": "delete",  "name": "DELETE endpoint",     "sourceMatches": ["calls\\s+DELETE\\s+['\"]?/api/todos/:id['\"]?"] }
+  ],
   "tests": [
     {
       "method": "POST",

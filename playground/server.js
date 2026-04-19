@@ -1647,6 +1647,28 @@ function _safeArchetype(source) {
   try { return classifyArchetype(parse(source)); }
   catch { return 'general'; }
 }
+
+// Which task step is Meph on? A step is "satisfied" when ALL its sourceMatches
+// regexes appear in the current source. currentStep = highest-index satisfied step.
+// Returns { id, index, name } or null. Never throws — bad regex just skips that
+// step's predicate, so one malformed task JSON can't poison a whole sweep.
+function _currentStep(source, steps) {
+  if (!Array.isArray(steps) || steps.length === 0 || !source) return null;
+  let highest = null;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const patterns = Array.isArray(s?.sourceMatches) ? s.sourceMatches : [];
+    if (patterns.length === 0) continue;
+    let allMatch = true;
+    for (const p of patterns) {
+      try {
+        if (!new RegExp(p, 'i').test(source)) { allMatch = false; break; }
+      } catch { allMatch = false; break; }
+    }
+    if (allMatch) highest = { id: s.id || `step_${i + 1}`, index: i, name: s.name || s.id || `Step ${i + 1}` };
+  }
+  return highest;
+}
 app.post('/api/set-key', (req, res) => {
   storedApiKey = req.body.key || '';
   res.json({ ok: true });
@@ -2557,7 +2579,13 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot) {
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps } = req.body;
+  // taskSteps (optional): [{ id, name, sourceMatches: ["regex1", ...] }, ...]
+  // A step "passes" if ALL its sourceMatches regexes appear in the current source.
+  // currentStep = the highest-index step whose regexes all match. This lets us
+  // label every compile row with "which milestone of the task Meph has hit so far."
+  // Hidden from Meph by design — we measure natural trajectory, not guided behavior.
+  const sessionSteps = Array.isArray(taskSteps) && taskSteps.length > 0 ? taskSteps : null;
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
   if (!resolvedKey) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
@@ -2779,6 +2807,7 @@ app.post('/api/chat', async (req, res) => {
               const sourceForLog = _sourceBeforeEdit && _sourceBeforeEdit.length > 0
                 ? _sourceBeforeEdit
                 : currentSource;
+              const step = _currentStep(currentSource, sessionSteps);
               _lastFactorRowId = _factorDB.logAction({
                 session_id: sessionId,
                 archetype: _safeArchetype(currentSource),
@@ -2794,6 +2823,9 @@ app.post('/api/chat', async (req, res) => {
                 test_pass: 0,
                 test_score: 0.0,
                 score_delta: 0.0,
+                step_id: step?.id || null,
+                step_index: step?.index ?? null,
+                step_name: step?.name || null,
               });
             } catch { /* non-fatal */ }
           }

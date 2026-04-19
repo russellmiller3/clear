@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS code_actions (
   test_pass        INTEGER NOT NULL DEFAULT 0,
   test_score       REAL NOT NULL DEFAULT 0.0,
   score_delta      REAL DEFAULT 0.0,
+  step_id          TEXT,
+  step_index       INTEGER,
+  step_name        TEXT,
   embedding        BLOB,
   created_at       INTEGER NOT NULL
 );
@@ -24,6 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_archetype   ON code_actions(archetype);
 CREATE INDEX IF NOT EXISTS idx_error_sig   ON code_actions(error_sig);
 CREATE INDEX IF NOT EXISTS idx_test_pass   ON code_actions(test_pass, test_score DESC);
 CREATE INDEX IF NOT EXISTS idx_created_at  ON code_actions(created_at);
+CREATE INDEX IF NOT EXISTS idx_step        ON code_actions(task_type, step_index, test_pass);
 
 CREATE TABLE IF NOT EXISTS reranker_feedback (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,20 +87,31 @@ export class FactorDB {
       this._db.exec('ALTER TABLE code_actions ADD COLUMN archetype TEXT');
       this._db.exec('CREATE INDEX IF NOT EXISTS idx_archetype ON code_actions(archetype)');
     }
+    // Migration: add step_id/step_index/step_name columns (step-decomposition, feature/rl).
+    // Existing rows keep NULL step values — they just won't contribute to per-step stats.
+    if (!cols.some(c => c.name === 'step_id')) {
+      this._db.exec('ALTER TABLE code_actions ADD COLUMN step_id TEXT');
+      this._db.exec('ALTER TABLE code_actions ADD COLUMN step_index INTEGER');
+      this._db.exec('ALTER TABLE code_actions ADD COLUMN step_name TEXT');
+      this._db.exec('CREATE INDEX IF NOT EXISTS idx_step ON code_actions(task_type, step_index, test_pass)');
+    }
   }
 
   logAction({ session_id, task_type = null, archetype = null, error_sig = null, file_state_hash = null,
     source_before = '', patch_ops = [], patch_summary = null,
-    compile_ok = 0, test_pass = 0, test_score = 0.0, score_delta = 0.0 }) {
+    compile_ok = 0, test_pass = 0, test_score = 0.0, score_delta = 0.0,
+    step_id = null, step_index = null, step_name = null }) {
     const now = Date.now();
     const result = this._db.prepare(`
       INSERT INTO code_actions
         (session_id, task_type, archetype, error_sig, file_state_hash, source_before,
-         patch_ops, patch_summary, compile_ok, test_pass, test_score, score_delta, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         patch_ops, patch_summary, compile_ok, test_pass, test_score, score_delta,
+         step_id, step_index, step_name, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(session_id, task_type, archetype, error_sig, file_state_hash, source_before,
       JSON.stringify(patch_ops), patch_summary, compile_ok ? 1 : 0,
-      test_pass ? 1 : 0, test_score, score_delta, now);
+      test_pass ? 1 : 0, test_score, score_delta,
+      step_id, step_index, step_name, now);
     return result.lastInsertRowid;
   }
 
@@ -191,6 +206,33 @@ export class FactorDB {
     const total = this._db.prepare('SELECT COUNT(*) AS n FROM code_actions').get().n;
     const passing = this._db.prepare('SELECT COUNT(*) AS n FROM code_actions WHERE test_pass = 1').get().n;
     return { total, passing };
+  }
+
+  // Per-step rollup for sweep reports. Returns one row per (task_type, step_index, step_name)
+  // with compile/test pass counts. Null step rows (pre-step-decomp, or tasks without steps)
+  // get grouped under step_index = NULL. Scope by `sessionIds` or `sinceMs` so each sweep
+  // can report just its own rows.
+  stepStats({ sessionIds = null, sinceMs = null } = {}) {
+    let sql = `
+      SELECT task_type, step_index, step_name,
+             COUNT(*) AS attempts,
+             SUM(compile_ok) AS compiles_ok,
+             SUM(test_pass) AS tests_passed
+      FROM code_actions
+      WHERE 1=1
+    `;
+    const params = [];
+    if (Array.isArray(sessionIds) && sessionIds.length > 0) {
+      const placeholders = sessionIds.map(() => '?').join(',');
+      sql += ` AND session_id IN (${placeholders})`;
+      params.push(...sessionIds);
+    }
+    if (typeof sinceMs === 'number' && sinceMs > 0) {
+      sql += ' AND created_at >= ?';
+      params.push(sinceMs);
+    }
+    sql += ' GROUP BY task_type, step_index, step_name ORDER BY task_type, step_index';
+    return this._db.prepare(sql).all(...params);
   }
 
   createGARun({ session_id, task = null, population_size, clear_version = null }) {
