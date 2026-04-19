@@ -1,0 +1,19 @@
+{
+  "id": "dashboard-metrics",
+  "level": 8,
+  "title": "Metrics Dashboard",
+  "description": "Build a metrics dashboard app. Create an Orders table (amount, status, created_at). Build a page that shows multiple charts — total by status (pie), orders over time (line), amount by status (bar). Include auth so only logged-in users see the dashboard. POST /api/orders creates (auth required), GET /api/orders lists. The page displays the 3 charts reading from all orders.",
+  "skeleton": "build for web and javascript backend\n\ncreate a Orders table:\n  amount (number), required\n  status, default 'pending'\n  created_at_date, auto\n\nallow signup and login\n\n# Endpoints + dashboard page with 3 charts here\n# Use: chart of Orders by status — chart of Orders by amount — etc.\n",
+  "tests": [
+    {
+      "method": "GET",
+      "path": "/api/orders",
+      "expect": { "status": 200 }
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "expect": { "status": 200 }
+    }
+  ]
+}

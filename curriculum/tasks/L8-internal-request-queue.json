@@ -3,7 +3,7 @@
   "level": 8,
   "title": "Internal Request Queue",
   "description": "Build an internal request queue for IT/HR/Facilities/Finance tickets. Employees submit a request (title, description, category, priority, submitter). Ops staff can update requests (requires login) — change status, assign to a team, add resolution notes. Need: POST /api/requests (public), GET /api/requests (list), GET /api/requests/new (filter by status='new'), PUT /api/requests/:id (auth required).",
-  "skeleton": "build for javascript backend\n\ncreate a Requests table:\n  title, required\n  description\n  category, default 'IT'\n  priority, default 'Normal'\n  submitter, required\n  status, default 'new'\n  assigned_to\n\nallow signup and login\n\n# Your endpoints here\n",
+  "skeleton": "build for web and javascript backend\n\ncreate a Requests table:\n  title, required\n  description\n  category, default 'IT'\n  priority, default 'Normal'\n  submitter, required\n  status, default 'new'\n  assigned_to\n\nallow signup and login\n\n# Your endpoints + employee submit page + ops triage view here\n",
   "tests": [
     {
       "method": "POST",

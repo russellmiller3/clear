@@ -34,6 +34,12 @@ const taskFiles = [
   'L8-internal-request-queue.json',
   'L8-onboarding-tracker.json',
   'L9-support-triage.json',
+  // Archetype diversity — fill the empty buckets (webhook, ETL, batch, dashboard, data-sync)
+  'L7-webhook-stripe.json',
+  'L7-batch-cleanup.json',
+  'L7-data-sync.json',
+  'L8-etl-daily-report.json',
+  'L8-dashboard-metrics.json',
   // Original higher-level tasks
   'L8-multi-tenant.json',
   'L8-rbac-api.json',
