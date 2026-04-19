@@ -4,6 +4,12 @@
   "title": "AI Summary Agent",
   "description": "Build an AI agent that summarizes text. Define a Summarizer agent with a system prompt. POST /api/summarize receives { text } and returns a summary from the agent. The agent should return a structured response with 'summary' and 'key_points' fields.",
   "skeleton": "build for javascript backend\n\n# Define a Summarizer agent\n# POST /api/summarize endpoint that uses the agent\n",
+  "steps": [
+    { "id": "agent",    "name": "Summarizer agent defined",       "sourceMatches": ["agent\\s+['\"]Summarizer['\"]"] },
+    { "id": "structure","name": "Agent returns structured output", "sourceMatches": ["(sends?\\s+back|returns)\\s+\\{[^}]*(summary|key_points)"] },
+    { "id": "endpoint", "name": "POST /api/summarize defined",    "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/summarize['\"]?"] },
+    { "id": "invoke",   "name": "Endpoint invokes the agent",     "sourceMatches": ["(ask\\s+Summarizer|run\\s+Summarizer|Summarizer\\s+with)"] }
+  ],
   "tests": [
     {
       "method": "POST",

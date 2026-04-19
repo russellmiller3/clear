@@ -4,6 +4,14 @@
   "title": "Metrics Dashboard",
   "description": "Build a metrics dashboard app. Create an Orders table (amount, status, created_at). Build a page that shows multiple charts — total by status (pie), orders over time (line), amount by status (bar). Include auth so only logged-in users see the dashboard. POST /api/orders creates (auth required), GET /api/orders lists. The page displays the 3 charts reading from all orders.",
   "skeleton": "build for web and javascript backend\n\ncreate a Orders table:\n  amount (number), required\n  status, default 'pending'\n  created_at_date, auto\n\nallow signup and login\n\n# Endpoints + dashboard page with 3 charts here\n# Use: chart of Orders by status — chart of Orders by amount — etc.\n",
+  "steps": [
+    { "id": "table",   "name": "Orders table defined",         "sourceMatches": ["create\\s+a\\s+Orders\\s+table"] },
+    { "id": "create",  "name": "POST /api/orders (auth)",      "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/orders['\"]?", "requires\\s+(login|auth)"] },
+    { "id": "list",    "name": "GET /api/orders list",         "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/orders['\"]?\\s*:"] },
+    { "id": "page",    "name": "Dashboard page at /",          "sourceMatches": ["page\\s+['\"].*['\"]\\s+at\\s+['\"]/['\"]"] },
+    { "id": "charts",  "name": "Page has 2+ charts",           "sourceMatches": ["chart\\s+['\"].*['\"]\\s+as\\s+\\w+[\\s\\S]*chart\\s+['\"].*['\"]\\s+as\\s+\\w+"] },
+    { "id": "charts3", "name": "Page has 3+ charts",           "sourceMatches": ["chart\\s+['\"].*['\"]\\s+as\\s+\\w+[\\s\\S]*chart\\s+['\"].*['\"]\\s+as\\s+\\w+[\\s\\S]*chart\\s+['\"].*['\"]\\s+as\\s+\\w+"] }
+  ],
   "tests": [
     {
       "method": "GET",

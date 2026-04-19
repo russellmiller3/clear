@@ -4,6 +4,10 @@
   "title": "Hello World API",
   "description": "Write a GET /api/hello endpoint that returns { message: 'hello world' }",
   "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "steps": [
+    { "id": "endpoint", "name": "GET /api/hello defined", "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/hello['\"]?"] },
+    { "id": "respond",  "name": "Returns hello message",  "sourceMatches": ["send\\s+back\\s+\\{[^}]*message"] }
+  ],
   "tests": [
     {
       "method": "GET",

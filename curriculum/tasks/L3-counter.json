@@ -4,6 +4,12 @@
   "title": "Counter API",
   "description": "Build a stateful counter. GET /api/count returns { count: N }. POST /api/increment increases count by 1 and returns the new count. POST /api/reset sets count to 0.",
   "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "steps": [
+    { "id": "state",     "name": "Counter state (table or var)", "sourceMatches": ["(create\\s+a\\s+Counter|count\\s*=\\s*0)"] },
+    { "id": "get",       "name": "GET /api/count defined",       "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/count['\"]?"] },
+    { "id": "increment", "name": "POST /api/increment defined",  "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/increment['\"]?"] },
+    { "id": "reset",     "name": "POST /api/reset defined",      "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/reset['\"]?"] }
+  ],
   "tests": [
     {
       "method": "POST",

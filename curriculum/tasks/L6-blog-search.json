@@ -4,6 +4,13 @@
   "title": "Blog with Search",
   "description": "Build a blog API. Posts table with title, body, author. POST /api/posts creates. GET /api/posts lists all (support ?search= query param for title search). GET /api/posts/:id gets one post. Validate title and body are required, title max 200 chars.",
   "skeleton": "build for javascript backend\n\ncreate a Posts table:\n  title, required, max 200\n  body, required\n  author\n\n# Your endpoints here\n",
+  "steps": [
+    { "id": "table",   "name": "Posts table defined",       "sourceMatches": ["create\\s+a\\s+Posts\\s+table"] },
+    { "id": "create",  "name": "POST /api/posts create",    "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/posts['\"]?", "save\\s+.*\\s+to\\s+Posts"] },
+    { "id": "list",    "name": "GET /api/posts list",       "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/posts['\"]?\\s*:"] },
+    { "id": "search",  "name": "Search param (?search=)",   "sourceMatches": ["(search|query|q)\\s+from\\s+.*\\?", "with\\s+params|receiving\\s+\\w*search"] },
+    { "id": "get_one", "name": "GET /api/posts/:id single", "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/posts/:id['\"]?"] }
+  ],
   "tests": [
     {
       "method": "POST",

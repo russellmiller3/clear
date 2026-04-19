@@ -4,6 +4,11 @@
   "title": "Echo Server",
   "description": "Write a POST /api/echo endpoint that returns whatever JSON body was sent to it.",
   "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "steps": [
+    { "id": "endpoint", "name": "POST /api/echo defined",         "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/echo['\"]?"] },
+    { "id": "receive",  "name": "Receives payload (sending var)", "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/echo['\"]?\\s+sending\\s+\\w"] },
+    { "id": "echo",     "name": "Sends payload back",             "sourceMatches": ["send\\s+back\\s+\\w"] }
+  ],
   "tests": [
     {
       "method": "POST",

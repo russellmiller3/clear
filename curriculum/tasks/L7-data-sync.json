@@ -4,6 +4,13 @@
   "title": "CRM-to-Email Sync",
   "description": "Build a data sync pipeline. Every 1 hour, fetch new Contacts from https://jsonplaceholder.typicode.com/users (source system A), transform each to { name, email, tag: 'imported' }, save to a MailingList table (destination system B). Expose GET /api/mailing-list so humans can verify what synced.",
   "skeleton": "build for javascript backend\n\ncreate a MailingList table:\n  name, required\n  email, required\n  tag, default 'imported'\n  synced_at_date, auto\n\n# Your scheduled sync job + /api/mailing-list endpoint here\n# Use: every 1 hour: ... get users from 'https://...' ... save ...\n",
+  "steps": [
+    { "id": "table",    "name": "MailingList table defined",     "sourceMatches": ["create\\s+a\\s+MailingList\\s+table"] },
+    { "id": "schedule", "name": "Hourly schedule",               "sourceMatches": ["every\\s+1\\s+hour|every\\s+hour"] },
+    { "id": "fetch",    "name": "Fetches from external URL",     "sourceMatches": ["get\\s+.*\\s+from\\s+['\"]https://"] },
+    { "id": "save",     "name": "Saves to MailingList",          "sourceMatches": ["save\\s+.*\\s+to\\s+MailingList"] },
+    { "id": "endpoint", "name": "GET /api/mailing-list endpoint","sourceMatches": ["calls\\s+GET\\s+['\"]?/api/mailing-list['\"]?"] }
+  ],
   "tests": [
     {
       "method": "GET",

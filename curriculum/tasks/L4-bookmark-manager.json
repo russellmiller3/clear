@@ -4,6 +4,13 @@
   "title": "Bookmark Manager",
   "description": "Build a CRUD API for bookmarks. Each bookmark has: url (required, must be a URL), title (required), tags (text). POST /api/bookmarks creates, GET /api/bookmarks lists all, DELETE /api/bookmarks/:id removes. Validate that url is actually a URL format.",
   "skeleton": "build for javascript backend\n\ncreate a Bookmarks table:\n  url, required\n  title, required\n  tags\n\n# Your endpoints here\n",
+  "steps": [
+    { "id": "table",   "name": "Bookmarks table defined",     "sourceMatches": ["create\\s+a\\s+Bookmarks\\s+table"] },
+    { "id": "create",  "name": "POST create endpoint",        "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/bookmarks['\"]?", "save\\s+.*\\s+to\\s+Bookmarks"] },
+    { "id": "list",    "name": "GET list endpoint",           "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/bookmarks['\"]?\\s*:", "get\\s+all\\s+Bookmarks"] },
+    { "id": "delete",  "name": "DELETE endpoint",             "sourceMatches": ["calls\\s+DELETE\\s+['\"]?/api/bookmarks/:id['\"]?"] },
+    { "id": "validate","name": "URL validation on create",    "sourceMatches": ["url.*(url|valid|must\\s+be)"] }
+  ],
   "tests": [
     {
       "method": "POST",

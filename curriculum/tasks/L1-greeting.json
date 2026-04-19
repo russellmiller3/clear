@@ -4,6 +4,10 @@
   "title": "Personal Greeting",
   "description": "Write a GET /api/greet/:name endpoint that returns { greeting: 'Hello, {name}!' } using the name from the URL.",
   "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "steps": [
+    { "id": "endpoint", "name": "GET /api/greet/:name defined", "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/greet/:name['\"]?"] },
+    { "id": "respond",  "name": "Returns greeting with name",   "sourceMatches": ["send\\s+back\\s+\\{[^}]*greeting"] }
+  ],
   "tests": [
     {
       "method": "GET",

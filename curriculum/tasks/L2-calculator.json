@@ -4,6 +4,13 @@
   "title": "Math Calculator",
   "description": "Write a POST /api/calculate endpoint that receives 'a', 'b', and 'operation' (add/subtract/multiply/divide) and returns { result: <number> }. Return 400 for division by zero.",
   "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "steps": [
+    { "id": "endpoint", "name": "POST /api/calculate defined", "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/calculate['\"]?"] },
+    { "id": "branch",   "name": "Has add/subtract branches",   "sourceMatches": ["operation\\s+is\\s+['\"]add['\"]", "operation\\s+is\\s+['\"]subtract['\"]"] },
+    { "id": "divide",   "name": "Handles multiply + divide",   "sourceMatches": ["operation\\s+is\\s+['\"]multiply['\"]", "operation\\s+is\\s+['\"]divide['\"]"] },
+    { "id": "zero",     "name": "Rejects divide-by-zero (400)","sourceMatches": ["b\\s+is\\s+0", "status\\s+(is\\s+)?400|send\\s+back\\s+400"] },
+    { "id": "respond",  "name": "Returns result field",        "sourceMatches": ["send\\s+back\\s+\\{[^}]*result"] }
+  ],
   "tests": [
     {
       "method": "POST",

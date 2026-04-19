@@ -4,6 +4,13 @@
   "title": "User Profiles",
   "description": "Build a user registration/login system with profiles. POST /api/register (email, password, name). POST /api/login returns token. GET /api/me returns current user profile (requires auth). PUT /api/me updates profile name.",
   "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n  name, required\n\n# Your endpoints here\n",
+  "steps": [
+    { "id": "auth_scaffold", "name": "Auth scaffold",              "sourceMatches": ["allow\\s+signup\\s+and\\s+login"] },
+    { "id": "register",      "name": "POST /api/register defined", "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/register['\"]?"] },
+    { "id": "login",         "name": "POST /api/login defined",    "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/login['\"]?"] },
+    { "id": "me_get",        "name": "GET /api/me (auth-gated)",   "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/me['\"]?", "requires\\s+(login|auth)"] },
+    { "id": "me_put",        "name": "PUT /api/me update",         "sourceMatches": ["calls\\s+PUT\\s+['\"]?/api/me['\"]?"] }
+  ],
   "tests": [
     {
       "method": "POST",

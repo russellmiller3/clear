@@ -4,6 +4,14 @@
   "title": "Authenticated Todo API",
   "description": "Build a Todo API that requires JWT authentication. POST /api/register creates a user (email, password). POST /api/login returns a token. All /api/todos endpoints require auth. Users can only see their own todos.",
   "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n\ncreate a Todos table:\n  title, required\n  done\n  user_id, required\n\n# Your endpoints here\n",
+  "steps": [
+    { "id": "auth_scaffold", "name": "Auth scaffold (allow signup/login)", "sourceMatches": ["allow\\s+signup\\s+and\\s+login"] },
+    { "id": "register",      "name": "POST /api/register defined",         "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/register['\"]?"] },
+    { "id": "login",         "name": "POST /api/login defined",            "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/login['\"]?"] },
+    { "id": "requires_auth", "name": "Todos endpoints require login",      "sourceMatches": ["calls\\s+\\w+\\s+['\"]?/api/todos", "requires\\s+(login|auth)"] },
+    { "id": "create_todo",   "name": "POST /api/todos create",             "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/todos['\"]?", "save\\s+.*\\s+to\\s+Todos"] },
+    { "id": "list_todos",    "name": "GET /api/todos list (own only)",     "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/todos['\"]?\\s*:", "(current\\s+user|this\\s+user|user_id\\s+is)"] }
+  ],
   "tests": [
     {
       "method": "POST",

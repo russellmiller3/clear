@@ -4,6 +4,13 @@
   "title": "Onboarding Tracker",
   "description": "Build a customer onboarding tracker. Two tables: Customers (name, company, status) and OnboardingSteps (customer_id, step_name, completed). Steps belong to Customers. Need: full CRUD on customers (auth required on mutations), full CRUD on steps (auth required on mutations), GET /api/customers/onboarding to filter by status='onboarding'.",
   "skeleton": "build for web and javascript backend\n\ncreate a Customers table:\n  name, required\n  company, required\n  status, default 'onboarding'\n\ncreate a OnboardingSteps table:\n  customer_id, required\n  step_name, required\n  completed, default false\n\nallow signup and login\n\n# Your endpoints + customer list page with step checklist here\n",
+  "steps": [
+    { "id": "tables",          "name": "Customers + OnboardingSteps tables",  "sourceMatches": ["create\\s+a\\s+Customers\\s+table", "create\\s+a\\s+OnboardingSteps\\s+table"] },
+    { "id": "customer_crud",   "name": "Customer CRUD endpoints (auth)",      "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/customers['\"]?", "requires\\s+(login|auth)"] },
+    { "id": "customer_list",   "name": "GET /api/customers list",             "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/customers['\"]?\\s*:"] },
+    { "id": "onboarding_filt", "name": "GET /api/customers/onboarding filter","sourceMatches": ["calls\\s+GET\\s+['\"]?/api/customers/onboarding['\"]?"] },
+    { "id": "steps_crud",      "name": "OnboardingSteps CRUD endpoints",      "sourceMatches": ["save\\s+.*\\s+to\\s+OnboardingSteps"] }
+  ],
   "tests": [
     {
       "method": "POST",

@@ -4,6 +4,14 @@
   "title": "Lead Router",
   "description": "Build a lead routing API. Prospects submit leads (name, email, company, size). The server applies routing rules: SMB → alice, Mid-market → bob, Enterprise → charlie — set assigned_to automatically before saving. Need: POST /api/leads (submit + auto-route), GET /api/leads (list), GET /api/leads/new (only status='new').",
   "skeleton": "build for web and javascript backend\n\ncreate a Leads table:\n  name, required\n  email, required\n  size, default 'SMB'\n  assigned_to\n  status, default 'new'\n\nallow signup and login\n\n# Your endpoints + intake form page + routing rules here\n",
+  "steps": [
+    { "id": "table",  "name": "Leads table with assigned_to",  "sourceMatches": ["create\\s+a\\s+Leads\\s+table", "assigned_to"] },
+    { "id": "submit", "name": "POST /api/leads submit",        "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/leads['\"]?"] },
+    { "id": "route",  "name": "Routing rules (SMB/Mid/Ent)",   "sourceMatches": ["size\\s+is\\s+['\"]SMB['\"]", "size\\s+is\\s+['\"]Enterprise['\"]"] },
+    { "id": "assign", "name": "Sets assigned_to before save",  "sourceMatches": ["assigned_to\\s+is\\s+['\"]\\w+['\"]", "save\\s+.*\\s+to\\s+Leads"] },
+    { "id": "list",   "name": "GET /api/leads list",           "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/leads['\"]?\\s*:"] },
+    { "id": "new",    "name": "GET /api/leads/new filter",     "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/leads/new['\"]?"] }
+  ],
   "tests": [
     {
       "method": "POST",
