@@ -156,11 +156,19 @@ def main():
     meta_cols = [c for c in df.columns if c.startswith('_') or c in ('test_pass',)]
     feature_cols = [c for c in df.columns if c != label_col and c not in meta_cols]
 
-    # Identify categorical features: anything stored as string
+    # Identify categorical features. Dtype-only detection failed because columns
+    # with all-None or mixed rows sometimes infer as float64. Whitelist known
+    # categoricals by name, then fall back to dtype/string check.
+    KNOWN_CATEGORICAL = {'archetype', 'error_category', 'step_name', 'step_id', 'task_type'}
     feature_types = []
     for col in feature_cols:
-        if df[col].dtype == 'object':
+        if col in KNOWN_CATEGORICAL:
             feature_types.append('nominal')
+            # Coerce None → 'none' so EBM doesn't trip on NaN in categoricals
+            df[col] = df[col].fillna('none').astype(str)
+        elif df[col].dtype == 'object' or pd.api.types.is_string_dtype(df[col]):
+            feature_types.append('nominal')
+            df[col] = df[col].fillna('none').astype(str)
         else:
             feature_types.append('continuous')
 
@@ -169,13 +177,21 @@ def main():
 
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # interactions=15 captures the top-15 pairwise interactions automatically.
-    # For our ~15 feature count that covers a reasonable breadth; EBM will
-    # prune unhelpful interactions during greedy search.
+    # Hyperparameters tuned for Phase-1 scale (200-500 rows, ~25 features):
+    # - interactions=8 (down from 15) — too many interactions overfits at this row count
+    # - max_bins=32 (down from 256) — 32 bins is plenty for features with ≤16 unique values;
+    #   fewer bins = less overfitting on high-cardinality categoricals like error_token
+    # - min_samples_leaf=4 — require at least 4 samples per leaf split; prevents
+    #   memorizing singleton categoricals
+    # - learning_rate=0.01 — half default, more gradient-boosting iterations for
+    #   smoother shape functions
+    # Revisit these once we have 1000+ passing rows.
     model = ExplainableBoostingRegressor(
         feature_types=feature_types,
-        interactions=15,
-        max_bins=256,
+        interactions=8,
+        max_bins=32,
+        min_samples_leaf=4,
+        learning_rate=0.01,
         random_state=42,
     )
     print(f'Training EBM on {len(X_train)} rows, {len(feature_cols)} features...')
