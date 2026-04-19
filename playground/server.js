@@ -3299,24 +3299,29 @@ app.post('/api/chat', async (req, res) => {
     }
   }
 
-  // Multi-turn tool-use loop with streaming
-  let currentMessages = messages.slice(-50); // 1M context supports much longer conversations
+  // Multi-turn tool-use loop with streaming.
+  // Meph runs on Haiku 4.5 by default — ~3x cheaper than Sonnet on this workload.
+  // Override with MEPH_MODEL=claude-sonnet-4-6 to A/B against baseline.
+  const MEPH_MODEL = process.env.MEPH_MODEL || 'claude-haiku-4-5-20251001';
+  // 200k is Haiku 4.5's hard cap and Sonnet 4.6's default (1M needs a beta header
+  // we don't send). Either way, the effective cap here is 200k.
+  const MEPH_CTX_MAX = 200000;
+  let currentMessages = messages.slice(-50);
   let toolResults = [];
 
   // Estimate context usage (rough: ~4 chars per token)
   function estimateContextUsage() {
-    const MAX_TOKENS = 1000000; // Sonnet 4.6 with 1M context
     const systemChars = (systemPrompt.length + (personality || '').length);
     const toolChars = JSON.stringify(enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS).length;
     const msgChars = currentMessages.reduce((sum, m) => sum + JSON.stringify(m.content || '').length, 0);
     const totalTokens = Math.round((systemChars + toolChars + msgChars) / 4);
-    return { used: totalTokens, max: MAX_TOKENS, percent: Math.round((totalTokens / MAX_TOKENS) * 100) };
+    return { used: totalTokens, max: MEPH_CTX_MAX, percent: Math.round((totalTokens / MEPH_CTX_MAX) * 100) };
   }
 
   try {
     for (let iter = 0; iter < 15; iter++) {
       const payload = {
-        model: 'claude-sonnet-4-6',
+        model: MEPH_MODEL,
         max_tokens: 16000,
         thinking: { type: 'enabled', budget_tokens: 8000 },
         system: buildSystemWithContext(systemPrompt, personality, testSnapshot),
