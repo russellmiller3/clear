@@ -8707,6 +8707,14 @@ function parsePrimary(tokens, pos, line, end) {
     return parseListLiteral(tokens, pos, line, maxPos);
   }
 
+  // Inline record literal: { key is value, key is value, ... } or { key: value, ... }
+  // Lets endpoints return inline JSON shapes like `send back { received is true }`.
+  // The indented-block form (`x is\n  a is 1\n  b is 2`) still works — this is
+  // an additional expression-level form, not a replacement.
+  if (tok.type === TokenType.LBRACE) {
+    return parseInlineRecord(tokens, pos, line, maxPos);
+  }
+
   if (tok.type === TokenType.OPERATOR && tok.value === '-') {
     const operand = parsePrimary(tokens, pos + 1, line, maxPos);
     if (operand.error) return operand;
@@ -8850,6 +8858,53 @@ function parseListLiteral(tokens, pos, line, end) {
     return { error: `There's an unclosed list bracket "[" — add a "]" to close it.` };
   }
   return { node: literalList(elements, line), nextPos: pos + 1 };
+}
+
+// Inline record literal parser: { key is value, key is value, ... }
+// Accepts `is`, `=`, or `:` as the key/value separator (all three feel natural:
+// `is` reads as English, `=` matches assignment style, `:` matches JSON which
+// Meph reaches for by instinct). Commas between entries are optional if the
+// next token is clearly a new key.
+function parseInlineRecord(tokens, pos, line, end) {
+  pos++; // skip `{`
+  const entries = [];
+  while (pos < end && tokens[pos].type !== TokenType.RBRACE) {
+    if (tokens[pos].type === TokenType.COMMA) { pos++; continue; }
+    const keyTok = tokens[pos];
+    if (keyTok.type !== TokenType.IDENTIFIER && keyTok.type !== TokenType.KEYWORD && keyTok.type !== TokenType.STRING) {
+      return { error: `Inside { } a field needs a name. Got "${keyTok.value}". Example: { received is true }` };
+    }
+    const key = keyTok.value;
+    pos++;
+    const sep = pos < end ? tokens[pos] : null;
+    const isSep = sep && (sep.canonical === 'is' || sep.type === TokenType.ASSIGN || sep.type === TokenType.COLON);
+    if (!isSep) {
+      return { error: `After "${key}" inside { } add "is", "=", or ":" and a value. Example: { ${key} is true }` };
+    }
+    pos++; // skip separator
+    // Find the end of this entry's value expression: scan forward for a comma
+    // or closing brace at the same bracket depth as the opening `{`.
+    let valueEnd = pos;
+    let depth = 0;
+    while (valueEnd < end) {
+      const t = tokens[valueEnd];
+      if (depth === 0 && (t.type === TokenType.COMMA || t.type === TokenType.RBRACE)) break;
+      if (t.type === TokenType.LBRACE || t.type === TokenType.LBRACKET || t.type === TokenType.LPAREN) depth++;
+      else if (t.type === TokenType.RBRACE || t.type === TokenType.RBRACKET || t.type === TokenType.RPAREN) depth--;
+      valueEnd++;
+    }
+    if (valueEnd === pos) {
+      return { error: `After "${key} is" inside { } add a value. Example: { ${key} is true }` };
+    }
+    const valueExpr = parseExpression(tokens, pos, line, valueEnd);
+    if (valueExpr.error) return valueExpr;
+    entries.push({ key, value: valueExpr.node });
+    pos = valueEnd;
+  }
+  if (pos >= end) {
+    return { error: `There's an unclosed "{" — add a "}" to close the record. Example: { received is true }` };
+  }
+  return { node: recordNode(entries, line), nextPos: pos + 1 };
 }
 
 // "each user's name in active_users" -> _map(active_users, 'name')

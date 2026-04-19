@@ -1160,6 +1160,49 @@ describe('Parser - Object Definition', () => {
     expect(ast.body[0].expression.type).toBe(NodeType.LITERAL_RECORD);
     expect(ast.body[1].type).toBe(NodeType.SHOW);
   });
+
+  // Inline record literals — `{ key is value, key is value }` or `{ key: value }`.
+  // Before this, records could only be constructed via indented block form. That
+  // meant `send back { received is true }` (documented in SYNTAX.md) didn't parse,
+  // and Meph could not return an inline JSON-shaped response from a webhook. The
+  // block form still works; this adds the inline form as an additional primary expr.
+  it('parses inline record { a is 1 }', () => {
+    const ast = parse(`x = { received is true }`);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].expression.type).toBe(NodeType.LITERAL_RECORD);
+    expect(ast.body[0].expression.entries).toHaveLength(1);
+    expect(ast.body[0].expression.entries[0].key).toBe('received');
+  });
+
+  it('parses inline record with multiple fields { a is 1, b is 2 }', () => {
+    const ast = parse(`x = { name is "Alice", age is 30 }`);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].expression.entries).toHaveLength(2);
+    expect(ast.body[0].expression.entries[0].key).toBe('name');
+    expect(ast.body[0].expression.entries[1].key).toBe('age');
+  });
+
+  it('parses inline record with : separator { a: 1 }', () => {
+    // JSON-style syntax — Meph (and many prospects) reach for this by instinct.
+    const ast = parse(`x = { received: true }`);
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].expression.type).toBe(NodeType.LITERAL_RECORD);
+    expect(ast.body[0].expression.entries[0].key).toBe('received');
+  });
+
+  it('parses send back { received is true } inside an endpoint', () => {
+    const src = `build for javascript backend
+
+create a Events table:
+  event_type, required
+
+when user sends data to /webhook/stripe:
+  save data to Events
+  send back { received is true }
+`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+  });
 });
 
 describe('Parser - Dot Access', () => {
