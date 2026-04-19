@@ -10,7 +10,7 @@ Updated: **2026-04-19 (Session 38: data-quality pass + EBM chosen + compiler fly
 | 35 | 2026-04-16 | Marcus GTM lock, competitive landscape research, deal-desk hero use case |
 | 36 | 2026-04-17 | Multi-session supervisor plan + curriculum harness skeleton |
 | 37 | 2026-04-18 | **Flywheel live.** Factor DB wired to `/api/chat`, archetype classifier (15 cats), Studio dashboard tab, cold-start harness, 5 Marcus curriculum tasks, cross-archetype curriculum diversity. 107 rows, 38 passing. |
-| **38** | **2026-04-19** | **Data-quality pass.** Haiku 4.5 default, step-decomposition, parser inline records `{}`, 16th archetype (kpi), classifier ordering fix, sweep DB grader, CLI clobber-proofing, iteration limit bump, EBM chosen over XGBoost (trainer rewritten), compiler-flywheel design. 149+ rows, 89+ passing as of mid-session. |
+| **38** | **2026-04-19** | **Data-quality pass + first reranker trained.** Haiku 4.5 default, step-decomposition, parser inline records `{}`, 16th archetype (kpi), classifier ordering fix, sweep DB grader, CLI clobber-proofing, iteration limit bump, EBM chosen over XGBoost (trainer rewritten), EBM wired into `/api/chat`, compiler-flywheel design. **2-stage Lasso → EBM pipeline measured:** Lasso alone wins at Phase-1 scale (val R² 0.39 vs EBM 0.30); Lasso dropped 11 of 24 features as noise; Stage-2 EBM on the 13 Lasso-kept features beats vanilla EBM by +0.033. Finished at 492 rows, 182 passing (API capped until May 1). |
 
 The document below is structured **theory → architecture → current state → path forward**. Start with "Read This First" for the plain-English summary; dive into the specific section that matches your question.
 
@@ -40,7 +40,7 @@ The document below is structured **theory → architecture → current state →
 
 **What's the point of all this?** To make Meph get better at building apps over time, without needing access to re-train Claude itself.
 
-**How it works in one paragraph.** Every time Meph compiles code in Studio, a row gets written to a database — what he was building, what error he hit (if any), whether it compiled, whether the tests passed. When he hits a compile error in a future session, the system looks at past rows where someone hit the same error and fixed it successfully, and hands Meph 3 working examples. He pattern-matches off them and tries again. Over months of usage, the database fills up with labeled examples. Eventually it trains a small ranking model — an **Explainable Boosting Machine (EBM)**, not a language model — that picks the best examples more intelligently than keyword match. EBM is a glass-box algorithm: you can literally plot each feature's contribution and see why a hint was picked. That matches Clear's "no magic, readable source" philosophy.
+**How it works in one paragraph.** Every time Meph compiles code in Studio, a row gets written to a database — what he was building, what error he hit (if any), whether it compiled, whether the tests passed. When he hits a compile error in a future session, the system looks at past rows where someone hit the same error and fixed it successfully, and hands Meph 3 working examples. He pattern-matches off them and tries again. Over months of usage, the database fills up with labeled examples. A small ranking model — **EBM (Explainable Boosting Machine)**, not a language model — picks the best examples more intelligently than keyword match. EBM is a glass-box algorithm: you can literally plot each feature's contribution and see why a hint was picked. Matches Clear's "no magic, readable source" philosophy. **Phase-1 detail (Session 38):** at <1000 passing rows, the trainer runs a 2-stage **Lasso → EBM** pipeline — Lasso auto-selects the features that actually matter (L1 regularization drops the noise), then EBM fits shape functions + interactions only on the survivors. Current measured: Lasso alone hits val R² 0.39 on our 182 passing rows; we'll switch to Stage-2 EBM around 1000 rows when interactions start earning their keep.
 
 **What's actually live right now:**
 - A live dashboard in Studio ("Flywheel" tab) showing the database growing
@@ -399,6 +399,26 @@ Training pipeline (inside the script):
 7. Export pickle (Python-side inference) + JSON shape table (JS-side inference)
 
 Training time at 200-2000 rows on CPU: **30-60 seconds.** No GPU required.
+
+### Phase-1 scale — why the trainer runs a 2-stage Lasso → EBM pipeline (Session 38 finding)
+
+At the 100-500 passing-row range we're in today, EBM's pairwise interactions cost more than they earn. We measured it (182 passing rows, 24 structured features, 393 training / 99 validation split):
+
+| Model | Val R² | Train-val gap |
+|-------|--------|---------------|
+| EBM on all 24 features | **0.302** | 0.14 (overfitting) |
+| Lasso alone (87 one-hot dummies, L1-regularized) | **0.390** | 0.00 (no gap) |
+| EBM on Lasso-selected 13 features | **0.335** | 0.07 (better than vanilla EBM) |
+
+**The 2-stage pipeline:** `train_reranker.py` runs LassoCV (cross-validated L1) on the full one-hot feature matrix. L1 zeros out weak features automatically. Per-dummy coefficients aggregate back to source features — a source feature is "kept" if any of its one-hot dummies survived with non-zero coefficient. Stage 2 retrains an EBM on only those kept features.
+
+**What Lasso kept (the 13 carrying signal):** `compile_ok`, `source_length`, `archetype`, `step_name`, `num_pages`, `num_branches`, `error_is_novel`, `error_category`, `step_index`, `num_agents`, `prev_compile_ok`, `num_errors`, `step_advanced`.
+
+**What Lasso dropped (11 noise features at this scale):** `num_endpoints`, `num_tables`, `num_charts`, `num_crons`, `num_validates`, `num_auth_requires`, `num_aggregates`, `num_cruds`, `avg_line_length`, `session_attempt`, `patch_op_count`. Not permanently useless — just starved of examples at 182 rows. At ~1000 rows the EBM can start populating their bin statistics meaningfully.
+
+**Crossover prediction:** Lasso alone wins at Phase-1 scale (<1000 passing rows). Stage-2 EBM should overtake Lasso around 1000-1500 rows as interactions become statistically supportable. Production today runs whichever model wins the scorecard at the most-recent retrain.
+
+**Why this matters structurally:** the insight isn't "Lasso better than EBM." It's "at low data scale, **feature selection dominates model sophistication**." A linear model with auto-feature-selection beats a non-linear model without one. Once data is plentiful, that reverses. The 2-stage pipeline captures both regimes — Lasso for selection, EBM for shape functions + interactions on whatever survived.
 
 ### How we deploy it (JS-side inference in Studio)
 
