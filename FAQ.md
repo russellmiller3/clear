@@ -354,25 +354,47 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 
 ### Where does the supervisor plan live?
 
-`plans/plan-supervisor-multi-session-04-17-2026.md` — the original plan. Historical now; implementation has started.
+`plans/plan-supervisor-multi-session-04-17-2026.md` — the original plan. Historical (plans are write-once once implementation begins).
 
-**What's built (Session 37, `feature/supervisor-multi-session`):**
+**What's built as of Session 37 end (`feature/supervisor-multi-session`):**
 
 | File | What it does |
 |------|--------------|
-| `playground/supervisor.js` | Supervisor entry point — spawns N workers, serves REST/SSE API |
+| `playground/supervisor.js` | Supervisor entry point (standalone) — spawns N workers, serves REST/SSE API |
 | `playground/supervisor/registry.js` | Session registry (SQLite, WAL mode) — tracks worker state |
 | `playground/supervisor/spawner.js` | Worker process spawner (port availability check, killAll) |
 | `playground/supervisor/loop.js` | Poll loop + state machine (TASK COMPLETE / STUCK detection) + SSE |
 | `playground/supervisor/factor-db.js` | Factor DB — code_actions, ga_runs, ga_candidates, reranker_feedback |
-| `playground/supervisor/archetype.js` | Shape-of-work classifier (see below) |
-| `playground/supervisor/cold-start.js` | Seeds Factor DB with 8 template rows + 20 curriculum skeletons |
+| `playground/supervisor/archetype.js` | Shape-of-work classifier (15 categories) |
+| `playground/supervisor/cold-start.js` | Seeds Factor DB with 13 gold templates + 25 curriculum skeletons |
+| `playground/supervisor/curriculum-sweep.js` | Drives all 25 curriculum tasks through N parallel workers. CLI: `--workers=3 --tasks=... --timeout=150`. Has pre-flight API check. |
+| `playground/supervisor/export-training-data.js` | Exports Factor DB to JSONL for XGBoost training. `--stats` for summary. |
+| `playground/supervisor/train_reranker.py` | Python XGBoost trainer. Refuses below 200 passing rows with clear message. |
+| `playground/supervisor/db-stats.js` | Standalone DB stats reporter (CLI, prints archetype breakdown) |
+| `playground/eval-replicated.js` | Runs 16-scenario Meph eval across N parallel trials. Detects flake rate per scenario. |
+| `playground/eval-scenarios.js` | Shared scenario definitions (imported by eval-meph + eval-replicated) |
 
-Server.js extended: `--port=` / `--session-id=` CLI args, `_workerLastSource` module-level shadow var, `/api/current-source`, `/api/worker-heartbeat`.
+**`server.js` extensions for supervisor integration:**
+- `--port=` / `--session-id=` CLI args
+- `_workerLastSource` / `_workerLastErrors` module-level shadow vars (mirrored from /api/chat per-request locals)
+- `GET /api/worker-heartbeat` + `GET /api/current-source` — worker polling endpoints
+- `GET /api/flywheel-stats` — Factor DB dashboard (archetype breakdown, recent rows, API health)
+- `GET /api/supervisor/sessions` — aggregated session list
+- `GET /api/supervisor/session/:id` — full trajectory for one session
+- `POST /api/supervisor/start-sweep` / `GET /sweep-progress` / `POST /clear-sweep` — Studio-triggered sweeps
+- Factor DB write hook in `/api/chat`: every `compile` tool call → row; every `run_tests` OR `http_request` 2xx → row marked passing
+- Factor DB hint injection: compile errors pull 3 tier-ranked past examples into the compile tool result's `hints` field
 
-22 tests across 4 modules, all green. 1947 compiler tests still green.
+**Phase status (see PROGRESS.md for full HITL fix table):**
+- Phase 1 (Session Registry) ✅
+- Phase 2 (Worker Spawner) ✅
+- Phase 3 (Supervisor Loop) ✅
+- Phase 4 (Task Distribution) ✅ — verified via curriculum-sweep
+- Phase 5 (Factor DB + archetype + cold start + live logging) ✅
+- Phase 6 (Merge Step) ⬜ Deferred until needed
+- Phase 7 (Observability — Studio panel) ✅ — Flywheel tab + Supervisor tab
 
-Pending from the plan: Phase 4 (task distribution — `assignTask` is stubbed but not wired to `/api/chat`), Phase 6 (merge step), Phase 7 (Studio UI panel).
+~50 tests across supervisor modules; 1954 compiler tests still green.
 
 ---
 

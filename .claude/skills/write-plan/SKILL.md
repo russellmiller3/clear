@@ -187,7 +187,7 @@ Also add to the **Pre-Flight Checklist** (Section 9 for large plans):
 
 ## Step 5.5: Clear Documentation Surfaces (MANDATORY for new features)
 
-Clear's `CLAUDE.md` Documentation Rule lists 7 surfaces that MUST be updated when any new syntax, node type, CLI command, or Studio capability ships. Missing any one causes a user-facing gap (AI writes stale syntax, Meph doesn't know the feature, landing page shows wrong example).
+Clear's `CLAUDE.md` Documentation Rule lists 9 surfaces that MUST be updated when any new syntax, node type, CLI command, or Studio capability ships. Missing any one causes a user-facing gap (AI writes stale syntax, Meph doesn't know the feature, landing page shows wrong example).
 
 Pick the surfaces that match the feature type and add them as the FINAL phase of the plan. No new feature ships without these updates.
 
@@ -200,6 +200,8 @@ Pick the surfaces that match the feature type and add them as the FINAL phase of
 | Status | `ROADMAP.md` | Mark the phase complete, update counts under "What's Next" |
 | Marketing | `landing/*.html` | Feature appears in demos, hero examples, or agent pitch pages |
 | Studio AI | `playground/system-prompt.md` | Feature Meph should know to use when building apps |
+| FAQ | `FAQ.md` | New subsystem → add "Where does X live?" / "How do I Y?" / "Why did we Z?" entries. Touched existing subsystem → update relevant entry. |
+| Research | `RESEARCH.md` | Anything affecting training signal: Factor DB schema, archetype classifier, hint retrieval, curriculum, eval pipeline. Keep the plain-English "Read This First" section current. |
 
 If the feature adds a CLI command, also update the `## CLI (for AI agents)` block in `CLAUDE.md` itself.
 
@@ -215,6 +217,8 @@ If the feature adds a Studio endpoint, also update `playground/server.test.js` w
 - [ ] `ROADMAP.md` updated (phase complete + next moves)
 - [ ] `landing/*.html` synced (if feature is user-facing)
 - [ ] `playground/system-prompt.md` updated (if Meph should use it)
+- [ ] `FAQ.md` updated (new subsystem entries or changed answers)
+- [ ] `RESEARCH.md` updated (if training signal / flywheel affected)
 - [ ] `playground/clear-compiler.min.js` rebuilt (if compiler changed)
 ```
 
