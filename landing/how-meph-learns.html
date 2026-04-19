@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Meph Gets Smarter — Clear</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #15151f;
+    --bg3: #1f1f2e;
+    --tx: #e8e8ee;
+    --tx2: #a8a8b8;
+    --tx3: #666678;
+    --accent: #818cf8;
+    --accent2: #a78bfa;
+    --green: #4ade80;
+    --orange: #fb923c;
+    --red: #f87171;
+    --border: #2a2a3a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--tx); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
+  .container { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { color: var(--tx); line-height: 1.25; font-weight: 700; }
+  h1 { font-size: 48px; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h2 { font-size: 28px; margin: 56px 0 16px; letter-spacing: -0.01em; }
+  h3 { font-size: 18px; margin: 28px 0 8px; color: var(--accent); }
+  p { margin: 0 0 16px; color: var(--tx2); font-size: 17px; }
+  strong { color: var(--tx); font-weight: 600; }
+  em { color: var(--tx); font-style: italic; }
+  code { background: var(--bg3); padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, "SF Mono", monospace; font-size: 14px; color: #c4b5fd; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed transparent; }
+  a:hover { border-bottom-color: var(--accent); }
+
+  .hero {
+    padding: 96px 0 64px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .hero .kicker {
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .hero p.lede {
+    font-size: 20px;
+    line-height: 1.5;
+    margin-top: 16px;
+    color: var(--tx);
+  }
+
+  section { padding: 40px 0; border-bottom: 1px solid var(--border); }
+  section:last-child { border-bottom: none; }
+
+  .callout {
+    background: var(--bg2);
+    border-left: 3px solid var(--accent);
+    padding: 16px 20px;
+    margin: 20px 0;
+    border-radius: 4px;
+  }
+  .callout p { margin: 0; font-size: 15px; }
+
+  .diagram {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin: 24px 0;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 12px;
+    color: var(--tx2);
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .cmp {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 24px 0;
+  }
+  @media (max-width: 640px) { .cmp { grid-template-columns: 1fr; } }
+  .cmp-box {
+    padding: 20px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .cmp-box h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .cmp-good { background: rgba(74, 222, 128, 0.08); border: 1px solid rgba(74, 222, 128, 0.25); }
+  .cmp-good h4 { color: var(--green); }
+  .cmp-bad { background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.25); }
+  .cmp-bad h4 { color: var(--red); }
+
+  .three {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin: 24px 0;
+  }
+  @media (max-width: 640px) { .three { grid-template-columns: 1fr; } }
+  .three .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    font-size: 14px;
+  }
+  .three .card h4 { margin: 0 0 8px; color: var(--accent); font-size: 14px; font-weight: 600; }
+  .three .card p { margin: 0 0 10px; font-size: 14px; }
+  .three .card .verdict { font-size: 12px; color: var(--tx3); font-style: italic; }
+
+  .stat-row { display: flex; gap: 32px; padding: 20px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 24px 0; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 120px; }
+  .stat .num { font-size: 28px; font-weight: 700; color: var(--tx); font-variant-numeric: tabular-nums; }
+  .stat .lbl { font-size: 12px; color: var(--tx3); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px; }
+
+  .footer { padding: 40px 0 80px; text-align: center; color: var(--tx3); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="container">
+    <div class="kicker">The Flywheel</div>
+    <h1>How Meph gets smarter every time you use it</h1>
+    <p class="lede">Most AI code assistants forget everything between conversations. This is the story of how we're fixing that for Clear — without changing the AI model itself.</p>
+  </div>
+</div>
+
+<section>
+<div class="container">
+
+<h2>The problem with AI coding tools right now</h2>
+
+<p>You open Cursor. Or Lovable. Or Bolt. You describe what you want. The AI generates code. It has a bug. You fix the bug by hand. You close the tab.</p>
+
+<p>Tomorrow, you open it again. <strong>It makes the same bug.</strong></p>
+
+<p>Every AI coding assistant today has this problem. The AI doesn't remember your previous session. It doesn't remember anyone else's sessions either. Every conversation starts from a blank memory. Every user pays for the same mistakes, forever.</p>
+
+<div class="callout">
+<p><strong>Imagine a contractor who rebuilds your kitchen every week and forgets which outlets are which each time.</strong> That's current AI code generation.</p>
+</div>
+
+<p>This isn't the contractor's fault — it's how the tools are architected. The AI gets a blank slate for every conversation. To fix a bug permanently, you'd have to retrain the AI itself, which costs millions of dollars and requires access most companies (including ours) don't have.</p>
+
+</div>
+</section>
+
+<section>
+<div class="container">
+
+<h2>Three ways to make an AI smarter</h2>
+
+<p>When someone says "make the AI better," they usually mean one of three things:</p>
+
+<div class="three">
+  <div class="card">
+    <h4>1. Train a bigger model</h4>
+    <p>What OpenAI / Anthropic / Google do. Billions of dollars. Years of compute. You get GPT-5 instead of GPT-4.</p>
+    <p class="verdict">Not available to us. You can't train Claude — only Anthropic can.</p>
+  </div>
+  <div class="card">
+    <h4>2. Fine-tune an existing model</h4>
+    <p>Teach an existing model your specific domain. Cheaper — thousands of dollars, weeks of work. Requires API access that Anthropic doesn't offer for Claude.</p>
+    <p class="verdict">Also not available. Locked behind a door we don't have keys to.</p>
+  </div>
+  <div class="card">
+    <h4>3. Improve what the AI sees</h4>
+    <p>Don't touch the model. Change the information you hand it. Better prompts, better examples, better context before it starts writing.</p>
+    <p class="verdict">This is what we can do. And it turns out it's enough.</p>
+  </div>
+</div>
+
+<p>Option 3 sounds less impressive, and for most people's intuition about AI it is — "just give it better prompts" doesn't feel like the same magic as training a new model. But it has a secret property: <strong>it compounds</strong>. Every conversation teaches the system something it can feed into the next one.</p>
+
+</div>
+</section>
+
+<section>
+<div class="container">
+
+<h2>Our version: the flywheel</h2>
+
+<p>Here's what Meph (Clear's AI assistant) does now, step by step:</p>
+
+<ol>
+  <li><strong>You ask Meph to build something.</strong> Say, an approval queue for expense requests.</li>
+  <li><strong>Meph writes code, compiles it.</strong> It fails with an error.</li>
+  <li><strong>Before Meph tries again, the system looks up 3 past sessions</strong> where someone else (or you, earlier) hit the same kind of error and eventually fixed it. It shows Meph those working examples.</li>
+  <li><strong>Meph patterns-matches off them</strong>, adapts to your situation, and tries again. This time it works.</li>
+  <li><strong>That session — error, fix, outcome — gets written to a database.</strong> Every future session benefits from it.</li>
+</ol>
+
+<div style="background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 24px; margin: 24px 0;">
+<svg viewBox="0 0 700 520" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:auto; display:block;">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#818cf8"/>
+    </marker>
+    <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4ade80"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="350" y="30" text-anchor="middle" fill="#a8a8b8" font-family="monospace" font-size="11" letter-spacing="2">THE FLYWHEEL</text>
+
+  <!-- Node 1: You ask Meph (top) -->
+  <g>
+    <rect x="260" y="60" width="180" height="70" rx="8" fill="#15151f" stroke="#818cf8" stroke-width="1.5"/>
+    <text x="350" y="88" text-anchor="middle" fill="#e8e8ee" font-family="sans-serif" font-size="15" font-weight="600">You ask Meph</text>
+    <text x="350" y="110" text-anchor="middle" fill="#a8a8b8" font-family="sans-serif" font-size="12">"build an approval queue"</text>
+  </g>
+
+  <!-- Node 2: Meph writes code (right) -->
+  <g>
+    <rect x="510" y="210" width="170" height="70" rx="8" fill="#15151f" stroke="#818cf8" stroke-width="1.5"/>
+    <text x="595" y="238" text-anchor="middle" fill="#e8e8ee" font-family="sans-serif" font-size="15" font-weight="600">Meph writes code</text>
+    <text x="595" y="260" text-anchor="middle" fill="#f87171" font-family="sans-serif" font-size="12">⚠ hits an error</text>
+  </g>
+
+  <!-- Node 3: System retrieves past fixes (bottom) -->
+  <g>
+    <rect x="230" y="370" width="240" height="90" rx="8" fill="#15151f" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="350" y="398" text-anchor="middle" fill="#e8e8ee" font-family="sans-serif" font-size="15" font-weight="600">System pulls 3 past fixes</text>
+    <text x="350" y="420" text-anchor="middle" fill="#a8a8b8" font-family="sans-serif" font-size="12">from the database —</text>
+    <text x="350" y="438" text-anchor="middle" fill="#a8a8b8" font-family="sans-serif" font-size="12">sessions that fixed the same error</text>
+  </g>
+
+  <!-- Node 4: Meph tries again (left) -->
+  <g>
+    <rect x="20" y="210" width="170" height="70" rx="8" fill="#15151f" stroke="#4ade80" stroke-width="1.5"/>
+    <text x="105" y="238" text-anchor="middle" fill="#e8e8ee" font-family="sans-serif" font-size="15" font-weight="600">Meph tries again</text>
+    <text x="105" y="260" text-anchor="middle" fill="#4ade80" font-family="sans-serif" font-size="12">✓ it works</text>
+  </g>
+
+  <!-- Center: Database (visual heart of the flywheel) -->
+  <g>
+    <circle cx="350" cy="250" r="58" fill="#1f1f2e" stroke="#a78bfa" stroke-width="2" stroke-dasharray="4 3"/>
+    <text x="350" y="242" text-anchor="middle" fill="#c4b5fd" font-family="monospace" font-size="11" letter-spacing="1.5">DATABASE</text>
+    <text x="350" y="262" text-anchor="middle" fill="#a8a8b8" font-family="sans-serif" font-size="11">every session</text>
+    <text x="350" y="278" text-anchor="middle" fill="#a8a8b8" font-family="sans-serif" font-size="11">writes a row</text>
+  </g>
+
+  <!-- Arrow 1 → 2 (top to right) -->
+  <path d="M 440 110 Q 560 130 570 210" stroke="#818cf8" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Arrow 2 → 3 (right to bottom) -->
+  <path d="M 580 280 Q 540 370 470 400" stroke="#818cf8" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Arrow 3 → 4 (bottom to left, curving around DB) -->
+  <path d="M 230 410 Q 140 380 120 280" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Arrow 4 → 1 (left to top) -->
+  <path d="M 130 210 Q 140 130 260 110" stroke="#4ade80" stroke-width="2" fill="none" marker-end="url(#arrow-accent)"/>
+
+  <!-- DB write line (passing session → DB) -->
+  <line x1="190" y1="245" x2="292" y2="250" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <text x="230" y="235" text-anchor="middle" fill="#4ade80" font-family="sans-serif" font-size="10" font-style="italic">writes this fix →</text>
+
+  <!-- DB read line (DB → retrieval) -->
+  <line x1="350" y1="308" x2="350" y2="370" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <text x="380" y="345" fill="#a78bfa" font-family="sans-serif" font-size="10" font-style="italic">reads past fixes</text>
+
+  <!-- Labels on arrows -->
+  <text x="530" y="155" fill="#a8a8b8" font-family="sans-serif" font-size="11">compiles</text>
+  <text x="540" y="355" fill="#a8a8b8" font-family="sans-serif" font-size="11">triggers</text>
+  <text x="540" y="370" fill="#a8a8b8" font-family="sans-serif" font-size="11">lookup</text>
+  <text x="130" y="355" fill="#a8a8b8" font-family="sans-serif" font-size="11">hint injected</text>
+  <text x="185" y="155" fill="#a8a8b8" font-family="sans-serif" font-size="11">next session</text>
+  <text x="185" y="170" fill="#a8a8b8" font-family="sans-serif" font-size="11">is smarter</text>
+
+  <!-- Caption -->
+  <text x="350" y="500" text-anchor="middle" fill="#666678" font-family="sans-serif" font-size="11" font-style="italic">every loop leaves the database richer — next session benefits from this one</text>
+</svg>
+</div>
+
+<p>The crucial thing: <strong>Claude doesn't change</strong>. It's the same model. What changes is the information we hand it before it starts thinking.</p>
+
+<div class="callout">
+<p><strong>Analogy.</strong> Claude is like a chef. A very good one. We're not trying to make the chef smarter. We're handing them a recipe book that keeps getting better — filled with dishes that worked, with notes on what went wrong the first time, with fixes that future chefs can reference.</p>
+</div>
+
+</div>
+</section>
+
+<section>
+<div class="container">
+
+<h2>How this relates to "real ML / RL"</h2>
+
+<p>If you've read anything about AI in the last few years, you've probably heard three phrases thrown around:</p>
+
+<h3>Machine Learning (ML)</h3>
+<p>The broad idea: computers learning from data instead of being explicitly programmed. Our flywheel is ML — we're learning which code fixes work for which errors. But we're not training a new neural network. We're training a small ranking model that picks the most relevant past examples to show Meph.</p>
+
+<p>The model we train is called <strong>XGBoost</strong>. It's not a language model. It's a decision-tree ensemble — boring, fast, interpretable, about 22,000 parameters. GPT-4 has a trillion. Ours is five orders of magnitude smaller. It doesn't need to be big, because it's only doing one job: "given this situation, which past example is most relevant?"</p>
+
+<h3>Reinforcement Learning (RL)</h3>
+<p>Reinforcement learning is how AIs learn to play chess or control robots: try something, get a reward or punishment, update the strategy. What we're doing is RL-adjacent — we have "rewards" (tests passing is good, errors are bad), and we update which examples get recommended.</p>
+
+<p>The difference: classical RL updates a policy network through backpropagation. We don't. We store past experiences in a database and retrieve the relevant ones. It's closer to how a human expert operates — "I've seen this before, here's what worked last time." Less elegant than pure RL, but it works without fine-tuning access.</p>
+
+<h3>Retrieval-Augmented Generation (RAG)</h3>
+<p>RAG is the name for this exact pattern when it's used with language models. Instead of training the model on new documents, you give it access to a database and let it look things up. Most company chatbots that answer questions about internal docs use RAG.</p>
+
+<p>Our flywheel is a kind of RAG, but for code fixes instead of documents. The "documents" are labeled trajectories: "when you hit error X in app type Y, here's what fixed it."</p>
+
+</div>
+</section>
+
+<section>
+<div class="container">
+
+<h2>Why this is interesting business-wise</h2>
+
+<p>If you're a user, the thing you notice is Meph getting better over weeks. Small things — it stops making a mistake it used to make; it understands your app patterns faster; fewer iterations before a feature works.</p>
+
+<p>If you're competing with us, this is harder to copy than you'd think. <strong>The training data doesn't exist in the wild</strong>. Nobody else has "here are 10,000 cases where AI tried to build an approval queue and the errors it hit and how those errors got fixed in the specific language Clear." We accumulate that data as a side effect of users existing. Our competitors would need their own users using their own compiler to start collecting it.</p>
+
+<p>Vercel did something similar with hosting data. Stripe did it with payment failure patterns. The compounding wins aren't visible in the product for months, but once they kick in they're very hard to catch up to.</p>
+
+</div>
+</section>
+
+<section>
+<div class="container">
+
+<h2>What's live today</h2>
+
+<p>This isn't hypothetical. All of the following is working in Clear right now:</p>
+
+<div class="stat-row">
+  <div class="stat"><div class="num">149</div><div class="lbl">Trajectories logged</div></div>
+  <div class="stat"><div class="num">57</div><div class="lbl">Passing examples</div></div>
+  <div class="stat"><div class="num">15</div><div class="lbl">App types tracked</div></div>
+  <div class="stat"><div class="num">13</div><div class="lbl">Templates in Studio</div></div>
+</div>
+
+<p>Inside Clear Studio there are two new tabs: <strong>Flywheel</strong> (shows the database growing in real time) and <strong>Supervisor</strong> (lets you run a training batch, click into any past session, see what Meph actually wrote). Every compile Meph does auto-logs. Every error he hits triggers a retrieval of 3 past examples.</p>
+
+<p>We're 143 passing examples away from training the first ranking model. At the current rate, that's a few weeks of curriculum runs, or faster with real users.</p>
+
+</div>
+</section>
+
+<section>
+<div class="container">
+
+<h2>Honest limitations</h2>
+
+<p>Three things to be honest about:</p>
+
+<h3>It doesn't work without users</h3>
+<p>The flywheel spins faster with real traffic. Synthetic data (practice tasks) is a shortcut to get started, but the real learning comes from humans using the product for real work. Until that happens, we're bootstrapping.</p>
+
+<h3>The Claude model is the ceiling</h3>
+<p>However good Meph gets through retrieval, its ultimate ceiling is Claude itself. If Claude can't reason through a pattern no matter how many examples you show it, we're stuck. Fine-tuning would break that ceiling. We can't do it yet.</p>
+
+<h3>Bad data poisons the well</h3>
+<p>If the database fills up with wrong fixes that happened to pass superficial tests, the ranking model will confidently recommend bad patterns. We've built guardrails — only fully-passing sessions become training examples — but it's something to watch.</p>
+
+</div>
+</section>
+
+<section>
+<div class="container">
+
+<h2>The bigger story</h2>
+
+<p>For twenty years, the way you made software better was to hire better engineers. For the last three years, AI started doing a lot of the work. What we're building is the third chapter: <strong>the software that gets better on its own as it gets used</strong>.</p>
+
+<p>Clear is a compiler that writes itself smarter. Meph is an AI that learns without needing to be retrained. The flywheel is the engine connecting them. Every user's session makes every other user's next session a little easier.</p>
+
+<p>That's the whole thesis in one paragraph.</p>
+
+</div>
+</section>
+
+<div class="footer">
+  <div class="container">
+    Clear Language — compile plain English to JavaScript, Python, HTML · <a href="/">Back to home</a>
+  </div>
+</div>
+
+</body>
+</html>
