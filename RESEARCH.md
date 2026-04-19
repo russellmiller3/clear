@@ -9,21 +9,22 @@ Updated: 2026-04-18 (Session 37: flywheel live, Factor DB wired).
 
 **What's the point of all this?** To make Meph get better at building apps over time, without needing access to re-train Claude itself.
 
-**How it works in one paragraph.** Every time Meph compiles code in Studio, a row gets written to a database — what he was building, what error he hit (if any), whether it compiled, whether the tests passed. When he hits a compile error in a future session, the system looks at past rows where someone hit the same error and fixed it successfully, and hands Meph 3 working examples. He pattern-matches off them and tries again. Over months of usage, the database fills up with labeled examples. Eventually it trains a small ranking model (XGBoost, not a language model) that picks the best examples more intelligently than keyword match.
+**How it works in one paragraph.** Every time Meph compiles code in Studio, a row gets written to a database — what he was building, what error he hit (if any), whether it compiled, whether the tests passed. When he hits a compile error in a future session, the system looks at past rows where someone hit the same error and fixed it successfully, and hands Meph 3 working examples. He pattern-matches off them and tries again. Over months of usage, the database fills up with labeled examples. Eventually it trains a small ranking model — an **Explainable Boosting Machine (EBM)**, not a language model — that picks the best examples more intelligently than keyword match. EBM is a glass-box algorithm: you can literally plot each feature's contribution and see why a hint was picked. That matches Clear's "no magic, readable source" philosophy.
 
 **What's actually live right now:**
 - A live dashboard in Studio ("Flywheel" tab) showing the database growing
-- 107 training rows accumulated so far, 38 of them passing end-to-end
-- Every Meph compile auto-logs
+- **149 training rows, 46 passing end-to-end** (was 107/38 at Session 37; step-decomposition + parser + grader fixes pushed the numbers up)
+- Every Meph compile auto-logs, tagged with which task-milestone he just hit
 - Every compile error auto-retrieves 3 past working examples and hands them to Meph
-- A classifier that tags each app by shape (queue workflow, CRUD app, AI agent, etc.) so retrieval can filter by app type
-- 5 new template apps (approval queue, lead router, onboarding tracker, support triage, internal request queue) that match what Marcus's team actually builds
+- A classifier that tags each app by shape (16 archetypes including the new `kpi` bucket) so retrieval can filter by app type
+- 5 new template apps that match what Marcus's team actually builds
+- Haiku 4.5 is the default model — 3× cheaper per training row than Sonnet at ~94% of Sonnet's completion rate
 
 **What this buys you.** Meph makes the same mistake once, then never again — the fix is stored and returned to future sessions automatically. You don't manually teach him. The more people use Clear, the smarter Meph gets for everyone.
 
 **What this doesn't buy you.** Claude itself doesn't change. The LLM is the same. What improves is the information Meph has in his context window before he writes code. Fine-tuning would be a bigger win, but we don't have access — this is the best version of "training" available without it.
 
-**The bottleneck:** we need ~200 rows where tests passed before we can train the ranker (currently 38). Every Meph session adds a few. Every curriculum sweep (automated test against practice tasks) adds ~8 passing rows. We're roughly 20 sweeps away.
+**The bottleneck:** we need ~200 rows where tests passed before we can train the ranker (**currently 46**). Every Meph session adds a few. A full 30-task Haiku sweep now adds ~8 passing rows in ~7 minutes at a cost of ~$5. That's ~20 sweeps — roughly $100 and a few hours of compute — to cross the EBM training threshold.
 
 ---
 
@@ -202,10 +203,10 @@ This is the compounding loop that makes Clear's Meph smarter over time — witho
 | Phase | Trigger | Behavior |
 |-------|---------|----------|
 | **Cold start** | Day 1 — 0 rows | BM25 retrieval only (token overlap on archetype + error_sig). Suggestions are generic but non-random. |
-| **Organic** | 200+ passing rows | XGBoost re-ranker trained. Suggestions are quality-ranked by success rate. |
+| **Organic** | 200+ passing rows | EBM re-ranker trained. Suggestions are quality-ranked by success rate. |
 | **Tuned** | 2k+ rows | Re-ranker retrains weekly. Drift detection on curriculum validation set. |
 
-**Important:** the model being trained is NOT Claude. It's a 22M-weight decision-tree ensemble (XGBoost) that ranks retrieved examples. Claude/Meph stays exactly the same. The hints Meph receives get better; Meph's ability to follow hints was always there.
+**Important:** the model being trained is NOT Claude. It's an **Explainable Boosting Machine (EBM)** — a Generalized Additive Model that learns one shape function per feature (plus pairwise interactions). Each shape function is plottable: you can literally see "feature X contributed +0.4 to this score." That ranks retrieved examples transparently. Claude/Meph stays exactly the same. The hints Meph receives get better; Meph's ability to follow hints was always there.
 
 The mechanical quality signals bootstrap this loop. They produce deterministic quality scores on day 1 — before any ML is trained. See the next section.
 
@@ -247,7 +248,7 @@ The re-ranker is a **bouncer** — it filters patch candidates before the expens
 | Phase | Model | Data needed | Why |
 |-------|-------|-------------|-----|
 | Now | Mechanical signals only | 0 | Deterministic, free |
-| ~200 sessions | XGBoost on structured features | ~200 labeled sessions | Fast to train, interpretable, works on tabular |
+| ~200 sessions | EBM on structured features | ~200 labeled sessions | Fast to train, interpretable, works on tabular |
 | ~2k sessions | Add JS embedding | 2k+ sessions | Embed compiled JS diff (not Clear source — JS has massive training data behind it). `text-embedding-3-small` on before/after diff |
 | ~5k sessions | Fine-tune on Clear | 5k+ sessions | Model learns Clear-specific patterns directly |
 
@@ -258,17 +259,17 @@ Clear is a tiny corpus. JS has billions of examples in every model's training da
 
 The input space here is genuinely tiny. `task_type` has ~15 values. Error categories have ~30-50 distinct patterns. `patch_op_type` has 11 values (from patch.js). That's a structured tabular problem, not a language understanding problem.
 
-What the re-ranker is actually doing: **a lookup table with uncertainty.** "Given error pattern X on task type Y, which of these 5 past fixes has the best track record?" A decision tree captures this cleanly. XGBoost on 5-10 features trains in seconds, runs in microseconds, and is interpretable — you can see which features matter.
+What the re-ranker is actually doing: **a lookup table with uncertainty.** "Given error pattern X on task type Y, which of these 5 past fixes has the best track record?" A decision tree captures this cleanly. EBM on 5-10 features trains in seconds, runs in microseconds, and is interpretable — you can see which features matter.
 
 A 22M-parameter cross-encoder (e.g. ms-marco-MiniLM) is trained on millions of web search queries to understand free-form natural language. That's not the problem here. Using it would be like using a sledgehammer to push a thumbtack. It would train more slowly, require more data, and give you less insight into what's actually driving predictions.
 
-**The upgrade path only triggers if XGBoost plateaus** — i.e., you have 2k+ sessions and accuracy on the validation curriculum isn't improving. At that point, JS embeddings on the compiled diff add signal. But you may never need them. The feature space might be fully captured by structured inputs alone.
+**The upgrade path only triggers if EBM plateaus** — i.e., you have 2k+ sessions and accuracy on the validation curriculum isn't improving. At that point, JS embeddings on the compiled diff add signal. But you may never need them. The feature space might be fully captured by structured inputs alone.
 
 ### Global context: how the re-ranker thinks like an engineer
 
 A real engineer hitting a validation error doesn't just see the error — they know this is a multi-tenant CRM with auth and Postgres, which completely changes the right fix. A bare `error_sig` misses all of that.
 
-The re-ranker captures global context by extracting **structured app-level features** from the parser output, once per session. These become additional XGBoost inputs alongside the local error features.
+The re-ranker captures global context by extracting **structured app-level features** from the parser output, once per session. These become additional EBM inputs alongside the local error features.
 
 **Global context features (per app, re-computed on each compile):**
 
@@ -364,13 +365,13 @@ LIMIT 50
 
 Webhook bugs look very different from CRUD bugs. Keeping archetypes separate prevents noisy retrieval.
 
-**Why this still works with XGBoost:**
+**Why this still works with EBM:**
 
-The total feature count is ~20, not thousands. Each feature is low-cardinality (booleans, small categoricals). XGBoost handles this natively, captures feature interactions (e.g. "has_auth=true AND error=validation → prefer middleware patches"), and stays interpretable — you can literally print feature importance and understand what the model learned.
+The total feature count is ~20, not thousands. Each feature is low-cardinality (booleans, small categoricals). EBM handles this natively, captures feature interactions (e.g. "has_auth=true AND error=validation → prefer middleware patches"), and stays interpretable — you can literally print feature importance and understand what the model learned.
 
 **When global context doesn't help:**
 
-Some errors are purely syntactic (missing quote, unbalanced brace). Global features add noise for those. The re-ranker learns to ignore them — XGBoost naturally down-weights features that don't correlate with outcomes for specific error types. No hand-tuning needed.
+Some errors are purely syntactic (missing quote, unbalanced brace). Global features add noise for those. The re-ranker learns to ignore them — EBM naturally down-weights features that don't correlate with outcomes for specific error types. No hand-tuning needed.
 
 ---
 
@@ -438,7 +439,7 @@ const hints = db.querySimilar({
 - Rows accumulate automatically from every Studio Meph session
 - BM25 retrieval active
 - **Step-decomposition labeling active (Session 38)** — see below
-- XGBoost training: not yet built (unlocks at 200 passing rows)
+- EBM training: not yet built (unlocks at 200 passing rows)
 - Suggestion injection into Meph's context: not yet built
 
 ---
@@ -516,7 +517,7 @@ At 200+ passing rows:
 
 1. Export training data: `SELECT ... FROM code_actions WHERE test_pass IS NOT NULL`
 2. Feature engineering: extract global + local features (already defined in `archetype.js` + structural features)
-3. Train XGBoost: `xgboost-node` or Python `xgboost` — ~10 seconds on CPU for 1000 rows
+3. Train EBM: Python `interpret` package (InterpretML, Microsoft Research) — ~30 seconds on CPU for 1000 rows. Inference export: serialize each feature's shape function to JSON, evaluate in JS or call Python microservice. EBMs quantize nicely into lookup tables.
 4. Export ONNX: portable model that runs anywhere
 
 ### Wire suggestions into Meph (last step)
@@ -563,7 +564,7 @@ node playground/supervisor/curriculum-sweep.js --tasks=hello-world,echo --worker
 node playground/supervisor/curriculum-sweep.js --dry-run
 ```
 
-Budget: ~$0.20–1.00 per full sweep. Three sweeps (60 task attempts) → ~1200 rows → past the XGBoost training threshold.
+Budget: ~$0.20–1.00 per full sweep. Three sweeps (60 task attempts) → ~1200 rows → past the EBM training threshold.
 
 **This is the fastest path to a live re-ranker.** Organic session traffic (Russell + a few users) won't hit 200 passing rows for months. Curriculum sweeps get there in hours.
 
@@ -792,7 +793,7 @@ Output: `warnings[]` in `compileProgram()` result. Same infrastructure that'll c
 |-----------|--------|
 | Mechanical quality signals | 🔜 Next — static + process lint, session JSON storage |
 | Session registry | 🔜 Supervisor plan phase 1 |
-| Re-ranker (XGBoost) | 🔜 Needs ~200 labeled sessions first |
+| Re-ranker (EBM) | 🔜 Needs ~200 labeled sessions first |
 | Supervisor loop | 🔜 Supervisor plan phase 2–3 |
 | GA candidate generation | 🔜 Supervisor plan phase 4 |
 | Fine-tuning | ❌ No access yet — retrieval/memory bridge until then |

@@ -371,8 +371,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | **Supervisor Loop** | `playground/supervisor/loop.js` — polls workers, detects TASK COMPLETE / STUCK, SSE status stream | Done — state machine + SSE |
 | **Curriculum sweep harness** | `node playground/supervisor/curriculum-sweep.js --workers=3` — drives 25 curriculum tasks through N parallel workers | Done — pre-flight API check, fail fast on rate limit |
 | **Eval replicated** | `node playground/eval-replicated.js --trials=3` — runs full 16-scenario suite on N workers, reports flake rate per scenario | Done — same infra as curriculum-sweep |
-| **Training data exporter** | `node playground/supervisor/export-training-data.js --stats` or `--out=t.jsonl` — JSONL with 15 structured features per row | Done — ready for XGBoost once 200 passing rows accumulate |
-| **XGBoost trainer stub** | `python playground/supervisor/train_reranker.py t.jsonl` — refuses below 200 passing, else trains + exports ONNX | Done — skeleton ready, dormant until threshold |
+| **Training data exporter** | `node playground/supervisor/export-training-data.js --stats` or `--out=t.jsonl` — JSONL with 15 structured features per row | Done — ready for EBM once 200 passing rows accumulate |
+| **EBM trainer stub** | `python playground/supervisor/train_reranker.py t.jsonl` — refuses below 200 passing, else trains + exports ONNX | Done — skeleton ready, dormant until threshold |
 | **5 Marcus apps** | `approval-queue`, `lead-router`, `onboarding-tracker`, `support-triage`, `internal-request-queue` — business-ops templates in Studio dropdown | Done — top of dropdown, matching L7-L9 curriculum tasks |
 | **`send back all X` shorthand** | `send back all Users` / `send back the User with this id` / `send back all Users where active is true` — inline retrieval, no named intermediate | Done — parser desugars to `[CRUD, RESPOND]`, 6 templates updated |
 | **`this X` standalone expression** | `workspace_id = this id` / `items = get all Items where owner is this user_id` — URL param access anywhere | Done — parses to `incoming?.X` |
@@ -405,7 +405,7 @@ The RL thesis moves forward in small, measurable steps. Each item below compound
 | RL-3 | **Classifier fuzzy-match fixes.** Dashboards with 1 chart misroute to "dashboard" (should route to KPI). Webhooks on `/hook` paths route wrong. Small regex additions in `archetype.js`. | Next (30 min) | Unlocks balanced archetype distribution |
 | RL-4 | **Seed steps on the other 28 curriculum tasks.** 2 tasks seeded; the rest still fall into the unlabeled bucket in stepStats. | Next (1 hr) | Step-decomposition coverage from 7% → 100% |
 | RL-5 | **Sharpen the 5 archetype task descriptions.** Explicit archetype signals so Meph doesn't guess wrong on webhook/batch/sync/ETL/dashboard shapes. | Next (30 min) | Prevents classifier poisoning the DB |
-| RL-6 | **First full re-sweep with Haiku + steps + fixes.** Overnight run populating the Factor DB with step-labeled, cheap, well-routed rows. First training-ready dataset. | After RL-3/4/5 | Unlocks XGBoost training at 200 rows |
+| RL-6 | **First full re-sweep with Haiku + steps + fixes.** Overnight run populating the Factor DB with step-labeled, cheap, well-routed rows. First training-ready dataset. | After RL-3/4/5 | Unlocks EBM training at 200 rows |
 
 ### One-click deploy follow-ups (Phase 85 shipped)
 1. **Phase 85a — Provision the real stack.** Register buildclear.dev, apply for Fly Trust Verified status with 10k-machine quota, sign up for Stripe, generate Anthropic org key, wire Postgres for the tenants DB, and run `deploy-builder.sh` + `deploy-proxy.sh` once. Until this is done Deploy works end-to-end in tests but has nowhere to deploy to.

@@ -3351,7 +3351,12 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    for (let iter = 0; iter < 15; iter++) {
+    // Max tool-use iterations per turn. 15 was too low for 5-endpoint CRUD tasks
+    // on Haiku — the full Haiku sweep had a dead zone at L3-L6 where Meph ran
+    // out of iterations before finishing register/login/full-CRUD flows. 25
+    // gives him enough room without risking runaway sessions.
+    const MEPH_MAX_ITER = Number(process.env.MEPH_MAX_ITER) || 25;
+    for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
       const payload = {
         model: MEPH_MODEL,
         max_tokens: 16000,
