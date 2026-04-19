@@ -4,6 +4,13 @@
   "title": "Multi-Tenant Workspaces",
   "description": "Users belong to workspaces. POST /api/workspaces creates a workspace. POST /api/workspaces/:id/members adds a user to a workspace. GET /api/workspaces/:id/items returns only items that belong to that workspace. Items are scoped to workspace — you can't see items from other workspaces.",
   "skeleton": "build for javascript backend\n\ncreate a Workspaces table:\n  name, required\n\ncreate a Members table:\n  workspace_id, required\n  user_id, required\n\ncreate a Items table:\n  title, required\n  workspace_id, required\n\n# Your endpoints here\n",
+  "steps": [
+    { "id": "tables",    "name": "Workspaces + Members + Items tables",  "sourceMatches": ["create\\s+a\\s+Workspaces\\s+table", "create\\s+a\\s+Members\\s+table", "create\\s+a\\s+Items\\s+table"] },
+    { "id": "create_ws", "name": "POST /api/workspaces",                 "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/workspaces['\"]?"] },
+    { "id": "add_mem",   "name": "POST /api/workspaces/:id/members",     "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/workspaces/:id/members['\"]?"] },
+    { "id": "list_items","name": "GET /api/workspaces/:id/items",        "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/workspaces/:id/items['\"]?"] },
+    { "id": "scope",     "name": "Items filtered by workspace_id",       "sourceMatches": ["workspace_id\\s+is"] }
+  ],
   "tests": [
     {
       "method": "POST",

@@ -2,8 +2,16 @@
   "id": "dashboard-metrics",
   "level": 8,
   "title": "Metrics Dashboard",
-  "description": "Build a metrics dashboard app. Create an Orders table (amount, status, created_at). Build a page that shows multiple charts — total by status (pie), orders over time (line), amount by status (bar). Include auth so only logged-in users see the dashboard. POST /api/orders creates (auth required), GET /api/orders lists. The page displays the 3 charts reading from all orders.",
+  "description": "ARCHETYPE: dashboard. Shape: web + backend, has a PAGE, and that page MUST contain 3 CHART nodes (2 is the threshold for 'dashboard' archetype; this task deliberately wants 3 to stress it). The distinguishing signal from kpi: multiple charts, not headline numbers. DO NOT build a KPI page with just `display sum_of_amount` — you must use actual `chart 'Title' as pie showing data` / `chart 'Title' as line showing data` / `chart 'Title' as bar showing data` nodes. Orders table has amount (number, required), status (default 'pending'), created_at_date (auto). Auth required: login-gate the dashboard page and POST /api/orders. Need: POST /api/orders (auth, creates), GET /api/orders (lists), page '/' (login-gated, shows 3 charts: pie of status breakdown, line of orders over time, bar of amount by status).",
   "skeleton": "build for web and javascript backend\n\ncreate a Orders table:\n  amount (number), required\n  status, default 'pending'\n  created_at_date, auto\n\nallow signup and login\n\n# Endpoints + dashboard page with 3 charts here\n# Use: chart of Orders by status — chart of Orders by amount — etc.\n",
+  "steps": [
+    { "id": "table",   "name": "Orders table defined",         "sourceMatches": ["create\\s+a\\s+Orders\\s+table"] },
+    { "id": "create",  "name": "POST /api/orders (auth)",      "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/orders['\"]?", "requires\\s+(login|auth)"] },
+    { "id": "list",    "name": "GET /api/orders list",         "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/orders['\"]?\\s*:"] },
+    { "id": "page",    "name": "Dashboard page at /",          "sourceMatches": ["page\\s+['\"].*['\"]\\s+at\\s+['\"]/['\"]"] },
+    { "id": "charts",  "name": "Page has 2+ charts",           "sourceMatches": ["chart\\s+['\"].*['\"]\\s+as\\s+\\w+[\\s\\S]*chart\\s+['\"].*['\"]\\s+as\\s+\\w+"] },
+    { "id": "charts3", "name": "Page has 3+ charts",           "sourceMatches": ["chart\\s+['\"].*['\"]\\s+as\\s+\\w+[\\s\\S]*chart\\s+['\"].*['\"]\\s+as\\s+\\w+[\\s\\S]*chart\\s+['\"].*['\"]\\s+as\\s+\\w+"] }
+  ],
   "tests": [
     {
       "method": "GET",

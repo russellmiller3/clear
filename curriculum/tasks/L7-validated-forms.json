@@ -4,6 +4,13 @@
   "title": "Validated Registration Form",
   "description": "Build a registration endpoint POST /api/register with strict validation: email (required, valid email format), password (required, min 8 chars), name (required, max 100 chars), age (number, min 13). Return detailed error messages on 400.",
   "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required, min 8\n  name, required, max 100\n  age, number\n\n# Your endpoints here\n",
+  "steps": [
+    { "id": "table",     "name": "Users table with validators", "sourceMatches": ["create\\s+a\\s+Users\\s+table", "min\\s+8", "max\\s+100"] },
+    { "id": "register",  "name": "POST /api/register defined",  "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/register['\"]?"] },
+    { "id": "validate",  "name": "Explicit validate block",     "sourceMatches": ["validate\\s+(incoming|receiving|data)"] },
+    { "id": "save",      "name": "Save user on success",        "sourceMatches": ["save\\s+.*\\s+to\\s+Users"] },
+    { "id": "error",     "name": "Returns 400 with message",    "sourceMatches": ["status\\s+(is\\s+)?400|send\\s+back\\s+400"] }
+  ],
   "tests": [
     {
       "method": "POST",

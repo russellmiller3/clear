@@ -4,6 +4,13 @@
   "title": "Key-Value Store",
   "description": "Build an in-memory key-value store. POST /api/store receives { key, value } and saves it. GET /api/store/:key returns { key, value } or 404 if not found. DELETE /api/store/:key removes the key.",
   "skeleton": "build for javascript backend\n\n# Your code here\n",
+  "steps": [
+    { "id": "table",  "name": "KV table defined",           "sourceMatches": ["create\\s+a\\s+\\w+\\s+table"] },
+    { "id": "store",  "name": "POST /api/store defined",    "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/store['\"]?"] },
+    { "id": "get",    "name": "GET /api/store/:key defined","sourceMatches": ["calls\\s+GET\\s+['\"]?/api/store/:key['\"]?"] },
+    { "id": "delete", "name": "DELETE /api/store/:key",     "sourceMatches": ["calls\\s+DELETE\\s+['\"]?/api/store/:key['\"]?"] },
+    { "id": "notfound", "name": "404 on missing key",       "sourceMatches": ["(404|not\\s+found|is\\s+missing|is\\s+nothing)"] }
+  ],
   "tests": [
     {
       "method": "POST",

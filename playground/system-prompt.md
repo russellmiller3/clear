@@ -421,6 +421,18 @@ when user calls DELETE /api/items/:id:
   send back 'deleted'
 ```
 
+**Inline record responses** — for webhook receipts, health checks, or JSON-shape replies:
+
+```clear
+# Inline record — both `is` and `:` separators work
+when user sends data to /webhook/stripe:
+  save data to Events
+  send back { received is true }
+
+when user requests data from /api/health:
+  send back { ok: true, version: '1.0' }
+```
+
 ## AI Agents
 
 ```clear

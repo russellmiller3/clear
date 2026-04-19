@@ -372,8 +372,8 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | **Supervisor Loop** | `playground/supervisor/loop.js` — polls workers, detects TASK COMPLETE / STUCK, SSE status stream | Done — state machine + SSE |
 | **Curriculum sweep harness** | `node playground/supervisor/curriculum-sweep.js --workers=3` — drives 25 curriculum tasks through N parallel workers | Done — pre-flight API check, fail fast on rate limit |
 | **Eval replicated** | `node playground/eval-replicated.js --trials=3` — runs full 16-scenario suite on N workers, reports flake rate per scenario | Done — same infra as curriculum-sweep |
-| **Training data exporter** | `node playground/supervisor/export-training-data.js --stats` or `--out=t.jsonl` — JSONL with 15 structured features per row | Done — ready for XGBoost once 200 passing rows accumulate |
-| **XGBoost trainer stub** | `python playground/supervisor/train_reranker.py t.jsonl` — refuses below 200 passing, else trains + exports ONNX | Done — skeleton ready, dormant until threshold |
+| **Training data exporter** | `node playground/supervisor/export-training-data.js --stats` or `--out=t.jsonl` — JSONL with 15 structured features per row | Done — ready for EBM once 200 passing rows accumulate |
+| **EBM trainer stub** | `python playground/supervisor/train_reranker.py t.jsonl` — refuses below 200 passing, else trains + exports ONNX | Done — skeleton ready, dormant until threshold |
 | **5 Marcus apps** | `approval-queue`, `lead-router`, `onboarding-tracker`, `support-triage`, `internal-request-queue` — business-ops templates in Studio dropdown | Done — top of dropdown, matching L7-L9 curriculum tasks |
 | **`send back all X` shorthand** | `send back all Users` / `send back the User with this id` / `send back all Users where active is true` — inline retrieval, no named intermediate | Done — parser desugars to `[CRUD, RESPOND]`, 6 templates updated |
 | **`this X` standalone expression** | `workspace_id = this id` / `items = get all Items where owner is this user_id` — URL param access anywhere | Done — parses to `incoming?.X` |
@@ -394,6 +394,41 @@ All compile to direct REST `fetch()` calls. No SDK required.
 ## What's Next
 
 Ordered by impact. Three tracks: **go-to-market**, **language completeness**, and **platform quality**.
+
+### Flywheel / Training Signal (Session 38 in-flight)
+
+The RL thesis moves forward in small, measurable steps. Each item below compounds the ones below it — do them in order.
+
+| # | Item | Status | Impact |
+|---|------|--------|--------|
+| RL-1 | **Meph runs on Haiku 4.5 by default.** `MEPH_MODEL` env var overrides to Sonnet for A/B. 15/16 vs 16/16 on eval-meph; within 6% of Sonnet capability at 3x cheaper per row. | ✅ Done (Session 38) | ~$2k saved per 10k-row sweep |
+| RL-2 | **Step-decomposition labeling.** Every compile row now tagged with which task milestone Meph has hit (`step_id`, `step_index`, `step_name`). Sweep prints per-step rollup: attempts, compiles, tests passed per step. Seeded on 2 tasks (todo-crud, webhook-stripe). | ✅ Done (Session 38) | 4x signal density per sweep |
+| RL-3 | **Classifier fuzzy-match fixes.** Dashboards with 1 chart misroute to "dashboard" (should route to KPI). Webhooks on `/hook` paths route wrong. Small regex additions in `archetype.js`. | Next (30 min) | Unlocks balanced archetype distribution |
+| RL-4 | **Seed steps on the other 28 curriculum tasks.** 2 tasks seeded; the rest still fall into the unlabeled bucket in stepStats. | Next (1 hr) | Step-decomposition coverage from 7% → 100% |
+| RL-5 | **Sharpen the 5 archetype task descriptions.** Explicit archetype signals so Meph doesn't guess wrong on webhook/batch/sync/ETL/dashboard shapes. | Next (30 min) | Prevents classifier poisoning the DB |
+| RL-6 | **First full re-sweep with Haiku + steps + fixes.** Overnight run populating the Factor DB with step-labeled, cheap, well-routed rows. First training-ready dataset. | After RL-3/4/5 | Unlocks EBM training at 200 rows |
+
+### Compiler Flywheel — second-order moat (Session 38 idea, Phase 2)
+
+**The insight:** Today's flywheel makes *Meph* write better Clear over time. But we never measure whether the *JS/Python/HTML the compiler emits* is optimal. Every emit function is hand-written by Russell/Claude — "reasonable" but not proven best. A second flywheel, running at the compiler layer, can let production data pick the emit strategy that actually performs.
+
+**Four tiers by ROI:**
+
+| # | Tier | Cost | Unlock |
+|---|------|------|--------|
+| CF-1 | **Runtime instrumentation.** Compiled apps emit latency / error / memory beacons to a shared endpoint. Factor DB gains runtime-outcome columns per compile row. | 1 day | We finally *know* which compilation choices produce slow or crashy JS. Data-driven compiler bug-reports instead of gut-feel. |
+| CF-2 | **Candidate emitters + deterministic A/B.** For the top 10 emit patterns, define 2–3 JS/Py variants. Feature-flag which variant is emitted per app (deterministic at compile time, not runtime — preserves "same input = same output" rule within a build). After N apps run each variant, production data picks the winner. | 1 week | Quantitative answer to "which JS pattern is best for `get all X where Y`?" instead of whoever wrote the emitter first. |
+| CF-3 | **Compiler-strategy reranker.** EBM trained on (archetype, app shape, runtime outcome) → which emit variant should I pick? Same glass-box model as the Meph reranker, one layer deeper. | 2 weeks (after Meph reranker trained) | Per-pattern emit strategy auto-selects based on context. Compiler gets smarter per app. |
+| CF-4 | **GA-evolved compiler (research).** Mutate emit functions themselves. Fitness = curriculum pass rate + runtime perf. RESEARCH.md already has a GA for candidate Clear programs — this is the same idea one abstraction up: evolve the compiler. | 2+ months (research, not product) | The compiler becomes a learned artifact, not a hand-coded one. This is the moat nobody else architecturally can copy — a compiler that improves from usage. |
+
+**Error-message flywheel (bonus, easy):** Track which compile error messages correlate with STUCK sessions. Auto-flag "bad error messages" for rewrite. Already half-built via the existing Factor DB.
+
+**Why ship CF-1 soon, not CF-2-4:**
+- The Meph-level flywheel is not yet validated. Don't add a second flywheel before the first is proven.
+- Compiler quality is *not* the current bottleneck — Session 38's webhook bug proved the bottleneck is Meph writing broken Clear (parser gaps, wrong syntax), not the generated JS being suboptimal.
+- BUT: CF-1 is 20 lines of instrumentation that starts collecting data now. Cheap optionality. Data collection compounds before you decide to act.
+
+**Not-now but write it down:** CF-4 is a publishable research direction. If Augment Labs track becomes primary, this is where that work lives.
 
 ### One-click deploy follow-ups (Phase 85 shipped)
 1. **Phase 85a — Provision the real stack.** Register buildclear.dev, apply for Fly Trust Verified status with 10k-machine quota, sign up for Stripe, generate Anthropic org key, wire Postgres for the tenants DB, and run `deploy-builder.sh` + `deploy-proxy.sh` once. Until this is done Deploy works end-to-end in tests but has nowhere to deploy to.

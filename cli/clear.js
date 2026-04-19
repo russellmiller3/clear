@@ -358,22 +358,41 @@ async function buildCommand(args) {
   mkdirSync(dir, { recursive: true });
   const files = [];
 
+  // Safely write a package.json commonjs shield.
+  // Never clobber a pre-existing real package.json. If one exists and is NOT
+  // our own sentinel (`{"type":"commonjs"}`), we're in a real project's dir
+  // (like the Clear repo root) and overwriting would break the parent project.
+  // This bug silently corrupted the repo root package.json every time Meph
+  // ran `clear build temp-app.clear` from the worktree root.
+  const SHIELD = '{"type":"commonjs"}\n';
+  function writePackageJsonShield() {
+    const pkgPath = resolve(dir, 'package.json');
+    if (existsSync(pkgPath)) {
+      const existing = readFileSync(pkgPath, 'utf8');
+      if (existing.trim() === SHIELD.trim()) return; // idempotent, our own file
+      if (!flags.quiet) {
+        console.warn(`  Warning: package.json already exists at ${dir} — not overwriting. If you're building inside an ESM project, use --out <subdir> to isolate the build output.`);
+      }
+      return;
+    }
+    writeFileSync(pkgPath, SHIELD);
+    if (!files.includes('package.json')) files.push('package.json');
+  }
+
   if (result.serverJS) {
     writeFileSync(resolve(dir, 'server.js'), result.serverJS);
     files.push('server.js');
     // P5: ensure Node treats server.js as CommonJS even if the parent project's
     // package.json declares "type": "module". Without this shield, the user
     // gets "require is not defined in ES module scope" when they clear serve
-    // inside an ESM project. Write a tiny package.json next to the server.
-    writeFileSync(resolve(dir, 'package.json'), '{"type":"commonjs"}\n');
-    if (!files.includes('package.json')) files.push('package.json');
+    // inside an ESM project.
+    writePackageJsonShield();
   } else if (result.javascript) {
     const jsName = result.javascript.includes('express') ? 'server.js' : `${name}.js`;
     writeFileSync(resolve(dir, jsName), result.javascript);
     files.push(jsName);
     if (jsName === 'server.js' || result.javascript.includes('require(')) {
-      writeFileSync(resolve(dir, 'package.json'), '{"type":"commonjs"}\n');
-      if (!files.includes('package.json')) files.push('package.json');
+      writePackageJsonShield();
     }
   }
   if (result.html) {

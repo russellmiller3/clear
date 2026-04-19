@@ -4,6 +4,14 @@
   "title": "Support Triage (AI-assisted)",
   "description": "Build a support ticket triage system. Tickets have subject, body, from_email, category, priority, status. Use a Claude agent named 'Triage' that receives a ticket and returns a JSON object with {category, priority}. When a new ticket is POSTed, call the Triage agent to classify it before saving. Need: POST /api/tickets (auto-classifies), GET /api/tickets (list), GET /api/tickets/open.",
   "skeleton": "build for web and javascript backend\n\ncreate a Tickets table:\n  subject, required\n  body\n  from_email\n  category, default 'General'\n  priority, default 'Normal'\n  status, default 'open'\n\nallow signup and login\n\n# Define a Triage agent: agent 'Triage' receives ticket: ...\n# Then POST /api/tickets calls the agent to classify category + priority before saving\n# Also build a simple inbox page showing open tickets\n",
+  "steps": [
+    { "id": "table",    "name": "Tickets table defined",       "sourceMatches": ["create\\s+a\\s+Tickets\\s+table"] },
+    { "id": "agent",    "name": "Triage agent defined",        "sourceMatches": ["agent\\s+['\"]Triage['\"]"] },
+    { "id": "submit",   "name": "POST /api/tickets defined",   "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/tickets['\"]?"] },
+    { "id": "classify", "name": "Calls agent before save",     "sourceMatches": ["(ask\\s+Triage|run\\s+Triage|Triage\\s+with)", "save\\s+.*\\s+to\\s+Tickets"] },
+    { "id": "list",     "name": "GET /api/tickets list",       "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/tickets['\"]?\\s*:"] },
+    { "id": "open",     "name": "GET /api/tickets/open filter","sourceMatches": ["calls\\s+GET\\s+['\"]?/api/tickets/open['\"]?"] }
+  ],
   "tests": [
     {
       "method": "POST",

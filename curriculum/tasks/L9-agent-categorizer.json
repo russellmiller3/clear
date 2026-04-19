@@ -4,6 +4,14 @@
   "title": "AI Ticket Categorizer",
   "description": "Build an AI agent that categorizes support tickets. Define a Categorizer agent that returns { category, priority, suggested_action }. Tickets table stores the result. POST /api/tickets receives { subject, description } and returns the categorized ticket.",
   "skeleton": "build for javascript backend\n\ncreate a Tickets table:\n  subject, required\n  description\n  category\n  priority\n\n# Define a Categorizer agent\n# POST /api/tickets endpoint\n",
+  "steps": [
+    { "id": "table",    "name": "Tickets table defined",        "sourceMatches": ["create\\s+a\\s+Tickets\\s+table"] },
+    { "id": "agent",    "name": "Categorizer agent defined",    "sourceMatches": ["agent\\s+['\"]Categorizer['\"]"] },
+    { "id": "structure","name": "Agent returns cat/priority",   "sourceMatches": ["(sends?\\s+back|returns)\\s+\\{[^}]*(category|priority)"] },
+    { "id": "endpoint", "name": "POST /api/tickets defined",    "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/tickets['\"]?"] },
+    { "id": "invoke",   "name": "Endpoint calls agent + saves", "sourceMatches": ["(ask\\s+Categorizer|run\\s+Categorizer|Categorizer\\s+with)", "save\\s+.*\\s+to\\s+Tickets"] },
+    { "id": "list",     "name": "GET /api/tickets list",        "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/tickets['\"]?\\s*:"] }
+  ],
   "tests": [
     {
       "method": "POST",

@@ -4,6 +4,13 @@
   "title": "Approval Queue",
   "description": "Build an approval queue. Employees submit requests (title, description, amount). The request starts as 'pending'. A logged-in approver can update the status to 'approved' or 'rejected' (this requires auth). Need: POST /api/requests (public submit), GET /api/requests (list all), GET /api/requests/pending (filtered list), PUT /api/requests/:id (update, auth required).",
   "skeleton": "build for web and javascript backend\n\ncreate a Requests table:\n  title, required\n  amount (number), default 0\n  status, default 'pending'\n\nallow signup and login\n\n# Your endpoints and page here — build a public submit form + an approval queue view\n",
+  "steps": [
+    { "id": "table",       "name": "Requests table with status", "sourceMatches": ["create\\s+a\\s+Requests\\s+table", "status"] },
+    { "id": "submit",      "name": "POST /api/requests public",  "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/requests['\"]?", "save\\s+.*\\s+to\\s+Requests"] },
+    { "id": "list",        "name": "GET /api/requests list",     "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/requests['\"]?\\s*:"] },
+    { "id": "pending",     "name": "GET /api/requests/pending",  "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/requests/pending['\"]?"] },
+    { "id": "update",      "name": "PUT /api/requests/:id auth", "sourceMatches": ["calls\\s+PUT\\s+['\"]?/api/requests/:id['\"]?", "requires\\s+(login|auth)"] }
+  ],
   "tests": [
     {
       "method": "POST",

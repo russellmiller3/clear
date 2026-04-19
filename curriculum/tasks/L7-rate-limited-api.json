@@ -4,6 +4,12 @@
   "title": "Rate-Limited API",
   "description": "Build any CRUD API with rate limiting. POST /api/items creates items (name required). GET /api/items lists all. Apply rate limiting: max 5 requests per minute. The 6th request within a minute should return 429.",
   "skeleton": "build for javascript backend\n\ncreate a Items table:\n  name, required\n\n# Your endpoints here\n# Hint: rate limit 5 per minute\n",
+  "steps": [
+    { "id": "table",      "name": "Items table defined",   "sourceMatches": ["create\\s+a\\s+Items\\s+table"] },
+    { "id": "create",     "name": "POST /api/items",       "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/items['\"]?", "save\\s+.*\\s+to\\s+Items"] },
+    { "id": "list",       "name": "GET /api/items",        "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/items['\"]?\\s*:"] },
+    { "id": "rate_limit", "name": "Rate limit declared",   "sourceMatches": ["rate\\s+limit|throttle|limit\\s+to\\s+\\d+"] }
+  ],
   "tests": [
     {
       "method": "POST",

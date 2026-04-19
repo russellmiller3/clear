@@ -1647,6 +1647,28 @@ function _safeArchetype(source) {
   try { return classifyArchetype(parse(source)); }
   catch { return 'general'; }
 }
+
+// Which task step is Meph on? A step is "satisfied" when ALL its sourceMatches
+// regexes appear in the current source. currentStep = highest-index satisfied step.
+// Returns { id, index, name } or null. Never throws — bad regex just skips that
+// step's predicate, so one malformed task JSON can't poison a whole sweep.
+function _currentStep(source, steps) {
+  if (!Array.isArray(steps) || steps.length === 0 || !source) return null;
+  let highest = null;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const patterns = Array.isArray(s?.sourceMatches) ? s.sourceMatches : [];
+    if (patterns.length === 0) continue;
+    let allMatch = true;
+    for (const p of patterns) {
+      try {
+        if (!new RegExp(p, 'i').test(source)) { allMatch = false; break; }
+      } catch { allMatch = false; break; }
+    }
+    if (allMatch) highest = { id: s.id || `step_${i + 1}`, index: i, name: s.name || s.id || `Step ${i + 1}` };
+  }
+  return highest;
+}
 app.post('/api/set-key', (req, res) => {
   storedApiKey = req.body.key || '';
   res.json({ ok: true });
@@ -2560,7 +2582,13 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot) {
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools } = req.body;
+  const { messages, apiKey, personality, editorContent, errors: editorErrors, testResults: testSnapshot, webTools: enableWebTools, taskSteps } = req.body;
+  // taskSteps (optional): [{ id, name, sourceMatches: ["regex1", ...] }, ...]
+  // A step "passes" if ALL its sourceMatches regexes appear in the current source.
+  // currentStep = the highest-index step whose regexes all match. This lets us
+  // label every compile row with "which milestone of the task Meph has hit so far."
+  // Hidden from Meph by design — we measure natural trajectory, not guided behavior.
+  const sessionSteps = Array.isArray(taskSteps) && taskSteps.length > 0 ? taskSteps : null;
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
   if (!resolvedKey) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
@@ -2782,6 +2810,7 @@ app.post('/api/chat', async (req, res) => {
               const sourceForLog = _sourceBeforeEdit && _sourceBeforeEdit.length > 0
                 ? _sourceBeforeEdit
                 : currentSource;
+              const step = _currentStep(currentSource, sessionSteps);
               _lastFactorRowId = _factorDB.logAction({
                 session_id: sessionId,
                 archetype: _safeArchetype(currentSource),
@@ -2797,6 +2826,9 @@ app.post('/api/chat', async (req, res) => {
                 test_pass: 0,
                 test_score: 0.0,
                 score_delta: 0.0,
+                step_id: step?.id || null,
+                step_index: step?.index ?? null,
+                step_name: step?.name || null,
               });
             } catch { /* non-fatal */ }
           }
@@ -3302,24 +3334,34 @@ app.post('/api/chat', async (req, res) => {
     }
   }
 
-  // Multi-turn tool-use loop with streaming
-  let currentMessages = messages.slice(-50); // 1M context supports much longer conversations
+  // Multi-turn tool-use loop with streaming.
+  // Meph runs on Haiku 4.5 by default — ~3x cheaper than Sonnet on this workload.
+  // Override with MEPH_MODEL=claude-sonnet-4-6 to A/B against baseline.
+  const MEPH_MODEL = process.env.MEPH_MODEL || 'claude-haiku-4-5-20251001';
+  // 200k is Haiku 4.5's hard cap and Sonnet 4.6's default (1M needs a beta header
+  // we don't send). Either way, the effective cap here is 200k.
+  const MEPH_CTX_MAX = 200000;
+  let currentMessages = messages.slice(-50);
   let toolResults = [];
 
   // Estimate context usage (rough: ~4 chars per token)
   function estimateContextUsage() {
-    const MAX_TOKENS = 1000000; // Sonnet 4.6 with 1M context
     const systemChars = (systemPrompt.length + (personality || '').length);
     const toolChars = JSON.stringify(enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS).length;
     const msgChars = currentMessages.reduce((sum, m) => sum + JSON.stringify(m.content || '').length, 0);
     const totalTokens = Math.round((systemChars + toolChars + msgChars) / 4);
-    return { used: totalTokens, max: MAX_TOKENS, percent: Math.round((totalTokens / MAX_TOKENS) * 100) };
+    return { used: totalTokens, max: MEPH_CTX_MAX, percent: Math.round((totalTokens / MEPH_CTX_MAX) * 100) };
   }
 
   try {
-    for (let iter = 0; iter < 15; iter++) {
+    // Max tool-use iterations per turn. 15 was too low for 5-endpoint CRUD tasks
+    // on Haiku — the full Haiku sweep had a dead zone at L3-L6 where Meph ran
+    // out of iterations before finishing register/login/full-CRUD flows. 25
+    // gives him enough room without risking runaway sessions.
+    const MEPH_MAX_ITER = Number(process.env.MEPH_MAX_ITER) || 25;
+    for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
       const payload = {
-        model: 'claude-sonnet-4-6',
+        model: MEPH_MODEL,
         max_tokens: 16000,
         thinking: { type: 'enabled', budget_tokens: 8000 },
         system: buildSystemWithContext(systemPrompt, personality, testSnapshot),

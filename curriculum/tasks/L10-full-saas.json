@@ -4,6 +4,15 @@
   "title": "Full SaaS: Project Tracker",
   "description": "Build a project management API. Users register/login. Projects have name, description, status (active/archived). Tasks belong to projects with title, description, status (todo/in_progress/done), assignee_id. Auth required. Users can only see projects they own. Full CRUD on both resources.",
   "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required\n  name, required\n\ncreate a Projects table:\n  name, required\n  description\n  status\n  owner_id, required\n\ncreate a Tasks table:\n  title, required\n  description\n  status\n  project_id, required\n  assignee_id\n\n# Registration, login, CRUD for projects and tasks\n",
+  "steps": [
+    { "id": "tables",       "name": "Users + Projects + Tasks tables",  "sourceMatches": ["create\\s+a\\s+Users\\s+table", "create\\s+a\\s+Projects\\s+table", "create\\s+a\\s+Tasks\\s+table"] },
+    { "id": "auth_scaffold","name": "Auth scaffold",                    "sourceMatches": ["allow\\s+signup\\s+and\\s+login"] },
+    { "id": "register",     "name": "POST /api/register defined",       "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/register['\"]?"] },
+    { "id": "login",        "name": "POST /api/login defined",          "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/login['\"]?"] },
+    { "id": "proj_crud",    "name": "Projects CRUD (auth-gated)",       "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/projects['\"]?", "calls\\s+GET\\s+['\"]?/api/projects['\"]?", "requires\\s+(login|auth)"] },
+    { "id": "owner_scope",  "name": "Projects scoped to owner_id",      "sourceMatches": ["owner_id\\s+is|current\\s+user|this\\s+user"] },
+    { "id": "tasks_crud",   "name": "Tasks CRUD endpoints",             "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/tasks['\"]?", "save\\s+.*\\s+to\\s+Tasks"] }
+  ],
   "tests": [
     {
       "method": "POST",

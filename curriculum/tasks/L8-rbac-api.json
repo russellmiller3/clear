@@ -4,6 +4,13 @@
   "title": "Role-Based Access Control",
   "description": "Build an API with role-based access. Users have roles (admin/editor/viewer). POST /api/articles creates articles (editors and admins only). DELETE /api/articles/:id deletes (admins only). GET /api/articles lists all (anyone with auth). Viewers can read but not create or delete.",
   "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique\n  password, required\n  role, required\n\ncreate a Articles table:\n  title, required\n  body\n  author_id\n\n# Your endpoints here\n# Hint: require role 'admin' or 'editor'\n",
+  "steps": [
+    { "id": "tables",       "name": "Users + Articles tables w/role",  "sourceMatches": ["create\\s+a\\s+Users\\s+table", "role", "create\\s+a\\s+Articles\\s+table"] },
+    { "id": "auth_scaffold","name": "Auth scaffold",                   "sourceMatches": ["allow\\s+signup\\s+and\\s+login"] },
+    { "id": "list",         "name": "GET /api/articles (auth)",        "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/articles['\"]?\\s*:", "requires\\s+(login|auth)"] },
+    { "id": "create_role",  "name": "POST /api/articles (editor/admin)","sourceMatches": ["calls\\s+POST\\s+['\"]?/api/articles['\"]?", "requires\\s+role"] },
+    { "id": "delete_role",  "name": "DELETE /api/articles/:id admin",  "sourceMatches": ["calls\\s+DELETE\\s+['\"]?/api/articles/:id['\"]?", "requires\\s+role\\s+['\"]admin['\"]"] }
+  ],
   "tests": [
     {
       "method": "POST",

@@ -4,6 +4,12 @@
   "title": "Analytics Dashboard API",
   "description": "Build an analytics dashboard backend. Events table tracks page_url, event_type (pageview/click/signup), user_id, timestamp. POST /api/events logs events. GET /api/stats returns aggregated stats: total events, unique users, events per type. GET /api/stats/daily returns counts grouped by day. Auth required for stats endpoints.",
   "skeleton": "build for javascript backend\n\ncreate a Users table:\n  email, required, unique, email\n  password, required\n\ncreate a Events table:\n  page_url, required\n  event_type, required\n  user_id\n  timestamp\n\n# POST /api/events (public)\n# GET /api/stats (auth required)\n# GET /api/stats/daily (auth required)\n",
+  "steps": [
+    { "id": "tables",     "name": "Users + Events tables",            "sourceMatches": ["create\\s+a\\s+Users\\s+table", "create\\s+a\\s+Events\\s+table"] },
+    { "id": "log_event",  "name": "POST /api/events public",          "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/events['\"]?", "save\\s+.*\\s+to\\s+Events"] },
+    { "id": "stats",      "name": "GET /api/stats (auth, aggregates)","sourceMatches": ["calls\\s+GET\\s+['\"]?/api/stats['\"]?\\s*:", "requires\\s+(login|auth)", "(count|sum|average)\\s+of"] },
+    { "id": "stats_daily","name": "GET /api/stats/daily grouped",     "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/stats/daily['\"]?", "(group\\s+by|by\\s+day)"] }
+  ],
   "tests": [
     {
       "method": "POST",

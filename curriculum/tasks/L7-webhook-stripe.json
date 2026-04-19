@@ -2,8 +2,14 @@
   "id": "webhook-stripe",
   "level": 7,
   "title": "Stripe Webhook Handler",
-  "description": "Build a webhook handler that receives POST /webhook/stripe from Stripe. Payload has { type: 'payment.succeeded', amount: 4500, customer_email: 'x@y.com' }. Verify the signature (for this test, just check that a 'signature' field exists on the request). Save the event to an Events table with type, amount, email, and received_at. Return { received: true }.",
+  "description": "ARCHETYPE: webhook_handler. Shape: backend-only (no pages, no login/signup scaffold), one POST endpoint on a /webhook/* path, saves incoming payload to an Events table, returns { received: true }. DO NOT build auth, pages, or CRUD endpoints — this is a single-purpose receiver, not an app. Path: POST /webhook/stripe. Incoming body: { type, amount, customer_email, signature }. Check that a 'signature' field exists on the request (that's enough — no real HMAC needed for the test). Persist with fields event_type, amount, customer_email, received_at (auto). Respond with { received: true }.",
   "skeleton": "build for javascript backend\n\ncreate a Events table:\n  event_type, required\n  amount (number), default 0\n  customer_email\n  received_at_date, auto\n\n# Your webhook endpoint here — single POST /webhook/stripe that saves the event\n",
+  "steps": [
+    { "id": "table",    "name": "Events table defined",        "sourceMatches": ["create\\s+a?\\s*Events\\s+table"] },
+    { "id": "endpoint", "name": "POST /webhook/stripe exists", "sourceMatches": ["calls\\s+POST\\s+['\"]?/webhook/stripe['\"]?"] },
+    { "id": "save",     "name": "Saves event to Events",       "sourceMatches": ["save\\s+.*\\s+to\\s+Events"] },
+    { "id": "respond",  "name": "Returns received: true",      "sourceMatches": ["send\\s+back\\s+\\{[^}]*received"] }
+  ],
   "tests": [
     {
       "method": "POST",

@@ -4,6 +4,14 @@
   "title": "Contact Book",
   "description": "Build a contacts API. Contacts table with name (required), email (must be valid email, unique), phone, notes. Full CRUD. POST /api/contacts validates email format and uniqueness. GET /api/contacts lists all.",
   "skeleton": "build for javascript backend\n\ncreate a Contacts table:\n  name, required\n  email, required, unique, email\n  phone\n  notes\n\n# Your endpoints here\n",
+  "steps": [
+    { "id": "table",   "name": "Contacts table defined",   "sourceMatches": ["create\\s+a\\s+Contacts\\s+table"] },
+    { "id": "create",  "name": "POST create endpoint",     "sourceMatches": ["calls\\s+POST\\s+['\"]?/api/contacts['\"]?", "save\\s+.*\\s+to\\s+Contacts"] },
+    { "id": "list",    "name": "GET list endpoint",        "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/contacts['\"]?\\s*:", "get\\s+all\\s+Contacts"] },
+    { "id": "get_one", "name": "GET single endpoint",      "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/contacts/:id['\"]?"] },
+    { "id": "update",  "name": "PUT update endpoint",      "sourceMatches": ["calls\\s+PUT\\s+['\"]?/api/contacts/:id['\"]?"] },
+    { "id": "delete",  "name": "DELETE endpoint",          "sourceMatches": ["calls\\s+DELETE\\s+['\"]?/api/contacts/:id['\"]?"] }
+  ],
   "tests": [
     {
       "method": "POST",

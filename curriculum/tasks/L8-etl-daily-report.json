@@ -2,8 +2,16 @@
   "id": "etl-daily-report",
   "level": 8,
   "title": "Daily Report ETL",
-  "description": "Build a scheduled ETL pipeline. Every day at 6am, fetch data from an external source (for this test: https://jsonplaceholder.typicode.com/posts), transform each record to extract title + body length, save to a DailyReports table. Also expose GET /api/reports so humans can read what the job wrote.",
+  "description": "ARCHETYPE: etl_pipeline. Shape: backend-only (no pages, no auth), CRON schedule (every day at 6am), FETCH from external URL, TRANSFORM each record (not pass-through — derive a new field), SAVE to a destination table. The distinguishing signal from data_sync: the transform step is meaningful (here: extract title + compute body_length from raw posts). DO NOT build a dashboard or a multi-chart page. DO NOT add auth. Only one verification endpoint: GET /api/reports. The CORE is: `every day at '06:00 AM':` then fetch posts from 'https://jsonplaceholder.typicode.com/posts', for each post compute body_length = length of body, save { source_id: post.id, title: post.title, body_length } to DailyReports.",
   "skeleton": "build for javascript backend\n\ncreate a DailyReports table:\n  source_id (number)\n  title\n  body_length (number)\n  fetched_at_date, auto\n\n# Your scheduled job + /api/reports endpoint here\n# Use: every day at '06:00 AM': ... get data from 'https://...' ... save ...\n",
+  "steps": [
+    { "id": "table",     "name": "DailyReports table defined",    "sourceMatches": ["create\\s+a\\s+DailyReports\\s+table"] },
+    { "id": "schedule",  "name": "Daily 6am schedule",            "sourceMatches": ["every\\s+day\\s+at\\s+['\"]06:00"] },
+    { "id": "fetch",     "name": "Fetches from external URL",     "sourceMatches": ["get\\s+.*\\s+from\\s+['\"]https://"] },
+    { "id": "transform", "name": "Transforms each record",        "sourceMatches": ["(for\\s+each|map|title.*body)"] },
+    { "id": "save",      "name": "Saves to DailyReports",         "sourceMatches": ["save\\s+.*\\s+to\\s+DailyReports"] },
+    { "id": "endpoint",  "name": "GET /api/reports endpoint",     "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/reports['\"]?"] }
+  ],
   "tests": [
     {
       "method": "GET",

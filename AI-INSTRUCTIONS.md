@@ -517,6 +517,35 @@ when user calls GET /api/workspaces/:id/items:
   items = get all Items where workspace_id is id
 ```
 
+## Inline Records for `send back` (Session 38)
+
+`send back { field is value, other is value }` returns an inline record literal. Use this for JSON-shaped responses like webhook receipts, health checks, or summary endpoints. Both `is` and `:` separators work.
+
+```clear
+// ✅ CORRECT — inline record literal
+when user sends data to /webhook/stripe:
+  save data to Events
+  send back { received is true }
+
+// ✅ Also correct — JSON-style colon separator
+when user requests data from /api/health:
+  send back { ok: true, version: '1.0' }
+
+// ✅ Multi-field
+when user requests data from /api/stats:
+  count = count of Orders
+  total = sum of amount from Orders
+  send back { total is total, count is count }
+```
+
+Equivalent multi-line block form (also works, use when fields need computation):
+```clear
+response is
+  total is sum of amount from Orders
+  count is count of Orders
+send back response
+```
+
 The pattern generalizes: `/:user_id` → `this user_id`, `/:order_number` → `this order_number`.
 
 ## Retrieval Verbs — `get all`, `look up`, NOT `find`

@@ -2,8 +2,14 @@
   "id": "batch-cleanup",
   "level": 7,
   "title": "Nightly Cleanup Batch Job",
-  "description": "Build a scheduled cleanup job. Every day at 2am, delete all Logs where created_at is older than 30 days. Also expose GET /api/logs so the test can verify rows exist before and after. No pages, no auth — just a scheduled batch job that prunes old data.",
+  "description": "ARCHETYPE: batch_job. Shape: backend-only (no pages, no auth), driven by a CRON schedule block (every day at 2am), NO external API calls, NO transforms — just pure cleanup. DO NOT call any external URL (that would make this a data_sync or etl). DO NOT build a dashboard. DO NOT build multiple endpoints — only POST /api/logs (for test setup) and GET /api/logs (for verification). The CORE of this task is the scheduled job: `every day at '02:00 AM':` then delete Logs older than 30 days. The endpoints exist only so tests can create rows then check them.",
   "skeleton": "build for javascript backend\n\ncreate a Logs table:\n  message, required\n  level, default 'info'\n  created_at_date, auto\n\n# Your scheduled job + /api/logs endpoint here\n# Use: every day at '02:00 AM': ... delete old Logs ...\n",
+  "steps": [
+    { "id": "table",    "name": "Logs table defined",          "sourceMatches": ["create\\s+a\\s+Logs\\s+table"] },
+    { "id": "schedule", "name": "Nightly schedule (2am)",      "sourceMatches": ["every\\s+day\\s+at\\s+['\"]02:00"] },
+    { "id": "prune",    "name": "Deletes old rows (30+ days)", "sourceMatches": ["delete\\s+.*(Logs|old)", "30\\s+days"] },
+    { "id": "list",     "name": "GET /api/logs endpoint",      "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/logs['\"]?"] }
+  ],
   "tests": [
     {
       "method": "GET",
