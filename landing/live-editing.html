@@ -250,7 +250,7 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
       </a>
     </div>
     <p class="fade-up fade-d3 text-[13px] text-slate-400 mb-16">
-      Owner-gated. Diff preview. One-click rollback. Built in.
+      Only you can edit. See what'll change before it ships. One-click undo, always.
     </p>
   </div>
 
@@ -383,7 +383,7 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
             <div class="flex items-center gap-2 mb-2.5">
               <span class="diff-chip chip-additive">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Additive change &middot; safe to ship
+                Safe to ship &middot; only adds new stuff
               </span>
             </div>
             <div class="mb-2.5">Here's what I'll do:</div>
@@ -498,23 +498,23 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
           <div class="flex items-start gap-2.5">
             <span class="diff-chip chip-additive mt-0.5">
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Additive
+              Just adds
             </span>
-            <div class="text-[12px] text-slate-600 leading-relaxed">Adds a field/page/endpoint &mdash; nothing can break. <span class="text-slate-400">Ships instantly.</span></div>
+            <div class="text-[12px] text-slate-600 leading-relaxed">A new field, page, or button. Nothing old gets touched. <span class="text-slate-400">Ships in seconds.</span></div>
           </div>
           <div class="flex items-start gap-2.5">
             <span class="diff-chip chip-reversible mt-0.5">
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9"/><polyline points="3 5 3 12 10 12"/></svg>
-              Reversible
+              One-click undo
             </span>
-            <div class="text-[12px] text-slate-600 leading-relaxed">Removes a field, renames, relabels. Data stays. <span class="text-slate-400">One-click un-hide.</span></div>
+            <div class="text-[12px] text-slate-600 leading-relaxed">"Remove" or "rename" a field. The data never actually leaves. <span class="text-slate-400">Change your mind anytime.</span></div>
           </div>
           <div class="flex items-start gap-2.5">
             <span class="diff-chip chip-destructive mt-0.5">
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-              Destructive
+              Actually delete
             </span>
-            <div class="text-[12px] text-slate-600 leading-relaxed">Permanently deletes data. Explicit opt-in only. <span class="text-slate-400">Snapshot + "type DELETE" to confirm.</span></div>
+            <div class="text-[12px] text-slate-600 leading-relaxed">Wipes data for good. You have to type DELETE first. A backup is taken first. <span class="text-slate-400">Almost never needed.</span></div>
           </div>
         </div>
       </div>
@@ -757,116 +757,94 @@ nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-ba
     </p>
   </div>
 </section>
-<!-- The promise: additive-by-default + expand-and-contract -->
+<!-- The promise: your data is always safe -->
 <section class="py-24" style="background: linear-gradient(180deg, #fafbfd 0%, #f0f4ff 50%, #fafbfd 100%);">
   <div class="max-w-5xl mx-auto px-6">
     <div class="max-w-3xl mb-14 mx-auto text-center">
       <div class="text-[11px] font-bold text-indigo-500 uppercase tracking-[0.12em] mb-3">The promise</div>
       <h2 class="text-3xl md:text-[44px] font-extrabold tracking-[-0.03em] leading-[1.1] mb-5">
-        Never lose a user's form data<br>
-        <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-purple-500 bg-clip-text text-transparent">when you change the app.</span>
+        Nothing your team typed in<br>
+        <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-purple-500 bg-clip-text text-transparent">ever disappears.</span>
       </h2>
       <p class="text-slate-500 text-[16px] leading-relaxed max-w-2xl mx-auto">
-        Clear's compiler is additive-by-default. When you rename or change a column, it doesn't
-        drop the old one &mdash; it adds the new one alongside, copies the data, and keeps both
-        readable until every consumer has moved over. Then the old one retires.
+        Clear treats "remove" like a desktop trash can, not an incinerator.
+        Every change you make leaves the old data exactly where it was &mdash;
+        just out of sight. Change your mind? One click and it's back.
       </p>
     </div>
 
-    <!-- Expand-and-contract visual -->
     <div class="bg-white rounded-3xl border border-indigo-100 shadow-[0_8px_32px_rgba(67,97,238,0.06)] p-10 md:p-14">
-      <div class="flex items-center gap-3 mb-8">
-        <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
-        </div>
-        <div>
-          <div class="text-[18px] font-extrabold text-slate-800">Expand &rarr; migrate &rarr; contract</div>
-          <div class="text-[13px] text-slate-400">The database never stops serving requests. Old and new schemas co-exist.</div>
-        </div>
-      </div>
+      <div class="grid md:grid-cols-3 gap-8">
 
-      <div class="grid md:grid-cols-3 gap-6">
-
-        <!-- Phase 1: Expand -->
+        <!-- Story 1: Add a field -->
         <div class="relative">
           <div class="flex items-center gap-2 mb-3">
-            <div class="w-7 h-7 rounded-full bg-emerald-500 text-white font-bold text-[12px] flex items-center justify-center">1</div>
-            <div class="font-bold text-slate-800 text-[14px]">Expand</div>
+            <div class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </div>
+            <div class="font-bold text-slate-800 text-[15px]">Add a field</div>
           </div>
+          <p class="text-[13.5px] text-slate-600 leading-relaxed mb-4">
+            The new field appears. Every existing row gets a sensible default. Nothing else changes.
+          </p>
           <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
-            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Approvals table</div>
+            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Your approvals</div>
             <div class="space-y-1.5">
-              <div class="flex items-center gap-2 text-[12px] text-slate-600 font-mono">
-                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> customer
-              </div>
-              <div class="flex items-center gap-2 text-[12px] text-slate-600 font-mono">
-                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> discount
-              </div>
-              <div class="flex items-center gap-2 text-[12px] text-slate-600 font-mono">
-                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> reason
-              </div>
-              <div class="flex items-center gap-2 text-[12px] text-emerald-700 font-mono font-semibold">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> region <span class="text-emerald-600 text-[10px] font-sans font-bold uppercase tracking-wider">new</span>
-              </div>
+              <div class="text-[12.5px] text-slate-600">Customer</div>
+              <div class="text-[12.5px] text-slate-600">Discount</div>
+              <div class="text-[12.5px] text-slate-600">Reason</div>
+              <div class="text-[12.5px] text-emerald-700 font-semibold">Region <span class="text-emerald-600 text-[10px] font-bold uppercase tracking-wider ml-1">new</span></div>
             </div>
           </div>
-          <p class="text-[12.5px] text-slate-500 leading-relaxed mt-3">
-            New column is added. Old columns untouched. Every existing row gets the default value. Takes milliseconds.
-          </p>
         </div>
 
-        <!-- Phase 2: Migrate -->
+        <!-- Story 2: Rename a field -->
         <div class="relative">
           <div class="flex items-center gap-2 mb-3">
-            <div class="w-7 h-7 rounded-full bg-indigo-500 text-white font-bold text-[12px] flex items-center justify-center">2</div>
-            <div class="font-bold text-slate-800 text-[14px]">Dual-write</div>
+            <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </div>
+            <div class="font-bold text-slate-800 text-[15px]">Rename a field</div>
           </div>
+          <p class="text-[13.5px] text-slate-600 leading-relaxed mb-4">
+            The new name shows up with all the old data already copied in. The old name sticks around, just out of sight &mdash; so undo is instant.
+          </p>
           <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
-            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">During transition</div>
-            <div class="space-y-2">
-              <div class="flex items-center gap-2 text-[11px]">
-                <span class="w-4 h-4 rounded bg-emerald-100 flex items-center justify-center"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-                <span class="text-slate-600">Old code keeps reading old columns</span>
+            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">"Notes" &rarr; "Reason"</div>
+            <div class="space-y-2 text-[12.5px]">
+              <div class="flex items-center gap-2">
+                <span class="text-emerald-600">&check;</span>
+                <span class="text-slate-600">Existing notes copy into "reason"</span>
               </div>
-              <div class="flex items-center gap-2 text-[11px]">
-                <span class="w-4 h-4 rounded bg-emerald-100 flex items-center justify-center"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-                <span class="text-slate-600">New code reads + writes both</span>
+              <div class="flex items-center gap-2">
+                <span class="text-emerald-600">&check;</span>
+                <span class="text-slate-600">"Notes" is hidden but kept</span>
               </div>
-              <div class="flex items-center gap-2 text-[11px]">
-                <span class="w-4 h-4 rounded bg-emerald-100 flex items-center justify-center"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-                <span class="text-slate-600">Jenna's open tab keeps working</span>
-              </div>
-              <div class="flex items-center gap-2 text-[11px]">
-                <span class="w-4 h-4 rounded bg-emerald-100 flex items-center justify-center"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-                <span class="text-slate-600">No downtime, no errors</span>
+              <div class="flex items-center gap-2">
+                <span class="text-emerald-600">&check;</span>
+                <span class="text-slate-600">Undo restores everything in one click</span>
               </div>
             </div>
           </div>
-          <p class="text-[12.5px] text-slate-500 leading-relaxed mt-3">
-            Both schemas work at the same time. Anyone still on the old version doesn't crash &mdash; they just don't see the new field yet.
-          </p>
         </div>
 
-        <!-- Phase 3: Contract -->
+        <!-- Story 3: Remove a field -->
         <div class="relative">
           <div class="flex items-center gap-2 mb-3">
-            <div class="w-7 h-7 rounded-full bg-slate-400 text-white font-bold text-[12px] flex items-center justify-center">3</div>
-            <div class="font-bold text-slate-800 text-[14px]">Contract</div>
-          </div>
-          <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
-            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Only after everyone moved</div>
-            <div class="text-[12px] text-slate-500 leading-relaxed mb-2">
-              If you ever <em>remove</em> an old column (not this case &mdash; this one was purely additive), Clear waits until:
+            <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="2.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
             </div>
-            <div class="space-y-1 text-[11.5px] text-slate-500">
-              <div>&bull; every open session reloaded</div>
-              <div>&bull; nothing's read the old column in 24h</div>
-              <div>&bull; you explicitly confirm</div>
-            </div>
+            <div class="font-bold text-slate-800 text-[15px]">Remove a field</div>
           </div>
-          <p class="text-[12.5px] text-slate-500 leading-relaxed mt-3">
-            The opposite of "drop column and hope." Clear never removes data until it's sure nothing needs it.
+          <p class="text-[13.5px] text-slate-600 leading-relaxed mb-4">
+            It disappears from the screen. The data stays in the database, unseen. Changed your mind on Tuesday? It's all still there.
           </p>
+          <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
+            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Like the desktop trash</div>
+            <p class="text-[12.5px] text-slate-600 leading-relaxed">
+              To actually destroy the data, you'd have to run a separate "permanently delete" command and type DELETE to confirm. Almost nobody ever does.
+            </p>
+          </div>
         </div>
 
       </div>
