@@ -376,7 +376,7 @@ Some errors are purely syntactic (missing quote, unbalanced brace). Global featu
 
 ## Factor DB — Implementation Status
 
-The Factor DB is the persistent store that makes the flywheel run. It's **live as of Session 37**.
+The Factor DB is the persistent store that makes the flywheel run. It's **live as of Session 37**, with **step-decomposition labeling added in Session 38**.
 
 **Location:** `playground/factor-db.sqlite` — SQLite with WAL mode.
 
@@ -396,6 +396,9 @@ CREATE TABLE code_actions (
   compile_ok      INTEGER,           -- 1 = clean compile
   test_pass       INTEGER,           -- 1 = all tests passed
   test_score      REAL,              -- fraction of passing tests
+  step_id         TEXT,              -- which task milestone this compile corresponds to (Session 38)
+  step_index      INTEGER,           -- 0-based index into task.steps[]
+  step_name       TEXT,              -- human-readable milestone name for reports
   embedding       BLOB,              -- reserved for Phase 2 (JS diff embeddings)
   created_at      INTEGER
 );
@@ -434,8 +437,55 @@ const hints = db.querySimilar({
 - 28 rows seeded by cold start (8 template gold + 20 curriculum skeletons)
 - Rows accumulate automatically from every Studio Meph session
 - BM25 retrieval active
+- **Step-decomposition labeling active (Session 38)** — see below
 - XGBoost training: not yet built (unlocks at 200 passing rows)
 - Suggestion injection into Meph's context: not yet built
+
+---
+
+## Step-Decomposition — 4x Signal Density per Sweep (Session 38)
+
+**The problem before this:** one Meph trajectory on a 14-step task produced one noisy pass/fail row at the end. "Meph built the app" or "Meph didn't." No way to learn *which* step he nailed and *which* one he tripped on. The reranker got binary signal where it should have gotten ordinal signal.
+
+**The change:** curriculum tasks gain an optional `steps[]` array. Each step has `id`, `name`, and `sourceMatches[]` — a list of regexes that must all appear in the current source for that step to be considered "satisfied." At every compile, the server evaluates the source against the step array and labels the DB row with which milestone Meph has hit so far (the highest-index satisfied step).
+
+```json
+{
+  "id": "todo-crud",
+  "steps": [
+    { "id": "table",   "name": "Todos table defined",  "sourceMatches": ["create\\s+a\\s+Todos\\s+table"] },
+    { "id": "create",  "name": "POST create endpoint", "sourceMatches": ["calls\\s+POST\\s+/api/todos", "save\\s+.*\\s+to\\s+Todos"] },
+    { "id": "list",    "name": "GET list endpoint",    "sourceMatches": ["calls\\s+GET\\s+/api/todos:"] },
+    { "id": "get_one", "name": "GET single endpoint",  "sourceMatches": ["calls\\s+GET\\s+/api/todos/:id"] },
+    ...
+  ]
+}
+```
+
+**Why regex over code evaluation:** static regex has zero eval risk and survives arbitrary Clear source without parsing. The predicate is ugly but the DB cost of a wrong label is low — the reranker learns the signal strength anyway.
+
+**Hidden from Meph by design.** We don't tell him about the steps. The point is to measure his *natural* trajectory, not guide his behavior. Training data should reflect what Meph does on a cold task, not what we told him to do. Later we can add a "guided mode" that injects step hints, but the baseline has to be unbiased.
+
+**What this unlocks per sweep:**
+- Per-step pass rate: "Meph writes POST endpoints 95% of the time, but only gets DELETE right 40% of the time" — targetable.
+- Failure clustering by step: errors on step 3 cluster differently than errors on step 5. The reranker can retrieve hints scoped to "same step, same archetype."
+- Stuck-step detection: if Meph compiles 10 times and step_index never advances past 2, the system knows he's stuck at step 3 specifically.
+
+**Schema:** `step_id`, `step_index`, `step_name` columns on `code_actions` + `idx_step(task_type, step_index, test_pass)` index for per-step rollups.
+
+**Seeding:** 2 tasks seeded (todo-crud: 6 steps, webhook-stripe: 4 steps). The other 28 curriculum tasks still work — `steps[]` is optional, unlabeled rows (step_index = NULL) get grouped into an "unlabeled" bucket in sweep reports.
+
+**Sweep output now shows a per-step rollup:**
+
+```
+=== Per-Step Rollup (this sweep) ===
+  step                              attempts  compiles  tests_passed
+  ────────────────────────────────  ────────  ────────  ────────────
+  1. Todos table defined                  5         5             0
+  2. POST create endpoint                 3         3             0
+  3. GET list endpoint                    2         2             1
+  ...
+```
 
 ---
 

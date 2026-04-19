@@ -394,6 +394,19 @@ All compile to direct REST `fetch()` calls. No SDK required.
 
 Ordered by impact. Three tracks: **go-to-market**, **language completeness**, and **platform quality**.
 
+### Flywheel / Training Signal (Session 38 in-flight)
+
+The RL thesis moves forward in small, measurable steps. Each item below compounds the ones below it — do them in order.
+
+| # | Item | Status | Impact |
+|---|------|--------|--------|
+| RL-1 | **Meph runs on Haiku 4.5 by default.** `MEPH_MODEL` env var overrides to Sonnet for A/B. 15/16 vs 16/16 on eval-meph; within 6% of Sonnet capability at 3x cheaper per row. | ✅ Done (Session 38) | ~$2k saved per 10k-row sweep |
+| RL-2 | **Step-decomposition labeling.** Every compile row now tagged with which task milestone Meph has hit (`step_id`, `step_index`, `step_name`). Sweep prints per-step rollup: attempts, compiles, tests passed per step. Seeded on 2 tasks (todo-crud, webhook-stripe). | ✅ Done (Session 38) | 4x signal density per sweep |
+| RL-3 | **Classifier fuzzy-match fixes.** Dashboards with 1 chart misroute to "dashboard" (should route to KPI). Webhooks on `/hook` paths route wrong. Small regex additions in `archetype.js`. | Next (30 min) | Unlocks balanced archetype distribution |
+| RL-4 | **Seed steps on the other 28 curriculum tasks.** 2 tasks seeded; the rest still fall into the unlabeled bucket in stepStats. | Next (1 hr) | Step-decomposition coverage from 7% → 100% |
+| RL-5 | **Sharpen the 5 archetype task descriptions.** Explicit archetype signals so Meph doesn't guess wrong on webhook/batch/sync/ETL/dashboard shapes. | Next (30 min) | Prevents classifier poisoning the DB |
+| RL-6 | **First full re-sweep with Haiku + steps + fixes.** Overnight run populating the Factor DB with step-labeled, cheap, well-routed rows. First training-ready dataset. | After RL-3/4/5 | Unlocks XGBoost training at 200 rows |
+
 ### One-click deploy follow-ups (Phase 85 shipped)
 1. **Phase 85a — Provision the real stack.** Register buildclear.dev, apply for Fly Trust Verified status with 10k-machine quota, sign up for Stripe, generate Anthropic org key, wire Postgres for the tenants DB, and run `deploy-builder.sh` + `deploy-proxy.sh` once. Until this is done Deploy works end-to-end in tests but has nowhere to deploy to.
 2. **Phase 86 — Per-tenant usage dashboard.** The plan badge is a teaser; a full breakdown page (spend by day, top apps by AI spend, upgrade CTA) turns the badge into a billing conversion surface.
