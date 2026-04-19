@@ -27,7 +27,8 @@ CREATE INDEX IF NOT EXISTS idx_archetype   ON code_actions(archetype);
 CREATE INDEX IF NOT EXISTS idx_error_sig   ON code_actions(error_sig);
 CREATE INDEX IF NOT EXISTS idx_test_pass   ON code_actions(test_pass, test_score DESC);
 CREATE INDEX IF NOT EXISTS idx_created_at  ON code_actions(created_at);
-CREATE INDEX IF NOT EXISTS idx_step        ON code_actions(task_type, step_index, test_pass);
+-- idx_step is created after migration (below), because on existing DBs the
+-- step_index column doesn't exist yet when this SCHEMA block runs.
 
 CREATE TABLE IF NOT EXISTS reranker_feedback (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,8 +94,11 @@ export class FactorDB {
       this._db.exec('ALTER TABLE code_actions ADD COLUMN step_id TEXT');
       this._db.exec('ALTER TABLE code_actions ADD COLUMN step_index INTEGER');
       this._db.exec('ALTER TABLE code_actions ADD COLUMN step_name TEXT');
-      this._db.exec('CREATE INDEX IF NOT EXISTS idx_step ON code_actions(task_type, step_index, test_pass)');
     }
+    // Create idx_step after migration so it's safe on both fresh + migrated DBs.
+    // On a fresh DB, step_index was created by the SCHEMA CREATE TABLE above.
+    // On an existing DB, it was just added by the ALTER statements.
+    this._db.exec('CREATE INDEX IF NOT EXISTS idx_step ON code_actions(task_type, step_index, test_pass)');
   }
 
   logAction({ session_id, task_type = null, archetype = null, error_sig = null, file_state_hash = null,
