@@ -45,8 +45,9 @@ Then read each doc file and identify gaps:
 5. **`ROADMAP.md`** — completion status. New features marked as done. Stats current.
 6. **`PHILOSOPHY.md`** — design rules. Update if a new principle is established.
 7. **`learnings.md`** — engineering lessons. Add if new gotchas or patterns discovered.
-8. **`.claude/skills/write-clear/SKILL.md`** — how Claude (the agent) writes Clear code.
-9. **`playground/system-prompt.md`** — **Meph's live system prompt in Studio.** This is what actually ships to end users — if a new feature or syntax isn't here, Meph won't know about it and users will get stale guidance. Every new syntax, every behavior change, every new input type, every new directive needs a mention here with a canonical example.
+8. **`playground/system-prompt.md`** — **Meph's live system prompt in Studio.** This is what actually ships to end users — if a new feature or syntax isn't here, Meph won't know about it and users will get stale guidance. Every new syntax, every behavior change, every new input type, every new directive needs a mention here with a canonical example.
+
+> Note: `.claude/skills/write-clear/SKILL.md` used to be in this list but was removed (Session 38). `AI-INSTRUCTIONS.md` already covers conventions for Claude; `playground/system-prompt.md` is what actually ships to Meph. The write-clear skill is redundant surface to maintain.
 
 ## Step 2: Update each file
 

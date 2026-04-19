@@ -7,7 +7,27 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
-## New Capabilities (Session 37 — plain English)
+## New Capabilities (Session 38 — plain English)
+
+**The flywheel closed the loop.** Session 37 plumbed the Factor DB + dashboard. Session 38 trained the first reranker on real data and wired it into `/api/chat`. Now every compile error triggers retrieval → reranker rescoring → top-3 hints injected into Meph's next turn. Boot log confirms: `EBM reranker loaded: 24 features, intercept=0.368`. Absent bundle falls back to raw BM25 (no regression).
+
+**Step-decomposition labeling is live.** Every compile row is tagged with which task milestone Meph has hit (e.g. "Todos table defined" vs "GET single endpoint"). Sweep reports show per-step pass rates. First step-decomposed insight: Meph nails the first 3 steps of most tasks and falls apart at step 7 (-0.31 contribution in the EBM shape function).
+
+**Reranker model chosen: EBM (glass-box Generalized Additive Model).** XGBoost rejected — we want every hint Meph sees to be auditable as a sum of plottable feature contributions. Lasso also competitive at current data scale (0.39 vs EBM 0.30 val R²). Both trained from the same pipeline; production uses whichever wins per retrain. See `RESEARCH.md` "The EBM Re-Ranker" chapter.
+
+**Haiku 4.5 is default.** 3× cheaper per row than Sonnet, 94% of Sonnet's eval-meph score (15/16 vs 16/16). Override with `MEPH_MODEL=claude-sonnet-4-6`. Meph's iteration limit bumped 15 → 25 (unblocked the L3-L6 CRUD dead zone where short iterations starved full-CRUD tasks).
+
+**Inline record literals** (`send back { received is true }`) — the parser now supports the object-expression form that SYNTAX.md had documented but the parser didn't implement. Before this, every webhook task silently abandoned before compiling. Both `is` and `:` (JSON-style) separators work.
+
+**16 archetypes, proper routing.** Added `kpi` (single-chart-plus-aggregates pages — the common RevOps reporting shape). Fixed classifier ordering so dashboards with status-column + auth don't misroute to queue_workflow.
+
+**Compiler Flywheel — Phase 2 designed, not yet built.** A second-order moat where production runtime data (latency, crash rate per emit pattern) drives compiler emit-strategy selection. 4-tier plan in `ROADMAP.md` + `plans/plan-compiler-flywheel-tier1-04-19-2026.md`.
+
+**What this buys Marcus:** when Meph hits an error during an app build, he sees 3 past working fixes automatically injected as text. No more "why does this keep failing the same way" — the flywheel remembers for him. Every Marcus who uses Clear feeds every other Marcus.
+
+---
+
+## Previous Capabilities (Session 37 — plain English)
 
 **Meph now learns across sessions.** Before, every Meph chat started with zero memory. Now every compile he does writes to a local database (`playground/factor-db.sqlite`). When he hits an error, the system finds 3 past sessions where someone hit the same error and fixed it, and shows them to Meph as hints. He stops re-discovering the same bugs.
 
@@ -223,6 +243,25 @@ Two places, two different signals:
 **Red-step check (process)** — `playground/server.js`, end of `/api/chat` handler. Scans the tool call log: did `run_tests` ever return `ok: false` before the first `ok: true`? If not, Meph skipped the red step.
 
 ---
+
+### Where does the EBM reranker live?
+
+Three pieces (Session 38):
+
+- **Training script:** `playground/supervisor/train_reranker.py` — Python, uses `interpret` (InterpretML) for EBM and `sklearn.linear_model.LassoCV` for the Lasso sanity check. Reads JSONL exported from Factor DB, writes both a pickle (Python inference) and a JSON shape-table (JS inference). Refuses to train below the configured `--min-passing` threshold (default 200).
+- **Feature exporter:** `playground/supervisor/export-training-data.js` — reads `code_actions` rows, runs the Clear parser over `source_before` to extract AST counts, derives session-trajectory features (prev_compile_ok, error_is_novel, step_advanced), and emits 24-feature JSONL.
+- **JS-side scorer:** `playground/supervisor/ebm-scorer.js` — pure JS, no ML dependency. Loads the JSON shape-table bundle, scores a feature vector via `intercept + Σ bin_score(feature_i)`. Called per candidate in `/api/chat`'s retrieval path (server.js near line 2860).
+
+Bundle file: `playground/supervisor/reranker.json` (created manually after training by copying from `/tmp/reranker-XX.json` to here). Server loads it at boot; absent bundle = fallback to raw BM25 ordering.
+
+### How does a hint get to Meph?
+
+1. Meph calls the `compile` tool with current source
+2. If `r.errors.length > 0`, server computes `archetype` + `error_sig`
+3. `factorDB.querySuggestions()` returns top-10 candidates via tiered BM25 (same error in this archetype → same error anywhere → same-archetype gold rows)
+4. If EBM bundle loaded: `rank(bundle, candidates, featurizeFactorRow)` rescores + resorts
+5. Top 3 returned in `result.hints.references`, each with `tier`, `summary`, `score`, `ebm_score`, `source_excerpt`
+6. Meph reads them in the tool result of his next turn
 
 ### Where is session data stored?
 

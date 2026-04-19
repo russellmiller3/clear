@@ -1116,3 +1116,42 @@ User actions, Meph tool calls, browser console errors all mirrored into `termina
 - **Async test timeouts.** Spawner and loop tests that actually start child processes need 10–15s timeouts. Child process TCP bind takes ~2-3s to be ready for connections. `await wait(2500)` before the first `fetch` to the worker is the minimum safe delay. Tests that poll a not-yet-ready server will get ECONNREFUSED, not a test failure.
 
 - **State machine test via monkey-patching.** To test that `pollOne` marks a session 'completed' when TASK COMPLETE is detected — without actually injecting terminal output into a live worker — temporarily override `loop.detectComplete = () => true`, call `pollOne`, restore. Tests the state machine cleanly without needing a full integration harness.
+
+
+## Session 38: EBM Reranker, Step-Decomposition, Data-Quality Pass (2026-04-19)
+
+### Reranker / ML
+
+- **At 180-500 rows + 20 features, Lasso beats EBM.** EBM needs 1000+ rows for its pairwise interactions to fit without overfitting. Lasso's L1 regularization auto-zeros weak features — safer at low data counts. Measured: val R² Lasso 0.39 vs EBM 0.30 on the same features. Revisit when the Factor DB hits 1000 passing rows; until then, keep Lasso in production.
+
+- **Whole-row features are not the reranker's real input.** The naive exporter produces one row per compile with "did this row's app pass?" as the label. That's a regression problem mostly already solved by `ORDER BY test_score DESC`. The actual reranker job is RANKING pairs: given Meph's current error + past candidate fix, is F_past likely to resolve E_now? That needs PAIRWISE features (archetype_match, error_sig_match, step_delta, similarity_score) computed at retrieval time. The current EBM/Lasso is a Phase-1 placeholder.
+
+- **`test_score_bucket` = data leakage.** Tried deriving a "pass/fail bucket" feature from `test_score` — model trained to R² 0.996 because the feature was the label in disguise. Always audit: if a feature is computed FROM a label column, it's a leak. Passes type checks; fails leak checks.
+
+- **High-cardinality categoricals hurt at low data scale.** Added `error_token` and `prev_error_sig` (hash-like strings with 50+ distinct values per column). EBM learned one per singleton bin, overfit hard, val R² dropped. Drop high-cardinality features when rows < 1000; re-enable when each bin has ≥5 samples.
+
+- **Lasso's auto-feature-selection is cheap intelligence.** `LassoCV(cv=5)` picks regularization by cross-validation, zeros unimportant coefficients. 58 of 87 one-hot dummies were non-zero on our data — the other 29 were auto-ignored. No manual feature selection needed. At Phase-1 data scale this is better than hand-curating the feature set.
+
+### Flywheel infrastructure
+
+- **Don't grade by magic phrase.** The initial sweep grader scanned Meph's chat stream for "TASK COMPLETE." He often forgot to say it even when tests passed. Switched to reading `test_pass=1` in the Factor DB during the task's time window. Grader score jumped from 1/5 to 15/30 on the same data. Lesson: grade by persistent-state truth (DB), not transient-stream text.
+
+- **Migration order matters.** Added `idx_step ON code_actions(task_type, step_index, test_pass)` inside the SCHEMA block. On existing DBs with ~100 rows pre-migration: CREATE TABLE IF NOT EXISTS was a no-op; then CREATE INDEX ran BEFORE the ALTER TABLE that would add `step_index` — crash with "no such column: step_index." Fix: move index creation OUT of SCHEMA, run it after all ALTER statements. Rule: any index that references an ALTER-added column must be created separately, after the ALTER.
+
+- **CLI `clear build` clobbered repo root.** When Meph ran `clear build temp-app.clear` from the worktree root (as system-prompt.md told him to), the CLI wrote `{"type":"commonjs"}\n` into `./package.json` — overwriting the real project file. Every sweep silently broke `node` commands until `git restore`. Fix: `writePackageJsonShield()` refuses to overwrite an existing `package.json` unless it's already our own sentinel string. Rule: never silently overwrite a file whose content you didn't originate.
+
+- **Haiku iteration limit needs 25 for 5-endpoint CRUD.** Default 15 was enough for simple (L1-L2) and rich-skeleton (L8-L9) tasks, but created a dead zone at L3-L6 — full-CRUD-with-auth tasks where Meph needed 5 endpoints + validation + auth scaffolding. 25 closed the dead zone without runaway risk.
+
+- **Background-loop sweeps exit 127 cascade.** A `while; sweep; sleep` bash loop that hit the Anthropic API rate-limit kept spinning up failed sweeps in 1s each after the limit tripped. Exit 127 (command-not-found) was misleading — the real cause was the preflight check refusing. Lesson: every background loop needs explicit rate-limit detection + exit-after-N-failures.
+
+### Parser / compiler
+
+- **Docs promised what the parser didn't deliver.** SYNTAX.md showed `send back { total is count }` as canonical. The parser only implemented the indented-block form, not inline `{ a is 1 }`. Meph read the docs, wrote the inline form, hit "Clear doesn't understand '{' in this position," and abandoned before compiling. Zero compile rows for every webhook task. Fix: add `parseInlineRecord()`. Rule: when you document a syntax, grep the parser to verify it's actually supported.
+
+- **Colon separator helps adoption.** The new `parseInlineRecord` accepts `is`, `=`, and `:` as the key/value separator. `:` (JSON-style) is what every AI model and every non-Clear programmer reaches for by instinct. Accepting all three costs one line of parser code and saves thousands of frustrated compile cycles.
+
+### Archetype classifier
+
+- **Rule ordering matters.** `numCharts >= 2 → dashboard` was below `hasStatusField + hasAuth → queue_workflow`. Dashboards with status columns (filtered chart segments) and auth (login-gated reports) misrouted to queue_workflow. Fix: move the stronger signal (≥2 charts) above the weaker one. Lesson: when adding classifier rules, order them by signal strength, not historical accident.
+
+- **Multi-endpoint webhooks needed guard relaxation.** The old `numEndpoints === 1 && hasWebhookPath → webhook_handler` rule broke on apps with a webhook plus a `/health` endpoint. Relaxed to `hasWebhookPath(body) || hasSignatureVerification(body) → webhook_handler` regardless of total endpoint count. Lesson: "one endpoint" is a fragile heuristic for "this is a webhook app."

@@ -142,6 +142,8 @@ def main():
     try:
         import pandas as pd
         from sklearn.model_selection import train_test_split
+        from sklearn.linear_model import LassoCV
+        from sklearn.preprocessing import StandardScaler
         from interpret.glassbox import ExplainableBoostingRegressor
     except ImportError as e:
         print(f'Missing dependency: {e}')
@@ -204,6 +206,44 @@ def main():
     print(f'Val R²:   {val_score:.3f}')
     if val_score < 0.3:
         print('WARNING: val R² below 0.3 — model barely beats baseline. More diverse data needed.')
+
+    # ─── Lasso sanity check (Russell's suggestion) ──────────────────────────
+    # At 180-500 rows and 20+ features, Lasso is often the safer ranker than
+    # EBM. L1 regularization auto-zeros weak features — no manual feature
+    # selection needed. Lasso is also linear (no interactions), so if it
+    # beats EBM it's a signal our interactions aren't earning their keep yet.
+    # We report both and let the numbers pick.
+    print('\nLasso comparison (same features, one-hot + standardized):')
+    X_train_lasso = pd.get_dummies(X_train, columns=[c for c in feature_cols if c in KNOWN_CATEGORICAL or X_train[c].dtype == 'object'], drop_first=False)
+    X_val_lasso = pd.get_dummies(X_val, columns=[c for c in feature_cols if c in KNOWN_CATEGORICAL or X_val[c].dtype == 'object'], drop_first=False)
+    # Align columns (val may be missing some dummy cols)
+    X_val_lasso = X_val_lasso.reindex(columns=X_train_lasso.columns, fill_value=0)
+    scaler = StandardScaler()
+    X_train_lasso_s = scaler.fit_transform(X_train_lasso)
+    X_val_lasso_s = scaler.transform(X_val_lasso)
+
+    lasso = LassoCV(cv=5, max_iter=5000, random_state=42)
+    lasso.fit(X_train_lasso_s, y_train)
+    lasso_train_r2 = lasso.score(X_train_lasso_s, y_train)
+    lasso_val_r2 = lasso.score(X_val_lasso_s, y_val)
+    nonzero = sum(1 for c in lasso.coef_ if abs(c) > 1e-8)
+    print(f'  Train R²: {lasso_train_r2:.3f}')
+    print(f'  Val R²:   {lasso_val_r2:.3f}')
+    print(f'  Nonzero coefficients: {nonzero} / {len(lasso.coef_)} (Lasso auto-selected these)')
+    print(f'  Chosen alpha: {lasso.alpha_:.4f}')
+    print(f'  Top Lasso features:')
+    lasso_feats = sorted(
+        [(col, coef) for col, coef in zip(X_train_lasso.columns, lasso.coef_) if abs(coef) > 1e-8],
+        key=lambda x: -abs(x[1])
+    )[:10]
+    for col, coef in lasso_feats:
+        print(f'    {coef:+.4f}  {col}')
+
+    if lasso_val_r2 > val_score:
+        print(f'\n>>> Lasso wins by {(lasso_val_r2 - val_score):.3f} val R². Consider using Lasso as the production reranker at this data scale.')
+    else:
+        print(f'\n>>> EBM wins by {(val_score - lasso_val_r2):.3f} val R². EBM interactions are earning their keep.')
+    # ────────────────────────────────────────────────────────────────────────
 
     # Global feature importance — EBM gives this natively from the shape-fn magnitudes
     print('\nTop features by importance:')
