@@ -74,12 +74,15 @@ describe('FactorDB', () => {
   it('querySuggestions returns exact-error fix when session fails then succeeds', () => {
     cleanup();
     const db = new FactorDB(TEST_DB);
-    // Session hits error_sig 'E1' then fixes it
+    // Session hits error_sig 'E1' then fixes it. Include source_before
+    // on the fix row — retrieval now filters out rows with empty source so
+    // hints always have code to pattern-match from.
     const t1 = Date.now();
-    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run('s1', 'crud_app', 'E1', 0, 0, 0, '[]', 'failed', t1);
-    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run('s1', 'crud_app', null, 1, 1, 1.0, '[]', 'fixed it', t1 + 100);
+    const WORKING_SRC = 'build for javascript backend\n\ntable Items:\n  name is text\n\nwhen user calls GET /api/items:\n  send back all Items\n';
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('s1', 'crud_app', 'E1', 0, 0, 0, '[]', 'failed', '', t1);
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('s1', 'crud_app', null, 1, 1, 1.0, '[]', 'fixed it', WORKING_SRC, t1 + 100);
 
     const hints = db.querySuggestions({ archetype: 'crud_app', error_sig: 'E1', topK: 3 });
     expect(hints.length).toEqual(1);
@@ -92,8 +95,9 @@ describe('FactorDB', () => {
   it('querySuggestions falls back to archetype when error_sig unknown', () => {
     cleanup();
     const db = new FactorDB(TEST_DB);
-    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run('s1', 'crud_app', null, 1, 1, 1.0, '[]', 'working CRUD app', Date.now());
+    const WORKING_SRC = 'build for javascript backend\n\ntable Items:\n  name is text\n\nwhen user calls GET /api/items:\n  send back all Items\n';
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('s1', 'crud_app', null, 1, 1, 1.0, '[]', 'working CRUD app', WORKING_SRC, Date.now());
 
     const hints = db.querySuggestions({ archetype: 'crud_app', error_sig: 'NOT_SEEN_BEFORE', topK: 3 });
     expect(hints.length).toEqual(1);
@@ -117,10 +121,11 @@ describe('FactorDB', () => {
     const db = new FactorDB(TEST_DB);
     // Same session: fail then fix. Also in crud_app.
     const t1 = Date.now();
-    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run('s1', 'crud_app', 'E1', 0, 0, 0, '[]', 'fail', t1);
-    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run('s1', 'crud_app', null, 1, 1, 1.0, '[]', 'the-fix', t1 + 100);
+    const WORKING_SRC = 'build for javascript backend\n\ntable Items:\n  name is text\n\nwhen user calls GET /api/items:\n  send back all Items\n';
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('s1', 'crud_app', 'E1', 0, 0, 0, '[]', 'fail', '', t1);
+    db._db.prepare(`INSERT INTO code_actions (session_id, archetype, error_sig, compile_ok, test_pass, test_score, patch_ops, patch_summary, source_before, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('s1', 'crud_app', null, 1, 1, 1.0, '[]', 'the-fix', WORKING_SRC, t1 + 100);
 
     const hints = db.querySuggestions({ archetype: 'crud_app', error_sig: 'E1', topK: 5 });
     // Should return the fix row ONCE — tier 1 catches it, tier 3 should skip (already seen)
