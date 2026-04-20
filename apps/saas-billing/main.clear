@@ -54,9 +54,9 @@ when user calls GET /api/billing/usage:
   define user_usage as: look up all records in Usage table
   send back user_usage
 
-when user calls POST /api/billing/subscribe receiving subscription_data:
+when user calls POST /api/billing/subscribe receiving subscription:
   this endpoint requires login
-  validate subscription_data:
+  validate subscription:
     plan is text, required
   send back 'subscribed'
 

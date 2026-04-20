@@ -56,21 +56,21 @@ when user requests data from /api/requests/new:
 when user requests data from /api/requests/my:
   send back all Requests
 
-when user sends request_data to /api/requests:
-  validate request_data:
+when user sends request to /api/requests:
+  validate request:
     title is text, required, min 1, max 200
     submitter is text, required
-  new_request = save request_data as new Request
+  new_request = save request as new Request
   send back new_request with success message
 
-when user updates update_data at /api/requests/:id:
+when user updates request at /api/requests/:id:
   requires login
-  save update_data to Requests
+  save request to Requests
   send back 'updated' with success message
 
 ## Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create r1:
     title is 'New laptop — mine is overheating'
     description is 'MacBook keeps shutting down during video calls. Replacement needed.'
@@ -81,7 +81,7 @@ when user sends data to /api/seed:
   save r1 as new Request
   create r2:
     title is 'Update direct deposit info'
-    description is 'Switched banks last week, need to update payroll.'
+    description is 'Switched banks last week, need to request payroll.'
     category is 'HR'
     priority is 'Normal'
     submitter is 'mike.l'

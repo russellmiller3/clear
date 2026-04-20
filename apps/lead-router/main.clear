@@ -48,28 +48,28 @@ when user requests data from /api/leads:
 when user requests data from /api/leads/new:
   send back all Leads where status is 'new'
 
-when user sends lead_data to /api/leads:
-  validate lead_data:
+when user sends lead to /api/leads:
+  validate lead:
     name is text, required, min 1, max 100
     email is text, required
     size is text
-  if lead_data's size is 'Enterprise':
-    lead_data's assigned_to is 'charlie'
-  if lead_data's size is 'Mid-market':
-    lead_data's assigned_to is 'bob'
-  if lead_data's size is 'SMB':
-    lead_data's assigned_to is 'alice'
-  new_lead = save lead_data as new Lead
+  if lead's size is 'Enterprise':
+    lead's assigned_to is 'charlie'
+  if lead's size is 'Mid-market':
+    lead's assigned_to is 'bob'
+  if lead's size is 'SMB':
+    lead's assigned_to is 'alice'
+  new_lead = save lead as new Lead
   send back new_lead with success message
 
-when user updates update_data at /api/leads/:id:
+when user updates lead at /api/leads/:id:
   requires login
-  save update_data to Leads
+  save lead to Leads
   send back 'updated' with success message
 
 ## Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create l1:
     name is 'Priya Shah'
     email is 'priya@acmecorp.com'

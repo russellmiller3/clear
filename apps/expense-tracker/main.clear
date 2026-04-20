@@ -41,12 +41,12 @@ log every request
 when user requests data from /api/expenses:
   send back all Expenses
 
-when user sends expense_data to /api/expenses:
+when user sends expense to /api/expenses:
   requires login
-  validate expense_data:
+  validate expense:
     description is text, required, min 1, max 200
     amount is number, required
-  new_expense = save expense_data as new Expense
+  new_expense = save expense as new Expense
   send back new_expense with success message
 
 when user deletes expense at /api/expenses/:id:
@@ -68,7 +68,7 @@ when user requests data from /api/expenses/total:
 
 # Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create c1:
     name is 'Food'
   save c1 as new Category

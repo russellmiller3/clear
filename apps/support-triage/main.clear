@@ -55,21 +55,21 @@ when user requests data from /api/tickets:
 when user requests data from /api/tickets/open:
   send back all Tickets where status is 'open'
 
-when user sends ticket_data to /api/tickets:
-  validate ticket_data:
+when user sends ticket to /api/tickets:
+  validate ticket:
     subject is text, required, min 1, max 300
-  classification = call 'Triage' with ticket_data
-  new_ticket = save ticket_data as new Ticket
+  classification = call 'Triage' with ticket
+  new_ticket = save ticket as new Ticket
   send back new_ticket with success message
 
-when user updates update_data at /api/tickets/:id:
+when user updates ticket at /api/tickets/:id:
   requires login
-  save update_data to Tickets
+  save ticket to Tickets
   send back 'updated' with success message
 
 ## Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create t1:
     subject is 'Cannot log in since this morning'
     body is 'Keep getting a 401 error on the login page. Tried clearing cookies.'

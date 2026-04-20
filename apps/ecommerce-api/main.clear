@@ -45,17 +45,17 @@ when user calls GET /api/products/:id:
 
 # --- Protected: Orders ---
 
-when user calls POST /api/orders receiving order_data:
+when user calls POST /api/orders receiving order:
   requires login
-  validate order_data:
+  validate order:
     product_id is text, required
     quantity is number, required, min 1
     user_id is text, required
     total is number, required, min 0
-  define product as: look up records in Products table where id is order_data's product_id
+  define product as: look up records in Products table where id is order's product_id
   guard product is not nothing or 'Product not found'
   guard product's stock is greater than 0 or 'Out of stock'
-  define new_order as: save order_data as Order
+  define new_order as: save order as Order
   send back new_order status 201
 
 when user calls GET /api/orders:
@@ -71,13 +71,13 @@ when user calls GET /api/orders/:id:
 
 # --- Admin: Product Management ---
 
-when user calls POST /api/products receiving product_data:
+when user calls POST /api/products receiving product:
   requires login
   requires role 'admin'
-  validate product_data:
+  validate product:
     name is text, required, min 1, max 200
     price is number, required
-  define new_product as: save product_data as Product
+  define new_product as: save product as Product
   send back new_product status 201
 
 when user calls DELETE /api/products/:id:

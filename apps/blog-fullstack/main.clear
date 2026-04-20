@@ -68,11 +68,11 @@ when user requests data from /api/posts/:id:
   if post is nothing then send back 'Post not found' status 404
   send back post
 
-when user sends post_data to /api/posts:
-  validate post_data:
+when user sends post to /api/posts:
+  validate post:
     title is text, required, min 1, max 200
     body is text, required, min 1
-  new_post = save post_data as new Post
+  new_post = save post as new Post
   send back new_post
 
 when user deletes post at /api/posts/:id:
@@ -86,7 +86,7 @@ when user requests data from /api/search:
 
 ## Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create a1:
     name is 'Lindsay Walton'
     email is 'lindsay@example.com'

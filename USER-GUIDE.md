@@ -373,10 +373,10 @@ when user requests data from /api/todos:
   all_todos = get all Todos
   send back all_todos
 
-when user sends todo_data to /api/todos:
-  validate todo_data:
+when user sends todo to /api/todos:
+  validate todo:
     task is text, required, min 1, max 500
-  new_todo = save todo_data as new Todo
+  new_todo = save todo as new Todo
   send back new_todo with success message
 
 when user deletes todo at /api/todos/:id:
@@ -462,10 +462,10 @@ This creates an API endpoint. When someone visits `/api/todos`, it:
 2. Sends them back as JSON
 
 ```clear
-when user sends todo_data to /api/todos:
-  validate todo_data:
+when user sends todo to /api/todos:
+  validate todo:
     task is text, required, min 1, max 500
-  new_todo = save todo_data as new Todo
+  new_todo = save todo as new Todo
   send back new_todo with success message
 ```
 
@@ -475,7 +475,7 @@ This creates a POST endpoint that:
 3. Saves it to the Todos table
 4. Sends back the new record with a success message
 
-> **Note:** The old syntax `when user calls POST /api/todos sending todo_data:` also works.
+> **Note:** The old syntax `when user calls POST /api/todos sending todo:` also works.
 
 ```clear
 when user deletes todo at /api/todos/:id:
@@ -542,12 +542,12 @@ when user requests data from /api/expenses:
   all_expenses = get all Expenses
   send back all_expenses
 
-when user sends expense_data to /api/expenses:
-  validate expense_data:
+when user sends expense to /api/expenses:
+  validate expense:
     description is text, required, min 1, max 200
     amount is number, required
     category is text
-  new_expense = save expense_data as new Expense
+  new_expense = save expense as new Expense
   send back new_expense with success message
 
 when user deletes expense at /api/expenses/:id:
@@ -726,8 +726,8 @@ Here's a full AI chat app in 12 lines:
 ```clear
 build for web and javascript backend
 
-when user sends data to /api/ask:
-  ask claude 'You are a helpful assistant.' with data's question
+when user sends query to /api/ask:
+  ask claude 'You are a helpful assistant.' with query's question
 
 page 'Chat' at '/':
   question = ''
@@ -834,8 +834,8 @@ agent 'Triage' receives ticket:
     summary is summary
   send back result
 
-when user sends data to /api/triage:
-  out = call 'Triage' with data's body
+when user sends triage to /api/triage:
+  out = call 'Triage' with triage's body
   send back out
 ```
 
@@ -994,14 +994,14 @@ create a Messages table:
   role, required
   content, required
 
-when user sends data to /api/chat:
+when user sends chat to /api/chat:
   create user_msg:
     role is 'user'
-    content is data's user_message
+    content is chat's user_message
   save user_msg as new Message
   create bot_msg:
     role is 'assistant'
-    content is 'Echo: ' + data's user_message
+    content is 'Echo: ' + chat's user_message
   save bot_msg as new Message
   send back bot_msg
 
@@ -1182,8 +1182,8 @@ would rather hurt your feelings now than let hackers hurt your users later.)
 ### Input Validation
 
 ```clear
-when user calls POST /api/users sending user_data:
-  validate user_data:
+when user calls POST /api/users sending user:
+  validate user:
     name is text, required, min 1, max 100
     email is text, required, matches email
     age is number, required
@@ -1232,19 +1232,19 @@ when user calls DELETE /api/posts/:id:
 ### Role-Based Access
 
 ```clear
-when user calls PUT /api/settings/:id sending data:
+when user calls PUT /api/settings/:id sending setting:
   requires role 'admin'
-  save data to Settings
-  send back data with success message
+  save setting to Settings
+  send back setting with success message
 ```
 
 ### Guards
 
 ```clear
-when user calls POST /api/orders sending order_data:
+when user calls POST /api/orders sending order:
   requires login
   guard stock is greater than 0 or 'Out of stock'
-  new_order = save order_data as new Order
+  new_order = save order as new Order
   send back new_order with success message
 ```
 
@@ -1327,7 +1327,7 @@ different. **Use them together, not instead of each other.**
 | Endpoint from anonymous users | `requires login` |
 | Endpoint from wrong role | `requires role 'admin'` |
 | Business rule (stock, plan, etc.) | `guard X or 'message'` |
-| Input shape (required fields, format) | `validate data:` + rules |
+| Input shape (required fields, format) | `validate <entity>:` + rules |
 | Agent from doing bad things | `must not:` + `block arguments matching` |
 | Whole app from dangerous patterns | App-level policies at top |
 | Endpoint from brute force | `rate limit N per minute` |
@@ -1335,16 +1335,16 @@ different. **Use them together, not instead of each other.**
 A real production endpoint layers multiple guards:
 
 ```clear
-when user calls POST /api/orders sending order_data:
+when user calls POST /api/orders sending order:
   requires login                                        # 1. auth
   requires role 'customer'                              # 2. role
   rate limit 30 per minute                              # 3. brute force
-  validate order_data:                                  # 4. input shape
+  validate order:                                  # 4. input shape
     product_id is number, required
     quantity is number, required, min 1, max 100
   guard user's plan is not 'free' or 'Upgrade to Pro'  # 5. business rule
   guard product's stock > 0 or 'Out of stock'          # 5. business rule
-  new_order = save order_data as new Order
+  new_order = save order as new Order
   send back new_order with success message
 ```
 
@@ -1364,17 +1364,17 @@ create a Users table:
   name, required
   email, required
 
-when user calls POST /api/users sending user_data:
-  new_user = save user_data as new User
+when user calls POST /api/users sending user:
+  new_user = save user as new User
   send back new_user with success message
 
 when user calls GET /api/users:
   all_users = get all Users
   send back all_users
 
-when user calls PUT /api/users/:id sending update_data:
+when user calls PUT /api/users/:id sending changes:
   requires login
-  save update_data to Users
+  save user to Users
   send back update_data with success message
 
 when user calls DELETE /api/users/:id:
@@ -1432,8 +1432,8 @@ to a specific user. You don't need to write the endpoint yourself.
 Search across all fields of a table with one line:
 
 ```clear
-when user calls GET /api/posts/search sending search_data:
-  results = search Posts for search_data's query
+when user calls GET /api/posts/search sending search:
+  results = search Posts for search's query
   send back results
 ```
 
@@ -2136,10 +2136,10 @@ Database first, then backend, then frontend. Always.
 **CRUD app (the most common):**
 ```clear
 # Create
-when user calls POST /api/items sending item_data:
-  validate item_data:
+when user calls POST /api/items sending item:
+  validate item:
     name is text, required
-  new_item = save item_data as new Item
+  new_item = save item as new Item
   send back new_item with success message
 
 # Read
@@ -2148,9 +2148,9 @@ when user calls GET /api/items:
   send back all_items
 
 # Update
-when user calls PUT /api/items/:id sending update_data:
+when user calls PUT /api/items/:id sending changes:
   requires login
-  save update_data to Items
+  save entry to Items
   send back update_data with success message
 
 # Delete
@@ -2341,7 +2341,7 @@ If the server crashes mid-workflow, the progress is in the database.
 Call it from an endpoint like any other function:
 
 ```clear
-when user calls POST /api/content sending data:
+when user calls POST /api/content sending content:
   result = run workflow 'Content Review' with data
   send back result
 ```
@@ -2838,10 +2838,10 @@ when user calls GET /api/projects:
   all_projects = get all Projects
   send back all_projects
 
-when user calls POST /api/projects sending project_data:
-  validate project_data:
+when user calls POST /api/projects sending project:
+  validate project:
     name is text, required, min 1, max 100
-  new_project = save project_data as new Project
+  new_project = save project as new Project
   send back new_project with success message
 
 when user calls DELETE /api/projects/:id:

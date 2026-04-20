@@ -55,7 +55,7 @@ page 'Clear Language' at '/':
   section 'Agents' with style section_light:
     heading 'AI Agents Built In'
     text 'Clear apps can call AI models mid-flow. Score leads, classify support tickets, moderate content, summarize documents -- all from readable code.'
-    code block 'agent \'Lead Scorer\' receives lead:\n  check lead\'s company is not missing, otherwise error \'Company is required\'\n  set lead\'s score to ask ai \'Rate 1-10 for enterprise potential.\' with lead\'s company\n  send back lead\n\nwhen user calls POST /api/score sending lead_data:\n  validate lead_data:\n    company is text, required\n    email is text, required\n  set scored to call \'Lead Scorer\' with lead_data\n  set saved to save scored as new Lead\n  send back saved with success message'
+    code block 'agent \'Lead Scorer\' receives lead:\n  check lead\'s company is not missing, otherwise error \'Company is required\'\n  set lead\'s score to ask ai \'Rate 1-10 for enterprise potential.\' with lead\'s company\n  send back lead\n\nwhen user calls POST /api/score sending lead:\n  validate lead:\n    company is text, required\n    email is text, required\n  set scored to call \'Lead Scorer\' with lead\n  set saved to save scored as new Lead\n  send back saved with success message'
     text 'The prompt is visible in the source. Your client can read it. You can audit it. No black-box AI.'
     text 'Chain multiple agents into pipelines: screen, then score, then summarize, then save.'
 

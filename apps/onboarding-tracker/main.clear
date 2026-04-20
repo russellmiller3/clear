@@ -50,35 +50,35 @@ when user requests data from /api/customers:
 when user requests data from /api/customers/onboarding:
   send back all Customers where status is 'onboarding'
 
-when user sends customer_data to /api/customers:
+when user sends customer to /api/customers:
   requires login
-  validate customer_data:
+  validate customer:
     name is text, required
     company is text, required
-  new_customer = save customer_data as new Customer
+  new_customer = save customer as new Customer
   send back new_customer with success message
 
-when user updates update_data at /api/customers/:id:
+when user updates customer at /api/customers/:id:
   requires login
-  save update_data to Customers
+  save customer to Customers
   send back 'updated' with success message
 
 when user requests data from /api/steps:
   send back all OnboardingSteps
 
-when user sends step_data to /api/steps:
+when user sends step to /api/steps:
   requires login
-  new_step = save step_data as new OnboardingStep
+  new_step = save step as new OnboardingStep
   send back new_step with success message
 
-when user updates step_update at /api/steps/:id:
+when user updates step at /api/steps/:id:
   requires login
-  save step_update to OnboardingSteps
+  save step to OnboardingSteps
   send back 'updated' with success message
 
 ## Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create c1:
     name is 'Priya Shah'
     company is 'Acme Corp'

@@ -259,7 +259,7 @@ greeting is 'Hello, ' + name
 **Use `=` for CRUD operations (v2 shorthand):**
 ```
 all_users = get all Users
-new_user = save user_data as new User
+new_user = save signup as new User
 ```
 
 **`define X as:` still works for complex expressions:**
@@ -318,7 +318,7 @@ what's happening without checking what the variable means.
 | Bad | Good |
 |-----|------|
 | `x = 5` | `total_items = 5` |
-| `r = save data as new Order` | `new_order = save data as new Order` |
+| `r = save order as new Order` | `new_order = save order as new Order` |
 | `t = current time` | `started_at = current time` |
 | `n = count of users` | `user_count = count of users` |
 | `data = get all Todos` | `all_todos = get all Todos` |
@@ -347,11 +347,11 @@ define function create_ticket(title, email_address):
 ### When you actually need an intermediate
 
 You need the variable when the save adds fields (like `id` or `created_at`)
-that you want to send back. `send back data` returns the input. `send back
+that you want to send back. `send back ticket` returns the input. `send back
 new_ticket` returns the full record with the auto-generated id.
 
 ```clear
-new_ticket = save data as new Ticket
+new_ticket = save ticket as new Ticket
 send back new_ticket with success message    # includes id, created_at
 ```
 
@@ -553,8 +553,8 @@ Two rules:
 
 ```clear
 // ✅ CORRECT — inline record literal
-when user sends data to /webhook/stripe:
-  save data to Events
+when user sends event to /webhook/stripe:
+  save event to Events
   send back { received is true }
 
 // ✅ Also correct — JSON-style colon separator
@@ -1092,17 +1092,17 @@ when user requests data from /api/users:
   all_users = get all Users
   send back all_users
 
-when user sends user_data to /api/users:
+when user sends signup to /api/users:
   requires login
-  validate user_data:
+  validate signup:
     name is text, required
     email is text, required, matches email
-  new_user = save user_data as new User
+  new_user = save signup as new User
   send back new_user with success message
 
-when user updates user_data at /api/users/:id:
+when user updates profile at /api/users/:id:
   requires login
-  save user_data to Users
+  save profile to Users
   send back 'updated'
 
 when user deletes user at /api/users/:id:
@@ -1117,8 +1117,8 @@ when user deletes user at /api/users/:id:
 **Do this:**
 ```
 when user requests data from /api/todos:       # GET
-when user sends todo_data to /api/todos:       # POST
-when user updates todo_data at /api/todos/:id: # PUT
+when user sends todo to /api/todos:            # POST — receiving var = singular entity name
+when user updates todo at /api/todos/:id:      # PUT
 when user deletes todo at /api/todos/:id:      # DELETE
 ```
 
@@ -1164,10 +1164,10 @@ Clear has **five different kinds of guards**. Each one protects a different thin
 **Use on:** Every endpoint that modifies data (POST/PUT/DELETE) and any endpoint that returns user-specific data.
 
 ```clear
-when user sends data to /api/todos:
+when user sends todo to /api/todos:
   requires login                    # <-- blocks unauthenticated requests with 401
-  save data as new Todo
-  send back data with success message
+  save todo as new Todo
+  send back todo with success message
 
 when user deletes todo at /api/todos/:id:
   requires login                    # <-- MANDATORY — compiler errors if missing
@@ -1205,7 +1205,7 @@ when user updates bookmark at /api/bookmarks/:id:
 **Use on:** Admin endpoints, moderator actions, anything role-gated.
 
 ```clear
-when user sends data to /api/admin/users:
+when user requests data from /api/admin/users:
   requires role 'admin'             # <-- must be logged in AND have role='admin'
   all_users = get all Users
   send back all_users
@@ -1220,12 +1220,12 @@ Pair with `define role 'editor':` to declare custom roles with specific permissi
 **Use on:** Any precondition that depends on data state.
 
 ```clear
-when user sends order_data to /api/orders:
+when user sends order to /api/orders:
   requires login
   guard product's stock is greater than 0 or 'Out of stock'
-  guard order_data's total is less than 10000 or 'Orders over $10k need manual approval'
-  guard user's plan is not 'free' or 'Upgrade to Pro to place orders'
-  save order_data as new Order
+  guard order's total is less than 10000 or 'Orders over $10k need manual approval'
+  guard current user's plan is not 'free' or 'Upgrade to Pro to place orders'
+  save order as new Order
 ```
 
 **Write custom messages that tell the user exactly what's wrong.** Don't say "Invalid request" — say "Upgrade to Pro to use this feature." The message is what the user sees on a 400 response.
@@ -1237,15 +1237,15 @@ when user sends order_data to /api/orders:
 **Use on:** Every POST/PUT endpoint that accepts user data.
 
 ```clear
-when user sends todo_data to /api/todos:
+when user sends todo to /api/todos:
   requires login
-  validate todo_data:
+  validate todo:
     title is text, required, min 1, max 500
     category is text, required, oneOf ['Work', 'Personal', 'Shopping']
     priority is number, min 1, max 5
     email is text, required, matches email
     phone is text, matches phone
-  save todo_data as new Todo
+  save todo as new Todo
 ```
 
 **Validation rules:**
@@ -1906,11 +1906,11 @@ when user requests data from /api/contacts:
   all_contacts = get all Contacts
   send back all_contacts
 
-when user sends contact_data to /api/contacts:
-  validate contact_data:
+when user sends contact to /api/contacts:
+  validate contact:
     name is text, required
     email is text, required, matches email
-  new_contact = save contact_data as new Contact
+  new_contact = save contact as new Contact
   send back new_contact with success message
 
 # Frontend
@@ -1953,9 +1953,9 @@ without filtering by user.
 
 ### Rate limit public endpoints
 ```
-when user sends contact_data to /api/contact:
+when user sends inquiry to /api/contact:
   rate limit 5 per minute
-  validate incoming:
+  validate inquiry:
     message is text, required
   send back 'sent'
 ```
@@ -2382,8 +2382,8 @@ reads chunks into `_state[X]` as they arrive. No `stream` keyword required:
 
 ```clear
 # Backend: streams by default
-when user sends data to /api/ask:
-  ask claude 'You are helpful.' with data's question
+when user sends query to /api/ask:
+  ask claude 'You are helpful.' with query's question
 
 # Frontend: get ... with ... auto-streams when target is a streaming endpoint
 page 'Chat' at '/':
@@ -2838,7 +2838,7 @@ Errors propagate to the nearest `try/if error` handler, or crash if uncaught.
 Cleanup code that always runs after try/catch:
 ```
 try:
-  save data as new Order
+  save order as new Order
 if error:
   show error's message
 finally:

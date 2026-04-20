@@ -17,19 +17,19 @@ when user calls GET /api/tasks:
   all_tasks = get all Tasks
   send back all_tasks
 
-when user calls POST /api/tasks sending task_data:
-  validate task_data:
+when user calls POST /api/tasks sending task:
+  validate task:
     title is text, required, min 1, max 200
     status is text
     priority is text
     assigned_to is text
-  new_task = save task_data as new Task
+  new_task = save task as new Task
   send back new_task with success message
 
-when user calls PUT /api/tasks/:id sending update_data:
+when user calls PUT /api/tasks/:id sending task:
   requires login
-  save update_data to Tasks
-  send back update_data with success message
+  save task to Tasks
+  send back task with success message
 
 when user calls DELETE /api/tasks/:id:
   requires login

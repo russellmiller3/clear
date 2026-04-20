@@ -26,12 +26,12 @@ agent 'Summarizer' receives candidate:
   set candidate's summary to ask ai 'Write a 2-sentence hiring recommendation.' with candidate's experience
   send back candidate
 
-when user calls POST /api/apply sending candidate_data:
-  validate candidate_data:
+when user calls POST /api/apply sending candidate:
+  validate candidate:
     name is text, required
     role is text, required
     experience is text, required
-  set screened to call 'Screener' with candidate_data
+  set screened to call 'Screener' with candidate
   set scored to call 'Scorer' with screened
   set summarized to call 'Summarizer' with scored
   set saved to save summarized as new Candidate

@@ -29,16 +29,16 @@ when user calls GET /api/models:
   all_models = get all Models
   send back all_models
 
-when user calls POST /api/models sending model_data:
-  validate model_data:
+when user calls POST /api/models sending model:
+  validate model:
     name is text, required, min 1, max 100
-  new_model = save model_data as new Model
+  new_model = save model as new Model
   send back new_model with success message
 
-when user calls PUT /api/models/:id sending update_data:
+when user calls PUT /api/models/:id sending model:
   requires login
-  save update_data to Models
-  send back update_data with success message
+  save model to Models
+  send back model with success message
 
 when user calls DELETE /api/models/:id:
   requires login

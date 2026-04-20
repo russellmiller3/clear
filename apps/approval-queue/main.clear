@@ -4,7 +4,7 @@ Approval Queue — submit requests, route to approver, approve or reject
   ┌──────────┐  submit   ┌──────────┐  save   ┌──────────┐
   │ Submitter│ ────────► │  Server  │ ──────► │ Requests │
   └──────────┘           └──────────┘         └──────────┘
-  ┌──────────┐  approve  ┌──────────┐  update      │
+  ┌──────────┐  approve  ┌──────────┐  request      │
   │ Approver │ ────────► │  Server  │ ─────────────┘
   └──────────┘           └──────────┘
                                  │
@@ -42,21 +42,21 @@ when user requests data from /api/requests:
 when user requests data from /api/requests/pending:
   send back all Requests where status is 'pending'
 
-when user sends request_data to /api/requests:
-  validate request_data:
+when user sends request to /api/requests:
+  validate request:
     title is text, required, min 1, max 200
     amount is number, min 0
-  new_request = save request_data as new Request
+  new_request = save request as new Request
   send back new_request with success message
 
-when user updates update_data at /api/requests/:id:
+when user updates request at /api/requests/:id:
   requires login
-  save update_data to Requests
+  save request to Requests
   send back 'updated' with success message
 
 ## Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create r1:
     title is 'Quarterly software budget — Acme Corp'
     description is 'Standard renewal, 15 seats'

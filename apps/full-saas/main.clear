@@ -83,15 +83,15 @@ page 'Sign Up' at '/signup':
 
 # --- Backend: Auth ---
 
-when user calls POST /api/auth/signup receiving signup_data:
-  validate signup_data:
+when user calls POST /api/auth/signup receiving signup:
+  validate signup:
     email is text, required, matches email
     name is text, required, min 1
-  define new_user as: save signup_data as User
+  define new_user as: save signup as User
   send back new_user status 201
 
-when user calls POST /api/auth/login receiving login_data:
-  validate login_data:
+when user calls POST /api/auth/login receiving login:
+  validate login:
     email is text, required
   send back 'token'
 
@@ -102,11 +102,11 @@ when user calls GET /api/projects:
   define all_projects as: look up all records in Project table
   send back all_projects
 
-when user calls POST /api/projects receiving project_data:
+when user calls POST /api/projects receiving project:
   this endpoint requires login
-  validate project_data:
+  validate project:
     name is text, required, min 1, max 100
-  define new_project as: save project_data as Project
+  define new_project as: save project as Project
   send back new_project status 201
 
 when user calls DELETE /api/projects/:id:
@@ -116,11 +116,11 @@ when user calls DELETE /api/projects/:id:
 
 # --- Backend: API Keys ---
 
-when user calls POST /api/keys receiving key_data:
+when user calls POST /api/keys receiving key:
   this endpoint requires login
-  validate key_data:
+  validate key:
     project_id is text, required
-  define new_key as: save key_data as ApiKey
+  define new_key as: save key as ApiKey
   send back new_key status 201
 
 # --- Backend: Billing Webhook ---
