@@ -520,29 +520,32 @@ when user calls GET /api/workspaces/:id/items:
 **Don't restate the path param into a local variable.** The `:id` in the URL is already available as `this id` — no boilerplate.
 
 ```clear
-// ❌ WRONG — redundant lookup variable
+// ❌ WRONG — redundant lookup + generic `data` + self-assigning where
 when user updates data at /api/bookmarks/:id:
   requires login
   id = path id                                        // don't do this
-  bookmark = get from Bookmarks where id is id       // don't do this — 'is' between two identical words is unreadable
+  bookmark = get from Bookmarks where id is id       // 'is' between two identical words is unreadable
   update bookmark with data
 
-// ✅ RIGHT — the compiler auto-injects the URL `:id` into `save ... to Table` in PUT bodies
-when user updates data at /api/bookmarks/:id:
+// ✅ RIGHT — entity name as the receiving var, compiler auto-injects `:id` into save
+when user updates bookmark at /api/bookmarks/:id:
   requires login
-  save data to Bookmarks
+  save bookmark to Bookmarks
   send back 'updated'
 
 // ✅ RIGHT — when you actually need the record in hand (e.g. validating before write)
-when user updates data at /api/bookmarks/:id:
+when user updates bookmark at /api/bookmarks/:id:
   requires login
-  bookmark = look up Bookmark with this id
-  guard bookmark's owner is current user or 'not yours'
-  save data to Bookmarks
+  existing = look up Bookmark with this id
+  guard existing's owner is current user or 'not yours'
+  save bookmark to Bookmarks
   send back 'updated'
 ```
 
-The rule: **never write `where field is field`** — the reader can't tell which side is the column and which is the variable. If you need the URL id in a filter, write `where owner_id is this user_id` (distinct words) or use the `with this id` shorthand.
+Two rules:
+
+- **Never use `data` as the receiving variable.** It's on the banned-names list alongside `tmp`, `val`, `obj`, `item`. Use the singular lowercase entity name instead (`bookmark`, `todo`, `contact`). For the Users table, `user` collides with `current user` — pick something distinctive like `profile`, `signup`, or `account` depending on context.
+- **Never write `where field is field`.** The reader can't tell which side is the column and which is the variable. If you need the URL id in a filter, write `where owner_id is this user_id` (distinct words) or use the `with this id` shorthand.
 
 ## Inline Records for `send back` (Session 38)
 
@@ -1183,14 +1186,14 @@ The compiler accepts it in other positions today (legacy behavior) but every tem
 
 ```clear
 // ✅ CORRECT
-when user updates data at /api/bookmarks/:id:
+when user updates bookmark at /api/bookmarks/:id:
   requires login
-  save data to Bookmarks
+  save bookmark to Bookmarks
   send back 'updated'
 
 // ❌ WRONG — the reader has to scan the whole body to find the auth check
-when user updates data at /api/bookmarks/:id:
-  save data to Bookmarks
+when user updates bookmark at /api/bookmarks/:id:
+  save bookmark to Bookmarks
   requires login
   send back 'updated'
 ```
