@@ -372,3 +372,37 @@ When Meph fails at a task, the failure is not just data for the Factor DB — it
 ## Real-LLM Eval Before Declaring AI Feature Done (MANDATORY)
 
 For any feature whose behavior depends on an LLM — system prompts, tool-use routing, Meph tools, agent flows, Claude-in-the-loop helpers — write a real-LLM eval harness alongside the unit tests and run it before declaring the feature done. Unit tests with mocked LLM responses prove the plumbing; only the real model proves the feature. Minimum scenario set: happy path, edge cases (required fields, ambiguous inputs), explicit refusals, and at least one adversarial/social-engineering input. Iterate on the prompt until all scenarios pass on real Claude. Mocks hide the failure modes that matter most — tool mis-routing, reflexive refusals, and prompt-injection-style slips.
+
+## Maintaining This File (MANDATORY)
+
+This is the project-level rule file for Clear. The global rules (voice, format, Node/Anthropic gotchas, cross-project engineering defaults) live in `~/.claude/CLAUDE.md`.
+
+**To add a project rule:**
+- `/rule <text>` — slash command that appends a new `## Section Title (MANDATORY)` rule to this file, matching existing style.
+- Prefer `/rule` over hand-editing when possible.
+
+**To promote a rule to global (applies to all projects):**
+- `/user-rule <text>` — appends to `~/.claude/CLAUDE.md` instead.
+- Rule of thumb: if it's about Clear's compiler/language/Studio/Meph/Marcus, keep it here. If it's about how to write code, ship, talk to Russell, or avoid Node/Windows/Anthropic-API traps generally, promote it to global.
+
+**When to add a rule (the Getty bar — see `~/.claude/CLAUDE.md`):**
+- Every session where a bug cost >30 min → one new rule OR one updated rule. End of session, not "someday."
+- If the answer to "will this bite me again?" is "probably yes," make it a fucking rule.
+- Phrase as NEGATIVE assertions when possible ("never do X").
+
+**Where else lessons go (not rules):**
+- **`learnings.md`** — long-form bug stories. Narrative: "we hit X, root cause was Y, fix was Z, gotcha to remember is W." One block per session where something broke.
+- **`FAQ.md`** — "Where does X live?" / "How do I Y?" / "Why did we Z?" — Q&A format for subsystem navigation.
+- **`RESEARCH.md`** — RL / flywheel / re-ranker / training-signal design notes. Theory + architecture + progress tracking.
+- **`HANDOFF.md`** — session-pickup state. Rewritten at end of each meaningful session.
+- **`ROADMAP.md`** — phases complete, what's next. Single source of truth for "what Clear can do."
+
+**Imperative vs narrative:** rules are imperative ("always do X", "never do Y"). Learnings are narrative ("we hit this, here's how we recovered"). Don't mix — they rot differently and get read for different reasons.
+
+**When to update an existing rule:**
+- Russell corrects an approach → update the existing rule, don't add a near-duplicate.
+- Rule keeps getting violated → re-phrase as a negative, or tighten the trigger condition.
+
+**When to DELETE a rule:**
+- Rule has been stable for 6+ months with zero violations → promotion-by-deletion (it's become default behavior; remove the explicit rule to reduce cognitive load).
+- Rules that duplicate each other → merge into one.
