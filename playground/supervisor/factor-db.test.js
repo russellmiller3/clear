@@ -135,6 +135,38 @@ describe('FactorDB', () => {
     cleanup();
   });
 
+  it('logHintUsage updates hint_applied / hint_tier / hint_helpful / hint_reason', () => {
+    cleanup();
+    const db = new FactorDB(TEST_DB);
+    const id = db.logAction({
+      session_id: 's1', archetype: 'api_service', error_sig: 'e1',
+      file_state_hash: 'h', source_before: 'build for javascript backend\n',
+      patch_ops: [], patch_summary: 'Compile error',
+      compile_ok: 0, test_pass: 0, test_score: 0.0,
+    });
+    // Applied a hint
+    db.logHintUsage(id, { applied: true, tier: 'exact_error', helpful: 'yes' });
+    let row = db._db.prepare('SELECT hint_applied, hint_tier, hint_helpful, hint_reason FROM code_actions WHERE id = ?').get(id);
+    expect(row.hint_applied).toEqual(1);
+    expect(row.hint_tier).toEqual('exact_error');
+    expect(row.hint_helpful).toEqual('yes');
+    expect(row.hint_reason).toEqual(null);
+
+    // Skipped a hint (applied=false, with reason)
+    const id2 = db.logAction({
+      session_id: 's2', archetype: 'agent_workflow', error_sig: 'e2',
+      file_state_hash: 'h2', source_before: 'build for javascript backend\n',
+      patch_ops: [], patch_summary: 'Compile error',
+      compile_ok: 0, test_pass: 0, test_score: 0.0,
+    });
+    db.logHintUsage(id2, { applied: false, reason: 'wrong archetype' });
+    row = db._db.prepare('SELECT hint_applied, hint_tier, hint_helpful, hint_reason FROM code_actions WHERE id = ?').get(id2);
+    expect(row.hint_applied).toEqual(0);
+    expect(row.hint_reason).toEqual('wrong archetype');
+    db.close();
+    cleanup();
+  });
+
   it('creates a GA run and logs candidates', () => {
     cleanup();
     const db = new FactorDB(TEST_DB);

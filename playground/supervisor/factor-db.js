@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS code_actions (
   step_index       INTEGER,
   step_name        TEXT,
   embedding        BLOB,
+  -- Hint-usage tracking. NULL = no hints were in the compile result for this
+  -- row. Populated from Meph's HINT_APPLIED tag in his response text.
+  hint_applied     INTEGER,        -- 1 = Meph used a hint, 0 = hints present but skipped, NULL = no hints
+  hint_tier        TEXT,           -- exact tier label Meph cited (or NULL)
+  hint_helpful     TEXT,           -- yes|no|partial (or NULL)
+  hint_reason      TEXT,           -- short reason when applied=0 (or NULL)
   created_at       INTEGER NOT NULL
 );
 
@@ -99,6 +105,31 @@ export class FactorDB {
     // On a fresh DB, step_index was created by the SCHEMA CREATE TABLE above.
     // On an existing DB, it was just added by the ALTER statements.
     this._db.exec('CREATE INDEX IF NOT EXISTS idx_step ON code_actions(task_type, step_index, test_pass)');
+    // Migration: hint-usage tracking columns. Existing rows get NULL — they
+    // predate the tracking system and that's fine; new rows populate as
+    // Meph emits HINT_APPLIED tags.
+    if (!cols.some(c => c.name === 'hint_applied')) {
+      this._db.exec('ALTER TABLE code_actions ADD COLUMN hint_applied INTEGER');
+      this._db.exec('ALTER TABLE code_actions ADD COLUMN hint_tier TEXT');
+      this._db.exec('ALTER TABLE code_actions ADD COLUMN hint_helpful TEXT');
+      this._db.exec('ALTER TABLE code_actions ADD COLUMN hint_reason TEXT');
+    }
+  }
+
+  // Update hint-usage columns on an existing row. Called by the server after
+  // it parses HINT_APPLIED from Meph's response text for the compile cycle
+  // that surfaced hints. `applied` is 0/1; tier/helpful/reason may be null.
+  logHintUsage(rowId, { applied = null, tier = null, helpful = null, reason = null } = {}) {
+    if (!rowId) return;
+    this._db.prepare(
+      `UPDATE code_actions SET hint_applied = ?, hint_tier = ?, hint_helpful = ?, hint_reason = ? WHERE id = ?`
+    ).run(
+      applied === null ? null : (applied ? 1 : 0),
+      tier,
+      helpful,
+      reason,
+      rowId
+    );
   }
 
   logAction({ session_id, task_type = null, archetype = null, error_sig = null, file_state_hash = null,
