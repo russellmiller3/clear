@@ -207,6 +207,135 @@ export function exportTrainingData({ dbPath = DB_PATH } = {}) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Pairwise feature export.
+//
+// Pointwise regression on test_score has a ceiling — it can't distinguish
+// "this fix is good in general" from "this fix is good for MEPH'S CURRENT
+// ERROR". Pairwise ranking fixes that: for each (error_row E, fix_row F)
+// pair, compute features that COMPARE E to F, then train to prefer pairs
+// where F actually resolved E over pairs where F is an unrelated fix.
+//
+// Positive pair: (E=compile_ok=0, F=next compile_ok=1 in same session).
+//   The session tells us F resolved E — it's the ground truth.
+// Negative pair: (E=same error, F=random passing row from a different session).
+//   F has no known relationship to E — the model learns that non-matching
+//   archetype / error-category / source-shape is a weak signal.
+//
+// Features are intentionally small (6) to match our data scale (~200 passing
+// rows). More features = overfitting. Grow them as the DB grows.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Simple token-set Jaccard for source similarity. Keyword overlap is a cheap
+// proxy for structural similarity — two webhook sources share "webhook",
+// "payload", "signature"; two CRUD sources share "save", "find all".
+function jaccard(a, b) {
+  if (!a || !b) return 0;
+  const tokA = new Set(a.toLowerCase().split(/[^a-z0-9_]+/).filter(t => t.length > 1));
+  const tokB = new Set(b.toLowerCase().split(/[^a-z0-9_]+/).filter(t => t.length > 1));
+  if (tokA.size === 0 || tokB.size === 0) return 0;
+  let inter = 0;
+  for (const t of tokA) if (tokB.has(t)) inter++;
+  const union = tokA.size + tokB.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+// For a fix row F, look up the error it was known to resolve — the row
+// immediately BEFORE F in the same session. This lets us ask "does F fix
+// the kind of error E is having?"
+function targetErrorCategory(fixRow, sessionRows) {
+  const idx = sessionRows.findIndex(r => r.id === fixRow.id);
+  if (idx <= 0) return 'none';
+  return classifyError(sessionRows[idx - 1].patch_summary || '');
+}
+
+function featurizePair(errorRow, fixRow, fixSessionRows, label) {
+  const errorCategory = classifyError(errorRow.patch_summary || '');
+  const fixTarget = targetErrorCategory(fixRow, fixSessionRows);
+  return {
+    // === Pairwise comparison features ===
+    archetype_match: errorRow.archetype === fixRow.archetype ? 1 : 0,
+    error_sig_exact: errorRow.error_sig && errorRow.error_sig === fixRow.error_sig ? 1 : 0,
+    error_category_match: errorCategory !== 'none' && errorCategory === fixTarget ? 1 : 0,
+    source_jaccard: Number(jaccard(errorRow.source_before || '', fixRow.source_before || '').toFixed(4)),
+    step_delta: Math.abs(
+      (typeof errorRow.step_index === 'number' ? errorRow.step_index : 0) -
+      (typeof fixRow.step_index === 'number' ? fixRow.step_index : 0)
+    ),
+    fix_test_score: fixRow.test_score || 0,
+
+    // === Label ===
+    label,
+
+    // === Metadata (not for training) ===
+    _error_id: errorRow.id,
+    _fix_id: fixRow.id,
+    _error_sig: errorRow.error_sig || null,
+    _error_category: errorCategory,
+    _fix_target_category: fixTarget,
+  };
+}
+
+export function exportPairwiseData({ dbPath = DB_PATH, negativesPerPositive = 3, seed = 42 } = {}) {
+  const db = new FactorDB(dbPath);
+  try {
+    const rows = db._db.prepare('SELECT * FROM code_actions ORDER BY session_id, created_at ASC').all();
+
+    // Group rows by session so we can walk each session's trajectory.
+    const bySession = {};
+    for (const row of rows) {
+      if (!bySession[row.session_id]) bySession[row.session_id] = [];
+      bySession[row.session_id].push(row);
+    }
+
+    // Pool of passing rows with real source — used for negative sampling.
+    const passingPool = rows.filter(r =>
+      r.compile_ok === 1 && r.test_pass === 1 &&
+      r.source_before && r.source_before.length > 50
+    );
+
+    // Deterministic PRNG (LCG) so exports are reproducible across runs
+    let rngState = seed;
+    const rand = () => {
+      rngState = (rngState * 1664525 + 1013904223) % 4294967296;
+      return rngState / 4294967296;
+    };
+
+    const pairs = [];
+    for (const [sid, sessRows] of Object.entries(bySession)) {
+      for (let i = 0; i < sessRows.length; i++) {
+        const errorRow = sessRows[i];
+        if (errorRow.compile_ok !== 0) continue;
+
+        // Find the next compile_ok=1 row in this session with real source
+        const fixRow = sessRows.slice(i + 1).find(x =>
+          x.compile_ok === 1 && x.source_before && x.source_before.length > 50
+        );
+        if (!fixRow) continue;
+
+        // Positive pair
+        pairs.push(featurizePair(errorRow, fixRow, sessRows, 1));
+
+        // K negatives from a different session
+        for (let n = 0; n < negativesPerPositive; n++) {
+          let neg = null;
+          for (let attempts = 0; attempts < 10; attempts++) {
+            const pick = passingPool[Math.floor(rand() * passingPool.length)];
+            if (pick && pick.session_id !== sid) { neg = pick; break; }
+          }
+          if (!neg) continue;
+          const negSessionRows = bySession[neg.session_id] || [neg];
+          pairs.push(featurizePair(errorRow, neg, negSessionRows, 0));
+        }
+      }
+    }
+
+    return pairs;
+  } finally {
+    db.close();
+  }
+}
+
 export function summarize(examples) {
   const total = examples.length;
   const byArchetype = {};
@@ -239,6 +368,36 @@ if (pathToFileURL(_thisFile).href === _entryFile) {
   const argv = process.argv.slice(2);
   const outArg = argv.find(a => a.startsWith('--out='));
   const statsOnly = argv.includes('--stats');
+  const pairwise = argv.includes('--pairwise');
+  const negArg = argv.find(a => a.startsWith('--negatives='));
+  const negatives = negArg ? parseInt(negArg.split('=')[1], 10) : 3;
+
+  // Pairwise export: different output shape (label 0/1), different stats
+  if (pairwise) {
+    const pairs = exportPairwiseData({ negativesPerPositive: negatives });
+    const positives = pairs.filter(p => p.label === 1).length;
+    const negatives_n = pairs.filter(p => p.label === 0).length;
+    const archMatch = pairs.filter(p => p.archetype_match === 1).length;
+    const errCatMatch = pairs.filter(p => p.error_category_match === 1).length;
+
+    if (statsOnly) {
+      console.log(JSON.stringify({
+        pairs: pairs.length, positives, negatives: negatives_n,
+        archetype_match_pct: pairs.length ? (archMatch / pairs.length * 100).toFixed(1) + '%' : '0%',
+        error_category_match_pct: pairs.length ? (errCatMatch / pairs.length * 100).toFixed(1) + '%' : '0%',
+      }, null, 2));
+      process.exit(0);
+    }
+    const jsonl = pairs.map(p => JSON.stringify(p)).join('\n');
+    if (outArg) {
+      const outPath = outArg.split('=')[1];
+      writeFileSync(outPath, jsonl);
+      console.error(`Wrote ${pairs.length} pairs (${positives} pos, ${negatives_n} neg) to ${outPath}`);
+    } else {
+      process.stdout.write(jsonl);
+    }
+    process.exit(0);
+  }
 
   const examples = exportTrainingData();
 
