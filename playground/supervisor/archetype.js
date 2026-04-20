@@ -231,6 +231,14 @@ export function classifyArchetype(program) {
     // also have /health or /admin alongside the real webhook.)
     if (hasWebhookPath(body) || hasSignatureVerification(body)) return 'webhook_handler';
 
+    // Agent/realtime beat the api_service catch-all even with no pages —
+    // the distinctive signal is the agent or websocket, not the endpoint.
+    // Before this fix, backend-only agent APIs and realtime services were
+    // swept into api_service, starving the retriever of archetype-specific
+    // examples (agent syntax errors were matching table/endpoint fixes).
+    if (hasAgent(body)) return 'agent_workflow';
+    if (hasRealtime(body)) return 'realtime_app';
+
     // Multiple endpoints, no UI → pure API service
     if (numEndpoints > 0) return 'api_service';
 
