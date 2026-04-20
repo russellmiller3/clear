@@ -94,16 +94,10 @@ when user subscribes to updates:
   },
 ];
 
-const PROMPT_TEMPLATE = (source) => `I wrote this Clear code and it has a compile error. Please:
-
-1. Call the compile tool to see the error.
-2. If the compile result includes a 'hints' field with past-fix references, ANNOUNCE what you saw using this exact format before fixing:
-   HINTS: saw <N> references, top tier=<tier label>, <one-sentence opinion on whether they look useful>
-3. If hints were NOT included, say: HINTS: none
-4. Then fix the code and show me the corrected version.
-5. Finish with: WAS_HINT_HELPFUL: yes / no / partial  —  <one-sentence reason>
-
-Be honest. If the hints were irrelevant, misleading, or pointed at the wrong problem, say so.
+// Short prompt — the system prompt (playground/system-prompt.md) already
+// mandates the HINT_APPLIED tag. We just ask for a fix and let Meph's
+// default behavior emit the machine-parseable announcement.
+const PROMPT_TEMPLATE = (source) => `This Clear code has a compile error. Please call compile, read any hints in the result, then fix the code. Follow your normal hint-announcement protocol.
 
 Code:
 \`\`\`clear
@@ -169,14 +163,30 @@ async function askMeph(userPrompt, editorContent) {
   return { finalText, toolCalls };
 }
 
-// Parse the structured self-report out of Meph's text
+// Parse Meph's HINT_APPLIED tag — the machine-readable line mandated by the
+// system prompt. Returns { applied: bool, tier: str|null, helpful: str|null,
+// reason: str|null, raw: str|null }.
 function parseSelfReport(text) {
-  const announced = text.match(/HINTS:\s*([^\n]+)/i);
-  const opinion = text.match(/WAS_HINT_HELPFUL:\s*([^\n]+)/i);
+  const line = text.match(/HINT_APPLIED:\s*([^\n]+)/i);
+  if (!line) {
+    return { applied: null, tier: null, helpful: null, reason: null, raw: null, sawHintsSelf: false };
+  }
+  const body = line[1].trim();
+  const appliedWord = body.match(/^(yes|no)/i);
+  const tier = body.match(/tier=([a-z_]+)/i);
+  const helpful = body.match(/helpful=([a-z]+)/i);
+  const reason = body.match(/reason=([^,\n]+)/i);
+  const applied = appliedWord ? /^yes/i.test(appliedWord[1]) : null;
   return {
-    announced: announced ? announced[1].trim() : null,
-    opinion: opinion ? opinion[1].trim() : null,
-    sawHintsSelf: !!(announced && !/^none/i.test(announced[1].trim())),
+    applied,
+    tier: tier ? tier[1] : null,
+    helpful: helpful ? helpful[1].toLowerCase() : null,
+    reason: reason ? reason[1].trim() : null,
+    raw: body,
+    // Meph "saw" hints if he emitted the tag AT ALL — whether he applied them
+    // or rejected them. The only real mismatch is emitting the tag when no
+    // hints were injected (hallucinated) or failing to emit it when they were.
+    sawHintsSelf: applied !== null,
   };
 }
 
@@ -238,16 +248,24 @@ async function main() {
           name: scn.name,
           dur,
           serverHint: hintLine || '(no hints injected)',
-          announced: selfReport.announced || '(no announcement parsed)',
-          opinion: selfReport.opinion || '(no opinion parsed)',
+          tagRaw: selfReport.raw || '(no HINT_APPLIED tag emitted)',
+          applied: selfReport.applied,
+          tier: selfReport.tier,
+          helpful: selfReport.helpful,
+          reason: selfReport.reason,
           agreement,
           toolCalls: toolCalls.join(', ') || '(none)',
           responseSample: finalText.slice(0, 300).replace(/\n/g, ' '),
           errorBail: null,
         };
         console.log(`   server says: ${outcome.serverHint}`);
-        console.log(`   meph says:   ${outcome.announced}`);
-        console.log(`   was helpful: ${outcome.opinion}`);
+        console.log(`   meph tag:    HINT_APPLIED: ${outcome.tagRaw}`);
+        const summary = outcome.applied === true
+          ? `applied=yes tier=${outcome.tier || '?'} helpful=${outcome.helpful || '?'}`
+          : outcome.applied === false
+            ? `applied=no reason=${outcome.reason || '(unset)'}`
+            : '(no tag)';
+        console.log(`   meph says:   ${summary}`);
         console.log(`   consistency: ${outcome.agreement}  (${dur}s, tools=[${outcome.toolCalls}])`);
       } catch (err) {
         anyWeirdness = true;
@@ -263,11 +281,10 @@ async function main() {
     console.log('SUMMARY');
     console.log('═'.repeat(72));
     for (const r of results) {
-      const tier = r.serverHint ? (r.serverHint.match(/top_tier=(\S+)/)?.[1] || 'none') : 'bail';
-      const announce = (r.announced || '-').replace(/\s+/g, ' ').slice(0, 45);
-      console.log(`  ${r.name.padEnd(38)} tier=${tier.padEnd(26)} [${r.agreement}]`);
-      console.log(`    announce: "${announce}"`);
-      console.log(`    helpful:  "${(r.opinion || '-').replace(/\s+/g, ' ').slice(0, 60)}"`);
+      const serverTier = r.serverHint ? (r.serverHint.match(/top_tier=(\S+)/)?.[1] || 'none') : 'bail';
+      const appliedStr = r.applied === true ? 'yes' : r.applied === false ? 'no' : '?';
+      console.log(`  ${r.name.padEnd(38)} server_tier=${serverTier.padEnd(26)} [${r.agreement}]`);
+      console.log(`    applied=${appliedStr} tier=${r.tier || '-'} helpful=${r.helpful || '-'}${r.reason ? ' reason="' + r.reason.slice(0, 50) + '"' : ''}`);
     }
     console.log('═'.repeat(72));
 

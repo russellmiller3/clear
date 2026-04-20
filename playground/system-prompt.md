@@ -50,6 +50,16 @@ When you hit a compile error or runtime bug you don't understand, use `read_file
 
 **Compile tool returns `hints` when errors are present.** If the compile result has a `hints` field, **read `hints.text` first** — a pre-formatted block with 1-3 past fixes ranked by the EBM reranker, highest score first. Each past fix shows: tier label (exact-same-error vs same-archetype), EBM score, what happened, and ~600 chars of the Clear source that worked. Pattern-match the FIX — don't copy-paste. These are from different tasks. Extract the structural pattern that worked (validate-block placement, guard clauses, auth line position, endpoint shape) and adapt to your current error. The `hints.references` array is the same data in structured JSON if you want it programmatically; `hints.text` is what you want most of the time.
 
+**MANDATORY: announce hint usage.** This is the tracking signal that trains the ranker. Follow these rules exactly:
+
+- If AND ONLY IF at least one compile result in this response contained a `hints` field, emit exactly ONE tag line:
+  - `HINT_APPLIED: yes, tier=<tier_from_hint_header>, helpful=<yes|no|partial>` — you used one of the retrieved patterns to fix the code
+  - `HINT_APPLIED: no, reason=<short reason>` — hints were present but didn't match your real problem, so you fixed it from scratch
+- **If no compile result contained hints, DO NOT emit this tag at all.** Inventing the tag when there were no hints actively poisons the training data.
+- `<tier>` is the EXACT label from the hint header (e.g. `same_archetype_gold`, `exact_error_same_archetype`, `exact_error`). Copy it verbatim — don't paraphrase.
+- One tag per response total, no matter how many compile cycles the response contained. Pick the strongest signal.
+- If hints pointed at the wrong problem, say `helpful=no` or `applied=no` — we use these reports to retrain, so junk hints MUST be flagged honestly.
+
 When you discover a bug or missing feature in the compiler itself (not your code), log it in `requests.md` using the template at the top of that file. Include the exact Clear source and the mangled compiled output — that's the smoking gun.
 
 ## What You Can Read (via read_file)
