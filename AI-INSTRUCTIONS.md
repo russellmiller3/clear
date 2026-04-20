@@ -517,6 +517,33 @@ when user calls GET /api/workspaces/:id/items:
   items = get all Items where workspace_id is id
 ```
 
+**Don't restate the path param into a local variable.** The `:id` in the URL is already available as `this id` — no boilerplate.
+
+```clear
+// ❌ WRONG — redundant lookup variable
+when user updates data at /api/bookmarks/:id:
+  requires login
+  id = path id                                        // don't do this
+  bookmark = get from Bookmarks where id is id       // don't do this — 'is' between two identical words is unreadable
+  update bookmark with data
+
+// ✅ RIGHT — the compiler auto-injects the URL `:id` into `save ... to Table` in PUT bodies
+when user updates data at /api/bookmarks/:id:
+  requires login
+  save data to Bookmarks
+  send back 'updated'
+
+// ✅ RIGHT — when you actually need the record in hand (e.g. validating before write)
+when user updates data at /api/bookmarks/:id:
+  requires login
+  bookmark = look up Bookmark with this id
+  guard bookmark's owner is current user or 'not yours'
+  save data to Bookmarks
+  send back 'updated'
+```
+
+The rule: **never write `where field is field`** — the reader can't tell which side is the column and which is the variable. If you need the URL id in a filter, write `where owner_id is this user_id` (distinct words) or use the `with this id` shorthand.
+
 ## Inline Records for `send back` (Session 38)
 
 `send back { field is value, other is value }` returns an inline record literal. Use this for JSON-shaped responses like webhook receipts, health checks, or summary endpoints. Both `is` and `:` separators work.
@@ -531,11 +558,11 @@ when user sends data to /webhook/stripe:
 when user requests data from /api/health:
   send back { ok: true, version: '1.0' }
 
-// ✅ Multi-field
+// ✅ Multi-field — descriptive names so response fields and local vars don't collide
 when user requests data from /api/stats:
-  count = count of Orders
-  total = sum of amount from Orders
-  send back { total is total, count is count }
+  order_count = count of Orders
+  revenue = sum of amount from Orders
+  send back { total is revenue, count is order_count }
 ```
 
 Equivalent multi-line block form (also works, use when fields need computation):
@@ -1146,6 +1173,27 @@ when user deletes todo at /api/todos/:id:
 ```
 
 **When you forget it on a DELETE or PUT endpoint, the compiler refuses to build.** That's not a warning — it's a compile error. Security is not optional.
+
+**`requires login` goes on the FIRST line of the endpoint body.** Always. Two reasons:
+
+1. **Readability at a glance.** When `requires login` is always line 1, you can scan a file of 50 endpoints and instantly see which ones are gated. If it could appear mid-body, you'd have to read every line of every endpoint to know.
+2. **What you read is what runs.** Clear's one-line-one-operation rule says source order = execution order. If `requires login` could appear after data loads but the compiler silently reordered it to run first, the source stops describing what actually happens.
+
+The compiler accepts it in other positions today (legacy behavior) but every template and example puts it first. Write it first. Enforce it in code review.
+
+```clear
+// ✅ CORRECT
+when user updates data at /api/bookmarks/:id:
+  requires login
+  save data to Bookmarks
+  send back 'updated'
+
+// ❌ WRONG — the reader has to scan the whole body to find the auth check
+when user updates data at /api/bookmarks/:id:
+  save data to Bookmarks
+  requires login
+  send back 'updated'
+```
 
 ### 2. `requires role 'name'` — Which logged-in users can call this
 
