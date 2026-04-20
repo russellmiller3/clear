@@ -12,10 +12,20 @@ import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './e
 import { wireDeploy } from './deploy.js';
 import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
-import { loadBundle as _loadEBM, rank as _rankEBM, featurizeFactorRow as _featurizeRow } from './supervisor/ebm-scorer.js';
+import {
+  loadBundle as _loadEBM,
+  rank as _rankEBM,
+  featurizeFactorRow as _featurizeRow,
+  rankPairwise as _rankPairwise,
+  classifyErrorCategory as _classifyErrorCategory,
+} from './supervisor/ebm-scorer.js';
 
-// EBM reranker bundle is loaded below, after __dirname is defined.
+// Reranker bundles loaded below, after __dirname is defined. Pointwise EBM
+// comes from reranker.json; pairwise logistic from reranker-pairwise.json.
+// When both are present, pairwise wins — it answers the retrieval question
+// ("is THIS fix likely to help THIS error?") directly.
 let _ebmBundle = null;
+let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import {
@@ -38,6 +48,16 @@ try {
   }
 } catch (err) {
   console.warn(`  EBM reranker load failed (non-fatal): ${err.message}`);
+}
+try {
+  const pairwisePath = join(__dirname, 'supervisor', 'reranker-pairwise.json');
+  if (existsSync(pairwisePath)) {
+    _pairwiseBundle = _loadEBM(pairwisePath);
+    const m = _pairwiseBundle.metrics || {};
+    console.log(`  Pairwise reranker loaded: ${(_pairwiseBundle.features || []).length} features, val_auc=${m.val_auc ?? 'n/a'} (${m.n_pairs ?? '?'} pairs)`);
+  }
+} catch (err) {
+  console.warn(`  Pairwise reranker load failed (non-fatal): ${err.message}`);
 }
 
 // Load .env from project root
@@ -2893,19 +2913,58 @@ app.post('/api/chat', async (req, res) => {
             try {
               const archetype = _safeArchetype(currentSource);
               const errorSig = _sha1(r.errors.map(e => e.message).join('\n') + '\x00' + _sha1(currentSource));
-              // Retrieve wider pool (topK=10) when an EBM bundle is loaded so
-              // the reranker has room to reorder. Without EBM, keep the
+              // Retrieve wider pool (topK=10) when any reranker is loaded so
+              // the reranker has room to reorder. Without rerankers, keep the
               // historical topK=3 behavior so no regression from retrieval alone.
-              const retrievalK = _ebmBundle ? 10 : 3;
+              const retrievalK = (_pairwiseBundle || _ebmBundle) ? 10 : 3;
               let hintRows = _factorDB.querySuggestions({
                 archetype,
                 error_sig: errorSig,
                 topK: retrievalK,
               });
-              // EBM re-rank: score each candidate, sort by EBM score desc, take top-3.
-              // If bundle absent or scoring fails, leave BM25 order intact.
+
+              // Rerank order of preference (highest → fallback):
+              //   1. Pairwise logistic — scores each candidate AGAINST the current
+              //      error, so a high-test_score fix for a different problem gets
+              //      demoted. This is the one that answers the retrieval question
+              //      directly.
+              //   2. Pointwise EBM — regression on row quality; some lift over BM25.
+              //   3. BM25 raw — ordering from querySuggestions.
               let rerankedBy = 'bm25';
-              if (_ebmBundle && hintRows.length > 0) {
+              if (_pairwiseBundle && hintRows.length > 0) {
+                try {
+                  // Build error context from the CURRENT failing compile.
+                  // target_error_category on each candidate = category of the row
+                  // immediately BEFORE it in its session (the error that candidate fixed).
+                  const errorCategory = _classifyErrorCategory(
+                    'Compile with ' + r.errors.length + ' error(s): ' +
+                    (r.errors[0]?.message || '')
+                  );
+                  const currentStepHere = _currentStep(currentSource, sessionSteps);
+                  for (const c of hintRows) {
+                    try {
+                      const prev = _factorDB._db.prepare(
+                        'SELECT patch_summary FROM code_actions WHERE session_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 1'
+                      ).get(c.session_id, c.created_at);
+                      c.target_error_category = _classifyErrorCategory(prev?.patch_summary || '');
+                    } catch { c.target_error_category = 'none'; }
+                  }
+                  const ctx = {
+                    archetype,
+                    error_sig: errorSig,
+                    error_category: errorCategory,
+                    step_index: currentStepHere?.index ?? 0,
+                    source_before: currentSource,
+                  };
+                  const ranked = _rankPairwise(_pairwiseBundle, ctx, hintRows);
+                  hintRows = ranked.slice(0, 3);
+                  rerankedBy = 'pairwise';
+                } catch (err) {
+                  // Fall through to EBM on any failure — better to ship a hint
+                  // ranked by the older model than to ship nothing.
+                }
+              }
+              if (rerankedBy === 'bm25' && _ebmBundle && hintRows.length > 0) {
                 try {
                   const ranked = _rankEBM(_ebmBundle, hintRows, _featurizeRow);
                   hintRows = ranked.slice(0, 3);
@@ -2913,7 +2972,7 @@ app.post('/api/chat', async (req, res) => {
                 } catch (err) {
                   hintRows = hintRows.slice(0, 3);
                 }
-              } else {
+              } else if (rerankedBy === 'bm25') {
                 hintRows = hintRows.slice(0, 3);
               }
               // Observability: always log retrieval outcome so we can distinguish
@@ -2941,7 +3000,14 @@ app.post('/api/chat', async (req, res) => {
                   return t.replace(/_/g, ' ');
                 };
                 const hintBlocks = hintRows.map((h, i) => {
-                  const header = `── Past Fix #${i + 1} [${_tierLabel(h.tier)}, EBM=${typeof h.ebm_score === 'number' ? h.ebm_score.toFixed(3) : 'n/a'}, test_score=${h.test_score || 0}] ──`;
+                  // Prefer pairwise score (probability fix resolves current error)
+                  // when available — that's the signal Meph actually wants.
+                  const scoreLabel = typeof h.pairwise_score === 'number'
+                    ? `pairwise=${h.pairwise_score.toFixed(3)}`
+                    : typeof h.ebm_score === 'number'
+                      ? `EBM=${h.ebm_score.toFixed(3)}`
+                      : 'score=n/a';
+                  const header = `── Past Fix #${i + 1} [${_tierLabel(h.tier)}, ${scoreLabel}, test_score=${h.test_score || 0}] ──`;
                   const summary = h.patch_summary ? `What happened: ${h.patch_summary}` : '';
                   // Trim source to ~600 chars, stopping on a natural line boundary
                   const raw = (h.source_before || '').slice(0, 600);
@@ -2962,6 +3028,7 @@ app.post('/api/chat', async (req, res) => {
                     summary: (h.patch_summary || '').slice(0, 100),
                     score: h.test_score,
                     ebm_score: typeof h.ebm_score === 'number' ? Number(h.ebm_score.toFixed(4)) : undefined,
+                    pairwise_score: typeof h.pairwise_score === 'number' ? Number(h.pairwise_score.toFixed(4)) : undefined,
                     source_excerpt: (h.source_before || '').slice(0, 800),
                   })),
                 };

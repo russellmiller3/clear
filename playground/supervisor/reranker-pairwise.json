@@ -1,0 +1,30 @@
+{
+  "model_type": "pairwise_logistic",
+  "features": [
+    "archetype_match",
+    "error_sig_exact",
+    "error_category_match",
+    "source_jaccard",
+    "step_delta",
+    "fix_test_score"
+  ],
+  "coefficients": [
+    0.5179644454293694,
+    0.0,
+    1.183650632624142,
+    0.6688271251596232,
+    -0.546659142882758,
+    -1.015244289021004
+  ],
+  "intercept": -1.124646184857943,
+  "metrics": {
+    "train_accuracy": 1.0,
+    "val_accuracy": 1.0,
+    "train_auc": 1.0,
+    "val_auc": 1.0,
+    "n_pairs": 24,
+    "n_positives": 6,
+    "n_negatives": 18
+  },
+  "note": "Score = sigmoid(intercept + sum(coef[i] * features[name[i]]))."
+}
