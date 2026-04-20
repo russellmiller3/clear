@@ -2902,9 +2902,37 @@ app.post('/api/chat', async (req, res) => {
                 const note = hasExact
                   ? `Found ${hintRows.length} past session(s) that hit this exact error and fixed it. Study the reference snippets and adapt the fix.`
                   : `No past session hit this exact error yet. Here are ${hintRows.length} working ${archetype} apps for shape-level reference.`;
+
+                // Prose-formatted hint block. This is what Meph actually reads —
+                // the JSON `references` array below is kept for UI/programmatic
+                // use, but the `text` field is the human-readable form that
+                // survives tool-result serialization to a language model.
+                // Session 38 finding: Meph ignored hints buried in JSON. Prose
+                // works better because Meph's attention is text-first.
+                const _tierLabel = (t) => {
+                  if (!t) return 'retrieved match';
+                  if (t.startsWith('exact_error_same_archetype')) return 'SAME ERROR in same archetype';
+                  if (t.startsWith('exact_error')) return 'SAME ERROR anywhere';
+                  if (t.startsWith('same_archetype')) return 'same archetype, different error';
+                  return t.replace(/_/g, ' ');
+                };
+                const hintBlocks = hintRows.map((h, i) => {
+                  const header = `── Past Fix #${i + 1} [${_tierLabel(h.tier)}, EBM=${typeof h.ebm_score === 'number' ? h.ebm_score.toFixed(3) : 'n/a'}, test_score=${h.test_score || 0}] ──`;
+                  const summary = h.patch_summary ? `What happened: ${h.patch_summary}` : '';
+                  // Trim source to ~600 chars, stopping on a natural line boundary
+                  const raw = (h.source_before || '').slice(0, 600);
+                  const trimmed = raw.lastIndexOf('\n') > 400 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
+                  const code = trimmed ? `Source that worked:\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
+                  return [header, summary, code].filter(Boolean).join('\n');
+                }).join('\n\n');
+                const guidance = `\nHow to use: pattern-match the FIX, don't copy-paste. These are from different tasks — look at what structure works (validate blocks, guard clauses, auth placement, endpoint shape) and adapt to your current error.`;
+
+                const text = `${note}\n\n${hintBlocks}\n${guidance}`;
+
                 result.hints = {
                   note,
                   reranked_by: rerankedBy,
+                  text,  // ← Meph reads THIS
                   references: hintRows.map(h => ({
                     tier: h.tier,
                     summary: (h.patch_summary || '').slice(0, 100),

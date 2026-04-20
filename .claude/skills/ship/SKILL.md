@@ -83,6 +83,27 @@ If 1–2 scenarios fail because Meph chose a different valid tool path, that's g
 
 See `.claude/skills/eval-meph/SKILL.md` for the full guide.
 
+### Step 2c: Data-at-risk gate (GATE — must pass to continue)
+
+**Why this step exists:** on Session 38 we lost 343 training rows (149/57 → 492/182) because we treated `playground/factor-db.sqlite` as runtime state instead of committable data. The clean-worktrees hook saw a "clean" working tree (SQLite WAL mode hides pending writes) and deleted the worktree. Data vanished.
+
+**Run WAL checkpoints on any SQLite DBs so git sees the true state:**
+```
+sqlite3 playground/factor-db.sqlite "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null
+[ -f playground/sessions.db ] && sqlite3 playground/sessions.db "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null
+```
+
+**Verify the data files are either committed OR explicitly declined:**
+1. Check if any of these have uncommitted changes:
+   - `playground/factor-db.sqlite` — Factor DB (training data)
+   - `playground/supervisor/reranker.json` / `reranker.pkl` — trained model bundle
+   - `playground/supervisor/training-archive/*.jsonl` — training data archives
+   - `playground/sessions/*.json` — Meph session records (typically transient)
+2. For each with changes, either commit it in Step 3, or explicitly decline with a 1-line rationale in the commit message (e.g. "sessions/ intentionally skipped — runtime transient").
+3. NEVER let the ship workflow succeed while `factor-db.sqlite` has unstaged row additions. The rows must either be committed (preferred) or explicitly archived to `/tmp/clear-backups/` or `playground/supervisor/training-archive/`.
+
+**Hook recommendation:** `~/.claude/hooks/clean-worktrees.sh` was updated Session 38 to WAL-checkpoint + backup-before-delete. Don't rely only on the hook — commit the data during ship as a first-class concern.
+
 ### Step 3: Commit all changes
 
 Stage all modified files (prefer specific names over `git add -A`):

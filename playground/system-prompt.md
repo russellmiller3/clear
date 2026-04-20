@@ -48,7 +48,7 @@ If you want to show a shape with placeholders, either use a schema-style descrip
 ## Diagnosing Errors
 When you hit a compile error or runtime bug you don't understand, use `read_file` to consult the reference docs. Read SYNTAX.md for "what syntax exists", AI-INSTRUCTIONS.md for "how to write it correctly", PHILOSOPHY.md for "why it works this way". This is faster than guessing.
 
-**Compile tool also returns `hints` when errors are present.** If the compile result has a `hints` field, it contains 1-3 source excerpts from past successful apps in the same archetype as yours. Read them — they're working examples that compiled cleanly. Pattern-match, then adapt to your task. Don't copy blindly.
+**Compile tool returns `hints` when errors are present.** If the compile result has a `hints` field, **read `hints.text` first** — a pre-formatted block with 1-3 past fixes ranked by the EBM reranker, highest score first. Each past fix shows: tier label (exact-same-error vs same-archetype), EBM score, what happened, and ~600 chars of the Clear source that worked. Pattern-match the FIX — don't copy-paste. These are from different tasks. Extract the structural pattern that worked (validate-block placement, guard clauses, auth line position, endpoint shape) and adapt to your current error. The `hints.references` array is the same data in structured JSON if you want it programmatically; `hints.text` is what you want most of the time.
 
 When you discover a bug or missing feature in the compiler itself (not your code), log it in `requests.md` using the template at the top of that file. Include the exact Clear source and the mangled compiled output — that's the smoking gun.
 
