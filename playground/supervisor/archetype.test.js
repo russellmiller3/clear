@@ -165,6 +165,40 @@ page 'Dashboard' at '/':
   // The real-template integration tests below are the acceptance signal
   // (they prove the classifier works on actual working apps).
 
+  // A backend-only API that drives an agent is structurally "agent_workflow",
+  // not "api_service" — the distinctive signal is the agent, not the endpoint.
+  // Before this fix, the backend branch fell through to api_service and the
+  // hint retriever got confused: agent-syntax errors retrieved api_service
+  // table/endpoint examples that couldn't help.
+  it('classifies backend-only agent API as agent_workflow (not api_service)', () => {
+    const src = `build for javascript backend
+
+agent 'Helper' receives question:
+  answer = ask claude 'answer the question' with question
+  return answer
+
+when user sends data to /api/ask:
+  reply = run Helper with data
+  send back reply
+`;
+    expect(classifyFromSource(src)).toEqual('agent_workflow');
+  });
+
+  // Same reasoning for realtime: a backend chat server with subscribe/broadcast
+  // is realtime_app even without pages.
+  it('classifies backend-only realtime API as realtime_app (not api_service)', () => {
+    const src = `build for javascript backend
+
+create a Messages table:
+  text, required
+  sender
+
+subscribe to 'chat':
+  broadcast to all message
+`;
+    expect(classifyFromSource(src)).toEqual('realtime_app');
+  });
+
   it('falls back to general when nothing dominates', () => {
     const src = `build for javascript backend
 
