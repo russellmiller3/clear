@@ -84,6 +84,103 @@ export function rank(bundle, candidates, featurizeFn) {
   return annotated;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PAIRWISE SCORING
+//
+// The pointwise scorer above answers "how good is this past row?" — a
+// regression problem that BM25 + test_score sort already approximates.
+//
+// The pairwise scorer answers "given THIS error, is THIS past fix likely
+// to resolve it?" — features compare the current error to each candidate.
+// Produced by train_reranker_pairwise.py, bundle shape:
+//   {
+//     "model_type": "pairwise_logistic",
+//     "features": ["archetype_match", "error_sig_exact", ...],
+//     "coefficients": [w1, w2, ...],
+//     "intercept": b
+//   }
+// Scoring is sigmoid(intercept + Σ coef × feature). Higher = more likely fix.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Minimal Clear-side error classifier, mirrors the Python trainer's featurizer.
+// Kept here so pairwise scoring doesn't need to re-import the exporter.
+export function classifyErrorCategory(patchSummary) {
+  if (!patchSummary) return 'none';
+  const s = patchSummary.toLowerCase();
+  if (s.startsWith('clean compile')) return 'none';
+  if (/hasn'?t been (created|defined)|not defined/.test(s)) return 'undefined_var';
+  if (/doesn'?t understand|expected|unexpected|syntax/.test(s)) return 'syntax';
+  if (/table|column|field/.test(s)) return 'schema';
+  if (/auth|login|permission/.test(s)) return 'auth';
+  if (/validate|required|missing/.test(s)) return 'validation';
+  if (/endpoint|route|path/.test(s)) return 'routing';
+  if (/chart|display|page/.test(s)) return 'ui';
+  return 'other';
+}
+
+// Jaccard on token sets — cheap proxy for structural similarity.
+function jaccardTokens(a, b) {
+  if (!a || !b) return 0;
+  const tokA = new Set(a.toLowerCase().split(/[^a-z0-9_]+/).filter(t => t.length > 1));
+  const tokB = new Set(b.toLowerCase().split(/[^a-z0-9_]+/).filter(t => t.length > 1));
+  if (tokA.size === 0 || tokB.size === 0) return 0;
+  let inter = 0;
+  for (const t of tokA) if (tokB.has(t)) inter++;
+  const union = tokA.size + tokB.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+// Compute the six pairwise features that the Python trainer uses.
+// errorCtx: { archetype, error_sig, error_category, step_index, source_before }
+// candidate: factor-db row. The caller SHOULD attach target_error_category
+//            (the error category this candidate was known to fix — classified
+//            from its session predecessor's patch_summary). If absent, we
+//            treat it as 'none' and error_category_match becomes 0.
+export function pairFeatures(errorCtx, candidate) {
+  const eCat = errorCtx.error_category || 'none';
+  const fTarget = candidate.target_error_category || 'none';
+  return {
+    archetype_match: errorCtx.archetype && errorCtx.archetype === candidate.archetype ? 1 : 0,
+    error_sig_exact: errorCtx.error_sig && errorCtx.error_sig === candidate.error_sig ? 1 : 0,
+    error_category_match: eCat !== 'none' && eCat === fTarget ? 1 : 0,
+    source_jaccard: jaccardTokens(errorCtx.source_before || '', candidate.source_before || ''),
+    step_delta: Math.abs(
+      (typeof errorCtx.step_index === 'number' ? errorCtx.step_index : 0) -
+      (typeof candidate.step_index === 'number' ? candidate.step_index : 0)
+    ),
+    fix_test_score: candidate.test_score || 0,
+  };
+}
+
+// Score a single pair via logistic regression. Returns probability in (0, 1).
+export function scorePairwise(bundle, features) {
+  if (!bundle || bundle.model_type !== 'pairwise_logistic') return 0;
+  let z = Number(bundle.intercept) || 0;
+  const names = bundle.features || [];
+  const coefs = bundle.coefficients || [];
+  for (let i = 0; i < names.length; i++) {
+    const val = Number(features[names[i]]);
+    if (Number.isFinite(val)) z += coefs[i] * val;
+  }
+  // Sigmoid. Clip z to avoid overflow in Math.exp on extreme inputs.
+  if (z > 50) return 1;
+  if (z < -50) return 0;
+  return 1 / (1 + Math.exp(-z));
+}
+
+// Rank candidates by pairwise probability, highest first. Each result is
+// annotated with `.pairwise_score` and `.pair_features` for debugging.
+export function rankPairwise(bundle, errorCtx, candidates) {
+  const annotated = candidates.map(c => {
+    const feats = pairFeatures(errorCtx, c);
+    return { ...c, pair_features: feats, pairwise_score: scorePairwise(bundle, feats) };
+  });
+  annotated.sort((a, b) => b.pairwise_score - a.pairwise_score);
+  return annotated;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+
 // Default featurizer for Factor DB rows. Matches the fields exported by
 // export-training-data.js (minus the label and metadata). If the bundle was
 // trained with different features, pass a custom featurizer to rank().
