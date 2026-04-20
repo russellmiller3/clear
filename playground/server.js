@@ -2686,6 +2686,39 @@ app.post('/api/chat', async (req, res) => {
   let _allAssistantText = '';
   let _hintsInjectedRowId = null;
 
+  // Parse Meph's HINT_APPLIED tag and write the result to the row that carried
+  // the hints. Called from BOTH exit paths (end_turn and iteration-limit) so
+  // we track hint usage even when Meph fails to converge — which is when
+  // tracking is most valuable. `source` is "end_turn" or "iter_limit" for logs.
+  const _captureHintUsage = (source) => {
+    try {
+      if (_factorDB && _hintsInjectedRowId) {
+        const m = _allAssistantText.match(/HINT_APPLIED:\s*([^\n]+)/i);
+        if (m) {
+          const body = m[1].trim();
+          const appliedWord = body.match(/^(yes|no)/i);
+          const tierM = body.match(/tier=([a-z_]+)/i);
+          const helpfulM = body.match(/helpful=([a-z]+)/i);
+          const reasonM = body.match(/reason=([^,\n]+)/i);
+          const applied = appliedWord ? /^yes/i.test(appliedWord[1]) : null;
+          _factorDB.logHintUsage(_hintsInjectedRowId, {
+            applied,
+            tier: tierM ? tierM[1] : null,
+            helpful: helpfulM ? helpfulM[1].toLowerCase() : null,
+            reason: reasonM ? reasonM[1].trim().slice(0, 200) : null,
+          });
+          console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} applied=${applied} tier=${tierM ? tierM[1] : '-'} helpful=${helpfulM ? helpfulM[1] : '-'}`);
+        } else {
+          console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} NO_TAG (hints injected, Meph didn't announce)`);
+        }
+      } else if (_factorDB && !_hintsInjectedRowId && /HINT_APPLIED:/i.test(_allAssistantText)) {
+        console.warn(`[hint-usage] via=${source} HALLUCINATED (Meph emitted HINT_APPLIED with no hints in context)`);
+      }
+    } catch (err) {
+      console.warn(`[hint-usage] parse failed: ${err.message}`);
+    }
+  };
+
   // Tool execution
   // Mirror every Meph tool call to the terminal pane so the user can watch
   // exactly what Meph is doing — no hidden actions.
@@ -3711,38 +3744,7 @@ app.post('/api/chat', async (req, res) => {
       if (accText) assistantContent.push({ type: 'text', text: accText });
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
-        // Hint-usage tracking: parse Meph's HINT_APPLIED tag and record it on
-        // the row that carried the hints. Only record when hints were actually
-        // injected — if Meph emitted the tag with no hints in his context,
-        // that's a hallucination and we drop it (tracked as console.warn).
-        try {
-          if (_factorDB && _hintsInjectedRowId) {
-            const m = _allAssistantText.match(/HINT_APPLIED:\s*([^\n]+)/i);
-            if (m) {
-              const body = m[1].trim();
-              const appliedWord = body.match(/^(yes|no)/i);
-              const tierM = body.match(/tier=([a-z_]+)/i);
-              const helpfulM = body.match(/helpful=([a-z]+)/i);
-              const reasonM = body.match(/reason=([^,\n]+)/i);
-              const applied = appliedWord ? /^yes/i.test(appliedWord[1]) : null;
-              _factorDB.logHintUsage(_hintsInjectedRowId, {
-                applied,
-                tier: tierM ? tierM[1] : null,
-                helpful: helpfulM ? helpfulM[1].toLowerCase() : null,
-                reason: reasonM ? reasonM[1].trim().slice(0, 200) : null,
-              });
-              console.log(`[hint-usage] row=${_hintsInjectedRowId} applied=${applied} tier=${tierM ? tierM[1] : '-'} helpful=${helpfulM ? helpfulM[1] : '-'}`);
-            } else {
-              // Hints were injected but Meph didn't emit the tag — log for visibility
-              console.log(`[hint-usage] row=${_hintsInjectedRowId} NO_TAG (hints were injected but Meph skipped the announcement)`);
-            }
-          } else if (_factorDB && !_hintsInjectedRowId && /HINT_APPLIED:/i.test(_allAssistantText)) {
-            console.warn(`[hint-usage] HALLUCINATED — Meph emitted HINT_APPLIED with no hints in his context`);
-          }
-        } catch (err) {
-          console.warn(`[hint-usage] parse failed: ${err.message}`);
-        }
-
+        _captureHintUsage('end_turn');
         writeSessionQuality();
         send({ type: 'done', toolResults, source: currentSource });
         res.end();
@@ -4011,10 +4013,12 @@ app.post('/api/chat', async (req, res) => {
     }
 
     send({ type: 'context_usage', ...estimateContextUsage() });
+    _captureHintUsage('iter_limit');
     writeSessionQuality();
     send({ type: 'done', toolResults, source: currentSource });
     res.end();
   } catch (err) {
+    _captureHintUsage('error_path');
     send({ type: 'error', message: err.message });
     res.end();
   }
