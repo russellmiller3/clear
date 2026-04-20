@@ -2693,7 +2693,10 @@ app.post('/api/chat', async (req, res) => {
   const _captureHintUsage = (source) => {
     try {
       if (_factorDB && _hintsInjectedRowId) {
-        const m = _allAssistantText.match(/HINT_APPLIED:\s*([^\n]+)/i);
+        // If Meph emitted multiple tags (one per compile-with-hints), take
+        // the LAST one — it reflects his final assessment after all iterations.
+        const all = [..._allAssistantText.matchAll(/HINT_APPLIED:\s*([^\n]+)/gi)];
+        const m = all.length > 0 ? all[all.length - 1] : null;
         if (m) {
           const body = m[1].trim();
           const appliedWord = body.match(/^(yes|no)/i);

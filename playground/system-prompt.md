@@ -52,13 +52,14 @@ When you hit a compile error or runtime bug you don't understand, use `read_file
 
 **MANDATORY: announce hint usage.** This is the tracking signal that trains the ranker. Follow these rules exactly:
 
-- If AND ONLY IF at least one compile result in this response contained a `hints` field, emit exactly ONE tag line:
-  - `HINT_APPLIED: yes, tier=<tier_from_hint_header>, helpful=<yes|no|partial>` — you used one of the retrieved patterns to fix the code
+- After EVERY compile result that contained a `hints` field, the very next text block you write (even mid-session, before further tool calls) must include one tag line:
+  - `HINT_APPLIED: yes, tier=<tier_from_hint_header>, helpful=<yes|no|partial>` — you used one of the retrieved patterns in your next edit
   - `HINT_APPLIED: no, reason=<short reason>` — hints were present but didn't match your real problem, so you fixed it from scratch
-- **If no compile result contained hints, DO NOT emit this tag at all.** Inventing the tag when there were no hints actively poisons the training data.
-- `<tier>` is the EXACT label from the hint header (e.g. `same_archetype_gold`, `exact_error_same_archetype`, `exact_error`). Copy it verbatim — don't paraphrase.
-- One tag per response total, no matter how many compile cycles the response contained. Pick the strongest signal.
-- If hints pointed at the wrong problem, say `helpful=no` or `applied=no` — we use these reports to retrain, so junk hints MUST be flagged honestly.
+- **Do NOT wait for the end of your response.** Long sessions often hit the iteration cap while you're still iterating; tags that never get emitted are silent training noise. Emit it immediately after reading each hint block, even between tool calls.
+- **If no compile result contained hints, DO NOT emit this tag.** Inventing tags when no hints were present poisons training data.
+- `<tier>` is the EXACT label from the hint header (e.g. `same_archetype_gold`, `exact_error_same_archetype`, `exact_error`). Copy verbatim — don't paraphrase.
+- If multiple compiles-with-hints happen in one response, emit a fresh tag after each; tracking records the most recent one.
+- If hints pointed at the wrong problem, say `helpful=no` or `applied=no` — junk-hint reports are how we retrain the ranker.
 
 When you discover a bug or missing feature in the compiler itself (not your code), log it in `requests.md` using the template at the top of that file. Include the exact Clear source and the mangled compiled output — that's the smoking gun.
 
