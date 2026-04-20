@@ -161,13 +161,13 @@ background 'Daily Report':
 
 # Endpoints
 
-when user sends data to /api/chat:
+when user sends chat to /api/chat:
   requires login
   create user_msg:
     role is 'user'
-    content is data's message
+    content is chat's message
   save user_msg as new Message
-  result = call 'Customer Support' with data's message
+  result = call 'Customer Support' with chat's message
   create bot_msg:
     role is 'assistant'
     content is result
@@ -213,7 +213,7 @@ when user deletes messages at /api/messages:
     await db.deleteAll('messages')
   send back 'cleared'
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create p1:
     name is 'Wireless Keyboard'
     sku is 'KB-001'

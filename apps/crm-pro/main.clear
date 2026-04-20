@@ -58,7 +58,7 @@ log every request
 
 ## Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create co1:
     name is 'Acme Corp'
     industry is 'Technology'
@@ -128,13 +128,13 @@ when user sends data to /api/seed:
 when user requests data from /api/companies:
   send back all Companies
 
-when user sends data to /api/companies:
+when user sends company to /api/companies:
   requires login
-  validate data:
+  validate company:
     name is text, required
     industry is text
     website is text
-  new_company = save data as new Company
+  new_company = save company as new Company
   send back new_company with success message
 
 when user deletes company at /api/companies/:id:
@@ -147,14 +147,14 @@ when user deletes company at /api/companies/:id:
 when user requests data from /api/contacts:
   send back all Contacts
 
-when user sends data to /api/contacts:
+when user sends contact to /api/contacts:
   requires login
-  validate data:
+  validate contact:
     name is text, required
     email is text, required
     phone is text
     company is text
-  new_contact = save data as new Contact
+  new_contact = save contact as new Contact
   send back new_contact with success message
 
 when user deletes contact at /api/contacts/:id:
@@ -167,14 +167,14 @@ when user deletes contact at /api/contacts/:id:
 when user requests data from /api/deals:
   send back all Deals
 
-when user sends data to /api/deals:
+when user sends deal to /api/deals:
   requires login
-  validate data:
+  validate deal:
     title is text, required
     value is number
     stage is text
     contact is text
-  new_deal = save data as new Deal
+  new_deal = save deal as new Deal
   send back new_deal with success message
 
 when user deletes deal at /api/deals/:id:

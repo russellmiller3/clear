@@ -44,7 +44,7 @@ log every request
 
 ## Seed Data
 
-when user sends data to /api/seed:
+when user sends seed to /api/seed:
   create r1:
     name is 'Conference A'
     capacity = 10
@@ -91,13 +91,13 @@ when user sends data to /api/seed:
 when user requests data from /api/rooms:
   send back all Rooms
 
-when user sends room_data to /api/rooms:
+when user sends room to /api/rooms:
   requires login
-  validate room_data:
+  validate room:
     name is text, required
     capacity is number
     description is text
-  new_room = save room_data as new Room
+  new_room = save room as new Room
   send back new_room with success message
 
 when user deletes room at /api/rooms/:id:
@@ -108,14 +108,14 @@ when user deletes room at /api/rooms/:id:
 when user requests data from /api/bookings:
   send back all Bookings
 
-when user sends booking_data to /api/bookings:
+when user sends booking to /api/bookings:
   requires login
-  validate booking_data:
+  validate booking:
     guest_name is text, required
     date is text, required
     time is text, required
     notes is text
-  new_booking = save booking_data as new Booking
+  new_booking = save booking as new Booking
   send back new_booking with success message
 
 when user deletes booking at /api/bookings/:id:

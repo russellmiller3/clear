@@ -37,13 +37,13 @@ log every request
 when user requests data from /api/messages:
   send back all Messages
 
-when user sends message_data to /api/messages:
+when user sends message to /api/messages:
   requires login
-  validate message_data:
+  validate message:
     sender is text, required, min 1, max 50
     content is text, required, min 1, max 1000
     room is text
-  new_message = save message_data as new Message
+  new_message = save message as new Message
   send back new_message with success message
 
 when user deletes message at /api/messages/:id:
