@@ -31,6 +31,7 @@ The document below is structured **theory → architecture → current state →
 - [Multi-Session Supervisor — When and Where to Use It](#multi-session-supervisor--when-and-where-to-use-it)
 - [The GA: Why Genetic, Not Beam Search](#the-ga-why-genetic-not-beam-search)
 - [Cross-Domain Transfer (The Research Paper)](#cross-domain-transfer-the-research-paper)
+- [Flagship Research Candidates — Ranking the Most Ambitious Laptop-Feasible Questions](#flagship-research-candidates--ranking-the-most-ambitious-laptop-feasible-questions)
 - [The RL Gym: What's Built](#the-rl-gym-whats-built)
 
 
@@ -852,6 +853,76 @@ Same infrastructure. Same Factor DB. Same EBM architecture. The difference is *w
 - **Augment Labs track:** Meph evolves Clear classifiers (fraud, medical, fraud). Reranker ranks past program structures.
 
 Same compiler, same data plumbing, different output surface. **Tier 1 compiler flywheel instrumentation serves both tracks.** Build the shared substrate; choose the publishing direction separately.
+
+---
+
+## Flagship Research Candidates — Ranking the Most Ambitious Laptop-Feasible Questions
+
+Added 2026-04-19. This section exists because the Cross-Domain Transfer paper (previous section) was framed as "the research paper" — but it is NOT the most ambitious question Clear can answer on a laptop. This section catalogs the stronger candidates, ranks them, and recommends a sequencing.
+
+### Two layers: grand thesis vs. sharp first slice
+
+Every flagship question splits into two layers:
+
+- **Grand thesis (unfalsifiable as stated):** *Can a constrained, readable program space accumulate reusable algorithmic knowledge through search?*
+- **Sharp first slice (falsifiable in an afternoon):** a single experiment whose result settles one concrete version of the thesis.
+
+The grand thesis is what the whole repo is about. Every candidate below is a different sharp first slice of it. **Pick the slice whose success implies the most about the thesis, whose failure mode is clean, and whose infrastructure you already have.**
+
+### The candidate set
+
+Seven candidates worth considering. The first two are already in this document (transfer) or implicit in the RL gym (minimality). The next five are the ones that were missing before this section was written.
+
+**1. Cross-domain transfer (current "THE PAPER" section above).** Priors from domain A improve generation-1 program search in domain B. Measured by F1 gap on held-out domain. Uses existing infrastructure (Factor DB + EBM + GA). Ambition: high. Falsifiability: medium (F1 is noisy, seeds matter, "domain" boundary is fuzzy). **Risk:** fraud and heart-disease are both tabular binary classification; transfer between them might just be "good habits for tabular classifiers" rather than universal program-design priors.
+
+**2. Provably minimal agent-iterated programs.** Given a spec, does GA+reranker iteration converge on the provably-minimal Clear program — the one no shorter program can satisfy? Minimality verified by exhaustive enumeration over Clear's small patch space. Ambition: very high. Falsifiability: binary (either you match the enumerated minimum or you don't). **Why Clear uniquely:** closed grammar + 11-op patch space + short programs make exhaustive enumeration tractable up to ~10 lines. Not possible in Python. **Risk:** compute floor is higher than transfer (hours per spec, not seconds), and "minimum" needs a carefully defended definition (lines vs. AST nodes vs. patch-ops-from-empty).
+
+**3. Constrained-language scaling laws.** Does a small LLM writing Clear match a big LLM writing Python on the same spec? Fixed spec suite × {Haiku, Sonnet, Opus} × {Clear, Python}. Measure pass rate. If the Clear column flattens while the Python column slopes up, you have a Bitter Lesson counterexample for bounded problem classes. Ambition: maximum (changes the compute-vs-constraint tradeoff assumption). Falsifiability: very high (pass rates, not F1). **Why Clear uniquely:** no other system has a closed-grammar language that (a) compiles to real deployable targets, (b) has native tests, (c) is large enough to express realistic apps. **Risk:** if results are ambiguous, big LLMs may still dominate via better in-context reasoning — you'd need to rule out "Clear just makes specs easier for everyone."
+
+**4. Emergent-algorithm detection ("move 37" for programs).** When the GA evolves solutions to small algorithmic problems, are the evolved programs genuinely novel algorithms — not recombinations of training-data snippets? Clear's 1:1 compile and human-readable output flip the interpretability problem: you can literally read the evolved program. Ambition: maximum (Nobel-shaped question: did a small system discover something). Falsifiability: medium (novelty is hard to define rigorously). **Why Clear uniquely:** FunSearch outputs cryptic Python; Clear outputs readable syntax a human can audit for novelty. **Risk:** operationalizing "novel" is the whole game — corpus-based negative search, n-gram overlap, or human audit all have flaws.
+
+**5. Decidable Clear (formal verification of a whole language class).** Constrain Clear to avoid Turing-completeness and prove the whole language decidable. Then PROVE properties — termination, SQL-injection-safety, memory-bounds — for every Clear program, ever. Ambition: maximum (foundational PL result). Falsifiability: high (proofs either close or they don't). **Why Clear uniquely:** the closed grammar and constrained runtime give you a chance. **Risk:** PhD-thesis-scale work, not laptop-afternoon-scale. Too big to be the first flagship.
+
+**6. Compression as training signal.** Swap the fitness function. Don't reward "passes tests"; reward "passes tests AND is minimum length." Train agent iteration with compression as the explicit objective. Ties to Solomonoff induction. Ambition: medium-high (novel training regime, clean theoretical grounding). Falsifiability: very high (measure program length over training, compare to baseline reward shape). **Risk:** sub-case of minimality question treated as a training regime rather than an end-state.
+
+**7. Cross-target transfer (sibling of cross-domain).** Same spec, different compile target. Does a reranker trained on Clear→JS programs help Clear→Python generation? If yes, structural features are target-agnostic, not just domain-agnostic. Ambition: medium (smaller claim than cross-domain). Falsifiability: very high. **Why Clear uniquely:** Clear is the only system with multi-target 1:1 compilation. **Risk:** smaller finding than the others; good warm-up paper, not flagship.
+
+### Ranking table
+
+| Candidate | Ambition | Falsifiability | Laptop-scale | Novelty | Uses existing infra |
+|-----------|----------|---------------:|-------------:|--------:|--------------------:|
+| Constrained-language scaling laws | Maximum | Very high | Yes | Very high | Partial |
+| Provably minimal programs | Very high | Very high (binary) | Yes (narrow) | Very high | Partial |
+| Emergent-algorithm detection | Maximum | Medium | Yes (narrow) | Very high | Yes |
+| Decidable Clear | Maximum | High | No (PhD-scale) | Very high | No |
+| Cross-domain transfer | High | Medium | Yes | High | Yes |
+| Compression-as-signal | Medium-high | Very high | Yes | Medium | Yes |
+| Cross-target transfer | Medium | Very high | Yes | Medium | Yes |
+
+### Sequencing recommendation
+
+**First: scaling laws.** Infrastructure needed is minimal (compile, tests, multiple model APIs — all live). A weekend of runs produces either a clean paper or a clean null. The finding — "constraints beat scale for bounded problem classes" — is the kind of result that gets onto podcasts, not just into venues. It is also the result Anthropic cares most about, which matters for the broader Clear narrative.
+
+**Second: minimality.** Builds on the same compile + test infrastructure plus exhaustive enumeration over the patch space. Produces a result FunSearch / AlphaEvolve / CodeEvolve never claim (they find working programs, not minimum programs). Harder to scope but sharper to state. Publish this to PL venues (POPL, PLDI, ICFP), not ML venues.
+
+**Third: cross-domain transfer.** The current "THE PAPER" section. Already planned, already has infrastructure. Stronger paper if preceded by minimality (you can say "the minimum program for fraud transfers to the minimum program for heart disease" — a far stronger claim than "the F1 is better").
+
+**Fourth: emergent-algorithm detection.** Highest intellectual ceiling but hardest to score. Do this once the first three papers have established Clear as a real research platform — reviewers will extend more benefit of the doubt on novelty claims when the infrastructure has an established track record.
+
+**Parking lot (not first-flagship):** decidable Clear (too big), compression-as-signal (good methodological paper, not flagship), cross-target transfer (good warm-up paper, not flagship).
+
+### Why this ordering and not the reverse
+
+The instinct is to do transfer first because the infrastructure is most complete. That's scheduling convenience, not research strategy. **Sequence by the strength of the claim each paper makes, and order such that each paper makes the next one stronger.** Scaling laws → minimality → transfer is a rising arc: "constraints matter" → "constraints find optima" → "optima transfer." Transfer → minimality → scaling laws is a flat sequence that doesn't compound.
+
+If scaling laws produces a null result, you lose less — pivot to minimality next with no wasted infrastructure. If minimality produces a null result, transfer as a fallback is still defensible because you've proven the GA works even if it doesn't find optima. Order the risk such that earlier nulls are cheaper.
+
+### What's not on this list and why
+
+- **Self-improving compiler.** Touched in "The Compiler Flywheel" section above. Too entangled with eng-team priorities and too slow-moving for a flagship paper.
+- **Full formal verification (beyond decidable Clear).** Multi-year research program, not a laptop paper.
+- **Reranker ablations alone.** Engineering validation, not a flagship finding. Belongs in supplementary material for any of the above papers.
+- **Agent tool-use transfer.** A subcase of cross-domain transfer with a narrower surface; fold into that paper if relevant.
 
 ---
 
