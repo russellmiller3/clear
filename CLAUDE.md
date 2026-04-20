@@ -96,10 +96,13 @@ Never declare an app "done" or "compiles clean" based only on step 1. Steps 2-3 
 ## Plain-English Comments in .clear Files (MANDATORY)
 Comments in `.clear` files must read like plain English — written for a curious 14-year-old, not a JavaScript engineer. No CS or compiler jargon: no "async generator", "drains into a string", "coroutine", "yield", "await", "stream", "token", "compiler", "runtime", "mutation", "promise". If a concept like streaming matters to the reader, explain it concretely — "the answer arrives as finished text, not one word at a time" — instead of reaching for the technical term. The reader shouldn't need to know JavaScript or Python to follow the comment. Before committing, re-read every comment and ask: would a 14-year-old understand this? If not, rewrite it.
 
-## Read AI-INSTRUCTIONS.md Before Writing Clear (MANDATORY)
-**Always re-read `AI-INSTRUCTIONS.md` before writing a `.clear` file — every time, not just at session start.** The file covers the conventions that make Clear code readable: mandatory ASCII architecture diagram at the top wrapped in `/* */`, no self-assignment (`x is x`), plain English section headers, `=` for numbers and `is` for strings, single-quote canonical form, and several others. Missing these conventions produces code that compiles but reads badly — and Russell will send it back.
+## Read AI-INSTRUCTIONS.md AND SYNTAX.md Before Writing Clear (MANDATORY)
+**Always re-read BOTH `AI-INSTRUCTIONS.md` and `SYNTAX.md` before writing a `.clear` file — every time, not just at session start.**
 
-If you're editing an existing `.clear` file, read AI-INSTRUCTIONS.md first so your edits match the surrounding style. If you're starting a new one, read AI-INSTRUCTIONS.md first so you start with the diagram and conventions in place.
+- **`AI-INSTRUCTIONS.md`** is the conventions file: mandatory ASCII architecture diagram at the top wrapped in `/* */`, no self-assignment (`x is x`), plain English section headers, `=` for numbers and `is` for strings, single-quote canonical form, banned placeholder names (`data`, `tmp`, `val`, `obj`, `item`), entity-name-as-receiving-var rule, and more. Missing these conventions produces code that compiles but reads badly.
+- **`SYNTAX.md`** is the complete reference: every node type with a canonical example and the synonyms that map to it. Syntax drifts as new features land — if you haven't re-read it this session, your mental model of canonical forms is stale.
+
+Missing either file's conventions produces code Russell will send back. Read both before editing an existing `.clear` file (so your edits match surrounding style), and before starting a new one (so you open with the right diagram and canonical forms).
 
 ## Key Files
 - `index.js` -- public API, `compileProgram(source)` is the entry point

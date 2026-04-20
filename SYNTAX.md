@@ -1219,20 +1219,20 @@ when user requests data from /api/users/summary:
   count = length of users
   send back { total is count }
 
-when user sends user_data to /api/users:
+when user sends signup to /api/users:
   requires login
-  validate user_data:
+  validate signup:
     name is text, required, min 1, max 100
     email is text, required, matches email
     age is number
   # Validation collects ALL errors, returns 400 with:
   # { errors: [{ field: "name", message: "name is required" }, ...] }
-  new_user = save user_data as new User
+  new_user = save signup as new User
   send back new_user with success message
 
-when user updates update_data at /api/users/:id:
+when user updates profile at /api/users/:id:
   requires login
-  save update_data to Users
+  save profile to Users
   send back 'updated'
 
 when user deletes user at /api/users/:id:
@@ -1257,10 +1257,10 @@ when user calls DELETE /api/todos/:id:
   delete the Todo with this id
   send back 'ok'
 
-when user calls POST /api/teams/:team_id/members sending data:
+when user sends member to /api/teams/:team_id/members:
   requires login
-  data's team_id is this team_id       # Bind URL param into request body
-  save data as new Member
+  member's team_id is this team_id       # Bind URL param into request body
+  save member as new Member
   send back 'added'
 ```
 
@@ -2045,8 +2045,8 @@ When `ask claude` appears at statement level inside a POST endpoint, Clear
 writes each token as an SSE frame. No keyword needed:
 
 ```clear
-when user sends data to /api/ask:
-  ask claude 'You are a helpful assistant.' with data's question
+when user sends query to /api/ask:
+  ask claude 'You are a helpful assistant.' with query's question
 
 page 'Chat' at '/':
   question = ''
@@ -2069,8 +2069,8 @@ When you need a one-shot JSON response (e.g. for server-side post-processing
 or when a downstream consumer needs the full text), add `without streaming`:
 
 ```clear
-when user sends data to /api/summary:
-  ask claude 'Summarize this in one sentence.' with data's text without streaming
+when user sends article to /api/summary:
+  ask claude 'Summarize this in one sentence.' with article's text without streaming
   # Responds with { text: "..." } after the full answer is generated
 ```
 
@@ -2668,8 +2668,8 @@ workflow 'Support' with state:
 
 ### Running a Workflow
 ```clear
-when user sends data to /api/support:
-  result = run workflow 'Support' with data
+when user sends ticket to /api/support:
+  result = run workflow 'Support' with ticket
   send back result
 ```
 
@@ -2803,8 +2803,8 @@ expect todos has 'Buy groceries'       # variable contains text
 Stream AI responses directly to the client as Server-Sent Events:
 
 ```clear
-when user sends data to /api/chat:
-  stream ask claude 'Help the user' with data's message
+when user sends chat to /api/chat:
+  stream ask claude 'Help the user' with chat's message
 ```
 
 - Compiles to SSE endpoint with `Content-Type: text/event-stream`
@@ -2816,7 +2816,7 @@ when user sends data to /api/chat:
 ### Without context
 
 ```clear
-when user sends data to /api/generate:
+when user sends request to /api/generate:
   stream ask ai 'Write a haiku about coding'
 ```
 
