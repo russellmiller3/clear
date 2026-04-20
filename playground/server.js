@@ -2679,6 +2679,13 @@ app.post('/api/chat', async (req, res) => {
   let _lastFactorRowId = null;
   let _sourceBeforeEdit = currentSource; // captured before each patch/write, used as source_before
 
+  // Hint-usage tracking. Accumulates Meph's full text across tool-use iterations
+  // so we can parse the HINT_APPLIED tag after end_turn. _hintsInjectedRowId
+  // remembers which compile row had hints — that's the row we update so the
+  // tracking joins cleanly to retrieval telemetry.
+  let _allAssistantText = '';
+  let _hintsInjectedRowId = null;
+
   // Tool execution
   // Mirror every Meph tool call to the terminal pane so the user can watch
   // exactly what Meph is doing — no hidden actions.
@@ -3032,6 +3039,9 @@ app.post('/api/chat', async (req, res) => {
                     source_excerpt: (h.source_before || '').slice(0, 800),
                   })),
                 };
+                // Remember which row carried the hints so the end-of-response
+                // HINT_APPLIED parse can update the right row.
+                _hintsInjectedRowId = _lastFactorRowId;
               }
             } catch { /* non-fatal */ }
           }
@@ -3667,6 +3677,7 @@ app.post('/api/chat', async (req, res) => {
               accThinkingSignature += ev.delta.signature;
             } else if (ev.delta.type === 'text_delta') {
               accText += ev.delta.text;
+              _allAssistantText += ev.delta.text;
               send({ type: 'text', delta: ev.delta.text });
             } else if (ev.delta.type === 'input_json_delta') {
               const tb = toolUseBlocks[toolUseBlocks.length - 1];
@@ -3700,6 +3711,38 @@ app.post('/api/chat', async (req, res) => {
       if (accText) assistantContent.push({ type: 'text', text: accText });
 
       if (toolUseBlocks.length === 0 || stopReason === 'end_turn') {
+        // Hint-usage tracking: parse Meph's HINT_APPLIED tag and record it on
+        // the row that carried the hints. Only record when hints were actually
+        // injected — if Meph emitted the tag with no hints in his context,
+        // that's a hallucination and we drop it (tracked as console.warn).
+        try {
+          if (_factorDB && _hintsInjectedRowId) {
+            const m = _allAssistantText.match(/HINT_APPLIED:\s*([^\n]+)/i);
+            if (m) {
+              const body = m[1].trim();
+              const appliedWord = body.match(/^(yes|no)/i);
+              const tierM = body.match(/tier=([a-z_]+)/i);
+              const helpfulM = body.match(/helpful=([a-z]+)/i);
+              const reasonM = body.match(/reason=([^,\n]+)/i);
+              const applied = appliedWord ? /^yes/i.test(appliedWord[1]) : null;
+              _factorDB.logHintUsage(_hintsInjectedRowId, {
+                applied,
+                tier: tierM ? tierM[1] : null,
+                helpful: helpfulM ? helpfulM[1].toLowerCase() : null,
+                reason: reasonM ? reasonM[1].trim().slice(0, 200) : null,
+              });
+              console.log(`[hint-usage] row=${_hintsInjectedRowId} applied=${applied} tier=${tierM ? tierM[1] : '-'} helpful=${helpfulM ? helpfulM[1] : '-'}`);
+            } else {
+              // Hints were injected but Meph didn't emit the tag — log for visibility
+              console.log(`[hint-usage] row=${_hintsInjectedRowId} NO_TAG (hints were injected but Meph skipped the announcement)`);
+            }
+          } else if (_factorDB && !_hintsInjectedRowId && /HINT_APPLIED:/i.test(_allAssistantText)) {
+            console.warn(`[hint-usage] HALLUCINATED — Meph emitted HINT_APPLIED with no hints in his context`);
+          }
+        } catch (err) {
+          console.warn(`[hint-usage] parse failed: ${err.message}`);
+        }
+
         writeSessionQuality();
         send({ type: 'done', toolResults, source: currentSource });
         res.end();
