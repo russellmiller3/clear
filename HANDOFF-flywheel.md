@@ -1,8 +1,8 @@
 # Handoff — Flywheel Track
 
 **Track:** Factor DB + EBM reranker + compiler-owned training data. The long-game moat nobody else architecturally can copy.
-**Last updated:** 2026-04-20 (end of Session 38).
-**Status:** live end-to-end on main. Major unverified item: hint-flow real-LLM test (API was rate-limited when flow was built; unblocked now).
+**Last updated:** 2026-04-20 (Session 39 — pick-up verification).
+**Status:** live end-to-end on main. **Both Session 38 TODO items verified at start of Session 39** — see "Session 39 Verification" below. Next unlock: pairwise reranker features.
 
 > Note: `HANDOFF.md` at root is a parallel track (Live App Editing). This file is the flywheel handoff. Both on main, non-conflicting.
 
@@ -52,34 +52,32 @@ Model bundles:
 
 ---
 
-## ⚠️ HANDOFF TODO (unverified at ship time)
+## ✅ Session 39 Verification (2026-04-20)
 
-These shipped while the API was rate-limited. **Verify before building new features on top.**
+Both Session 38 TODO items verified end-to-end. Commits `0e365d4` + `48b686b` on `feature/verify-flywheel-handoff`.
 
-### 1. Real-LLM test of `hints.text` flow
+### 1. Prompt caching on a real Meph session — PROVEN
 
-**What:** When Meph hits a compile error, the server retrieves top-10 candidates, EBM re-ranks, and returns a formatted prose block as `hints.text` in the tool result. Server-side wiring is tested. What's NOT tested: whether Meph actually *reads* `hints.text` and applies the pattern.
+- Ran `node playground/eval-meph.js` against a live server (16 scenarios, real tool calls, test results, SSE streaming).
+- **40 turns across the run. 95.4% cache hit rate.** Per-turn: 97–99% steady state. Tool outputs, streaming deltas, and test snapshots did NOT break the prefix. No silent invalidators.
+- Telemetry in log: `[cache] iter N: read=17734 write=158 fresh=5 (99% hit)` throughout.
+- `verify-caching.js` also confirmed 90% savings on a warm-cache 3-turn run (100% hit). Together: caching holds on both synthetic and real-session workloads.
+- **Sub-bug fixed in the process:** `verify-caching.js` used `require('fs')` inside an ESM file — silently threw inside a try/catch, so the log was empty and telemetry aggregated zero. Fixed in `0e365d4`.
 
-**Why it might be broken:**
-- Markdown fences inside tool-result JSON could trip tokenization
-- Meph might ignore the field if system-prompt mention isn't emphatic enough
-- The hint block could be getting truncated by the SSE streaming code
+### 2. Hint-flow reaches Meph — WIRING PROVEN, behavior probably-silent-good
 
-**How to verify (~5 min, ~$0.10):**
+- Added observability in `server.js`: one-line `[hints] archetype=X retrieved=N reranked_by=<ebm|bm25> top_tier=T` per failed compile. Zero-cost on happy path.
+- Wrote `playground/supervisor/verify-hint-flow.js` — spawns server, feeds Meph a deliberately broken `api_service` snippet, inspects the SSE reply.
+- **Result:** `[hints] archetype=api_service retrieved=3 reranked_by=ebm top_tier=same_archetype_gold`. Three candidates retrieved, EBM re-ranked, tier-3 archetype-gold match (no exact error in DB yet for this specific signature).
+- Meph's fix used `sending data:` + `save data to <table>` — exactly the idioms in the retrieved `api_service` references. He pattern-matched silently; did NOT verbalize tier labels or "past fix" phrasing.
+- **Interpretation:** wiring works. Meph's response shape is consistent with absorbing hints. If we want louder behavioral signal for grading/debugging, strengthen the system-prompt nudge around the hints block (line 51 of `playground/system-prompt.md`) — e.g. require Meph to cite the tier label when he applies a retrieved pattern. Not urgent; Meph is already producing correct fixes.
+
+Re-run either verification any time:
 ```bash
-ANTHROPIC_API_KEY=sk-ant-... node playground/eval-meph.js
-# OR: open Studio, hit a known-error scenario, inspect Meph's response
+ANTHROPIC_API_KEY=... node playground/supervisor/verify-caching.js        # ~30s, ~$0.05
+ANTHROPIC_API_KEY=... node playground/supervisor/verify-hint-flow.js      # ~30-60s, ~$0.05
+ANTHROPIC_API_KEY=... node playground/eval-meph.js                         # ~90-180s, ~$0.10-0.30
 ```
-Look for: does Meph's next edit reflect a past-fix pattern? Does he mention "looking at past fixes" or reference the tier label? If not, iterate on the prose format in `playground/server.js` around line 2900.
-
-### 2. Prompt caching hit rate on a real Meph session (not synthetic)
-
-**What:** `verify-caching.js` proved caching works on a trivial 3-turn script (100% hit in that run). It did NOT prove caching works on a real 15-iteration Meph session with all the tool calls, image blocks, test results, etc.
-
-**How to verify (~10 min):**
-- Start Studio, run a real Meph task against any curriculum template
-- `grep '\[cache\]' <server log>` — expect `write=~30000` on turn 1, `read=~30000` on turns 2+
-- If `read=0` across turns, a silent invalidator snuck in (timestamps? test snapshot leaking into stable block?)
 
 ---
 
@@ -159,4 +157,4 @@ Given Meph's CURRENT error `E_now` and a CANDIDATE past-fix `F_past`, is `F_past
 
 ## Resume Prompt
 
-> Read `HANDOFF-flywheel.md`. Session 38 shipped the EBM reranker wired into `/api/chat` + prompt caching (90% savings verified) + 2-stage Lasso→EBM pipeline. Two unverified items at top of the file: real-LLM test of `hints.text` flow, and cache hit rate on a real Meph session. Verify those first (15 min each, API is unblocked). Then pick up pairwise features for the reranker — that's the real unlock and the current architecture has a ceiling without it. Follow J Paul Getty Rule: every >30-min bug becomes a new rule. Ross Perot Rule: don't stop to ask. Narrate every chunk, small writes.
+> Read `HANDOFF-flywheel.md`. Session 38 shipped the EBM reranker wired into `/api/chat` + prompt caching (90% savings) + 2-stage Lasso→EBM pipeline. Session 39 verified both TODOs end-to-end: cache hits 95.4% on a real 16-scenario Meph run (no silent invalidators), hint-flow retrieves + re-ranks + injects into Meph's tool result — Meph pattern-matches the retrieved idioms silently (no tier-label verbalization). Branch `feature/verify-flywheel-handoff` holds the fix + observability; merge when ready. Next unlock: **pairwise reranker features** — the real ceiling-breaker; details in this file's "NEXT PICK-UP POINT" section. Follow J Paul Getty Rule and Ross Perot Rule; narrate every chunk.

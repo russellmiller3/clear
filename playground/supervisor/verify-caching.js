@@ -11,7 +11,7 @@
 // Takes ~30s, costs ~$0.05-0.10 on Haiku.
 
 import { spawn } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, appendFileSync } from 'fs';
 import { join } from 'path';
 
 const PORT = 3488;
@@ -87,8 +87,8 @@ async function main() {
     env: { ...process.env, PORT: String(PORT) },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  server.stdout.on('data', d => { try { require('fs').appendFileSync(LOG_PATH, d); } catch {} });
-  server.stderr.on('data', d => { try { require('fs').appendFileSync(LOG_PATH, d); } catch {} });
+  server.stdout.on('data', d => { try { appendFileSync(LOG_PATH, d); } catch {} });
+  server.stderr.on('data', d => { try { appendFileSync(LOG_PATH, d); } catch {} });
 
   try {
     await waitForServer();

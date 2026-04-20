@@ -2916,6 +2916,9 @@ app.post('/api/chat', async (req, res) => {
               } else {
                 hintRows = hintRows.slice(0, 3);
               }
+              // Observability: always log retrieval outcome so we can distinguish
+              // "no candidates found" from "Meph ignored the hints he saw".
+              console.log(`[hints] archetype=${archetype} retrieved=${hintRows.length} reranked_by=${rerankedBy}${hintRows.length > 0 ? ' top_tier=' + hintRows[0].tier : ''}`);
               if (hintRows.length > 0) {
                 // Build note based on the best-tier match we got
                 const tiers = hintRows.map(h => h.tier);
