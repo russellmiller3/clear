@@ -1281,6 +1281,8 @@ Requires `bcryptjs` and `jsonwebtoken` npm packages. Auto-generates an in-memory
 
 ## Auth & Guards
 
+**`requires login` goes on the FIRST line of an endpoint body.** When every auth-gated endpoint puts the guard on line 1, you can scan a file and instantly see which endpoints are protected. The compiler currently permits it in other positions (legacy behavior) but every template and canonical example writes it first. Write it first.
+
 ```clear
 requires login
 requires role 'admin'
