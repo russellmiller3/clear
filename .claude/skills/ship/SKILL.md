@@ -83,6 +83,28 @@ If 1–2 scenarios fail because Meph chose a different valid tool path, that's g
 
 See `.claude/skills/eval-meph/SKILL.md` for the full guide.
 
+### Step 2b-real-LLM: HARD GATE on AI-feature changes (added Session 38)
+
+**Rule:** Any change that affects what Meph sees, reads, or responds to MUST be verified against a real LLM before shipping. Unit tests with mocked LLMs miss prompt bugs every time.
+
+**Triggers (any one triggers the gate):**
+- System prompt changed (`playground/system-prompt.md`)
+- TOOLS array changed (tool defs, schemas, descriptions in server.js)
+- Tool result payload shape changed (what gets serialized back to Meph)
+- Retrieval/hint/reranker format changed (what Meph sees when he hits an error)
+- New model integration (MEPH_MODEL swap, SDK version bump)
+- System prompt caching added (cache breakpoints can invalidate mid-turn)
+
+**How to verify:**
+```
+ANTHROPIC_API_KEY=sk-ant-... node playground/eval-meph.js
+```
+Minimum: 1 scenario that exercises the changed surface. If you changed hint formatting, hit a Factor-DB-matching error intentionally and verify Meph reads `hints.text` and references the pattern in his response. If you changed tool schemas, verify Meph calls the tool with valid args. If you changed the system prompt, verify he follows the new instruction.
+
+**Exceptions:** doc-only changes (`.md` files that Meph doesn't read as a tool source), pure internal refactors that don't touch the wire format, backend-only supervisor/sweep changes that don't touch `/api/chat`.
+
+**When API is rate-limited:** explicitly document "gate deferred — ran unit tests only" in the ship commit message, AND create a TODO at the top of HANDOFF.md saying "MUST real-LLM-eval before next ship." Russell lost a half-day of work on Session 38 because a "shipped" feature wasn't actually verified. This gate exists to prevent that recurrence.
+
 ### Step 2c: Data-at-risk gate (GATE — must pass to continue)
 
 **Why this step exists:** on Session 38 we lost 343 training rows (149/57 → 492/182) because we treated `playground/factor-db.sqlite` as runtime state instead of committable data. The clean-worktrees hook saw a "clean" working tree (SQLite WAL mode hides pending writes) and deleted the worktree. Data vanished.

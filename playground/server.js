@@ -2574,8 +2574,31 @@ app.post('/api/write-file', (req, res) => {
 // - The main system prompt
 // - Latest test-run results (so when the user clicks Run Tests and asks Meph to fix,
 //   he already knows which tests failed + the plain-English error + the source line)
+// Returns an ARRAY of system blocks so we can place a cache_control breakpoint
+// on the stable portion without tripping on volatile content.
+//
+// Block layout:
+//   [0] stable  — personality + base system prompt (cache_control: ephemeral)
+//   [1] volatile (optional) — latest test snapshot (NO cache_control)
+//
+// The cache_control on block [0] caches tools + block [0] together (tools
+// render before system). Block [1] is outside the cache, so test-run clicks
+// don't invalidate the 3k-line system prompt cache.
+//
+// Silent-invalidator audit: personality is treated as stable per-session
+// (it's a user preference, not per-request data). If it actually changes
+// per request, each unique personality becomes its own cache entry —
+// acceptable overhead.
 function buildSystemWithContext(baseSystem, personality, testSnapshot) {
-  let context = '';
+  const head = personality
+    ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n'
+    : '';
+  const stableText = head + baseSystem;
+
+  const blocks = [
+    { type: 'text', text: stableText, cache_control: { type: 'ephemeral' } },
+  ];
+
   if (testSnapshot && (testSnapshot.failed > 0 || testSnapshot.passed > 0)) {
     const parts = [];
     parts.push(`## Latest Test Run (user clicked Run Tests in Studio)\n`);
@@ -2590,12 +2613,10 @@ function buildSystemWithContext(baseSystem, personality, testSnapshot) {
     } else if (testSnapshot.passed > 0) {
       parts.push(`All tests passing.\n`);
     }
-    context = '\n\n---\n\n' + parts.join('');
+    blocks.push({ type: 'text', text: '\n\n---\n\n' + parts.join('') });
   }
-  const head = personality
-    ? '## CRITICAL — User Custom Instructions (follow these in ALL responses)\n\n' + personality + '\n\n---\n\n'
-    : '';
-  return head + baseSystem + context;
+
+  return blocks;
 }
 
 app.post('/api/chat', async (req, res) => {
@@ -3425,6 +3446,43 @@ app.post('/api/chat', async (req, res) => {
     // gives him enough room without risking runaway sessions.
     const MEPH_MAX_ITER = Number(process.env.MEPH_MAX_ITER) || 25;
     for (let iter = 0; iter < MEPH_MAX_ITER; iter++) {
+      // Prompt-caching strategy (added Session 38):
+      //   1. System array has cache_control on the stable block → caches tools
+      //      + stable system together (tools render before system; a breakpoint
+      //      on the last system block covers both).
+      //   2. Second breakpoint on the last content block of the last message →
+      //      caches the entire conversation history so only the NEW turn pays
+      //      full input price next iteration. Critical for multi-turn Meph
+      //      sessions where messages grow 15-25 turns.
+      // Max 4 breakpoints per request per the API; we use 2.
+      //
+      // Cache miss = 1.25× input (write premium). Hit = 0.1× input. Break-even
+      // at 2 requests with same prefix. Meph's sessions do 15+ turns → massive
+      // savings (~90% on system + tools + prior turns).
+      const cachedMessages = currentMessages.map((m, i) => {
+        if (i !== currentMessages.length - 1) return m;
+        // Last message: attach cache_control to its last content block.
+        // Content can be a string or an array of blocks — normalize to array
+        // so we can reliably attach cache_control.
+        if (typeof m.content === 'string') {
+          return {
+            ...m,
+            content: [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }],
+          };
+        }
+        if (Array.isArray(m.content) && m.content.length > 0) {
+          const last = m.content[m.content.length - 1];
+          return {
+            ...m,
+            content: [
+              ...m.content.slice(0, -1),
+              { ...last, cache_control: { type: 'ephemeral' } },
+            ],
+          };
+        }
+        return m;
+      });
+
       const payload = {
         model: MEPH_MODEL,
         max_tokens: 16000,
@@ -3432,7 +3490,7 @@ app.post('/api/chat', async (req, res) => {
         system: buildSystemWithContext(systemPrompt, personality, testSnapshot),
         tools: enableWebTools ? [...TOOLS, ...WEB_TOOLS] : TOOLS,
         stream: true,
-        messages: currentMessages,
+        messages: cachedMessages,
       };
 
       // Retry with exponential backoff on transient failures
@@ -3546,6 +3604,19 @@ app.post('/api/chat', async (req, res) => {
             }
           } else if (ev.type === 'message_delta') {
             stopReason = ev.delta.stop_reason;
+            // Cache-hit telemetry — logs prompt-caching efficiency per turn.
+            // If cache_read stays at 0 across iterations, we have a silent
+            // cache invalidator (timestamps/UUIDs in system, tool reorder, etc.).
+            if (ev.usage) {
+              const cr = ev.usage.cache_read_input_tokens || 0;
+              const cw = ev.usage.cache_creation_input_tokens || 0;
+              const it = ev.usage.input_tokens || 0;
+              const total = cr + cw + it;
+              if (total > 0) {
+                const hitPct = Math.round((cr / total) * 100);
+                console.log(`[cache] iter ${iter}: read=${cr} write=${cw} fresh=${it} (${hitPct}% hit)`);
+              }
+            }
           }
         }
       }
