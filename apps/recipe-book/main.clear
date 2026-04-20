@@ -18,14 +18,14 @@ when user calls GET /api/recipes:
   all_recipes = get all Recipes
   send back all_recipes
 
-when user calls POST /api/recipes sending recipe_data:
-  validate recipe_data:
+when user calls POST /api/recipes sending recipe:
+  validate recipe:
     title is text, required, min 1, max 100
     ingredients is text, required
     instructions is text, required
     prep_time is number
     servings is number
-  new_recipe = save recipe_data as new Recipe
+  new_recipe = save recipe as new Recipe
   send back new_recipe with success message
 
 when user calls DELETE /api/recipes/:id:

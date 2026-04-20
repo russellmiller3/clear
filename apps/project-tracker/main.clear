@@ -34,21 +34,21 @@ when user calls GET /api/projects:
   all_projects = get all Projects
   send back all_projects
 
-when user calls POST /api/projects sending project_data:
-  validate project_data:
+when user calls POST /api/projects sending project:
+  validate project:
     name is text, required, min 1, max 80
-  new_project = save project_data as new Project
+  new_project = save project as new Project
   send back new_project
 
 when user calls GET /api/issues:
   all_issues = get all Issues
   send back all_issues
 
-when user calls POST /api/issues sending issue_data:
-  validate issue_data:
+when user calls POST /api/issues sending issue:
+  validate issue:
     title is text, required, min 1, max 200
     project is text, required
-  new_issue = save issue_data as new Issue
+  new_issue = save issue as new Issue
   send back new_issue
 
 when user calls DELETE /api/issues/:id:

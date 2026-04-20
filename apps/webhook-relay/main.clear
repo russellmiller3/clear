@@ -35,12 +35,12 @@ when user calls GET /api/destinations:
   define all_destinations as: look up all records in Destination table
   send back all_destinations
 
-when user calls POST /api/destinations receiving dest_data:
+when user calls POST /api/destinations receiving dest:
   this endpoint requires login
-  validate dest_data:
+  validate dest:
     name is text, required
     url is text, required
-  define new_dest as: save dest_data as Destination
+  define new_dest as: save dest as Destination
   send back new_dest status 201
 
 when user calls DELETE /api/destinations/:id:

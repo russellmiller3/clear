@@ -69,11 +69,11 @@ when user calls GET /api/teams:
   all_teams = get all Teams
   send back all_teams
 
-when user calls POST /api/teams sending team_data:
+when user calls POST /api/teams sending team:
   requires login
-  validate team_data:
+  validate team:
     name is text, required, min 1, max 100
-  new_team = save team_data as new Team
+  new_team = save team as new Team
   send back new_team with success message
 
 when user calls GET /api/teams/:id:
@@ -86,14 +86,14 @@ when user calls GET /api/members:
   all_members = get all Members
   send back all_members
 
-when user calls POST /api/members sending member_data:
+when user calls POST /api/members sending member:
   requires login
-  validate member_data:
+  validate member:
     team_id is text, required
     user_name is text, required, min 1, max 100
     email is text, required, matches email
     role is text
-  new_member = save member_data as new Member
+  new_member = save member as new Member
   send back new_member with success message
 
 # --- Projects ---
@@ -102,26 +102,26 @@ when user calls GET /api/projects:
   all_projects = get all Projects
   send back all_projects
 
-when user calls POST /api/projects sending project_data:
+when user calls POST /api/projects sending project:
   requires login
-  validate project_data:
+  validate project:
     team_id is text, required
     name is text, required, min 1, max 200
     description is text
     status is text
     deadline is text
-  new_project = save project_data as new Project
+  new_project = save project as new Project
   send back new_project with success message
 
-when user calls PUT /api/projects/:id sending update_data:
+when user calls PUT /api/projects/:id sending project:
   requires login
-  validate update_data:
+  validate project:
     team_id is text
     status is text
     name is text
     description is text
     deadline is text
-  save update_data to Projects
+  save project to Projects
   send back 'updated' with success message
 
 when user calls DELETE /api/projects/:id:
@@ -136,28 +136,28 @@ when user calls GET /api/tasks:
   all_tasks = get all Tasks
   send back all_tasks
 
-when user calls POST /api/tasks sending task_data:
+when user calls POST /api/tasks sending task:
   requires login
-  validate task_data:
+  validate task:
     project_id is text, required
     title is text, required, min 1, max 300
     description is text
     priority is text
     assigned_to is text
     estimated_hours is number
-  new_task = save task_data as new Task
+  new_task = save task as new Task
   send back new_task with success message
 
-when user calls PUT /api/tasks/:id sending update_data:
+when user calls PUT /api/tasks/:id sending task:
   requires login
-  validate update_data:
+  validate task:
     project_id is text
     status is text
     title is text
     priority is text
     assigned_to is text
     actual_hours is number
-  save update_data to Tasks
+  save task to Tasks
   send back 'updated' with success message
 
 when user calls DELETE /api/tasks/:id:
@@ -171,13 +171,13 @@ when user calls GET /api/comments:
   all_comments = get all Comments
   send back all_comments
 
-when user calls POST /api/comments sending comment_data:
+when user calls POST /api/comments sending comment:
   requires login
-  validate comment_data:
+  validate comment:
     task_id is text, required
     author is text, required, min 1, max 100
     body is text, required, min 1, max 2000
-  new_comment = save comment_data as new Comment
+  new_comment = save comment as new Comment
   send back new_comment with success message
 
 # --- Activity Log ---

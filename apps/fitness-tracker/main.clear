@@ -24,14 +24,14 @@ when user calls GET /api/workouts:
   all_workouts = get all Workouts
   send back all_workouts
 
-when user calls POST /api/workouts sending workout_data:
-  validate workout_data:
+when user calls POST /api/workouts sending workout:
+  validate workout:
     exercise is text, required, min 1, max 100
     duration is number, required
     calories is number
     intensity is text
     notes is text
-  new_workout = save workout_data as new Workout
+  new_workout = save workout as new Workout
   send back new_workout with success message
 
 when user calls DELETE /api/workouts/:id:
@@ -43,12 +43,12 @@ when user calls GET /api/goals:
   all_goals = get all Goals
   send back all_goals
 
-when user calls POST /api/goals sending goal_data:
-  validate goal_data:
+when user calls POST /api/goals sending goal:
+  validate goal:
     name is text, required
     target is number, required
     unit is text
-  new_goal = save goal_data as new Goal
+  new_goal = save goal as new Goal
   send back new_goal with success message
 
 # Frontend

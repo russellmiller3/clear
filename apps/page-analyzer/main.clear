@@ -8,17 +8,17 @@ create a Pages table:
   link_count (number), default 0
   analyzed_at_date, auto
 
-agent 'Page Analyzer' receives page_data:
-  guard page_data's url is not nothing or 'URL is required'
-  page_data's title is 'Analyzed'
-  page_data's link_count is 42
-  send back page_data
+agent 'Page Analyzer' receives subject:
+  guard subject's url is not nothing or 'URL is required'
+  subject's title is 'Analyzed'
+  subject's link_count is 42
+  send back subject
 
-when user calls POST /api/analyze sending page_data:
+when user calls POST /api/analyze sending subject:
   requires login
-  validate page_data:
+  validate subject:
     url is text, required
-  analyzed = call 'Page Analyzer' with page_data
+  analyzed = call 'Page Analyzer' with subject
   saved = save analyzed as new Page
   send back saved with success message
 

@@ -15,12 +15,12 @@ agent 'Lead Scorer' receives lead:
   set lead's analysis to ask ai 'Write one sentence describing what this company likely does, based on the name. Never refuse, never ask for more information. Keep it under 30 words.' with lead's company
   send back lead
 
-when user calls POST /api/score sending lead_data:
+when user calls POST /api/score sending lead:
   requires login
-  validate lead_data:
+  validate lead:
     company is text, required
     email is text, required
-  set scored to call 'Lead Scorer' with lead_data
+  set scored to call 'Lead Scorer' with lead
   set saved to save scored as new Lead
   send back saved with success message
 

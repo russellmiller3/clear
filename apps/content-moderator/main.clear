@@ -14,10 +14,10 @@ agent 'Moderator' receives review:
   set review's verdict to ask ai 'Is this content safe? Reply SAFE or UNSAFE on line 1, then a one-sentence reason on line 2.' with review's content
   send back review
 
-when user calls POST /api/moderate sending review_data:
-  validate review_data:
+when user calls POST /api/moderate sending review:
+  validate review:
     content is text, required
-  set moderated to call 'Moderator' with review_data
+  set moderated to call 'Moderator' with review
   set saved to save moderated as new Review
   send back saved with success message
 

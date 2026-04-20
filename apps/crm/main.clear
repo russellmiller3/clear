@@ -85,15 +85,15 @@ when user calls GET /api/contacts:
   all_contacts = get all Contacts
   send back all_contacts
 
-when user calls POST /api/contacts sending contact_data:
+when user calls POST /api/contacts sending contact:
   requires login
-  validate contact_data:
+  validate contact:
     name is text, required, min 1, max 100
     email is text, required, matches email
     company is text
     status is text
     phone is text
-  new_contact = save contact_data as new Contact
+  new_contact = save contact as new Contact
   send back new_contact with success message
 
 when user calls DELETE /api/contacts/:id:
@@ -106,14 +106,14 @@ when user calls GET /api/deals:
   all_deals = get all Deals
   send back all_deals
 
-when user calls POST /api/deals sending deal_data:
+when user calls POST /api/deals sending deal:
   requires login
-  validate deal_data:
+  validate deal:
     contact_id is text, required
     title is text, required
     value is number
     stage is text
-  new_deal = save deal_data as new Deal
+  new_deal = save deal as new Deal
   send back new_deal with success message
 
 when user calls DELETE /api/deals/:id:
@@ -126,13 +126,13 @@ when user calls GET /api/activities:
   all_activities = get all Activities
   send back all_activities
 
-when user calls POST /api/activities sending activity_data:
+when user calls POST /api/activities sending activity:
   requires login
-  validate activity_data:
+  validate activity:
     contact_id is text, required
     action is text, required
     detail is text
-  new_activity = save activity_data as new Activity
+  new_activity = save activity as new Activity
   send back new_activity with success message
 
 # Frontend

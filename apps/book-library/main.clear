@@ -51,25 +51,25 @@ when user calls GET /api/books/:id:
   book = look up records in Books table where id is incoming's id
   send back book
 
-when user calls POST /api/books sending book_data:
-  validate book_data:
+when user calls POST /api/books sending book:
+  validate book:
     title is text, required, min 1, max 200
     author is text, required, min 1, max 200
     genre is text, max 100
     rating is number, min 0, max 5
     notes is text, max 2000
-  new_book = save book_data as new Book
+  new_book = save book as new Book
   send back new_book with success message
 
-when user calls PUT /api/books/:id sending book_data:
+when user calls PUT /api/books/:id sending book:
   requires login
-  validate book_data:
+  validate book:
     title is text, min 1, max 200
     author is text, min 1, max 200
     genre is text, max 100
     rating is number, min 0, max 5
     notes is text, max 2000
-  save book_data to Books
+  save book to Books
   send back 'updated' with success message
 
 when user calls DELETE /api/books/:id:

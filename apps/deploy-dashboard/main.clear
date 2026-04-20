@@ -25,19 +25,19 @@ when user calls GET /api/deploys:
   all_deploys = get all Deploys
   send back all_deploys
 
-when user calls POST /api/deploys sending deploy_data:
-  validate deploy_data:
+when user calls POST /api/deploys sending deployment:
+  validate deployment:
     app_name is text, required, min 1, max 100
     version is text, required
     environment is text
     deployed_by is text
-  new_deploy = save deploy_data as new Deploy
-  send back new_deploy with success message
+  new_deployment = save deployment as new Deploy
+  send back new_deployment with success message
 
-when user calls PUT /api/deploys/:id sending update_data:
+when user calls PUT /api/deploys/:id sending deployment:
   requires login
-  save update_data to Deploys
-  send back update_data with success message
+  save deployment to Deploys
+  send back deployment with success message
 
 when user calls DELETE /api/deploys/:id:
   requires login
@@ -49,11 +49,11 @@ when user calls GET /api/alerts:
   all_alerts = get all Alerts
   send back all_alerts
 
-when user calls POST /api/alerts sending alert_data:
-  validate alert_data:
+when user calls POST /api/alerts sending alert:
+  validate alert:
     message is text, required
     severity is text
-  new_alert = save alert_data as new Alert
+  new_alert = save alert as new Alert
   send back new_alert with success message
 
 # Webhook: receive deploy notifications from CI/CD

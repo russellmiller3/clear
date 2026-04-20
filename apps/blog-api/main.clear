@@ -46,19 +46,19 @@ when user calls GET /api/posts/:id:
 
 # --- Protected Endpoints ---
 
-when user calls POST /api/posts receiving post_data:
+when user calls POST /api/posts receiving article:
   this endpoint requires login
-  validate post_data:
+  validate article:
     title is text, required, min 1, max 200
     body is text, required, min 1
-  define new_post as: save post_data as Post
+  define new_post as: save article as Post
   send back new_post status 201
 
-when user calls PUT /api/posts/:id receiving update_data:
+when user calls PUT /api/posts/:id receiving article:
   this endpoint requires login
-  validate update_data:
+  validate article:
     title is text, min 1, max 200
-  save update_data to Posts
+  save article to Posts
   send back 'updated'
 
 when user calls DELETE /api/posts/:id:
@@ -75,13 +75,13 @@ when user calls GET /api/users:
   define all_users as: look up all records in Users table
   send back all_users
 
-when user calls POST /api/users receiving user_data:
+when user calls POST /api/users receiving signup:
   this endpoint requires login
   this endpoint requires role 'admin'
-  validate user_data:
+  validate signup:
     name is text, required
     email is text, required, matches email
-  define new_user as: save user_data as User
+  define new_user as: save signup as User
   send back new_user status 201
 
 # --- Health ---

@@ -13,11 +13,11 @@ create data shape Link:
 
 # --- Endpoints ---
 
-when user calls POST /api/shorten receiving link_data:
-  validate link_data:
+when user calls POST /api/shorten receiving link:
+  validate link:
     url is text, required, min 1
   rate limit 10 per minute
-  define new_link as: save link_data as Link
+  define new_link as: save link as Link
   send back new_link status 201
 
 when user calls GET /api/links:

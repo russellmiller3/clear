@@ -180,12 +180,12 @@ body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafafa; }
   submitter, required
   approved, default false
 
-<span class="text-indigo-400">when user sends</span> data <span class="text-indigo-400">to</span> /api/expenses:
+<span class="text-indigo-400">when user sends</span> expense <span class="text-indigo-400">to</span> /api/expenses:
   <span class="text-amber-400">requires login</span>
-  <span class="text-amber-400">validate</span> data:
+  <span class="text-amber-400">validate</span> expense:
     description, required
     amount, between 0 and 100000
-  save data as new Expense
+  save expense as new Expense
   email manager: 'New expense to review'
 
 <span class="text-indigo-400">test:</span>

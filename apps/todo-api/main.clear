@@ -26,17 +26,17 @@ when user calls GET /api/todos/:id:
   define todo as: look up records in Todos table where id is incoming's id
   send back todo
 
-when user calls POST /api/todos receiving post_data:
-  validate post_data:
+when user calls POST /api/todos receiving post:
+  validate post:
     title is text, required, min 1, max 500
-  define new_todo as: save post_data as Todo
+  define new_todo as: save post as Todo
   send back new_todo status 201
 
-when user calls PUT /api/todos/:id receiving update_data:
+when user calls PUT /api/todos/:id receiving todo:
   requires login
-  validate update_data:
+  validate todo:
     title is text, min 1, max 500
-  save update_data to Todos
+  save todo to Todos
   send back 'updated'
 
 when user calls DELETE /api/todos/:id:

@@ -18,11 +18,11 @@ allow cross-origin requests
 
 # --- REST Endpoints ---
 
-when user calls POST /api/metrics receiving metric_data:
-  validate metric_data:
+when user calls POST /api/metrics receiving metric:
+  validate metric:
     name is text, required
     value is number, required
-  define new_metric as: save metric_data as Metric
+  define new_metric as: save metric as Metric
   send back new_metric status 201
 
 when user calls GET /api/metrics:

@@ -20,11 +20,11 @@ log every request
 
 # --- Endpoints ---
 
-when user calls POST /api/jobs receiving job_data:
+when user calls POST /api/jobs receiving job:
   this endpoint requires login
-  validate job_data:
+  validate job:
     type is text, required
-  define new_job as: save job_data as Job
+  define new_job as: save job as Job
   send back new_job status 201
 
 when user calls GET /api/jobs:

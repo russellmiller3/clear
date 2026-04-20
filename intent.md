@@ -127,8 +127,8 @@ Schedule units: `second`, `minute`, `hour`, `day`. Compiles to `setInterval`.
 
 | Node Type | Syntax | Express / FastAPI |
 |-----------|--------|-------------------|
-| `ENDPOINT` | `when user requests data from /api/path:` (GET), `when user sends data to /api/path:` (POST), `when user updates data at /api/path/:id:` (PUT), `when user deletes data at /api/path/:id:` (DELETE) | `app.get('/api/path', ...)` / `app.post(...)` / `app.put(...)` / `app.delete(...)`. Old syntax `when user calls METHOD /path:` still works as synonym. |
-| `RESPOND` | `send back data` / `send back data status 201` | `res.json(data)` |
+| `ENDPOINT` | `when user requests data from /api/todos:` (GET), `when user sends todo to /api/todos:` (POST — receiving var is singular entity name), `when user updates todo at /api/todos/:id:` (PUT), `when user deletes todo at /api/todos/:id:` (DELETE) | `app.get('/api/todos', ...)` / `app.post(...)` / `app.put(...)` / `app.delete(...)`. Old syntax `when user calls METHOD /path:` still works as synonym. |
+| `RESPOND` | `send back content` / `send back content status 201` | `res.json(data)` |
 | `REQUIRES_AUTH` | `this endpoint requires auth` | JWT middleware check |
 | `REQUIRES_ROLE` | `this endpoint requires role 'admin'` | Role check middleware |
 | `GUARD` | `guard stock > 0 or 'Out of stock'` | Conditional 400 response |
@@ -156,7 +156,7 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hid
 
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
-| `VALIDATE` | `validate post_data:` + field rules | Per-field 400 checks |
+| `VALIDATE` | `validate article:` + field rules | Per-field 400 checks |
 | `FIELD_RULE` | `name is text, required, min 1, max 100` | Inside validate block |
 | `RESPONDS_WITH` | `responds with:` + field types | Response schema doc |
 | `RATE_LIMIT` | `rate limit 10 per minute` | Request throttling |
@@ -411,7 +411,7 @@ Optional: `CLEAR_AI_ENDPOINT` -- custom endpoint (defaults to Anthropic API).
 | `this id` (in expression position) | `incoming?.id` | URL path param access, works anywhere in expressions |
 | `this user_id` | `incoming?.user_id` | Same pattern for any named URL param |
 | `get todos from '/api/url'` | `get from '/api/url'` (into magic response) | Named state target |
-| `sending post_data` | `receiving post_data` | User perspective canonical |
+| `sending article` | `receiving article` | User perspective canonical |
 | `saved as a todo` | `saves to todo` | With optional article |
 | `display X showing col1, col2` | `display X as table` | Column whitelist |
 | `display X as chat showing role, content` | Chat bubble UI | Full chat component: header, messages, typing indicator, scroll-to-bottom, textarea + Send button. Uses `_chatRender`, `_chatMd`, `_chatSend`/`_chatSendStream`, `_chatClear`. DaisyUI `.clear-chat-*` classes. Absorbs following text input + Send button into built-in UI. `showing` maps fields to role/content (defaults: `role, content`). Reactive: `_recompute()` calls `_chatRender()`. Auto-detects streaming agents: if POST endpoint calls a streaming agent, uses `_chatSendStream` (SSE token streaming) instead of `_chatSend`. |

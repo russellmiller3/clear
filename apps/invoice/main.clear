@@ -97,14 +97,14 @@ when user calls GET /api/clients:
   all_clients = get all Clients
   send back all_clients
 
-when user calls POST /api/clients sending client_data:
+when user calls POST /api/clients sending client:
   requires login
-  validate client_data:
+  validate client:
     name is text, required, min 1, max 100
     email is text, required, matches email
     company is text
     phone is text
-  new_client = save client_data as new Client
+  new_client = save client as new Client
   send back new_client with success message
 
 when user calls DELETE /api/clients/:id:
@@ -117,28 +117,28 @@ when user calls GET /api/invoices:
   all_invoices = get all Invoices
   send back all_invoices
 
-when user calls POST /api/invoices sending invoice_data:
+when user calls POST /api/invoices sending invoice:
   requires login
-  validate invoice_data:
+  validate invoice:
     client_name is text, required
     description is text, required
     amount is number, required
     due_date is text, required
     status is text
     notes is text
-  new_invoice = save invoice_data as new Invoice
+  new_invoice = save invoice as new Invoice
   send back new_invoice with success message
 
-when user calls PUT /api/invoices/:id sending update_data:
+when user calls PUT /api/invoices/:id sending invoice:
   requires login
-  validate update_data:
+  validate invoice:
     client_name is text
     due_date is text
     status is text
     description is text
     amount is number
     notes is text
-  save update_data to Invoices
+  save invoice to Invoices
   send back 'updated' with success message
 
 when user calls DELETE /api/invoices/:id:
@@ -151,14 +151,14 @@ when user calls GET /api/line-items:
   all_items = get all LineItems
   send back all_items
 
-when user calls POST /api/line-items sending item_data:
+when user calls POST /api/line-items sending item:
   requires login
-  validate item_data:
+  validate item:
     invoice_id is text, required
     description is text, required
     quantity is number
     unit_price is number, required
-  new_item = save item_data as new LineItem
+  new_item = save item as new LineItem
   send back new_item with success message
 
 # Frontend

@@ -304,9 +304,9 @@ when user calls GET /api/todos:
   todos = get all Todos
   send back todos
 
-when user calls POST /api/todos sending data:
+when user calls POST /api/todos sending todo:
   requires login
-  saved = save data to Todos
+  saved = save todo to Todos
   send back saved
 
 # 3. Frontend (pages)
@@ -403,8 +403,8 @@ Only equality filters (`is X`, `A is X and B is Y`) work with `from Table` aggre
 
 HTTP methods — what each one does:
 - **GET** — fetch data, no body. Use for listing records or getting one by id.
-- **POST** — create a new record. Send the new data in the body (`sending data:`).
-- **PUT** — update an existing record by id. Send the changed fields in the body (`sending update_data:`).
+- **POST** — create a new record. Send the new record in the body (`sending <entity>:` — name the var after the singular entity being sent, e.g. `sending todo:`).
+- **PUT** — update an existing record by id. Send the changed fields in the body (`sending changes:`).
 - **DELETE** — remove a record by id. No body needed.
 
 ```clear
@@ -414,15 +414,15 @@ when user calls GET /api/items:
   send back items
 
 # POST creates — receives new data in the body
-when user calls POST /api/items sending data:
+when user calls POST /api/items sending entry:
   requires login
-  saved = save data to Items
+  saved = save entry to Items
   send back saved
 
 # PUT updates — receives changed fields, targets a record by :id
-when user calls PUT /api/items/:id sending update_data:
+when user calls PUT /api/items/:id sending changes:
   requires login
-  save update_data to Items
+  save entry to Items
   send back 'updated' with success message
 
 # DELETE removes — targets a record by :id, no body
@@ -436,8 +436,8 @@ when user calls DELETE /api/items/:id:
 
 ```clear
 # Inline record — both `is` and `:` separators work
-when user sends data to /webhook/stripe:
-  save data to Events
+when user sends event to /webhook/stripe:
+  save event to Events
   send back { received is true }
 
 when user requests data from /api/health:
@@ -467,8 +467,8 @@ auto-detects it and reads chunks live. No `stream` keyword needed. Users see
 tokens appear like ChatGPT.
 
 ```clear
-when user sends data to /api/ask:
-  ask claude 'You are helpful.' with data's question
+when user sends query to /api/ask:
+  ask claude 'You are helpful.' with query's question
 
 page 'Chat' at '/':
   question = ''
@@ -847,12 +847,12 @@ GET endpoints don't need `requires login` unless they expose private data.
 
 ```
 // ✅ CORRECT — auth guard is the first thing in the body
-when user sends todo_data to /api/todos:
+when user sends todo to /api/todos:
   requires login
-  validate todo_data:
+  validate todo:
     title must not be empty
-  save todo_data to Todos
-  send back todo_data with status 201
+  save todo to Todos
+  send back todo with status 201
 
 when user calls DELETE /api/todos/:id:
   requires login
