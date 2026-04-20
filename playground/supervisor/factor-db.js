@@ -174,10 +174,14 @@ export class FactorDB {
 
       for (const fs of failingSessions) {
         if (results.length >= topK) break;
-        // Find next compile_ok=1 row in the same session after the failure
+        // Find next compile_ok=1 row in the same session after the failure.
+        // Require source_before > 50 chars — the worktree-incident recovery
+        // from JSONL left many rows with empty source_before, and a hint with
+        // no code to pattern-match from is label-only noise for Meph.
         const fix = this._db.prepare(`
           SELECT * FROM code_actions
           WHERE session_id = ? AND created_at > ? AND compile_ok = 1
+            AND source_before IS NOT NULL AND LENGTH(source_before) > 50
           ORDER BY created_at ASC
           LIMIT 1
         `).get(fs.session_id, fs.created_at);
@@ -188,12 +192,14 @@ export class FactorDB {
       }
     }
 
-    // Tier 3: archetype fallback. Only gold rows (compile AND test passed).
+    // Tier 3: archetype fallback. Only gold rows (compile AND test passed)
+    // with non-empty source to show Meph. See Tier 1+2 comment above.
     if (archetype && results.length < topK) {
       const need = topK - results.length;
       const golds = this._db.prepare(`
         SELECT * FROM code_actions
         WHERE archetype = ? AND compile_ok = 1 AND test_pass = 1
+          AND source_before IS NOT NULL AND LENGTH(source_before) > 50
         ORDER BY test_score DESC, created_at DESC
         LIMIT ?
       `).all(archetype, need * 3); // fetch more, filter seen
