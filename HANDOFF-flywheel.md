@@ -1,8 +1,8 @@
 # Handoff — Flywheel Track
 
 **Track:** Factor DB + EBM reranker + compiler-owned training data. The long-game moat nobody else architecturally can copy.
-**Last updated:** 2026-04-20 (Session 39 — pick-up verification).
-**Status:** live end-to-end on main. **Both Session 38 TODO items verified at start of Session 39** — see "Session 39 Verification" below. Next unlock: pairwise reranker features.
+**Last updated:** 2026-04-20 (Session 39 — pick-up + pairwise landing).
+**Status:** live end-to-end on main. **Both Session 38 TODO items verified** AND **pairwise reranker shipped** in Session 39. Current unlock: scale up to ~500–1000 pairs via more sweeps; retrain.
 
 > Note: `HANDOFF.md` at root is a parallel track (Live App Editing). This file is the flywheel handoff. Both on main, non-conflicting.
 
@@ -78,6 +78,34 @@ ANTHROPIC_API_KEY=... node playground/supervisor/verify-caching.js        # ~30s
 ANTHROPIC_API_KEY=... node playground/supervisor/verify-hint-flow.js      # ~30-60s, ~$0.05
 ANTHROPIC_API_KEY=... node playground/eval-meph.js                         # ~90-180s, ~$0.10-0.30
 ```
+
+---
+
+## Session 39 — Shipped (2026-04-20, part 2)
+
+After verification, ran a broader 5-archetype hint test that caught two real bugs. Fixed each same-day, small commits.
+
+### Bugs caught + fixed
+- **Empty source_before in 67% of passing rows** (91% in api_service). Fallout from the Session 38 worktree-delete recovery. Hints were label-only noise. Fix: `LENGTH(source_before) > 50` filter on all retrieval tiers (`585da36`).
+- **Classifier over-routed to api_service**. Backend-only agent + realtime apps fell through to api_service, starving those archetypes of hints. Fix: check `hasAgent` / `hasRealtime` BEFORE the api_service catch-all in backend branch (`deb6899`).
+
+### Pairwise reranker — SHIPPED
+Built end-to-end and live on `/api/chat`:
+- **Exporter** (`export-training-data.js --pairwise`): produces labeled (error, fix) pairs with 6 comparison features (`archetype_match`, `error_sig_exact`, `error_category_match`, `source_jaccard`, `step_delta`, `fix_test_score`).
+- **Trainer** (`train_reranker_pairwise.py`): logistic regression, JSON export for JS-side inference.
+- **Scorer** (`ebm-scorer.js` → `rankPairwise`): sigmoid on linear combo, promotes candidates with pair-feature agreement over raw test_score.
+- **Wired into server.js** with order-of-preference: pairwise → pointwise EBM → BM25. All three fallbacks survive bundle-missing scenarios.
+- **Current model:** 52 pairs (13 positive, 39 negative) from 571 rows. val_auc=1.0 is overfitting at this N; honest signal emerges at ~1000 pairs. Ships anyway — wiring is proven live.
+- **Observed behavior win:** broader hint test with pairwise active promoted scenario 2 from "partial" (EBM order) to **"YES — exact_error match"** (pairwise found a tier-1 hit EBM had missed). Meph's self-report explicitly endorsed the retrieved pattern.
+
+### Factor DB grew
+508 → 571 rows, 193 → 225 passing. Committed with WAL checkpoint (`f6765a5`).
+
+### What's queued next
+1. **More sweeps to ~1000 passing rows.** Same command as before; way cheaper now with caching. `node playground/supervisor/curriculum-sweep.js --workers=3 --timeout=240`. Retrain pairwise every +100 pairs; watch val AUC stabilize.
+2. **Backfill the 91 empty api_service rows** — rerun curriculum tasks that produced them so their source is captured.
+3. **Iterate pairwise features** once pair count is honest: add `step_advanced`, `age_days`, `archetype_depth` (how many archetype-matched rows exist so far).
+4. **LambdaRank migration** when we outgrow logistic. Currently the coef for `fix_test_score` is negative because of sampling skew in negatives — a proper ranking loss would correct that.
 
 ---
 
