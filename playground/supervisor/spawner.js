@@ -31,8 +31,22 @@ export class WorkerSpawner {
       env: { ...process.env, PORT: String(port), SESSION_ID: sessionId },
     });
 
-    child.stderr.on('data', () => {}); // suppress — worker logs to its own terminal
-    child.stdout.on('data', () => {});
+    // Forward observability lines to the parent's stdout with a worker prefix.
+    // Without this, worker [cache]/[hints]/[hint-usage] telemetry vanished —
+    // making sweeps invisible to anyone grading retrieval behavior at scale.
+    // Rest of the worker's chatter is dropped so sweep logs stay scannable.
+    let _buf = '';
+    child.stdout.on('data', (chunk) => {
+      _buf += chunk.toString();
+      const lines = _buf.split('\n');
+      _buf = lines.pop();
+      for (const line of lines) {
+        if (/\[cache\]|\[hints\]|\[hint-usage\]/.test(line)) {
+          process.stdout.write(`[${sessionId}] ${line}\n`);
+        }
+      }
+    });
+    child.stderr.on('data', () => {}); // stderr stays suppressed
 
     this._workers.set(sessionId, { child, port });
 
