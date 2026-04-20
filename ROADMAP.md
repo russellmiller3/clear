@@ -395,6 +395,16 @@ All compile to direct REST `fetch()` calls. No SDK required.
 
 Ordered by impact. Three tracks: **go-to-market**, **language completeness**, and **platform quality**.
 
+### Repo Readthrough Priorities (2026-04-19)
+
+These came out of a full readthrough of the repo/docs stack. They are not new feature ideas; they are leverage points that protect the thesis.
+
+| # | Item | Status | Impact |
+|---|------|--------|--------|
+| RR-1 | **Kill doc drift on the canonical surfaces.** Add one cheap consistency pass that checks shared metrics/examples across `README.md`, `FAQ.md`, `ROADMAP.md`, `PHILOSOPHY.md`, and startup docs so test counts, canonical syntax, and product claims don't silently diverge. | Next | Protects the "docs are source of truth" promise |
+| RR-2 | **Retire or redesign the last 1:1-mapping violations.** `CHECKOUT`, `OAUTH_CONFIG`, `USAGE_LIMIT`, and any other syntax that still hides too much generated behavior should move toward explicit source forms or be demoted until they do. | Next | Protects Clear's most important philosophical moat |
+| RR-3 | **Bias roadmap energy toward the Marcus wedge, Meph reliability, and live editing.** New syntax should mostly earn its keep by removing `script:` from Marcus-class apps or by fixing repeated Meph failure clusters, not by broadening surface area for its own sake. | Next | Keeps the company/story/product pointed at the strongest wedge |
+
 ### Flywheel / Training Signal (Session 38 in-flight)
 
 The RL thesis moves forward in small, measurable steps. Each item below compounds the ones below it — do them in order.
@@ -429,6 +439,59 @@ The RL thesis moves forward in small, measurable steps. Each item below compound
 - BUT: CF-1 is 20 lines of instrumentation that starts collecting data now. Cheap optionality. Data collection compounds before you decide to act.
 
 **Not-now but write it down:** CF-4 is a publishable research direction. If Augment Labs track becomes primary, this is where that work lives.
+
+### Private Moonshots — if the goal is delight, ambition, and "this should not exist"
+
+These are the features that make Clear feel like a private cathedral project instead of a sane startup roadmap.
+
+| # | Item | Status | Why it's fun |
+|---|------|--------|--------------|
+| PM-1 | **Time-travel app editing.** Every ship becomes a named snapshot with source diff, data diff, screenshot diff, and "why this changed" note from Meph. One-click scrub through app history like a video editor. | Idea | Turns software development into a visible narrative instead of invisible file churn |
+| PM-2 | **Compiler strategy arena.** Let multiple emit strategies compete per pattern (`table render`, `CRUD handler`, `auth middleware`, `chat UI`) and keep score from runtime behavior, evals, and visual diffing. | Idea | Makes the compiler feel alive and self-optimizing |
+| PM-3 | **App MRI / X-ray mode.** Click anything in a running app and see the Clear line, generated JS, DB fields, tests, recent failures, and Meph's last relevant edits for that surface. | Idea | The most on-brand expression of "readable software" in the whole repo |
+| PM-4 | **Production replay lab.** Capture real sessions, then replay them deterministically against older and newer compiler/app versions to see what changed, what broke, and what got faster. | Idea | Gives you a toy-box for debugging, evals, and compiler evolution all at once |
+| PM-5 | **Semantic migrations with negotiation.** For destructive schema changes, Clear doesn't just error — it opens an interactive planner: keep, coerce, split, rename, archive, or ask Meph to propose the safest path. | Idea | Feels like database evolution grew a brain |
+| PM-6 | **Multi-agent build theater.** Several Meph variants build or critique the same app from different perspectives (readability, security, speed, design), then a supervisor merges the best parts with a visible reasoning trace. | Idea | Maximalist, theatrical, and perfect for a private software lab |
+| PM-7 | **Generated tests for everything visible.** Not just endpoints and forms — every button, state transition, empty state, chart, permission boundary, and recovery path gets generated probes and explanation text. | Idea | Pushes the "compiler tests everything" thesis to its ludicrous endpoint |
+| PM-8 | **Living architecture reports.** Every app gets a gorgeous browsable dossier: entity graph, endpoint graph, page graph, permission graph, agent graph, and failure hotspots, regenerated on every compile. | Idea | Makes Clear apps feel like inspectable machines, not blobs of code |
+
+### Research Priority Order (revised 2026-04-19)
+
+Previously SK-1 (cross-domain transfer) was treated as the single flagship. It is not the most ambitious laptop-feasible question Clear can answer. Full rationale and candidate comparison in **`RESEARCH.md` → "Flagship Research Candidates — Ranking the Most Ambitious Laptop-Feasible Questions"**.
+
+**Revised sequencing:**
+
+1. **SK-3 — Constrained-language scaling laws.** Does a small LLM writing Clear match a big LLM writing Python on the same spec? If yes, constraints beat scale for bounded problem classes — a Bitter Lesson counterexample. Infrastructure mostly live; a weekend's runs produce a paper or a clean null.
+2. **SK-2 — Provably minimal agent-iterated programs.** Does GA+reranker iteration converge on the provably-minimum Clear program for a spec? Verified by exhaustive enumeration over the 11-op patch space. FunSearch / AlphaEvolve never claim minimality; Clear's closed grammar makes it uniquely tractable.
+3. **SK-1 — Cross-domain transfer (original flagship).** The entry below. Still valuable; stronger as paper #3 because you can frame it as "minima from domain A transfer to domain B" rather than just "F1 improves."
+4. **SK-4 — Emergent-algorithm detection.** "Move 37" for programs — did the GA discover an algorithm genuinely not in the training corpus? Highest intellectual ceiling, hardest to score. Do last once Clear is an established research platform.
+
+**Parking lot** (not first-flagship): decidable Clear (PhD-scale), compression-as-signal (good methodological paper), cross-target transfer (good warm-up paper). All catalogued in RESEARCH.md.
+
+**Why this ordering, not the reverse:** scheduling convenience would put transfer first (infrastructure is most complete). Research strategy puts scaling laws first so each paper makes the next one stronger — "constraints matter" → "constraints find optima" → "optima transfer." Rising arc, not flat sequence.
+
+### Solo Karpathy Moonshot
+
+If the goal is "one obsessed person, some LLM API calls, a ThinkPad, and a result that makes serious ML people raise an eyebrow," the strongest bet is a cross-domain program-evolution lab.
+
+| # | Item | Status | Why this is the one |
+|---|------|--------|---------------------|
+| SK-1 | **Cross-domain program evolution lab.** Run GA-style Clear program evolution on one domain, train an interpretable EBM reranker on structural features of the winning programs, then show that the reranker improves generation-1 results on a different domain. Wrap the whole thing in a replayable "evolution notebook" with variants, scores, learned rules, and transfer charts. | Target (#3 in revised priority order — see above) | Research-grade claim, CPU-friendly, tightly aligned with Clear's core thesis, and impressive precisely because it does not require giant-model fine-tuning or large infra |
+| SK-2 | **Provably minimal agent-iterated programs.** Given a spec, does GA+reranker iteration converge on the provably-minimum Clear program — the one no shorter program can satisfy? Verified by exhaustive enumeration over the 11-op patch space. Full rationale in RESEARCH.md. | Target (#2 in revised priority order) | FunSearch / AlphaEvolve never claim minimality; Clear's closed grammar makes exhaustive enumeration tractable up to ~10-line programs |
+| SK-3 | **Constrained-language scaling laws.** Does a small LLM writing Clear match a big LLM writing Python on the same spec? Fixed specs × {Haiku, Sonnet, Opus} × {Clear, Python}. If the Clear column flattens while Python slopes up, constraints beat scale for bounded problem classes. | Target (#1 in revised priority order — do first) | Bitter Lesson counterexample. Anthropic-relevant. Infrastructure mostly live. Weekend of runs produces paper or null. |
+| SK-4 | **Emergent-algorithm detection.** Did the GA discover an algorithm genuinely not in the training corpus? Clear's readable 1:1 compile output makes novelty auditable in a way FunSearch's cryptic Python output does not. | Target (#4 in revised priority order) | Highest intellectual ceiling of any candidate; hardest to score cleanly. Operationalizing "novel" is the whole game. |
+
+### Other Laptop-Scale Research Bets
+
+If SK-1 is the flagship claim, these are the other compact bets that could still produce a real result on one machine.
+
+| # | Item | Status | Why it might matter |
+|---|------|--------|---------------------|
+| OL-1 | **Search-space compression benchmark.** Compare Clear vs Python on the same program-search tasks: valid-candidate rate, mutation survival rate, convergence speed, and token cost. | Idea | Quantifies the core claim that constrained readable languages make search dramatically easier |
+| OL-2 | **Readable-source debugging benchmark.** Paired bug-fix tasks in Clear vs JS/Python: measure fix rate, latency, retries, and cost for the same model under the same harness. | Idea | Strong practical claim: readable 1:1 source improves automated debugging, not just aesthetics |
+| OL-3 | **Error-message learning loop.** Learn which compiler errors actually unstick Meph, rewrite the worst ones, and measure downstream improvement in repair rate. | Idea | Small, falsifiable, and deeply on-theme: better explanations as capability amplification |
+| OL-4 | **Task-curriculum teacher.** Instead of only learning over programs, learn which next task or archetype best improves the reranker fastest. | Idea | Meta-learning over training order, still feasible with the existing supervisor/factor DB setup |
+| OL-5 | **Counterexample co-evolution.** Evolve small adversarial test generators against Clear programs, then measure whether programs hardened against them transfer better to unseen edge cases. | Idea | More exciting than static evals and still laptop-friendly if the domains stay small |
 
 ### One-click deploy follow-ups (Phase 85 shipped)
 1. **Phase 85a — Provision the real stack.** Register buildclear.dev, apply for Fly Trust Verified status with 10k-machine quota, sign up for Stripe, generate Anthropic org key, wire Postgres for the tenants DB, and run `deploy-builder.sh` + `deploy-proxy.sh` once. Until this is done Deploy works end-to-end in tests but has nowhere to deploy to.
