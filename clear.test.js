@@ -6163,6 +6163,162 @@ when user calls POST /api/items receiving item_data:
   });
 });
 
+describe('Validator - receiving var name collisions', () => {
+  function warnStrs(result) {
+    return result.warnings.map(w => typeof w === 'string' ? w : w.message || '');
+  }
+
+  it('warns when receiving var is the banned placeholder "data"', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Todos table:
+  title, required
+when user sends data to /api/todos:
+  requires login
+  save data as new Todo
+  send back data
+    `);
+    expect(result.errors).toHaveLength(0);
+    const matched = warnStrs(result).filter(w => w.includes("'data'") && w.includes('banned-names list'));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it('warns when receiving var is "user" (shadows current user)', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Users table:
+  name, required
+when user sends user to /api/users:
+  requires login
+  save user as new User
+  send back user
+    `);
+    expect(result.errors).toHaveLength(0);
+    const matched = warnStrs(result).filter(w => w.includes("'user'") && w.includes('current user'));
+    expect(matched.length).toBeGreaterThan(0);
+    // Suggestion should include signup/profile/account so the author knows what to do
+    expect(matched[0]).toContain('signup');
+  });
+
+  it('warns when receiving var is "post" (HTTP keyword)', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Posts table:
+  title, required
+when user sends post to /api/posts:
+  requires login
+  save post as new Post
+  send back post
+    `);
+    const matched = warnStrs(result).filter(w => w.includes("'post'") && w.includes('post to'));
+    expect(matched.length).toBeGreaterThan(0);
+    expect(matched[0]).toContain('article');
+  });
+
+  it('warns when receiving var is "deploy" (deployment keyword)', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Deploys table:
+  app_name, required
+when user sends deploy to /api/deploys:
+  requires login
+  save deploy as new Deploy
+  send back deploy
+    `);
+    const matched = warnStrs(result).filter(w => w.includes("'deploy'") && w.includes('deploy to'));
+    expect(matched.length).toBeGreaterThan(0);
+    expect(matched[0]).toContain('deployment');
+  });
+
+  it('warns when receiving var is "payment" (checkout synonym)', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Payments table:
+  amount (number), required
+when user sends payment to /api/payments:
+  requires login
+  save payment as new Payment
+  send back payment
+    `);
+    const matched = warnStrs(result).filter(w => w.includes("'payment'") && w.includes('checkout'));
+    expect(matched.length).toBeGreaterThan(0);
+    expect(matched[0]).toContain('billing');
+  });
+
+  it('warns when receiving var is "update" (put-to synonym)', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Todos table:
+  title, required
+when user calls POST /api/todos receiving update:
+  send back update
+    `);
+    const matched = warnStrs(result).filter(w => w.includes("'update'") && w.includes('update to'));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it('warns when an agent receives "data"', () => {
+    const result = compileProgram(`
+build for javascript backend
+agent 'Summarizer' receives data:
+  answer = ask claude 'summarize' with data
+  send back answer
+    `);
+    const matched = warnStrs(result).filter(w => w.includes('Summarizer') && w.includes("'data'"));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT warn on canonical entity-name receiving vars', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Todos table:
+  title, required
+when user sends todo to /api/todos:
+  requires login
+  save todo as new Todo
+  send back todo
+    `);
+    expect(result.errors).toHaveLength(0);
+    const matched = warnStrs(result).filter(w =>
+      w.includes('banned-names list') ||
+      w.includes('current user') ||
+      w.includes('UI element keyword') ||
+      w.includes('checkout')
+    );
+    expect(matched.length).toEqual(0);
+  });
+
+  it('does NOT warn when Users receives "signup" (the recommended alternative)', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Users table:
+  name, required
+  email, required
+when user sends signup to /api/users:
+  save signup as new User
+  send back signup
+    `);
+    expect(result.errors).toHaveLength(0);
+    const matched = warnStrs(result).filter(w => w.includes("'signup'") && w.includes('current user'));
+    expect(matched.length).toEqual(0);
+  });
+
+  it('emits warnings as strings with line numbers embedded', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Todos table:
+  title, required
+
+when user sends data to /api/todos:
+  save data as new Todo
+    `);
+    const matched = result.warnings.filter(w =>
+      typeof w === 'string' && w.includes("'data'") && /^Line \d+:/.test(w)
+    );
+    expect(matched.length).toBeGreaterThan(0);
+  });
+});
+
 describe('Compiler - define as with new syntax', () => {
   it('compiles define-as CRUD in backend context', () => {
     const result = compileProgram(`
