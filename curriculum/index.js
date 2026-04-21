@@ -47,6 +47,11 @@ const taskFiles = [
   'L7-kpi-sales.json',
   'L8-routing-engine.json',
   'L8-etl-api-ingest.json',
+  // Session-41 round 2: remaining archetype gaps. Takes coverage from 12/16
+  // to 15/16 (skipping `general` which is the fallback bucket).
+  'L6-batch-prune.json',       // batch_job (pure cron, existing batch-cleanup misclassifies)
+  'L6-company-directory.json', // directory_app (search-first catalog)
+  'L7-admin-panel.json',       // admin_tool (role-gated moderation)
   // Original higher-level tasks
   'L8-multi-tenant.json',
   'L8-rbac-api.json',

@@ -1,0 +1,23 @@
+{
+  "id": "admin-panel",
+  "level": 7,
+  "title": "Admin Panel — Moderate User-Submitted Content",
+  "description": "ARCHETYPE: admin_tool. Shape: auth-gated admin app for reviewing + moderating user-submitted records. The CORE is that EVERY mutation endpoint has `requires role 'admin'` (not just `requires login`). An admin can list pending reviews, approve them, reject them. NOT a generic CRUD — the admin role gating is the differentiator. Include: POST /api/reviews (public — anyone can submit), GET /api/reviews/pending (admin-only, lists pending), PUT /api/reviews/:id/approve (admin-only), PUT /api/reviews/:id/reject (admin-only). Reviews have a status field (pending/approved/rejected). Admin endpoints return 403 to non-admin users.",
+  "skeleton": "build for javascript backend\n\nallow signup and login\nowner is 'admin@example.com'\n\ncreate a Reviews table:\n  author_email, required\n  content, required, min 1, max 500\n  status, default 'pending'\n  created_at_date, auto\n\n# Your 4 endpoints here:\n# 1. POST /api/reviews — public submit\n# 2. GET /api/reviews/pending — requires role 'admin'\n# 3. PUT /api/reviews/:id/approve — requires role 'admin'\n# 4. PUT /api/reviews/:id/reject — requires role 'admin'\n",
+  "steps": [
+    { "id": "table",   "name": "Reviews table defined",                      "sourceMatches": ["create\\s+a?\\s*Reviews\\s+table"] },
+    { "id": "submit",  "name": "POST /api/reviews exists",                   "sourceMatches": ["(sends\\s+\\w+\\s+to|calls\\s+POST)\\s+['\"]?/api/reviews['\"]?"] },
+    { "id": "pending", "name": "GET /api/reviews/pending exists",            "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/reviews/pending['\"]?"] },
+    { "id": "approve", "name": "PUT approve endpoint",                       "sourceMatches": ["(updates|calls\\s+PUT).*\\/api\\/reviews\\/:id\\/approve"] },
+    { "id": "reject",  "name": "PUT reject endpoint",                        "sourceMatches": ["(updates|calls\\s+PUT).*\\/api\\/reviews\\/:id\\/reject"] },
+    { "id": "rbac",    "name": "requires role 'admin' on mutation endpoints", "sourceMatches": ["requires\\s+role\\s+['\"]admin['\"]"] }
+  ],
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/reviews",
+      "body": { "author_email": "alice@example.com", "content": "This is a test review submission." },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    }
+  ]
+}
