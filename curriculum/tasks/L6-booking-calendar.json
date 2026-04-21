@@ -1,0 +1,33 @@
+{
+  "id": "booking-calendar",
+  "level": 6,
+  "title": "Booking Calendar with Conflict Detection",
+  "description": "ARCHETYPE: booking_app. Shape: a Bookings table with date + time + guest_name fields, endpoints to create and list bookings, with a GUARD that prevents double-booking (same date + time slot). The guard is the CORE differentiator — this is what makes it a booking_app, not a generic CRUD. DO NOT skip the guard. Include: POST /api/bookings (creates, guards against conflicts), GET /api/bookings (lists all). The guard should reject any POST where a booking already exists with the same date AND time combination. Return 400 with message 'Slot already booked' on conflict.",
+  "skeleton": "build for javascript backend\n\ncreate a Bookings table:\n  guest_name, required\n  date, required\n  time, required\n  notes\n  created_at_date, auto\n\n# Your endpoints here — POST must guard against double-booking the same date+time\n",
+  "steps": [
+    { "id": "table",      "name": "Bookings table defined",          "sourceMatches": ["create\\s+a?\\s*Bookings\\s+table"] },
+    { "id": "list",       "name": "GET /api/bookings list",          "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/bookings['\"]?"] },
+    { "id": "create",     "name": "POST /api/bookings exists",       "sourceMatches": ["(sends\\s+\\w+\\s+to|calls\\s+POST)\\s+['\"]?/api/bookings['\"]?"] },
+    { "id": "guard",      "name": "Double-booking guard present",    "sourceMatches": ["guard\\s+.*(Slot|already\\s+booked|conflict)", "guard\\s+.*(exists|none|count).*date.*time"] },
+    { "id": "save",       "name": "Saves to Bookings",               "sourceMatches": ["save\\s+.*\\s+(to|as\\s+new)\\s+(Bookings|Booking)"] }
+  ],
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/bookings",
+      "body": { "guest_name": "Alice", "date": "2026-06-01", "time": "10:00" },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/bookings",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/bookings",
+      "body": { "guest_name": "Bob", "date": "2026-06-01", "time": "10:00" },
+      "expect": { "status": 400 }
+    }
+  ]
+}

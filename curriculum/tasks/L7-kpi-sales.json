@@ -1,0 +1,27 @@
+{
+  "id": "kpi-sales",
+  "level": 7,
+  "title": "Sales KPI Page",
+  "description": "ARCHETYPE: kpi. Shape: ONE web page with 3+ big headline numbers (aggregates) and AT MOST ONE chart. This is NOT a dashboard (2+ charts = dashboard). This is NOT a crud_app (no create/update forms on the main page). The CORE is big-number displays driven by SQL aggregates from a Sales table. Page layout: heading, 3 big stat displays (total revenue, order count, avg order size), optionally one trend chart, nothing else. DO NOT add filters. DO NOT add charts beyond one. DO NOT add tables of rows. Include a seed endpoint so tests have data.",
+  "skeleton": "build for javascript backend and web\n\ncreate a Sales table:\n  amount (number), required\n  region\n  sold_at_date, auto\n\n# Seed endpoint so tests have data:\nwhen user sends seed to /api/seed:\n  create s1:\n    amount = 120\n    region is 'West'\n  save s1 as new Sale\n  create s2:\n    amount = 340\n    region is 'East'\n  save s2 as new Sale\n  send back 'seeded'\n\n# Your KPI page here — page 'KPIs' at '/' with 3 big aggregates\n",
+  "steps": [
+    { "id": "table",    "name": "Sales table defined",              "sourceMatches": ["create\\s+a?\\s*Sales\\s+table"] },
+    { "id": "page",     "name": "KPI page at /",                    "sourceMatches": ["page\\s+['\"]KPIs?['\"]"] },
+    { "id": "total",    "name": "Total revenue aggregate",           "sourceMatches": ["sum\\s+of\\s+amount\\s+from\\s+Sales"] },
+    { "id": "count",    "name": "Order count aggregate",             "sourceMatches": ["count\\s+of\\s+Sales"] },
+    { "id": "avg",      "name": "Avg order size aggregate",          "sourceMatches": ["(avg|average)\\s+of\\s+amount\\s+from\\s+Sales"] },
+    { "id": "display",  "name": "Displays each aggregate on page",   "sourceMatches": ["display\\s+", "heading\\s+"] }
+  ],
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/seed",
+      "expect": { "status": 200 }
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "expect": { "status": 200 }
+    }
+  ]
+}
