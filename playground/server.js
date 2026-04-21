@@ -2714,13 +2714,18 @@ app.post('/api/chat', async (req, res) => {
           const helpfulM = body.match(/helpful=([a-z]+)/i);
           const reasonM = body.match(/reason=([^,\n]+)/i);
           const applied = appliedWord ? /^yes/i.test(appliedWord[1]) : null;
+          // Tier preference: Meph's explicit tag > the top tier we served > null.
+          // Meph typically omits `tier=` on `HINT_APPLIED: no` (no point citing a
+          // tier he rejected) — record the served tier so we retain which tier
+          // was being rejected, not a null.
+          const recordedTier = (tierM && tierM[1]) || _hintsInjectedTier || null;
           _factorDB.logHintUsage(_hintsInjectedRowId, {
             applied,
-            tier: tierM ? tierM[1] : null,
+            tier: recordedTier,
             helpful: helpfulM ? helpfulM[1].toLowerCase() : null,
             reason: reasonM ? reasonM[1].trim().slice(0, 200) : null,
           });
-          console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} applied=${applied} tier=${tierM ? tierM[1] : '-'} helpful=${helpfulM ? helpfulM[1] : '-'}`);
+          console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} applied=${applied} tier=${recordedTier || '-'} helpful=${helpfulM ? helpfulM[1] : '-'}`);
         } else {
           // No tag from Meph. Try the inference fallback: if a later compile
           // in this same turn had fewer errors than when hints were served,
