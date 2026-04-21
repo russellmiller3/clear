@@ -3099,7 +3099,15 @@ app.post('/api/chat', async (req, res) => {
                 }).join('\n\n');
                 const guidance = `\nHow to use: pattern-match the FIX, don't copy-paste. These are from different tasks — look at what structure works (validate blocks, guard clauses, auth placement, endpoint shape) and adapt to your current error.`;
 
-                const text = `${note}\n\n${hintBlocks}\n${guidance}`;
+                // Per-hint-serve REQUIRED-tag line, placed in the hint payload itself
+                // (not just the system prompt) so Meph's attention catches it right
+                // where he's reading the hint. Measured: system-prompt-only reminders
+                // land ~45% of the time; keeping the requirement visible next to the
+                // hint should lift that without relying on inference fallback.
+                const topTier = hintRows[0]?.tier || '';
+                const tagRequired = `\n\n⚠ REQUIRED: Start your very next text block with \`HINT_APPLIED: yes, tier=${topTier}, helpful=<yes|no|partial>\` if you're going to use these hints, OR \`HINT_APPLIED: no, reason=<short reason>\` if they don't fit your real problem. Tag first, then your analysis. This is tracking signal, not optional.`;
+
+                const text = `${note}\n\n${hintBlocks}\n${guidance}${tagRequired}`;
 
                 result.hints = {
                   note,
