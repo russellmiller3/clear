@@ -2685,6 +2685,16 @@ app.post('/api/chat', async (req, res) => {
   // tracking joins cleanly to retrieval telemetry.
   let _allAssistantText = '';
   let _hintsInjectedRowId = null;
+  // Inference fallback: if hints are served but Meph forgets to emit
+  // HINT_APPLIED, we can still infer whether the hint likely helped by
+  // watching error counts across subsequent compiles in the same turn.
+  // If error count drops after hints → probably useful → log applied=1,
+  // helpful='inferred'. Never overwrites a real tag; only fires when Meph
+  // didn't announce. Kept in a distinct `helpful` bucket ('inferred') so
+  // ranker training can choose whether to use this weaker signal.
+  let _hintsInjectedErrorCount = null;
+  let _hintsInjectedTier = null;
+  let _postHintMinErrorCount = null;
 
   // Parse Meph's HINT_APPLIED tag and write the result to the row that carried
   // the hints. Called from BOTH exit paths (end_turn and iteration-limit) so
@@ -2712,7 +2722,27 @@ app.post('/api/chat', async (req, res) => {
           });
           console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} applied=${applied} tier=${tierM ? tierM[1] : '-'} helpful=${helpfulM ? helpfulM[1] : '-'}`);
         } else {
-          console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} NO_TAG (hints injected, Meph didn't announce)`);
+          // No tag from Meph. Try the inference fallback: if a later compile
+          // in this same turn had fewer errors than when hints were served,
+          // the hint likely helped. Log as applied=1, helpful='inferred' so
+          // ranker training can opt in or out of this weaker signal.
+          // CRUCIAL: never overwrite with helpful='yes' — 'inferred' is a
+          // distinct value so the honest-label set (yes/no/partial) stays clean.
+          const canInfer =
+            _hintsInjectedErrorCount !== null &&
+            _postHintMinErrorCount !== null &&
+            _postHintMinErrorCount < _hintsInjectedErrorCount;
+          if (canInfer) {
+            _factorDB.logHintUsage(_hintsInjectedRowId, {
+              applied: 1,
+              tier: _hintsInjectedTier,
+              helpful: 'inferred',
+              reason: `no tag; errors ${_hintsInjectedErrorCount}→${_postHintMinErrorCount} after hint`,
+            });
+            console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source}+inference applied=1 tier=${_hintsInjectedTier || '-'} helpful=inferred (errors ${_hintsInjectedErrorCount}→${_postHintMinErrorCount})`);
+          } else {
+            console.log(`[hint-usage] row=${_hintsInjectedRowId} via=${source} NO_TAG (hints injected, Meph didn't announce${_hintsInjectedErrorCount !== null ? `, errors stayed at ${_postHintMinErrorCount ?? _hintsInjectedErrorCount}` : ''})`);
+          }
         }
       } else if (_factorDB && !_hintsInjectedRowId && /HINT_APPLIED:/i.test(_allAssistantText)) {
         console.warn(`[hint-usage] via=${source} HALLUCINATED (Meph emitted HINT_APPLIED with no hints in context)`);
@@ -2931,6 +2961,15 @@ app.post('/api/chat', async (req, res) => {
                 step_index: step?.index ?? null,
                 step_name: step?.name || null,
               });
+              // Inference fallback: if hints were already served on an earlier
+              // compile in this turn, track the minimum error count seen since.
+              // If Meph later forgets to emit HINT_APPLIED, a drop in errors is
+              // a reasonable signal that the hint helped.
+              if (_hintsInjectedRowId && _lastFactorRowId !== _hintsInjectedRowId) {
+                if (_postHintMinErrorCount === null || r.errors.length < _postHintMinErrorCount) {
+                  _postHintMinErrorCount = r.errors.length;
+                }
+              }
             } catch { /* non-fatal */ }
           }
           // ────────────────────────────────────────────────────────────────
@@ -3078,6 +3117,11 @@ app.post('/api/chat', async (req, res) => {
                 // Remember which row carried the hints so the end-of-response
                 // HINT_APPLIED parse can update the right row.
                 _hintsInjectedRowId = _lastFactorRowId;
+                // Snapshot error count + best-hint-tier at hint-serve time —
+                // used for the inference fallback if Meph forgets the tag.
+                _hintsInjectedErrorCount = r.errors.length;
+                _hintsInjectedTier = hintRows[0]?.tier || null;
+                _postHintMinErrorCount = null; // reset window
               }
             } catch { /* non-fatal */ }
           }
