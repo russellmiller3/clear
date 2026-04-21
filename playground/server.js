@@ -2064,8 +2064,16 @@ const TOOLS = [
   },
   {
     name: 'compile',
-    description: 'Compile the current Clear source code. Returns errors, warnings, and compiled output (html, javascript, serverJS, python).',
-    input_schema: { type: 'object', properties: {} },
+    description: 'Compile the current Clear source code. Returns errors, warnings, and flags (hasServerJS, hasHTML, hasPython) saying which outputs exist. By default on a CLEAN compile the compiled code itself is NOT in the response — that saves ~8-28KB per call. Pass include_compiled=true when you actually need to inspect the generated JS/HTML/Python (rare — usually only when reporting a compiler bug). On a FAILED compile the output is always included so you can see what the compiler tried to emit.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        include_compiled: {
+          type: 'boolean',
+          description: 'Set to true to force-include compiled serverJS/html/python/javascript in the response even on a clean compile. Default false. Use sparingly — the payload is large.',
+        },
+      },
+    },
   },
   {
     name: 'run_app',
@@ -3140,13 +3148,26 @@ app.post('/api/chat', async (req, res) => {
           }
           // ────────────────────────────────────────────────────────────
 
-          // Include actual compiled code (truncated to avoid blowing context)
-          if (r.serverJS) result.serverJS = r.serverJS.slice(0, 8000);
-          if (r.javascript) result.javascript = r.javascript.slice(0, 8000);
-          if (r.html) result.html = r.html.slice(0, 4000);
-          if (r.python) result.python = r.python.slice(0, 8000);
-          if (r.errors.length > 0 && (r.serverJS || r.javascript || r.html || r.python)) {
-            result.note = 'Compiled output included despite errors — inspect for debugging.';
+          // Only embed compiled output when compile HAS errors OR when Meph
+          // explicitly opted in via input.include_compiled. On a clean compile
+          // with no opt-in, he just needs to know it worked — hasServerJS /
+          // hasHTML flags signal that. Saves ~8-28KB of tool-result payload
+          // per clean compile = ~1-2K tokens at Haiku input rate × thousands
+          // of compiles per sweep. Meph can:
+          //   • pass include_compiled=true to force it in
+          //   • use edit_code action='read' for source
+          //   • use source_map for compiled-line↔source-line mapping
+          const wantCompiled = r.errors.length > 0 || input.include_compiled === true;
+          if (wantCompiled) {
+            if (r.serverJS) result.serverJS = r.serverJS.slice(0, 8000);
+            if (r.javascript) result.javascript = r.javascript.slice(0, 8000);
+            if (r.html) result.html = r.html.slice(0, 4000);
+            if (r.python) result.python = r.python.slice(0, 8000);
+            if (r.serverJS || r.javascript || r.html || r.python) {
+              result.note = r.errors.length > 0
+                ? 'Compiled output included because compile had errors — inspect for debugging.'
+                : 'Compiled output included because you set include_compiled=true.';
+            }
           }
           return JSON.stringify(result);
         } catch (err) {
