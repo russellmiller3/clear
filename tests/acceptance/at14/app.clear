@@ -4,7 +4,7 @@ database is local memory
 create a Contacts table:
   name, required
 
-when user calls POST /api/contacts sending data:
+when user calls POST /api/contacts sending contac:
   needs login
-  new_contact = save data as new Contac
+  new_contact = save contac as new Contac
   send back new_contact

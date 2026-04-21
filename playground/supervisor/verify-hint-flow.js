@@ -41,10 +41,9 @@ when user calls GET /api/notes:
   list = all Notes
   send back list
 
-when user calls POST /api/notes:
-  note_data is the request data
-  save note_data to Notes
-  send back note_data
+when user sends note to /api/notes:
+  save note to Notes
+  send back note
 
 page Home:
   show Notes's titles for every row

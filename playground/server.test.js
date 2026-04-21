@@ -123,7 +123,7 @@ try {
   }
 
   {
-    const { status, data } = await post('/api/compile', { source: "build for web and javascript backend\ndatabase is local memory\ncreate a Users table:\n  name, required\nwhen user calls GET /api/users:\n  users = get all Users\n  send back users\nwhen user calls POST /api/users sending data:\n  requires auth\n  saved = save data to Users\n  send back saved\npage 'App' at '/':\n  on page load get users from '/api/users'\n  display users as table" });
+    const { status, data } = await post('/api/compile', { source: "build for web and javascript backend\ndatabase is local memory\ncreate a Users table:\n  name, required\nwhen user calls GET /api/users:\n  users = get all Users\n  send back users\nwhen user calls POST /api/users sending signup:\n  requires auth\n  saved = save signup to Users\n  send back saved\npage 'App' at '/':\n  on page load get users from '/api/users'\n  display users as table" });
     assert(data.errors.length === 0, 'compiles full-stack app');
     assert(data.html !== null, 'full-stack has html');
     assert(data.serverJS !== null, 'full-stack has serverJS');
@@ -602,8 +602,8 @@ try {
     "agent 'Top' receives input:",
     "  x = call 'Rater' with input",
     "  send back x",
-    "when user calls POST /api/run sending data:",
-    "  out = call 'Top' with data's input",
+    "when user calls POST /api/run sending query:",
+    "  out = call 'Top' with query's input",
     "  send back out",
   ].join('\n');
   {

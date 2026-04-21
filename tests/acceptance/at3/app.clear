@@ -4,7 +4,7 @@ database is local memory
 create a Contacts table:
   name, required
 
-when user calls PUT /api/contacts/:id sending data:
+when user calls PUT /api/contacts/:id sending contact:
   needs login
-  save data to Contacts
+  save contact to Contacts
   send back 'updated'

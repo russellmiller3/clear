@@ -483,12 +483,12 @@ when user calls DELETE /api/todos/:id:
   delete Todo with this id
   send back 'ok' with status 204
 
-when user sends new_data to /api/todos:
+when user sends todo to /api/todos:
   requires login
-  validate new_data:
+  validate todo:
     title must not be empty
-  save new_data to Todos
-  send back new_data with status 201
+  save todo to Todos
+  send back todo with status 201
 
 // ❌ WRONG — compiler blocks this
 when user calls DELETE /api/todos/:id:
@@ -1302,7 +1302,7 @@ code freeze active                # Block all writes (maintenance mode)
 ### Rate Limiting (orthogonal to guards)
 
 ```clear
-when user sends login_data to /auth/login:
+when user sends credentials to /auth/login:
   rate limit 10 per minute        # Block brute force
   ...
 ```
@@ -1316,7 +1316,7 @@ Not technically a guard (it doesn't reject based on data), but serves the same p
 | Endpoint from anonymous users | `requires login` |
 | Endpoint from wrong role | `requires role 'admin'` |
 | Business rule (stock, plan, etc.) | `guard X or 'message'` |
-| Input shape (missing/malformed fields) | `validate data:` + rules |
+| Input shape (missing/malformed fields) | `validate <entity>:` + rules |
 | Agent from doing bad things | `must not:` + `block arguments matching` |
 | Whole app from dangerous patterns | App-level policies at top of file |
 | Endpoint from brute force | `rate limit N per minute` |

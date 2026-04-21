@@ -67,8 +67,8 @@ workflow 'Content Pipeline' with state:
 
 # --- API ---
 
-when user calls POST /api/content sending data:
-  result = run workflow 'Content Pipeline' with data
+when user calls POST /api/content sending brief:
+  result = run workflow 'Content Pipeline' with brief
   send back result
 
 # --- Frontend ---

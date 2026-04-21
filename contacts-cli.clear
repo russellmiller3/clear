@@ -14,8 +14,8 @@ when user calls GET /api/contacts:
   send back contacts
 
 
-when user calls POST /api/contacts sending data:
-  saved = save data to Contacts
+when user calls POST /api/contacts sending contact:
+  saved = save contact to Contacts
   send back saved
 
 

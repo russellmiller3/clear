@@ -5,7 +5,7 @@ create a Products table:
   name, required
   price (number), required
 
-when user calls POST /api/products sending data:
+when user calls POST /api/products sending product:
   needs login
-  new_product = save data as new Product
+  new_product = save product as new Product
   send back new_product

@@ -183,7 +183,7 @@ function fixLine(lines, op) {
 }
 
 // ── insert_line ───────────────────────────────────────────────────────────────
-// { op: 'insert_line', after: 5, content: "  validate data:" }
+// { op: 'insert_line', after: 5, content: "  validate todo:" }
 function insertLine(lines, op) {
   if (op.after == null || !op.content) return { ok: false, error: 'insert_line requires after and content' };
   const idx = op.after; // insert after this line (1-based), so index = op.after

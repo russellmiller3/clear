@@ -12,18 +12,18 @@ when user calls GET /api/contacts:
   contacts = look up all Contacts
   send back contacts
 
-when user calls POST /api/contacts sending data:
+when user calls POST /api/contacts sending contact:
   needs login
-  validate data:
+  validate contact:
     name is text, required
     email is text, required, matches email
-  new_contact = save data as new Contact
+  new_contact = save contact as new Contact
   send back new_contact
 
-when user calls PUT /api/contacts/:id sending data:
+when user calls PUT /api/contacts/:id sending contact:
   needs login
-  save data to Contacts
-  send back data
+  save contact to Contacts
+  send back contact
 
 when user calls DELETE /api/contacts/:id:
   needs login

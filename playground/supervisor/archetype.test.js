@@ -177,8 +177,8 @@ agent 'Helper' receives question:
   answer = ask claude 'answer the question' with question
   return answer
 
-when user sends data to /api/ask:
-  reply = run Helper with data
+when user sends query to /api/ask:
+  reply = run Helper with query
   send back reply
 `;
     expect(classifyFromSource(src)).toEqual('agent_workflow');

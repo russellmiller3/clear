@@ -147,8 +147,8 @@ await it('POST endpoint creates and returns data', async () => {
     build for javascript backend
     create a Users table:
       name, required
-    when user calls POST /api/users receiving user_data:
-      define new_user as: save user_data as User
+    when user calls POST /api/users receiving signup:
+      define new_user as: save signup as User
       send back new_user
   `, {
     timeout: 8000,

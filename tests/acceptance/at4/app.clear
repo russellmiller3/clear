@@ -8,7 +8,7 @@ create a LineItems table:
   invoice_id, required
   description, required
 
-when user calls POST /api/line-items sending data:
+when user calls POST /api/line-items sending lineitem:
   needs login
-  new_item = save data as new LineItem
+  new_item = save lineitem as new LineItem
   send back new_item
