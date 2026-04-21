@@ -1169,6 +1169,81 @@ Supervisor plan: see **[plans/plan-supervisor-multi-session-04-17-2026.md](plans
 
 ---
 
+## The New Measurement Approach (post-Session 41)
+
+**Read this if you're about to run a sweep. Probably don't run a sweep.**
+
+### The old approach (expensive and wrong)
+
+Session 41 treated "run a 30-task sweep" as the unit of measurement. Every intervention got a sweep. Stacked interventions got sequential sweeps. Each sweep was ~$5-7 and produced one noisy data point. The lifts we cared about (10-30%) were inside the sweep-to-sweep noise floor (~15%). To distinguish signal from noise needed 20-50 sweeps per hypothesis = $100-750. We learned this by burning $50 in one night getting inconclusive results.
+
+### The new approach — ranked by signal-per-dollar
+
+**1. Deterministic replay** (**$0 per experiment**)
+
+Save Meph's transcripts. Replay them against new interventions WITHOUT calling the API. For ranker changes: take past `(archetype, error_sig, source_before)` tuples from the Factor DB, feed them through the old ranker AND the new ranker, compare which past-fixes bubble up higher. Zero tokens, zero dollars.
+
+*Concrete example — "does the retrained ranker surface better past-fixes?":*
+- Pull the 41 rows where `hint_applied IS NOT NULL` from Factor DB (these have known-good or known-bad outcomes)
+- For each, re-rank the candidate pool with OLD reranker-pairwise.json (from git history) and NEW reranker-pairwise.json
+- Count: of the rows labeled `helpful=yes`, how often does the new ranker surface the actually-helpful past-fix in top-3 vs the old ranker?
+- **Runs in seconds, costs $0, produces a concrete metric.**
+
+*Concrete benefit:* answers in 2 minutes what Session 41 tried to answer in 4 sweeps ($20-30).
+
+**2. A/B head-to-head on a single task** (**~$2 per experiment**)
+
+Pick ONE specific task. Run it twice — old setup vs new setup. Count iterations, count errors, count tool calls. Direct comparison, same task, same seed.
+
+*Concrete example — "does intervention X reduce Meph's iteration count on `todo-crud`?":*
+- Run A: current ranker + intervention X deployed
+- Run B: current ranker, intervention X reverted
+- Run both 5 times to average over model stochasticity: total = 10 task-runs × $0.20 = $2
+- Compute: mean iterations(A) vs mean iterations(B), with a simple t-test if rigorous
+- **Signal-per-dollar is ~10× a full sweep.**
+
+*Concrete benefit:* spent $2 instead of $20 and got a per-task lift estimate with confidence interval.
+
+**3. 5-task diagnostic sweep** (**~$1 per experiment**)
+
+Pick 5 tasks spanning your primary archetypes (api_service + crud_app + agent_workflow + dashboard + realtime_app). Fire them through the new intervention. NOT a full sweep — a targeted probe.
+
+*Concrete example — "does the new hint-inline-reminder work across archetypes?":*
+- Pick 5 tasks: `todo-crud` (api_service), `contact-book` (crud_app), `agent-summary` (agent_workflow), `dashboard-metrics` (dashboard), `realtime-broadcast` (realtime_app)
+- Run once through new setup
+- Measure tag rate per archetype
+- **$1, 3 minutes, answers "does this generalize or just work for api_service?"**
+
+*Concrete benefit:* catches archetype-specific failures before you commit to a 30-task validation sweep.
+
+**4. Full 30-task sweep** (**~$5-7 per experiment**)
+
+ONLY after patterns 1-3 have shown lift. Treat this as the "final exam," not the day-to-day measurement tool. Use it to validate a finding that's already supported by cheaper experiments.
+
+**5. Multi-sweep statistical comparison** (**$100+**)
+
+Only when you're ready to publish a number. 10+ sweeps of each condition, proper stats, confidence intervals. Skip until there's something worth publishing.
+
+### The cost-per-answer framing
+
+| Question | Old approach | New approach | Savings |
+|----------|-------------|-------------|---------|
+| Does the retrained ranker pick better hints? | 4 sweeps = $25 | Replay = $0 | $25 / ∞× |
+| Does a prompt change reduce iterations? | 3 sweeps = $18 | A/B 5×1 task = $2 | $16 / 9× |
+| Does this work across archetypes? | full sweep = $6 | 5-task diag = $1 | $5 / 6× |
+| Is a 20% lift real? | Unclear — need 20 sweeps = $120 | 10 A/B pairs = $4 | $116 / 30× |
+| Is a 5% lift real? | Can't tell from any number of sweeps | Still can't | Stop trying |
+
+### Building vs measuring — the session discipline
+
+**Building sessions** (zero API cost): code changes, new templates, new validator rules, new curriculum tasks, docs, prompt drafts, local Python model training, deterministic replay runs. Do these freely. They don't spend money.
+
+**Measuring sessions** (capped API cost): run one specific experiment with a stated hypothesis, a pre-registered budget ($10-20 max), and a stop-condition. Example: "I'm willing to spend $10 to test whether intervention X moves iteration count on `todo-crud`. 5 A/B pairs. Stop at $10 regardless of result." The cost estimator runs FIRST. The result is recorded in a short file before celebrating.
+
+Session 41's failure was mixing the two. Every time we built something new, we measured it with a full sweep, and stacked the measurements. Each felt $5 small but the total was $50.
+
+---
+
 ## Methodology Lessons — What NOT To Do (Session 41, 2026-04-21)
 
 **Session 41 burned ~$50 in one evening ($168 the day before) chasing metric shifts inside noise.** The research thesis is fine. The measurement methodology was wrong. This section captures what to do differently so future sessions get 10× the value per dollar.
