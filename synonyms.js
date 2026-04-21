@@ -281,7 +281,11 @@ const SYNONYM_TABLE = Object.freeze({
   delete_from: Object.freeze(['delete from']),
 
   // Auth context (Phase 21)
-  current_user: Object.freeze(['current user', 'authenticated user', 'logged in user']),
+  // Canonical form is `caller` — one word, unambiguous with entity vars.
+  // `current user`, `authenticated user`, `logged in user` are legacy multi-word
+  // forms kept for back-compat. All four resolve to the same `_current_user`
+  // runtime variable set by `requires login`.
+  current_user: Object.freeze(['caller', 'current user', 'authenticated user', 'logged in user']),
 
   // Components (Phase 21)
   component: Object.freeze(['component', 'widget', 'element']),
@@ -449,6 +453,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.28.0';
+const SYNONYM_VERSION = '0.29.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

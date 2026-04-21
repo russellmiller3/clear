@@ -6183,7 +6183,11 @@ when user sends data to /api/todos:
     expect(matched.length).toBeGreaterThan(0);
   });
 
-  it('warns when receiving var is "user" (shadows current user)', () => {
+  // Phase 0.29: `user` as a receiving var no longer warns — it's the Users
+  // entity name, unambiguous with `caller` (the new canonical magic-var name).
+  // Back-compat with `current user` means old code still parses, but the
+  // convention is now: `user` = body, `caller` = authenticated identity.
+  it('does NOT warn on `user` as receiving var (after caller rename)', () => {
     const result = compileProgram(`
 build for javascript backend
 create a Users table:
@@ -6195,9 +6199,7 @@ when user sends user to /api/users:
     `);
     expect(result.errors).toHaveLength(0);
     const matched = warnStrs(result).filter(w => w.includes("'user'") && w.includes('current user'));
-    expect(matched.length).toBeGreaterThan(0);
-    // Suggestion should include signup/profile/account so the author knows what to do
-    expect(matched[0]).toContain('signup');
+    expect(matched.length).toEqual(0);
   });
 
   it('warns when receiving var is "post" (HTTP keyword)', () => {
@@ -7447,6 +7449,99 @@ when user calls GET /api/me:
     `);
     expect(result.errors).toHaveLength(0);
     expect(result.python).toContain('request.user');
+  });
+
+  // Phase 0.29: `caller` is the canonical single-word form. `current user` still
+  // works as a legacy synonym. Both resolve to the same compiled output.
+  it('`caller` compiles to the same authenticated-user variable', () => {
+    const result = compileProgram(`
+build for javascript backend
+when user calls GET /api/me:
+  requires auth
+  define user_id as: caller's id
+  define email as: caller's email
+  send back user_id
+    `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('req.user?.id');
+    expect(result.javascript).toContain('req.user?.email');
+  });
+
+  it('`caller` and `current user` produce byte-identical compiled output', () => {
+    const srcCaller = `
+build for javascript backend
+create a Todos table:
+  title, required
+  owner_id, required
+when user sends todo to /api/todos:
+  requires login
+  todo's owner_id is caller's id
+  save todo as new Todo
+  send back todo
+    `;
+    const srcCurrentUser = srcCaller.replace("caller's id", "current user's id");
+    const a = compileProgram(srcCaller);
+    const b = compileProgram(srcCurrentUser);
+    expect(a.errors).toHaveLength(0);
+    expect(b.errors).toHaveLength(0);
+    expect(a.javascript || a.serverJS).toEqual(b.javascript || b.serverJS);
+  });
+
+  // Users-table receiving var `user` is now NOT ambiguous with `caller` — they
+  // are different words at tokenization, different concepts to the reader.
+  it('Users-table endpoint using `user` as receiving var + `caller` reads cleanly', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Users table:
+  name, required
+  role, required
+when user sends user to /api/users:
+  requires login
+  guard caller's role is 'admin' or 'forbidden'
+  save user as new User
+  send back user
+    `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('req.user?.role');
+  });
+
+  // Regression: the compiler used to map bare `user` to `req.user` even when
+  // the endpoint declared a local `user` binding via the receiving var.
+  // That made `send back user` return the authenticated caller instead of
+  // the freshly-saved body. Fix: VARIABLE_REF checks ctx.declared first and
+  // honors the local shadow.
+  it('local `user` receiving-var shadows the magic req.user binding', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Users table:
+  name, required
+  email, required
+
+when user sends user to /api/users:
+  requires login
+  save user as new User
+  send back user
+    `);
+    expect(result.errors).toHaveLength(0);
+    const js = result.javascript;
+    // save should pass the local (body), not req.user
+    expect(js).toContain("db.insert('users', _pick(user");
+    // send back should also use the local, not req.user
+    expect(js).toContain('return res.json(user)');
+    expect(js).not.toContain('return res.json(req.user)');
+  });
+
+  // Complement: without a local `user` binding, bare `user` still compiles
+  // to req.user (legacy behavior kept for back-compat).
+  it('bare `user` without a local binding still resolves to req.user (legacy)', () => {
+    const result = compileProgram(`
+build for javascript backend
+when user calls GET /api/me:
+  requires login
+  send back user's email
+    `);
+    expect(result.errors).toHaveLength(0);
+    expect(result.javascript).toContain('req.user?.email');
   });
 });
 
