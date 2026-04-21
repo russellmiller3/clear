@@ -1,0 +1,20 @@
+{
+  "id": "batch-prune",
+  "level": 6,
+  "title": "Pure Batch Cron (No Endpoints)",
+  "description": "ARCHETYPE: batch_job. Shape: backend-only, the ENTIRE app is one scheduled cron block — no HTTP endpoints, no pages, no auth. This is the purest form of batch_job. Schedule: every day at '03:00 AM': find and delete Sessions older than 7 days. ONE auxiliary endpoint GET /api/session-count so tests can verify rows exist (required for test runner) — but the CORE of this task is the cron block. DO NOT add endpoints for creating sessions. DO NOT add dashboards. DO NOT add auth. The classifier should see: cron + delete + minimal reads = batch_job.",
+  "skeleton": "build for javascript backend\n\ncreate a Sessions table:\n  user_id, required\n  token, required\n  created_at_date, auto\n\n# Your nightly prune job + GET /api/session-count endpoint here.\n# Use: every day at '03:00 AM': then delete old Sessions.\n# Then ONE endpoint: GET /api/session-count that returns a count.\n",
+  "steps": [
+    { "id": "table",    "name": "Sessions table defined",             "sourceMatches": ["create\\s+a?\\s*Sessions\\s+table"] },
+    { "id": "schedule", "name": "Nightly schedule (3am)",             "sourceMatches": ["every\\s+day\\s+at\\s+['\"]03:00"] },
+    { "id": "prune",    "name": "Deletes old Sessions",               "sourceMatches": ["delete\\s+.*(Sessions|old)", "7\\s+days"] },
+    { "id": "count",    "name": "GET /api/session-count endpoint",    "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/session-count['\"]?"] }
+  ],
+  "tests": [
+    {
+      "method": "GET",
+      "path": "/api/session-count",
+      "expect": { "status": 200 }
+    }
+  ]
+}

@@ -547,6 +547,11 @@ function validateForwardReferences(body, errors) {
     update: "use `update Y ...` — `update` is a Clear verb but needs a target",
     // Path-param access patterns — Meph often writes bare `id` for `:id`
     id: "URL path parameters are accessed with `this id` (e.g., `delete Todo with this id`), not bare `id`",
+    // "first/last as bare identifier" — Session 41 rejection analysis: Meph
+    // writes `first = todos` expecting "first item of list". Canonical is
+    // `first of list` / `last of list`.
+    first: "To get the first item of a list, use `first of X` (e.g., `top_todo = first of todos`). `first` as a bare variable name isn't valid — rename the variable or use the `first of`/`first in` phrase.",
+    last: "To get the last item of a list, use `last of X` (e.g., `newest = last of posts`). `last` as a bare variable name isn't valid — rename the variable or use the `last of`/`last in` phrase.",
     // Reserved-keyword collision: Meph reaches for `login` as a bare verb
     login: "Use `allow signup and login` at the top of your file to enable auth, and `requires login` inside endpoint bodies. `login` as a bare variable or verb isn't valid",
     // `this` standalone — user forgot the param name after it

@@ -1,0 +1,33 @@
+{
+  "id": "company-directory",
+  "level": 6,
+  "title": "Company Directory with Search",
+  "description": "ARCHETYPE: directory_app. Shape: a searchable/filterable catalog of records — the CORE is the search endpoint, not CRUD. Users browse (read-only for the public) but only admins can add/edit. Include: GET /api/companies (lists all), GET /api/companies/search?q= (full-text search over name + industry fields), GET /api/companies/:id (single record). POST /api/companies exists for admin seeding but the star of the show is SEARCH. Must use Clear's `search Companies for q` syntax inside the search endpoint. A directory_app is distinguished from a crud_app by having SEARCH as a first-class feature and by being read-mostly.",
+  "skeleton": "build for javascript backend\n\ncreate a Companies table:\n  name, required, min 1, max 200\n  industry\n  website\n  description\n  created_at_date, auto\n\n# Your endpoints here:\n# - GET /api/companies          — list all (public)\n# - GET /api/companies/search   — full-text search (public) — use `search Companies for q`\n# - GET /api/companies/:id      — single record (public)\n# - POST /api/companies         — create (requires login) for seeding tests\n",
+  "steps": [
+    { "id": "table",    "name": "Companies table defined",           "sourceMatches": ["create\\s+a?\\s*Companies\\s+table"] },
+    { "id": "list",     "name": "GET /api/companies list",           "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/companies['\"]?\\s*:"] },
+    { "id": "search",   "name": "GET /api/companies/search endpoint", "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/companies/search['\"]?"] },
+    { "id": "search_op","name": "Uses `search Companies for q`",     "sourceMatches": ["search\\s+Companies\\s+for"] },
+    { "id": "one",      "name": "GET /api/companies/:id",            "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/companies/:id['\"]?"] },
+    { "id": "create",   "name": "POST /api/companies (admin seed)",  "sourceMatches": ["(sends\\s+\\w+\\s+to|calls\\s+POST)\\s+['\"]?/api/companies['\"]?"] }
+  ],
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/companies",
+      "body": { "name": "Acme Industries", "industry": "Manufacturing" },
+      "expect": { "status": 201, "bodyHas": ["id"] }
+    },
+    {
+      "method": "GET",
+      "path": "/api/companies",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    },
+    {
+      "method": "GET",
+      "path": "/api/companies/search?q=Acme",
+      "expect": { "status": 200 }
+    }
+  ]
+}
