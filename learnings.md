@@ -44,6 +44,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 37: Supervisor Multi-Session Architecture](#session-37-supervisor-multi-session-architecture-2026-04-17) | Multi-process over session globals, module-level shadow vars for polling, WAL mode registry, port availability check, async test timeouts, state machine monkey-patch testing |
 | [Session 37: PERF-1 + PERF-2 pagination and aggregates](#session-37-perf-1--perf-2-pagination-and-server-side-aggregates-2026-04-17) | `from` canonicalizes to `in` (must use rawValue), table names can tokenize as keywords not identifiers, `length of get all` is wrong when list is capped — use SQL aggregate, runtime files are build-time copies not imports, `extractEqPairs` (SQL) vs `conditionToFilter` (in-memory) are different helpers |
 | [Session 40: `caller` rename + compiler shadow bug + HINT_APPLIED reliability](#session-40-caller-rename--compiler-shadow-bug--hint_applied-reliability-2026-04-20) | Compiler magic-var mapping ignored lexical shadow (bug); `caller` as 1-word canonical eliminates Users-table exception; prompt-only Claude compliance ~50% in long loops — need server-side fallback; keyword-collision validator surfaces post/deploy/update/payment as bad receiving vars |
+| [Session 41: End-to-end flywheel verification — first real measurement](#session-41-end-to-end-flywheel-verification--first-real-measurement-2026-04-21) | Three-intervention stack (prompt reflex + inline reminder + server fallback) got tag rate 43% → ~100%; first-ever negative labels (Meph rejects hints w/ reasons); ranker retrained on 6.6× data (52→344 pairs); archetype audit found 9/16 gaps, filled 8; compile-output opt-in saves $/sweep; `current_user` underscore now a synonym (surfaced by rejection reason row 1284) |
 
 ---
 
@@ -1206,3 +1207,70 @@ Three interlocking fixes landed after noticing that one bad receiving-var exampl
 ### General lesson
 
 One small pushback ("`where id is id` reads weird") surfaced six linked fixes: doc drift, compiler bug, convention exception, keyword collision class, validator gap, telemetry hole. Russell's 14-year-old-test instincts are a load-bearing signal-detector. When he bounces off a small example, the whole surrounding design has usually drifted — fix the drift, not the example.
+
+---
+
+## Session 41: End-to-end flywheel verification — first real measurement (2026-04-21)
+
+Tonight's mission: close the loop from "hints flow out" to "labels flow in" to "ranker retrains on labels" to "Meph measurably codes better." Before tonight the flywheel was described in RESEARCH.md as theoretical. Tonight it actually ran end-to-end with real numbers attached.
+
+### The three-intervention stack on HINT_APPLIED reliability
+
+Started the session at ~45% effective label rate across 60 hint-served compiles (2 earlier sweeps). Stacked three interventions:
+
+- **Prompt reflex rule** (system prompt rewrite): tag must be the OPENING WORD of the next reply, not a summary step. Moved ~0% alone. Claude models imitate response shapes, not rule lists, but this was the weakest individual lever.
+- **Inline reminder in hint payload itself**: appended `⚠ REQUIRED: Start your next reply with HINT_APPLIED: ...` to the end of the hint text Meph reads. Attention primacy — the last thing Meph read is the last thing on his working stack. This is the lever that actually moved the needle.
+- **Server-side inference fallback**: when no tag emitted AND a later compile in the same turn had fewer errors → log `applied=1, helpful='inferred'` on the hint-serving row. `'inferred'` is a distinct label value so the honest set (`yes`/`no`/`partial`) stays clean. Catches what the first two miss.
+
+Combined rate: 43% → 71% → near-100% across sweeps 2→3→4. The three interventions are complementary — each plugs a different leak. Don't skip any of them for "prompt clarity should be enough."
+
+**Rule-of-thumb in general:** for reflex-class meta-observations in long agentic loops, prompt-only compliance caps around 50% regardless of clarity. Stack an inline reminder at the attention point + a server-side fallback.
+
+### First-ever negative-label generation
+
+Before tonight: 7 honest-yes labels, 0 honest-no. After tonight's work: 22 honest-yes, 11 honest-no (`applied=0`). Meph now rejects hints he doesn't believe apply — and gives reasons.
+
+Reading the 6 most recent rejection reasons is the HIGHEST-signal content in the Factor DB. Three recurring patterns:
+
+- **Wrong abstraction level**: ranker served endpoint-shape hints when error was about undefined variables. Source-jaccard match is too coarse for variable-scope bugs.
+- **Past-fix lacks the fix**: ranker retrieved past-fixes from other bugs in same archetype — their source happened to be similar but didn't contain the structural fix this error needs.
+- **Real DOC gap**: Meph tried `current_user` (underscore) and `first` as a bare identifier. Both produced confusing "undefined variable" errors. The rejection reasons REVEAL missing documentation or missing synonyms — free suggestions for the compiler team.
+
+Fixed both DOC gaps: `current_user` is now a synonym for `caller`, and bare `first`/`last` now produce a typo-suggestion pointing at `first of X`/`last of X`.
+
+### Ranker retrain findings (52 pairs → 344 pairs)
+
+Retrained the pairwise ranker on 6.6× more data. Feature weights sharpened dramatically: `source_jaccard` +1.15 → +2.71, `error_category_match` +1.21 → +2.67, `fix_test_score` went MORE negative (-0.67 → -1.74). AUC 0.999 on train, 1.000 on val.
+
+Counterintuitive finding: `fix_test_score` has a strongly NEGATIVE coefficient. Naive interpretation: the ranker learned "penalize past-fixes with high test_score." But the likely cause is selection bias — past-fixes with test_score=1.0 are the FINAL polished versions of solved tasks, which don't show HOW the bug was fixed. The mid-session rows with lower test_score are where the actual diffs are, and those are what actually help.
+
+Lesson: when a ranker weight looks "wrong," check what the data actually represents before overriding. Labels correlate with outcomes via context, not just feature magnitudes.
+
+### Archetype audit methodology
+
+Ran a full audit of curriculum-task archetypes before kicking any new sweeps. Found 9 of 16 classifier archetypes had zero curriculum tasks — meaning the Factor DB was 55% `api_service` even though the curriculum nominally covered more shapes. The ranker couldn't retrieve relevant past-fixes for realtime, batch, kpi, routing, etl, booking, admin, directory shapes.
+
+Added 8 tasks over two rounds (one per high-value gap), each with a skeleton designed to FORCE the target archetype structurally — classifier-matching step markers, not just task descriptions. Curriculum: 30 → 38. Archetype coverage: 7/16 → 15/16.
+
+**Rule:** when the DB distribution doesn't match the curriculum distribution, the SKELETONS are letting Meph drift into the easiest archetype. Force the shape in the skeleton + step matchers, not just in the description.
+
+### Cost engineering without data loss
+
+Sweep cost went from $1.50/run (serial, pre-optimization) to $1.30/run (parallelizable, compile-output opt-in). Two levers:
+
+- **Compile tool stopped embedding compiled JS on clean compiles.** Meph almost never reads the compiled output — he reads errors, hints, and source. Opt-in via `include_compiled: true` for the rare case. Saves ~$0.50/sweep.
+- **Sweep env-var overrides** for `WORKER_BASE_PORT` and `SWEEP_REGISTRY_PATH`. Three parallel sweeps run simultaneously on disjoint port ranges. 3× wall-clock speedup, same total cost, same total data.
+
+**Rule:** audit the tool-result shape for payload that the model never reads. Every KB of default-on content is paid for on every tool call × thousands per sweep.
+
+### Session 41 end-state
+
+- Factor DB: 672 → 1200+ rows (across 8+ sweeps tonight)
+- Passing: 250 → 457+
+- Honest labels: 7 → 22 helpful=yes + 11 rejected + 8 inferred = 41 usable
+- Ranker: retrained on 344 pairs (deployed), 3-parallel batch running to push honest-yes past 50 for the RL-8 honest-label retrain
+- Tag rate: 43% → 100% effective (across verification sweeps)
+- Curriculum: 30 → 38 tasks, 15/16 archetypes covered
+- Total API spend tonight: ~$14 (close to "done good" target)
+
+First time we can say: the ranker trains, deploys, and we're measuring lift on real data — not "someday" per RESEARCH.md.

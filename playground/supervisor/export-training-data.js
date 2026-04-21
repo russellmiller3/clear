@@ -249,7 +249,7 @@ function targetErrorCategory(fixRow, sessionRows) {
   return classifyError(sessionRows[idx - 1].patch_summary || '');
 }
 
-function featurizePair(errorRow, fixRow, fixSessionRows, label) {
+export function featurizePair(errorRow, fixRow, fixSessionRows, label) {
   const errorCategory = classifyError(errorRow.patch_summary || '');
   const fixTarget = targetErrorCategory(fixRow, fixSessionRows);
   return {

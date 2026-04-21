@@ -9,22 +9,22 @@
     "fix_test_score"
   ],
   "coefficients": [
-    0.9447736063312574,
+    0.836898979679471,
     0.0,
-    2.6676602981290123,
-    2.7116910421083236,
-    -1.0808276817886262,
-    -1.7385831760352188
+    2.0227047179999142,
+    2.48461631133485,
+    -0.8388920503939333,
+    -1.89259407155007
   ],
-  "intercept": -2.0991122541775535,
+  "intercept": -2.3102993876032842,
   "metrics": {
-    "train_accuracy": 0.9767441860465116,
-    "val_accuracy": 1.0,
-    "train_auc": 0.9992028696691908,
-    "val_auc": 1.0,
-    "n_pairs": 344,
-    "n_positives": 86,
-    "n_negatives": 258
+    "train_accuracy": 0.9498525073746312,
+    "val_accuracy": 0.9292035398230089,
+    "train_auc": 0.9837182688306284,
+    "val_auc": 0.964185393258427,
+    "n_pairs": 452,
+    "n_positives": 96,
+    "n_negatives": 356
   },
   "note": "Score = sigmoid(intercept + sum(coef[i] * features[name[i]]))."
 }
