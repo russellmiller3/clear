@@ -1272,7 +1272,7 @@ when user sends member to /api/teams/:team_id/members:
 # One line scaffolds full auth system:
 # - POST /auth/signup (bcrypt hash, JWT token)
 # - POST /auth/login (bcrypt compare, JWT token)
-# - GET /auth/me (returns current user)
+# - GET /auth/me (returns the caller)
 # - JWT middleware on every request
 allow signup and login
 ```
@@ -1288,9 +1288,11 @@ requires login
 requires role 'admin'
 guard product's stock is greater than 0 or 'Out of stock'
 
-# Access current user
-define user_id as: current user's id
-define email as: current user's email
+# Access the authenticated caller
+# `caller` is the canonical one-word form. `current user` still works
+# as a legacy synonym — both resolve to the same compiled output.
+define user_id as: caller's id
+define email as: caller's email
 
 # Frontend guard — redirects to /login if no token
 page 'Dashboard':

@@ -327,6 +327,21 @@ allow signup and login
 
 Without `owner is`, no user can reach the Live App Editing widget — it gates on JWT role:'owner' and the default signup role is 'user'. When the user asks you to build any auth-enabled app, add `owner is` at the top with whatever email they used (or ask if you don't know).
 
+## Auth — `requires login` + `caller`
+
+`requires login` on the first line of an endpoint body gates it behind a valid JWT and binds the authenticated person to `caller`. Read `caller`'s fields to make per-user decisions.
+
+```clear
+when user sends order to /api/orders:
+  requires login
+  guard caller's plan is not 'free' or 'Upgrade to Pro'
+  order's owner_id is caller's id
+  save order as new Order
+  send back order
+```
+
+`caller` is the canonical form — one word, unambiguous with every entity var. The older multi-word forms (`current user`, `authenticated user`, `logged in user`) still work and compile to the same output, but prefer `caller` in new code. You can now safely name your Users-table receiving var just `user` — `caller` won't shadow it.
+
 ## Hidden Fields — Safe "Remove" for Running Apps
 
 When a user says "remove field X" on an app with real data, DO NOT physically delete the field. Add `, hidden` to it instead:

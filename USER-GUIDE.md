@@ -1209,7 +1209,7 @@ The `owner is` line pins which email becomes the app owner. When Marcus signs up
 This generates:
 - `POST /auth/signup` — creates user with bcrypt-hashed password, returns JWT
 - `POST /auth/login` — verifies password, returns JWT  
-- `GET /auth/me` — returns current user info
+- `GET /auth/me` — returns info about the authenticated caller
 - JWT middleware on every request (extracts user from `Authorization: Bearer <token>`)
 
 On the frontend, use `needs login` to protect pages:

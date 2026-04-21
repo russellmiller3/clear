@@ -537,14 +537,14 @@ when user updates bookmark at /api/bookmarks/:id:
 when user updates bookmark at /api/bookmarks/:id:
   requires login
   existing = look up Bookmark with this id
-  guard existing's owner is current user or 'not yours'
+  guard existing's owner is caller or 'not yours'
   save bookmark to Bookmarks
   send back 'updated'
 ```
 
 Two rules:
 
-- **Never use `data` as the receiving variable.** It's on the banned-names list alongside `tmp`, `val`, `obj`, `item`. Use the singular lowercase entity name instead (`bookmark`, `todo`, `contact`). For the Users table, `user` collides with `current user` — pick something distinctive like `profile`, `signup`, or `account` depending on context.
+- **Never use `data` as the receiving variable.** It's on the banned-names list alongside `tmp`, `val`, `obj`, `item`. Use the singular lowercase entity name instead (`bookmark`, `todo`, `contact`, `user` for Users). The authenticated person is `caller` — distinct word, no collision with any entity.
 - **Never write `where field is field`.** The reader can't tell which side is the column and which is the variable. If you need the URL id in a filter, write `where owner_id is this user_id` (distinct words) or use the `with this id` shorthand.
 
 ## Inline Records for `send back` (Session 38)
@@ -586,7 +586,7 @@ Clear's retrieval verbs are `get all X`, `look up X with this id`, and `get ever
 // ✅ CORRECT
 todos = get all Todos
 one_todo = look up Todo with this id
-visible = get every Todo where owner is current user
+visible = get every Todo where owner is caller
 
 // ❌ WRONG
 todo = find Todo by id          // use `look up Todo with this id`
@@ -644,7 +644,7 @@ A few plain English words look like keyword typos to Clear's tokenizer. Using th
 | `can user search todos` | `can user view all search` | Only create/view/delete/update are valid intents |
 | `'Label' is a dropdown ... saved as x` (two lines) | `'Label' is a dropdown ... saved as x` (one line) | The `saved as` must be on the same line as the input |
 | `section 'X' side by side:` | `section 'X' with style row:` | Use preset or style for layout |
-| `user's id` in endpoint | `current user's id` | `user` is undefined — use `current user's id` for logged-in user |
+| `user's id` (when unbound) | `caller's id` | `caller` is the authenticated person set by `requires login` — one word, unambiguous with any entity var. Legacy `current user's id` still compiles. |
 | `result = for each X in Y:` | Use `filter` or loop + `add to` | Can't assign a for-each loop to a variable |
 | `-  send back draft` (leading dash) | `  send back draft` | Never leave a `-` or `+` at the start of a line. Diff-marker artifacts from edit tools make the parser read the line as a negation — the compiler will say "stray '-' or '+' at the start" and point you at it. |
 
@@ -1166,6 +1166,7 @@ Clear has **five different kinds of guards**. Each one protects a different thin
 ```clear
 when user sends todo to /api/todos:
   requires login                    # <-- blocks unauthenticated requests with 401
+  todo's owner_id is caller's id    # <-- `caller` = the authenticated person
   save todo as new Todo
   send back todo with success message
 
@@ -1175,7 +1176,9 @@ when user deletes todo at /api/todos/:id:
   send back 'deleted'
 ```
 
-**When you forget it on a DELETE or PUT endpoint, the compiler refuses to build.** That's not a warning — it's a compile error. Security is not optional.
+**`caller` is the canonical name for the authenticated person.** It's set by `requires login` and reads like a variable — `caller's id`, `caller's email`, `caller's role`. One word, distinct from every entity name, so using `user` as a Users-table receiving var is fine (no collision). The legacy multi-word forms `current user`, `authenticated user`, and `logged in user` still compile to the same output if you see them in older code.
+
+**When you forget `requires login` on a DELETE or PUT endpoint, the compiler refuses to build.** That's not a warning — it's a compile error. Security is not optional.
 
 **`requires login` goes on the FIRST line of the endpoint body.** Always. Two reasons:
 
@@ -1224,7 +1227,7 @@ when user sends order to /api/orders:
   requires login
   guard product's stock is greater than 0 or 'Out of stock'
   guard order's total is less than 10000 or 'Orders over $10k need manual approval'
-  guard current user's plan is not 'free' or 'Upgrade to Pro to place orders'
+  guard caller's plan is not 'free' or 'Upgrade to Pro to place orders'
   save order as new Order
 ```
 

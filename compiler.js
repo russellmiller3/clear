@@ -3227,6 +3227,11 @@ function compileEndpoint(node, ctx, pad) {
   }
 
   const epDeclared = new Set();
+  // Seed receiving var so VARIABLE_REF compilation can see it as "in scope"
+  // and skip magic-mapping when the same name (e.g. `user`) is also a Clear
+  // keyword that otherwise resolves to req.user.
+  if (node.receivingVar) epDeclared.add(sanitizeName(node.receivingVar));
+  if (endpointBodyUsesIncoming(node.body)) epDeclared.add('incoming');
   const hasIdParam = node.path.includes(':id');
   const isSeedEndpoint = node.path.includes('/seed') || node.path.includes('/setup') || node.path.includes('/init');
   const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
@@ -6917,8 +6922,16 @@ export function exprToCode(expr, ctx) {
 
     case NodeType.VARIABLE_REF: {
       const name = sanitizeName(expr.name);
-      // "current user" or bare "user" in backend context compiles to req.user
-      if (name === '_current_user' || (name === 'user' && ctx.mode === 'backend')) {
+      // `caller` / `current user` (canonical `_current_user`) compiles to req.user.
+      // Bare `user` in backend context is legacy shorthand for the same — BUT
+      // only when no local `user` binding is in scope. A receiving var named
+      // `user` (e.g. POST /api/users receiving user) introduces a local that
+      // shadows the magic; respect the shadow so `send back user` returns the
+      // body, not req.user.
+      if (name === '_current_user') {
+        return ctx.lang === 'python' ? 'request.user' : 'req.user';
+      }
+      if (name === 'user' && ctx.mode === 'backend' && !(ctx.declared && ctx.declared.has('user'))) {
         return ctx.lang === 'python' ? 'request.user' : 'req.user';
       }
       if (ctx.stateVars && ctx.stateVars.has(name)) return `_state.${name}`;
