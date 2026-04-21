@@ -1166,3 +1166,71 @@ The constraint is the feature. Bounded action space → interpretable failures �
 
 Full thesis: see **[FAQ.md — What is Clear's big thesis?](FAQ.md#what-is-clears-big-thesis)**
 Supervisor plan: see **[plans/plan-supervisor-multi-session-04-17-2026.md](plans/plan-supervisor-multi-session-04-17-2026.md)**
+
+---
+
+## Methodology Lessons — What NOT To Do (Session 41, 2026-04-21)
+
+**Session 41 burned ~$50 in one evening ($168 the day before) chasing metric shifts inside noise.** The research thesis is fine. The measurement methodology was wrong. This section captures what to do differently so future sessions get 10× the value per dollar.
+
+### The core methodology error
+
+Treating "run a sweep" as a measurement. One sweep is ~$5-7 and produces noisy data. The ranker lifts we care about are 10-30% — to distinguish those from run-to-run variance needs 20-50 sweeps. **That's $100-750 PER HYPOTHESIS.** Untenable at solo-dev budgets.
+
+In Session 41 we ran 8+ sweeps in one night chasing interventions individually. Each intervention produced a metric delta inside noise. We couldn't tell if anything helped. We spent $50 answering "maybe."
+
+### The right measurement patterns
+
+Ranked by signal-per-dollar, high to low:
+
+1. **Deterministic replay** ($0). Save full Meph transcripts. Replay them against new interventions WITHOUT calling the API again. For ranker changes: replay past compile errors against new ranker, measure which past-fixes bubble up differently. For prompt changes: replay the assistant's generations, NOT re-generate. Setup cost is 1-day engineering, then free forever. **This is the missing infrastructure that made Session 41 expensive.**
+
+2. **A/B head-to-head on a single task** (~$2). Run ONE specific task twice — old setup vs new setup. Count iterations, count errors, count tool calls. Direct comparison, same seed, same task. 5 A/B pairs = $10 and answers more than a full sweep.
+
+3. **5-task diagnostic sweeps** (~$1). Pick a subset of 5 representative tasks (one per primary archetype). Fire them through the change. Not a full sweep; a targeted probe. Fast iteration loop at $1 each.
+
+4. **Full 30-task sweep** (~$5-7). Only when validating a change that already showed lift in patterns 1-3. Treat this as the "final exam," not the day-to-day measurement tool.
+
+5. **Multi-sweep statistical comparison** ($100+). Only when an intervention has shown consistent 20%+ lift in patterns 1-4 and you want to publish a number.
+
+### Building vs measuring — separate them
+
+**Building session:** code changes, templates, docs, validator rules, new curriculum tasks, prompt refinements. $0 API cost. Do these as much as you want — they don't spend money.
+
+**Measuring session:** API-spending runs with a specific, falsifiable hypothesis and an explicit budget cap. Example: "I have $10 to test whether intervention X moves iteration count. Fire 5 A/B pairs. Stop at $10 regardless of result."
+
+Session 41's failure was mixing the two: every time we built something new, we measured it with a full sweep, and stacked the measurements. Each felt $5 small but the total was $50.
+
+### What NOT to do
+
+- **Don't run sweeps to "see what happens."** Run them to TEST a specific hypothesis you've already stated and budget-capped.
+- **Don't stack interventions and measure them in sequential sweeps.** By the time you're done, you have 4 variables, can't attribute which helped, and spent $20-40 to learn nothing.
+- **Don't measure subtle changes** (< 20% metric shift) with sweeps. The noise floor is ~15% per-sweep. Use A/B or diagnostic sweeps.
+- **Don't parrot script header comments as cost estimates.** They decay. The header's $0.20-1.00/sweep estimate is from early 2026 and was wrong by 3-5× against April 2026 actuals.
+- **Don't trust "cache hits look good" as proof that it's cheap.** Cache hits are cheap at input; output always costs full rate; volume × cache-miss-rate still dominates bills.
+
+### What the Session 41 flywheel actually proved
+
+- The feedback loop works end-to-end (hints flow out, labels flow back in, ranker retrains, deployed)
+- Tag reliability can be driven near-100% with the three-intervention stack
+- Negative labels ARE recoverable (Meph rejects hints with reasons; 19 rejections in one night)
+- The curriculum has archetype gaps that the classifier surfaces (7/16 → 15/16 after intervention)
+
+### What Session 41 did NOT prove
+
+- Whether the retrained ranker actually helps Meph complete tasks faster
+- Whether archetype coverage impacts retrieval quality
+- Whether any of the interventions are load-bearing vs decorative
+
+Those are answerable — just not with the methodology Session 41 used. Next time: A/B diagnostic on ONE specific task, comparing old vs new ranker, counting iterations to green. That's a $2 experiment that answers a question. Cheaper than anything we did tonight.
+
+### Structural backstops
+
+- **Daily spending cap at console.anthropic.com/settings/limits.** Doesn't depend on Claude's discipline.
+- **Pre-run estimator at `playground/supervisor/estimate-cost.mjs`.** Calibrated against observed rates.
+- **Budget-first rule in CLAUDE.md** — forces estimator + chat-posted budget before any spend.
+- **User-level rule in ~/.claude/CLAUDE.md** — "Keep Russell Posted on API Costs," applies across all projects.
+
+### The honest bottom line
+
+Session 41 shipped real fixes (compiler shadow bug, tag reliability stack, curriculum expansion) worth maybe $10-15 if you had bought them piecemeal. Cost $50+. The gap — $35-40 of pure waste — was methodology, not research. The research thesis is intact; the execution discipline needed upgrading. The infrastructure to not repeat this is now in place.

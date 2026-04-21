@@ -409,3 +409,22 @@ This is the project-level rule file for Clear. The global rules (voice, format, 
 **When to DELETE a rule:**
 - Rule has been stable for 6+ months with zero violations → promotion-by-deletion (it's become default behavior; remove the explicit rule to reduce cognitive load).
 - Rules that duplicate each other → merge into one.
+
+## Budget-First Workflow for API-Spending Operations (MANDATORY — LEARNED EXPENSIVELY)
+
+**Session 41 burned $168 in one day chasing metric shifts inside noise. This rule exists so it doesn't repeat.**
+
+Before kicking any sweep, Meph eval, or multi-call research operation:
+
+1. **Run the pre-run estimator** at `playground/supervisor/estimate-cost.mjs` with the actual params. It pulls from calibrated Apr 2026 rates; re-calibrate if sweep invariants (system prompt size, iteration cap, workers) change.
+2. **Post the median + range in chat BEFORE firing.** Format: "3-sweep batch: $11-40 median $23, 10 min. Firing now."
+3. **Set a budget cap for the INVESTIGATION, not just the run.** Example: "$10 to learn whether intervention X moves metric Y; if $10 spent and no clear answer, stop regardless of partial results." Stick to it.
+
+**Never run sweeps to "measure subtle changes."** Subtle changes need 20-50 runs to separate from noise — $100-750 per hypothesis. Untenable. Use instead:
+- **A/B head-to-head on a single task** — ~$2, much higher signal-per-dollar
+- **5-task diagnostic sweeps** — ~$1, fast iteration loop
+- **Deterministic replay** — $0, replay past transcripts against new interventions
+
+**Separate BUILDING sessions from MEASURING sessions.** Building = code changes, $0 API. Measuring = API spend, capped at $10-20 per session, with ONE specific falsifiable hypothesis. Never stack multiple interventions and measure them in sequential sweeps — that's where the compounding waste came from.
+
+**The structural backstop:** set a daily spending cap at console.anthropic.com/settings/limits. This rule depends on Claude's discipline; the console cap depends on nothing.

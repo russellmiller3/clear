@@ -2987,16 +2987,48 @@ app.post('/api/chat', async (req, res) => {
           }
           // ────────────────────────────────────────────────────────────────
 
-          // Always return compiled output alongside errors — Meph needs to
-          // inspect generated code to diagnose bugs, especially when there ARE errors
+          // ── Context-size optimizations (Session 41 cost-reduction pass) ──
+          // 155:1 input:output ratio in April meant most API cost was context.
+          // Four trims that preserve Meph's ability to fix errors while
+          // cutting ~40-60% of per-compile input tokens at sweep scale.
+
+          // (1) Strip `Example: ...` blocks from error messages. Meph's system
+          //     prompt already covers canonical Clear; the Example blocks
+          //     duplicate that at ~300-600 chars per error.
+          const trimmedErrors = (r.errors || []).map(e => {
+            if (!e || typeof e !== 'object') return e;
+            const msg = String(e.message || '');
+            // Trim from "Example:" / " Example:" to end of string. Keep the
+            // error's concrete fact; drop the teaching block.
+            const exIdx = msg.search(/\n?\s*Example:/i);
+            const trimmed = exIdx > 0 ? msg.slice(0, exIdx).trim() : msg;
+            return { ...e, message: trimmed };
+          });
+
+          // (2) Cap warnings at 3. On apps with 8-10 security/quality warnings
+          //     Meph only reads the first few; the rest are noise × every
+          //     compile × every sweep.
+          const cappedWarnings = (r.warnings || []).slice(0, 3);
+          const warningsMore = (r.warnings || []).length - cappedWarnings.length;
+
           const result = {
-            errors: r.errors,
-            warnings: r.warnings,
+            errors: trimmedErrors,
+            warnings: cappedWarnings,
             hasHTML: !!r.html,
             hasServerJS: !!r.serverJS,
             hasJavascript: !!r.javascript,
             hasPython: !!r.python,
           };
+          if (warningsMore > 0) result.warningsTruncated = warningsMore;
+
+          // (3) Tests field dropped from compile result — Meph uses run_tests
+          //     tool separately. The auto-generated test source was ~1-3KB
+          //     per compile and Meph never read it directly.
+          //     (No code needed — just don't add it to `result`.)
+
+          // (4) Handled below at the hints block: we now emit `hints.text`
+          //     only (the prose Meph actually reads) and drop the duplicate
+          //     `hints.references` JSON array (~1-2KB per hint-serve).
 
           // ── Factor DB suggestion injection (flywheel closes here) ──
           // When compile fails, retrieve up-to-3 hints using layered retrieval:
@@ -3122,18 +3154,14 @@ app.post('/api/chat', async (req, res) => {
 
                 const text = `${note}\n\n${hintBlocks}\n${guidance}${tagRequired}`;
 
+                // Session-41 cost optimization: dropped the `references`
+                // JSON array. It was a duplicate of the content in `text`
+                // plus scoring metadata Meph didn't reason about. ~1-2KB
+                // saved per hint-serve × thousands per sweep.
                 result.hints = {
                   note,
                   reranked_by: rerankedBy,
-                  text,  // ← Meph reads THIS
-                  references: hintRows.map(h => ({
-                    tier: h.tier,
-                    summary: (h.patch_summary || '').slice(0, 100),
-                    score: h.test_score,
-                    ebm_score: typeof h.ebm_score === 'number' ? Number(h.ebm_score.toFixed(4)) : undefined,
-                    pairwise_score: typeof h.pairwise_score === 'number' ? Number(h.pairwise_score.toFixed(4)) : undefined,
-                    source_excerpt: (h.source_before || '').slice(0, 800),
-                  })),
+                  text,  // ← Meph reads THIS (the prose block)
                 };
                 // Remember which row carried the hints so the end-of-response
                 // HINT_APPLIED parse can update the right row.
