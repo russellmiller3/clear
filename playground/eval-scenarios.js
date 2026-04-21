@@ -17,11 +17,12 @@ when user calls GET /api/todos:
   todos = look up all Todos
   send back todos
 
-when user calls POST /api/todos receiving data:
-  validate data:
+when user sends todo to /api/todos:
+  requires login
+  validate todo:
     title must not be empty
-  save data to Todos
-  send back data with status 201
+  save todo to Todos
+  send back todo with status 201
 
 when user calls DELETE /api/todos/:id:
   requires login

@@ -155,30 +155,30 @@ pipeline 'Hiring Pipeline' with candidate_id:
 
 # === ENDPOINTS ===
 
-when user calls POST /api/candidates sending data:
-  saved = save data as new Candidate
+when user calls POST /api/candidates sending candidate:
+  saved = save candidate as new Candidate
   send back saved with success message
 
 when user calls GET /api/candidates:
   candidates = get all Candidates
   send back candidates
 
-when user calls POST /api/evaluate sending data:
-  pipeline_result = call pipeline 'Hiring Pipeline' with data's candidate_id
+when user calls POST /api/evaluate sending evaluation:
+  pipeline_result = call pipeline 'Hiring Pipeline' with evaluation's candidate_id
   final = call 'Final Decision Maker' with pipeline_result
   send back final
 
-when user calls POST /api/parallel-evaluate sending data:
+when user calls POST /api/parallel-evaluate sending evaluation:
   do these at the same time:
-    screening = call 'Resume Screener' with data's candidate_id
-    culture = call 'Culture Fit Analyzer' with data's candidate_id
+    screening = call 'Resume Screener' with evaluation's candidate_id
+    culture = call 'Culture Fit Analyzer' with evaluation's candidate_id
   create combined:
     screening_score is screening's score
     culture_score is culture's score
   send back combined
 
-when user calls POST /api/jobs sending data:
-  saved = save data as new JobDescription
+when user calls POST /api/jobs sending job:
+  saved = save job as new JobDescription
   send back saved with success message
 
 when user calls GET /api/evaluations:

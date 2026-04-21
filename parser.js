@@ -3328,7 +3328,7 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
 
   // Parse agent name (must be a quoted string)
   if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
-    errors.push({ line, message: "agent needs a quoted name. Example: agent 'Lead Scorer' receiving data:" });
+    errors.push({ line, message: "agent needs a quoted name. Example: agent 'Lead Scorer' receives lead:" });
     return { node: null, endIdx: startIdx + 1 };
   }
   const name = tokens[pos].value;
@@ -3368,14 +3368,14 @@ function parseAgent(lines, startIdx, blockIndent, errors) {
 
   // Parse 'receives' keyword (also accepts 'receiving' for compatibility)
   if (pos >= tokens.length || (tokens[pos].value !== 'receives' && tokens[pos].value !== 'receiving')) {
-    errors.push({ line, message: `agent '${name}' needs 'receives' or 'runs every'. Example: agent '${name}' receives data:  OR  agent '${name}' runs every 1 hour:` });
+    errors.push({ line, message: `agent '${name}' needs 'receives' or 'runs every'. Example: agent '${name}' receives lead:  OR  agent '${name}' runs every 1 hour:` });
     return { node: null, endIdx: startIdx + 1 };
   }
   pos++;
 
   // Parse the receiving variable name
   if (pos >= tokens.length || (tokens[pos].type !== TokenType.IDENTIFIER && tokens[pos].type !== TokenType.KEYWORD)) {
-    errors.push({ line, message: `agent '${name}' needs a variable name after 'receiving'. Example: agent '${name}' receiving data:` });
+    errors.push({ line, message: `agent '${name}' needs a variable name after 'receives'. Example: agent '${name}' receives lead: (var name should describe what the agent processes)` });
     return { node: null, endIdx: startIdx + 1 };
   }
   const receivingVar = tokens[pos].value;

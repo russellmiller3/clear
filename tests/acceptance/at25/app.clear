@@ -5,8 +5,8 @@ create a Contacts table:
   name, required
   status, required
 
-when user calls POST /api/contacts sending data:
+when user calls POST /api/contacts sending contact:
   needs login
-  data's status = 'active'
-  new_contact = save data as new Contact
+  contact's status = 'active'
+  new_contact = save contact as new Contact
   send back new_contact

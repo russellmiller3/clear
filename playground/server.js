@@ -2300,7 +2300,7 @@ Rules: Only ONE task should be in_progress at a time. Mark tasks completed immed
     name: 'patch_code',
     description: `Apply surgical edits to the Clear source without rewriting the whole file. Much better than edit_code write for small changes. Operations:
 - fix_line: replace a specific line. { op: 'fix_line', line: 7, replacement: "  send back user" }
-- insert_line: insert at position. { op: 'insert_line', line: 5, content: "  validate data:" }
+- insert_line: insert at position. { op: 'insert_line', line: 5, content: "  validate todo:" }
 - remove_line: delete a line. { op: 'remove_line', line: 10 }
 - add_endpoint: append endpoint. { op: 'add_endpoint', method: 'GET', path: '/api/health', body: "send back 'OK'" }
 - add_field: add field to table. { op: 'add_field', table: 'Users', field: 'email', constraints: 'required, unique' }

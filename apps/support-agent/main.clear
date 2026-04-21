@@ -72,8 +72,8 @@ agent 'Customer Support' receives message:
 
 # --- Endpoints ---
 
-when user calls POST /api/chat sending data:
-  result = call 'Customer Support' with data
+when user calls POST /api/chat sending chat:
+  result = call 'Customer Support' with chat
   send back result
 
 when user calls GET /api/orders:

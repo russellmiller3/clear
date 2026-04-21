@@ -106,16 +106,16 @@ Targets: JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4).
 | Feature | Syntax | Notes |
 |---------|--------|-------|
 | GET endpoint | `when user calls GET /api/users:` | |
-| POST endpoint | `when user calls POST /api/users sending data:` | `sending` = `receiving` |
-| PUT endpoint | `when user calls PUT /api/users:id sending data:` | URL params auto-bound |
-| DELETE endpoint | `when user calls DELETE /api/users:id:` | |
-| Send response | `send back data` / `send back data with success message` | Status 200/201 |
+| POST endpoint | `when user sends signup to /api/users:` | Receiving var = singular entity name; `sending`/`receiving` legacy forms still parse |
+| PUT endpoint | `when user updates profile at /api/users/:id:` | URL params auto-bound |
+| DELETE endpoint | `when user deletes user at /api/users/:id:` | |
+| Send response | `send back signup` / `send back signup with success message` | Status 200/201 |
 | Auth scaffold | `allow signup and login` | JWT + bcrypt, 3 endpoints |
 | Requires login | `requires login` | JWT middleware check |
 | Requires role | `requires role 'admin'` | Role-based access |
 | Define role | `define role 'editor':` + permissions | Custom RBAC |
 | Guard | `guard stock > 0 or 'Out of stock'` | Conditional 400 |
-| Validate | `validate data:` + field rules | Per-field 400 errors |
+| Validate | `validate <entity>:` + field rules | Per-field 400 errors |
 | Rate limit | `rate limit 10 per minute` | Request throttling |
 | CORS | `allow cross-origin requests` | |
 | Log requests | `log every request` | |
@@ -136,11 +136,11 @@ Targets: JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4).
 |---------|--------|-------|
 | Database backend | `database is local memory` / `supabase` / `PostgreSQL` / `SQLite` | |
 | Create table | `create a Users table:` + fields | Types, constraints, defaults |
-| Save (insert) | `save data as new User` | |
+| Save (insert) | `save signup as new User` | Var name = incoming entity |
 | Look up one | `look up User where id is 5` | |
 | Look up all | `look up all Users` / `get all Users` | Optional `where` clause |
 | Delete | `delete the User with this id` | |
-| Update | `save data to Users` | |
+| Update | `save profile to Users` | Var name = incoming entity |
 | Belongs to | `author belongs to Users` | Foreign key |
 | Has many | `Users has many Posts` | Auto-generates nested GET endpoint |
 | Search | `search Posts for query` | Case-insensitive full-text |
