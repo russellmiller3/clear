@@ -7545,6 +7545,60 @@ when user calls GET /api/me:
   });
 });
 
+describe('Validator - auth first-line placement', () => {
+  function warnStrs(result) {
+    return result.warnings.map(w => typeof w === 'string' ? w : w.message || '');
+  }
+
+  it('warns when requires login is NOT first in endpoint body', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Todos table:
+  title, required
+
+when user sends todo to /api/todos:
+  validate todo:
+    title is text, required
+  requires login
+  save todo as new Todo
+  send back todo
+    `);
+    expect(result.errors).toHaveLength(0);
+    const matched = warnStrs(result).filter(w => w.includes('auth-first') && w.includes('/api/todos'));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT warn when requires login is first', () => {
+    const result = compileProgram(`
+build for javascript backend
+create a Todos table:
+  title, required
+
+when user sends todo to /api/todos:
+  requires login
+  validate todo:
+    title is text, required
+  save todo as new Todo
+  send back todo
+    `);
+    expect(result.errors).toHaveLength(0);
+    const matched = warnStrs(result).filter(w => w.includes('auth-first'));
+    expect(matched.length).toEqual(0);
+  });
+
+  it('does NOT warn on single-line auth-only body', () => {
+    const result = compileProgram(`
+build for javascript backend
+when user calls GET /api/me:
+  requires login
+  send back caller
+    `);
+    expect(result.errors).toHaveLength(0);
+    const matched = warnStrs(result).filter(w => w.includes('auth-first'));
+    expect(matched.length).toEqual(0);
+  });
+});
+
 // =============================================================================
 // EXPECT COMPILATION
 // =============================================================================

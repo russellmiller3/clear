@@ -1041,6 +1041,22 @@ function validateSecurity(body, errors, warnings) {
         });
       }
 
+      // Check 1b: Auth is present but not on line 1 of the body — warn, don't error.
+      // Rationale: the convention is auth-first so readers can scan a file of 50
+      // endpoints and instantly see which are gated. Legacy code often has auth
+      // checks mid-body; warning nudges without breaking the build.
+      if (hasAuth && node.body.length > 1) {
+        const firstBodyNode = node.body[0];
+        const isAuthNode = (n) => n && (n.type === NodeType.REQUIRES_AUTH || n.type === NodeType.REQUIRES_ROLE);
+        if (!isAuthNode(firstBodyNode)) {
+          const authNodeIdx = node.body.findIndex(isAuthNode);
+          const authLine = node.body[authNodeIdx]?.line || node.line;
+          warnings.push(
+            `Line ${authLine}: ${method} ${node.path} has 'requires login'/'requires role' on line ${authLine} but the first body line is at line ${firstBodyNode.line || '?'}. Convention is auth-first — move the guard to line 1 of the endpoint body so a reader can see at a glance which endpoints are gated. Source order = run order in Clear; what you read is what runs.`
+          );
+        }
+      }
+
       // Check 2: GET endpoint returns all records from a user-owned table without filtering
       if (method === 'GET' && schemasWithOwner.size > 0) {
         const hasCrud = node.body.some(n => n.type === NodeType.CRUD);

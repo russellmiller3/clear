@@ -1001,8 +1001,8 @@ function renderGuide() {
 
     // ── Backend ──
     ['Data Tables', "database is local memory\n\ncreate a Users table:\n  name, required\n  email, required, unique\n  role, default 'member'\n  age (number), default 0\n  created_at_date, auto"],
-    ['API Endpoints', "when user calls GET /api/users:\n  all_users = get all Users\n  send back all_users\n\nwhen user calls POST /api/users sending user_data:\n  requires auth\n  validate user_data:\n    name is text, required, min 1, max 100\n    email is text, required, matches email\n  new_user = save user_data as new User\n  send back new_user with success message\n\nwhen user calls PUT /api/users/:id sending data:\n  requires auth\n  save data to Users\n  send back 'updated'\n\nwhen user calls DELETE /api/users/:id:\n  requires auth\n  delete the User with this id\n  send back 'deleted' with success message"],
-    ['Auth & Guards', "requires auth\nrequires role 'admin'\nguard stock is greater than 0 or 'Out of stock'\n\n# Access current user\nuser_id = current user's id"],
+    ['API Endpoints', "when user calls GET /api/users:\n  all_users = get all Users\n  send back all_users\n\nwhen user sends signup to /api/users:\n  requires login\n  validate signup:\n    name is text, required, min 1, max 100\n    email is text, required, matches email\n  new_user = save signup as new User\n  send back new_user with success message\n\nwhen user updates profile at /api/users/:id:\n  requires login\n  save profile to Users\n  send back 'updated'\n\nwhen user deletes user at /api/users/:id:\n  requires login\n  delete the User with this id\n  send back 'deleted' with success message"],
+    ['Auth & Guards', "requires login\nrequires role 'admin'\nguard stock is greater than 0 or 'Out of stock'\n\n# Access the authenticated caller\nuser_id = caller's id"],
     ['Production', "log every request\nallow cross-origin requests\nrate limit 10 per minute\napi_key is env('API_KEY')"],
 
     D,
