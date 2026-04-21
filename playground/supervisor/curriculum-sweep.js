@@ -40,8 +40,12 @@ if (existsSync(_envPath)) {
   });
 }
 const FACTOR_DB_PATH = join(__dirname, '..', 'factor-db.sqlite');
-const SWEEP_REGISTRY_PATH = '/tmp/sweep-registry.db';
-const WORKER_BASE_PORT = 3490;
+// Port base + registry path are overridable via env vars so multiple sweeps
+// can run in parallel without port / file collisions. Factor DB itself is
+// shared (SQLite WAL handles concurrent writers) — that's the training
+// corpus, we want all sweeps writing into it.
+const SWEEP_REGISTRY_PATH = process.env.CLEAR_SWEEP_REGISTRY || '/tmp/sweep-registry.db';
+const WORKER_BASE_PORT = Number(process.env.CLEAR_SWEEP_PORT_BASE) || 3490;
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
