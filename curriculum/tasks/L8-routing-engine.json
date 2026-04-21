@@ -1,0 +1,34 @@
+{
+  "id": "routing-engine",
+  "level": 8,
+  "title": "Lead Routing Engine",
+  "description": "ARCHETYPE: routing_engine. Shape: the app CLASSIFIES an incoming record into one of N buckets via rules, then assigns it. The CORE is a branching if/else ladder or a rules table — NOT generic CRUD. An incoming lead is assigned to a rep based on company size: Enterprise → 'alice', Mid-Market → 'bob', SMB → 'charlie'. The routing logic must appear in the POST handler (not as a database column default). DO NOT just accept and save — the ROUTING decision is the point. Include: POST /api/leads (routes + saves), GET /api/leads (lists), GET /api/leads/by/:rep (filter by assigned rep). No auth scaffold, no pages.",
+  "skeleton": "build for javascript backend\n\ncreate a Leads table:\n  company, required\n  email, required\n  size, required\n  assigned_to\n  created_at_date, auto\n\n# Your routing logic + endpoints here.\n# POST /api/leads must branch on `size` and set assigned_to accordingly BEFORE saving:\n#   - 'Enterprise' → 'alice'\n#   - 'Mid-Market' → 'bob'\n#   - 'SMB' → 'charlie'\n",
+  "steps": [
+    { "id": "table",   "name": "Leads table defined",                      "sourceMatches": ["create\\s+a?\\s*Leads\\s+table"] },
+    { "id": "create",  "name": "POST /api/leads exists",                   "sourceMatches": ["(sends\\s+\\w+\\s+to|calls\\s+POST)\\s+['\"]?/api/leads['\"]?"] },
+    { "id": "route",   "name": "Routing branch on size present",           "sourceMatches": ["(if|when)\\s+.*size", "Enterprise|Mid-Market|SMB"] },
+    { "id": "assign",  "name": "Sets assigned_to to a rep name",           "sourceMatches": ["assigned_to\\s+is\\s+['\"](alice|bob|charlie)", "alice|bob|charlie"] },
+    { "id": "list",    "name": "GET /api/leads list",                      "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/leads['\"]?"] },
+    { "id": "filter",  "name": "GET /api/leads/by/:rep filter",            "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/leads/by/:"] }
+  ],
+  "tests": [
+    {
+      "method": "POST",
+      "path": "/api/leads",
+      "body": { "company": "Acme", "email": "a@acme.com", "size": "Enterprise" },
+      "expect": { "status": 201, "bodyHas": ["id", "assigned_to"] }
+    },
+    {
+      "method": "POST",
+      "path": "/api/leads",
+      "body": { "company": "Bongo", "email": "b@bongo.io", "size": "SMB" },
+      "expect": { "status": 201 }
+    },
+    {
+      "method": "GET",
+      "path": "/api/leads",
+      "expect": { "status": 200, "bodyLength": ">0" }
+    }
+  ]
+}

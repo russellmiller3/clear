@@ -1,0 +1,21 @@
+{
+  "id": "etl-api-ingest",
+  "level": 8,
+  "title": "ETL: Fetch External API into Local Table",
+  "description": "ARCHETYPE: etl_pipeline. Shape: scheduled job fetches data from a third-party API and transforms + writes to a local table. The CORE is `call api 'URL'` + data transform + save. NOT a batch_job (batch is pure local cleanup). NOT a dashboard (no UI). Backend-only. Schedule: every 1 hour, fetch weather from 'https://api.weather-mock.example.com/current?city=SF', extract { temp, humidity, conditions }, save to WeatherReadings table with fetched_at timestamp. Plus ONE GET /api/readings endpoint so tests can verify rows landed. No auth, no pages, no other endpoints.",
+  "skeleton": "build for javascript backend\n\ncreate a WeatherReadings table:\n  temp (number)\n  humidity (number)\n  conditions\n  fetched_at_date, auto\n\n# Your scheduled ETL block + GET /api/readings endpoint here.\n# Use: every 1 hour: then `call api '...'` then save fields to WeatherReadings.\n",
+  "steps": [
+    { "id": "table",    "name": "WeatherReadings table defined",       "sourceMatches": ["create\\s+a?\\s*WeatherReadings\\s+table"] },
+    { "id": "schedule", "name": "Hourly schedule block",               "sourceMatches": ["every\\s+1?\\s*hour"] },
+    { "id": "fetch",    "name": "External API call present",           "sourceMatches": ["call\\s+api\\s+['\"]https?://"] },
+    { "id": "save",     "name": "Saves a reading to WeatherReadings",  "sourceMatches": ["save\\s+.*\\s+(to|as\\s+new)\\s+(WeatherReadings|WeatherReading)"] },
+    { "id": "list",     "name": "GET /api/readings endpoint",          "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/readings['\"]?"] }
+  ],
+  "tests": [
+    {
+      "method": "GET",
+      "path": "/api/readings",
+      "expect": { "status": 200 }
+    }
+  ]
+}

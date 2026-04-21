@@ -1,0 +1,21 @@
+{
+  "id": "realtime-broadcast",
+  "level": 5,
+  "title": "Realtime Broadcast Notifications",
+  "description": "ARCHETYPE: realtime_app. Shape: backend-only WebSocket server (no pages, no CRUD scaffold, no auth). Subscribe + broadcast are the CORE — not a POST endpoint wrapper. DO NOT build HTTP endpoints for messages. DO NOT build pages. DO NOT use requires login. The ENTIRE app is one `subscribe to 'channel':` block that listens for incoming messages on the 'notifications' channel and broadcasts them to all connected clients. Persist each broadcast to a Messages table for history. Include ONE HTTP endpoint GET /api/history that returns all Messages (tests need this to verify broadcasts landed). No other endpoints.",
+  "skeleton": "build for javascript backend\n\ncreate a Messages table:\n  text, required\n  created_at_date, auto\n\n# Your subscribe/broadcast handler here — use `subscribe to 'notifications':` and `broadcast to all message`\n# Plus ONE GET /api/history endpoint for test verification\n",
+  "steps": [
+    { "id": "table",       "name": "Messages table defined",         "sourceMatches": ["create\\s+a?\\s*Messages\\s+table"] },
+    { "id": "subscribe",   "name": "subscribe to block exists",      "sourceMatches": ["subscribe\\s+to\\s+['\"]notifications['\"]"] },
+    { "id": "broadcast",   "name": "Broadcasts to all",              "sourceMatches": ["broadcast\\s+to\\s+all"] },
+    { "id": "persist",     "name": "Saves message to Messages",      "sourceMatches": ["save\\s+.*\\s+(to|as\\s+new)\\s+(Messages|Message)"] },
+    { "id": "history",     "name": "GET /api/history for tests",     "sourceMatches": ["calls\\s+GET\\s+['\"]?/api/history['\"]?"] }
+  ],
+  "tests": [
+    {
+      "method": "GET",
+      "path": "/api/history",
+      "expect": { "status": 200 }
+    }
+  ]
+}

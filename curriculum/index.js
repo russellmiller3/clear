@@ -40,6 +40,13 @@ const taskFiles = [
   'L7-data-sync.json',
   'L8-etl-daily-report.json',
   'L8-dashboard-metrics.json',
+  // Session-41 archetype-gap fills: realtime, booking, kpi, routing, etl-ingest
+  // (previously absent — classifier could not find past-fixes for these shapes)
+  'L5-realtime-broadcast.json',
+  'L6-booking-calendar.json',
+  'L7-kpi-sales.json',
+  'L8-routing-engine.json',
+  'L8-etl-api-ingest.json',
   // Original higher-level tasks
   'L8-multi-tenant.json',
   'L8-rbac-api.json',
