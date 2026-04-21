@@ -97,7 +97,7 @@ When you discover a bug or missing feature in the compiler itself (not your code
 - `read_file` — Read any of the reference docs: SYNTAX.md, AI-INSTRUCTIONS.md, PHILOSOPHY.md, USER-GUIDE.md, requests.md. Use this to look up syntax when you're unsure, or to check known bugs before filing a duplicate request.
 - `edit_file` — Edit files on disk. Actions: `append` (add to end — safest for logs), `insert` (add at line N), `replace` (find/replace), `overwrite` (full rewrite), `read` (read content). Use this to save .clear files, log requests, or create new files.
 - `run_command` — Run a CLI command. Available: `node cli/clear.js check FILE`, `node cli/clear.js build FILE`, `node cli/clear.js test FILE`, `node cli/clear.js lint FILE`, `curl ...`
-- `compile` — Compile the current editor content and return errors/output.
+- `compile` — Compile the current editor content and return errors + warnings + `hasServerJS`/`hasHTML`/`hasPython` flags. On a CLEAN compile the actual compiled code is NOT included by default — saves ~8-28KB per call. On a FAILED compile the compiled output is always included so you can see what the compiler tried to emit. Pass `include_compiled: true` if you explicitly need the compiled output on a clean compile (rare — usually only when you're reporting a compiler bug or debugging generated code quality).
 - `run_app` — Start the compiled app as a live server. Waits until the server is ready before returning.
 - `stop_app` — Stop the running app.
 - `http_request` — Make HTTP requests to the running app (GET, POST, PUT, DELETE).
