@@ -715,6 +715,41 @@ The Meph loop-sweep infrastructure now yields **~20-30 rows and 15-30 passing pe
 
 3. **Eval parallelization.** `eval-meph.js` + `eval-fullloop-suite.js` add evaluation trajectories on every push that has `ANTHROPIC_API_KEY` set.
 
+### Honest-label pipeline — how we know which hints actually help
+
+The `test_pass` signal tells us which COMPILES were successful — it doesn't tell us which RETRIEVED HINTS were useful. For that we need Meph's self-report. The pipeline:
+
+1. **Server serves hints on compile errors** (`[hints]` log event) and remembers which Factor DB row carried them (`_hintsInjectedRowId`).
+2. **Meph emits `HINT_APPLIED: yes|no, tier=X, helpful=yes|no|partial, reason=...`** at the top of the next text block.
+3. **End of turn**, the server parses the tag from accumulated assistant text and writes to `code_actions.hint_applied`, `hint_tier`, `hint_helpful`, `hint_reason` on the remembered row.
+
+**Tag rate problem.** Measured across two sweeps (60 tasks): Meph emits the tag on ~45% of hint-serve events. In long agentic loops he forgets — he's task-focused, and the meta-observation slips. Prompt tightening (explicit "reflex" framing + concrete example) didn't move the needle measurably.
+
+**Inference fallback.** When no tag is emitted but hints were served, the server checks whether the error count dropped in a later compile in the same turn:
+
+- `_hintsInjectedErrorCount` snapshot at hint-serve time
+- `_postHintMinErrorCount` tracked across every subsequent compile in the turn
+- If `post < injected` → log `applied=1, helpful='inferred'` with reason `errors N→M after hint`
+
+**'inferred' is a distinct label value.** The honest-label set (`yes`/`no`/`partial`) stays uncontaminated. When we retrain the re-ranker, we can:
+
+- Train exclusively on honest labels → small but clean signal
+- OR include `inferred` labels with lower weight → larger but noisier signal
+
+Distinct log lines in server stdout make the counts trivial to extract:
+
+```
+grep 'helpful=yes\|helpful=no' sweep.log  # honest labels
+grep 'helpful=inferred' sweep.log        # fallback labels
+grep 'NO_TAG' sweep.log                  # still missed (no drop in errors)
+```
+
+**Current label inventory (as of the inference-fallback commit):** 10 honest `helpful=yes` labels, 0 honest `no`/`partial`, growing `inferred` as sweeps run. The signal-shape already visible in the honest set:
+
+- `exact_error_same_archetype` tier dominates helpful=yes (5/10 → 50% of helpful labels)
+- `api_service` archetype dominates (5/10 → 50%)
+- Most-helpful error classes: "you used X but it hasn't been created yet" (undefined var) and `requires login`-first-line violations
+
 ### Train the re-ranker (when ready)
 
 At 200+ passing rows:
@@ -723,6 +758,7 @@ At 200+ passing rows:
 2. Feature engineering: extract global + local features (already defined in `archetype.js` + structural features)
 3. Train EBM: Python `interpret` package (InterpretML, Microsoft Research) — ~30 seconds on CPU for 1000 rows. Inference export: serialize each feature's shape function to JSON, evaluate in JS or call Python microservice. EBMs quantize nicely into lookup tables.
 4. Export ONNX: portable model that runs anywhere
+5. **Optional second pass on honest hint labels.** Once `hint_helpful='yes'` label count crosses ~50, retrain a pairwise ranker filtered to rows Meph himself rated helpful. This is a quality filter over the test-score signal — honest labels are a stronger signal than proxy (test-score is correlated but not identical to "did this hint help").
 
 ### Wire suggestions into Meph (last step)
 
