@@ -43,6 +43,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 36: Function TDD + Supervisor Plan](#session-36-function-tdd--supervisor-plan-2026-04-17) | `insideFunction: true` required for `define function` body ctx, user functions shadow builtins via pre-scan, SSE `tool_start` fires twice (state-flag dedup), API key must match how server reads it, Playwright e2e push from main repo not worktree |
 | [Session 37: Supervisor Multi-Session Architecture](#session-37-supervisor-multi-session-architecture-2026-04-17) | Multi-process over session globals, module-level shadow vars for polling, WAL mode registry, port availability check, async test timeouts, state machine monkey-patch testing |
 | [Session 37: PERF-1 + PERF-2 pagination and aggregates](#session-37-perf-1--perf-2-pagination-and-server-side-aggregates-2026-04-17) | `from` canonicalizes to `in` (must use rawValue), table names can tokenize as keywords not identifiers, `length of get all` is wrong when list is capped — use SQL aggregate, runtime files are build-time copies not imports, `extractEqPairs` (SQL) vs `conditionToFilter` (in-memory) are different helpers |
+| [Session 40: `caller` rename + compiler shadow bug + HINT_APPLIED reliability](#session-40-caller-rename--compiler-shadow-bug--hint_applied-reliability-2026-04-20) | Compiler magic-var mapping ignored lexical shadow (bug); `caller` as 1-word canonical eliminates Users-table exception; prompt-only Claude compliance ~50% in long loops — need server-side fallback; keyword-collision validator surfaces post/deploy/update/payment as bad receiving vars |
 
 ---
 
@@ -1155,3 +1156,53 @@ User actions, Meph tool calls, browser console errors all mirrored into `termina
 - **Rule ordering matters.** `numCharts >= 2 → dashboard` was below `hasStatusField + hasAuth → queue_workflow`. Dashboards with status columns (filtered chart segments) and auth (login-gated reports) misrouted to queue_workflow. Fix: move the stronger signal (≥2 charts) above the weaker one. Lesson: when adding classifier rules, order them by signal strength, not historical accident.
 
 - **Multi-endpoint webhooks needed guard relaxation.** The old `numEndpoints === 1 && hasWebhookPath → webhook_handler` rule broke on apps with a webhook plus a `/health` endpoint. Relaxed to `hasWebhookPath(body) || hasSignatureVerification(body) → webhook_handler` regardless of total endpoint count. Lesson: "one endpoint" is a fragile heuristic for "this is a webhook app."
+
+---
+
+## Session 40: `caller` rename + compiler shadow bug + HINT_APPLIED reliability (2026-04-20)
+
+Three interlocking fixes landed after noticing that one bad receiving-var example (`where id is id`) was actually teaching a larger anti-pattern (`data` as receiving var) that had propagated across the whole codebase.
+
+### The `current user` semantic collision and its compiler-level fix
+
+- **Symptom.** `Users`-table endpoints were the only place the "use singular of table as receiving var" rule didn't apply. We'd invented a special case: pick `signup`/`profile`/`account` because `user` was "ambiguous with `current user`." One exception to an otherwise-uniform rule is a smell — the convention should be 100%.
+
+- **The real bug.** Investigation revealed this wasn't just semantic ambiguity — the compiler had a hardcoded special-case in `compiler.js` VARIABLE_REF: `if (name === 'user' && ctx.mode === 'backend') return 'req.user';`. This IGNORED any local `user` binding. Result: `const user = req.body;` + `save user as new User` correctly used the local (shadowed), but `send back user` emitted `res.json(req.user)` — returning the authenticated caller instead of the freshly-saved body. **The save worked, the response was wrong.** Silent. No error, no warning. Detected only by reading compiled JS.
+
+- **Fix.** Check `ctx.declared.has('user')` before applying the magic mapping. Compile-time endpoint handler seeds `epDeclared` with the receiving-var name so the VARIABLE_REF case sees the binding as in-scope. Two regression tests lock it in.
+
+- **Lesson.** Compiler special-cases that don't respect lexical scope are landmines. If you shortcut a lookup based on a string literal, always check the scope first. JS has lexical shadowing for a reason — respect it in compiled output too.
+
+### `caller` as canonical magic var
+
+- **Design.** Added `caller` as a synonym for the `current_user` canonical token. `current user`, `authenticated user`, `logged in user` remain as legacy synonyms — all four resolve to the same `_current_user` runtime reference and compile to byte-identical JS.
+
+- **Why `caller` specifically.** One word (no multi-word tokenizer dance), no collision with any entity name (no table is called `Callers`), matches API-design lexicon (`caller's role`, `caller's id`). Rejected `me` (awkward possessive: `me's email`), `viewer` (read-only connotation), `self` (OOP jargon Clear avoids).
+
+- **Side effect.** Once `caller` is canonical, the Users-table exception disappears. `user` is safe as a receiving var everywhere. The entity-name rule is uniform again.
+
+- **Lesson.** When a rule has ONE exception, look for a renaming that eliminates the exception. Special cases tax every future reader's mental model.
+
+### HINT_APPLIED tag reliability — prompt alone isn't enough
+
+- **Symptom.** Across two sweeps (60 tasks, ~11 hints served each), Meph emitted the `HINT_APPLIED:` tag on ~45% of hint-serves. Missing tags = silent training-data loss (no label = can't tell which hints actually helped).
+
+- **First attempt: tighten the prompt.** Rewrote the rule as a REFLEX (not summary), moved it earlier in the prompt, added an explicit concrete example of the correct response shape. Tag rate moved from 50% → 43% (within noise).
+
+- **Finding.** In long agentic loops, Claude is task-focused. Meta-observations like "emit a tag" slip no matter how clearly the rule is written. Prompt clarity is necessary but not sufficient.
+
+- **Second attempt: server-side inference fallback.** When `HINT_APPLIED` is missing AND a later compile in the same turn had fewer errors than when hints were served, infer `applied=1, helpful='inferred'`. The `'inferred'` value is distinct from `yes`/`no`/`partial` so the honest-label set stays clean; ranker training can opt in or out.
+
+- **Lesson.** For any "Claude should remember to do X" behavior that's not load-bearing for task completion, add a server-side fallback. Prompt-only compliance in long loops is ~50% even for simple reflexes. The fallback doesn't replace the honest signal — it augments it.
+
+### Drive-by finds
+
+- **Keyword-collision warning at the validator layer.** Added `validateReceivingVarNames` — warns when a POST/PUT/agent receiving var is `post`/`deploy`/`update`/`payment`/`page`/`image`/`ask` etc. (words that collide with Clear keywords and cause confusing errors like "`post to` but it hasn't been created"). Also catches the banned-placeholder names (`data`, `item`, `obj`, `val`). Surfaces compile-time what used to be a mysterious parse error.
+
+- **Auth-first-line warning.** `requires login` missing is already a compile error for PUT/DELETE. But auth PRESENT-but-not-on-line-1 was unchecked. Added a warning. Convention-enforcement, not correctness. All 71 templates already follow the convention (0 hits).
+
+- **SYNONYM_VERSION bump.** Every synonym table change bumps the version (caught by the synonym-frozen test). 0.28 → 0.29 for the `caller` add.
+
+### General lesson
+
+One small pushback ("`where id is id` reads weird") surfaced six linked fixes: doc drift, compiler bug, convention exception, keyword collision class, validator gap, telemetry hole. Russell's 14-year-old-test instincts are a load-bearing signal-detector. When he bounces off a small example, the whole surrounding design has usually drifted — fix the drift, not the example.
