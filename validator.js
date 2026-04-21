@@ -113,6 +113,7 @@ export function validate(ast) {
   validateClassify(ast.body, errors);
   validateLayoutNesting(ast.body, warnings);
   validateEvalReferences(ast.body, warnings);
+  validateReceivingVarNames(ast.body, warnings);
   validateReservedEndpointPrefixes(ast.body, errors);
   return { errors, warnings };
 }
@@ -195,6 +196,89 @@ function validateLayoutNesting(body, warnings) {
     }
   }
   walk(body, false);
+}
+
+/**
+ * Receiving-var names that collide with Clear keywords or are banned
+ * generic placeholders. Using them either breaks compilation (when the
+ * var is later used in a context the tokenizer reads as a multi-word
+ * keyword — e.g. `save post to Posts`) or produces code that's
+ * ambiguous to read (e.g. `user` shadows `current user`).
+ *
+ * Discovered during the canonical-entity-name propagation: templates
+ * that renamed `data` → singular-of-table hit silent failures when the
+ * singular happened to be a keyword. Each entry here is a case that
+ * actually bit us. Freezing so the list is append-only; removing one
+ * would silently relax a rule.
+ */
+const RECEIVING_VAR_COLLISIONS = Object.freeze({
+  // Keyword collisions — the tokenizer merges `<name> to`/`<name> from`
+  // into a multi-word keyword, then the parser fails with a confusing
+  // "you used X but it hasn't been created" message.
+  post:    { why: "'post to' is a Clear keyword for HTTP POST — `save post to Posts` fails with a confusing 'post to not defined' error", try: "article" },
+  put:     { why: "'put to' is a Clear keyword for HTTP PUT", try: "change" },
+  update:  { why: "'update to' is a synonym for 'put to' — `save update to X` fails to compile", try: "the singular entity name, or 'edit'" },
+  deploy:  { why: "'deploy to' is a Clear keyword for deployment targets", try: "deployment" },
+  get:     { why: "'get from' is a Clear keyword for GET fetches", try: "request" },
+  load:    { why: "'load from' is a Clear keyword (synonym of 'get from')", try: "request" },
+  ask:     { why: "'ask claude' / 'ask ai' are agent keywords — shadowing 'ask' as a var name breaks agent calls", try: "query" },
+  payment: { why: "'payment' is a synonym for 'checkout' — `payment's amount` parses as a checkout block header", try: "billing" },
+  page:    { why: "'page' declares a UI page — using it as a var name collides with the page-declaration keyword", try: "subject, or the singular entity name" },
+  image:   { why: "'image' is a Clear UI element keyword", try: "photo" },
+
+  // Semantic collision — compiles, but reads ambiguously.
+  user:    { why: "shadows 'current user' (the authenticated caller set by `requires login`) — code becomes hard to read because `user's email` could mean either", try: "signup (on create), profile (on update), or account (general admin)" },
+
+  // Banned placeholder names — generic words that describe nothing.
+  // See the naming table in AI-INSTRUCTIONS.md.
+  data:    { why: "generic placeholder on the banned-names list — describes nothing about what the value IS", try: "the singular entity name of the table you're saving to (bookmark, todo, order, etc.)" },
+  item:    { why: "generic placeholder on the banned-names list", try: "the singular entity name" },
+  obj:     { why: "generic placeholder on the banned-names list", try: "the singular entity name" },
+  tmp:     { why: "generic placeholder on the banned-names list", try: "the singular entity name" },
+  temp:    { why: "generic placeholder on the banned-names list", try: "the singular entity name" },
+  val:     { why: "generic placeholder on the banned-names list", try: "the singular entity name" },
+  value:   { why: "generic placeholder on the banned-names list", try: "the singular entity name" },
+  result:  { why: "past-tense generic name — says nothing about what the value is", try: "what the value represents (new_todo, saved_order, etc.)" },
+  res:     { why: "abbreviation placeholder — a reader shouldn't need to guess what it means", try: "the singular entity name" },
+});
+
+/**
+ * Walk endpoints + agents and warn when the receiving-var name either
+ * collides with a Clear keyword (compile-breaker in some contexts) or
+ * is a banned generic placeholder (readability).
+ *
+ * Warnings, not errors — the author can opt out by naming carefully
+ * or by accepting the tradeoff. But the warning tells them exactly
+ * what'll bite them and what to try instead.
+ */
+function validateReceivingVarNames(body, warnings) {
+  function walk(nodes) {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      if (!node || typeof node !== 'object') continue;
+
+      if (node.type === NodeType.ENDPOINT && node.receivingVar) {
+        const hit = RECEIVING_VAR_COLLISIONS[node.receivingVar];
+        if (hit) {
+          warnings.push(
+            `Line ${node.line}: receiving var '${node.receivingVar}' on ${node.method} ${node.path} is problematic — ${hit.why}. Try: ${hit.try}.`
+          );
+        }
+      }
+
+      if (node.type === NodeType.AGENT && node.receivingVar) {
+        const hit = RECEIVING_VAR_COLLISIONS[node.receivingVar];
+        if (hit) {
+          warnings.push(
+            `Line ${node.line}: agent '${node.name}' receives '${node.receivingVar}' — ${hit.why}. Try: ${hit.try}.`
+          );
+        }
+      }
+
+      if (Array.isArray(node.body)) walk(node.body);
+    }
+  }
+  walk(body);
 }
 
 /**

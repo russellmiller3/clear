@@ -68,11 +68,11 @@ when user requests data from /api/posts/:id:
   if post is nothing then send back 'Post not found' status 404
   send back post
 
-when user sends post to /api/posts:
-  validate post:
+when user sends article to /api/posts:
+  validate article:
     title is text, required, min 1, max 200
     body is text, required, min 1
-  new_post = save post as new Post
+  new_post = save article as new Post
   send back new_post
 
 when user deletes post at /api/posts/:id:

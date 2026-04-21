@@ -174,14 +174,14 @@ when user calls GET /api/line-items:
   all_items = get all LineItems
   send back all_items
 
-when user calls POST /api/line-items sending item:
+when user calls POST /api/line-items sending line_item:
   requires login
-  validate item:
+  validate line_item:
     invoice_id is text, required
     description is text, required, min 1, max 500
     quantity is number, required
     unit_price is number, required
-  new_item = save item as new LineItem
+  new_item = save line_item as new LineItem
   send back new_item with success message
 
 when user calls DELETE /api/line-items/:id:
