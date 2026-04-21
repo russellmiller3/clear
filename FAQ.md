@@ -549,7 +549,7 @@ Clear's `allow signup and login` compiles to a full auth scaffold:
 
 - `POST /auth/signup` — bcrypt hashes password, creates user, returns JWT
 - `POST /auth/login` — verifies password, returns JWT
-- `GET /auth/me` — returns current user from JWT
+- `GET /auth/me` — returns the authenticated caller from JWT
 
 JWT secret comes from `process.env.JWT_SECRET`. Defaults to `'clear-test-secret'` in the test runner. Use a real secret in production.
 

@@ -755,7 +755,7 @@ The reader knows what data exists, what the API does, and what the user sees.
 | Auth guard | `requires auth` |
 | Role guard | `requires role 'admin'` |
 | Custom guard | `guard stock is greater than 0 or 'Out of stock'` |
-| Current user | `define user_id as: current user's id` |
+| Authenticated caller | `define user_id as: caller's id` (canonical; `current user's id` still works) |
 | Validate | `validate post_data:` + field rules |
 | Data fetch | `data is fetch_data('https://...')` |
 | Environment var | `api_key is env('API_KEY')` |
