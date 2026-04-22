@@ -187,6 +187,39 @@ try {
   assert(!(await page.locator('#source-toggle-btn').isVisible()),
     'Source button hidden in classic mode');
 
+  // ==========================================================================
+  // PHASE 4 — Publish button rebrand
+  // ==========================================================================
+  console.log('\n⚡ Phase 4 — Publish button rebrand');
+
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  // Force-show the deploy button (normally hidden until canDeploy=true)
+  await page.evaluate(() => { document.getElementById('deploy-btn').style.display = ''; });
+
+  const publishText = (await page.locator('#deploy-btn').textContent()).trim();
+  assert(publishText === 'Publish',
+    `button says "Publish" in builder mode (got "${publishText}")`);
+  assert(
+    await page.locator('#deploy-btn').evaluate(b => b.classList.contains('publish-btn')),
+    'button has .publish-btn class in builder mode'
+  );
+
+  // Verify distinct styling (non-transparent background)
+  const bg = await page.locator('#deploy-btn').evaluate(b => getComputedStyle(b).backgroundColor);
+  assert(bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent',
+    `publish button has a filled background (got ${bg})`);
+
+  // Switch to classic — label reverts
+  await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
+  await page.evaluate(() => { document.getElementById('deploy-btn').style.display = ''; });
+  const classicText = (await page.locator('#deploy-btn').textContent()).trim();
+  assert(classicText === 'Deploy',
+    `button says "Deploy" in classic mode (got "${classicText}")`);
+  assert(
+    !(await page.locator('#deploy-btn').evaluate(b => b.classList.contains('publish-btn'))),
+    '.publish-btn class removed in classic mode'
+  );
+
 } catch (err) {
   console.error('\n❌ Test suite threw:', err);
   failed++;
