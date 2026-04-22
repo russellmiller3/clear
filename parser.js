@@ -257,13 +257,11 @@ export const NodeType = Object.freeze({
   RESPONDS_WITH: 'responds_with',
   RATE_LIMIT: 'rate_limit',
 
-  // Webhooks & OAuth (Phase 17)
+  // Webhooks (Phase 17 — OAUTH_CONFIG removed 2026-04-21, zero app usage; use record literal instead)
   WEBHOOK: 'webhook',
-  OAUTH_CONFIG: 'oauth_config',
 
-  // Billing & Payments (Phase 18)
+  // Billing & Payments (Phase 18 — USAGE_LIMIT removed 2026-04-21, zero app usage; use record literal instead)
   CHECKOUT: 'checkout',
-  USAGE_LIMIT: 'usage_limit',
 
   // File Uploads & External APIs (Phase 19)
   ACCEPT_FILE: 'accept_file',
@@ -659,22 +657,14 @@ function rateLimitNode(count, period, line) {
   return { type: NodeType.RATE_LIMIT, count, period, line };
 }
 
-// Phase 17: Webhooks & OAuth
+// Phase 17: Webhooks (oauthConfigNode removed 2026-04-21 — zero app usage)
 function webhookNode(path, secret, body, line) {
   return { type: NodeType.WEBHOOK, path, secret, body, line };
 }
 
-function oauthConfigNode(provider, config, line) {
-  return { type: NodeType.OAUTH_CONFIG, provider, config, line };
-}
-
-// Phase 18: Billing & Payments
+// Phase 18: Billing & Payments (usageLimitNode removed 2026-04-21 — zero app usage)
 function checkoutNode(name, config, line) {
   return { type: NodeType.CHECKOUT, name, config, line };
-}
-
-function usageLimitNode(name, tiers, line) {
-  return { type: NodeType.USAGE_LIMIT, name, tiers, line };
 }
 
 // Phase 19: File Uploads & External APIs
@@ -1567,18 +1557,8 @@ const CANONICAL_DISPATCH = new Map([
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
-  ['usage_limit', (ctx) => {
-    const parsed = parseUsageLimit(ctx.lines, ctx.i, ctx.indent, ctx.errors);
-    if (parsed.node) ctx.body.push(parsed.node);
-    return parsed.endIdx;
-  }],
   ['webhook', (ctx) => {
     const parsed = parseWebhook(ctx.lines, ctx.i, ctx.indent, ctx.errors);
-    if (parsed.node) ctx.body.push(parsed.node);
-    return parsed.endIdx;
-  }],
-  ['oauth', (ctx) => {
-    const parsed = parseOAuthConfig(ctx.lines, ctx.i, ctx.indent, ctx.errors);
     if (parsed.node) ctx.body.push(parsed.node);
     return parsed.endIdx;
   }],
@@ -6806,53 +6786,11 @@ function parseCheckout(lines, startIdx, blockIndent, errors) {
   return { node: checkoutNode(name, config, line), endIdx: j };
 }
 
-function parseUsageLimit(lines, startIdx, blockIndent, errors) {
-  const { tokens } = lines[startIdx];
-  const line = tokens[0].line;
-  let pos = 1;
-
-  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
-    errors.push({ line, message: "Usage limit needs a name. Example: limit 'ai_generations':" });
-    return { node: null, endIdx: startIdx + 1 };
-  }
-  const name = tokens[pos].value;
-
-  const tiers = [];
-  let j = startIdx + 1;
-  while (j < lines.length && lines[j].indent > blockIndent) {
-    const bodyTokens = lines[j].tokens;
-    if (bodyTokens.length === 0 || bodyTokens[0].type === TokenType.COMMENT) { j++; continue; }
-    const tierName = bodyTokens[0].value;
-    let bPos = 1;
-    if (bPos < bodyTokens.length && (bodyTokens[bPos].canonical === 'allows'
-        || bodyTokens[bPos].value.toLowerCase() === 'allows')) bPos++;
-    let count = null;
-    let period = 'month';
-    if (bPos < bodyTokens.length) {
-      if (bodyTokens[bPos].canonical === 'unlimited'
-          || (typeof bodyTokens[bPos].value === 'string' && bodyTokens[bPos].value.toLowerCase() === 'unlimited')) {
-        count = -1;
-        bPos++;
-      } else if (bodyTokens[bPos].type === TokenType.NUMBER) {
-        count = bodyTokens[bPos].value;
-        bPos++;
-        if (bPos < bodyTokens.length && bodyTokens[bPos].value.toLowerCase() === 'per') bPos++;
-        if (bPos < bodyTokens.length) period = bodyTokens[bPos].value.toLowerCase();
-      }
-    }
-    tiers.push({ tier: tierName, count, period });
-    j++;
-  }
-
-  if (tiers.length === 0) {
-    errors.push({ line, message: `Usage limit "${name}" has no tiers. Example:\n  limit '${name}':\n    free allows 5 per month\n    pro allows unlimited` });
-  }
-
-  return { node: usageLimitNode(name, tiers, line), endIdx: j };
-}
+// parseUsageLimit removed 2026-04-21 — zero app usage. Migration: write a
+// record literal instead. See `docs/one-to-one-mapping-audit.md`.
 
 // =============================================================================
-// WEBHOOKS & OAUTH (Phase 17)
+// WEBHOOKS (Phase 17 — parseOAuthConfig removed 2026-04-21, zero app usage)
 // =============================================================================
 
 function parseWebhook(lines, startIdx, blockIndent, errors) {
@@ -6884,48 +6822,8 @@ function parseWebhook(lines, startIdx, blockIndent, errors) {
   return { node: webhookNode(path, secret, body, line), endIdx };
 }
 
-function parseOAuthConfig(lines, startIdx, blockIndent, errors) {
-  const { tokens } = lines[startIdx];
-  const line = tokens[0].line;
-  let pos = 1;
-
-  if (pos >= tokens.length || tokens[pos].type !== TokenType.STRING) {
-    errors.push({ line, message: "OAuth needs a provider name. Example: oauth 'github':" });
-    return { node: null, endIdx: startIdx + 1 };
-  }
-  const provider = tokens[pos].value;
-
-  const config = {};
-  let j = startIdx + 1;
-  while (j < lines.length && lines[j].indent > blockIndent) {
-    const bodyTokens = lines[j].tokens;
-    if (bodyTokens.length === 0 || bodyTokens[0].type === TokenType.COMMENT) { j++; continue; }
-
-    const key = bodyTokens[0].canonical || bodyTokens[0].value;
-    let bPos = 1;
-    if (bPos < bodyTokens.length && (bodyTokens[bPos].canonical === 'is'
-        || bodyTokens[bPos].type === TokenType.ASSIGN
-        || bodyTokens[bPos].value.toLowerCase() === 'are')) bPos++;
-
-    if (bPos < bodyTokens.length) {
-      if (bodyTokens[bPos].type === TokenType.LBRACKET) {
-        const items = [];
-        bPos++;
-        while (bPos < bodyTokens.length && bodyTokens[bPos].type !== TokenType.RBRACKET) {
-          if (bodyTokens[bPos].type === TokenType.STRING) items.push(bodyTokens[bPos].value);
-          bPos++;
-        }
-        config[key] = items;
-      } else {
-        const expr = parseExpression(bodyTokens, bPos, bodyTokens[0].line);
-        if (!expr.error) config[key] = expr.node;
-      }
-    }
-    j++;
-  }
-
-  return { node: oauthConfigNode(provider, config, line), endIdx: j };
-}
+// parseOAuthConfig removed 2026-04-21 — zero app usage. Migration: write a
+// record literal instead. See `docs/one-to-one-mapping-audit.md`.
 
 // =============================================================================
 // INPUT VALIDATION (Phase 16)

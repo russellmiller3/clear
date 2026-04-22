@@ -3174,8 +3174,8 @@ const BACKEND_ONLY_NODES = new Set([
   NodeType.ENDPOINT, NodeType.RESPOND, NodeType.DATA_SHAPE, NodeType.CRUD,
   NodeType.REQUIRES_ROLE, NodeType.DEFINE_ROLE, NodeType.GUARD,
   NodeType.LOG_REQUESTS, NodeType.ALLOW_CORS, NodeType.AUTH_SCAFFOLD, NodeType.VALIDATE, NodeType.FIELD_RULE,
-  NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK, NodeType.OAUTH_CONFIG,
-  NodeType.CHECKOUT, NodeType.USAGE_LIMIT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
+  NodeType.RESPONDS_WITH, NodeType.RATE_LIMIT, NodeType.WEBHOOK,
+  NodeType.CHECKOUT, NodeType.ACCEPT_FILE, NodeType.EXTERNAL_FETCH,
   NodeType.STREAM, NodeType.STREAM_AI, NodeType.BACKGROUND, NodeType.CRON, NodeType.SUBSCRIBE, NodeType.MIGRATION, NodeType.WAIT,
   NodeType.CONNECT_DB, NodeType.RAW_QUERY, NodeType.CONFIGURE_EMAIL, NodeType.SEND_EMAIL,
   NodeType.HTTP_REQUEST, NodeType.SERVICE_CALL,
@@ -6311,48 +6311,12 @@ ${pad}}`;
       return code;
     }
 
-    // 1:1 rule: compile to config only, user writes their own check
-    case NodeType.USAGE_LIMIT: {
-      if (ctx.lang === 'python') {
-        let code = `${pad}# Usage limits: ${node.name}\n`;
-        code += `${pad}LIMITS_${sanitizeName(node.name).toUpperCase()} = {\n`;
-        for (const tier of node.tiers) {
-          const val = tier.count === -1 ? 'float("inf")' : String(tier.count);
-          code += `${pad}    "${tier.tier}": {"max": ${val}, "period": "${tier.period}"},\n`;
-        }
-        code += `${pad}}`;
-        return code;
-      }
-      let code = `${pad}// Usage limits: ${node.name}\n`;
-      code += `${pad}const LIMITS_${sanitizeName(node.name).toUpperCase()} = {\n`;
-      for (const tier of node.tiers) {
-        const val = tier.count === -1 ? 'Infinity' : String(tier.count);
-        code += `${pad}  '${tier.tier}': { max: ${val}, period: '${tier.period}' },\n`;
-      }
-      code += `${pad}};`;
-      return code;
-    }
+    // NodeType.USAGE_LIMIT case removed 2026-04-21 — zero app usage. See
+    // docs/one-to-one-mapping-audit.md.
 
-    // Phase 17: Webhooks & OAuth
+    // Phase 17: Webhooks (NodeType.OAUTH_CONFIG case removed 2026-04-21 — zero app usage)
     case NodeType.WEBHOOK:
       return compileWebhook(node, ctx, pad);
-
-    // 1:1 rule: compile to config constants only, user writes their own routes
-    case NodeType.OAUTH_CONFIG: {
-      const provider = node.provider;
-      if (ctx.lang === 'python') {
-        let code = `${pad}# OAuth config: ${provider}\n`;
-        if (node.config.client_id) code += `${pad}OAUTH_${provider.toUpperCase()}_CLIENT_ID = ${exprToCode(node.config.client_id, ctx)}\n`;
-        if (node.config.client_secret) code += `${pad}OAUTH_${provider.toUpperCase()}_CLIENT_SECRET = ${exprToCode(node.config.client_secret, ctx)}\n`;
-        if (node.config.scopes) code += `${pad}OAUTH_${provider.toUpperCase()}_SCOPES = ${JSON.stringify(node.config.scopes)}`;
-        return code;
-      }
-      let code = `${pad}// OAuth config: ${provider}\n`;
-      if (node.config.client_id) code += `${pad}const OAUTH_${provider.toUpperCase()}_CLIENT_ID = ${exprToCode(node.config.client_id, ctx)};\n`;
-      if (node.config.client_secret) code += `${pad}const OAUTH_${provider.toUpperCase()}_CLIENT_SECRET = ${exprToCode(node.config.client_secret, ctx)};\n`;
-      if (node.config.scopes) code += `${pad}const OAUTH_${provider.toUpperCase()}_SCOPES = ${JSON.stringify(node.config.scopes)};`;
-      return code;
-    }
 
     // Phase 16: Input Validation
     case NodeType.VALIDATE:
