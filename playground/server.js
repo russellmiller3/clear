@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3173,21 +3173,25 @@ app.post('/api/chat', async (req, res) => {
         return listEvalsTool(input, new MephContext({ source: currentSource }), compileForEval);
 
       case 'run_evals': {
-        // Forward per-spec progress to the Tests pane. Terminal logging now
-        // lives inside runEvalSuite itself — every caller (Meph, UI, direct
-        // POST) gets the same terminal trace without duplicating it here.
+        // Extracted to playground/meph-tools.js (GM-2 port). The tab-switch
+        // SSE stays out here because it's Studio-specific; the tool emits
+        // per-spec eval_row events through ctx.send and returns the final
+        // aggregate object for executeTool to fan out + stringify.
         send({ type: 'switch_tab', tab: 'tests' });
-        const onProgress = (ev) => { send({ type: 'eval_row', ...ev }); };
-        const evalResult = await runEvalSuite(currentSource, undefined, onProgress);
+        const ctx = new MephContext({ source: currentSource, send });
+        const evalResult = await runEvalsTool(input, ctx, runEvalSuite);
         send({ type: 'eval_results', ...evalResult });
         return JSON.stringify(evalResult);
       }
 
       case 'run_eval': {
-        if (!input.id) return JSON.stringify({ ok: false, error: "Missing 'id' — use list_evals to see available ids." });
+        // Extracted to playground/meph-tools.js (GM-2 port). Same ctx shape
+        // as run_evals; the tool's missing-id guard returns a structured
+        // error so the existing Meph-hallucinates-no-id failure path stays
+        // identical.
         send({ type: 'switch_tab', tab: 'tests' });
-        const onProgress = (ev) => { send({ type: 'eval_row', ...ev }); };
-        const evalResult = await runEvalSuite(currentSource, input.id, onProgress);
+        const ctx = new MephContext({ source: currentSource, send });
+        const evalResult = await runEvalTool(input, ctx, runEvalSuite);
         send({ type: 'eval_results', ...evalResult });
         return JSON.stringify(evalResult);
       }

@@ -743,6 +743,46 @@ export function runTestsTool(input, ctx, parseTestOutput) {
 }
 
 /**
+ * run_evals tool — run the full agent eval suite against ctx.source. Per-spec
+ * progress events fire through ctx.send as { type: 'eval_row', ... } so the
+ * Studio Tests pane can render a live list as each eval lands; the final
+ * aggregate result is returned as an object (caller JSON.stringifies for
+ * tool_result + also fans out eval_results via send).
+ *
+ * Delegates the heavy lifting to runEvalSuite from server.js (closure state
+ * around evalChild + grading + LLM-scoring). We inject it as a third arg
+ * rather than importing so meph-tools.js stays free of the eval-harness
+ * dependency tree.
+ *
+ * @param {object} input - unused
+ * @param {MephContext} ctx - source + send required
+ * @param {(source, id, onProgress) => Promise<object>} runEvalSuite - injected
+ * @returns {Promise<object>} aggregate eval result
+ */
+export async function runEvalsTool(input, ctx, runEvalSuite) {
+  const onProgress = (ev) => ctx.send({ type: 'eval_row', ...ev });
+  return runEvalSuite(ctx.source, undefined, onProgress);
+}
+
+/**
+ * run_eval tool — run ONE eval by id. Returns a structured error if the
+ * caller forgot the id (Meph has hallucinated this more than once). Otherwise
+ * identical to runEvalsTool with a specific id passed through.
+ *
+ * @param {object} input - { id: string } (required)
+ * @param {MephContext} ctx - source + send required
+ * @param {(source, id, onProgress) => Promise<object>} runEvalSuite - injected
+ * @returns {Promise<object>} single-eval result, or { ok: false, error } on missing id
+ */
+export async function runEvalTool(input, ctx, runEvalSuite) {
+  if (!input.id) {
+    return { ok: false, error: "Missing 'id' — use list_evals to see available ids." };
+  }
+  const onProgress = (ev) => ctx.send({ type: 'eval_row', ...ev });
+  return runEvalSuite(ctx.source, input.id, onProgress);
+}
+
+/**
  * edit_file tool — read / append / insert / replace / overwrite on files in
  * the repo root. Restricted to safe extensions (.clear/.md/.json/.txt/.csv/
  * .html/.css/.js/.py) and a writable allowlist (.clear files anywhere,

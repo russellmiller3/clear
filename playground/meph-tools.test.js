@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool } from './meph-tools.js';
 import { existsSync, mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -826,6 +826,57 @@ const rtt4 = runTestsTool({}, new MephContext({
 assert(typeof rtt4.duration === 'number' && rtt4.duration >= 0,
   `runTestsTool populates duration even on subprocess failure (got ${rtt4.duration})`);
 assert(rtt4.ok === false, 'runTestsTool returns ok=false when cli/clear.js is not findable');
+
+console.log('\n🎯 runEvalsTool / runEvalTool\n');
+
+// runEvalTool with missing id → structured error, never touches the suite
+let suiteCalls = 0;
+const fakeSuite = async (source, id, onProgress) => {
+  suiteCalls++;
+  onProgress({ spec_id: 'spec-1', status: 'pass' });
+  return { ok: true, passed: 1, failed: 0, results: [{ id: 'spec-1', status: 'pass' }] };
+};
+const re1 = await runEvalTool({}, new MephContext({ source: 'x', send: () => {} }), fakeSuite);
+assert(re1.ok === false && re1.error?.includes('Missing \'id\''),
+  'runEvalTool returns structured error when input.id is missing');
+assert(suiteCalls === 0, 'runEvalTool does NOT invoke the suite when id is missing');
+
+// runEvalTool happy path forwards input.id into runEvalSuite
+suiteCalls = 0;
+let recordedId = null;
+const suiteWithId = async (source, id, onProgress) => {
+  suiteCalls++;
+  recordedId = id;
+  return { ok: true, passed: 1 };
+};
+const re2 = await runEvalTool({ id: 'spec-abc' },
+  new MephContext({ source: 'foo', send: () => {} }), suiteWithId);
+assert(re2.ok === true, 'runEvalTool returns the suite result object');
+assert(recordedId === 'spec-abc', `runEvalTool forwards input.id to the suite (got ${recordedId})`);
+assert(suiteCalls === 1, 'runEvalTool invokes the suite exactly once on happy path');
+
+// runEvalsTool always passes undefined id (runs the whole suite)
+suiteCalls = 0;
+recordedId = 'stale';
+const re3 = await runEvalsTool({}, new MephContext({ source: 'bar', send: () => {} }), suiteWithId);
+assert(re3.ok === true, 'runEvalsTool returns the suite result');
+assert(recordedId === undefined, `runEvalsTool passes id=undefined (got ${recordedId})`);
+
+// runEvalsTool fires per-spec progress through ctx.send
+const sends = [];
+const progressSuite = async (source, id, onProgress) => {
+  onProgress({ spec_id: 'a', status: 'pass' });
+  onProgress({ spec_id: 'b', status: 'fail' });
+  return { ok: true, passed: 1, failed: 1 };
+};
+await runEvalsTool({}, new MephContext({
+  source: 'zzz',
+  send: (ev) => sends.push(ev),
+}), progressSuite);
+assert(sends.length === 2, `runEvalsTool fires one ctx.send per progress event (got ${sends.length})`);
+assert(sends[0].type === 'eval_row' && sends[0].spec_id === 'a',
+  'runEvalsTool send events have type="eval_row" and forward progress fields');
+assert(sends[1].status === 'fail', 'runEvalsTool forwards status field from progress');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
