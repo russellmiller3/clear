@@ -5678,6 +5678,18 @@ function parseSaveAssignment(name, tokens, pos, line) {
   pos++; // skip "save"
   let variable = 'incoming';
   if (pos < tokens.length && tokens[pos].type !== TokenType.COMMENT) {
+    // Reject inline object/array/string/number literals (same as parseSave).
+    // `result = save { value: 1 } to X` was silently tolerated until the
+    // validator caught it with a confusing "undefined variable" error.
+    // Parser-level rejection gives Meph one instructive message instead.
+    if (tokens[pos].type === TokenType.LBRACE
+        || tokens[pos].type === TokenType.LBRACKET
+        || tokens[pos].type === TokenType.STRING
+        || tokens[pos].type === TokenType.NUMBER) {
+      return {
+        error: 'The save statement needs a variable name, not an inline literal. Assign it to a variable first, then save. Example: "new_entry = { value: 1 }" then "' + name + ' = save new_entry to Target"',
+      };
+    }
     variable = tokens[pos].value;
     pos++;
   }

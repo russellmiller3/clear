@@ -15568,6 +15568,28 @@ when user calls POST /api/increment:
     expect(r.errors).toHaveLength(0);
     expect((r.serverJS || r.javascript)).toContain("db.update('counters'");
   });
+
+  // Assignment form `result = save {literal} to X` had the same vulnerability:
+  // parseSaveAssignment also took tokens[pos].value as the variable name
+  // without type-checking. Old Factor DB row 1404 passed with this form
+  // (pre-validator-improvements), but today Meph would see a confusing
+  // "You used '{' but it hasn't been created yet" from the validator.
+  // Same parser-level rejection with instructive error unifies the guidance.
+  it('result = save {literal} to X assignment form is rejected too', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Counter table:
+  value (number), default 0
+when user calls POST /api/seed:
+  new_counter = save { value: 0 } to Counter
+  send back { count: 0 }`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    // Error should name the offending syntax AND suggest the fix
+    expect(msg.toLowerCase()).toContain('save');
+    expect(msg).toMatch(/assign|variable|first|before/i);
+  });
 });
 
 // =============================================================================
