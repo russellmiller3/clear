@@ -116,3 +116,38 @@ export async function addMember(db, teamId, userId, role = 'member') {
   );
   return rows[0];
 }
+
+/**
+ * Count current owners of a team. Used by the last-owner guard.
+ */
+async function countOwners(db, teamId) {
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::integer AS n FROM team_members WHERE team_id = $1 AND role = 'owner'`,
+    [teamId]
+  );
+  return rows[0]?.n || 0;
+}
+
+/**
+ * Remove a user from a team. Refuses to remove the LAST owner — every
+ * team must have at least one owner at all times. Enforced at the app
+ * layer (not a DB trigger) so admin tools can override in recovery.
+ *
+ * Returns true if a row was deleted, false if the user wasn't in the
+ * team. Idempotent. Throws only on the last-owner safety check.
+ */
+export async function removeMember(db, teamId, userId) {
+  const m = await getMembership(db, teamId, userId);
+  if (!m) return false;
+  if (m.role === 'owner') {
+    const owners = await countOwners(db, teamId);
+    if (owners <= 1) {
+      throw new Error('Cannot remove the last owner. Transfer ownership first.');
+    }
+  }
+  const { rowCount } = await db.query(
+    `DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`,
+    [teamId, userId]
+  );
+  return rowCount > 0;
+}

@@ -60,6 +60,18 @@ function makeMockDb() {
         const row = members.find(m => m.team_id === teamId && m.user_id === userId);
         return { rows: row ? [row] : [] };
       }
+      if (/^SELECT COUNT\(\*\)::integer AS n FROM team_members WHERE team_id/i.test(t)) {
+        const [teamId] = params;
+        const n = members.filter(m => m.team_id === teamId && m.role === 'owner').length;
+        return { rows: [{ n }] };
+      }
+      if (/^DELETE FROM team_members/i.test(t)) {
+        const [teamId, userId] = params;
+        const idx = members.findIndex(m => m.team_id === teamId && m.user_id === userId);
+        if (idx < 0) return { rows: [], rowCount: 0 };
+        members.splice(idx, 1);
+        return { rows: [], rowCount: 1 };
+      }
       if (/SELECT t\.\*, tm\.role AS my_role/i.test(t)) {
         const [userId] = params;
         const list = [];
@@ -224,6 +236,45 @@ console.log('\n➕ addMember\n');
   const defaulted = await addMember(db, team.id, 9);
   assert(defaulted.role === 'member',
     `unspecified role defaults to member (got ${defaulted.role})`);
+}
+
+// ─── TDD cycle 8: removeMember with last-owner guard ─────────────────────
+console.log('\n➖ removeMember — last-owner guard is security-critical\n');
+
+{
+  const { createTeam, addMember, removeMember, getMembership } = await import('./index.js');
+  const db = makeMockDb();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+  await addMember(db, team.id, 2, 'member');
+
+  // Can remove non-owner
+  assert(await removeMember(db, team.id, 2) === true,
+    'removeMember returns true on success');
+  assert(await getMembership(db, team.id, 2) === null,
+    'member was actually removed');
+
+  // Idempotent — removing non-member returns false, doesn't throw
+  assert(await removeMember(db, team.id, 2) === false,
+    `removing non-member returns false (not a throw) — idempotent`);
+
+  // Can NOT remove the last owner
+  let threw;
+  try { await removeMember(db, team.id, 1); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('last owner'),
+    `removing the last owner throws "last owner" error (got "${threw}")`);
+  const still = await getMembership(db, team.id, 1);
+  assert(still && still.role === 'owner',
+    'owner is still there after the blocked remove');
+
+  // With two owners, can remove one
+  await addMember(db, team.id, 3, 'owner');
+  const removed = await removeMember(db, team.id, 1);
+  assert(removed === true,
+    'with >1 owner, removing one owner succeeds');
+  const remaining = await getMembership(db, team.id, 3);
+  assert(remaining && remaining.role === 'owner',
+    'other owner still present');
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
