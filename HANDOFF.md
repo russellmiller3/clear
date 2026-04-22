@@ -421,6 +421,16 @@ Resolver is injected (`node:dns/promises.resolveCname` in prod, mock in tests). 
 
 Project totals after tick 21: **3090 tests green** (+12 cc-5b).
 
+## Session 42 tick 22 — CC-2c dashboard app list + usage
+
+`c758f60` — `listAppsWithUsageForUser(db, userId)` in cloud-teams. Same shape as `listAppsForUser` but with a LEFT JOIN subquery that pulls current-month call counts per app. Zero-usage apps come back with `calls_this_month = 0` (COALESCE + Number coercion) so the UI never null-checks. Period = calendar month to match cloud-quota so the number the dashboard shows matches what billing bills.
+
+6 new TDD assertions. cloud-teams: 133/133.
+
+**CC-2c backend trio complete:** `listTeamsForUser` (CC-2b) + `listAppsWithUsageForUser` (this) + `billingSummary` per tenant (cloud-quota). Next CC-2c slice is the HTML page that composes these three calls.
+
+Project totals after tick 22: **3096 tests green** (+6).
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
