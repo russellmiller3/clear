@@ -25,6 +25,23 @@
 const DEFAULT_ROOT_DOMAIN = process.env.CLEAR_CLOUD_ROOT_DOMAIN || 'buildclear.dev';
 const MAX_DOMAIN_LEN = 253;  // DNS spec — full-qualified name cap
 
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const MIGRATION_001_PATH = join(__dirname, 'migrations', '001-domains.sql');
+
+/**
+ * Load the CC-5a schema SQL as a string. Mirrors the pattern tenants-db
+ * + cloud-auth + cloud-teams use (all CC modules expose their migration
+ * file via loadMigration001 so the deploy pipeline can concat them in
+ * order without hardcoding paths).
+ */
+export function loadMigration001() {
+  return readFileSync(MIGRATION_001_PATH, 'utf8');
+}
+
 // =============================================================================
 // normalizeDomain
 // =============================================================================
@@ -137,4 +154,82 @@ export function verifyCname(records, expected) {
     if (norm(r) === target) return 'verified';
   }
   return 'wrong';
+}
+
+// =============================================================================
+// STORAGE HELPERS — app_domains CRUD
+// =============================================================================
+
+/**
+ * Add a custom domain to an app. Normalizes + validates the domain via
+ * normalizeDomain, computes the expected_cname via expectedCnameFor,
+ * writes a new `pending` row. Surfaces a readable error on invalid input
+ * OR a duplicate domain.
+ *
+ * @param {object} db - pg Pool or compatible { query(text, params) }
+ * @param {object} input - { appId, domain, appSlug, rootDomain? }
+ * @returns {Promise<object>} inserted row
+ */
+export async function addDomain(db, input) {
+  const appId = Number(input?.appId);
+  if (!Number.isInteger(appId) || appId <= 0) {
+    throw new Error('addDomain requires a positive-integer appId.');
+  }
+  const domain = normalizeDomain(input?.domain);
+  if (!domain) {
+    throw new Error(
+      `Invalid domain: ${JSON.stringify(input?.domain)}. ` +
+      `Must be a DNS-valid hostname like deals.acme.com.`
+    );
+  }
+  const expectedCname = expectedCnameFor(input?.appSlug, input?.rootDomain);
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO app_domains (app_id, domain, expected_cname)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [appId, domain, expectedCname]
+    );
+    return rows[0];
+  } catch (err) {
+    // 23505 = unique_violation (Postgres error code for UNIQUE constraint)
+    if (err?.code === '23505') {
+      throw new Error(
+        `Domain ${domain} is already attached to another app.`
+      );
+    }
+    throw err;
+  }
+}
+
+/**
+ * Non-removed custom domains for a given app. Dashboard read.
+ *
+ * @param {object} db
+ * @param {number} appId
+ * @returns {Promise<Array>}
+ */
+export async function listDomainsForApp(db, appId) {
+  const { rows } = await db.query(
+    `SELECT * FROM app_domains WHERE app_id = $1 AND status != 'removed'
+     ORDER BY created_at DESC`,
+    [appId]
+  );
+  return rows;
+}
+
+/**
+ * All pending-verification rows. CC-5b poller reads this every minute
+ * (or as a SELECT FOR UPDATE SKIP LOCKED worker) and does resolveCname
+ * + verifyCname + status update per row.
+ *
+ * @param {object} db
+ * @returns {Promise<Array>}
+ */
+export async function listPendingDomains(db) {
+  const { rows } = await db.query(
+    `SELECT * FROM app_domains WHERE status = 'pending'
+     ORDER BY last_checked_at NULLS FIRST, created_at ASC`
+  );
+  return rows;
 }

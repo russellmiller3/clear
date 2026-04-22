@@ -139,5 +139,147 @@ console.log('\n🔎 verifyCname — pure verification result\n');
     `undefined records → pending`);
 }
 
+// ─── Schema drift-guard ─────────────────────────────────────────────────
+// CC-5a app_domains schema must exist and carry the columns the query
+// helpers below need. Runs against the SQL file directly (no real
+// Postgres required at this layer).
+console.log('\n📐 app_domains migration drift-guard\n');
+
+{
+  const fs = await import('fs');
+  const path = await import('path');
+  const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\//, ''));
+  const migrationPath = path.join(here, 'migrations', '001-domains.sql');
+  const exists = fs.existsSync(migrationPath);
+  assert(exists, `migration file exists at ${migrationPath}`);
+
+  if (exists) {
+    const sql = fs.readFileSync(migrationPath, 'utf8');
+    assert(/CREATE TABLE\s+(IF NOT EXISTS\s+)?app_domains\b/i.test(sql),
+      'migration creates app_domains table');
+
+    // Columns the helpers below query
+    for (const col of ['app_id', 'domain', 'expected_cname', 'status',
+                        'verified_at', 'last_checked_at',
+                        'created_at', 'updated_at']) {
+      assert(new RegExp('\\b' + col + '\\b', 'i').test(sql),
+        `migration declares app_domains.${col}`);
+    }
+    // domain must be UNIQUE — one domain can only point at one app
+    assert(/domain\s+[^\n,]*UNIQUE|UNIQUE\s*\(\s*domain\s*\)/i.test(sql),
+      'domain column is UNIQUE across all apps');
+    // status CHECK constraint — pending|verified|failed|removed
+    assert(/status[\s\S]{0,200}pending[\s\S]{0,200}verified/i.test(sql),
+      'status CHECK constraint encodes pending|verified');
+  }
+}
+
+// ─── loadMigration001 — file loader (mirrors tenants-db pattern) ────────
+console.log('\n📂 loadMigration001\n');
+
+{
+  const { loadMigration001 } = await import('./index.js');
+  const sql = loadMigration001();
+  assert(typeof sql === 'string' && sql.length > 100,
+    `returns SQL string (${sql.length} bytes)`);
+  assert(sql.toLowerCase().includes('create table'), 'SQL contains CREATE TABLE');
+}
+
+// ─── addDomain / listDomainsForApp / listPendingDomains ─────────────────
+console.log('\n🗂️  addDomain + listDomainsForApp + listPendingDomains\n');
+
+{
+  // Minimal mock db for SQL shapes these helpers emit
+  function mockDomainsDb() {
+    const rows = [];
+    let nextId = 1;
+    return {
+      rows,
+      async query(text, params = []) {
+        const t = text.replace(/\s+/g, ' ').trim();
+        if (/^INSERT INTO app_domains/i.test(t)) {
+          const [app_id, domain, expected_cname] = params;
+          // Simulate UNIQUE(domain) constraint
+          if (rows.some(r => r.domain === domain && r.status !== 'removed')) {
+            const err = new Error('duplicate key value violates unique constraint "app_domains_domain_key"');
+            err.code = '23505';
+            throw err;
+          }
+          const row = {
+            id: nextId++,
+            app_id, domain, expected_cname,
+            status: 'pending',
+            verified_at: null,
+            last_checked_at: null,
+            created_at: new Date(),
+            updated_at: new Date(),
+          };
+          rows.push(row);
+          return { rows: [row] };
+        }
+        if (/^SELECT \* FROM app_domains WHERE app_id/i.test(t)) {
+          const [app_id] = params;
+          return { rows: rows.filter(r => r.app_id === app_id && r.status !== 'removed') };
+        }
+        if (/^SELECT \* FROM app_domains WHERE status\s*=\s*'pending'/i.test(t)) {
+          return { rows: rows.filter(r => r.status === 'pending') };
+        }
+        throw new Error('mock unhandled: ' + t.slice(0, 80));
+      },
+    };
+  }
+
+  const { addDomain, listDomainsForApp, listPendingDomains } = await import('./index.js');
+
+  const db = mockDomainsDb();
+
+  // Happy path — add a domain
+  const r1 = await addDomain(db, {
+    appId: 100,
+    domain: 'DEALS.ACME.COM',  // upper-case; helper normalizes
+    appSlug: 'deals',
+  });
+  assert(r1.app_id === 100, `app_id plumbed through`);
+  assert(r1.domain === 'deals.acme.com',
+    `domain normalized on insert (got ${r1.domain})`);
+  assert(r1.expected_cname.endsWith('buildclear.dev') || r1.expected_cname.endsWith('.dev'),
+    `expected_cname set to the app-<slug>.<root> target (got ${r1.expected_cname})`);
+  assert(r1.status === 'pending', `fresh row → status 'pending'`);
+
+  // Reject invalid domain
+  let threw;
+  try { await addDomain(db, { appId: 100, domain: 'not-a-domain', appSlug: 'deals' }); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('domain'),
+    `invalid domain rejected before DB hit (got "${threw}")`);
+
+  // Duplicate domain — DB constraint raises 23505, helper surfaces
+  // a readable error (same pattern cloud-teams.createTeam uses)
+  threw = null;
+  try { await addDomain(db, { appId: 200, domain: 'deals.acme.com', appSlug: 'other' }); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('already'),
+    `duplicate → "already" error, not raw Postgres (got "${threw}")`);
+
+  // listDomainsForApp — returns only that app's non-removed domains
+  const listed = await listDomainsForApp(db, 100);
+  assert(Array.isArray(listed) && listed.length === 1,
+    `one domain for app 100 (got ${listed.length})`);
+  assert(listed[0].domain === 'deals.acme.com', `correct domain returned`);
+
+  // Other app → empty
+  const other = await listDomainsForApp(db, 200);
+  assert(Array.isArray(other) && other.length === 0,
+    `app 200 has no domains`);
+
+  // listPendingDomains — for CC-5b verification poller
+  await addDomain(db, { appId: 300, domain: 'www.other.com', appSlug: 'other' });
+  const pending = await listPendingDomains(db);
+  assert(pending.length === 2,
+    `both freshly-added (status=pending) domains returned (got ${pending.length})`);
+  assert(pending.every(d => d.status === 'pending'),
+    `all returned rows have status='pending'`);
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
