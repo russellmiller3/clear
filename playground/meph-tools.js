@@ -241,3 +241,50 @@ export function highlightCodeTool(input) {
     message: `Highlighted lines ${input.start_line}–${input.end_line || input.start_line}`,
   });
 }
+
+/**
+ * source_map tool — given current Clear source, compile it with the source
+ * map flag and return either the full mapping or just the compiled lines
+ * for one Clear line (when input.clear_line is set).
+ *
+ * First port to take a MephContext — reads ctx.source, doesn't mutate
+ * anything. The compileProgram dependency is passed in to avoid pulling
+ * the full ../index.js into meph-tools.js (keeps the module tree-shakable
+ * for the MCP server scenario where compileProgram might not be needed).
+ *
+ * @param {object} input - { clear_line? }
+ * @param {MephContext} ctx - source field is required
+ * @param {function} compileProgram - the Clear compiler entry point
+ * @returns {string} JSON-stringified result
+ */
+export function sourceMapTool(input, ctx, compileProgram) {
+  if (!ctx.source) return JSON.stringify({ error: 'No code in editor. Write code first.' });
+  const compiled = compileProgram(ctx.source, { sourceMap: true });
+  const target = compiled.serverJS || compiled.javascript || compiled.python;
+  if (!target) return JSON.stringify({ error: 'No compiled output.' });
+
+  const targetLines = target.split('\n');
+  const map = {};
+  let current = null;
+  for (let i = 0; i < targetLines.length; i++) {
+    const m = targetLines[i].match(/(?:\/\/|#) clear:(\d+)/);
+    if (m) current = parseInt(m[1]);
+    if (current != null) {
+      (map[current] = map[current] || []).push(i + 1);
+    }
+  }
+
+  if (input.clear_line) {
+    const cl = input.clear_line;
+    const compiledLines = map[cl];
+    if (!compiledLines) return JSON.stringify({ result: `No compiled output maps to Clear line ${cl}.` });
+    const snippet = compiledLines.map(n => `${n}: ${targetLines[n - 1]}`).join('\n');
+    return JSON.stringify({ result: `Clear line ${cl} compiles to:\n${snippet}` });
+  }
+
+  const summary = Object.entries(map)
+    .sort(([a], [b]) => a - b)
+    .map(([cl, cls]) => `Clear ${cl} → compiled lines ${cls[0]}-${cls[cls.length - 1]}`)
+    .join('\n');
+  return JSON.stringify({ result: summary });
+}

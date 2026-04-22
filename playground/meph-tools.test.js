@@ -10,7 +10,9 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool } from './meph-tools.js';
+import { MephContext, createMephContext } from './meph-context.js';
+import { compileProgram } from '../index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -148,6 +150,58 @@ const h2 = JSON.parse(highlightCodeTool({ start_line: 7 }));
 assert(h2.ok === true, 'highlightCodeTool with no end_line still ok');
 assert(h2.message.includes('7'),
   'highlightCodeTool falls back to start_line when end_line missing');
+
+console.log('\n📦 MephContext\n');
+
+// Defaults
+const c1 = new MephContext();
+assert(c1.rootDir === '.', 'MephContext default rootDir is "."');
+assert(c1.source === '', 'MephContext default source is ""');
+assert(Array.isArray(c1.errors) && c1.errors.length === 0, 'MephContext default errors is empty array');
+assert(typeof c1.send === 'function', 'MephContext.send default is callable');
+
+// Construction options
+const c2 = new MephContext({ rootDir: '/tmp', source: 'foo' });
+assert(c2.rootDir === '/tmp', 'MephContext constructor honors rootDir');
+assert(c2.source === 'foo', 'MephContext constructor honors source');
+
+// Setters fire callbacks
+let sourceChangeCalled = null;
+let errorsChangeCalled = null;
+const c3 = new MephContext({
+  source: 'old',
+  onSourceChange: (s) => { sourceChangeCalled = s; },
+  onErrorsChange: (e) => { errorsChangeCalled = e; },
+});
+c3.setSource('new');
+assert(c3.source === 'new', 'setSource updates internal source');
+assert(sourceChangeCalled === 'new', 'setSource fires onSourceChange callback');
+c3.setErrors([{ line: 5, message: 'test' }]);
+assert(c3.errors.length === 1, 'setErrors updates internal errors');
+assert(errorsChangeCalled?.[0]?.message === 'test', 'setErrors fires onErrorsChange callback');
+
+// createMephContext convenience
+const c4 = createMephContext({ rootDir: '/x' });
+assert(c4 instanceof MephContext, 'createMephContext returns MephContext instance');
+assert(c4.rootDir === '/x', 'createMephContext passes options through');
+
+console.log('\n🗺  sourceMapTool\n');
+
+// No source → error
+const sm1 = JSON.parse(sourceMapTool({}, new MephContext(), compileProgram));
+assert(sm1.error?.includes('No code in editor'),
+  'sourceMapTool with empty source returns "No code in editor" error');
+
+// Real compile → returns mapping summary
+const helloSrc = `build for javascript backend\n\nwhen user requests data from /api/health:\n  send back 'ok'`;
+const sm2 = JSON.parse(sourceMapTool({}, new MephContext({ source: helloSrc }), compileProgram));
+assert(sm2.result?.includes('Clear'),
+  `sourceMapTool returns mapping summary mentioning Clear lines (got: ${(sm2.result || sm2.error || '').slice(0, 100)})`);
+
+// With clear_line param → returns the snippet for that line
+const sm3 = JSON.parse(sourceMapTool({ clear_line: 3 }, new MephContext({ source: helloSrc }), compileProgram));
+assert(typeof (sm3.result) === 'string',
+  'sourceMapTool with clear_line returns a result string');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
