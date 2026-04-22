@@ -14,15 +14,22 @@
  */
 export async function createTeam(db, input) {
   await db.query('BEGIN');
-  const { rows } = await db.query(
-    `INSERT INTO teams (slug, name, tenant_id) VALUES ($1, $2, $3) RETURNING *`,
-    [input.slug, input.name, input.tenantId || null]
-  );
-  const team = rows[0];
-  await db.query(
-    `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')`,
-    [team.id, input.ownerUserId]
-  );
-  await db.query('COMMIT');
+  let team;
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO teams (slug, name, tenant_id) VALUES ($1, $2, $3) RETURNING *`,
+      [input.slug, input.name, input.tenantId || null]
+    );
+    team = rows[0];
+    await db.query(
+      `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')`,
+      [team.id, input.ownerUserId]
+    );
+    await db.query('COMMIT');
+  } catch (err) {
+    try { await db.query('ROLLBACK'); } catch {}
+    if (err.code === '23505') throw new Error('A team with that slug already exists.');
+    throw err;
+  }
   return team;
 }
