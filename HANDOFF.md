@@ -39,9 +39,15 @@ Failure cliff at L3 isn't surprising — L1-L2 are single-endpoint apps; L3+ int
 
 ## Known follow-ups (still open)
 
-- **`run_tests` side-effect also lives in server.js:3114–3134.** Same bug class as http_request before we moved it. Currently harmless — curriculum skeletons don't include `test` blocks so Meph can't call run_tests usefully during sweeps — but fix next time the surface grows. The new project rule ("side-effects belong IN the tool") points at it.
+- ~~**`run_tests` side-effect also lives in server.js:3114–3134.**~~ FIXED `8239829` this iteration. Pure helper `_applyTestOutcomeToFactorDb` now owns the write-through. test_pass=1 requires ok+failed=0+total>0 so partial runs don't poison flywheel training data. 6 contract tests pin the rules.
 - **`MEPH_SESSION_ID` isn't exported by `/api/chat`.** cc-agent.js would propagate it to the MCP child, but nobody sets it. Rows get `session_id = mcp_<pid>_<timestamp>`. Sweep grader uses `created_at` window instead, so it's non-blocking. Fix when we want cross-session joins in Factor DB queries.
-- **L3+ task success rate.** 0/4 in this run (counter, key-value-store, todo-crud, bookmark-manager). Worth a specific failure diagnostic — what archetypes, what errors Meph hit, what hints would help — before the next overnight sweep. `node playground/supervisor/curriculum-sweep.js --tasks=counter --workers=1 --timeout=300 --strict` with `GHOST_MEPH_CC_DEBUG=1` dumps the tool stream.
+- **L3+ task success rate.** 0/4 in the 8-task run (counter, key-value-store, todo-crud, bookmark-manager). Worth a specific failure diagnostic — what archetypes, what errors Meph hit, what hints would help — before the next overnight sweep. `node playground/supervisor/curriculum-sweep.js --tasks=counter --workers=1 --timeout=300 --strict` with `GHOST_MEPH_CC_DEBUG=1` dumps the tool stream.
+
+## Session 42 late-loop additions (post-ship tick)
+
+- **Phase 8 drift-guard (`de6bf71`)** — pins the MCP server's `buildMephContext` wiring for run_app/http_request/stop_app. TDD'd red-first by checking out `595f9267~1 -- tools.js` (5 failures with "ctx.allocatePort() returned null"), then restored (151/151 green). Next time someone refactors MCP's context builder they'll see the guard fire before the failure surfaces on a live cc-agent sweep.
+- **run_tests side-effect move (`8239829`)** — closes the cross-path bug class the new project rule warned about. httpRequestTool moved earlier; runTestsTool now follows the same pattern. Studio UI (`sessionTestCalls` push) stays in server.js because it's not a training signal.
+- **Test totals:** 2097 compiler + 270 meph-tools + 151 mcp-server green. Pre-existing 17 server.test.js failures unchanged.
 
 ## What Was Done This Session
 
