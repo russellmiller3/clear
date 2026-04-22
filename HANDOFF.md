@@ -68,7 +68,7 @@ Expected: all 16 eval scenarios run at $0 (via subscription). Any that fail: loo
 - `tool_use.input` may be a JSON string (not an object) depending on claude version
 - There may be additional event types we haven't mapped (e.g. `thinking`, `partial_json` deltas)
 
-**Known gap — state sharing.** Claude Code's MCP child (spawned as subprocess) has its own module-level `currentSource` / `currentErrors` (see `playground/ghost-meph/mcp-server/tools.js`). Edits via `meph_edit_code` update THAT child's state, not Studio's `/api/chat` closure. So the Studio editor won't reflect mid-turn changes while tool mode is running. Fix: add an HTTP bridge — MCP server POSTs to `/api/set-source` after each edit so Studio's closure sees updates. ~30 lines.
+**State sharing — FIXED post-turn.** Previously a known gap; now closed. The stream-json event log already carries every `meph_edit_code` tool_use with its full input (including action="write" and the new source). `extractFinalSourceFromStreamJson` scans the log at end-of-turn, grabs the LAST write, and cc-agent.js attaches it to the Response as a sidecar. `/api/chat` mirrors that back into its closure + fires a `code_update` SSE event so Studio's editor re-renders. No IPC bridge needed — the data was already in the event log. Mid-turn updates (during a multi-edit session) still aren't visible in real-time, but end-of-turn sync means every /api/chat cycle leaves Studio's state coherent with what Meph produced. Follow-up if mid-turn visibility matters later: parse the stream-json line-by-line as it arrives instead of buffering, and emit `code_update` events in the SSE stream alongside the `content_block_delta` events.
 
 ### 2. Extract `parseTestOutput` + `compileForEval` from server.js
 
