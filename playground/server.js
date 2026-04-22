@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool } from './meph-tools.js';
 import {
   takeSnapshot as _takeSnapshot,
   listSnapshots as _listSnapshots,
@@ -3285,11 +3285,11 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ result: summary });
       }
 
-      // highlight_code is a UI-only tool — the actual highlight effect is sent
-      // via `send({type:'highlight',...})` in the post-execution block below.
-      // This case just acknowledges success so Meph doesn't see "Unknown tool".
       case 'highlight_code':
-        return JSON.stringify({ ok: true, message: `Highlighted lines ${input.start_line}–${input.end_line || input.start_line}` });
+        // Extracted to playground/meph-tools.js — UI-only ack; actual highlight
+        // effect is still emitted via send({type:'highlight',...}) in the
+        // post-execution block below. GM-2 step 3a port.
+        return highlightCodeTool(input);
 
       case 'patch_code': {
         if (!currentSource) return JSON.stringify({ error: 'No code in editor. Write code first.' });

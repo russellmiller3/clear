@@ -223,3 +223,21 @@ export function readFileTool(input, ctx) {
     toc: toc.join('\n'),
   });
 }
+
+/**
+ * highlight_code tool — UI-only acknowledgement. The actual highlight effect
+ * is sent via SSE from the calling tool loop (`send({type:'highlight',...})`).
+ * This function just produces the success message that goes back into the
+ * tool result, so Meph doesn't see "Unknown tool".
+ *
+ * Stateless. The caller is responsible for emitting the SSE event before/after.
+ *
+ * @param {object} input - { start_line, end_line? }
+ * @returns {string} JSON-stringified ack
+ */
+export function highlightCodeTool(input) {
+  return JSON.stringify({
+    ok: true,
+    message: `Highlighted lines ${input.start_line}–${input.end_line || input.start_line}`,
+  });
+}

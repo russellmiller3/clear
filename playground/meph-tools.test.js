@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool } from './meph-tools.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -136,6 +136,18 @@ const r4 = JSON.parse(readFileTool({ filename: 'SYNTAX.md', startLine: 1, endLin
 assert(r4.lines === '1-5', `line range echoed in result (got "${r4.lines}")`);
 assert(typeof r4.content === 'string' && r4.content.split('\n').length === 5,
   'startLine/endLine returns exactly that range');
+
+console.log('\n🎨 highlightCodeTool\n');
+
+const h1 = JSON.parse(highlightCodeTool({ start_line: 5, end_line: 10 }));
+assert(h1.ok === true, 'highlightCodeTool returns ok=true');
+assert(h1.message.includes('5') && h1.message.includes('10'),
+  'highlightCodeTool message names start and end lines');
+
+const h2 = JSON.parse(highlightCodeTool({ start_line: 7 }));
+assert(h2.ok === true, 'highlightCodeTool with no end_line still ok');
+assert(h2.message.includes('7'),
+  'highlightCodeTool falls back to start_line when end_line missing');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
