@@ -26,6 +26,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { execSync } from 'child_process';
 
 /**
  * Runtime schema validation for Meph's tool inputs.
@@ -460,6 +461,28 @@ export function browseTemplatesTool(input, ctx) {
     return JSON.stringify({ name: safeName, source: readFileSync(mainFile, 'utf8') });
   }
   return JSON.stringify({ error: 'action must be "list" or "read"' });
+}
+
+/**
+ * run_command tool — exec a shell command from the repo root. Restricted
+ * to the prefixes in ctx.allowedCommandPrefixes (default empty so unwired
+ * contexts can't accidentally exec). 15s timeout. Returns stdout + exitCode
+ * (or stdout + stderr + exitCode on failure).
+ *
+ * @param {object} input - { command }
+ * @param {MephContext} ctx - rootDir + allowedCommandPrefixes used
+ * @returns {string} JSON-stringified result
+ */
+export function runCommandTool(input, ctx) {
+  const cmd = input.command;
+  const allowed = ctx.allowedCommandPrefixes.some(p => cmd.startsWith(p));
+  if (!allowed) return JSON.stringify({ error: `Not allowed. Use: ${ctx.allowedCommandPrefixes.join(', ')}` });
+  try {
+    const stdout = execSync(cmd, { cwd: ctx.rootDir, encoding: 'utf8', timeout: 15000 });
+    return JSON.stringify({ stdout, exitCode: 0 });
+  } catch (err) {
+    return JSON.stringify({ stdout: err.stdout || '', stderr: err.stderr || err.message, exitCode: err.status || 1 });
+  }
 }
 
 /**

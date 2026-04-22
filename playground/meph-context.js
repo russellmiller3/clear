@@ -79,6 +79,12 @@ export class MephContext {
     // database (BUILD_DIR/clear-data.db). db_inspect reads from there.
     this.buildDir = options.buildDir || '';
 
+    // Allowlist of command prefixes that run_command is permitted to exec.
+    // /api/chat passes the closure-level ALLOWED_PREFIXES (currently
+    // ['node ', 'curl ', 'ls ', 'cat ']). Defaults to empty array — no
+    // command runs unless the caller explicitly populates this.
+    this.allowedCommandPrefixes = options.allowedCommandPrefixes || [];
+
     // Meph todo state. /api/chat owns a closure-level mephTodos array;
     // setTodos() fires onTodosChange so the closure var stays in sync.
     this.todos = options.todos || [];

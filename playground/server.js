@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3081,17 +3081,14 @@ app.post('/api/chat', async (req, res) => {
           return JSON.stringify({ error: err.message });
         }
 
-      case 'run_command': {
-        const cmd = input.command;
-        const allowed = ALLOWED_PREFIXES.some(p => cmd.startsWith(p));
-        if (!allowed) return JSON.stringify({ error: `Not allowed. Use: ${ALLOWED_PREFIXES.join(', ')}` });
-        try {
-          const stdout = execSync(cmd, { cwd: ROOT_DIR, encoding: 'utf8', timeout: 15000 });
-          return JSON.stringify({ stdout, exitCode: 0 });
-        } catch (err) {
-          return JSON.stringify({ stdout: err.stdout || '', stderr: err.stderr || err.message, exitCode: err.status || 1 });
-        }
-      }
+      case 'run_command':
+        // Extracted to playground/meph-tools.js (GM-2 port). Pass the
+        // closure-level ALLOWED_PREFIXES through so the security policy
+        // stays in /api/chat's hands.
+        return runCommandTool(input, new MephContext({
+          rootDir: ROOT_DIR,
+          allowedCommandPrefixes: ALLOWED_PREFIXES,
+        }));
 
       case 'run_app': {
         // backend-only apps put code in .javascript, full-stack in .serverJS

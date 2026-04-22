@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool } from './meph-tools.js';
 import { mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -628,6 +628,33 @@ const di5 = JSON.parse(await dbInspectTool({ query: 'SELECT * FROM x' },
   new MephContext({ isAppRunning: () => true, buildDir: '/nonexistent-dir-xyz' })));
 assert(di5.error?.includes('No database file'),
   'dbInspectTool returns "No database file yet" when DB file is absent');
+
+console.log('\n💻 runCommandTool\n');
+
+// No allowlist → rejected
+const rc1 = JSON.parse(runCommandTool({ command: 'ls' }, new MephContext({ rootDir: REPO_ROOT })));
+assert(rc1.error?.includes('Not allowed'),
+  'runCommandTool with empty allowlist rejects everything');
+
+// Disallowed prefix
+const rc2 = JSON.parse(runCommandTool({ command: 'rm -rf /' },
+  new MephContext({ rootDir: REPO_ROOT, allowedCommandPrefixes: ['ls ', 'cat '] })));
+assert(rc2.error?.includes('Not allowed'),
+  'runCommandTool rejects commands not matching any allowed prefix');
+
+// Allowed prefix → executes (use node --version which is portable + fast)
+const rc3 = JSON.parse(runCommandTool({ command: 'node --version' },
+  new MephContext({ rootDir: REPO_ROOT, allowedCommandPrefixes: ['node '] })));
+assert(rc3.exitCode === 0, `runCommandTool exec returns exitCode=0 (got ${rc3.exitCode})`);
+assert(typeof rc3.stdout === 'string' && rc3.stdout.startsWith('v'),
+  `runCommandTool returns stdout from the command (got ${rc3.stdout.slice(0, 30)})`);
+
+// Failing command (node with bad arg) → captures error
+const rc4 = JSON.parse(runCommandTool({ command: 'node --not-a-flag-xyz' },
+  new MephContext({ rootDir: REPO_ROOT, allowedCommandPrefixes: ['node '] })));
+assert(rc4.exitCode !== 0, 'runCommandTool failing command returns nonzero exitCode');
+assert(typeof rc4.stderr === 'string' && rc4.stderr.length > 0,
+  'runCommandTool captures stderr on failure');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
