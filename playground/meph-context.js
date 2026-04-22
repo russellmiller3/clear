@@ -79,6 +79,12 @@ export class MephContext {
     // database (BUILD_DIR/clear-data.db). db_inspect reads from there.
     this.buildDir = options.buildDir || '';
 
+    // Allowlist of command prefixes that run_command is permitted to exec.
+    // /api/chat passes the closure-level ALLOWED_PREFIXES (currently
+    // ['node ', 'curl ', 'ls ', 'cat ']). Defaults to empty array — no
+    // command runs unless the caller explicitly populates this.
+    this.allowedCommandPrefixes = options.allowedCommandPrefixes || [];
+
     // Meph todo state. /api/chat owns a closure-level mephTodos array;
     // setTodos() fires onTodosChange so the closure var stays in sync.
     this.todos = options.todos || [];
@@ -88,6 +94,76 @@ export class MephContext {
     // to the same Studio server the tool is running inside; injection point
     // for tests.
     this.mephActionsUrl = options.mephActionsUrl || `http://localhost:${process.env.PORT || 3456}/api/meph-actions`;
+
+    // Playwright page accessor (async). /api/chat hooks this to its
+    // closure-level getPage() which lazy-launches chromium and caches the
+    // page. screenshot_output uses it to take a PNG of the running app.
+    // Defaults to throwing so unwired contexts (e.g. the MCP server when no
+    // Studio is up) fail loudly instead of silently returning nothing.
+    this.getPage = options.getPage || (async () => { throw new Error('Screenshot not wired in this MephContext — no Playwright page available.'); });
+
+    // Port the child app started by run_app is listening on. /api/chat's
+    // closure tracks runningPort; screenshot_output references it for the
+    // user-facing caption. Returns null when no app is running.
+    this.getRunningPort = options.getRunningPort || (() => null);
+
+    // run_app callbacks. /api/chat's closure owns `runningChild` + the
+    // `runningPort` counter that wraps 4001→4100. getRunningChild returns
+    // the current child (so run_app can kill it before respawning);
+    // setRunningChild stores the new child (and fires the exit cleanup);
+    // allocatePort returns the next TCP port to bind, increments + wraps
+    // the counter server-side. Defaults here are safe no-ops that return
+    // null so unwired contexts (MCP server without a running app) behave
+    // predictably — run_app will fail at the spawn step instead of silently
+    // running on a random port.
+    this.getRunningChild = options.getRunningChild || (() => null);
+    this.setRunningChild = options.setRunningChild || (() => {});
+    this.allocatePort = options.allocatePort || (() => null);
+
+    // Anthropic API key forwarded into `node cli/clear.js test` so agent-
+    // backed tests can call real Claude. /api/chat hooks this to the
+    // closure-level storedApiKey populated from Meph's config pane.
+    // Unset → no ANTHROPIC_API_KEY in the child env (agent tests will fail
+    // cleanly with a missing-key error from cli/clear.js).
+    this.apiKey = options.apiKey || null;
+
+    // === Compile-tool state === (lazy-grown for the GM-2 compile port)
+    //
+    // The compile tool is the only one that needs the Factor DB + hint
+    // re-ranker machinery — everything else operates on source/errors only.
+    // These fields capture the closure state server.js's /api/chat handler
+    // maintains across compiles so hint retrieval, hint tracking, and the
+    // Factor DB trajectory row can all flow through the ported function.
+    //
+    // factorDB: a FactorDB instance from ./supervisor/factor-db.js, or null
+    //   when no training session is live. When null, the tool skips all
+    //   Factor DB writes and hint retrieval — it just compiles and returns.
+    this.factorDB = options.factorDB || null;
+    // sessionId + sessionSteps: curriculum-task tracking. sessionSteps is
+    // the in-memory array of step metadata the supervisor primed; the
+    // tool reads _currentStep(source, steps) to find which step this
+    // compile belongs to so Factor DB rows can reference it.
+    this.sessionId = options.sessionId || null;
+    this.sessionSteps = options.sessionSteps || [];
+    // pairwiseBundle + ebmBundle: reranker weights. When pairwiseBundle is
+    // present, it wins (scores each candidate fix against the current error);
+    // ebmBundle is the pointwise fallback (regression on row quality). When
+    // both are null, hint rows stay in BM25 order from querySuggestions.
+    this.pairwiseBundle = options.pairwiseBundle || null;
+    this.ebmBundle = options.ebmBundle || null;
+    // hintState: mutable object the tool reads + writes to track hint
+    // injection across compile-turn boundaries. The inference fallback needs
+    // these to map later error counts back to the hint-serve that caused
+    // them. Server.js mirrors this back into its closure vars after the
+    // tool returns. Safe defaults = null for all tracking ids so a fresh
+    // context starts clean.
+    this.hintState = options.hintState || {
+      lastFactorRowId: null,
+      hintsInjectedRowId: null,
+      hintsInjectedErrorCount: null,
+      hintsInjectedTier: null,
+      postHintMinErrorCount: null,
+    };
   }
 
   /**

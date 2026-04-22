@@ -6,6 +6,67 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-22 — GM-2 refactor finish + cc-agent tool mode + meph-helpers extraction
+
+13 commits on `feature/gm-2-tool-use-rest` (not merged to main yet — Russell reviews first). The "Ghost Meph cc-agent with tools" architecture lands in three layers: every Meph tool lives in one module behind one dispatcher, the MCP server exposes them all to Claude Code, and cc-agent.js can spawn Claude Code with MCP configured to translate stream-json events back into Anthropic SSE for /api/chat. Opt-in via `GHOST_MEPH_CC_TOOLS=1` until Russell validates the stream-json format against his real `claude` CLI.
+
+### GM-2 refactor — every tool ported, executeTool extracted (9 commits)
+
+Started the session at 21/27 tools ported. Finished with 28/28 plus the full `executeTool` switch extraction.
+
+- **screenshot_output** — Playwright page + running-port through MephContext callbacks (`getPage`, `getRunningPort`). Deleted the dead `__ASYNC_SCREENSHOT__` marker and the loop's inline screenshot special-case. Commit `69a075c`.
+- **run_app** — subprocess spawn + port allocation + build-output materialization. MephContext grows `getRunningChild` / `setRunningChild` / `allocatePort` lifecycle callbacks. Commit `4b3dc26`.
+- **run_tests** — stdout parsing via injected `parseTestOutput`. MephContext grows `apiKey` field. Commit `c0556a3`.
+- **run_evals + run_eval** — tiny wrappers around `runEvalSuite`. Per-spec progress events fan out through `ctx.send`. Commit `44af696`.
+- **http_request** — fetch + timeout + response parsing. Deleted the loop's special-casing for http_request AND screenshot_output; both flow through `executeTool` like every other tool. Commit `92abef3`.
+- **compile** — the 480-line beast. MephContext grows 6 fields (factorDB, sessionId, sessionSteps, pairwiseBundle, ebmBundle, hintState). The 8 reranker/classifier helpers come in through a third-arg bundle. Commit `b86a02f`.
+- **executeTool extraction** — the 330-line inline switch in `/api/chat` becomes an 80-line wrapper that builds one fat MephContext, hands to `dispatchTool` from meph-tools.js, and mirrors back mutated state. Commit `b49243a`.
+
+MephContext grew to ~30 fields. Every one has at least one consumer — lazy-growth discipline held. Tests: 254/254 meph-tools (+75 new), 2097/2097 compiler.
+
+### MCP server wiring — all 28 tools exposed (commit `8981306`)
+
+Before this session, the MCP server had 2 tool entries (one real, one stub). After: 28 tool definitions auto-generated from a declarative array, each with a handler that routes through `dispatchTool`. Module-level state (currentSource, currentErrors, lastCompileResult, mephTodos, hintState) mirrors what `/api/chat` tracks. Claude Code can now drive a multi-turn build-compile-test loop through the MCP protocol the same way Studio does.
+
+MCP server tests: 102/102 (+72 new; was 30 at session start). Phase 5 integration covers edit_code write→read round-trip (verifies module state), meph_compile runs real compileProgram against stored source, schema errors surface as `isError=true`, and `meph_http_request` fails clean with "No app running" when no child is up.
+
+### cc-agent tool mode — MCP + stream-json (commit `33d4eea`)
+
+New module `playground/ghost-meph/cc-agent-stream-json.js` translates Claude Code's `--output-format stream-json` events into Anthropic SSE. The tricky bit: `stop_reason` must be `end_turn` (not `tool_use`) because Claude Code already ran the tools internally via MCP — the outer /api/chat loop would re-run them if we signaled tool_use.
+
+Event table:
+- `system/init` → `message_start`
+- `assistant.content[].text` → `content_block_start(text)` + `content_block_delta(text_delta)` + `content_block_stop`
+- `assistant.content[].tool_use` → `content_block_start(tool_use)` + `content_block_delta(input_json_delta)` + `content_block_stop`
+- `user.content[].tool_result` → SKIPPED (tool already ran; emitting would cause /api/chat to re-run)
+- `result` → `message_delta(stop_reason=end_turn)` + `message_stop`
+
+cc-agent.js changes: added `chatViaClaudeCodeWithTools()` path, `writeMcpConfigOrNull()` for tmp config gen, `runClaudeCliStreamJson()` that spawns claude with the new flags. Gated by `GHOST_MEPH_CC_TOOLS=1` — text-mode MVP stays default until Russell's real claude CLI validates the format.
+
+Tests: 46/46 new stream-json parser tests (fixture-driven; add a failing fixture → fix the parser → land), 66/66 ghost-meph (+7 Phase 10 covering MCP config generation, env-gate routing, graceful fallback on missing CLI for both text + tool modes).
+
+### meph-helpers extraction (commit `268dd5c`)
+
+`parseTestOutput` + `compileForEval` moved from `server.js` closures into new `playground/meph-helpers.js`. These are pure functions both `/api/chat` and the MCP server need. Server.js re-exports parseTestOutput so the existing test import keeps working. MCP server's `meph_list_evals` and `meph_run_tests` handlers now route to real implementations instead of throwing "helper is not a function".
+
+Tests: 20/20 new meph-helpers tests (parseTestOutput pass/fail/mixed/`[clear:N]`-tag/legacy-dash-dash + compileForEval empty/whitespace/errors/happy-path/throws).
+
+### User rule add (global CLAUDE.md)
+
+New **Periodic Progress Checkpoints** rule — narrate "X of Y done, moving to Z" at chunk boundaries. Different cadence from the per-action Science Documentary Rule; this one is the META status that keeps Russell oriented across a long session without him having to ask "where are we?".
+
+### Why this matters
+
+The $200/mo Claude Code subscription is one hop from being Meph's execution backend. Before this session: two reimplementations of 28 tool handlers would have been needed. After: one codebase (meph-tools.js), two consumers (/api/chat + MCP server), one translation layer (cc-agent-stream-json). The cost break — `$168/day → $0/day` on Meph evals + curriculum sweeps — is what makes re-ranker hint experiments and step-seed curriculum tractable.
+
+### Known gaps (next session)
+
+1. **State sharing.** MCP server's module-level currentSource is isolated from Studio's /api/chat closure. Mid-turn edits via `meph_edit_code` don't show up in Studio's editor. Fix: HTTP bridge from MCP server to a new Studio endpoint `/api/meph-live-state`.
+2. **runEvalSuite extraction.** Still tied to Studio's `evalChild` subprocess lifecycle. Harder than parseTestOutput/compileForEval — the child needs port allocation + auth bootstrap. Unblocks `meph_run_evals` / `meph_run_eval` in MCP mode.
+3. **Real-claude validation.** Parser assumptions about stream-json shape are based on published Claude Code docs; the format isn't a documented stable interface. Fixture-driven tests in `cc-agent-stream-json.test.js` are the iteration surface.
+
+---
+
 ## Autonomous session rollup (2026-04-21 evening) — Queues B + C + D + half of E
 
 Russell kicked off an autonomous "plough-through" session before going to sleep. Mandate from `HANDOFF.md`: ship Queue B → C → D → E → F in priority order, branch per feature, no per-session cost tracking under his $200/mo Anthropic unlimited plan, but DO NOT call the production `/api/chat` endpoint until Ghost Meph cc-agent has tool-use support. Result: 26 commits, 13 merge commits, 4 queues meaningfully advanced. Test counts: 2108 compiler / 33 builder-mode / 59 ghost-meph pass; 7 pre-existing todo-fullstack e2e failures unchanged.

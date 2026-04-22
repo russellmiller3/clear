@@ -15,7 +15,7 @@
 
 import { spawn } from 'child_process';
 import { dispatch, ERROR_CODES } from './mcp-server/protocol.js';
-import { buildToolRegistry } from './mcp-server/tools.js';
+import { buildToolRegistry, _resetMcpState } from './mcp-server/tools.js';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -154,6 +154,253 @@ function assert(cond, msg) {
     assert(r3.id === 3 && r3.result.content[0].text.includes('Can only read'),
       'subprocess tools/call response correct (real readFileTool, README.md rejected)');
   }
+
+  // =========================================================================
+  // PHASE 5 — GM-2 step 2a: all 28 tools exposed, real dispatch through
+  //           meph-tools.js. Verifies the handler-registration loop wires
+  //           up the full Meph surface and that stateful tools (edit_code,
+  //           compile, todo) actually mutate + read back the MCP server's
+  //           module-level state.
+  // =========================================================================
+  console.log('\n🔗 Phase 5 — GM-2 step 2a: full Meph tool surface via MCP');
+
+  _resetMcpState();
+  const fullList = await dispatch({ jsonrpc: '2.0', id: 100, method: 'tools/list' }, registry);
+  assert(fullList.result.tools.length === 28,
+    `tools/list exposes all 28 Meph tools (got ${fullList.result.tools.length})`);
+  const allNames = fullList.result.tools.map(t => t.name);
+  for (const expected of ['meph_edit_code', 'meph_compile', 'meph_patch_code', 'meph_source_map', 'meph_highlight_code', 'meph_todo', 'meph_browse_templates']) {
+    assert(allNames.includes(expected), `meph_${expected.slice(5)} registered`);
+  }
+
+  // Drift guard — every MEPH_TOOLS entry must pass dispatchTool's
+  // validateToolInput without "Unknown tool". If someone adds a tool name to
+  // MEPH_TOOLS that dispatchTool's switch doesn't handle, the MCP server
+  // would expose a tool that always fails. This catches the drift.
+  const { validateToolInput: validate } = await import('../meph-tools.js');
+  for (const t of fullList.result.tools) {
+    const bareName = t.name.replace(/^meph_/, '');
+    // We call validate with an empty object — it may complain about
+    // missing fields, but should NOT complain about "Unknown tool" if the
+    // tool name is in dispatchTool's switch.
+    const err = validate(bareName, {});
+    const recognized = err === null || !err.includes('Unknown tool');
+    assert(recognized,
+      `MEPH_TOOLS.${t.name} — dispatchTool recognizes the bare name "${bareName}" (got "${err?.slice(0, 80)}")`);
+  }
+
+  // Happy path: edit_code write → stores source in module state
+  const write = await dispatch({
+    jsonrpc: '2.0', id: 101, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'write', code: "on GET '/':\n  send 'hi'\n" } },
+  }, registry);
+  const writeParsed = JSON.parse(write.result.content[0].text);
+  assert(writeParsed.applied === true,
+    `meph_edit_code write returns applied=true (got ${JSON.stringify(writeParsed).slice(0, 120)})`);
+
+  // edit_code read → reads back what was written (module state works)
+  const read = await dispatch({
+    jsonrpc: '2.0', id: 102, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'read' } },
+  }, registry);
+  const readText = read.result.content[0].text;
+  assert(readText.includes("send 'hi'"),
+    `meph_edit_code read returns what write stored (module-level state works) (got ${readText.slice(0, 120)})`);
+
+  // compile → exercises real compileProgram against the stored source
+  const compile = await dispatch({
+    jsonrpc: '2.0', id: 103, method: 'tools/call',
+    params: { name: 'meph_compile', arguments: {} },
+  }, registry);
+  const compileParsed = JSON.parse(compile.result.content[0].text);
+  assert(Array.isArray(compileParsed.errors) && compileParsed.errors.length === 0,
+    `meph_compile runs against stored source and returns errors=[] (got ${JSON.stringify(compileParsed.errors || 'missing')})`);
+  assert(compileParsed.hasHTML === true && compileParsed.hasJavascript === true,
+    `meph_compile surfaces shape flags (hasHTML=${compileParsed.hasHTML}, hasJavascript=${compileParsed.hasJavascript})`);
+
+  // Schema error path: edit_code with missing code on write still rejects
+  const schemaRej = await dispatch({
+    jsonrpc: '2.0', id: 104, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'write' } },  // no code
+  }, registry);
+  assert(schemaRej.result.isError === true,
+    `meph_edit_code schema error → isError=true (got ${JSON.stringify(schemaRej.result).slice(0, 150)})`);
+  assert(schemaRej.result.content[0].text.includes('"code" string'),
+    'schema error surfaces missing-field detail');
+
+  // todo tool round-trip: set → get returns the stored todos
+  await dispatch({
+    jsonrpc: '2.0', id: 105, method: 'tools/call',
+    params: { name: 'meph_todo', arguments: { action: 'set', todos: [{ content: 'build it', status: 'pending', activeForm: 'building it' }] } },
+  }, registry);
+  const todoGet = await dispatch({
+    jsonrpc: '2.0', id: 106, method: 'tools/call',
+    params: { name: 'meph_todo', arguments: { action: 'get' } },
+  }, registry);
+  const todoParsed = JSON.parse(todoGet.result.content[0].text);
+  assert(Array.isArray(todoParsed.todos) && todoParsed.todos.length === 1,
+    `meph_todo round-trip stores + returns todos (got ${JSON.stringify(todoParsed.todos || 'missing')})`);
+  assert(todoParsed.todos[0].content === 'build it',
+    'meph_todo preserves content field across set+get');
+
+  // Tools that need live infrastructure (no running child, no Factor DB)
+  // should fail cleanly with a structured error rather than crashing.
+  const noApp = await dispatch({
+    jsonrpc: '2.0', id: 107, method: 'tools/call',
+    params: { name: 'meph_http_request', arguments: { method: 'GET', path: '/api/x' } },
+  }, registry);
+  const noAppText = noApp.result.content[0].text;
+  assert(noAppText.includes('No app running'),
+    `meph_http_request fails clean when no child app ("No app running" — got ${noAppText.slice(0, 120)})`);
+
+  // meph_list_evals was stubbed until compileForEval extracted — verify it
+  // now runs the real impl. Empty source → structured "No source code" error
+  // from compileForEval; any source without backends → "no backend" error.
+  // We use the edit_code/write source we stored earlier (small frontend app)
+  // which should produce the "no backend" path cleanly.
+  const listEvals = await dispatch({
+    jsonrpc: '2.0', id: 108, method: 'tools/call',
+    params: { name: 'meph_list_evals', arguments: {} },
+  }, registry);
+  const listText = listEvals.result.content[0].text;
+  const listParsed = JSON.parse(listText);
+  // Before compileForEval was extracted this threw with "helpers.compileForEval
+  // is not a function"; now it returns a real structured result. The source
+  // currently stored has no evals, so we expect { ok: true, suite: [], count: 0 }.
+  assert(typeof listParsed === 'object' && !listParsed.schemaError,
+    `meph_list_evals returns structured result (not undefined-helper throw) — got ${listText.slice(0, 120)}`);
+  assert(listParsed.ok === true && Array.isArray(listParsed.suite),
+    `meph_list_evals via real compileForEval returns {ok, suite} shape (got ${listText.slice(0, 120)})`);
+
+  // meph_run_tests with empty source → "No source code" from the real
+  // runTestsTool (the subprocess branch never fires; guard rail catches first).
+  _resetMcpState();
+  const runTests = await dispatch({
+    jsonrpc: '2.0', id: 109, method: 'tools/call',
+    params: { name: 'meph_run_tests', arguments: {} },
+  }, registry);
+  const runTestsText = runTests.result.content[0].text;
+  const runTestsParsed = JSON.parse(runTestsText);
+  assert(runTestsParsed.ok === false && runTestsParsed.error?.includes('No source code'),
+    `meph_run_tests returns structured "No source code" error on empty source (got ${runTestsText.slice(0, 120)})`);
+
+  // =========================================================================
+  // PHASE 6 — runEvalSuite HTTP proxy (cc-agent follow-up to GM-2 step 2d)
+  // Verifies the MCP server proxies run_evals / run_eval back to Studio's
+  // /api/run-eval endpoint when STUDIO_URL is set. Without STUDIO_URL (the
+  // standalone case) a clean error surfaces. With STUDIO_URL we exercise a
+  // local HTTP mock to avoid depending on a real Studio process.
+  // =========================================================================
+  console.log('\n📡 Phase 6 — runEvalSuite HTTP proxy to Studio');
+
+  // --- 6a. Without STUDIO_URL: clear "standalone mode" error
+  delete process.env.STUDIO_URL;
+  _resetMcpState();
+  // Store source first so the tool doesn't short-circuit on empty-source
+  await dispatch({
+    jsonrpc: '2.0', id: 600, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'write', code: "on GET '/':\n  send 'hi'\n" } },
+  }, registry);
+  const standaloneEvals = await dispatch({
+    jsonrpc: '2.0', id: 601, method: 'tools/call',
+    params: { name: 'meph_run_evals', arguments: {} },
+  }, registry);
+  const standaloneText = standaloneEvals.result.content[0].text;
+  const standaloneParsed = JSON.parse(standaloneText);
+  assert(standaloneParsed.ok === false && standaloneParsed.error?.includes('STUDIO_URL'),
+    `meph_run_evals without STUDIO_URL returns clear error naming the missing env var (got ${standaloneText.slice(0, 150)})`);
+
+  // --- 6b. With STUDIO_URL pointing at a mock server: proxy round-trips
+  const { createServer } = await import('http');
+  let lastProxyRequest = null;
+  const mockStudio = createServer((req, res) => {
+    // Only serve /api/run-eval for this test; everything else is 404.
+    if (req.method !== 'POST' || req.url !== '/api/run-eval') {
+      res.writeHead(404); res.end(); return;
+    }
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        lastProxyRequest = JSON.parse(body);
+      } catch {
+        lastProxyRequest = { parse_error: body };
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        results: [
+          { id: 'spec-one', status: 'pass', feedback: 'mocked' },
+        ],
+        passed: 1,
+        failed: 0,
+        duration: 123,
+      }));
+    });
+  });
+  await new Promise(r => mockStudio.listen(0, '127.0.0.1', r));
+  const mockPort = mockStudio.address().port;
+  process.env.STUDIO_URL = `http://127.0.0.1:${mockPort}`;
+
+  const proxied = await dispatch({
+    jsonrpc: '2.0', id: 602, method: 'tools/call',
+    params: { name: 'meph_run_evals', arguments: {} },
+  }, registry);
+  const proxiedText = proxied.result.content[0].text;
+  const proxiedParsed = JSON.parse(proxiedText);
+  assert(proxiedParsed.ok === true && proxiedParsed.passed === 1,
+    `meph_run_evals with STUDIO_URL round-trips the mock's response (got ${proxiedText.slice(0, 150)})`);
+  assert(lastProxyRequest && typeof lastProxyRequest.source === 'string',
+    `meph_run_evals forwards source to Studio /api/run-eval (got keys: ${lastProxyRequest ? Object.keys(lastProxyRequest).join(',') : 'no request'})`);
+  assert(lastProxyRequest.source.includes("send 'hi'"),
+    'source in the proxied request matches MCP module state from the prior meph_edit_code write');
+  assert(lastProxyRequest.id === undefined,
+    'meph_run_evals (full suite) does NOT send an id field');
+
+  // --- 6c. meph_run_eval (single spec) forwards the id
+  const proxiedOne = await dispatch({
+    jsonrpc: '2.0', id: 603, method: 'tools/call',
+    params: { name: 'meph_run_eval', arguments: { id: 'spec-one' } },
+  }, registry);
+  const proxiedOneText = proxiedOne.result.content[0].text;
+  const proxiedOneParsed = JSON.parse(proxiedOneText);
+  assert(proxiedOneParsed.ok === true,
+    `meph_run_eval single-spec via proxy returns ok=true (got ${proxiedOneText.slice(0, 120)})`);
+  assert(lastProxyRequest.id === 'spec-one',
+    `meph_run_eval forwards the id field to Studio (got ${lastProxyRequest.id})`);
+
+  // --- 6d. Studio returns 500 → graceful error surface
+  await new Promise(r => mockStudio.close(r));
+  const errServer = createServer((req, res) => {
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('evalChild crashed');
+  });
+  await new Promise(r => errServer.listen(0, '127.0.0.1', r));
+  const errPort = errServer.address().port;
+  process.env.STUDIO_URL = `http://127.0.0.1:${errPort}`;
+  const errResp = await dispatch({
+    jsonrpc: '2.0', id: 604, method: 'tools/call',
+    params: { name: 'meph_run_evals', arguments: {} },
+  }, registry);
+  const errText = errResp.result.content[0].text;
+  const errParsed = JSON.parse(errText);
+  assert(errParsed.ok === false && errParsed.error?.includes('500'),
+    `meph_run_evals surfaces Studio 5xx errors as {ok:false, error} (got ${errText.slice(0, 150)})`);
+  await new Promise(r => errServer.close(r));
+
+  // --- 6e. Studio unreachable → clean proxy-failed error
+  process.env.STUDIO_URL = 'http://127.0.0.1:1';  // reserved port → connection refused
+  const unreach = await dispatch({
+    jsonrpc: '2.0', id: 605, method: 'tools/call',
+    params: { name: 'meph_run_evals', arguments: {} },
+  }, registry);
+  const unreachText = unreach.result.content[0].text;
+  const unreachParsed = JSON.parse(unreachText);
+  assert(unreachParsed.ok === false && unreachParsed.error?.includes('proxy failed'),
+    `meph_run_evals surfaces unreachable Studio as "Studio proxy failed" (got ${unreachText.slice(0, 150)})`);
+
+  // Cleanup
+  delete process.env.STUDIO_URL;
 
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);

@@ -29,7 +29,11 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool } from './meph-tools.js';
+// dispatchTool is the post-GM-2 single entry point for every Meph tool call.
+// The runTestsTool import stays alongside because /api/run-tests (the Studio
+// UI button) bypasses dispatchTool — it doesn't want the Meph-facing tab-
+// switch SSE events since the UI is already on the Tests pane.
+import { validateToolInput, describeMephTool, dispatchTool, runTestsTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -522,93 +526,27 @@ app.post('/api/meph-actions/clear', (req, res) => {
 // =============================================================================
 // TEST RUNNER — parse test output into structured results
 // =============================================================================
-function parseTestOutput(stdout) {
-  const results = [];
-  const lines = (stdout || '').split('\n');
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    // Test output format: "PASS: test name" or "FAIL: test name - error [clear:N]"
-    // Older runs used " -- " as the separator; accept both.
-    const passMatch = trimmed.match(/^PASS:\s*(.+)/);
-    const failMatch = trimmed.match(/^FAIL:\s*(.+?)(?:\s*-{1,2}\s*(.+))?$/);
-    if (passMatch) {
-      results.push({ name: passMatch[1], status: 'pass' });
-    } else if (failMatch) {
-      let err = failMatch[2] || '';
-      // Extract the [clear:N] tag the compiler emits so the Studio UI can jump to source
-      let sourceLine = null;
-      const tagMatch = err.match(/\s*\[clear:(\d+)\]\s*$/);
-      if (tagMatch) {
-        sourceLine = parseInt(tagMatch[1], 10);
-        err = err.slice(0, tagMatch.index).trim();
-      }
-      results.push({ name: failMatch[1], status: 'fail', error: err, sourceLine });
-    }
-  }
-
-  const passed = results.filter(r => r.status === 'pass').length;
-  const failed = results.filter(r => r.status === 'fail').length;
-  return { passed, failed, results };
-}
-
-// Exported for testing
+// parseTestOutput + compileForEval moved to playground/meph-helpers.js so
+// the MCP server can import them without pulling in server.js's closure.
+// Re-export here keeps existing test suites (server.test.js) compiling.
+import { parseTestOutput, compileForEval as _compileForEval } from './meph-helpers.js';
 export { parseTestOutput };
 // Exposed for unit testing — the SSE drainer has been the source of
 // agent-endpoint grading bugs (empty bodies, dropped structured payloads).
 export { _extractSSEFrameText, _parseSSEFrames };
 
+// Shared wrapper so /api/run-tests and the run_tests tool both go through
+// the ported runTestsTool. Keeps the caller side simple — pass source,
+// get result — while the ctx wiring (buildDir, apiKey, parser) stays here
+// in one place.
 function runTestProcess(source) {
-  const start = Date.now();
-  if (!source || !source.trim()) {
-    return { ok: false, error: 'No source code. Load or write a .clear file first.' };
-  }
-  const tmpPath = join(BUILD_DIR, '_test-source-' + Date.now() + '.clear');
-  mkdirSync(BUILD_DIR, { recursive: true });
-  writeFileSync(tmpPath, source);
-  // Outer timeout wraps both npm install + server startup + actual test
-  // execution. Multi-agent templates with real `ask claude` E2E calls can
-  // easily push past 30s. 180s is generous enough for those without letting
-  // a truly hung run block the Studio UI forever. Override via env.
-  const outerTimeoutMs = Math.max(15000, Number(process.env.CLEAR_STUDIO_TEST_TIMEOUT_MS) || 180000);
-  try {
-    // Pass API key from Meph config so agent tests can call Claude
-    const testEnv = { ...process.env, ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
-    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: outerTimeoutMs, maxBuffer: 5 * 1024 * 1024, env: testEnv });
-    const parsed = parseTestOutput(stdout);
-    return { ok: true, ...parsed, duration: Date.now() - start };
-  } catch (err) {
-    if (err.status === 4) {
-      const parsed = parseTestOutput(err.stdout || '');
-      return { ok: false, ...parsed, duration: Date.now() - start };
-    }
-    if (err.status === 1) {
-      try {
-        const errData = JSON.parse(err.stdout);
-        return { ok: false, error: 'Compile errors', errors: errData.errors || [], duration: Date.now() - start };
-      } catch {
-        return { ok: false, error: (err.stdout || err.stderr || err.message).slice(0, 2000), duration: Date.now() - start };
-      }
-    }
-    // Translate the cryptic "spawnSync C:\Windows\system32\cmd.exe ETIMEDOUT"
-    // that Node emits on Windows when execSync hits its timeout. On macOS/Linux
-    // it shows up as killed=true + signal=SIGTERM. Either way the user needs
-    // a message they can act on, not a stack trace pointing at cmd.exe.
-    const timedOut = err.code === 'ETIMEDOUT' || (err.killed && err.signal === 'SIGTERM');
-    if (timedOut) {
-      const secs = Math.round(outerTimeoutMs / 1000);
-      return {
-        ok: false,
-        error: `Test runner timed out after ${secs}s. Templates with live agent calls can be slow — try running fewer tests, or set CLEAR_STUDIO_TEST_TIMEOUT_MS to raise the limit.`,
-        timedOut: true,
-        duration: Date.now() - start,
-      };
-    }
-    return { ok: false, error: (err.stderr || err.message || 'Test runner failed').slice(0, 2000), duration: Date.now() - start };
-  } finally {
-    try { unlinkSync(tmpPath); } catch {}
-  }
+  const ctx = new MephContext({
+    source,
+    rootDir: ROOT_DIR,
+    buildDir: BUILD_DIR,
+    apiKey: storedApiKey || null,
+  });
+  return runTestsTool({}, ctx, parseTestOutput);
 }
 
 app.post('/api/run-tests', (req, res) => {
@@ -1170,27 +1108,11 @@ async function runOneEval(spec, port) {
 }
 
 // Compile the given source. Returns { ok, compiled?, error? }.
+// Thin wrapper — real impl in playground/meph-helpers.js. Pre-fills
+// compileProgram so callers keep the one-arg signature they've had since
+// the beginning.
 function compileForEval(source) {
-  if (!source || !source.trim()) return { ok: false, error: 'No source code. Load or write a .clear file first.' };
-  let compiled, compiledEvalMode;
-  try {
-    // Regular compile — used to surface the suite shape (needed even for
-    // the estimate endpoint which doesn't spin up the child).
-    compiled = compileProgram(source);
-    // Eval-mode compile — serverJS includes the /_eval/* synthetic
-    // handlers. Used by the eval child runner.
-    compiledEvalMode = compileProgram(source, { evalMode: true });
-  } catch (err) {
-    return { ok: false, error: 'Compile threw: ' + err.message };
-  }
-  if (compiled.errors && compiled.errors.length > 0) {
-    return { ok: false, error: 'Source has compile errors — fix them before running evals.', errors: compiled.errors };
-  }
-  // `serverJS` exists when the app builds both web + backend. For a pure
-  // backend-only app the code lives in `javascript` instead. Accept either.
-  const server = compiledEvalMode.serverJS || compiledEvalMode.javascript;
-  if (!server) return { ok: false, error: 'App has no backend to run evals against (need a javascript backend build target).' };
-  return { ok: true, compiled, serverJS: server };
+  return _compileForEval(source, compileProgram);
 }
 
 // POST /api/eval-suite — returns the suite list (no execution, no child).
@@ -2774,574 +2696,110 @@ app.post('/api/chat', async (req, res) => {
   // Tool execution. `validateToolInput` and `describeMephTool` extracted to
   // `playground/meph-tools.js` (GM-2 step 2) so the future MCP server can
   // share them. Both are pure functions — no closure access. The much larger
-  // `executeTool` below stays inline because it accesses ~12 closure vars
-  // (currentSource, _factorDB, sessionId, send, termLog, ...); separate
-  // refactor step.
-
+  // GM-2 executeTool extraction complete: every tool body lives in
+  // playground/meph-tools.js and the 28-case switch is gone. /api/chat
+  // builds one fat MephContext with every callback wired to its closure
+  // state, hands it to dispatchTool, and mirrors back the state fields
+  // tools mutated (lastCompileResult, hintState, mephTodos, etc.).
   async function executeTool(name, input) {
     termLog(`[meph] ${describeMephTool(name, input)}`);
+    // Validate here so the [meph] ✗ schema error terminal line still lands
+    // on failures (the dispatcher also validates, so we double-check, but
+    // the duplication is cheap and the user-facing log matters).
     const validationError = validateToolInput(name, input);
     if (validationError) {
       termLog(`[meph] ✗ schema error: ${validationError}`);
       return JSON.stringify({ error: validationError, schemaError: true });
     }
-    switch (name) {
-      case 'edit_code': {
-        // Extracted to playground/meph-tools.js (GM-2 step 3a). Build a
-        // MephContext that reflects /api/chat's mutable closure state and
-        // hook the onSourceChange/onErrorsChange callbacks to mirror back
-        // into _workerLastSource/_workerLastErrors for supervisor polling.
-        // _sourceBeforeEdit is captured automatically inside ctx.setSource().
-        const ctx = new MephContext({
-          source: currentSource,
-          errors: currentErrors,
-          send,
-          onSourceChange: (s) => {
-            _workerLastSource = s;
-            currentSource = s;
-            _sourceBeforeEdit = ctx.sourceBeforeEdit;
-          },
-          onErrorsChange: (e) => {
-            _workerLastErrors = e;
-            currentErrors = e;
-          },
-        });
-        const result = editCodeTool(input, ctx, compileProgram);
-        if (ctx.lastCompileResult) lastCompileResult = ctx.lastCompileResult;
-        return result;
-      }
-
-      case 'compile':
-        try {
-          const r = compileProgram(currentSource);
-          currentErrors = r.errors;
-          _workerLastErrors = currentErrors;
-          lastCompileResult = r;
-
-          // ── Factor DB: log this compile attempt ─────────────────────────
-          // One row per compile. test_pass gets updated by a subsequent run_tests.
-          if (_factorDB && currentSource) {
-            try {
-              const compileOk = r.errors.length === 0 ? 1 : 0;
-              const errorSig = r.errors.length > 0
-                ? _sha1(r.errors.map(e => e.message).join('\n') + '\x00' + _sha1(currentSource))
-                : null;
-              // source_before captures what Meph compiled. If he called
-              // edit_code+compile in sequence, _sourceBeforeEdit has the pre-edit
-              // state. Fall back to currentSource so we always have SOMETHING —
-              // otherwise we lose the whole point of the trajectory row.
-              const sourceForLog = _sourceBeforeEdit && _sourceBeforeEdit.length > 0
-                ? _sourceBeforeEdit
-                : currentSource;
-              const step = _currentStep(currentSource, sessionSteps);
-              _lastFactorRowId = _factorDB.logAction({
-                session_id: sessionId,
-                archetype: _safeArchetype(currentSource),
-                task_type: 'compile_cycle',
-                error_sig: errorSig,
-                file_state_hash: _sha1(currentSource),
-                source_before: sourceForLog.slice(0, 5000),
-                patch_ops: [],
-                patch_summary: r.errors.length === 0
-                  ? `Clean compile (${currentSource.split('\n').length} lines)`
-                  : `Compile with ${r.errors.length} error(s): ${r.errors[0]?.message?.slice(0, 120) || 'unknown'}`,
-                compile_ok: compileOk,
-                test_pass: 0,
-                test_score: 0.0,
-                score_delta: 0.0,
-                step_id: step?.id || null,
-                step_index: step?.index ?? null,
-                step_name: step?.name || null,
-              });
-              // Inference fallback: if hints were already served on an earlier
-              // compile in this turn, track the minimum error count seen since.
-              // If Meph later forgets to emit HINT_APPLIED, a drop in errors is
-              // a reasonable signal that the hint helped.
-              if (_hintsInjectedRowId && _lastFactorRowId !== _hintsInjectedRowId) {
-                if (_postHintMinErrorCount === null || r.errors.length < _postHintMinErrorCount) {
-                  _postHintMinErrorCount = r.errors.length;
-                }
-              }
-            } catch { /* non-fatal */ }
-          }
-          // ────────────────────────────────────────────────────────────────
-
-          // ── Context-size optimizations (Session 41 cost-reduction pass) ──
-          // 155:1 input:output ratio in April meant most API cost was context.
-          // Four trims that preserve Meph's ability to fix errors while
-          // cutting ~40-60% of per-compile input tokens at sweep scale.
-
-          // (1) Strip `Example: ...` blocks from error messages. Meph's system
-          //     prompt already covers canonical Clear; the Example blocks
-          //     duplicate that at ~300-600 chars per error.
-          const trimmedErrors = (r.errors || []).map(e => {
-            if (!e || typeof e !== 'object') return e;
-            const msg = String(e.message || '');
-            // Trim from "Example:" / " Example:" to end of string. Keep the
-            // error's concrete fact; drop the teaching block.
-            const exIdx = msg.search(/\n?\s*Example:/i);
-            const trimmed = exIdx > 0 ? msg.slice(0, exIdx).trim() : msg;
-            return { ...e, message: trimmed };
-          });
-
-          // (2) Cap warnings at 3. On apps with 8-10 security/quality warnings
-          //     Meph only reads the first few; the rest are noise × every
-          //     compile × every sweep.
-          const cappedWarnings = (r.warnings || []).slice(0, 3);
-          const warningsMore = (r.warnings || []).length - cappedWarnings.length;
-
-          const result = {
-            errors: trimmedErrors,
-            warnings: cappedWarnings,
-            hasHTML: !!r.html,
-            hasServerJS: !!r.serverJS,
-            hasJavascript: !!r.javascript,
-            hasPython: !!r.python,
-          };
-          if (warningsMore > 0) result.warningsTruncated = warningsMore;
-
-          // (3) Tests field dropped from compile result — Meph uses run_tests
-          //     tool separately. The auto-generated test source was ~1-3KB
-          //     per compile and Meph never read it directly.
-          //     (No code needed — just don't add it to `result`.)
-
-          // (4) Handled below at the hints block: we now emit `hints.text`
-          //     only (the prose Meph actually reads) and drop the duplicate
-          //     `hints.references` JSON array (~1-2KB per hint-serve).
-
-          // ── Factor DB suggestion injection (flywheel closes here) ──
-          // When compile fails, retrieve up-to-3 hints using layered retrieval:
-          //   Tier 1: exact same error_sig previously fixed in this archetype
-          //   Tier 2: exact same error_sig previously fixed anywhere
-          //   Tier 3: same-archetype passing gold rows (archetype-only fallback)
-          // Tier is attached to each hint so Meph sees which signal produced it.
-          if (_factorDB && r.errors.length > 0 && currentSource) {
-            try {
-              const archetype = _safeArchetype(currentSource);
-              const errorSig = _sha1(r.errors.map(e => e.message).join('\n') + '\x00' + _sha1(currentSource));
-              // Retrieve wider pool (topK=10) when any reranker is loaded so
-              // the reranker has room to reorder. Without rerankers, keep the
-              // historical topK=3 behavior so no regression from retrieval alone.
-              const retrievalK = (_pairwiseBundle || _ebmBundle) ? 10 : 3;
-              let hintRows = _factorDB.querySuggestions({
-                archetype,
-                error_sig: errorSig,
-                topK: retrievalK,
-              });
-
-              // Rerank order of preference (highest → fallback):
-              //   1. Pairwise logistic — scores each candidate AGAINST the current
-              //      error, so a high-test_score fix for a different problem gets
-              //      demoted. This is the one that answers the retrieval question
-              //      directly.
-              //   2. Pointwise EBM — regression on row quality; some lift over BM25.
-              //   3. BM25 raw — ordering from querySuggestions.
-              let rerankedBy = 'bm25';
-              if (_pairwiseBundle && hintRows.length > 0) {
-                try {
-                  // Build error context from the CURRENT failing compile.
-                  // target_error_category on each candidate = category of the row
-                  // immediately BEFORE it in its session (the error that candidate fixed).
-                  const errorCategory = _classifyErrorCategory(
-                    'Compile with ' + r.errors.length + ' error(s): ' +
-                    (r.errors[0]?.message || '')
-                  );
-                  const currentStepHere = _currentStep(currentSource, sessionSteps);
-                  for (const c of hintRows) {
-                    try {
-                      const prev = _factorDB._db.prepare(
-                        'SELECT patch_summary FROM code_actions WHERE session_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 1'
-                      ).get(c.session_id, c.created_at);
-                      c.target_error_category = _classifyErrorCategory(prev?.patch_summary || '');
-                    } catch { c.target_error_category = 'none'; }
-                  }
-                  const ctx = {
-                    archetype,
-                    error_sig: errorSig,
-                    error_category: errorCategory,
-                    step_index: currentStepHere?.index ?? 0,
-                    source_before: currentSource,
-                  };
-                  const ranked = _rankPairwise(_pairwiseBundle, ctx, hintRows);
-                  hintRows = ranked.slice(0, 3);
-                  rerankedBy = 'pairwise';
-                } catch (err) {
-                  // Fall through to EBM on any failure — better to ship a hint
-                  // ranked by the older model than to ship nothing.
-                }
-              }
-              if (rerankedBy === 'bm25' && _ebmBundle && hintRows.length > 0) {
-                try {
-                  const ranked = _rankEBM(_ebmBundle, hintRows, _featurizeRow);
-                  hintRows = ranked.slice(0, 3);
-                  rerankedBy = 'ebm';
-                } catch (err) {
-                  hintRows = hintRows.slice(0, 3);
-                }
-              } else if (rerankedBy === 'bm25') {
-                hintRows = hintRows.slice(0, 3);
-              }
-              // Observability: always log retrieval outcome so we can distinguish
-              // "no candidates found" from "Meph ignored the hints he saw".
-              console.log(`[hints] archetype=${archetype} retrieved=${hintRows.length} reranked_by=${rerankedBy}${hintRows.length > 0 ? ' top_tier=' + hintRows[0].tier : ''}`);
-              if (hintRows.length > 0) {
-                // Build note based on the best-tier match we got
-                const tiers = hintRows.map(h => h.tier);
-                const hasExact = tiers.some(t => t.startsWith('exact_error'));
-                const note = hasExact
-                  ? `Found ${hintRows.length} past session(s) that hit this exact error and fixed it. Study the reference snippets and adapt the fix.`
-                  : `No past session hit this exact error yet. Here are ${hintRows.length} working ${archetype} apps for shape-level reference.`;
-
-                // Prose-formatted hint block. This is what Meph actually reads —
-                // the JSON `references` array below is kept for UI/programmatic
-                // use, but the `text` field is the human-readable form that
-                // survives tool-result serialization to a language model.
-                // Session 38 finding: Meph ignored hints buried in JSON. Prose
-                // works better because Meph's attention is text-first.
-                const _tierLabel = (t) => {
-                  if (!t) return 'retrieved match';
-                  if (t.startsWith('exact_error_same_archetype')) return 'SAME ERROR in same archetype';
-                  if (t.startsWith('exact_error')) return 'SAME ERROR anywhere';
-                  if (t.startsWith('same_archetype')) return 'same archetype, different error';
-                  return t.replace(/_/g, ' ');
-                };
-                const hintBlocks = hintRows.map((h, i) => {
-                  // Prefer pairwise score (probability fix resolves current error)
-                  // when available — that's the signal Meph actually wants.
-                  const scoreLabel = typeof h.pairwise_score === 'number'
-                    ? `pairwise=${h.pairwise_score.toFixed(3)}`
-                    : typeof h.ebm_score === 'number'
-                      ? `EBM=${h.ebm_score.toFixed(3)}`
-                      : 'score=n/a';
-                  const header = `── Past Fix #${i + 1} [${_tierLabel(h.tier)}, ${scoreLabel}, test_score=${h.test_score || 0}] ──`;
-                  const summary = h.patch_summary ? `What happened: ${h.patch_summary}` : '';
-                  // Trim source to ~600 chars, stopping on a natural line boundary
-                  const raw = (h.source_before || '').slice(0, 600);
-                  const trimmed = raw.lastIndexOf('\n') > 400 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
-                  const code = trimmed ? `Source that worked:\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
-                  return [header, summary, code].filter(Boolean).join('\n');
-                }).join('\n\n');
-                const guidance = `\nHow to use: pattern-match the FIX, don't copy-paste. These are from different tasks — look at what structure works (validate blocks, guard clauses, auth placement, endpoint shape) and adapt to your current error.`;
-
-                // Per-hint-serve REQUIRED-tag line, placed in the hint payload itself
-                // (not just the system prompt) so Meph's attention catches it right
-                // where he's reading the hint. Measured: system-prompt-only reminders
-                // land ~45% of the time; keeping the requirement visible next to the
-                // hint should lift that without relying on inference fallback.
-                const topTier = hintRows[0]?.tier || '';
-                const tagRequired = `\n\n⚠ REQUIRED: Start your very next text block with \`HINT_APPLIED: yes, tier=${topTier}, helpful=<yes|no|partial>\` if you're going to use these hints, OR \`HINT_APPLIED: no, reason=<short reason>\` if they don't fit your real problem. Tag first, then your analysis. This is tracking signal, not optional.`;
-
-                const text = `${note}\n\n${hintBlocks}\n${guidance}${tagRequired}`;
-
-                // Session-41 cost optimization: dropped the `references`
-                // JSON array. It was a duplicate of the content in `text`
-                // plus scoring metadata Meph didn't reason about. ~1-2KB
-                // saved per hint-serve × thousands per sweep.
-                result.hints = {
-                  note,
-                  reranked_by: rerankedBy,
-                  text,  // ← Meph reads THIS (the prose block)
-                };
-                // Remember which row carried the hints so the end-of-response
-                // HINT_APPLIED parse can update the right row.
-                _hintsInjectedRowId = _lastFactorRowId;
-                // Snapshot error count + best-hint-tier at hint-serve time —
-                // used for the inference fallback if Meph forgets the tag.
-                _hintsInjectedErrorCount = r.errors.length;
-                _hintsInjectedTier = hintRows[0]?.tier || null;
-                _postHintMinErrorCount = null; // reset window
-              }
-            } catch { /* non-fatal */ }
-          }
-          // ────────────────────────────────────────────────────────────
-
-          // Only embed compiled output when compile HAS errors OR when Meph
-          // explicitly opted in via input.include_compiled. On a clean compile
-          // with no opt-in, he just needs to know it worked — hasServerJS /
-          // hasHTML flags signal that. Saves ~8-28KB of tool-result payload
-          // per clean compile = ~1-2K tokens at Haiku input rate × thousands
-          // of compiles per sweep. Meph can:
-          //   • pass include_compiled=true to force it in
-          //   • use edit_code action='read' for source
-          //   • use source_map for compiled-line↔source-line mapping
-          const wantCompiled = r.errors.length > 0 || input.include_compiled === true;
-          if (wantCompiled) {
-            if (r.serverJS) result.serverJS = r.serverJS.slice(0, 8000);
-            if (r.javascript) result.javascript = r.javascript.slice(0, 8000);
-            if (r.html) result.html = r.html.slice(0, 4000);
-            if (r.python) result.python = r.python.slice(0, 8000);
-            if (r.serverJS || r.javascript || r.html || r.python) {
-              result.note = r.errors.length > 0
-                ? 'Compiled output included because compile had errors — inspect for debugging.'
-                : 'Compiled output included because you set include_compiled=true.';
-            }
-          }
-          return JSON.stringify(result);
-        } catch (err) {
-          return JSON.stringify({ error: err.message });
-        }
-
-      case 'run_command': {
-        const cmd = input.command;
-        const allowed = ALLOWED_PREFIXES.some(p => cmd.startsWith(p));
-        if (!allowed) return JSON.stringify({ error: `Not allowed. Use: ${ALLOWED_PREFIXES.join(', ')}` });
-        try {
-          const stdout = execSync(cmd, { cwd: ROOT_DIR, encoding: 'utf8', timeout: 15000 });
-          return JSON.stringify({ stdout, exitCode: 0 });
-        } catch (err) {
-          return JSON.stringify({ stdout: err.stdout || '', stderr: err.stderr || err.message, exitCode: err.status || 1 });
-        }
-      }
-
-      case 'run_app': {
-        // backend-only apps put code in .javascript, full-stack in .serverJS
-        const agentBackendCode = lastCompileResult?.serverJS || (!lastCompileResult?.html && lastCompileResult?.javascript) || null;
-        if (!agentBackendCode) return JSON.stringify({ error: 'No compiled server code. Compile first.' });
-        // Kill previous child
+    // Build one MephContext that covers every tool's state slice. Tools
+    // only read the fields they care about — unused callbacks sit as safe
+    // no-op defaults. Callbacks that reference `ctx` (for sourceBeforeEdit
+    // capture) resolve lazily when fired, so constructing ctx once at the
+    // top is safe.
+    const ctx = new MephContext({
+      source: currentSource,
+      errors: currentErrors,
+      sourceBeforeEdit: _sourceBeforeEdit || '',
+      lastCompileResult,
+      send,
+      termLog,
+      terminal: terminalBuffer,
+      frontendErrors,
+      networkBuffer: _networkBuffer,
+      websocketBuffer: _websocketBuffer,
+      rootDir: ROOT_DIR,
+      buildDir: BUILD_DIR,
+      allowedCommandPrefixes: ALLOWED_PREFIXES,
+      apiKey: storedApiKey || null,
+      todos: mephTodos,
+      onTodosChange: (t) => { mephTodos = t; },
+      onSourceChange: (s) => {
+        _workerLastSource = s;
+        currentSource = s;
+        _sourceBeforeEdit = ctx.sourceBeforeEdit;
+      },
+      onErrorsChange: (e) => {
+        _workerLastErrors = e;
+        currentErrors = e;
+      },
+      isAppRunning: () => !!runningChild,
+      sendBridgeCommand: (cmd, payload, timeoutMs) =>
+        sendBridgeCommandFromServer(send, cmd, payload, timeoutMs),
+      stopRunningApp: () => {
         if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
-        const rtDir = join(BUILD_DIR, 'clear-runtime');
-        mkdirSync(rtDir, { recursive: true });
-        writeFileSync(join(BUILD_DIR, 'server.js'), agentBackendCode);
-        const agentDeps = { ws: '*' };
-        if (agentBackendCode.includes("require('bcryptjs')")) agentDeps.bcryptjs = '*';
-        if (agentBackendCode.includes("require('jsonwebtoken')")) agentDeps.jsonwebtoken = '*';
-        if (agentBackendCode.includes("require('nodemailer')")) agentDeps.nodemailer = '*';
-        if (agentBackendCode.includes("require('multer')")) agentDeps.multer = '*';
-        writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: agentDeps }));
-        const agentDepsNeeded = Object.keys(agentDeps).filter(d => !existsSync(join(BUILD_DIR, 'node_modules', d)));
-        if (agentDepsNeeded.length > 0) {
-          try { execSync('npm install --production --silent', { cwd: BUILD_DIR, timeout: 15000, stdio: 'pipe' }); } catch {}
-        }
-        if (lastCompileResult.html) writeFileSync(join(BUILD_DIR, 'index.html'), lastCompileResult.html);
-        writeFileSync(join(BUILD_DIR, 'style.css'), lastCompileResult.css || '');
-        const runtimeDir = join(ROOT_DIR, 'runtime');
-        for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
-          if (existsSync(join(runtimeDir, f))) copyFileSync(join(runtimeDir, f), join(rtDir, f));
-        }
+      },
+      getPage: () => getPage(),
+      getRunningPort: () => runningPort,
+      getRunningChild: () => runningChild,
+      setRunningChild: (c) => { runningChild = c; },
+      allocatePort: () => {
         runningPort++;
         if (runningPort > 4100) runningPort = 4001;
-        const agentPort = runningPort;
-        const env = { ...process.env, PORT: String(agentPort) };
-        const agentChild = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
-        runningChild = agentChild;
-        agentChild.on('exit', () => { if (runningChild === agentChild) runningChild = null; });
-
-        // Sync-poll TCP until port is open (max 5s) so agent can immediately use http_request.
-        // Write to a .cjs file (forces CJS regardless of parent package.json type:module).
-        const pollPath = join(BUILD_DIR, '_port-poll.cjs');
-        writeFileSync(pollPath, [
-          "var net=require('net'),n=0;",
-          "(function t(){",
-          `  var s=net.createConnection(${agentPort},'127.0.0.1');`,
-          "  s.on('connect',function(){s.destroy();process.exit(0);});",
-          "  s.on('error',function(){if(++n<25)setTimeout(t,200);else process.exit(1);});",
-          "})();",
-        ].join('\n'));
-        try { execSync(`node "${pollPath}"`, { timeout: 6000 }); } catch {}
-        try { unlinkSync(pollPath); } catch {}
-
-        return JSON.stringify({ started: true, port: agentPort });
-      }
-
-      case 'stop_app':
-        // Extracted to playground/meph-tools.js. ctx.stopRunningApp()
-        // closes over /api/run's runningChild singleton.
-        return stopAppTool(input, new MephContext({
-          stopRunningApp: () => {
-            if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
-          },
-        }));
-
-      case 'read_file':
-        // Extracted to playground/meph-tools.js so the MCP server's
-        // meph_read_file handler can share the implementation. See
-        // GM-2 step 3a in plan-ghost-meph-cc-agent-tool-use-04-21-2026.md.
-        return readFileTool(input, { rootDir: ROOT_DIR });
-
-      case 'edit_file':
-        // Extracted to playground/meph-tools.js (GM-2 port). All ~80 lines
-        // of the action switch + safety checks live there now; this is a
-        // 1-line MephContext call.
-        return editFileTool(input, new MephContext({ rootDir: ROOT_DIR }));
-
-      case 'read_terminal':
-        // Extracted to playground/meph-tools.js. Mirror /api/chat's
-        // closure-level diagnostic buffers into the MephContext as
-        // read-only arrays; the tool just slices the tail.
-        return readTerminalTool(input, new MephContext({ terminal: terminalBuffer, frontendErrors }));
-
-      case 'screenshot_output':
-        return '__ASYNC_SCREENSHOT__'; // handled in loop
-
-      case 'http_request': {
-        // Sync HTTP is tricky — return a promise indicator
-        // Actually, we'll handle this async in the loop
-        return '__ASYNC_HTTP__';
-      }
-
-      case 'source_map': {
-        // Extracted to playground/meph-tools.js with the new MephContext
-        // shape — first stateful tool to use the context object pattern.
-        // GM-2 step 3a continued. compileProgram passed in as the third
-        // arg so meph-tools.js stays free of compiler imports.
-        const ctx = new MephContext({ source: currentSource });
-        return sourceMapTool(input, ctx, compileProgram);
-      }
-
-      case 'highlight_code':
-        // Extracted to playground/meph-tools.js — UI-only ack; actual highlight
-        // effect is still emitted via send({type:'highlight',...}) in the
-        // post-execution block below. GM-2 step 3a port.
-        return highlightCodeTool(input);
-
-      case 'patch_code': {
-        // Extracted to playground/meph-tools.js (GM-2 port). Same MephContext
-        // shape as edit_code — onSourceChange mirrors back into the closure.
-        const ctx = new MephContext({
-          source: currentSource,
-          send,
-          onSourceChange: (s) => {
-            _workerLastSource = s;
-            currentSource = s;
-            _sourceBeforeEdit = ctx.sourceBeforeEdit;
-          },
-        });
-        return patchCodeTool(input, ctx, patch);
-      }
-
-      case 'run_tests': {
-        const testResult = runTestProcess(currentSource);
-        send({ type: 'switch_tab', tab: 'tests' });
-        send({ type: 'test_results', testType: 'app', ...testResult });
-        return JSON.stringify(testResult);
-      }
-
-      case 'list_evals':
-        // Extracted to playground/meph-tools.js. compileForEval passed in
-        // so meph-tools.js doesn't need the eval-specific compile import.
-        return listEvalsTool(input, new MephContext({ source: currentSource }), compileForEval);
-
-      case 'run_evals': {
-        // Forward per-spec progress to the Tests pane. Terminal logging now
-        // lives inside runEvalSuite itself — every caller (Meph, UI, direct
-        // POST) gets the same terminal trace without duplicating it here.
-        send({ type: 'switch_tab', tab: 'tests' });
-        const onProgress = (ev) => { send({ type: 'eval_row', ...ev }); };
-        const evalResult = await runEvalSuite(currentSource, undefined, onProgress);
-        send({ type: 'eval_results', ...evalResult });
-        return JSON.stringify(evalResult);
-      }
-
-      case 'run_eval': {
-        if (!input.id) return JSON.stringify({ ok: false, error: "Missing 'id' — use list_evals to see available ids." });
-        send({ type: 'switch_tab', tab: 'tests' });
-        const onProgress = (ev) => { send({ type: 'eval_row', ...ev }); };
-        const evalResult = await runEvalSuite(currentSource, input.id, onProgress);
-        send({ type: 'eval_results', ...evalResult });
-        return JSON.stringify(evalResult);
-      }
-
-      // Bridge tools (click_element, fill_input, inspect_element, read_storage,
-      // read_dom) all share the same shape — extracted to playground/meph-tools.js
-      // (GM-2 port). Build a single MephContext with isAppRunning + sendBridgeCommand
-      // wired to /api/run's runningChild + sendBridgeCommandFromServer.
-      case 'click_element':
-      case 'fill_input':
-      case 'inspect_element':
-      case 'read_storage':
-      case 'read_dom': {
-        const bridgeCtx = new MephContext({
-          isAppRunning: () => !!runningChild,
-          sendBridgeCommand: (cmd, payload, timeoutMs) =>
-            sendBridgeCommandFromServer(send, cmd, payload, timeoutMs),
-        });
-        switch (name) {
-          case 'click_element':   return await clickElementTool(input, bridgeCtx);
-          case 'fill_input':      return await fillInputTool(input, bridgeCtx);
-          case 'inspect_element': return await inspectElementTool(input, bridgeCtx);
-          case 'read_storage':    return await readStorageTool(input, bridgeCtx);
-          case 'read_dom':        return await readDomTool(input, bridgeCtx);
-        }
-      }
-
-      case 'read_network': {
-        // Extracted to playground/meph-tools.js (GM-2 port). Browser
-        // connection ensured here (the tool can't await getPage from
-        // inside meph-tools.js — that's Studio plumbing) before
-        // delegating.
-        if (runningChild) await getPage();
-        return readNetworkTool(input, new MephContext({
-          isAppRunning: () => !!runningChild,
-          networkBuffer: _networkBuffer,
-        }));
-      }
-
-      // inspect_element + read_storage handled in the unified bridge-tools
-      // case above (extracted to playground/meph-tools.js).
-
-      case 'read_actions':
-        // Extracted to playground/meph-tools.js (GM-2 port). Default
-        // mephActionsUrl computed from process.env.PORT in MephContext.
-        return await readActionsTool(input, new MephContext());
-
-      // read_dom handled in the unified bridge-tools case above.
-
-      case 'websocket_log': {
-        // Extracted to playground/meph-tools.js. Same browser-ensure pattern
-        // as read_network.
-        if (runningChild) await getPage();
-        return websocketLogTool(input, new MephContext({
-          isAppRunning: () => !!runningChild,
-          websocketBuffer: _websocketBuffer,
-        }));
-      }
-
-      case 'db_inspect':
-        // Extracted to playground/meph-tools.js (GM-2 port). Dynamic
-        // import of better-sqlite3 happens inside the tool now, not here.
-        return await dbInspectTool(input, new MephContext({
-          isAppRunning: () => !!runningChild,
-          buildDir: BUILD_DIR,
-        }));
-
-      case 'todo': {
-        // Extracted to playground/meph-tools.js. Mirror mephTodos closure
-        // var through onTodosChange so other code paths that read mephTodos
-        // see the latest value.
-        const todoCtx = new MephContext({
-          todos: mephTodos,
-          send,
-          onTodosChange: (t) => { mephTodos = t; },
-        });
-        return todoTool(input, todoCtx);
-      }
-
-      case 'browse_templates':
-        // Extracted to playground/meph-tools.js (GM-2 port). Stateless aside
-        // from rootDir.
-        return browseTemplatesTool(input, new MephContext({ rootDir: ROOT_DIR }));
-
-      default:
-        return JSON.stringify({ error: 'Unknown tool: ' + name });
-    }
+        return runningPort;
+      },
+      // Compile-tool state
+      factorDB: _factorDB,
+      sessionId,
+      sessionSteps,
+      pairwiseBundle: _pairwiseBundle,
+      ebmBundle: _ebmBundle,
+      hintState: {
+        lastFactorRowId: _lastFactorRowId,
+        hintsInjectedRowId: _hintsInjectedRowId,
+        hintsInjectedErrorCount: _hintsInjectedErrorCount,
+        hintsInjectedTier: _hintsInjectedTier,
+        postHintMinErrorCount: _postHintMinErrorCount,
+      },
+    });
+    const helpers = {
+      compileProgram,
+      compileForEval,
+      patch,
+      parseTestOutput,
+      runEvalSuite,
+      sha1: _sha1,
+      currentStep: _currentStep,
+      safeArchetype: _safeArchetype,
+      classifyErrorCategory: _classifyErrorCategory,
+      rankPairwise: _rankPairwise,
+      rankEBM: _rankEBM,
+      featurizeRow: _featurizeRow,
+    };
+    const result = await dispatchTool(name, input, ctx, helpers);
+    // Mirror state the tools mutated on ctx back to the closure. Each
+    // tool only writes the slice it cares about, so this covers them all.
+    if (ctx.lastCompileResult) lastCompileResult = ctx.lastCompileResult;
+    _lastFactorRowId = ctx.hintState.lastFactorRowId;
+    _hintsInjectedRowId = ctx.hintState.hintsInjectedRowId;
+    _hintsInjectedErrorCount = ctx.hintState.hintsInjectedErrorCount;
+    _hintsInjectedTier = ctx.hintState.hintsInjectedTier;
+    _postHintMinErrorCount = ctx.hintState.postHintMinErrorCount;
+    return result;
   }
 
   // Async HTTP request tool
-  async function executeHttpRequest(input) {
-    if (!runningChild) return JSON.stringify({ error: 'No app running. Use run_app first.' });
-    try {
-      const url = `http://localhost:${runningPort}${input.path || '/'}`;
-      const opts = { method: input.method || 'GET', headers: { 'Content-Type': 'application/json' } };
-      if (input.body && input.method !== 'GET') opts.body = JSON.stringify(input.body);
-      const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(10000) });
-      const text = await r.text();
-      let data;
-      try { data = JSON.parse(text); } catch { data = text; }
-      return JSON.stringify({ status: r.status, data });
-    } catch (err) {
-      return JSON.stringify({ error: err.message });
-    }
-  }
+  // executeHttpRequest was removed in the GM-2 http_request port — the tool
+  // now flows through executeTool like every other async tool.
 
   // Multi-turn tool-use loop with streaming.
   // Meph runs on Haiku 4.5 by default — ~3x cheaper than Sonnet on this workload.
@@ -3555,6 +3013,20 @@ app.post('/api/chat', async (req, res) => {
       // Stream ended naturally — clear the watchdog so it doesn't fire later
       if (typeof watchdog !== 'undefined') clearTimeout(watchdog);
 
+      // cc-agent tool-mode sidecar: when Meph drove source edits through
+      // Claude Code's MCP child, the authoritative post-turn source lives
+      // on the Response object (ccAgentFinalSource) because the MCP child
+      // is a separate process from /api/chat's closure. Mirror it back so
+      // subsequent turns see the updated source and Studio's UI renders
+      // the new code. Set to null-or-undefined when Meph made no edits —
+      // skip the mirror in that case.
+      if (r && typeof r.ccAgentFinalSource === 'string' && r.ccAgentFinalSource !== currentSource) {
+        _sourceBeforeEdit = currentSource;
+        currentSource = r.ccAgentFinalSource;
+        _workerLastSource = currentSource;
+        send({ type: 'code_update', code: currentSource });
+      }
+
       // Build assistant content block for next iteration
       // Thinking blocks must come first in the assistant content for multi-turn
       const assistantContent = [];
@@ -3633,33 +3105,10 @@ app.post('/api/chat', async (req, res) => {
           send({ type: 'switch_tab', tab: 'tests' });
         }
 
-        let result;
-        if (tb.name === 'http_request') {
-          result = await executeHttpRequest(input);
-        } else if (tb.name === 'screenshot_output') {
-          // Use the Playwright browser — it's already pointing at the running app's port.
-          // This captures the ACTUAL rendered app, not the Studio wrapper or a blank iframe.
-          if (!runningChild) {
-            result = JSON.stringify({ error: 'No app running. Start with run_app first.' });
-          } else {
-            try {
-              const page = await getPage();
-              // Force a navigation if the app restarted on a new port (getPage handles this)
-              // Wait for any reactive updates to settle
-              await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
-              const buffer = await page.screenshot({ fullPage: false, type: 'png' });
-              const imageBase64 = buffer.toString('base64');
-              result = [
-                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
-                { type: 'text', text: `Screenshot of the running app at localhost:${runningPort}. This is the actual rendered output — verify layout, colors, and content.` },
-              ];
-            } catch (err) {
-              result = JSON.stringify({ error: 'Screenshot failed: ' + err.message.slice(0, 200) });
-            }
-          }
-        } else {
-          result = await executeTool(tb.name, input);
-        }
+        // screenshot_output + http_request used to be special-cased above the
+        // executeTool call back when executeTool was sync; both now flow
+        // through it like every other tool (GM-2 ports).
+        const result = await executeTool(tb.name, input);
 
         // Track run_tests outcomes for session quality signals + Factor DB
         if (tb.name === 'run_tests') {

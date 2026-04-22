@@ -10,8 +10,8 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool } from './meph-tools.js';
-import { mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool, compileTool, dispatchTool } from './meph-tools.js';
+import { existsSync, mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
@@ -628,6 +628,562 @@ const di5 = JSON.parse(await dbInspectTool({ query: 'SELECT * FROM x' },
   new MephContext({ isAppRunning: () => true, buildDir: '/nonexistent-dir-xyz' })));
 assert(di5.error?.includes('No database file'),
   'dbInspectTool returns "No database file yet" when DB file is absent');
+
+console.log('\n💻 runCommandTool\n');
+
+// No allowlist → rejected
+const rc1 = JSON.parse(runCommandTool({ command: 'ls' }, new MephContext({ rootDir: REPO_ROOT })));
+assert(rc1.error?.includes('Not allowed'),
+  'runCommandTool with empty allowlist rejects everything');
+
+// Disallowed prefix
+const rc2 = JSON.parse(runCommandTool({ command: 'rm -rf /' },
+  new MephContext({ rootDir: REPO_ROOT, allowedCommandPrefixes: ['ls ', 'cat '] })));
+assert(rc2.error?.includes('Not allowed'),
+  'runCommandTool rejects commands not matching any allowed prefix');
+
+// Allowed prefix → executes (use node --version which is portable + fast)
+const rc3 = JSON.parse(runCommandTool({ command: 'node --version' },
+  new MephContext({ rootDir: REPO_ROOT, allowedCommandPrefixes: ['node '] })));
+assert(rc3.exitCode === 0, `runCommandTool exec returns exitCode=0 (got ${rc3.exitCode})`);
+assert(typeof rc3.stdout === 'string' && rc3.stdout.startsWith('v'),
+  `runCommandTool returns stdout from the command (got ${rc3.stdout.slice(0, 30)})`);
+
+// Failing command (node with bad arg) → captures error
+const rc4 = JSON.parse(runCommandTool({ command: 'node --not-a-flag-xyz' },
+  new MephContext({ rootDir: REPO_ROOT, allowedCommandPrefixes: ['node '] })));
+assert(rc4.exitCode !== 0, 'runCommandTool failing command returns nonzero exitCode');
+assert(typeof rc4.stderr === 'string' && rc4.stderr.length > 0,
+  'runCommandTool captures stderr on failure');
+
+console.log('\n📸 screenshotOutputTool\n');
+
+// No app running → clear error
+const ss1 = JSON.parse(await screenshotOutputTool({}, new MephContext()));
+assert(ss1.error?.includes('No app running'),
+  'screenshotOutputTool returns "No app running" when isAppRunning false');
+
+// getPage throws → caught, returned as JSON error
+const ss2 = JSON.parse(await screenshotOutputTool({}, new MephContext({
+  isAppRunning: () => true,
+  getPage: async () => { throw new Error('chromium boom'); },
+})));
+assert(ss2.error?.includes('Screenshot failed') && ss2.error.includes('chromium boom'),
+  'screenshotOutputTool catches getPage throws and prefixes with "Screenshot failed"');
+
+// page.screenshot throws → same error path
+const ss3 = JSON.parse(await screenshotOutputTool({}, new MephContext({
+  isAppRunning: () => true,
+  getPage: async () => ({
+    waitForLoadState: async () => {},
+    screenshot: async () => { throw new Error('navigator gone'); },
+  }),
+})));
+assert(ss3.error?.includes('Screenshot failed') && ss3.error.includes('navigator gone'),
+  'screenshotOutputTool catches page.screenshot throws');
+
+// Happy path: returns content-block array with image + caption
+const fakeBuf = Buffer.from('fake-png-bytes', 'utf8');
+const ss4 = await screenshotOutputTool({}, new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => 4567,
+  getPage: async () => ({
+    waitForLoadState: async () => {},
+    screenshot: async () => fakeBuf,
+  }),
+}));
+assert(Array.isArray(ss4), 'screenshotOutputTool returns an array on success');
+assert(ss4.length === 2, 'screenshotOutputTool success array has 2 entries (image + text)');
+assert(ss4[0].type === 'image' && ss4[0].source?.type === 'base64',
+  'screenshotOutputTool first entry is an image content block');
+assert(ss4[0].source.data === fakeBuf.toString('base64'),
+  'screenshotOutputTool encodes the screenshot buffer as base64');
+assert(ss4[0].source.media_type === 'image/png',
+  'screenshotOutputTool declares media_type image/png');
+assert(ss4[1].type === 'text' && ss4[1].text.includes('localhost:4567'),
+  'screenshotOutputTool caption references the running port');
+
+// waitForLoadState throwing should NOT fail the whole screenshot — it's
+// wrapped in .catch(() => {}) on purpose so chatty apps still get captured.
+const ss5 = await screenshotOutputTool({}, new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => 4568,
+  getPage: async () => ({
+    waitForLoadState: async () => { throw new Error('networkidle timeout'); },
+    screenshot: async () => Buffer.from('ok', 'utf8'),
+  }),
+}));
+assert(Array.isArray(ss5) && ss5[0].type === 'image',
+  'screenshotOutputTool survives waitForLoadState throwing (it is bounded)');
+
+console.log('\n🚀 runAppTool\n');
+
+// No compile result → clear error, no spawn attempted
+const app1 = JSON.parse(runAppTool({}, new MephContext()));
+assert(app1.error?.includes('No compiled server code'),
+  'runAppTool returns "No compiled server code" when lastCompileResult is null');
+
+// lastCompileResult exists but has no serverJS/javascript → error
+const app2 = JSON.parse(runAppTool({}, new MephContext({
+  lastCompileResult: { html: '<h1>hi</h1>', css: '' },
+})));
+assert(app2.error?.includes('No compiled server code'),
+  'runAppTool rejects when html present but no backend code');
+
+// html + javascript (frontend JS, not a server) → also "No compiled server code"
+// because having html means javascript is frontend code, not backend.
+const app3 = JSON.parse(runAppTool({}, new MephContext({
+  lastCompileResult: { html: '<h1>hi</h1>', javascript: 'console.log("client")' },
+})));
+assert(app3.error?.includes('No compiled server code'),
+  'runAppTool treats javascript+html as frontend-only (no server code)');
+
+// Real serverJS but no port allocator → error at allocate step
+const appTmp = mkdtempSync(join(tmpdir(), 'meph-runapp-'));
+const app4 = JSON.parse(runAppTool({}, new MephContext({
+  lastCompileResult: { serverJS: '// noop' },
+  buildDir: appTmp,
+  rootDir: REPO_ROOT,
+  allocatePort: () => null,
+})));
+assert(app4.error?.includes('no port allocator wired'),
+  'runAppTool surfaces allocatePort returning null as a clear error');
+try { rmSync(appTmp, { recursive: true, force: true }); } catch {}
+
+// Happy path: spawn a trivial server that exits immediately. We're not testing
+// the app behaviour — we're verifying the tool returns { started, port } shape
+// and invokes the child-lifecycle callbacks in the right order.
+const appTmp2 = mkdtempSync(join(tmpdir(), 'meph-runapp-'));
+let childHolder = null;
+let allocCalls = 0;
+const appCtx = new MephContext({
+  // Minimal serverJS that just exits — we don't care about the listen.
+  lastCompileResult: { serverJS: 'process.exit(0);' },
+  buildDir: appTmp2,
+  rootDir: REPO_ROOT,
+  getRunningChild: () => childHolder,
+  setRunningChild: (c) => { childHolder = c; },
+  allocatePort: () => { allocCalls++; return 4999; },
+});
+const app5 = JSON.parse(runAppTool({}, appCtx));
+assert(app5.started === true, 'runAppTool returns { started: true } on happy path');
+assert(app5.port === 4999, `runAppTool returns the allocated port (got ${app5.port})`);
+assert(allocCalls === 1, 'runAppTool calls allocatePort exactly once per run');
+// The child was registered via setRunningChild
+assert(childHolder && typeof childHolder.pid === 'number',
+  'runAppTool registers the spawned child via setRunningChild');
+// buildDir side effects: server.js + package.json written
+assert(existsSync(join(appTmp2, 'server.js')),
+  'runAppTool writes the compiled backend to buildDir/server.js');
+assert(existsSync(join(appTmp2, 'package.json')),
+  'runAppTool writes a package.json with runtime deps');
+const appPkg = JSON.parse(fsReadFileSync(join(appTmp2, 'package.json'), 'utf8'));
+assert(appPkg.dependencies?.ws === '*',
+  'runAppTool declares ws as a runtime dep (every compiled app needs it)');
+// Cleanup: kill the child if it's still alive (process.exit(0) should've ended it but be safe)
+try { if (childHolder) childHolder.kill('SIGKILL'); } catch {}
+try { rmSync(appTmp2, { recursive: true, force: true }); } catch {}
+
+console.log('\n🧪 runTestsTool\n');
+
+// Stub parser we can verify was called (or not) — takes a string, returns
+// the shape runTestsTool consumes from parseTestOutput.
+const stubParser = (stdout) => ({ passed: 0, failed: 0, results: [] });
+
+// Empty source → no-source-code error, never invokes the subprocess
+const rtBuildDir = mkdtempSync(join(tmpdir(), 'meph-runtests-'));
+const rtt1 = runTestsTool({}, new MephContext({ source: '', rootDir: REPO_ROOT, buildDir: rtBuildDir }), stubParser);
+assert(rtt1.ok === false, 'runTestsTool empty source returns ok=false');
+assert(rtt1.error?.includes('No source code'),
+  'runTestsTool empty source returns "No source code" error');
+
+// Whitespace-only source also rejected
+const rtt2 = runTestsTool({}, new MephContext({ source: '   \n\t  ', rootDir: REPO_ROOT, buildDir: rtBuildDir }), stubParser);
+assert(rtt2.error?.includes('No source code'),
+  'runTestsTool whitespace-only source is treated as empty');
+try { rmSync(rtBuildDir, { recursive: true, force: true }); } catch {}
+
+// Parser contract: runTestsTool spreads the parser output into its return.
+// Stub a parser that counts rt callbacks so we can verify it gets invoked
+// with the child's stdout exactly once per run. We avoid spawning the real
+// cli/clear.js here — that's covered by server.test.js's /api/run-tests
+// integration test, which goes through the same runTestsTool now.
+let parserCalls = 0;
+const countingParser = (stdout) => {
+  parserCalls++;
+  return { passed: 1, failed: 0, results: [{ name: 'fake', status: 'pass' }] };
+};
+// Give runTestsTool an intentionally-crashable command target by pointing
+// rootDir at a directory with no cli/clear.js — execSync throws, the tool's
+// err-handler branch runs. We still assert duration is populated, confirming
+// the tool reached the finally block without crashing the process.
+const rtt4 = runTestsTool({}, new MephContext({
+  source: 'database:\n  one counter with value of 0\n',
+  rootDir: mkdtempSync(join(tmpdir(), 'meph-runtests-norepo-')),
+  buildDir: mkdtempSync(join(tmpdir(), 'meph-runtests-build2-')),
+  apiKey: null,
+}), countingParser);
+assert(typeof rtt4.duration === 'number' && rtt4.duration >= 0,
+  `runTestsTool populates duration even on subprocess failure (got ${rtt4.duration})`);
+assert(rtt4.ok === false, 'runTestsTool returns ok=false when cli/clear.js is not findable');
+
+console.log('\n🎯 runEvalsTool / runEvalTool\n');
+
+// runEvalTool with missing id → structured error, never touches the suite
+let suiteCalls = 0;
+const fakeSuite = async (source, id, onProgress) => {
+  suiteCalls++;
+  onProgress({ spec_id: 'spec-1', status: 'pass' });
+  return { ok: true, passed: 1, failed: 0, results: [{ id: 'spec-1', status: 'pass' }] };
+};
+const re1 = await runEvalTool({}, new MephContext({ source: 'x', send: () => {} }), fakeSuite);
+assert(re1.ok === false && re1.error?.includes('Missing \'id\''),
+  'runEvalTool returns structured error when input.id is missing');
+assert(suiteCalls === 0, 'runEvalTool does NOT invoke the suite when id is missing');
+
+// runEvalTool happy path forwards input.id into runEvalSuite
+suiteCalls = 0;
+let recordedId = null;
+const suiteWithId = async (source, id, onProgress) => {
+  suiteCalls++;
+  recordedId = id;
+  return { ok: true, passed: 1 };
+};
+const re2 = await runEvalTool({ id: 'spec-abc' },
+  new MephContext({ source: 'foo', send: () => {} }), suiteWithId);
+assert(re2.ok === true, 'runEvalTool returns the suite result object');
+assert(recordedId === 'spec-abc', `runEvalTool forwards input.id to the suite (got ${recordedId})`);
+assert(suiteCalls === 1, 'runEvalTool invokes the suite exactly once on happy path');
+
+// runEvalsTool always passes undefined id (runs the whole suite)
+suiteCalls = 0;
+recordedId = 'stale';
+const re3 = await runEvalsTool({}, new MephContext({ source: 'bar', send: () => {} }), suiteWithId);
+assert(re3.ok === true, 'runEvalsTool returns the suite result');
+assert(recordedId === undefined, `runEvalsTool passes id=undefined (got ${recordedId})`);
+
+// runEvalsTool fires per-spec progress through ctx.send
+const sends = [];
+const progressSuite = async (source, id, onProgress) => {
+  onProgress({ spec_id: 'a', status: 'pass' });
+  onProgress({ spec_id: 'b', status: 'fail' });
+  return { ok: true, passed: 1, failed: 1 };
+};
+await runEvalsTool({}, new MephContext({
+  source: 'zzz',
+  send: (ev) => sends.push(ev),
+}), progressSuite);
+assert(sends.length === 2, `runEvalsTool fires one ctx.send per progress event (got ${sends.length})`);
+assert(sends[0].type === 'eval_row' && sends[0].spec_id === 'a',
+  'runEvalsTool send events have type="eval_row" and forward progress fields');
+assert(sends[1].status === 'fail', 'runEvalsTool forwards status field from progress');
+
+console.log('\n🌐 httpRequestTool\n');
+
+// No app running → no fetch attempted, clear error
+const hr1 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/api/x' },
+  new MephContext()));
+assert(hr1.error?.includes('No app running'),
+  'httpRequestTool returns "No app running" when isAppRunning false');
+
+// Spin up a tiny local HTTP server to exercise the happy path
+const { createServer } = await import('http');
+const httpSrv = createServer((req, res) => {
+  let body = '';
+  req.on('data', c => body += c);
+  req.on('end', () => {
+    // Echo back JSON so we can verify round-tripping
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ got_method: req.method, got_path: req.url, got_body: body || null }));
+  });
+});
+await new Promise(res => httpSrv.listen(0, '127.0.0.1', res));
+const hrPort = httpSrv.address().port;
+const hrCtx = new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => hrPort,
+});
+
+// GET — hits the echoing server, returns status + parsed JSON data
+const hr2 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/api/ping' }, hrCtx));
+assert(hr2.status === 200, `httpRequestTool GET returns status 200 (got ${hr2.status})`);
+assert(hr2.data?.got_method === 'GET' && hr2.data?.got_path === '/api/ping',
+  `httpRequestTool GET reaches the right path (got ${JSON.stringify(hr2.data)})`);
+
+// POST with a body — body is JSON-stringified before send
+const hr3 = JSON.parse(await httpRequestTool({ method: 'POST', path: '/api/x', body: { name: 'meph' } }, hrCtx));
+assert(hr3.status === 200, `httpRequestTool POST returns status 200 (got ${hr3.status})`);
+assert(hr3.data?.got_body?.includes('"name":"meph"'),
+  `httpRequestTool POST serializes body as JSON (got ${JSON.stringify(hr3.data?.got_body)})`);
+
+// Non-JSON response → data is the raw text, not an error
+const textSrv = createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('hello not-json');
+});
+await new Promise(res => textSrv.listen(0, '127.0.0.1', res));
+const textPort = textSrv.address().port;
+const hr4 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/' },
+  new MephContext({ isAppRunning: () => true, getRunningPort: () => textPort })));
+assert(hr4.status === 200 && hr4.data === 'hello not-json',
+  `httpRequestTool falls back to raw text when response is not JSON (got ${JSON.stringify(hr4)})`);
+
+// Fetch failure → returns { error }, does not throw
+const hr5 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/' },
+  new MephContext({ isAppRunning: () => true, getRunningPort: () => 1 })));
+assert(hr5.error, `httpRequestTool returns structured error on fetch failure (got ${JSON.stringify(hr5)})`);
+
+// Cleanup
+await new Promise(res => httpSrv.close(res));
+await new Promise(res => textSrv.close(res));
+
+console.log('\n⚙ compileTool\n');
+
+// Helper bundle for these tests. We mock the reranker-side pieces (they
+// require their own bundle format) but use REAL compileProgram from
+// index.js so the parse/validate pipeline is exercised end-to-end.
+const fakeSha1 = (s) => 'h' + String(s).length + ':' + (s.slice?.(0, 8) || '');
+const fakeArchetype = () => 'test_archetype';
+const fakeStep = () => ({ id: 'step-1', index: 0, name: 'build' });
+const fakeClassifyCategory = () => 'syntax';
+const noopRerank = (_bundle, _ctx, rows) => rows.slice(0);
+const noopEbm = (_bundle, rows) => rows.slice(0);
+const noopFeaturize = (row) => row;
+
+const compileHelpers = {
+  compileProgram,
+  sha1: fakeSha1,
+  currentStep: fakeStep,
+  safeArchetype: fakeArchetype,
+  classifyErrorCategory: fakeClassifyCategory,
+  rankPairwise: noopRerank,
+  rankEBM: noopEbm,
+  featurizeRow: noopFeaturize,
+};
+
+// --- 1. Clean compile, no Factor DB, no include_compiled: returns shape
+//       flags but NOT the compiled output (cost optimization).
+const cleanSrc = "on GET '/':\n  send 'hi'\n";
+const cleanCtx = new MephContext({ source: cleanSrc });
+const comp1 = JSON.parse(compileTool({}, cleanCtx, compileHelpers));
+assert(Array.isArray(comp1.errors) && comp1.errors.length === 0,
+  `compileTool clean compile returns empty errors array (got ${JSON.stringify(comp1.errors)})`);
+assert(typeof comp1.hasServerJS === 'boolean' && typeof comp1.hasHTML === 'boolean',
+  'compileTool returns hasServerJS + hasHTML boolean flags');
+assert(comp1.serverJS === undefined && comp1.javascript === undefined,
+  'compileTool clean compile WITHOUT include_compiled omits compiled source from payload');
+
+// --- 2. Clean compile + include_compiled=true: forces compiled output in
+const comp2 = JSON.parse(compileTool({ include_compiled: true }, cleanCtx, compileHelpers));
+assert(comp2.serverJS !== undefined || comp2.javascript !== undefined,
+  `compileTool include_compiled=true embeds compiled output even on clean compile (got keys: ${Object.keys(comp2).join(',')})`);
+
+// --- 3. Failing compile: errors present, compiled output included (errors imply debug)
+const brokenCtx = new MephContext({ source: 'database:\n  bogus syntax garbage line\n' });
+const comp3 = JSON.parse(compileTool({}, brokenCtx, compileHelpers));
+assert(comp3.errors.length > 0,
+  `compileTool surfaces compile errors (got ${comp3.errors.length})`);
+
+// --- 4. "Example:" stripping from error messages
+const brokenCtxEx = new MephContext({ source: 'database:\n  bogus syntax garbage line\n' });
+const comp4 = JSON.parse(compileTool({}, brokenCtxEx, compileHelpers));
+for (const e of comp4.errors) {
+  assert(!/\nExample:|\s+Example:/i.test(String(e.message || '')),
+    `compileTool strips "Example:" blocks from error messages (found in: ${String(e.message).slice(0, 80)})`);
+}
+
+// --- 5. Warning cap: fake a compile that emits >3 warnings. We can't easily
+//       force real warnings, so we patch compileProgram via helpers.
+let warningsCapHelpers = {
+  ...compileHelpers,
+  compileProgram: (s) => ({
+    errors: [],
+    warnings: [
+      { message: 'w1' }, { message: 'w2' }, { message: 'w3' },
+      { message: 'w4' }, { message: 'w5' },
+    ],
+  }),
+};
+const comp5 = JSON.parse(compileTool({}, new MephContext({ source: 'x' }), warningsCapHelpers));
+assert(comp5.warnings.length === 3,
+  `compileTool caps warnings at 3 (got ${comp5.warnings.length})`);
+assert(comp5.warningsTruncated === 2,
+  `compileTool reports warningsTruncated=2 when 5 total warnings (got ${comp5.warningsTruncated})`);
+
+// --- 6. Factor DB: logAction called on every compile; lastFactorRowId mirrored
+let loggedActions = [];
+const fakeFactorDB = {
+  logAction: (row) => { loggedActions.push(row); return 777; },
+  querySuggestions: () => [],
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const fdbCtx = new MephContext({
+  source: cleanSrc,
+  factorDB: fakeFactorDB,
+  sessionId: 'sess-abc',
+});
+const comp6 = JSON.parse(compileTool({}, fdbCtx, compileHelpers));
+assert(loggedActions.length === 1,
+  `compileTool invokes factorDB.logAction exactly once (got ${loggedActions.length})`);
+assert(loggedActions[0].session_id === 'sess-abc',
+  `compileTool logAction carries sessionId (got ${loggedActions[0].session_id})`);
+assert(loggedActions[0].compile_ok === 1,
+  'compileTool logAction records compile_ok=1 for clean compile');
+assert(fdbCtx.hintState.lastFactorRowId === 777,
+  `compileTool mirrors logAction return into hintState.lastFactorRowId (got ${fdbCtx.hintState.lastFactorRowId})`);
+
+// --- 7. Factor DB + errors + hint rows: hints attached to result
+let querySuggestionCalls = 0;
+const hintRow = {
+  tier: 'exact_error_same_archetype',
+  patch_summary: 'added auth guard',
+  source_before: 'app: "hello"\n',
+  test_score: 1,
+  session_id: 'prev-sess',
+  created_at: 1,
+  pairwise_score: 0.87,
+};
+const fdbWithHints = {
+  logAction: () => 888,
+  querySuggestions: () => { querySuggestionCalls++; return [hintRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const hintCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbWithHints,
+  sessionId: 'sess-hint',
+  pairwiseBundle: { weights: 'fake' },
+});
+const comp7 = JSON.parse(compileTool({}, hintCtx, compileHelpers));
+assert(querySuggestionCalls === 1,
+  `compileTool with errors + factorDB calls querySuggestions once (got ${querySuggestionCalls})`);
+assert(comp7.hints && typeof comp7.hints.text === 'string',
+  `compileTool attaches hints.text when hint rows present (got ${comp7.hints ? 'yes' : 'no'})`);
+assert(comp7.hints.text.includes('SAME ERROR in same archetype'),
+  'compileTool hints.text includes tier label for exact_error_same_archetype rows');
+assert(comp7.hints.reranked_by === 'pairwise',
+  `compileTool marks reranked_by=pairwise when pairwiseBundle present (got ${comp7.hints.reranked_by})`);
+assert(hintCtx.hintState.hintsInjectedRowId === 888,
+  `compileTool updates hintsInjectedRowId when hints attached (got ${hintCtx.hintState.hintsInjectedRowId})`);
+assert(hintCtx.hintState.hintsInjectedTier === 'exact_error_same_archetype',
+  'compileTool records top-hint tier in hintState');
+
+// --- 8. Reranker fallback: EBM used when pairwise fails / is absent
+const ebmCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbWithHints,
+  sessionId: 'sess-ebm',
+  ebmBundle: { weights: 'fake' },
+});
+const comp8 = JSON.parse(compileTool({}, ebmCtx, compileHelpers));
+assert(comp8.hints?.reranked_by === 'ebm',
+  `compileTool falls back to EBM when only ebmBundle present (got ${comp8.hints?.reranked_by})`);
+
+// --- 9. No reranker: hints stay in BM25 order
+const bm25Ctx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbWithHints,
+  sessionId: 'sess-bm25',
+});
+const comp9 = JSON.parse(compileTool({}, bm25Ctx, compileHelpers));
+assert(comp9.hints?.reranked_by === 'bm25',
+  `compileTool reports reranked_by=bm25 when no reranker bundle (got ${comp9.hints?.reranked_by})`);
+
+// --- 10. Inference fallback: postHintMinErrorCount tracks drops after hint-serve
+const dropCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: {
+    logAction: () => 999,
+    querySuggestions: () => [],
+    _db: { prepare: () => ({ get: () => null }) },
+  },
+  sessionId: 'sess-drop',
+  // Pretend hints were served on row 555 in a prior compile
+  hintState: {
+    lastFactorRowId: null,
+    hintsInjectedRowId: 555,
+    hintsInjectedErrorCount: 5,
+    hintsInjectedTier: 'exact_error',
+    postHintMinErrorCount: null,
+  },
+});
+compileTool({}, dropCtx, compileHelpers);
+assert(typeof dropCtx.hintState.postHintMinErrorCount === 'number',
+  `compileTool updates postHintMinErrorCount on post-hint compile (got ${dropCtx.hintState.postHintMinErrorCount})`);
+
+// --- 11. compileProgram throws → { error: message }
+const throwingHelpers = {
+  ...compileHelpers,
+  compileProgram: () => { throw new Error('synthetic compile crash'); },
+};
+const comp11 = JSON.parse(compileTool({}, new MephContext({ source: 'x' }), throwingHelpers));
+assert(comp11.error?.includes('synthetic compile crash'),
+  `compileTool catches compiler throws and returns { error } (got ${JSON.stringify(comp11)})`);
+
+console.log('\n🧭 dispatchTool\n');
+
+// Unknown tool names are caught by the validator (schemaError path) BEFORE
+// dispatchTool's default case runs. This is the stronger guard — we don't
+// want an unknown tool to silently run; we want a clear rejection.
+const dt1 = JSON.parse(await dispatchTool('definitely_not_a_tool', {},
+  new MephContext(), {}));
+assert(dt1.schemaError === true && dt1.error?.includes('Unknown tool'),
+  `dispatchTool rejects unknown tool names with schemaError=true (got ${JSON.stringify(dt1)})`);
+
+// Schema error: unknown input shape is rejected up front
+const dt2 = JSON.parse(await dispatchTool('edit_code', { action: 'write' },
+  new MephContext(), { compileProgram: () => ({ errors: [], warnings: [] }) }));
+assert(dt2.schemaError === true && dt2.error?.includes('"code" string'),
+  'dispatchTool returns { schemaError: true } when validateToolInput rejects input');
+
+// Routing: highlight_code (stateless, lightest tool) goes through and returns ack
+const dt3 = JSON.parse(await dispatchTool('highlight_code', { start_line: 3, end_line: 5 },
+  new MephContext(), {}));
+assert(dt3.ok === true, `dispatchTool routes highlight_code and returns ack (got ${JSON.stringify(dt3)})`);
+
+// Routing: read_file succeeds against the real repo. SYNTAX.md may be small
+// enough for full content OR large enough to return a TOC — both shapes
+// prove the routing works.
+const dt4 = JSON.parse(await dispatchTool('read_file', { filename: 'SYNTAX.md' },
+  new MephContext({ rootDir: REPO_ROOT }), {}));
+const dt4Delivered = (typeof dt4.content === 'string' && dt4.content.length > 0)
+                  || (dt4.mode === 'toc' && typeof dt4.toc === 'string');
+assert(dt4Delivered,
+  `dispatchTool routes read_file and returns either content or toc (got keys: ${Object.keys(dt4).join(',')})`);
+
+// Routing: todo tool (action=get) flows through ctx
+const dt5 = JSON.parse(await dispatchTool('todo', { action: 'get' },
+  new MephContext({ todos: [{ content: 'x', status: 'pending', activeForm: 'doing x' }] }), {}));
+assert(Array.isArray(dt5.todos) && dt5.todos.length === 1,
+  `dispatchTool routes todo and reads ctx.todos (got ${JSON.stringify(dt5)})`);
+
+// Routing: run_tests tab-switch side-effect happens through ctx.send
+const dtSends = [];
+const dtTmp = mkdtempSync(join(tmpdir(), 'meph-dispatch-'));
+await dispatchTool('run_tests', {},
+  new MephContext({
+    source: '', // will short-circuit on "No source code"
+    rootDir: REPO_ROOT,
+    buildDir: dtTmp,
+    send: (ev) => dtSends.push(ev),
+  }),
+  { parseTestOutput: () => ({ passed: 0, failed: 0, results: [] }) });
+const hasTabSwitch = dtSends.some(e => e.type === 'switch_tab' && e.tab === 'tests');
+const hasResults = dtSends.some(e => e.type === 'test_results');
+assert(hasTabSwitch, `dispatchTool run_tests fires switch_tab=tests through ctx.send (got ${JSON.stringify(dtSends.map(e => e.type))})`);
+assert(hasResults, 'dispatchTool run_tests fires test_results through ctx.send after the tool returns');
+try { rmSync(dtTmp, { recursive: true, force: true }); } catch {}
+
+// Routing: run_evals fires tab-switch + eval_results through ctx.send
+const dtEvalSends = [];
+const fakeSuiteForDispatch = async () => ({ ok: true, passed: 3, failed: 0 });
+await dispatchTool('run_evals', {},
+  new MephContext({ source: 'x', send: (ev) => dtEvalSends.push(ev) }),
+  { runEvalSuite: fakeSuiteForDispatch });
+assert(dtEvalSends.some(e => e.type === 'switch_tab' && e.tab === 'tests'),
+  'dispatchTool run_evals fires switch_tab=tests');
+assert(dtEvalSends.some(e => e.type === 'eval_results'),
+  'dispatchTool run_evals fans out eval_results through ctx.send');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
