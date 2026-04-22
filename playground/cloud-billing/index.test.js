@@ -1,0 +1,182 @@
+// =============================================================================
+// CC-3b — Stripe Checkout scaffold (TDD tests)
+// =============================================================================
+// Pure-function helpers for the upgrade flow: build the Checkout Session
+// params shape Stripe expects, and parse the checkout.session.completed
+// webhook event to extract the tenant update instructions.
+//
+// The Stripe SDK itself stays OUT of this layer — we build plain objects
+// the caller can pass to stripe.checkout.sessions.create(...) and
+// stripe.webhooks.constructEvent(...) respectively. Keeps tests pure.
+//
+// Run: node playground/cloud-billing/index.test.js
+// =============================================================================
+
+let passed = 0, failed = 0;
+function assert(cond, msg) {
+  if (cond) { passed++; console.log(`  ✓ ${msg}`); }
+  else { failed++; console.log(`  ✗ ${msg}`); }
+}
+
+// ─── PRICE_IDS — plan → Stripe price ID mapping ─────────────────────────
+console.log('\n💳 PRICE_IDS + getStripePriceId\n');
+
+{
+  const { PRICE_IDS, getStripePriceId } = await import('./index.js');
+
+  // Exposed as a frozen const so runtime code can't accidentally mutate.
+  // Free tier has no price ID (no Stripe subscription for the free plan).
+  assert(typeof PRICE_IDS === 'object' && PRICE_IDS !== null,
+    'PRICE_IDS exported as an object');
+  assert(PRICE_IDS.free === null,
+    `free plan → null price ID (got ${JSON.stringify(PRICE_IDS.free)})`);
+  // Paid tiers have real price IDs — set from env (CC-3a Stripe dashboard)
+  // or the documented placeholders that fail loud in production.
+  assert(typeof PRICE_IDS.team === 'string' && PRICE_IDS.team.length > 0,
+    `team plan has a string price ID (got ${PRICE_IDS.team})`);
+  assert(typeof PRICE_IDS.business === 'string' && PRICE_IDS.business.length > 0,
+    `business plan has a string price ID (got ${PRICE_IDS.business})`);
+  assert(PRICE_IDS.enterprise === null,
+    `enterprise → null (contract-sales only, no self-serve Stripe)`);
+
+  // getStripePriceId — safe lookup, throws on unknown plan, throws on
+  // plan tiers with no price (free/enterprise)
+  assert(getStripePriceId('team') === PRICE_IDS.team,
+    'getStripePriceId("team") returns team price ID');
+
+  let threw;
+  try { getStripePriceId('platinum'); } catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('platinum'),
+    `unknown plan throws with message naming it (got "${threw}")`);
+
+  threw = null;
+  try { getStripePriceId('free'); } catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('free'),
+    `free plan throws — no Stripe subscription on the free tier (got "${threw}")`);
+
+  threw = null;
+  try { getStripePriceId('enterprise'); } catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('enterprise'),
+    `enterprise throws — contract-sales only (got "${threw}")`);
+}
+
+// ─── buildCheckoutSessionParams — the exact shape Stripe wants ──────────
+console.log('\n🧱 buildCheckoutSessionParams\n');
+
+{
+  const { buildCheckoutSessionParams } = await import('./index.js');
+
+  const params = buildCheckoutSessionParams({
+    plan: 'team',
+    tenantId: 42,
+    customerEmail: 'marcus@acme.com',
+    successUrl: 'https://buildclear.dev/upgrade/success',
+    cancelUrl: 'https://buildclear.dev/pricing',
+  });
+
+  // Shape matches stripe.checkout.sessions.create contract
+  assert(params.mode === 'subscription', `mode='subscription' (got ${params.mode})`);
+  assert(Array.isArray(params.line_items) && params.line_items.length === 1,
+    `one line_item for the plan (got ${JSON.stringify(params.line_items)})`);
+  assert(params.line_items[0].quantity === 1,
+    'line_items[0].quantity = 1');
+  assert(typeof params.line_items[0].price === 'string' && params.line_items[0].price.length > 0,
+    `line_items[0].price is the Stripe price ID string`);
+  assert(params.customer_email === 'marcus@acme.com',
+    'customer_email plumbed through');
+  assert(params.success_url === 'https://buildclear.dev/upgrade/success',
+    'success_url plumbed through');
+  assert(params.cancel_url === 'https://buildclear.dev/pricing',
+    'cancel_url plumbed through');
+
+  // client_reference_id carries the tenant — Stripe echoes it back on
+  // the completed webhook so we know WHICH tenant to upgrade. No
+  // ambiguity if the email matches multiple tenant rows.
+  assert(params.client_reference_id === '42',
+    `client_reference_id = tenantId (got ${params.client_reference_id})`);
+  // Metadata mirrors client_reference_id for analytics + double safety
+  assert(params.metadata?.tenant_id === '42',
+    'metadata.tenant_id set too (second source for correlation)');
+  assert(params.metadata?.plan === 'team',
+    'metadata.plan set so webhook knows the target tier');
+
+  // Rejects missing required fields
+  let threw;
+  try { buildCheckoutSessionParams({}); } catch (err) { threw = err.message; }
+  assert(threw, `empty input throws (got "${threw}")`);
+
+  threw = null;
+  try { buildCheckoutSessionParams({ plan: 'free', tenantId: 1, customerEmail: 'a@b.c', successUrl: 'x', cancelUrl: 'y' }); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('free'),
+    `free plan → throws at build-time, not the Stripe call (got "${threw}")`);
+}
+
+// ─── parseCheckoutCompletedEvent — Stripe webhook → tenant update ───────
+console.log('\n🪝 parseCheckoutCompletedEvent\n');
+
+{
+  const { parseCheckoutCompletedEvent } = await import('./index.js');
+
+  // Happy path — real-ish Stripe event shape (trimmed)
+  const event = {
+    id: 'evt_1ABC',
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: 'cs_test_123',
+        mode: 'subscription',
+        customer: 'cus_ACME',
+        subscription: 'sub_DEF',
+        customer_email: 'marcus@acme.com',
+        client_reference_id: '42',
+        metadata: { tenant_id: '42', plan: 'team' },
+        payment_status: 'paid',
+      },
+    },
+  };
+  const r = parseCheckoutCompletedEvent(event);
+  assert(r.ok === true, `happy-path → ok:true (got ${JSON.stringify(r)})`);
+  assert(r.tenantId === 42, `tenantId = 42 (got ${r.tenantId})`);
+  assert(r.plan === 'team', `plan = team (got ${r.plan})`);
+  assert(r.stripeCustomerId === 'cus_ACME', `stripeCustomerId extracted`);
+  assert(r.stripeSubscriptionId === 'sub_DEF', `stripeSubscriptionId extracted`);
+  assert(r.customerEmail === 'marcus@acme.com', `customer_email carried`);
+
+  // Wrong event type → ok:false so caller can ignore unrelated webhooks
+  const r2 = parseCheckoutCompletedEvent({ type: 'invoice.paid', data: {} });
+  assert(r2.ok === false, `non-checkout event → ok:false`);
+  assert(r2.reason?.toLowerCase().includes('type'),
+    `reason names the type mismatch (got "${r2.reason}")`);
+
+  // Missing tenant_id → ok:false with descriptive reason (data-integrity
+  // issue — someone bypassed buildCheckoutSessionParams). payment_status
+  // set so we hit the tenant_id check, not the payment-pending branch.
+  const r3 = parseCheckoutCompletedEvent({
+    type: 'checkout.session.completed',
+    data: { object: { payment_status: 'paid', metadata: {}, client_reference_id: null } },
+  });
+  assert(r3.ok === false, `no tenant_id → ok:false`);
+  assert(r3.reason?.toLowerCase().includes('tenant'),
+    `reason names missing tenant_id (got "${r3.reason}")`);
+
+  // Unpaid session → ok:false (pending — don't upgrade yet)
+  const r4 = parseCheckoutCompletedEvent({
+    ...event,
+    data: { object: { ...event.data.object, payment_status: 'unpaid' } },
+  });
+  assert(r4.ok === false, `unpaid → ok:false`);
+  assert(r4.reason?.toLowerCase().includes('paid'),
+    `reason names unpaid status (got "${r4.reason}")`);
+
+  // Missing plan metadata → ok:false (we don't guess what they bought)
+  const r5 = parseCheckoutCompletedEvent({
+    type: 'checkout.session.completed',
+    data: { object: { metadata: { tenant_id: '5' }, payment_status: 'paid' } },
+  });
+  assert(r5.ok === false && r5.reason?.toLowerCase().includes('plan'),
+    `no plan metadata → ok:false with reason (got "${r5.reason}")`);
+}
+
+console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
+process.exit(failed === 0 ? 0 : 1);
