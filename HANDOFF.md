@@ -317,6 +317,26 @@ Remaining non-scaffold work (all blocked on 85a for end-to-end):
   - CC-5c/d SSL provisioning + router update (Fly Certificate API calls)
   - Wire getAppAccess/checkQuota into actual endpoints (server.js endpoints exist but don't consult the primitives yet)
 
+## Session 42 tick 15 — cloud-billing subscription lifecycle
+
+`bc5fe55` — extends cloud-billing with the webhook parsers that keep `tenants.plan` in sync with Stripe AFTER the initial checkout. Three webhook flavors now covered end-to-end:
+
+  - `checkout.session.completed` (tick 14) — initial upgrade
+  - `customer.subscription.updated` (this tick) — plan change / trial end / pause / quantity change
+  - `customer.subscription.deleted` (this tick) — cancellation → downgrade to free
+
+New exports:
+  - `PRICES_TO_PLAN` — frozen reverse lookup built from `PRICE_IDS` at module load. Team + business only (null-priced tiers excluded).
+  - `planForPriceId(priceId)` — safe lookup, returns null on unknown IDs (webhook retry loops MUST tolerate without 500ing).
+  - `parseSubscriptionUpdatedEvent(event)` — derives plan from `items.data[0].price.id`, passes status through verbatim (caller decides what past_due/paused/trialing mean).
+  - `parseSubscriptionDeletedEvent(event)` — always returns `plan:'free'`. No price lookup needed, stays idempotent across PRICE_IDS drift.
+
+26 new TDD assertions: PRICES_TO_PLAN round-trip consistency, null/unknown price handling, subscription.updated happy path + all rejection paths (wrong type, no tenant_id, no price, unknown price, non-active status passed through), subscription.deleted happy path + rejections.
+
+cloud-billing: 60/60 tests pass.
+
+Totals after tick 15: **2800 tests green** (+26 cloud-billing).
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
