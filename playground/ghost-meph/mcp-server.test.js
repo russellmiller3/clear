@@ -454,6 +454,96 @@ function assert(cond, msg) {
   else process.env.FACTOR_DB_PATH = origFactorDbPath;
   try { rmSync(tmpDbDir, { recursive: true, force: true }); } catch {}
 
+  // =========================================================================
+  // PHASE 8 — run_app lifecycle in MCP mode
+  // Happy-path: source → compile → run_app → http_request → stop_app.
+  //
+  // The MCP server runs in its own subprocess (no Studio in the loop), so
+  // its buildMephContext must own the running-app state directly —
+  // allocatePort, setRunningChild, getRunningChild, getRunningPort,
+  // isAppRunning, stopRunningApp. Without them, MephContext defaults to
+  // no-op stubs and run_app returns "ctx.allocatePort() returned null",
+  // cascading into http_request's "No app running" error during cc-agent
+  // curriculum sweeps.
+  //
+  // This test is the drift-guard: if any of those callbacks regresses to
+  // the default no-op, this lifecycle test fails loudly instead of the
+  // failure only surfacing on a $10 sweep run.
+  // =========================================================================
+  console.log('\n🚀 Phase 8 — run_app lifecycle (MCP owns the child process)');
+
+  _resetMcpState();
+
+  // Simple Clear backend — "build for javascript backend" forces backend-only
+  // output (no HTML shell), which is what runAppTool's fallback expects when
+  // `compiled.serverJS` is absent. Same shape as the L1 hello-world curriculum
+  // skeleton, so we're testing the exact path cc-agent sweeps exercise.
+  const simpleSource = [
+    "build for javascript backend",
+    "",
+    "when user calls GET /api/hello:",
+    "  send back { message: 'mcp-run-app-ok' }",
+    "",
+  ].join('\n');
+
+  await dispatch({
+    jsonrpc: '2.0', id: 800, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'write', code: simpleSource } },
+  }, registry);
+
+  const compile8 = await dispatch({
+    jsonrpc: '2.0', id: 801, method: 'tools/call',
+    params: { name: 'meph_compile', arguments: {} },
+  }, registry);
+  const compile8Parsed = JSON.parse(compile8.result.content[0].text);
+  assert(Array.isArray(compile8Parsed.errors) && compile8Parsed.errors.length === 0,
+    `Phase 8: compile produces no errors (got ${JSON.stringify(compile8Parsed.errors || 'missing')})`);
+
+  // run_app must NOT return the "allocatePort returned null" failure — that
+  // was the symptom of the unwired context during the 2026-04 sweep debug.
+  const runApp8 = await dispatch({
+    jsonrpc: '2.0', id: 802, method: 'tools/call',
+    params: { name: 'meph_run_app', arguments: {} },
+  }, registry);
+  const runApp8Text = runApp8.result.content[0].text;
+  const runApp8Parsed = JSON.parse(runApp8Text);
+  assert(!runApp8Parsed.error,
+    `Phase 8: run_app does not return an error (got ${runApp8Text.slice(0, 200)})`);
+  assert(runApp8Parsed.started === true,
+    `Phase 8: run_app returns started:true (got ${runApp8Text.slice(0, 200)})`);
+  assert(typeof runApp8Parsed.port === 'number' && runApp8Parsed.port > 0,
+    `Phase 8: run_app returns a numeric port (got ${runApp8Parsed.port})`);
+
+  // http_request must reach the running child and return 2xx.
+  const http8 = await dispatch({
+    jsonrpc: '2.0', id: 803, method: 'tools/call',
+    params: { name: 'meph_http_request', arguments: { method: 'GET', path: '/api/hello' } },
+  }, registry);
+  const http8Text = http8.result.content[0].text;
+  const http8Parsed = JSON.parse(http8Text);
+  assert(!http8Parsed.error,
+    `Phase 8: http_request does not return an error after run_app (got ${http8Text.slice(0, 200)})`);
+  assert(http8Parsed.status >= 200 && http8Parsed.status < 300,
+    `Phase 8: http_request returns 2xx (got status=${http8Parsed.status}, text=${http8Text.slice(0, 200)})`);
+
+  // stop_app must kill the child cleanly — follow-up http_request should
+  // go back to the "No app running" path.
+  const stop8 = await dispatch({
+    jsonrpc: '2.0', id: 804, method: 'tools/call',
+    params: { name: 'meph_stop_app', arguments: {} },
+  }, registry);
+  const stop8Parsed = JSON.parse(stop8.result.content[0].text);
+  assert(stop8Parsed.stopped === true,
+    `Phase 8: stop_app returns stopped:true (got ${JSON.stringify(stop8Parsed)})`);
+
+  const httpAfter = await dispatch({
+    jsonrpc: '2.0', id: 805, method: 'tools/call',
+    params: { name: 'meph_http_request', arguments: { method: 'GET', path: '/api/hello' } },
+  }, registry);
+  const httpAfterParsed = JSON.parse(httpAfter.result.content[0].text);
+  assert(httpAfterParsed.error && httpAfterParsed.error.includes('No app running'),
+    `Phase 8: after stop_app, http_request returns "No app running" (got ${JSON.stringify(httpAfterParsed)})`);
+
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 })();
