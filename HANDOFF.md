@@ -1,22 +1,30 @@
-# Handoff — 2026-04-22 (flywheel UNBLOCKED — cc-agent sweeps feed Factor DB)
+# Handoff — 2026-04-22 (flywheel DOUBLY UNBLOCKED — sweeps write passing rows)
 
 ## Current State
 
-- **Branch:** `main` (all feature branches merged + deleted)
-- **Last commit:** merge of `feature/mcp-factor-db` — FactorDB now wired into MCP server. cc-agent curriculum sweeps log trajectory rows to `playground/factor-db.sqlite` at $0 cost.
+- **Branch:** `main` (feature branches merged + deleted)
+- **Last commit:** merge of `fix/http-weak-signal-in-tool` — http_request test_pass=1 write moved INTO the tool, claude built-ins gated with --tools "", MCP server's run-app state fully wired. First cc-agent sweep to produce a passing row landed today.
 - **Working tree:** pre-existing dirty files (unchanged list). Ignore.
-- **Origin:** needs push — 2 new merges on main (cc2b-finish + mcp-factor-db) since last push.
+- **Origin:** needs push — new merges since last push.
 
-## Flywheel milestone hit this tick
+## Flywheel milestone hit this tick (LATEST)
 
-**Real sweep ran at $0 cost AND grew the Factor DB.** `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=1 --tasks=hello-world`:
-  - 124 seconds wall clock
-  - $0 API cost (routed via Russell's $200/mo subscription)
-  - Factor DB: **1451 → 1452 rows (+1)**
+**3-task cc-agent sweep: 3/3 passed under strict grading.** `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=3 --tasks=hello-world,greeting,echo --strict`:
+  - Wall clock: 70.5s
+  - Tasks: 3/3 completed (hello-world 37.1s, greeting 24.9s, echo 70.5s)
+  - Factor DB: **1470 → 1475 rows (+5)**
+  - Passing rows: **522 → 525 (+3)** ← FIRST TIME we get real `test_pass=1` out of cc-agent
+  - $0 API cost (100% on Russell's $200/mo Claude subscription)
+  - All 3 graded `✅ said TC + DB pass` — both signals agree
 
-The `+1` is the compile trajectory row logged by the MCP server's compile tool now that factorDB is wired. First cc-agent-driven Factor DB write. The flywheel can now fill for free.
+This session fixed 4 bugs in a row that were each silently gating the previous unblock:
+1. **Preflight** hit Anthropic even in cc-agent mode → bypassed when `MEPH_BRAIN` set. (earlier today, landed as `fix/curriculum-sweep-ghost-meph-bypass`)
+2. **FactorDB wiring in the MCP server** → Russell's `feature/mcp-factor-db` landed mid-session; compile trajectory rows started appearing.
+3. **Claude was using built-in Bash to curl endpoints** → bypassed all MCP instrumentation, so `test_pass=1` never fired. Added `--tools ""` to cc-agent's claude spawn args; forces claude through the 28 `meph_*` tools.
+4. **`http_request` 2xx→`test_pass=1` write lived in server.js callback** → cc-agent never ran that callback. Moved into `httpRequestTool` itself so both direct-Anthropic and MCP paths share one implementation.
+5. **MCP server's MephContext had no-op defaults for `isAppRunning`/`setRunningChild`/`allocatePort`** → `meph_run_app` reported success while silently doing nothing; `meph_http_request` always saw "No app running". Added module-level `_runningChild + _runningPort + _nextPortCounter` and wired all the callbacks.
 
-Previously the compile-cycle row was being DROPPED silently because the MCP server's MephContext didn't have factorDB wired (it was null). Russell's earlier preflight-bypass commit unblocked the sweep from running at all; this commit unblocks the rows from actually being written.
+**New project rule** (in `CLAUDE.md`): "Cross-Path Tool Side-Effects Belong IN The Tool" — documents the trap so the next Meph-adjacent tool gets built right.
 
 ## What Was Done This Session
 
