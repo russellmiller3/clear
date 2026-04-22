@@ -166,14 +166,16 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hid
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `WEBHOOK` | `webhook '/stripe/events' signed with env('SECRET'):` | HMAC verification |
-| `OAUTH_CONFIG` | `oauth 'github':` + config | OAuth2 redirect flow |
+
+(`OAUTH_CONFIG` removed 2026-04-21 — zero app usage. Use a record literal instead, or the `allow signup and login` JWT scaffold.)
 
 ### Billing (Phase 18)
 
 | Node Type | Syntax | Notes |
 |-----------|--------|-------|
 | `CHECKOUT` | `checkout 'Pro Plan':` + price, mode, URLs | Stripe session |
-| `USAGE_LIMIT` | `limit 'api_calls':` + tier rules | Usage tracking |
+
+(`USAGE_LIMIT` removed 2026-04-21 — zero app usage. Use a record literal for tier definitions instead.)
 
 ### Files & External (Phase 19)
 

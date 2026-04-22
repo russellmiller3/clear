@@ -473,11 +473,10 @@ function validateForwardReferences(body, errors) {
           if (node.config && node.config.errorFallback)
             checkExpr(node.config.errorFallback, localDefined, node.line);
           break;
-        // Phase 18: Billing & Payments
+        // Phase 18: Billing & Payments (USAGE_LIMIT case removed 2026-04-21 — zero app usage)
         case NodeType.CHECKOUT:
-        case NodeType.USAGE_LIMIT:
           break;
-        // Phase 17: Webhooks & OAuth
+        // Phase 17: Webhooks (OAUTH_CONFIG case removed 2026-04-21 — zero app usage)
         case NodeType.WEBHOOK: {
           const whScope = new Set(localDefined);
           whScope.add('incoming');
@@ -485,8 +484,6 @@ function validateForwardReferences(body, errors) {
           checkNode(node.body, whScope, true);
           break;
         }
-        case NodeType.OAUTH_CONFIG:
-          break;
         // Phase 16: Input validation
         case NodeType.VALIDATE:
           for (const rule of node.rules) localDefined.add(rule.name);

@@ -4897,57 +4897,9 @@ describe('Compiler - checkout', () => {
   });
 });
 
-describe('Parser - usage limit', () => {
-  it('parses usage limit with tier rules', () => {
-    const ast = parse("limit 'ai_generations':\n  free allows 5 per month\n  pro allows unlimited");
-    const ul = ast.body.find(n => n.type === 'usage_limit');
-    expect(ul).toBeDefined();
-    expect(ul.name).toBe('ai_generations');
-    expect(ul.tiers.length).toBe(2);
-  });
-
-  it('parses free tier with count and period', () => {
-    const ast = parse("limit 'api_calls':\n  free allows 100 per day\n  pro allows 10000 per day");
-    const ul = ast.body.find(n => n.type === 'usage_limit');
-    expect(ul.tiers[0].tier).toBe('free');
-    expect(ul.tiers[0].count).toBe(100);
-    expect(ul.tiers[0].period).toBe('day');
-    expect(ul.tiers[1].count).toBe(10000);
-  });
-
-  it('parses unlimited tier', () => {
-    const ast = parse("limit 'exports':\n  enterprise allows unlimited");
-    const ul = ast.body.find(n => n.type === 'usage_limit');
-    expect(ul.tiers[0].tier).toBe('enterprise');
-    expect(ul.tiers[0].count).toBe(-1);
-  });
-
-  it('reports error for limit without name', () => {
-    const ast = parse("limit:\n  free allows 5 per month");
-    expect(ast.errors.length > 0).toBe(true);
-  });
-});
-
-describe('Compiler - usage limit', () => {
-  it('compiles usage limit to JS config only (1:1 rule)', () => {
-    const result = compileProgram("target: backend\nlimit 'ai_generations':\n  free allows 5 per month\n  pro allows unlimited");
-    expect(result.javascript).toContain('LIMITS_AI_GENERATIONS');
-    expect(result.javascript).toContain("'free'");
-    expect(result.javascript).toContain('max: 5');
-    expect(result.javascript).toContain('Infinity');
-    // 1:1 rule: no generated checker function
-    expect(result.javascript).not.toContain('function check_');
-  });
-
-  it('compiles usage limit to Python config only (1:1 rule)', () => {
-    const result = compileProgram("target: python backend\nlimit 'ai_generations':\n  free allows 5 per month\n  pro allows unlimited");
-    expect(result.python).toContain('LIMITS_AI_GENERATIONS');
-    expect(result.python).toContain('"free"');
-    expect(result.python).toContain('float("inf")');
-    // 1:1 rule: no generated checker function
-    expect(result.python).not.toContain('def check_');
-  });
-});
+// "Parser - usage limit" + "Compiler - usage limit" describe blocks
+// removed 2026-04-21 with USAGE_LIMIT node type (zero app usage). See
+// docs/one-to-one-mapping-audit.md for migration path (record literal).
 
 describe('E2E - Phase 18: SaaS billing', () => {
   it('generates billing config objects in JS (1:1 rule)', () => {
@@ -4958,13 +4910,8 @@ checkout 'Pro Plan':
   mode is 'subscription'
   success_url is '/success'
   cancel_url is '/pricing'
-
-limit 'ai_generations':
-  free allows 5 per month
-  pro allows unlimited
     `);
     expect(result.javascript).toContain('CHECKOUT_PRO_PLAN');
-    expect(result.javascript).toContain('LIMITS_AI_GENERATIONS');
     // 1:1 rule: config only, no generated routes or functions
     expect(result.javascript).not.toContain('app.post');
     expect(result.javascript).not.toContain('function check_');
@@ -5026,65 +4973,20 @@ describe('Compiler - webhook', () => {
   });
 });
 
-describe('Parser - oauth config', () => {
-  it('parses oauth block with provider and config', () => {
-    const ast = parse("oauth 'github':\n  client_id is env('GH_ID')\n  scopes are ['user:email']\n  callback is '/auth/github/callback'");
-    const oauth = ast.body.find(n => n.type === 'oauth_config');
-    expect(oauth).toBeDefined();
-    expect(oauth.provider).toBe('github');
-    expect(oauth.config.client_id).toBeDefined();
-    expect(oauth.config.scopes).toBeDefined();
-  });
+// "Parser - oauth config" + "Compiler - oauth config" describe blocks
+// removed 2026-04-21 with OAUTH_CONFIG node type (zero app usage). See
+// docs/one-to-one-mapping-audit.md for migration path (record literal).
 
-  it('parses oauth scopes as list', () => {
-    const ast = parse("oauth 'github':\n  scopes are ['user:email', 'read:org']");
-    const oauth = ast.body.find(n => n.type === 'oauth_config');
-    expect(oauth.config.scopes.length).toBe(2);
-    expect(oauth.config.scopes[0]).toBe('user:email');
-  });
-
-  it('reports error for oauth without provider', () => {
-    const ast = parse("oauth:\n  client_id is 'abc'");
-    expect(ast.errors.length > 0).toBe(true);
-  });
-});
-
-describe('Compiler - oauth config', () => {
-  it('compiles oauth to JS config constants (1:1 rule)', () => {
-    const result = compileProgram("target: backend\noauth 'github':\n  client_id is env('GH_ID')\n  client_secret is env('GH_SECRET')");
-    expect(result.javascript).toContain('OAUTH_GITHUB_CLIENT_ID');
-    expect(result.javascript).toContain('OAUTH_GITHUB_CLIENT_SECRET');
-    // 1:1 rule: no generated routes
-    expect(result.javascript).not.toContain("app.get(");
-  });
-
-  it('compiles oauth to Python config constants (1:1 rule)', () => {
-    const result = compileProgram("target: python backend\noauth 'github':\n  client_id is env('GH_ID')\n  client_secret is env('GH_SECRET')");
-    expect(result.python).toContain('OAUTH_GITHUB_CLIENT_ID');
-    // 1:1 rule: no generated routes
-    expect(result.python).not.toContain('@app.get');
-    expect(result.python).not.toContain('RedirectResponse');
-  });
-});
-
-describe('E2E - Phase 17: Webhook + OAuth app', () => {
-  it('generates webhook endpoint and oauth config in JS', () => {
+describe('E2E - Phase 17: Webhook app', () => {
+  it('generates webhook endpoint with HMAC verification in JS', () => {
     const result = compileProgram(`
 target: backend
 webhook '/stripe/events' signed with env('STRIPE_SECRET'):
   send back 'ok'
-
-oauth 'github':
-  client_id is env('GITHUB_CLIENT_ID')
-  client_secret is env('GITHUB_CLIENT_SECRET')
-  scopes are ['user:email']
     `);
     // Webhook is an endpoint-like block -- compiles to a route (1:1)
     expect(result.javascript).toContain("app.post('/stripe/events'");
     expect(result.javascript).toContain('createHmac');
-    // OAuth is config only (1:1)
-    expect(result.javascript).toContain('OAUTH_GITHUB_CLIENT_ID');
-    expect(result.javascript).not.toContain("app.get('/auth/github'");
   });
 });
 
@@ -6779,9 +6681,6 @@ create data shape User:
 checkout 'Pro Plan':
   price is 'price_pro'
   mode is 'subscription'
-limit 'api_requests':
-  free allows 100 per month
-  pro allows unlimited
 style hero:
   background is '#111'
   padding = 64

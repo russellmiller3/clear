@@ -256,16 +256,12 @@ const SYNONYM_TABLE = Object.freeze({
   matches: Object.freeze(['matches', 'looks like', 'is valid']),
   one_of: Object.freeze(['one of', 'must be']),
 
-  // Webhooks & OAuth (Phase 17)
+  // Webhooks (Phase 17 — `oauth` keyword removed 2026-04-21, zero app usage; use record literal)
   webhook: Object.freeze(['webhook', 'hook']),
   signed_with: Object.freeze(['signed with', 'verified with']),
-  oauth: Object.freeze(['oauth', 'authenticate with']),
 
-  // Billing & Payments (Phase 18)
+  // Billing & Payments (Phase 18 — `limit` / `allows` / `unlimited` keywords removed 2026-04-21 with USAGE_LIMIT, zero app usage)
   checkout: Object.freeze(['checkout', 'payment']),
-  usage_limit: Object.freeze(['limit']),
-  allows: Object.freeze(['allows', 'gets']),
-  unlimited: Object.freeze(['unlimited', 'no limit']),
 
   // File Uploads & External APIs (Phase 19)
   accept_file: Object.freeze(['accept file', 'upload file']),
@@ -456,6 +452,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.30.0';
+const SYNONYM_VERSION = '0.31.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };
