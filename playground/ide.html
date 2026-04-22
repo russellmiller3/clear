@@ -516,6 +516,9 @@ body.builder-mode #chat-resizer { display: none; }
   body.builder-mode #chat-pane { width: 100% !important; }
 }
 
+/* BM-6: Chat can't collapse below 40vh in builder mode — hide the toggle */
+body.builder-mode #chat-toggle-btn { display: none; }
+
 /* BM-5: Publish button — builder-mode restyle of #deploy-btn. Applied via
    detectStudioMode() adding .publish-btn class. */
 .publish-btn {
@@ -4937,6 +4940,14 @@ function detectStudioMode() {
       depBtn.textContent = 'Deploy';
       depBtn.classList.remove('publish-btn');
     }
+  }
+
+  // 10. Chat input placeholder — Marcus-first prompt in builder mode
+  const chatIn = document.getElementById('chat-input');
+  if (chatIn) {
+    chatIn.placeholder = (mode === 'builder')
+      ? 'What do you want to build today, or which app to change? (Enter to send)'
+      : 'Ask Meph to build something... (Enter to send)';
   }
 }
 

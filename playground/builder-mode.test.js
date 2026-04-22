@@ -220,6 +220,42 @@ try {
     '.publish-btn class removed in classic mode'
   );
 
+  // ==========================================================================
+  // PHASE 5 — Chat empty-state placeholder
+  // ==========================================================================
+  console.log('\n💬 Phase 5 — Chat placeholder');
+
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  const builderPlaceholder = await page.locator('#chat-input').getAttribute('placeholder');
+  assert(
+    builderPlaceholder && builderPlaceholder.toLowerCase().includes('what do you want to build'),
+    `builder mode placeholder is the Marcus prompt (got "${builderPlaceholder}")`
+  );
+
+  await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
+  const classicPlaceholder = await page.locator('#chat-input').getAttribute('placeholder');
+  assert(
+    classicPlaceholder && classicPlaceholder.toLowerCase().includes('ask meph'),
+    `classic mode keeps original placeholder (got "${classicPlaceholder}")`
+  );
+
+  // ==========================================================================
+  // PHASE 6 — Hide chat-toggle-btn
+  // ==========================================================================
+  console.log('\n🙈 Phase 6 — Hide chat-toggle-btn');
+
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  assert(
+    !(await page.locator('#chat-toggle-btn').isVisible()),
+    'chat-toggle-btn hidden in builder mode'
+  );
+
+  await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
+  assert(
+    await page.locator('#chat-toggle-btn').isVisible(),
+    'chat-toggle-btn visible in classic mode (no regression)'
+  );
+
 } catch (err) {
   console.error('\n❌ Test suite threw:', err);
   failed++;
