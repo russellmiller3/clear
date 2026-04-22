@@ -61,6 +61,8 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
 - [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
 - [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
+- [Where does Ghost Meph live?](#where-does-ghost-meph-live)
+- [How does Ghost Meph route requests?](#how-does-ghost-meph-route-requests)
 - [Where does the Studio server run?](#where-does-the-studio-server-run)
 - [What ports does everything use?](#what-ports-does-everything-use)
 - [Where does a compiled app run?](#where-does-a-compiled-app-run)
@@ -153,6 +155,36 @@ Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as 
 **The Studio side that feeds this:** `playground/server.js` in the `/api/run` handler copies `runtime/meph-widget.js` into the child's `clear-runtime/` and injects `STUDIO_PORT` into the child's env, pointing at Studio's own port.
 
 **The Studio endpoints the proxy forwards to:** `/__meph__/api/propose`, `/ship`, `/rollback`, `/snapshots`. Wired by `createEditApi(app, deps)` from `lib/edit-api.js`, mounted near the top of `playground/server.js`.
+
+### Where does Ghost Meph live?
+
+`playground/ghost-meph/` — env-gated chat-backend dispatch. When `MEPH_BRAIN` is set, `/api/chat` routes through a local backend instead of paying Anthropic per call.
+
+| File | What |
+|---|---|
+| `router.js` | `isGhostMephActive()` + `fetchViaBackend(payload, headers)` dispatch. Returns Anthropic-shaped Response-like object so `/api/chat`'s reader loop is unchanged. |
+| `cc-agent.js` | `MEPH_BRAIN=cc-agent` — spawns `claude --print` subprocess. Text-only MVP; tool support pending (`plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`). |
+| `ollama.js` | `MEPH_BRAIN=ollama:<model>` — POSTs to local Ollama daemon at `OLLAMA_HOST`. Default model from `OLLAMA_MODEL` env or the brain string suffix. |
+| `openrouter.js` | `MEPH_BRAIN=openrouter` (or `openrouter:qwen`) — POSTs to OpenRouter `/v1/chat/completions`. Requires `OPENROUTER_API_KEY`. Default model `qwen/qwen3.6-plus-preview:free`. |
+| `format-bridge.js` | Anthropic ↔ OpenAI translation. Used by both Ollama and OpenRouter (any backend speaking OpenAI's chat-completions shape). |
+
+Tests: `playground/ghost-meph.test.js` (~60 assertions across 9 phases). Run: `node playground/ghost-meph.test.js`. No real network or subprocess required — tests exercise deterministic failure paths (missing key, refused connection, missing CLI) so they pass without daemons or API keys.
+
+### How does Ghost Meph route requests?
+
+`/api/chat` checks `isGhostMephActive()` (true iff `MEPH_BRAIN` is set + non-empty). When active:
+1. The API-key 400 gate is skipped (local backends don't need a key).
+2. The fetch site (line ~3740 of `playground/server.js`) calls `fetchViaBackend(payload, headers)` instead of `fetch('https://api.anthropic.com/v1/messages', ...)`.
+3. The router dispatches based on `MEPH_BRAIN`:
+   - `cc-agent` → spawns Claude Code subprocess (text-only today)
+   - `ollama:<model>` → HTTP POST to Ollama daemon
+   - `openrouter` / `openrouter:qwen` → HTTP POST to OpenRouter
+   - `haiku-dev` → still stub (calibration backend, future)
+   - any other value → stub with "unknown backend" warning, doesn't crash
+
+Each backend returns a Response-like object whose body streams Anthropic-shaped SSE events. The `/api/chat` reader loop consumes that unchanged — it doesn't know whether the response came from real Claude or a local backend.
+
+**The point:** during long Meph sessions or sweeps, the dollar cost is in real Anthropic API calls. Routing through Russell's `claude` CLI subscription (cc-agent), a local Ollama model, or OpenRouter's free tier moves that cost off the production key. Once cc-agent gains tool-use support, curriculum sweeps run for free.
 
 ### Where does the Studio server run?
 

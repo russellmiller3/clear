@@ -143,7 +143,7 @@ Exit codes: 0=ok, 1=compile error, 2=runtime error, 3=file not found, 4=test fai
 - **Compiler accumulates quality.** Fix a bug once, every app gets the fix on recompile.
 - **Compiled output is self-documenting.** Every compiled file starts with an auto-generated ASCII architecture diagram (tables, endpoints, pages, data flow). Regenerates on every build. The diagram IS the intent file for that app.
 
-## Core 7 Templates
+## Core 8 Templates
 These are the showcase apps — each archetype exercises a different feature slice.
 Playwright-tested. If a template breaks, the compiler has a regression.
 
@@ -156,6 +156,7 @@ Playwright-tested. If a template breaks, the compiler has a regression.
 | 5 | `helpdesk-agent` | AI agent | `ask claude`, `has tools:`, `knows about:`, `remember conversation`, `block arguments matching`, keyword search |
 | 6 | `booking` | Workflow | Multi-step logic, validation, relationships, scheduling |
 | 7 | `expense-tracker` | Personal app | CRUD, aggregates, charts, CSV export, categories |
+| 8 | `ecom-agent` | E-commerce | Agent + chat UI, intent routing, skills, dashboard, RAG over products |
 
 ## No Self-Assignment Rule
 Never write `x is x` in Clear code. When building records from function arguments, the argument names must differ from the field names: `subject is title` not `subject is subject`. The reader must instantly see which side is the source and which is the destination. See AI-INSTRUCTIONS.md for full examples.
