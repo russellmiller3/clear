@@ -191,6 +191,63 @@ export async function updateMemberRole(db, teamId, userId, newRole) {
 }
 
 /**
+ * Atomically transfer ownership from one user to another. The ONLY
+ * way a sole owner can step back from a team without adding+demoting
+ * manually — calling removeMember on the sole owner throws the
+ * last-owner guard, and calling updateMemberRole demote throws it too.
+ *
+ * Semantics: "demote fromUser to member, promote toUser to owner" —
+ * both happen in a single transaction. If either step fails, the DB
+ * state is unchanged.
+ *
+ * Pre-conditions (checked before BEGIN to fail fast with clean errors):
+ *   - fromUser and toUser are different users
+ *   - toUser is currently a member of the team (can't transfer to an outsider)
+ *   - fromUser is currently an owner (admins + members can't transfer ownership)
+ *
+ * The guard in updateMemberRole would normally block the demote half —
+ * we bypass it by updating the to-user first (so there are briefly two
+ * owners), then the from-user's demote passes the >1-owners check.
+ *
+ * @returns {{ fromRole: 'member', toRole: 'owner' }} for caller confirmation
+ */
+export async function transferOwnership(db, teamId, fromUserId, toUserId) {
+  if (fromUserId === toUserId) {
+    throw new Error('Cannot transfer ownership to the same user.');
+  }
+  const fromM = await getMembership(db, teamId, fromUserId);
+  if (!fromM) throw new Error('From-user is not a member of the team.');
+  if (fromM.role !== 'owner') throw new Error('From-user is not an owner.');
+  const toM = await getMembership(db, teamId, toUserId);
+  if (!toM) throw new Error('To-user is not a member of the team.');
+
+  // Transaction so half-completed transfers don't leave the team
+  // with zero or two permanent owners on failure.
+  await db.query('BEGIN');
+  try {
+    // Promote first — briefly two owners. This is intentional: if we
+    // demoted first, the countOwners check would fire on the demote
+    // and block the whole transfer.
+    // Parameterize role values (match cycle-4 lesson: SQL literals can
+    // confuse mocks + obscure the actual value at the callsite).
+    await db.query(
+      `UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2`,
+      [teamId, toUserId, 'owner']
+    );
+    // Demote from-user. countOwners is now 2 so the guard doesn't trip.
+    await db.query(
+      `UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2`,
+      [teamId, fromUserId, 'member']
+    );
+    await db.query('COMMIT');
+  } catch (err) {
+    try { await db.query('ROLLBACK'); } catch {}
+    throw err;
+  }
+  return { fromRole: 'member', toRole: 'owner' };
+}
+
+/**
  * Create a pending invite. Generates a 32-byte crypto-random hex token
  * (64 chars), stores the row with INVITE_TTL_DAYS expiry. The caller
  * sends the email with a link containing the token; the recipient
