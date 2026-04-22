@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3239,10 +3239,10 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'read_terminal':
-        return JSON.stringify({
-          terminal: terminalBuffer.slice(-80).join('\n'),
-          frontendErrors: frontendErrors.slice(-20),
-        });
+        // Extracted to playground/meph-tools.js. Mirror /api/chat's
+        // closure-level diagnostic buffers into the MephContext as
+        // read-only arrays; the tool just slices the tail.
+        return readTerminalTool(input, new MephContext({ terminal: terminalBuffer, frontendErrors }));
 
       case 'screenshot_output':
         return '__ASYNC_SCREENSHOT__'; // handled in loop
@@ -3290,12 +3290,10 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify(testResult);
       }
 
-      case 'list_evals': {
-        const compiled = compileForEval(currentSource);
-        if (!compiled.ok) return JSON.stringify(compiled);
-        const suite = compiled.compiled.evalSuite || [];
-        return JSON.stringify({ ok: true, suite, count: suite.length });
-      }
+      case 'list_evals':
+        // Extracted to playground/meph-tools.js. compileForEval passed in
+        // so meph-tools.js doesn't need the eval-specific compile import.
+        return listEvalsTool(input, new MephContext({ source: currentSource }), compileForEval);
 
       case 'run_evals': {
         // Forward per-spec progress to the Tests pane. Terminal logging now

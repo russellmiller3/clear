@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool } from './meph-tools.js';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
 import { patch } from '../patch.js';
@@ -283,6 +283,44 @@ assert(pcSourceFired === ctxPatch.source,
   'patchCodeTool fires onSourceChange on successful apply');
 assert(pcCodeUpdate && pcCodeUpdate.type === 'code_update',
   'patchCodeTool emits ctx.send({type:"code_update"}) on successful apply');
+
+console.log('\n📺 readTerminalTool\n');
+
+// Empty buffers
+const rt1 = JSON.parse(readTerminalTool({}, new MephContext()));
+assert(rt1.terminal === '', 'readTerminalTool with empty buffers returns empty terminal string');
+assert(Array.isArray(rt1.frontendErrors) && rt1.frontendErrors.length === 0,
+  'readTerminalTool returns empty frontendErrors array');
+
+// Populated buffers
+const lines = Array.from({ length: 100 }, (_, i) => `line-${i}`);
+const errors = Array.from({ length: 30 }, (_, i) => ({ line: i, message: `err-${i}` }));
+const rt2 = JSON.parse(readTerminalTool({}, new MephContext({ terminal: lines, frontendErrors: errors })));
+const termLines = rt2.terminal.split('\n');
+assert(termLines.length === 80, `readTerminalTool slices last 80 terminal lines (got ${termLines.length})`);
+assert(termLines[0] === 'line-20', 'readTerminalTool keeps the most recent 80 (drops first 20 of 100)');
+assert(rt2.frontendErrors.length === 20, 'readTerminalTool slices last 20 frontendErrors');
+assert(rt2.frontendErrors[0].line === 10, 'readTerminalTool keeps the most recent 20 errors');
+
+console.log('\n📊 listEvalsTool\n');
+
+// compileForEval returns ok=false → forwarded
+const le1 = JSON.parse(listEvalsTool({}, new MephContext({ source: 'invalid' }),
+  (src) => ({ ok: false, errors: ['nope'] })));
+assert(le1.ok === false, 'listEvalsTool forwards compileForEval errors');
+
+// compileForEval returns ok=true with eval suite
+const fakeCompiler = (src) => ({ ok: true, compiled: { evalSuite: [{ id: 'e1' }, { id: 'e2' }, { id: 'e3' }] } });
+const le2 = JSON.parse(listEvalsTool({}, new MephContext({ source: 'src' }), fakeCompiler));
+assert(le2.ok === true, 'listEvalsTool returns ok=true on success');
+assert(le2.count === 3, 'listEvalsTool counts the suite entries');
+assert(le2.suite.length === 3 && le2.suite[0].id === 'e1', 'listEvalsTool surfaces the suite array');
+
+// Missing evalSuite → empty array, count 0
+const le3 = JSON.parse(listEvalsTool({}, new MephContext({ source: 'src' }),
+  (src) => ({ ok: true, compiled: {} })));
+assert(le3.count === 0 && le3.suite.length === 0,
+  'listEvalsTool defaults to empty suite when compileForEval omits evalSuite');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
