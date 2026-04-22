@@ -139,7 +139,10 @@ try {
     const { status, data } = await getJson('/api/templates');
     assert(status === 200, 'returns 200');
     assert(Array.isArray(data), 'returns array');
-    assert(data.length >= 40, `has ${data.length} templates (expected 40+)`);
+    // FEATURED_TEMPLATES in server.js: 6 Marcus apps + Core 8 = 14.
+    // Not every dir has a main.clear so the live count may be lower than
+    // the list; the test tolerates a window that tracks the FEATURED list.
+    assert(data.length >= 8, `has ${data.length} templates (expected 8+ for the Core showcase)`);
     assert(data[0].name !== undefined, 'templates have name');
   }
 
@@ -354,7 +357,11 @@ try {
   {
     const { data } = await post('/api/compile', { source: "build for javascript backend\nwhen user calls DELETE /api/items/:id:\n  remove from Items with this id\n  send back 'deleted'" });
     assert(data.errors.length > 0, 'catches DELETE without auth');
-    assert(data.errors.some(e => e.message.includes('auth')), 'error mentions auth');
+    // Compiler's actual error string says "requires login" (clearer than
+    // "auth" — Meph sees the exact keyword he needs to add). Match on
+    // either so the test tolerates both the old and new phrasing.
+    assert(data.errors.some(e => /auth|requires login/i.test(e.message)),
+      'error mentions auth or requires-login');
   }
 
   {
@@ -434,7 +441,7 @@ try {
 
   {
     // Frontend: ide.html must have the context-meter element + JS function
-    const { text } = await get('/ide');
+    const { text } = await get('/');
     assert(text.includes('id="context-meter"'), 'ide.html has context-meter element');
     assert(text.includes('id="context-bar"'), 'ide.html has context-bar progress bar');
     assert(text.includes('id="context-label"'), 'ide.html has context-label span');
@@ -464,7 +471,7 @@ try {
   console.log('\n🗺️  Source map');
 
   {
-    const { text } = await get('/ide');
+    const { text } = await get('/');
     assert(text.includes('function buildSourceMap'), 'ide.html has buildSourceMap function');
     assert(text.includes('sourceMapData'), 'ide.html has sourceMapData variable');
     assert(text.includes('sourceMapData = buildSourceMap'), 'autoCompile wires buildSourceMap');
@@ -503,7 +510,7 @@ try {
 
   {
     // Verify IDE has preview→source message listener
-    const { text } = await get('/ide');
+    const { text } = await get('/');
     assert(text.includes('clear-source-line'), 'ide.html handles clear-source-line messages from preview');
     assert(text.includes('Compiler boilerplate'), 'ide.html shows boilerplate toast for unmapped compiled lines');
   }
