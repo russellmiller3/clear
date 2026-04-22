@@ -74,6 +74,15 @@ const hintState = {
 let _runningChild = null;
 let _runningPort = null;
 let _nextPortCounter = 4001;
+
+// Session id — cached at module load so every tool call in this MCP
+// subprocess shares ONE session_id. Before this, buildMephContext's fallback
+// called Date.now() per call, so a 3-tool-use turn produced 3 different
+// session_ids in Factor DB even though it was one Meph session. Broke
+// cross-session joins. MEPH_SESSION_ID env wins (caller explicitly supplied
+// it) — falls back to per-process stamp exactly once.
+const _sessionId = process.env.MEPH_SESSION_ID
+  || ('mcp_' + process.pid + '_' + Date.now());
 function _allocateNextPort() {
   const p = _nextPortCounter;
   _nextPortCounter = _nextPortCounter >= 4100 ? 4001 : _nextPortCounter + 1;
@@ -147,9 +156,10 @@ function buildMephContext() {
     // compile cycles feed the flywheel. Null otherwise (interactive
     // cc-agent sessions without sweep infrastructure).
     factorDB: getFactorDb(),
-    // Session id so every row belongs to a traceable run. Falls back to
-    // a per-process stamp if caller didn't provide one.
-    sessionId: process.env.MEPH_SESSION_ID || ('mcp_' + process.pid + '_' + Date.now()),
+    // Session id is module-scoped (see _sessionId above). All tool calls
+    // in the same MCP subprocess share one id so Factor DB rows can be
+    // joined by session.
+    sessionId: _sessionId,
     hintState,
     // Running-app wiring — points at the module-level state above so
     // run_app + http_request + stop_app + db_inspect form a coherent

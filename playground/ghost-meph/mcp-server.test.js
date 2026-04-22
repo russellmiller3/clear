@@ -544,6 +544,32 @@ function assert(cond, msg) {
   assert(httpAfterParsed.error && httpAfterParsed.error.includes('No app running'),
     `Phase 8: after stop_app, http_request returns "No app running" (got ${JSON.stringify(httpAfterParsed)})`);
 
+  // =========================================================================
+  // PHASE 9 — session_id stability across tool calls
+  //
+  // Bug we're pinning: buildMephContext used to call `Date.now()` inside its
+  // sessionId fallback on EVERY invocation. Since buildHandler runs it once
+  // per MCP tool call, a 3-call turn produced 3 different session_ids even
+  // though it's the same Meph session (same MCP subprocess). This broke
+  // cross-session joins in Factor DB queries and made the 3 curriculum-sweep
+  // compile rows for one counter attempt look like 3 unrelated sessions.
+  //
+  // Fix: cache the session_id at module load so the MCP subprocess has ONE
+  // id for its whole lifetime. _resetMcpState intentionally does NOT reset
+  // it — same MCP subprocess = same session.
+  // =========================================================================
+  console.log('\n🔗 Phase 9 — session_id is stable across tool calls');
+
+  _resetMcpState();
+  const ctxA = await _testBuildMephContext();
+  // Tiny sleep to ensure Date.now() would differ if the fallback recomputed
+  await new Promise(r => setTimeout(r, 5));
+  const ctxB = await _testBuildMephContext();
+  assert(ctxA.sessionId === ctxB.sessionId,
+    `Phase 9: two consecutive buildMephContext() calls share one session_id (A=${ctxA.sessionId}, B=${ctxB.sessionId})`);
+  assert(typeof ctxA.sessionId === 'string' && ctxA.sessionId.length > 0,
+    `Phase 9: session_id is a non-empty string (got ${typeof ctxA.sessionId})`);
+
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 })();
