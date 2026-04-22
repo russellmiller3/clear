@@ -31,6 +31,34 @@ export const PRICE_IDS = Object.freeze({
   enterprise: null,
 });
 
+// =============================================================================
+// PRICES_TO_PLAN — reverse lookup (Stripe price ID → our plan name)
+// =============================================================================
+// customer.subscription.updated / .deleted events don't carry our
+// metadata.plan on the top-level subscription object. We have to map
+// the Stripe price ID back to the plan to know what tier the tenant is
+// currently on. Built from PRICE_IDS at module load so it stays in sync.
+// Null-priced tiers (free, enterprise) are excluded — there's no
+// subscription for those tiers, so their price IDs never appear here.
+export const PRICES_TO_PLAN = Object.freeze(
+  Object.fromEntries(
+    Object.entries(PRICE_IDS)
+      .filter(([, priceId]) => priceId !== null)
+      .map(([plan, priceId]) => [priceId, plan])
+  )
+);
+
+/**
+ * Safe reverse lookup: Stripe price ID → our plan name. Returns null on
+ * unknown IDs (staging/test prices, deleted products, typos) rather
+ * than throwing — webhook retry-loops need to tolerate unknown prices
+ * without 500ing.
+ */
+export function planForPriceId(priceId) {
+  if (!priceId || typeof priceId !== 'string') return null;
+  return PRICES_TO_PLAN[priceId] || null;
+}
+
 /**
  * Safe lookup. Throws on:
  *   - unknown plans (typo guard)
@@ -167,5 +195,90 @@ export function parseCheckoutCompletedEvent(event) {
     stripeCustomerId: session.customer || null,
     stripeSubscriptionId: session.subscription || null,
     customerEmail: session.customer_email || null,
+  };
+}
+
+// =============================================================================
+// parseSubscriptionUpdatedEvent — plan changes
+// =============================================================================
+/**
+ * Parse a `customer.subscription.updated` Stripe webhook event. Fires on
+ * ANY subscription change (plan switch, trial end, pause/resume,
+ * quantity change). The caller takes the derived plan + status and
+ * updates tenants.plan + tenants.status accordingly.
+ *
+ * Returns:
+ *   { ok:true, tenantId, plan, status, stripeCustomerId, stripeSubscriptionId }
+ * OR
+ *   { ok:false, reason:string }
+ *
+ * The `status` field is passed through verbatim (active, past_due,
+ * paused, trialing, canceled, incomplete, etc.). Caller decides what
+ * each status means for the tenant (e.g. past_due → warning email,
+ * paused → quota drop but don't full-downgrade).
+ */
+export function parseSubscriptionUpdatedEvent(event) {
+  if (!event || event.type !== 'customer.subscription.updated') {
+    return { ok: false, reason: `wrong event type: ${event?.type || '(none)'}` };
+  }
+  const sub = event.data?.object || {};
+  const raw = sub.metadata?.tenant_id;
+  if (!raw) {
+    return { ok: false, reason: 'missing metadata.tenant_id on subscription' };
+  }
+  const tenantId = Number(raw);
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    return { ok: false, reason: `tenant_id not a positive integer: ${raw}` };
+  }
+  const priceId = sub.items?.data?.[0]?.price?.id;
+  if (!priceId) {
+    return { ok: false, reason: 'no price id on subscription items — event malformed' };
+  }
+  const plan = planForPriceId(priceId);
+  if (!plan) {
+    return { ok: false, reason: `unknown plan for price id: ${priceId}` };
+  }
+  return {
+    ok: true,
+    tenantId,
+    plan,
+    status: sub.status || 'unknown',
+    stripeCustomerId: sub.customer || null,
+    stripeSubscriptionId: sub.id || null,
+  };
+}
+
+// =============================================================================
+// parseSubscriptionDeletedEvent — cancellation → downgrade
+// =============================================================================
+/**
+ * Parse a `customer.subscription.deleted` event. Always means "downgrade
+ * to free" — Stripe only sends this when a subscription is fully
+ * cancelled + the current period ends. The caller sets tenants.plan =
+ * 'free' (and clears stripe_subscription_id).
+ *
+ * Unlike parseSubscriptionUpdatedEvent, no price → plan map is needed:
+ * the post-cancellation target is always free. This lets the webhook
+ * handler be idempotent even if PRICE_IDS drift between staging + prod.
+ */
+export function parseSubscriptionDeletedEvent(event) {
+  if (!event || event.type !== 'customer.subscription.deleted') {
+    return { ok: false, reason: `wrong event type: ${event?.type || '(none)'}` };
+  }
+  const sub = event.data?.object || {};
+  const raw = sub.metadata?.tenant_id;
+  if (!raw) {
+    return { ok: false, reason: 'missing metadata.tenant_id on cancelled subscription' };
+  }
+  const tenantId = Number(raw);
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    return { ok: false, reason: `tenant_id not a positive integer: ${raw}` };
+  }
+  return {
+    ok: true,
+    tenantId,
+    plan: 'free',
+    stripeCustomerId: sub.customer || null,
+    stripeSubscriptionId: sub.id || null,
   };
 }

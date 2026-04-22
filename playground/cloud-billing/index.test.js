@@ -178,5 +178,153 @@ console.log('\n🪝 parseCheckoutCompletedEvent\n');
     `no plan metadata → ok:false with reason (got "${r5.reason}")`);
 }
 
+// ─── PRICES_TO_PLAN — reverse lookup for subscription webhooks ──────────
+// checkout.session.completed carries metadata.plan we set at build time.
+// subscription.updated / .deleted DON'T carry our metadata on the
+// top-level subscription object — we have to map the Stripe price ID
+// back to our plan name. This reverse map is the inverse of PRICE_IDS.
+console.log('\n🔁 PRICES_TO_PLAN + planForPriceId\n');
+
+{
+  const { PRICES_TO_PLAN, PRICE_IDS, planForPriceId } = await import('./index.js');
+
+  // Shape — object keyed by Stripe price string
+  assert(typeof PRICES_TO_PLAN === 'object' && PRICES_TO_PLAN !== null,
+    'PRICES_TO_PLAN exported as an object');
+
+  // Round-trip consistency — PRICE_IDS.team must map to 'team', etc.
+  for (const plan of ['team', 'business']) {
+    const priceId = PRICE_IDS[plan];
+    assert(PRICES_TO_PLAN[priceId] === plan,
+      `PRICES_TO_PLAN[${priceId}] === '${plan}' (round-trip of PRICE_IDS)`);
+  }
+
+  // Free + enterprise have null price IDs → NOT in PRICES_TO_PLAN
+  assert(!(null in PRICES_TO_PLAN) && PRICES_TO_PLAN[null] === undefined,
+    `null key not in PRICES_TO_PLAN (free/enterprise excluded)`);
+
+  // planForPriceId — safe lookup, null on unknown
+  assert(planForPriceId(PRICE_IDS.team) === 'team',
+    `planForPriceId reverses correctly`);
+  assert(planForPriceId('price_unknown_xyz') === null,
+    `unknown price id → null (not throw; unknown subscriptions are common on staging)`);
+  assert(planForPriceId(null) === null, `null → null`);
+  assert(planForPriceId(undefined) === null, `undefined → null`);
+}
+
+// ─── parseSubscriptionUpdatedEvent — plan changes ────────────────────────
+// customer.subscription.updated fires on ANY subscription change —
+// plan change, quantity change, trial end, pause/resume. We only care
+// about the active price_id, which dictates the current plan tier.
+console.log('\n🔄 parseSubscriptionUpdatedEvent\n');
+
+{
+  const { parseSubscriptionUpdatedEvent, PRICE_IDS } = await import('./index.js');
+
+  // Happy path — active subscription with metadata.tenant_id
+  const event = {
+    type: 'customer.subscription.updated',
+    data: {
+      object: {
+        id: 'sub_DEF',
+        customer: 'cus_ACME',
+        status: 'active',
+        metadata: { tenant_id: '42' },
+        items: {
+          data: [
+            { price: { id: PRICE_IDS.business } },
+          ],
+        },
+      },
+    },
+  };
+  const r = parseSubscriptionUpdatedEvent(event);
+  assert(r.ok === true, `happy path → ok:true (got ${JSON.stringify(r)})`);
+  assert(r.tenantId === 42, `tenantId extracted (got ${r.tenantId})`);
+  assert(r.plan === 'business', `plan derived from price_id (got ${r.plan})`);
+  assert(r.stripeSubscriptionId === 'sub_DEF', `subscription id extracted`);
+  assert(r.stripeCustomerId === 'cus_ACME', `customer id extracted`);
+  assert(r.status === 'active', `status passed through`);
+
+  // Wrong event type
+  const r2 = parseSubscriptionUpdatedEvent({ type: 'invoice.paid' });
+  assert(r2.ok === false && r2.reason?.toLowerCase().includes('type'),
+    `wrong type → ok:false (got "${r2.reason}")`);
+
+  // Missing metadata.tenant_id
+  const r3 = parseSubscriptionUpdatedEvent({
+    type: 'customer.subscription.updated',
+    data: { object: { id: 'sub_x', metadata: {}, items: { data: [{ price: { id: PRICE_IDS.team } }] }, status: 'active' } },
+  });
+  assert(r3.ok === false && r3.reason?.toLowerCase().includes('tenant'),
+    `no tenant_id → ok:false (got "${r3.reason}")`);
+
+  // Missing items (malformed event)
+  const r4 = parseSubscriptionUpdatedEvent({
+    type: 'customer.subscription.updated',
+    data: { object: { id: 'sub_x', metadata: { tenant_id: '1' }, status: 'active' } },
+  });
+  assert(r4.ok === false && r4.reason?.toLowerCase().includes('price'),
+    `no items/price → ok:false with reason (got "${r4.reason}")`);
+
+  // Unknown price ID → plan=null, ok:false (operator investigates)
+  const r5 = parseSubscriptionUpdatedEvent({
+    type: 'customer.subscription.updated',
+    data: { object: { id: 'sub_x', metadata: { tenant_id: '1' }, status: 'active',
+      items: { data: [{ price: { id: 'price_not_ours' } }] } } },
+  });
+  assert(r5.ok === false && r5.reason?.toLowerCase().includes('plan'),
+    `unknown price → ok:false (got "${r5.reason}")`);
+
+  // Non-active status (cancelled, past_due, paused) passes through —
+  // caller decides what to do. ok:true because the event is well-formed.
+  const r6 = parseSubscriptionUpdatedEvent({
+    ...event,
+    data: { object: { ...event.data.object, status: 'past_due' } },
+  });
+  assert(r6.ok === true && r6.status === 'past_due',
+    `non-active status passed through as ok (caller decides); got status=${r6.status}`);
+}
+
+// ─── parseSubscriptionDeletedEvent — cancellation downgrade ─────────────
+// customer.subscription.deleted fires when a subscription is cancelled.
+// We downgrade the tenant to 'free'. No plan lookup needed — the
+// post-cancellation plan is always 'free'.
+console.log('\n🗑️  parseSubscriptionDeletedEvent\n');
+
+{
+  const { parseSubscriptionDeletedEvent } = await import('./index.js');
+
+  // Happy path
+  const event = {
+    type: 'customer.subscription.deleted',
+    data: {
+      object: {
+        id: 'sub_GONE',
+        customer: 'cus_ACME',
+        metadata: { tenant_id: '42' },
+      },
+    },
+  };
+  const r = parseSubscriptionDeletedEvent(event);
+  assert(r.ok === true, `happy path → ok:true`);
+  assert(r.tenantId === 42, `tenantId extracted`);
+  assert(r.plan === 'free', `cancelled subscription → plan='free' (downgrade target)`);
+  assert(r.stripeSubscriptionId === 'sub_GONE', `subscription id passed through`);
+  assert(r.stripeCustomerId === 'cus_ACME', `customer id passed through`);
+
+  // Wrong event type
+  const r2 = parseSubscriptionDeletedEvent({ type: 'customer.subscription.updated' });
+  assert(r2.ok === false, `wrong type → ok:false`);
+
+  // Missing tenant_id
+  const r3 = parseSubscriptionDeletedEvent({
+    type: 'customer.subscription.deleted',
+    data: { object: { id: 'sub_x', metadata: {} } },
+  });
+  assert(r3.ok === false && r3.reason?.toLowerCase().includes('tenant'),
+    `no tenant_id → ok:false (got "${r3.reason}")`);
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
