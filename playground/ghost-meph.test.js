@@ -293,6 +293,37 @@ function parseSSE(text) {
   if (origHost === undefined) delete process.env.OLLAMA_HOST;
   else process.env.OLLAMA_HOST = origHost;
 
+  // =========================================================================
+  // PHASE 9 — openrouter backend (GM-3)
+  // Tests the deterministic paths: missing API key, and brain-string
+  // routing. Real network calls would require a real OPENROUTER_API_KEY,
+  // which we don't have in test.
+  // =========================================================================
+  console.log('\n🔀 Phase 9 — openrouter backend (GM-3)');
+
+  const origKey = process.env.OPENROUTER_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  process.env.MEPH_BRAIN = 'openrouter:qwen';
+  const r8 = await fetchViaBackend({ messages: [{ role: 'user', content: 'hi' }] }, {});
+  assert(r8.ok === true, 'openrouter without API key still returns ok=true (no thrown exception)');
+  const text8 = parseSSE(await streamToString(r8.body)).find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
+  assert(text8.includes('OPENROUTER_API_KEY'),
+    'openrouter missing-key error names the env var so the fix is obvious');
+  assert(text8.includes('openrouter.ai'),
+    'openrouter missing-key error points to where to get a key');
+
+  // Bare 'openrouter' brain string also dispatches to the openrouter backend
+  process.env.MEPH_BRAIN = 'openrouter';
+  const r9 = await fetchViaBackend({ messages: [{ role: 'user', content: 'hi' }] }, {});
+  assert(r9.ok === true, 'bare "openrouter" brain string routes (no parse error)');
+  const text9 = parseSSE(await streamToString(r9.body)).find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
+  assert(text9.includes('openrouter') || text9.includes('OPENROUTER'),
+    'bare openrouter brain hits the openrouter backend (not the unknown-brain stub)');
+
+  // Restore key env
+  if (origKey === undefined) delete process.env.OPENROUTER_API_KEY;
+  else process.env.OPENROUTER_API_KEY = origKey;
+
   // Cleanup
   delete process.env.MEPH_BRAIN;
 

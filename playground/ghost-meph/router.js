@@ -57,11 +57,14 @@ export async function fetchViaBackend(payload, headers) {
     const { chatViaOllama } = await import('./ollama.js');
     return chatViaOllama(payload);
   }
+  if (brain === 'openrouter' || (brain && brain.startsWith('openrouter:'))) {
+    const { chatViaOpenRouter } = await import('./openrouter.js');
+    return chatViaOpenRouter(payload);
+  }
   switch (brain) {
-    case 'openrouter:qwen':
     case 'haiku-dev':
-      // GM-3 / haiku-dev land in follow-up commits. Stub for now — same
-      // contract, stop_reason=end_turn, server doesn't hang.
+      // haiku-dev lands when Russell wants a calibration backend on a
+      // bounded dev key. Stub for now — same contract, server doesn't hang.
       return stubResponse(brain, payload);
     default:
       // Unknown backend — still return a stub so the server doesn't crash,
