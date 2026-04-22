@@ -22,8 +22,8 @@ export async function createTeam(db, input) {
     );
     team = rows[0];
     await db.query(
-      `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')`,
-      [team.id, input.ownerUserId]
+      `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)`,
+      [team.id, input.ownerUserId, 'owner']
     );
     await db.query('COMMIT');
   } catch (err) {
@@ -44,4 +44,20 @@ export async function getTeamBySlug(db, slug) {
     [slug]
   );
   return rows[0] || null;
+}
+
+/**
+ * All teams a user belongs to. Each row carries the user's role
+ * under `my_role` for the common dashboard "team list" rendering.
+ */
+export async function listTeamsForUser(db, userId) {
+  const { rows } = await db.query(
+    `SELECT t.*, tm.role AS my_role
+     FROM teams t
+     JOIN team_members tm ON tm.team_id = t.id
+     WHERE tm.user_id = $1 AND t.status = 'active'
+     ORDER BY tm.joined_at DESC`,
+    [userId]
+  );
+  return rows;
 }

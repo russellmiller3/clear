@@ -55,6 +55,17 @@ function makeMockDb() {
         const row = teams.find(x => x.slug === slug);
         return { rows: row ? [row] : [] };
       }
+      if (/SELECT t\.\*, tm\.role AS my_role/i.test(t)) {
+        const [userId] = params;
+        const list = [];
+        for (const m of members) {
+          if (m.user_id !== userId) continue;
+          const team = teams.find(x => x.id === m.team_id);
+          if (!team || team.status !== 'active') continue;
+          list.push({ ...team, my_role: m.role });
+        }
+        return { rows: list };
+      }
       throw new Error('MockDb: unhandled query — ' + t.slice(0, 100));
     },
   };
@@ -103,6 +114,27 @@ console.log('\n🔎 getTeamBySlug\n');
   const missing = await getTeamBySlug(db, 'nonexistent');
   assert(missing === null,
     `getTeamBySlug returns null for unknown slug (got ${JSON.stringify(missing)})`);
+}
+
+// ─── TDD cycle 4: listTeamsForUser returns the user's teams + their role ─
+console.log('\n📋 listTeamsForUser\n');
+
+{
+  const { createTeam, listTeamsForUser } = await import('./index.js');
+  const db = makeMockDb();
+  await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+  await createTeam(db, { slug: 'beta', name: 'Beta', ownerUserId: 2 });
+
+  const mine = await listTeamsForUser(db, 1);
+  assert(Array.isArray(mine) && mine.length === 1,
+    `listTeamsForUser returns an array with the user's 1 team (got ${mine?.length})`);
+  assert(mine[0].slug === 'acme', 'returns the right team (slug matches)');
+  assert(mine[0].my_role === 'owner',
+    `row carries the user's role as my_role (got ${mine[0].my_role})`);
+
+  const nobody = await listTeamsForUser(db, 999);
+  assert(Array.isArray(nobody) && nobody.length === 0,
+    `unknown user returns empty array, not null (got ${JSON.stringify(nobody)})`);
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
