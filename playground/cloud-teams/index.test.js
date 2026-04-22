@@ -712,6 +712,105 @@ console.log('\n🛡️  getAppAccess — CC-2d app-level access control\n');
 }
 
 // =============================================================================
+// CC-2d — assertCanAccessApp: throwing wrapper around getAppAccess + can
+// =============================================================================
+// Endpoint-facing access check. Composes getAppAccess + can into a single
+// throw-on-reject helper so handlers don't scatter four lines of boilerplate:
+//
+//   const role = await getAppAccess(db, userId, appId);
+//   if (!can(role, 'app.deploy')) return res.status(403).json({error:'...'});
+//
+// becomes:
+//
+//   await assertCanAccessApp(db, userId, appId, 'app.deploy');
+//
+// Throws an Error with .status=403 (caught by Express error middleware)
+// on denial. The error message names the action so logs + client
+// responses are instructive, not generic "forbidden".
+console.log('\n🔒 assertCanAccessApp — endpoint guard wrapper\n');
+
+{
+  function makeMockDbWithApps() {
+    const db = makeMockDb();
+    db.apps = [];
+    const origQuery = db.query;
+    db.query = async function (text, params = []) {
+      const t = text.replace(/\s+/g, ' ').trim();
+      if (/SELECT tm\.role.*FROM apps.*JOIN team_members/i.test(t)) {
+        const [appId, userId] = params;
+        const app = db.apps.find(a => a.id === appId);
+        if (!app || !app.team_id) return { rows: [] };
+        const m = db.members.find(
+          mm => mm.team_id === app.team_id && mm.user_id === userId
+        );
+        return { rows: m ? [{ role: m.role }] : [] };
+      }
+      return origQuery(text, params);
+    };
+    return db;
+  }
+
+  const { createTeam, addMember, assertCanAccessApp } = await import('./index.js');
+
+  const db = makeMockDbWithApps();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 10 });
+  await addMember(db, team.id, 20, 'admin');
+  await addMember(db, team.id, 30, 'member');
+  db.apps.push({ id: 100, team_id: team.id, slug: 'dashboard' });
+  db.apps.push({ id: 101, team_id: null,    slug: 'orphan' });
+
+  // Happy path — returns the role so callers can log/audit who acted
+  const role = await assertCanAccessApp(db, 10, 100, 'app.deploy');
+  assert(role === 'owner', `returns role on allow (got ${JSON.stringify(role)})`);
+
+  // Member can deploy
+  const r2 = await assertCanAccessApp(db, 30, 100, 'app.deploy');
+  assert(r2 === 'member', `member allowed for app.deploy (got ${r2})`);
+
+  // Member CANNOT delete-with-data (owner-only)
+  let threw;
+  try { await assertCanAccessApp(db, 30, 100, 'app.delete-with-data'); }
+  catch (err) { threw = err; }
+  assert(threw instanceof Error, 'denial throws an Error');
+  assert(threw?.status === 403, `Error.status === 403 (got ${threw?.status})`);
+  assert(threw?.message?.includes('app.delete-with-data'),
+    `error message names the action (got "${threw?.message}")`);
+
+  // Non-member (stranger) — throws regardless of action
+  threw = null;
+  try { await assertCanAccessApp(db, 999, 100, 'app.deploy'); }
+  catch (err) { threw = err; }
+  assert(threw?.status === 403,
+    `non-member throws 403 (got ${threw?.status})`);
+  // Message should note the user isn't a member, not an action problem
+  assert(/member|access|team/i.test(threw?.message || ''),
+    `non-member error names membership issue (got "${threw?.message}")`);
+
+  // Orphan app (no team) — throws (no one can access it via team path)
+  threw = null;
+  try { await assertCanAccessApp(db, 10, 101, 'app.deploy'); }
+  catch (err) { threw = err; }
+  assert(threw?.status === 403,
+    `orphan app throws 403 even for the would-be owner`);
+
+  // Non-existent app — also throws 403 (not 404 — we don't leak
+  // whether an app exists to someone who can't see it anyway)
+  threw = null;
+  try { await assertCanAccessApp(db, 10, 9999, 'app.deploy'); }
+  catch (err) { threw = err; }
+  assert(threw?.status === 403,
+    `non-existent app throws 403 (not 404 — info leak guard)`);
+
+  // Unknown action — throws. Better to fail fast at the caller than
+  // silently grant access with a typo like 'app.deploys' vs 'app.deploy'.
+  threw = null;
+  try { await assertCanAccessApp(db, 10, 100, 'app.typoed-action'); }
+  catch (err) { threw = err; }
+  assert(threw?.status === 403,
+    `unknown action throws (fail-closed on typos)`);
+}
+
+// =============================================================================
 // CC-2c — listAppsForUser: the dashboard query
 // =============================================================================
 // buildclear.dev/dashboard needs one query: "show me every app I can

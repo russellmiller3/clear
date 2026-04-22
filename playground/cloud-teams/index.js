@@ -380,6 +380,49 @@ export async function getAppAccess(db, userId, appId) {
 }
 
 /**
+ * CC-2d endpoint guard. Throws a 403 Error if the user can't perform
+ * the action on the app; returns the user's role on allow. Caller
+ * wraps with `await assertCanAccessApp(...)` — Express error middleware
+ * turns the throw into a 403 response with the message.
+ *
+ * Deny cases (all throw Error with .status=403):
+ *   - User isn't a member of the app's team
+ *   - App has no team (orphan, pre-CC-2d backfill)
+ *   - App doesn't exist (returned as 403 not 404 — info leak guard)
+ *   - Unknown action in can() matrix (fail-closed on typos like
+ *     'app.deploys' vs 'app.deploy')
+ *   - User's role doesn't allow the action
+ *
+ * Allow case: returns the role string so handlers can log/audit who
+ * did what (e.g. "user 42 (owner) deployed app 100").
+ *
+ * @param {object} db - pg Pool or compatible
+ * @param {number} userId
+ * @param {number} appId
+ * @param {string} action - key from can()'s permission matrix
+ * @returns {Promise<string>} the user's role
+ * @throws {Error} 403 on any deny case
+ */
+export async function assertCanAccessApp(db, userId, appId, action) {
+  const role = await getAppAccess(db, userId, appId);
+  if (!role) {
+    const err = new Error(
+      `User ${userId} is not a member of app ${appId}'s team (or app has no team).`
+    );
+    err.status = 403;
+    throw err;
+  }
+  if (!can(role, action)) {
+    const err = new Error(
+      `User ${userId} (role ${role}) is not authorized for ${action} on app ${appId}.`
+    );
+    err.status = 403;
+    throw err;
+  }
+  return role;
+}
+
+/**
  * CC-2c dashboard query — every app the user can access across all their
  * teams. One SQL JOIN (apps ← team_members WHERE user_id = $1). Each row
  * carries `my_role` so the dashboard renders "Manage" vs "View" buttons
