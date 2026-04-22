@@ -15,7 +15,7 @@
 
 import { spawn } from 'child_process';
 import { dispatch, ERROR_CODES } from './mcp-server/protocol.js';
-import { buildToolRegistry } from './mcp-server/tools.js';
+import { buildToolRegistry, _resetMcpState } from './mcp-server/tools.js';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -154,6 +154,88 @@ function assert(cond, msg) {
     assert(r3.id === 3 && r3.result.content[0].text.includes('Can only read'),
       'subprocess tools/call response correct (real readFileTool, README.md rejected)');
   }
+
+  // =========================================================================
+  // PHASE 5 — GM-2 step 2a: all 28 tools exposed, real dispatch through
+  //           meph-tools.js. Verifies the handler-registration loop wires
+  //           up the full Meph surface and that stateful tools (edit_code,
+  //           compile, todo) actually mutate + read back the MCP server's
+  //           module-level state.
+  // =========================================================================
+  console.log('\n🔗 Phase 5 — GM-2 step 2a: full Meph tool surface via MCP');
+
+  _resetMcpState();
+  const fullList = await dispatch({ jsonrpc: '2.0', id: 100, method: 'tools/list' }, registry);
+  assert(fullList.result.tools.length === 28,
+    `tools/list exposes all 28 Meph tools (got ${fullList.result.tools.length})`);
+  const allNames = fullList.result.tools.map(t => t.name);
+  for (const expected of ['meph_edit_code', 'meph_compile', 'meph_patch_code', 'meph_source_map', 'meph_highlight_code', 'meph_todo', 'meph_browse_templates']) {
+    assert(allNames.includes(expected), `meph_${expected.slice(5)} registered`);
+  }
+
+  // Happy path: edit_code write → stores source in module state
+  const write = await dispatch({
+    jsonrpc: '2.0', id: 101, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'write', code: "on GET '/':\n  send 'hi'\n" } },
+  }, registry);
+  const writeParsed = JSON.parse(write.result.content[0].text);
+  assert(writeParsed.applied === true,
+    `meph_edit_code write returns applied=true (got ${JSON.stringify(writeParsed).slice(0, 120)})`);
+
+  // edit_code read → reads back what was written (module state works)
+  const read = await dispatch({
+    jsonrpc: '2.0', id: 102, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'read' } },
+  }, registry);
+  const readText = read.result.content[0].text;
+  assert(readText.includes("send 'hi'"),
+    `meph_edit_code read returns what write stored (module-level state works) (got ${readText.slice(0, 120)})`);
+
+  // compile → exercises real compileProgram against the stored source
+  const compile = await dispatch({
+    jsonrpc: '2.0', id: 103, method: 'tools/call',
+    params: { name: 'meph_compile', arguments: {} },
+  }, registry);
+  const compileParsed = JSON.parse(compile.result.content[0].text);
+  assert(Array.isArray(compileParsed.errors) && compileParsed.errors.length === 0,
+    `meph_compile runs against stored source and returns errors=[] (got ${JSON.stringify(compileParsed.errors || 'missing')})`);
+  assert(compileParsed.hasHTML === true && compileParsed.hasJavascript === true,
+    `meph_compile surfaces shape flags (hasHTML=${compileParsed.hasHTML}, hasJavascript=${compileParsed.hasJavascript})`);
+
+  // Schema error path: edit_code with missing code on write still rejects
+  const schemaRej = await dispatch({
+    jsonrpc: '2.0', id: 104, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'write' } },  // no code
+  }, registry);
+  assert(schemaRej.result.isError === true,
+    `meph_edit_code schema error → isError=true (got ${JSON.stringify(schemaRej.result).slice(0, 150)})`);
+  assert(schemaRej.result.content[0].text.includes('"code" string'),
+    'schema error surfaces missing-field detail');
+
+  // todo tool round-trip: set → get returns the stored todos
+  await dispatch({
+    jsonrpc: '2.0', id: 105, method: 'tools/call',
+    params: { name: 'meph_todo', arguments: { action: 'set', todos: [{ content: 'build it', status: 'pending', activeForm: 'building it' }] } },
+  }, registry);
+  const todoGet = await dispatch({
+    jsonrpc: '2.0', id: 106, method: 'tools/call',
+    params: { name: 'meph_todo', arguments: { action: 'get' } },
+  }, registry);
+  const todoParsed = JSON.parse(todoGet.result.content[0].text);
+  assert(Array.isArray(todoParsed.todos) && todoParsed.todos.length === 1,
+    `meph_todo round-trip stores + returns todos (got ${JSON.stringify(todoParsed.todos || 'missing')})`);
+  assert(todoParsed.todos[0].content === 'build it',
+    'meph_todo preserves content field across set+get');
+
+  // Tools that need live infrastructure (no running child, no Factor DB)
+  // should fail cleanly with a structured error rather than crashing.
+  const noApp = await dispatch({
+    jsonrpc: '2.0', id: 107, method: 'tools/call',
+    params: { name: 'meph_http_request', arguments: { method: 'GET', path: '/api/x' } },
+  }, registry);
+  const noAppText = noApp.result.content[0].text;
+  assert(noAppText.includes('No app running'),
+    `meph_http_request fails clean when no child app ("No app running" — got ${noAppText.slice(0, 120)})`);
 
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
