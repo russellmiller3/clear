@@ -28,8 +28,10 @@
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
+import { existsSync } from 'fs';
 import { compileProgram } from '../../../index.js';
 import { patch } from '../../../patch.js';
+import { FactorDB } from '../../supervisor/factor-db.js';
 import {
   rank as rankEBM,
   featurizeFactorRow as featurizeRow,
@@ -84,6 +86,34 @@ const currentStep = () => null;
  * no-ops so the ported tool functions fail with a clean "not available"
  * error rather than crashing.
  */
+// Lazy-opened FactorDB instance. Shared across all tool calls in a single
+// MCP subprocess. Opened on first buildMephContext() if FACTOR_DB_PATH env
+// is set AND the file exists. Stays null otherwise — the compile tool
+// already handles a null factorDB gracefully (skips logAction + hint
+// retrieval, just compiles and returns).
+let _factorDb = null;
+let _factorDbChecked = false;
+function getFactorDb() {
+  if (_factorDbChecked) return _factorDb;
+  _factorDbChecked = true;
+  const path = process.env.FACTOR_DB_PATH;
+  if (!path) return null;
+  try {
+    if (!existsSync(path)) return null;
+    _factorDb = new FactorDB(path);
+    return _factorDb;
+  } catch {
+    return null;
+  }
+}
+
+/** Test hook — forget the cached factorDB handle so env changes take effect. */
+export function _resetFactorDbCache() {
+  try { _factorDb?.close?.(); } catch {}
+  _factorDb = null;
+  _factorDbChecked = false;
+}
+
 function buildMephContext() {
   const ctx = new MephContext({
     source: currentSource,
@@ -95,7 +125,14 @@ function buildMephContext() {
     onTodosChange: (t) => { mephTodos = t; },
     onSourceChange: (s) => { currentSource = s; },
     onErrorsChange: (e) => { currentErrors = e; },
-    // No Playwright, no running child, no Factor DB — MCP server mode.
+    // Factor DB wired when FACTOR_DB_PATH env points at an existing SQLite
+    // file. cc-agent.js sets this automatically during sweep runs so
+    // compile cycles feed the flywheel. Null otherwise (interactive
+    // cc-agent sessions without sweep infrastructure).
+    factorDB: getFactorDb(),
+    // Session id so every row belongs to a traceable run. Falls back to
+    // a per-process stamp if caller didn't provide one.
+    sessionId: process.env.MEPH_SESSION_ID || ('mcp_' + process.pid + '_' + Date.now()),
     hintState,
   });
   return ctx;
@@ -279,4 +316,9 @@ export function _resetMcpState() {
   hintState.hintsInjectedErrorCount = null;
   hintState.hintsInjectedTier = null;
   hintState.postHintMinErrorCount = null;
+}
+
+/** Testing hook — inspect the MephContext the MCP server would build. */
+export function _testBuildMephContext() {
+  return buildMephContext();
 }
