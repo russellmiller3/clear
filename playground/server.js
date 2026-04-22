@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3167,8 +3167,20 @@ app.post('/api/chat', async (req, res) => {
         // read-only arrays; the tool just slices the tail.
         return readTerminalTool(input, new MephContext({ terminal: terminalBuffer, frontendErrors }));
 
-      case 'screenshot_output':
-        return '__ASYNC_SCREENSHOT__'; // handled in loop
+      case 'screenshot_output': {
+        // Extracted to playground/meph-tools.js (GM-2 port). Previously this
+        // case returned a dead marker and the loop below special-cased the
+        // tool to run inline screenshot logic; now both call sites (executeTool
+        // AND the loop) converge on screenshotOutputTool. Playwright stays
+        // imported only in server.js — the tool function calls ctx.getPage()
+        // which /api/chat hooks to the closure-level chromium launch.
+        const screenshotCtx = new MephContext({
+          isAppRunning: () => !!runningChild,
+          getPage: () => getPage(),
+          getRunningPort: () => runningPort,
+        });
+        return await screenshotOutputTool(input, screenshotCtx);
+      }
 
       case 'http_request': {
         // Sync HTTP is tricky — return a promise indicator
@@ -3633,28 +3645,10 @@ app.post('/api/chat', async (req, res) => {
         let result;
         if (tb.name === 'http_request') {
           result = await executeHttpRequest(input);
-        } else if (tb.name === 'screenshot_output') {
-          // Use the Playwright browser — it's already pointing at the running app's port.
-          // This captures the ACTUAL rendered app, not the Studio wrapper or a blank iframe.
-          if (!runningChild) {
-            result = JSON.stringify({ error: 'No app running. Start with run_app first.' });
-          } else {
-            try {
-              const page = await getPage();
-              // Force a navigation if the app restarted on a new port (getPage handles this)
-              // Wait for any reactive updates to settle
-              await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
-              const buffer = await page.screenshot({ fullPage: false, type: 'png' });
-              const imageBase64 = buffer.toString('base64');
-              result = [
-                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
-                { type: 'text', text: `Screenshot of the running app at localhost:${runningPort}. This is the actual rendered output — verify layout, colors, and content.` },
-              ];
-            } catch (err) {
-              result = JSON.stringify({ error: 'Screenshot failed: ' + err.message.slice(0, 200) });
-            }
-          }
         } else {
+          // screenshot_output used to be special-cased here before GM-2 ported
+          // it to screenshotOutputTool in meph-tools.js — executeTool now runs
+          // the real implementation directly.
           result = await executeTool(tb.name, input);
         }
 

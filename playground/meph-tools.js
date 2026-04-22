@@ -486,6 +486,44 @@ export function runCommandTool(input, ctx) {
 }
 
 /**
+ * screenshot_output tool — capture a PNG of the running app via Playwright.
+ * Returns an Anthropic content-block array (image + caption text) on success
+ * so the LLM can actually see the rendered output; returns JSON-stringified
+ * error on failure.
+ *
+ * The page is supplied through ctx.getPage() so this function stays free of
+ * Playwright imports — /api/chat's getPage() caches the chromium launch and
+ * wires request/response listeners into the closure-level network and
+ * websocket buffers. The running app's port comes through ctx.getRunningPort()
+ * for the user-facing caption.
+ *
+ * @param {object} input - unused (screenshot takes no args)
+ * @param {MephContext} ctx - isAppRunning + getPage + getRunningPort required
+ * @returns {Promise<Array|string>} Anthropic content-block array on success,
+ *   JSON-stringified { error } on failure
+ */
+export async function screenshotOutputTool(input, ctx) {
+  if (!ctx.isAppRunning()) {
+    return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+  }
+  try {
+    const page = await ctx.getPage();
+    // Wait for any reactive updates to settle before the shot — bounded so
+    // a chatty app doesn't stall the whole tool call.
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+    const buffer = await page.screenshot({ fullPage: false, type: 'png' });
+    const imageBase64 = buffer.toString('base64');
+    const port = ctx.getRunningPort();
+    return [
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+      { type: 'text', text: `Screenshot of the running app at localhost:${port}. This is the actual rendered output — verify layout, colors, and content.` },
+    ];
+  } catch (err) {
+    return JSON.stringify({ error: 'Screenshot failed: ' + err.message.slice(0, 200) });
+  }
+}
+
+/**
  * stop_app tool — kill the child Node app started by run_app. Stateless
  * except for the ctx.stopRunningApp() callback which /api/chat hooks to
  * runningChild.kill('SIGTERM') + runningChild = null. Always returns

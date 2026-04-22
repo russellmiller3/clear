@@ -94,6 +94,18 @@ export class MephContext {
     // to the same Studio server the tool is running inside; injection point
     // for tests.
     this.mephActionsUrl = options.mephActionsUrl || `http://localhost:${process.env.PORT || 3456}/api/meph-actions`;
+
+    // Playwright page accessor (async). /api/chat hooks this to its
+    // closure-level getPage() which lazy-launches chromium and caches the
+    // page. screenshot_output uses it to take a PNG of the running app.
+    // Defaults to throwing so unwired contexts (e.g. the MCP server when no
+    // Studio is up) fail loudly instead of silently returning nothing.
+    this.getPage = options.getPage || (async () => { throw new Error('Screenshot not wired in this MephContext — no Playwright page available.'); });
+
+    // Port the child app started by run_app is listening on. /api/chat's
+    // closure tracks runningPort; screenshot_output references it for the
+    // user-facing caption. Returns null when no app is running.
+    this.getRunningPort = options.getRunningPort || (() => null);
   }
 
   /**

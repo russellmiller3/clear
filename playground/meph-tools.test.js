@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool } from './meph-tools.js';
 import { mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -655,6 +655,66 @@ const rc4 = JSON.parse(runCommandTool({ command: 'node --not-a-flag-xyz' },
 assert(rc4.exitCode !== 0, 'runCommandTool failing command returns nonzero exitCode');
 assert(typeof rc4.stderr === 'string' && rc4.stderr.length > 0,
   'runCommandTool captures stderr on failure');
+
+console.log('\n📸 screenshotOutputTool\n');
+
+// No app running → clear error
+const ss1 = JSON.parse(await screenshotOutputTool({}, new MephContext()));
+assert(ss1.error?.includes('No app running'),
+  'screenshotOutputTool returns "No app running" when isAppRunning false');
+
+// getPage throws → caught, returned as JSON error
+const ss2 = JSON.parse(await screenshotOutputTool({}, new MephContext({
+  isAppRunning: () => true,
+  getPage: async () => { throw new Error('chromium boom'); },
+})));
+assert(ss2.error?.includes('Screenshot failed') && ss2.error.includes('chromium boom'),
+  'screenshotOutputTool catches getPage throws and prefixes with "Screenshot failed"');
+
+// page.screenshot throws → same error path
+const ss3 = JSON.parse(await screenshotOutputTool({}, new MephContext({
+  isAppRunning: () => true,
+  getPage: async () => ({
+    waitForLoadState: async () => {},
+    screenshot: async () => { throw new Error('navigator gone'); },
+  }),
+})));
+assert(ss3.error?.includes('Screenshot failed') && ss3.error.includes('navigator gone'),
+  'screenshotOutputTool catches page.screenshot throws');
+
+// Happy path: returns content-block array with image + caption
+const fakeBuf = Buffer.from('fake-png-bytes', 'utf8');
+const ss4 = await screenshotOutputTool({}, new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => 4567,
+  getPage: async () => ({
+    waitForLoadState: async () => {},
+    screenshot: async () => fakeBuf,
+  }),
+}));
+assert(Array.isArray(ss4), 'screenshotOutputTool returns an array on success');
+assert(ss4.length === 2, 'screenshotOutputTool success array has 2 entries (image + text)');
+assert(ss4[0].type === 'image' && ss4[0].source?.type === 'base64',
+  'screenshotOutputTool first entry is an image content block');
+assert(ss4[0].source.data === fakeBuf.toString('base64'),
+  'screenshotOutputTool encodes the screenshot buffer as base64');
+assert(ss4[0].source.media_type === 'image/png',
+  'screenshotOutputTool declares media_type image/png');
+assert(ss4[1].type === 'text' && ss4[1].text.includes('localhost:4567'),
+  'screenshotOutputTool caption references the running port');
+
+// waitForLoadState throwing should NOT fail the whole screenshot — it's
+// wrapped in .catch(() => {}) on purpose so chatty apps still get captured.
+const ss5 = await screenshotOutputTool({}, new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => 4568,
+  getPage: async () => ({
+    waitForLoadState: async () => { throw new Error('networkidle timeout'); },
+    screenshot: async () => Buffer.from('ok', 'utf8'),
+  }),
+}));
+assert(Array.isArray(ss5) && ss5[0].type === 'image',
+  'screenshotOutputTool survives waitForLoadState throwing (it is bounded)');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
