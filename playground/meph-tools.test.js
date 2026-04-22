@@ -10,9 +10,10 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool } from './meph-tools.js';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
+import { patch } from '../patch.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -248,6 +249,40 @@ assert(undoSent && undoSent.type === 'undo',
 const ec4 = JSON.parse(editCodeTool({ action: 'frobnicate' }, new MephContext(), compileProgram));
 assert(ec4.error?.includes('Invalid action'),
   'editCodeTool with invalid action returns "Invalid action"');
+
+console.log('\n🩹 patchCodeTool\n');
+
+// Empty source → error
+const pc1 = JSON.parse(patchCodeTool({ operations: [{ op: 'fix_line', line: 1, replacement: 'x' }] }, new MephContext(), patch));
+assert(pc1.error?.includes('No code in editor'),
+  'patchCodeTool with empty source returns "No code in editor"');
+
+// Empty ops array → error
+const pc2 = JSON.parse(patchCodeTool({ operations: [] }, new MephContext({ source: 'x' }), patch));
+assert(pc2.error?.includes('operations array'),
+  'patchCodeTool with empty operations array returns guidance error');
+
+// Real patch — fix_line replaces line 2
+let pcSourceFired = null;
+let pcCodeUpdate = null;
+const ctxPatch = new MephContext({
+  source: 'line one\nline two\nline three',
+  send: (msg) => { if (msg.type === 'code_update') pcCodeUpdate = msg; },
+  onSourceChange: (s) => { pcSourceFired = s; },
+});
+const pc3 = JSON.parse(patchCodeTool({
+  operations: [{ op: 'fix_line', line: 2, replacement: 'NEW LINE' }],
+}, ctxPatch, patch));
+assert(pc3.applied >= 1, `patchCodeTool fix_line applied >= 1 (got ${pc3.applied})`);
+assert(typeof pc3.totalLines === 'number', 'patchCodeTool returns totalLines');
+assert(ctxPatch.source.includes('NEW LINE'),
+  'patchCodeTool fix_line mutates ctx.source');
+assert(ctxPatch.sourceBeforeEdit === 'line one\nline two\nline three',
+  'patchCodeTool fix_line captures sourceBeforeEdit');
+assert(pcSourceFired === ctxPatch.source,
+  'patchCodeTool fires onSourceChange on successful apply');
+assert(pcCodeUpdate && pcCodeUpdate.type === 'code_update',
+  'patchCodeTool emits ctx.send({type:"code_update"}) on successful apply');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
