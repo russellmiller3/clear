@@ -378,3 +378,36 @@ export async function getAppAccess(db, userId, appId) {
   );
   return rows[0] ? rows[0].role : null;
 }
+
+/**
+ * CC-2c dashboard query — every app the user can access across all their
+ * teams. One SQL JOIN (apps ← team_members WHERE user_id = $1). Each row
+ * carries `my_role` so the dashboard renders "Manage" vs "View" buttons
+ * without a second round-trip per app.
+ *
+ * Filters:
+ *   - apps.team_id NOT NULL (orphan apps don't belong to anyone)
+ *   - apps.status = 'active' (archived/deleted apps don't show on the
+ *     main dashboard — they'd live on a separate "Archived apps" view)
+ *
+ * Ordering: user's most-recent team membership first (recent teams at the
+ * top of the dashboard), then by app slug for stability. Matches the
+ * "what am I working on this week" UX intent.
+ *
+ * @param {object} db - pg Pool or compatible { query(text, params) }
+ * @param {number} userId
+ * @returns {Promise<Array<object>>} apps rows + my_role, empty array if no access
+ */
+export async function listAppsForUser(db, userId) {
+  const { rows } = await db.query(
+    `SELECT a.*, tm.role AS my_role
+     FROM apps a
+     JOIN team_members tm ON tm.team_id = a.team_id
+     WHERE tm.user_id = $1
+       AND a.team_id IS NOT NULL
+       AND a.status = 'active'
+     ORDER BY tm.joined_at DESC, a.slug ASC`,
+    [userId]
+  );
+  return rows;
+}

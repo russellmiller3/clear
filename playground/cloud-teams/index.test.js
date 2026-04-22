@@ -712,6 +712,99 @@ console.log('\n🛡️  getAppAccess — CC-2d app-level access control\n');
 }
 
 // =============================================================================
+// CC-2c — listAppsForUser: the dashboard query
+// =============================================================================
+// buildclear.dev/dashboard needs one query: "show me every app I can
+// access, grouped by team, with my role on each." listAppsForUser does it
+// in a single JOIN (apps ← teams ← team_members WHERE user_id = $1).
+// Each row carries `my_role` so the dashboard UI renders "Manage" vs
+// "View only" buttons without a second round-trip per app.
+//
+// Ordered by the user's most-recent join time (recent teams first) then
+// by app slug — matches "what am I working on this week" UX.
+console.log('\n📋 listAppsForUser — CC-2c dashboard query\n');
+
+{
+  function makeMockDbWithApps() {
+    const db = makeMockDb();
+    db.apps = [];
+    const origQuery = db.query;
+    db.query = async function (text, params = []) {
+      const t = text.replace(/\s+/g, ' ').trim();
+      if (/SELECT a\.\*, tm\.role.*FROM apps.*JOIN team_members/i.test(t)) {
+        const [userId] = params;
+        // Only active-status apps surface in dashboards.
+        const rows = [];
+        for (const m of db.members) {
+          if (m.user_id !== userId) continue;
+          for (const a of db.apps) {
+            if (a.team_id !== m.team_id) continue;
+            if (a.status && a.status !== 'active') continue;
+            rows.push({ ...a, my_role: m.role });
+          }
+        }
+        // Stable sort — recent memberships first, then by slug
+        rows.sort((x, y) => {
+          const jx = (db.members.find(m => m.team_id === x.team_id && m.user_id === userId) || {}).joined_at || 0;
+          const jy = (db.members.find(m => m.team_id === y.team_id && m.user_id === userId) || {}).joined_at || 0;
+          if (jx !== jy) return jy - jx;
+          return (x.slug || '').localeCompare(y.slug || '');
+        });
+        return { rows };
+      }
+      return origQuery(text, params);
+    };
+    return db;
+  }
+
+  const { createTeam, addMember, listAppsForUser } = await import('./index.js');
+
+  const db = makeMockDbWithApps();
+
+  // User 10 owns team 'acme' with 2 apps. User 20 is a member.
+  const teamAcme = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 10 });
+  await addMember(db, teamAcme.id, 20, 'member');
+  db.apps.push({ id: 1, team_id: teamAcme.id, slug: 'dashboard', status: 'active', tenant_id: 1 });
+  db.apps.push({ id: 2, team_id: teamAcme.id, slug: 'reports',   status: 'active', tenant_id: 1 });
+  db.apps.push({ id: 3, team_id: teamAcme.id, slug: 'archived',  status: 'deleted', tenant_id: 1 });
+
+  // Second team user 10 also owns, with 1 app
+  const teamBeta = await createTeam(db, { slug: 'beta', name: 'Beta', ownerUserId: 10 });
+  db.apps.push({ id: 4, team_id: teamBeta.id, slug: 'thing', status: 'active', tenant_id: 1 });
+
+  // Orphan app with no team — doesn't surface
+  db.apps.push({ id: 5, team_id: null, slug: 'orphan', status: 'active', tenant_id: 1 });
+
+  // User 10 sees all 3 active apps across both teams, with my_role on each
+  const ownerApps = await listAppsForUser(db, 10);
+  assert(ownerApps.length === 3,
+    `owner sees 3 active apps across 2 teams (got ${ownerApps.length})`);
+  assert(ownerApps.every(a => a.my_role === 'owner'),
+    `every row carries my_role='owner' (got ${JSON.stringify(ownerApps.map(a => a.my_role))})`);
+  const slugs = ownerApps.map(a => a.slug).sort();
+  assert(JSON.stringify(slugs) === JSON.stringify(['dashboard', 'reports', 'thing']),
+    `slugs include only active apps (got ${JSON.stringify(slugs)})`);
+  // Deleted apps don't surface
+  assert(!ownerApps.some(a => a.slug === 'archived'),
+    'archived-status app filtered out of the dashboard list');
+  // Orphan app (team_id=null) doesn't surface
+  assert(!ownerApps.some(a => a.slug === 'orphan'),
+    'orphan app (no team) filtered out');
+
+  // User 20 sees only acme's apps, with my_role='member'
+  const memberApps = await listAppsForUser(db, 20);
+  assert(memberApps.length === 2,
+    `member of one team sees that team's active apps (got ${memberApps.length})`);
+  assert(memberApps.every(a => a.my_role === 'member'),
+    `member role carried on every row (got ${JSON.stringify(memberApps.map(a => a.my_role))})`);
+
+  // User 999 — not a member of any team — sees empty list, not an error
+  const noApps = await listAppsForUser(db, 999);
+  assert(Array.isArray(noApps) && noApps.length === 0,
+    'non-member user sees empty array, not null or throw');
+}
+
+// =============================================================================
 // Schema drift-guard — CC-2b migration file has to exist and carry the
 // tables/columns the code above assumes. Catches the class of bug where
 // someone renames a column in code but forgets to update the migration
