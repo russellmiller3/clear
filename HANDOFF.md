@@ -373,6 +373,23 @@ With this, **every CC backend module has schema + helpers + tests:** tenants-db,
 
 Project totals after tick 18: **3038 tests green** (+25 cloud-domains storage).
 
+## Session 42 tick 19 — cloud-email composers
+
+`34db254` — new `playground/cloud-email/` module. Three composers for the three Clear Cloud transactional email flows, all returning the same `{from, to, subject, html, text}` envelope so one transport wrapper dispatches them uniformly:
+
+  - `composeInviteEmail({invite, team, invitedBy, baseUrl})` — team invite → `/accept-invite/<token>`. Subject names inviter + team for mail-client preview. HTML-escapes user-supplied strings (team name, inviter name) to block stored-XSS via hostile invite payload.
+  - `composeVerifyEmail({userEmail, token, baseUrl})` — signup verification → `/verify-email/<token>`.
+  - `composePasswordResetEmail({userEmail, token, baseUrl, ttlMinutes?})` — reset → `/reset-password/<token>`. TTL spelled out in body ("1 hour"/"30 minutes"/"2 hours").
+  - `escapeHtml(s)` — 5-char entity escaper, exported for ad-hoc callers.
+
+Sender defaults to `noreply@buildclear.dev`; overridable via `CLEAR_CLOUD_FROM_EMAIL` env.
+
+30 TDD assertions cover shape, content, XSS guard, TTL surfacing, and missing-field throws for all three composers + escapeHtml edge cases.
+
+Completes the transactional email library layer: cloud-auth/cloud-teams produce the tokens; cloud-email builds the email bodies. The remaining piece is a thin transport wrapper translating `{to, subject, html, text}` → SendGrid/Mailgun/SES API once 85a lands.
+
+Project totals after tick 19: **3068 tests green** (+30 cloud-email).
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
