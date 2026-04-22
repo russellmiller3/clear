@@ -50,6 +50,11 @@ function makeMockDb() {
         members.push(row);
         return { rows: [row] };
       }
+      if (/^SELECT \* FROM teams WHERE slug/i.test(t)) {
+        const [slug] = params;
+        const row = teams.find(x => x.slug === slug);
+        return { rows: row ? [row] : [] };
+      }
       throw new Error('MockDb: unhandled query — ' + t.slice(0, 100));
     },
   };
@@ -80,6 +85,24 @@ console.log('\n🚫 createTeam — duplicate slug\n');
   } catch (err) { threw = err.message; }
   assert(threw && threw.toLowerCase().includes('already exists'),
     `duplicate slug surfaces "already exists" error, not raw Postgres noise (got "${threw}")`);
+}
+
+// ─── TDD cycle 3: getTeamBySlug returns the team or null ─────────────────
+console.log('\n🔎 getTeamBySlug\n');
+
+{
+  const { createTeam, getTeamBySlug } = await import('./index.js');
+  const db = makeMockDb();
+  await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+
+  const found = await getTeamBySlug(db, 'acme');
+  assert(found && found.slug === 'acme',
+    `getTeamBySlug returns the team row (got ${JSON.stringify(found)?.slice(0, 100)})`);
+  assert(found.name === 'Acme', 'getTeamBySlug returns name on the row');
+
+  const missing = await getTeamBySlug(db, 'nonexistent');
+  assert(missing === null,
+    `getTeamBySlug returns null for unknown slug (got ${JSON.stringify(missing)})`);
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

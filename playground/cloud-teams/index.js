@@ -33,3 +33,15 @@ export async function createTeam(db, input) {
   }
   return team;
 }
+
+/**
+ * Look up a team by URL slug. Returns the row or null.
+ * Also mocks the mock-db — needs a SELECT handler added alongside.
+ */
+export async function getTeamBySlug(db, slug) {
+  const { rows } = await db.query(
+    `SELECT * FROM teams WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
+  return rows[0] || null;
+}
