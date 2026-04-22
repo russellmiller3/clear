@@ -190,6 +190,31 @@ Phase 10 drift-guard (3 assertions) pins the invariant: future refactors can't r
 
 Totals after tick 8: **2101 compiler + 270 meph-tools + 156 mcp-server + 7 runtime = 2534 tests green.** 8/8 core templates clean. Flywheel 552/200-threshold = 28% of the way to re-ranker retrain — at 3× parallel throughput, 2-3 full-curriculum sweeps gets us there.
 
+## Session 42 tick 9 — full-curriculum sweep + Clear Cloud advance
+
+**Full-curriculum sweep (38 tasks, 3 workers, --strict):**
+
+  - **34/38 completed** (89%), 4 failures: L8 onboarding-tracker, L8 internal-request-queue, L8 etl-daily-report, L10 full-saas
+  - Wall clock: 1665.9s ≈ 28 min
+  - Factor DB: 1544 → 1599 rows (+55), 552 → 582 passing (+30)
+  - Re-ranker threshold: 170 passing rows to go (was 195 before tick 8's parallel unblock)
+  - $0 API cost — runs on Russell's Claude subscription via cc-agent
+
+This is the first full 38-task sweep since tick 8's parallel-ceiling fix. Proves 3-worker parallel scales cleanly across the whole curriculum. At this rate, ~5 more full-curriculum sweeps (2.5 hours of wall clock) produces the 200-row dataset Queue F needs to retrain the re-ranker.
+
+**Clear Cloud progress (Russell: "finishing clear cloud"):**
+
+Started closing CC-2b/CC-2d gaps:
+  - `1446c2b` — wrote the missing `playground/cloud-teams/migrations/001-teams.sql`. HANDOFF listed it as "written but never run" but the file itself didn't exist — the cloud-teams scaffold's 14 TDD cycles were built against the in-memory mock DB. Now a real Postgres migration with teams + team_members + team_invites (CHECK constraints on role, partial indexes for pending invites + owner count). Drift-guard test reads the SQL and asserts every table/column index.js queries actually declares — 22 new assertions (+77 existing = 99 on the cloud-teams suite; then +9 getAppAccess → 109 total).
+  - `433abe4` — CC-2d schema slice. `playground/tenants-db/migrations/002-apps-team-ownership.sql` adds `apps.team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL` + an index. loadMigration002 + 4 drift-guards (file exists, column added, FK to teams, index). Documents migration application order: tenants/001 → cloud-auth/001 → cloud-teams/001 → tenants/002.
+  - `73ff14b` — CC-2d access-control primitive: `getAppAccess(db, userId, appId) → 'owner' | 'admin' | 'member' | null`. One SQL round-trip JOINs apps → team_members. Composes with `can(role, action)` for the full permission check. 9 TDD assertions across the truth table (owner/admin/member + non-member + team-less app + missing app + composition with can()).
+
+**CC-2d still open** (not yet wired): call sites. `/api/deploy`, app-settings endpoints, usage-row readouts — none actually call getAppAccess yet. Next tick: wire the primitive into the endpoints that matter, plus backfill + NOT NULL flip for `apps.team_id`.
+
+**CC-2c (account dashboard) + CC-3 (Stripe) + CC-4 (publish flow polish) + CC-5 (custom domains)** still unshipped. Plan details in `plans/plan-clear-cloud-master-04-21-2026.md`.
+
+Totals after tick 9: **2101 compiler + 270 meph-tools + 156 mcp-server + 7 runtime + 109 cloud-teams + 13 tenants-db = 2656 tests green.** 8/8 core templates clean.
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
