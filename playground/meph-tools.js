@@ -286,6 +286,44 @@ export function editCodeTool(input, ctx, compileProgram) {
 }
 
 /**
+ * read_terminal tool — surface the most recent terminal output + frontend
+ * errors to Meph. Stateless except for ctx.terminal + ctx.frontendErrors,
+ * which /api/chat mirrors from its closure-level buffers.
+ *
+ * Returns the last 80 terminal lines (matches the inline behavior) and the
+ * last 20 frontend errors. No mutation, no I/O.
+ *
+ * @param {object} input - unused
+ * @param {MephContext} ctx
+ * @returns {string} JSON-stringified result
+ */
+export function readTerminalTool(input, ctx) {
+  return JSON.stringify({
+    terminal: ctx.terminal.slice(-80).join('\n'),
+    frontendErrors: ctx.frontendErrors.slice(-20),
+  });
+}
+
+/**
+ * list_evals tool — compile the current source in eval mode and return the
+ * eval suite (the per-agent + per-endpoint specs the test runner uses).
+ *
+ * Stateless. compileForEval is passed in to keep meph-tools.js free of
+ * the eval-specific compile path import.
+ *
+ * @param {object} input - unused
+ * @param {MephContext} ctx - source field is required
+ * @param {function} compileForEval - eval-mode compiler entry point
+ * @returns {string} JSON-stringified result
+ */
+export function listEvalsTool(input, ctx, compileForEval) {
+  const compiled = compileForEval(ctx.source);
+  if (!compiled.ok) return JSON.stringify(compiled);
+  const suite = compiled.compiled.evalSuite || [];
+  return JSON.stringify({ ok: true, suite, count: suite.length });
+}
+
+/**
  * patch_code tool — apply an array of structured edit operations to the
  * current source. Uses patch.js's 11-op grammar (fix_line, add_endpoint,
  * add_field, etc.). On any successful application, mutates ctx.source via
