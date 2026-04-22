@@ -286,14 +286,28 @@ export function writeMcpConfigOrNull() {
     // depend on the evalChild subprocess lifecycle the MCP child can't
     // own on its own). When absent, those tools fail clean with a
     // "backend not available" error from the MCP server.
+    //
+    // FACTOR_DB_PATH pipes the Factor DB location through so the MCP
+    // server's compile tool can log trajectory rows during cc-agent
+    // curriculum sweeps (flywheel-feeds the training signal). Forwarded
+    // from Studio's parent env if set, else pointed at the canonical
+    // local path — same logic Studio uses at server.js:1599.
     const studioPort = process.env.PORT || '3456';
     const studioUrl = `http://localhost:${studioPort}`;
+    const factorDbPath = process.env.FACTOR_DB_PATH
+      || join(__dirname, '..', 'factor-db.sqlite');
     const config = {
       mcpServers: {
         meph: {
           command: 'node',
           args: [MCP_SERVER_PATH],
-          env: { STUDIO_URL: studioUrl },
+          env: {
+            STUDIO_URL: studioUrl,
+            FACTOR_DB_PATH: factorDbPath,
+            // Propagate the supervisor's session id so every row this MCP
+            // child logs stitches back to the sweep task worker.
+            ...(process.env.MEPH_SESSION_ID ? { MEPH_SESSION_ID: process.env.MEPH_SESSION_ID } : {}),
+          },
         },
       },
     };

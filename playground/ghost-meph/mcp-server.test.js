@@ -15,7 +15,7 @@
 
 import { spawn } from 'child_process';
 import { dispatch, ERROR_CODES } from './mcp-server/protocol.js';
-import { buildToolRegistry, _resetMcpState } from './mcp-server/tools.js';
+import { buildToolRegistry, _resetMcpState, _testBuildMephContext, _resetFactorDbCache } from './mcp-server/tools.js';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -401,6 +401,58 @@ function assert(cond, msg) {
 
   // Cleanup
   delete process.env.STUDIO_URL;
+
+  // =========================================================================
+  // PHASE 7 — factorDB wiring (flywheel for cc-agent runs)
+  // When cc-agent drives curriculum sweeps, each compile should log to the
+  // Factor DB so the flywheel fills for free. FACTOR_DB_PATH env var tells
+  // the MCP server's buildMephContext to open the DB file and wire it into
+  // ctx.factorDB. Without it, ctx.factorDB stays null (current behavior).
+  // =========================================================================
+  console.log('\n🎡 Phase 7 — factorDB wiring in MCP server (flywheel)');
+
+  const { mkdtempSync, rmSync, existsSync } = await import('fs');
+  const { tmpdir } = await import('os');
+  const { join } = await import('path');
+
+  // Without FACTOR_DB_PATH set: factorDB stays null (backward-compat)
+  const origFactorDbPath = process.env.FACTOR_DB_PATH;
+  delete process.env.FACTOR_DB_PATH;
+  _resetMcpState();
+  _resetFactorDbCache();
+  const ctxNoDb = await _testBuildMephContext();
+  assert(ctxNoDb.factorDB === null,
+    'without FACTOR_DB_PATH, ctx.factorDB is null (backward-compat)');
+
+  // With FACTOR_DB_PATH pointing at a nonexistent file: factorDB stays null
+  process.env.FACTOR_DB_PATH = join(tmpdir(), 'nonexistent-factor-db-' + Date.now() + '.sqlite');
+  _resetMcpState();
+  _resetFactorDbCache();
+  const ctxMissingDb = await _testBuildMephContext();
+  assert(ctxMissingDb.factorDB === null,
+    `nonexistent FACTOR_DB_PATH → ctx.factorDB null (graceful, no crash). got ${ctxMissingDb.factorDB}`);
+
+  // With FACTOR_DB_PATH pointing at a real SQLite file: factorDB opened
+  const tmpDbDir = mkdtempSync(join(tmpdir(), 'mcp-factor-db-test-'));
+  const tmpDbPath = join(tmpDbDir, 'test.sqlite');
+  // Create the file via FactorDB's own constructor so the schema is valid
+  const { FactorDB } = await import('../supervisor/factor-db.js');
+  const initDb = new FactorDB(tmpDbPath);
+  initDb.close?.();
+  process.env.FACTOR_DB_PATH = tmpDbPath;
+  _resetMcpState();
+  _resetFactorDbCache();
+  const ctxWithDb = await _testBuildMephContext();
+  assert(ctxWithDb.factorDB !== null && ctxWithDb.factorDB !== undefined,
+    `FACTOR_DB_PATH pointing at a valid DB → ctx.factorDB populated. got ${ctxWithDb.factorDB}`);
+  assert(typeof ctxWithDb.factorDB?.logAction === 'function',
+    'ctx.factorDB exposes logAction (the flywheel-feeding method)');
+
+  // Cleanup
+  _resetFactorDbCache();
+  if (origFactorDbPath === undefined) delete process.env.FACTOR_DB_PATH;
+  else process.env.FACTOR_DB_PATH = origFactorDbPath;
+  try { rmSync(tmpDbDir, { recursive: true, force: true }); } catch {}
 
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
