@@ -337,6 +337,12 @@ cloud-billing: 60/60 tests pass.
 
 Totals after tick 15: **2800 tests green** (+26 cloud-billing).
 
+## Session 42 tick 16 — checkAppCountQuota
+
+`526293b` — completes the quota trio. `checkAppCountQuota(db, tenantId, plan)` gates app creation the same way `checkQuota` gates agent calls. Counts active apps; returns `{ok, used, limit, remaining}`. Free=3, team=25, business/enterprise=unlimited. 9 new TDD assertions. cloud-quota: 59/59. Project: 2809 green.
+
+Russell switched /loop cadence to 5-min cron (f1ee2eb2) for faster iteration.
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
