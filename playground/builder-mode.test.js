@@ -142,6 +142,51 @@ try {
   assert(inlineFlex === '', 'inline flex cleared on mode switch (E-5)');
   assert(inlineWidth === '', 'inline width cleared on mode switch (E-5)');
 
+  // ==========================================================================
+  // PHASE 3 — Source toggle
+  // ==========================================================================
+  console.log('\n📄 Phase 3 — Source toggle');
+
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+
+  assert(await page.locator('#source-toggle-btn').isVisible(),
+    'Source button visible in builder mode');
+  assert(!(await page.locator('#editor-pane').isVisible()),
+    'editor hidden by default in builder mode');
+
+  await page.locator('#source-toggle-btn').click();
+  await page.waitForTimeout(150);
+  assert(await page.locator('#editor-pane').isVisible(),
+    'editor visible after Source toggle');
+  const labelAfterOpen = await page.locator('#source-toggle-btn').textContent();
+  assert(labelAfterOpen.includes('Hide'),
+    `button label flips to Hide after click (got "${labelAfterOpen}")`);
+
+  await page.locator('#source-toggle-btn').click();
+  await page.waitForTimeout(150);
+  assert(!(await page.locator('#editor-pane').isVisible()),
+    'editor hidden again after second click');
+
+  // E-11: content preserved across toggles
+  await page.locator('#source-toggle-btn').click();  // open
+  await page.waitForTimeout(300);
+  await page.locator('.cm-editor').click();
+  await page.keyboard.type('test-preserved');
+  await page.waitForTimeout(100);
+  const beforeHide = await page.locator('.cm-content').innerText();
+  await page.locator('#source-toggle-btn').click();  // close
+  await page.waitForTimeout(150);
+  await page.locator('#source-toggle-btn').click();  // re-open
+  await page.waitForTimeout(300);
+  const afterShow = await page.locator('.cm-content').innerText();
+  assert(beforeHide === afterShow,
+    `editor content preserved across hide/show (E-11): before="${beforeHide.slice(-30)}" after="${afterShow.slice(-30)}"`);
+
+  // In classic mode, the Source button should be hidden
+  await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
+  assert(!(await page.locator('#source-toggle-btn').isVisible()),
+    'Source button hidden in classic mode');
+
 } catch (err) {
   console.error('\n❌ Test suite threw:', err);
   failed++;

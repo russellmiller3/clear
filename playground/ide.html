@@ -515,6 +515,22 @@ body.builder-mode #chat-resizer { display: none; }
 @media (max-width: 1100px) {
   body.builder-mode #chat-pane { width: 100% !important; }
 }
+
+/* BM-3-minimal: Editor hidden by default in builder mode; Source toggle
+   reveals it as right-side overlay rail */
+body.builder-mode #editor-pane { display: none; }
+body.builder-mode.show-source #editor-pane {
+  display: flex;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(400px, 85vw);  /* E-9: clamp on narrow viewports */
+  z-index: 20;
+  background: var(--bg);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.18);
+  border-left: 1px solid var(--bd);
+}
 </style>
 </head>
 <body>
@@ -532,6 +548,7 @@ body.builder-mode #chat-resizer { display: none; }
     <select id="template-picker"><option value="">Templates...</option></select>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
+    <button id="source-toggle-btn" class="toolbar-btn" onclick="toggleSource()" title="Show/hide .clear source" style="display:none">Show Source ◀</button>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
     <button id="deploy-btn" class="toolbar-btn primary" onclick="doDeploy()" title="Ship to a live URL" style="display:none">Deploy</button>
@@ -4730,6 +4747,16 @@ window.toggleChat = function() {
   btn.title = collapsed ? 'Show Meph panel' : 'Hide Meph panel';
 };
 
+// Builder Mode v0.1 — BM-3-minimal: toolbar-driven source toggle.
+// Full 3-session auto-hide logic deferred to later PRES.
+window.toggleSource = function() {
+  const body = document.body;
+  const btn = document.getElementById('source-toggle-btn');
+  const shown = body.classList.toggle('show-source');
+  btn.textContent = shown ? 'Hide Source ▶' : 'Show Source ◀';
+  btn.title = shown ? 'Hide .clear source' : 'Show .clear source';
+};
+
 // ==========================================================================
 // EDITOR / PREVIEW DRAG RESIZER
 // ==========================================================================
@@ -4869,6 +4896,13 @@ function detectStudioMode() {
 
   // 7. Apply class
   body.classList.toggle('builder-mode', mode === 'builder');
+
+  // 8. Show/hide Source toggle button based on mode; reset show-source on exit
+  const srcBtn = document.getElementById('source-toggle-btn');
+  if (srcBtn) {
+    srcBtn.style.display = (mode === 'builder') ? '' : 'none';
+    if (mode !== 'builder') body.classList.remove('show-source');
+  }
 }
 
 // Run on initial load. Every mode change is a full navigation (URL param),
