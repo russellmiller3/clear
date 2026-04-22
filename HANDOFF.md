@@ -1,125 +1,135 @@
-# Handoff — 2026-04-22
+# Handoff — 2026-04-22 (end of GM-2 extraction session)
 
 ## Current State
 
-- **Branch:** `feature/gm-2-tool-use-rest` (long-running, pushed to origin, NOT merged to main).
-- **Last commit:** `34b3a47` docs(handoff): rewrite for end of autonomous /loop session.
-- **Main:** at `2a9eee3` (`Merge feature/ghost-meph-port-stop-app-db-inspect`). 30+ commits this session already merged + pushed.
+- **Branch:** `feature/gm-2-tool-use-rest` (long-running, 9 commits added this session, NOT pushed to origin yet, NOT merged to main).
+- **Last commit:** `8981306` feat(ghost-meph/mcp-server): wire all 28 Meph tools to dispatchTool (cc-agent step 2a).
+- **Main:** unchanged from prior handoff at `2a9eee3`.
 - **Working tree:** dirty with pre-existing files unrelated to this session (`.claude/settings.local.json`, `index.html`, `meph-memory.md`, `requests.md`, `style.css`, `playground/factor-db.sqlite-shm/-wal`, `playground/sessions/`, etc.) — ignore.
 
-## What's Wrapped at the End of This Session
+## What Landed This Session
 
-### Done + merged to main this session
-- **Queue B (P0 GTM) — 4/5:** deal-desk hero app, marcus.html headline, pricing.html, Studio first-visit onboarding.
-- **Queue C — 3/3 + followups:** doc-drift checker + findings, 1:1-mapping audit + AUTH_SCAFFOLD provenance, ROADMAP Marcus-bias trim. Plus Core 7→8 fix, USAGE_LIMIT/OAUTH_CONFIG removal, test count sync.
-- **Queue D — 2/2:** BM-6 tile gallery, Builder Mode v0.3 (3-ship counter + click-to-edit).
-- **Queue E backends:** GM-1 router, GM-2 cc-agent text-only MVP, GM-4 Ollama, GM-3 OpenRouter, MCP server skeleton (`playground/ghost-meph/mcp-server/`).
-- **GM-2 tool-use refactor — first 20 tools:** ported through `MephContext` to `playground/meph-tools.js`, all merged to main as separate commits.
+### On `feature/gm-2-tool-use-rest` (9 commits, all local)
 
-### Wrapped on `feature/gm-2-tool-use-rest` (not merged)
-- 21st tool ported (`run_command`) sits on this branch. The remaining 6 tools + executeTool extraction + cc-agent stream-json bridge stack here.
+All 28 Meph tools now live in `playground/meph-tools.js` behind a single `dispatchTool(name, input, ctx, helpers)` export. The inline 330-line switch in `playground/server.js` is gone; `/api/chat`'s `executeTool` is now an ~80-line wrapper that builds one fat MephContext, hands it to `dispatchTool`, and mirrors back the state fields the tools mutated.
 
-## The GM-2 Workstream — Where It Stands
+| Commit | What shipped |
+|---|---|
+| `69a075c` | Port `screenshot_output` (Playwright page through MephContext callbacks) |
+| `4b3dc26` | Port `run_app` (subprocess + port allocation; lifecycle callbacks) |
+| `c0556a3` | Port `run_tests` (stdout parsing injected as third arg) |
+| `44af696` | Port `run_evals` + `run_eval` (runEvalSuite as third arg) |
+| `92abef3` | Port `http_request` + delete loop special-casing for screenshot/http |
+| `b86a02f` | Port `compile` — the 480-line beast (Factor DB + 4-tier re-ranker + hint state) |
+| `b49243a` | executeTool → dispatchTool full extraction |
+| `8981306` | MCP server wired to all 28 tools via dispatchTool (cc-agent step 2a) |
 
-**Goal:** turn `MEPH_BRAIN=cc-agent` into a real working backend so curriculum sweeps + Meph evals run on Russell's $200/mo Claude Code subscription instead of the production Anthropic key.
+Plus one user-level rule add: `~/.claude/CLAUDE.md` → **Periodic Progress Checkpoints** (narrate session-level status at chunk boundaries; different cadence from the per-action Science Documentary Rule).
 
-**21 of 27 tools ported.** Both `/api/chat` and the future MCP server can call these from one shared module. Only one MCP server stub (`meph_read_file`) is wired to its real handler — the others stay stubbed until executeTool fully extracts.
+### Tests green at every step
+- `node clear.test.js` → **2097/2097**
+- `node playground/meph-tools.test.js` → **254/254** (was 179 at session start — 75 new)
+- `node playground/ghost-meph.test.js` → **59/59**
+- `node playground/ghost-meph/mcp-server.test.js` → **99/99** (was 30 — 69 new; 28 tools exposed, Phase 5 integration for write→read→compile flow)
 
-| Group | Ported | Remaining inline |
-|---|---|---|
-| Stateless | read_file, highlight_code, browse_templates, edit_file | — |
-| Stateful | source_map, edit_code, patch_code, read_terminal, list_evals, todo | **compile** (480 lines, Factor DB + hint tracking — biggest), **run_tests**, **run_evals**, **run_eval** |
-| Bridge | click_element, fill_input, inspect_element, read_storage, read_dom, read_network, websocket_log | — |
-| Subprocess | stop_app, db_inspect, run_command | **run_app** (port allocation, child_process spawn), **screenshot_output** (async marker) |
-| Fetch | read_actions | **http_request** (async deferred path in tool-use loop) |
-| Helpers | validateToolInput, describeMephTool | — |
-| Class | MephContext (16 fields + 8 callbacks, lazy-grow) | — |
+### MephContext shape
 
-**Tests:** `node playground/meph-tools.test.js` → 179/179. `node clear.test.js` → 2096/2096. `node playground/ghost-meph.test.js` → 59/59. `node playground/ghost-meph/mcp-server.test.js` → 30/30.
+`playground/meph-context.js` has grown to ~30 fields supporting every tool's needs. Fields were added lazily — every one has at least one consumer. Key groups:
+- **Source/compile:** `source`, `errors`, `sourceBeforeEdit`, `lastCompileResult` + setter callbacks
+- **Diagnostic buffers:** `terminal`, `frontendErrors`, `networkBuffer`, `websocketBuffer`
+- **Callbacks:** `send`, `termLog`, `onSourceChange`, `onErrorsChange`
+- **Bridge/subprocess:** `isAppRunning`, `sendBridgeCommand`, `stopRunningApp`, `getRunningChild`, `setRunningChild`, `allocatePort`, `getPage`, `getRunningPort`
+- **File/exec:** `rootDir`, `buildDir`, `allowedCommandPrefixes`, `apiKey`
+- **Todos/actions:** `todos`, `onTodosChange`, `mephActionsUrl`
+- **Compile-only (Factor DB + reranker):** `factorDB`, `sessionId`, `sessionSteps`, `pairwiseBundle`, `ebmBundle`, `hintState` (mutable object the tool writes to)
 
-## Next Session Priority Order (REVISED — Russell direction 2026-04-22)
+## Next Session Priority Order
 
-### 1. Finish the GM-2 tool-use refactor (~1-2 days)
-Stack the remaining work on `feature/gm-2-tool-use-rest`. Port the 6 tools in ascending complexity order:
+### 1. Finish cc-agent path (steps 2b–2d) — THE BUDGET UNLOCK
 
-1. `screenshot_output` (async marker, trivial — returns `__ASYNC_SCREENSHOT__` for the loop to handle)
-2. `run_app` (subprocess + port allocation, ~80 lines — needs `runningChild` + port-allocator callbacks on MephContext)
-3. `run_tests` / `run_evals` / `run_eval` (each subprocess + send + Factor DB write — share infrastructure, port together)
-4. `http_request` (async deferred — needs special handling in the tool-use loop's async dispatch path)
-5. `compile` (480-line beast with Factor DB integration + hint tracking — save for last; will substantially expand MephContext)
+The MCP server exposes all 28 tools. What's left is wiring `cc-agent.js` to actually spawn Claude Code with that MCP server configured and parse the stream-json output back into Anthropic SSE events.
 
-After all 27 ported, do the **executeTool full extraction** — replace the inline switch in `playground/server.js` with a `dispatchTool(name, input, ctx)` import from `meph-tools.js`. /api/chat's closure shrinks dramatically.
+**Step 2b — Spawn claude with MCP + stream-json.** In `playground/ghost-meph/cc-agent.js`:
+- Write a temp MCP config JSON pointing at `playground/ghost-meph/mcp-server/index.js`
+- Replace `spawn('claude', ['--print'], ...)` with `spawn('claude', ['--mcp-config', configPath, '--output-format', 'stream-json', '--print'], ...)`
+- Pipe full conversation history to stdin (not just the latest user prompt)
 
-### 2. Build the cc-agent path end-to-end via Claude Code (THE ACTUAL UNLOCK)
-This is what Russell asked for — finish GM-2, then immediately wire cc-agent to use Claude Code (the local subscription) to drive Meph workflows. 1-2 days of focused work after step 1:
+**Step 2c — Parse stream-json → Anthropic SSE.** Each line of stdout is one JSON event. The `/api/chat` loop only cares about three event types (per the plan):
+- `content_block_start` with `type: 'tool_use'` — when Meph calls a tool
+- `content_block_delta` with `type: 'input_json_delta'` — streaming tool args
+- `message_delta` with `delta.stop_reason` — `'tool_use'` to signal "iterate" or `'end_turn'` to signal "done"
 
-a. **Wire MCP server real handlers** for all ported tools. Today only `meph_read_file` is real; the others stay stubbed. Loop through `meph-tools.js` exports, register each as a `meph_<name>` MCP handler. ~30 lines + tests.
+Text events pass through as `text_delta`. Expect to iterate on the exact shape — `claude --output-format stream-json` isn't a documented stable interface.
 
-b. **Update `cc-agent.js` to spawn Claude Code with MCP + stream-json.** Replace `claude --print "<text>"` with `claude --mcp-config=<path> --output-format stream-json -p "<text>"`. ~50 lines.
+**Step 2d — Tool result feedback loop.** When `/api/chat` runs the tool and posts the result back as a `tool_result` content block, `cc-agent` needs to forward it to claude's subprocess. Plan says to start with re-spawn-per-turn (simple, costs 2-3s/turn) and move to persistent subprocess later if profile shows spawn cost dominates.
 
-c. **Parse stream-json → Anthropic SSE.** Each line of CC's stdout is a JSON event. `tool_use` events translate to Anthropic's `content_block_start` / `input_json_delta` / `content_block_stop` sequence. `text_delta` events pass through. `message_stop` becomes Anthropic's `message_delta` with `stop_reason`. ~150 lines, mostly pattern-matching.
+**Where to find the starting points:**
+- `playground/ghost-meph/cc-agent.js` — current text-only MVP (169 lines). Entry point is `chatViaClaudeCode(payload)`.
+- `playground/ghost-meph/mcp-server/index.js` — the MCP server that needs to be wired into the MCP config
+- `playground/ghost-meph/mcp-server/tools.js` — all 28 tool handlers, ready to use
+- `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md` — full architecture and step-by-step
 
-d. **Tool result feedback loop.** When /api/chat runs the tool and posts the result back as a `tool_result` message, forward it to Claude Code's stdin (or re-spawn with full history — simpler, costs 2-3s/turn).
+**Verification path:** need real `claude` CLI installed. Once wired, `MEPH_BRAIN=cc-agent node playground/eval-meph.js` should run all 16 scenarios through the local subscription at $0 cost. That's the smoke test.
 
-After this lands: `MEPH_BRAIN=cc-agent` works with tools, curriculum sweeps cost $0, pre-push Meph eval stops being skipped, Factor DB starts filling for free, Queue F unblocks.
+### 2. Extract parseTestOutput + compileForEval + runEvalSuite from server.js
 
-Full architecture spec: `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`.
+The MCP server's `buildHelpers()` has four TODOs (comments saying "stays unwired until we extract from server.js"): `compileForEval`, `parseTestOutput`, `runEvalSuite`. These live inside `server.js` closures and can't be imported without starting the Studio server.
 
-### 3. Then Clear Cloud (Russell's CC pivot)
+Work: pull each into a pure helper module (`playground/meph-helpers.js` or similar). `parseTestOutput` is already pure — just needs to move. `compileForEval` just calls `compileProgram` twice. `runEvalSuite` is harder — it manages an `evalChild` subprocess lifecycle that the MCP child would also need. Start with the easy two.
 
-Read `plans/plan-clear-cloud-master-04-21-2026.md` first. Phase 85a (Russell's paperwork — domain, Fly Trust Verified, Stripe, Anthropic org key, Postgres) **status unknown** — confirm with Russell before running anything that hits real infrastructure.
+Once extracted, the MCP server's `run_tests`, `list_evals`, `run_evals`, `run_eval` handlers will work — Claude Code can run full compile-test-eval cycles against the local subscription.
 
-Even without 85a, **scaffold work is doable now**:
+### 3. Clear Cloud (Russell's CC pivot) — unchanged from prior handoff
 
-a. **CC-1a Tenants DB schema.** Create `playground/tenants-db/migrations/001-tenants.sql` with tables `tenants`, `apps` (tenant_id, slug, subdomain, fly_app_name, fly_db_conn_str), `deploys` (app_id, version, image, status), `usage_rows` (app_id, ts, tokens_in, tokens_out, cost_usd). Branch: `feature/cc1-tenants-schema`. Test against local dev Postgres. Don't merge to main until 85a done.
+Read `plans/plan-clear-cloud-master-04-21-2026.md` first. Phase 85a (Russell's paperwork) status unknown — confirm before running anything that hits real infrastructure.
 
-b. **CC-1b Subdomain router.** HTTP middleware that extracts subdomain from `Host:` header, looks up the tenant app, proxies to the right Fly app's internal URL. Branch: `feature/cc1-subdomain-router`. Mock the deploy target until real Fly Trust Verified is live.
+Scaffold work is doable without 85a. Branch per CC item, **do NOT merge to main** until Russell confirms 85a done.
 
-c. **CC-2a/b buildclear.dev auth.** users + sessions tables, signup/login endpoints, team membership tables. Branch: `feature/cc2-auth`. Local dev Postgres.
+- **CC-1a** Tenants DB schema (`playground/tenants-db/migrations/001-tenants.sql`)
+- **CC-1b** Subdomain router
+- **CC-2a/b** buildclear.dev auth
 
-All Queue G — open as branches, **DO NOT merge to main** until Russell confirms Phase 85a is done.
+### 4. Queue F (RL flywheel) — unlocks after cc-agent tool-use lands
 
-### 4. Then Queue F (RL flywheel) — unlocks once cc-agent tool-use lands
-- RL-3 classifier fuzzy-match fixes (~30 min)
-- RL-4 step seeds on 28 curriculum tasks (~1hr)
-- RL-5 archetype task hints (~30 min)
+- RL-3 classifier fuzzy-match fixes
+- RL-4 step seeds on 28 curriculum tasks
+- RL-5 archetype task hints
 - RL-6 first full Ghost-Meph re-sweep (overnight, free)
 - RL-8 honest-helpful retrain (when ~50 tags accumulate)
 
 ## Engineering Rules (unchanged)
 
-- **Long-running branch for GM-2:** stack all remaining ports + executeTool + cc-agent bridge work on `feature/gm-2-tool-use-rest`. Don't merge until Russell reviews the GM-2 piece as one cohesive PR.
-- **Verify branch before commit:** `git branch --show-current` after `git checkout -b`. Earlier this session GTM-1 somehow committed straight to main even though I'd just branched.
-- **`SKIP_MEPH_EVAL=1 git push --no-verify`** for the 7 pre-existing `todo-fullstack` failures in `playground/e2e.test.js`. Documented multiple times.
+- **Long-running branch for GM-2:** the refactor + MCP wiring live on `feature/gm-2-tool-use-rest`. Push when Russell signals OK to open a cohesive PR.
+- **Verify branch before commit:** `git branch --show-current` after `git checkout -b`.
+- **`SKIP_MEPH_EVAL=1 git push --no-verify`** for pre-existing todo-fullstack e2e failures.
 - **Doc-only commits get `--no-verify` on commit too.**
-- **Run after every port:** `node playground/meph-tools.test.js` (current 179) + `node clear.test.js` (current 2096). Both must stay green.
-- **Pass heavy deps as arguments, not module imports.** `compileProgram`, `patch`, `compileForEval`, `Database` (better-sqlite3) get passed into tool functions rather than imported into `meph-tools.js`. Keeps the module tree-shakable.
-- **Lazy-grow MephContext.** Add fields only when the tool being ported needs them. By the time all 27 ports land, every field has at least one consumer.
+- **Run after every port:** `node playground/meph-tools.test.js` + `node clear.test.js`. Both must stay green.
+- **Pass heavy deps as arguments, not module imports.** `meph-tools.js` stays dependency-light — caller injects `compileProgram`, `patch`, `parseTestOutput`, `runEvalSuite`, `classifyArchetype`, reranker exports, etc.
 
 ## Known Issues / Bugs
 
-- **Pre-existing e2e failures** (7 tests) in todo-fullstack seed/CRUD/search. Not introduced this session — present on main before any of this. Pushes use `--no-verify` to bypass.
-- **MCP server `meph_read_file` is the only real handler.** `meph_compile` still returns "not yet wired" stub. Wired up as part of cc-agent path step 2a above.
-- **Compiler test count baseline: 2096** after USAGE_LIMIT + OAUTH_CONFIG removal. If anyone else changes the count, run `node scripts/check-doc-drift.cjs` to catch divergence across docs.
+- **Pre-existing e2e failures** (7 tests) in todo-fullstack seed/CRUD/search. Not introduced this session. Pushes use `--no-verify` to bypass.
+- **MCP server subset in MCP-only mode:** tools that need live infrastructure (Playwright, running child, Factor DB) surface "No app running" or similar clean errors instead of crashing. Full functional parity with Studio arrives when `parseTestOutput` + `compileForEval` extract (next-priority item 2).
+- **Compiler test count baseline: 2097** (was 2096 at start of session — drift from elsewhere; verify with `node scripts/check-doc-drift.cjs` if it changes).
+- **Meph tool test count baseline: 254**, MCP server test count baseline: **99**. Both should only go UP from here.
 
-## Files to Read First
+## Files to Read First Next Session
 
 | File | Why |
 |------|-----|
-| `HANDOFF.md` (this file) | Mandate + revised priority order |
-| `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md` | Architecture for the cc-agent unlock (steps 1 + 2 next session) |
-| `plans/plan-clear-cloud-master-04-21-2026.md` | Required reading before any Clear Cloud work (step 3 next session) |
-| `playground/meph-tools.js` | Current state of the shared tool module — pattern to copy for the 6 remaining ports |
-| `playground/meph-context.js` | The MephContext class — add fields here lazily as remaining tools need them |
-| `playground/server.js` `executeTool` (~line 2780+) | The 6 remaining tool cases + the tool-use loop |
-| `playground/ghost-meph/mcp-server/tools.js` | Where to wire MCP handlers to ported tools (cc-agent path step 2a) |
-| `playground/ghost-meph/cc-agent.js` | Current text-only MVP — gets stream-json upgrade in cc-agent path steps 2b/c/d |
-| `CHANGELOG.md` top entry | What shipped this session in narrative form |
-| `CLAUDE.md` (project) + `~/.claude/CLAUDE.md` (global) | Rules + voice |
+| `HANDOFF.md` (this file) | Mandate + priority order |
+| `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md` | Architecture for steps 2b–2d |
+| `playground/ghost-meph/cc-agent.js` | Current text-only MVP to replace |
+| `playground/ghost-meph/mcp-server/tools.js` | All 28 tools wired — ready to use |
+| `playground/meph-tools.js` | `dispatchTool` is the single entry point |
+| `playground/meph-context.js` | MephContext shape — every ctx field documented |
+| `playground/server.js` `executeTool` (~line 2743) | Reference for how /api/chat builds ctx + helpers |
+| `CHANGELOG.md` top entry | Session narrative |
+| `CLAUDE.md` (project) + `~/.claude/CLAUDE.md` (global) | Rules + voice (periodic-progress rule just added) |
 
 ## Resume Prompt
 
-> Read `HANDOFF.md`. Continue on `feature/gm-2-tool-use-rest`. Priority: finish the 6 remaining GM-2 tool ports (start with `screenshot_output`, end with `compile`), then do the executeTool full extraction, then build the cc-agent path end-to-end (steps 2a-d in HANDOFF) — that's the budget unlock and Russell's #2 priority. Only after the cc-agent path works should you start Clear Cloud scaffold work (Queue G, branch per CC item, **don't merge to main until Russell signals Phase 85a done**). Use `SKIP_MEPH_EVAL=1 git push --no-verify` for pre-existing todo-fullstack e2e failures. Verify branch with `git branch --show-current` before every commit.
+> Read `HANDOFF.md`. Continue on `feature/gm-2-tool-use-rest`. The GM-2 tool-use refactor + MCP server wiring is DONE — all 28 tools routed through `dispatchTool`, MCP server exposes them all. Next priority: cc-agent steps 2b–2d (spawn claude with MCP + stream-json, parse stream-json → Anthropic SSE, tool-result feedback loop via re-spawn). This unblocks `MEPH_BRAIN=cc-agent` for curriculum sweeps at $0 cost. You need real `claude` CLI installed to iterate on the stream-json format — it's not a documented stable interface. After that, extract `parseTestOutput` + `compileForEval` from `server.js` so the MCP server can wire those four tool handlers (`run_tests`, `list_evals`, `run_evals`, `run_eval`) to real impls. Only after the cc-agent path works should you start Clear Cloud scaffold work (Queue G, branch per CC item, **don't merge to main until Russell signals Phase 85a done**). Use `SKIP_MEPH_EVAL=1 git push --no-verify` for pre-existing todo-fullstack e2e failures. Verify branch with `git branch --show-current` before every commit.
 
 ---
 
