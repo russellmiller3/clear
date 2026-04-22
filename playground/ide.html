@@ -4954,6 +4954,56 @@ function detectStudioMode() {
 // Run on initial load. Every mode change is a full navigation (URL param),
 // so no need for ongoing listeners.
 detectStudioMode();
+
+// ==========================================================================
+// FIRST-VISIT ONBOARDING (GTM-5)
+// New users land on Meph chat with a one-line welcome and the input focused —
+// not staring at an empty editor. Dismissed on first keystroke or X click,
+// flag persists in localStorage so it never shows again on this browser.
+// Works in both classic and builder mode (different copy per mode).
+// ==========================================================================
+function showFirstVisitOnboarding() {
+  let seen = false;
+  try { seen = localStorage.getItem('clear-onboarding-seen') === '1'; }
+  catch (e) { /* private browsing — show every load, harmless */ }
+  if (seen) return;
+
+  const messages = document.getElementById('chat-messages');
+  const input = document.getElementById('chat-input');
+  if (!messages || !input) return;
+
+  const isBuilder = document.body.classList.contains('builder-mode');
+  const greeting = isBuilder
+    ? 'What do you want to build today?'
+    : "Hi — I'm Meph, your build partner.";
+  const sub = isBuilder
+    ? 'Tell me about an internal tool your team needs. I\'ll write it in Clear, compile it, run it, and ship it. Try: <em>"deal-desk approval workflow"</em> or <em>"weekly customer health dashboard."</em>'
+    : 'Type what you want to build in plain English. I\'ll write the Clear code, compile it, run it, and fix anything that breaks. Try: <em>"todo app with login"</em> or <em>"lead-router that scores by company size."</em>';
+
+  const card = document.createElement('div');
+  card.id = 'onboarding-card';
+  card.style.cssText = 'margin:14px 16px;padding:16px 18px 14px;background:linear-gradient(135deg,var(--accent-glow) 0%,transparent 100%);border:1px solid var(--bd2);border-radius:12px;position:relative;font-size:13px;line-height:1.55;color:var(--tx);';
+  card.innerHTML = `
+    <button id="onboarding-dismiss" title="Dismiss" style="position:absolute;top:6px;right:8px;background:transparent;border:none;color:var(--tx3);cursor:pointer;font-size:16px;line-height:1;padding:4px 8px;">×</button>
+    <div style="font-weight:600;margin-bottom:6px;color:var(--accent);font-size:13px;">${greeting}</div>
+    <div style="color:var(--tx2);font-size:12px;">${sub}</div>
+  `;
+  messages.prepend(card);
+
+  const dismiss = () => {
+    try { localStorage.setItem('clear-onboarding-seen', '1'); } catch (e) {}
+    card.remove();
+    input.removeEventListener('input', onFirstInput);
+  };
+  const onFirstInput = () => dismiss();
+  input.addEventListener('input', onFirstInput, { once: true });
+  document.getElementById('onboarding-dismiss').addEventListener('click', dismiss);
+
+  // Focus the chat input so the user can immediately start typing.
+  setTimeout(() => { try { input.focus(); } catch (e) {} }, 50);
+}
+
+showFirstVisitOnboarding();
 </script>
 <!-- Deploy modal — injected populated by doDeploy() -->
 <div id="deploy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center"></div>
