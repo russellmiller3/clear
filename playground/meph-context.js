@@ -48,11 +48,14 @@ export class MephContext {
     this.lastCompileResult = options.lastCompileResult || null;
 
     // Diagnostic buffers — read-only from the tool's perspective. /api/chat
-    // mirrors its closure-level terminalBuffer + frontendErrors arrays
-    // through these so read_terminal (and future tools) can surface them
-    // back to Meph in tool results.
+    // mirrors its closure-level terminalBuffer + frontendErrors +
+    // _networkBuffer + _websocketBuffer arrays through these so the
+    // surface tools (read_terminal, read_network, websocket_log) can slice
+    // a tail back to Meph in tool results.
     this.terminal = options.terminal || [];
     this.frontendErrors = options.frontendErrors || [];
+    this.networkBuffer = options.networkBuffer || [];
+    this.websocketBuffer = options.websocketBuffer || [];
 
     // Callbacks default to no-ops so handlers can call them
     // unconditionally without null-checking.

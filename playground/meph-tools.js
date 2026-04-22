@@ -332,6 +332,41 @@ export async function readDomTool(input, ctx) {
 }
 
 /**
+ * read_network — surface the most recent HTTP requests captured from the
+ * running app's iframe. Reads ctx.networkBuffer (mirrored from /api/run's
+ * Playwright network listener). Optional `filter` substring narrows by URL.
+ *
+ * @param {object} input - { limit?: number, filter?: string }
+ * @param {MephContext} ctx
+ * @returns {string} JSON-stringified result
+ */
+export function readNetworkTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: 'No app running. Network capture starts when the app runs.' });
+  const limit = Math.min(input.limit || 20, 100);
+  let requests = ctx.networkBuffer.slice(-limit);
+  if (input.filter) {
+    requests = requests.filter(r => r.url.includes(input.filter));
+  }
+  return JSON.stringify({ count: requests.length, requests });
+}
+
+/**
+ * websocket_log — surface the most recent WebSocket messages captured from
+ * the running app. Reads ctx.websocketBuffer (mirrored from /api/run's WS
+ * frame listener).
+ *
+ * @param {object} input - { limit?: number }
+ * @param {MephContext} ctx
+ * @returns {string} JSON-stringified result
+ */
+export function websocketLogTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: 'No app running. WebSocket capture starts when the app runs.' });
+  const limit = Math.min(input.limit || 20, 100);
+  const messages = ctx.websocketBuffer.slice(-limit);
+  return JSON.stringify({ count: messages.length, messages });
+}
+
+/**
  * browse_templates tool — list all template apps in the apps/ directory or
  * read one template's main.clear source.
  *
