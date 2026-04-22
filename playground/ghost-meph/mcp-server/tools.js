@@ -20,7 +20,14 @@
  * Tool definitions follow MCP's inputSchema = JSON Schema convention.
  */
 
-import { validateToolInput } from '../../meph-tools.js';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+import { validateToolInput, readFileTool } from '../../meph-tools.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// Repo root: this file is at <repo>/playground/ghost-meph/mcp-server/tools.js,
+// so up three dirs.
+const REPO_ROOT = join(__dirname, '..', '..', '..');
 
 const NOT_IMPL_PREFIX = '[meph MCP server stub] tool not yet wired to executeTool — see plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md step 2 (executeTool refactor) and step 3 (port the 8 tool handlers). Until then this MCP server only echoes back the validated input.';
 
@@ -68,7 +75,9 @@ export const handlers = new Map([
     // identically to /api/chat's tool dispatch.
     const validationError = validateToolInput('read_file', input);
     if (validationError) return { error: validationError };
-    return `${NOT_IMPL_PREFIX}\n\nWould have read: ${input.filename}`;
+    // GM-2 step 3a: real handler — same shared implementation /api/chat
+    // calls. Pass REPO_ROOT so the function can build absolute paths.
+    return readFileTool(input, { rootDir: REPO_ROOT });
   }],
   ['meph_compile', async (input) => {
     const validationError = validateToolInput('compile', input);

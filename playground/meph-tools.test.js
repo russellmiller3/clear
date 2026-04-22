@@ -8,7 +8,12 @@
 // Run: node playground/meph-tools.test.js
 // =============================================================================
 
-import { validateToolInput, describeMephTool } from './meph-tools.js';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+import { validateToolInput, describeMephTool, readFileTool } from './meph-tools.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dirname, '..');
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -102,6 +107,35 @@ assert(describeMephTool('run_command', { command: longCmd }).length <= 'run_comm
 assert(describeMephTool('todo', { action: 'set' }) === 'todo (set)', 'todo reports action');
 assert(describeMephTool('completely_new_tool', { x: 1 }) === 'completely_new_tool',
   'unknown tool name falls through to bare name');
+
+console.log('\n📄 readFileTool\n');
+
+// Non-allowlisted file → error
+const r1 = JSON.parse(readFileTool({ filename: 'package.json' }, { rootDir: REPO_ROOT }));
+assert(r1.error && r1.error.includes('Can only read'),
+  'readFileTool rejects non-allowlisted file (package.json)');
+assert(r1.error.includes('SYNTAX.md'), 'error message lists what IS readable');
+
+// Missing file in allowlist → file-not-found
+const r2 = JSON.parse(readFileTool({ filename: 'requests.md' }, { rootDir: '/nonexistent-dir-xyz' }));
+assert(r2.error && r2.error.includes('not found'),
+  'readFileTool returns "not found" when allowlisted file is absent');
+
+// Real allowed file — SYNTAX.md
+const r3 = JSON.parse(readFileTool({ filename: 'SYNTAX.md' }, { rootDir: REPO_ROOT }));
+assert(r3.filename === 'SYNTAX.md', 'returns the filename');
+assert(typeof r3.totalLines === 'number' && r3.totalLines > 0,
+  `returns totalLines > 0 (got ${r3.totalLines})`);
+
+// SYNTAX.md is over 800 lines → expect TOC mode
+assert(r3.mode === 'toc' && typeof r3.toc === 'string' && r3.toc.length > 0,
+  'large file returns TOC mode with non-empty toc string');
+
+// Line-range mode
+const r4 = JSON.parse(readFileTool({ filename: 'SYNTAX.md', startLine: 1, endLine: 5 }, { rootDir: REPO_ROOT }));
+assert(r4.lines === '1-5', `line range echoed in result (got "${r4.lines}")`);
+assert(typeof r4.content === 'string' && r4.content.split('\n').length === 5,
+  'startLine/endLine returns exactly that range');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
