@@ -501,31 +501,11 @@ Every internal tool builder has performance problems at scale. Retool chokes bec
 | P9 | Multi-file download | Zip: `server.js` + `index.html` + `package.json`. Single files don't deploy. |
 | P10 | `clear test` runner fix | User-written `test` blocks aren't picked up by `clear test` CLI (R5 in refactoring backlog). |
 
-### Mechanical Test Quality Signals (Session 36b — Complete)
+### Mechanical Test Quality Signals (Session 36b — shipped)
 
-Three pieces shipped on `feature/test-quality-signals`:
-
-| # | Piece | Status | Location |
-|---|-------|--------|----------|
-| 1 | Static lint on weak assertions | ✅ Done | `compiler.js` — `generateE2ETests()`, `qualityWarnings[]` |
-| 2 | Process lint: red-step tracking | ✅ Done | `playground/server.js` — `sessionTestCalls[]` per `/api/chat` |
-| 3 | Session JSON storage | ✅ Done | `playground/sessions/[id].json`, `GET /api/session-quality` |
-
-These are the mechanical bootstrap for the re-ranker. See `RESEARCH.md` for full flywheel design.
-
-**Next:** Supervisor multi-session plan — `feature/supervisor-multi-session`. See `plans/plan-supervisor-multi-session-04-17-2026.md`.
-
-### Next Up (Session 34 Next Steps)
-
-Ordered by impact.
-
-| Priority | Feature | Notes |
-|----------|---------|-------|
-| N1 | **Ensemble grader mode** | `EVAL_PROVIDER=ensemble` runs Anthropic + Gemini and surfaces grader disagreement as a pink chip. Catches Claude-grading-Claude bias automatically. On session 32's list, still unbuilt. |
-| N2 | **Eval history** | Persist runs + score trends per template to a local table. Auto-flag regressions (score drop > 2 points vs last run). Half-day of work. |
-| N3 | **CLI `clear eval --suite` mode** | Port the structured eval path from Studio to the CLI so CI can run evals outside the browser. Unblocks scheduled regression runs. |
-| N4 | **Probe-validate sweep against nested shapes** | Session 34's probe fix was tested against flat `validate` rules (url, company, email). Validate blocks with nested objects / list constraints haven't been exercised. Sweep every `validate incoming:` in apps/ to confirm. |
-| N5 | **Review SQLite WIP in `apps/todo-fullstack/clear-runtime/db.js`** | Pending migration sitting unstaged in working tree since session 32 or earlier. Decide: ship, stash, or revert. |
+Three pieces shipped on `feature/test-quality-signals`. Moved out of the
+active roadmap because all three are done; full session entry in
+`CHANGELOG.md` and design rationale in `RESEARCH.md`.
 
 ### Private Moonshots — if the goal is delight, ambition, and "this should not exist"
 
@@ -639,6 +619,10 @@ That combination is unique. The gap to close is platform: hosting, compliance, i
 | Supabase Auth | `allow login with magic link` / `with google` | Replace hand-rolled JWT |
 | GAN Loop | Claude Code + Meph automated quality loop | Infrastructure exists, needs orchestration |
 | Real RAG (pgvector) | Semantic search over unstructured text | Current `knows about:` is keyword-only |
+| Ensemble grader mode | `EVAL_PROVIDER=ensemble` | Run Anthropic + Gemini, surface grader disagreement as a pink chip. Catches Claude-grading-Claude bias automatically. Eval-tooling, not Marcus-shaped — moved here from "Next Up" 2026-04-21. |
+| Eval history per template | persisted score trends + regression auto-flag | Local table of runs + score deltas. Auto-flag drop > 2 points vs last run. Eval-tooling. |
+| CLI `clear eval --suite` mode | port Studio eval path to CLI | Unblocks scheduled regression runs outside the browser. CI/research-tooling, not Marcus-path. |
+| Probe-validate sweep against nested shapes | sweep every `validate incoming:` with nested objects / list constraints | Session 34 probe fix was tested against flat rules only. Test infrastructure hardening. |
 
 ---
 
@@ -677,6 +661,7 @@ That combination is unique. The gap to close is platform: hosting, compliance, i
 | R6 | All `[^)]*` regex patterns in `compileAgent()` are fragile — break when prompts contain literal parentheses. Two instances fixed (tool-use injection, agent-log wrapping) but more may exist. The real fix is R1 (decompose compileAgent into helpers that don't use regex string surgery). | Part of R1 |
 | R7 | **`needs login` frontend guard is broken.** Pages with `needs login` compile to blank white pages — the JWT check hides everything but doesn't show a login form or redirect to `/login`. Should either generate an auto-login page or redirect. This is a **serious user-facing bug** — any app using `needs login` on a page shows nothing. | ASAP |
 | R8 | **`for each` loop body in HTML doesn't render child content.** A loop like `for each msg in messages: section with style card: text msg's role` compiles to `+ msg +` (whole object as string) instead of expanding the child template. Workaround: use `display X as cards showing field1, field2`. | Before demo polish |
+| R9 | **Decide on stale SQLite WIP in `apps/todo-fullstack/clear-runtime/db.js`.** Pending migration sitting unstaged in working tree since Session 32. Decide: ship, stash, or revert. (Moved from "Next Up" 2026-04-21.) | Whenever todo-fullstack is touched next |
 
 ---
 
