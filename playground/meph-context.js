@@ -126,6 +126,44 @@ export class MephContext {
     // Unset → no ANTHROPIC_API_KEY in the child env (agent tests will fail
     // cleanly with a missing-key error from cli/clear.js).
     this.apiKey = options.apiKey || null;
+
+    // === Compile-tool state === (lazy-grown for the GM-2 compile port)
+    //
+    // The compile tool is the only one that needs the Factor DB + hint
+    // re-ranker machinery — everything else operates on source/errors only.
+    // These fields capture the closure state server.js's /api/chat handler
+    // maintains across compiles so hint retrieval, hint tracking, and the
+    // Factor DB trajectory row can all flow through the ported function.
+    //
+    // factorDB: a FactorDB instance from ./supervisor/factor-db.js, or null
+    //   when no training session is live. When null, the tool skips all
+    //   Factor DB writes and hint retrieval — it just compiles and returns.
+    this.factorDB = options.factorDB || null;
+    // sessionId + sessionSteps: curriculum-task tracking. sessionSteps is
+    // the in-memory array of step metadata the supervisor primed; the
+    // tool reads _currentStep(source, steps) to find which step this
+    // compile belongs to so Factor DB rows can reference it.
+    this.sessionId = options.sessionId || null;
+    this.sessionSteps = options.sessionSteps || [];
+    // pairwiseBundle + ebmBundle: reranker weights. When pairwiseBundle is
+    // present, it wins (scores each candidate fix against the current error);
+    // ebmBundle is the pointwise fallback (regression on row quality). When
+    // both are null, hint rows stay in BM25 order from querySuggestions.
+    this.pairwiseBundle = options.pairwiseBundle || null;
+    this.ebmBundle = options.ebmBundle || null;
+    // hintState: mutable object the tool reads + writes to track hint
+    // injection across compile-turn boundaries. The inference fallback needs
+    // these to map later error counts back to the hint-serve that caused
+    // them. Server.js mirrors this back into its closure vars after the
+    // tool returns. Safe defaults = null for all tracking ids so a fresh
+    // context starts clean.
+    this.hintState = options.hintState || {
+      lastFactorRowId: null,
+      hintsInjectedRowId: null,
+      hintsInjectedErrorCount: null,
+      hintsInjectedTier: null,
+      postHintMinErrorCount: null,
+    };
   }
 
   /**

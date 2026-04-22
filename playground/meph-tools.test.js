@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool, compileTool } from './meph-tools.js';
 import { existsSync, mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -936,6 +936,189 @@ assert(hr5.error, `httpRequestTool returns structured error on fetch failure (go
 // Cleanup
 await new Promise(res => httpSrv.close(res));
 await new Promise(res => textSrv.close(res));
+
+console.log('\n⚙ compileTool\n');
+
+// Helper bundle for these tests. We mock the reranker-side pieces (they
+// require their own bundle format) but use REAL compileProgram from
+// index.js so the parse/validate pipeline is exercised end-to-end.
+const fakeSha1 = (s) => 'h' + String(s).length + ':' + (s.slice?.(0, 8) || '');
+const fakeArchetype = () => 'test_archetype';
+const fakeStep = () => ({ id: 'step-1', index: 0, name: 'build' });
+const fakeClassifyCategory = () => 'syntax';
+const noopRerank = (_bundle, _ctx, rows) => rows.slice(0);
+const noopEbm = (_bundle, rows) => rows.slice(0);
+const noopFeaturize = (row) => row;
+
+const compileHelpers = {
+  compileProgram,
+  sha1: fakeSha1,
+  currentStep: fakeStep,
+  safeArchetype: fakeArchetype,
+  classifyErrorCategory: fakeClassifyCategory,
+  rankPairwise: noopRerank,
+  rankEBM: noopEbm,
+  featurizeRow: noopFeaturize,
+};
+
+// --- 1. Clean compile, no Factor DB, no include_compiled: returns shape
+//       flags but NOT the compiled output (cost optimization).
+const cleanSrc = "on GET '/':\n  send 'hi'\n";
+const cleanCtx = new MephContext({ source: cleanSrc });
+const comp1 = JSON.parse(compileTool({}, cleanCtx, compileHelpers));
+assert(Array.isArray(comp1.errors) && comp1.errors.length === 0,
+  `compileTool clean compile returns empty errors array (got ${JSON.stringify(comp1.errors)})`);
+assert(typeof comp1.hasServerJS === 'boolean' && typeof comp1.hasHTML === 'boolean',
+  'compileTool returns hasServerJS + hasHTML boolean flags');
+assert(comp1.serverJS === undefined && comp1.javascript === undefined,
+  'compileTool clean compile WITHOUT include_compiled omits compiled source from payload');
+
+// --- 2. Clean compile + include_compiled=true: forces compiled output in
+const comp2 = JSON.parse(compileTool({ include_compiled: true }, cleanCtx, compileHelpers));
+assert(comp2.serverJS !== undefined || comp2.javascript !== undefined,
+  `compileTool include_compiled=true embeds compiled output even on clean compile (got keys: ${Object.keys(comp2).join(',')})`);
+
+// --- 3. Failing compile: errors present, compiled output included (errors imply debug)
+const brokenCtx = new MephContext({ source: 'database:\n  bogus syntax garbage line\n' });
+const comp3 = JSON.parse(compileTool({}, brokenCtx, compileHelpers));
+assert(comp3.errors.length > 0,
+  `compileTool surfaces compile errors (got ${comp3.errors.length})`);
+
+// --- 4. "Example:" stripping from error messages
+const brokenCtxEx = new MephContext({ source: 'database:\n  bogus syntax garbage line\n' });
+const comp4 = JSON.parse(compileTool({}, brokenCtxEx, compileHelpers));
+for (const e of comp4.errors) {
+  assert(!/\nExample:|\s+Example:/i.test(String(e.message || '')),
+    `compileTool strips "Example:" blocks from error messages (found in: ${String(e.message).slice(0, 80)})`);
+}
+
+// --- 5. Warning cap: fake a compile that emits >3 warnings. We can't easily
+//       force real warnings, so we patch compileProgram via helpers.
+let warningsCapHelpers = {
+  ...compileHelpers,
+  compileProgram: (s) => ({
+    errors: [],
+    warnings: [
+      { message: 'w1' }, { message: 'w2' }, { message: 'w3' },
+      { message: 'w4' }, { message: 'w5' },
+    ],
+  }),
+};
+const comp5 = JSON.parse(compileTool({}, new MephContext({ source: 'x' }), warningsCapHelpers));
+assert(comp5.warnings.length === 3,
+  `compileTool caps warnings at 3 (got ${comp5.warnings.length})`);
+assert(comp5.warningsTruncated === 2,
+  `compileTool reports warningsTruncated=2 when 5 total warnings (got ${comp5.warningsTruncated})`);
+
+// --- 6. Factor DB: logAction called on every compile; lastFactorRowId mirrored
+let loggedActions = [];
+const fakeFactorDB = {
+  logAction: (row) => { loggedActions.push(row); return 777; },
+  querySuggestions: () => [],
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const fdbCtx = new MephContext({
+  source: cleanSrc,
+  factorDB: fakeFactorDB,
+  sessionId: 'sess-abc',
+});
+const comp6 = JSON.parse(compileTool({}, fdbCtx, compileHelpers));
+assert(loggedActions.length === 1,
+  `compileTool invokes factorDB.logAction exactly once (got ${loggedActions.length})`);
+assert(loggedActions[0].session_id === 'sess-abc',
+  `compileTool logAction carries sessionId (got ${loggedActions[0].session_id})`);
+assert(loggedActions[0].compile_ok === 1,
+  'compileTool logAction records compile_ok=1 for clean compile');
+assert(fdbCtx.hintState.lastFactorRowId === 777,
+  `compileTool mirrors logAction return into hintState.lastFactorRowId (got ${fdbCtx.hintState.lastFactorRowId})`);
+
+// --- 7. Factor DB + errors + hint rows: hints attached to result
+let querySuggestionCalls = 0;
+const hintRow = {
+  tier: 'exact_error_same_archetype',
+  patch_summary: 'added auth guard',
+  source_before: 'app: "hello"\n',
+  test_score: 1,
+  session_id: 'prev-sess',
+  created_at: 1,
+  pairwise_score: 0.87,
+};
+const fdbWithHints = {
+  logAction: () => 888,
+  querySuggestions: () => { querySuggestionCalls++; return [hintRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const hintCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbWithHints,
+  sessionId: 'sess-hint',
+  pairwiseBundle: { weights: 'fake' },
+});
+const comp7 = JSON.parse(compileTool({}, hintCtx, compileHelpers));
+assert(querySuggestionCalls === 1,
+  `compileTool with errors + factorDB calls querySuggestions once (got ${querySuggestionCalls})`);
+assert(comp7.hints && typeof comp7.hints.text === 'string',
+  `compileTool attaches hints.text when hint rows present (got ${comp7.hints ? 'yes' : 'no'})`);
+assert(comp7.hints.text.includes('SAME ERROR in same archetype'),
+  'compileTool hints.text includes tier label for exact_error_same_archetype rows');
+assert(comp7.hints.reranked_by === 'pairwise',
+  `compileTool marks reranked_by=pairwise when pairwiseBundle present (got ${comp7.hints.reranked_by})`);
+assert(hintCtx.hintState.hintsInjectedRowId === 888,
+  `compileTool updates hintsInjectedRowId when hints attached (got ${hintCtx.hintState.hintsInjectedRowId})`);
+assert(hintCtx.hintState.hintsInjectedTier === 'exact_error_same_archetype',
+  'compileTool records top-hint tier in hintState');
+
+// --- 8. Reranker fallback: EBM used when pairwise fails / is absent
+const ebmCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbWithHints,
+  sessionId: 'sess-ebm',
+  ebmBundle: { weights: 'fake' },
+});
+const comp8 = JSON.parse(compileTool({}, ebmCtx, compileHelpers));
+assert(comp8.hints?.reranked_by === 'ebm',
+  `compileTool falls back to EBM when only ebmBundle present (got ${comp8.hints?.reranked_by})`);
+
+// --- 9. No reranker: hints stay in BM25 order
+const bm25Ctx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbWithHints,
+  sessionId: 'sess-bm25',
+});
+const comp9 = JSON.parse(compileTool({}, bm25Ctx, compileHelpers));
+assert(comp9.hints?.reranked_by === 'bm25',
+  `compileTool reports reranked_by=bm25 when no reranker bundle (got ${comp9.hints?.reranked_by})`);
+
+// --- 10. Inference fallback: postHintMinErrorCount tracks drops after hint-serve
+const dropCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: {
+    logAction: () => 999,
+    querySuggestions: () => [],
+    _db: { prepare: () => ({ get: () => null }) },
+  },
+  sessionId: 'sess-drop',
+  // Pretend hints were served on row 555 in a prior compile
+  hintState: {
+    lastFactorRowId: null,
+    hintsInjectedRowId: 555,
+    hintsInjectedErrorCount: 5,
+    hintsInjectedTier: 'exact_error',
+    postHintMinErrorCount: null,
+  },
+});
+compileTool({}, dropCtx, compileHelpers);
+assert(typeof dropCtx.hintState.postHintMinErrorCount === 'number',
+  `compileTool updates postHintMinErrorCount on post-hint compile (got ${dropCtx.hintState.postHintMinErrorCount})`);
+
+// --- 11. compileProgram throws → { error: message }
+const throwingHelpers = {
+  ...compileHelpers,
+  compileProgram: () => { throw new Error('synthetic compile crash'); },
+};
+const comp11 = JSON.parse(compileTool({}, new MephContext({ source: 'x' }), throwingHelpers));
+assert(comp11.error?.includes('synthetic compile crash'),
+  `compileTool catches compiler throws and returns { error } (got ${JSON.stringify(comp11)})`);
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

@@ -743,6 +743,309 @@ export function runTestsTool(input, ctx, parseTestOutput) {
 }
 
 /**
+ * compile tool — the biggest Meph tool + the heart of the RL flywheel.
+ *
+ * Runs ctx.source through the passed-in compileProgram, mirrors result state
+ * back through ctx.setErrors + ctx.setLastCompileResult, logs a Factor DB
+ * trajectory row, retrieves + reranks hints for any failing compile, and
+ * returns a token-trimmed result payload.
+ *
+ * The Factor DB + reranker machinery is optional — when ctx.factorDB is null,
+ * the tool skips trajectory logging and hint retrieval entirely. That path
+ * lets the MCP server compile on behalf of a cc-agent-driven session without
+ * needing the training-signal infrastructure wired up.
+ *
+ * helpers bundle:
+ *   - compileProgram(source)         — the real compiler (from index.js)
+ *   - sha1(str)                      — used to build error signatures + file hashes
+ *   - currentStep(source, steps)     — map source to a curriculum step {id,index,name}
+ *   - safeArchetype(source)          — classify source into archetype name
+ *   - classifyErrorCategory(msg)     — bucket error message into reranker category
+ *   - rankPairwise(bundle, ctx, rows)— pairwise logistic reranker (preferred)
+ *   - rankEBM(bundle, rows, feat)    — pointwise EBM reranker (fallback)
+ *   - featurizeRow(row)              — feature extraction for EBM
+ *
+ * The mutable hint-tracking state lives on ctx.hintState. The tool reads
+ * it to drive the inference fallback + writes back to it so server.js can
+ * mirror the updated values into its closure vars after the call.
+ *
+ * @param {object} input - { include_compiled?: boolean }
+ * @param {MephContext} ctx - source + errors + factorDB + sessionId + sessionSteps + pairwiseBundle + ebmBundle + hintState
+ * @param {object} helpers - see bundle description above
+ * @returns {string} JSON-stringified compile result with optional hints
+ */
+export function compileTool(input, ctx, helpers) {
+  const {
+    compileProgram,
+    sha1,
+    currentStep,
+    safeArchetype,
+    classifyErrorCategory,
+    rankPairwise,
+    rankEBM,
+    featurizeRow,
+  } = helpers;
+  try {
+    const source = ctx.source;
+    const r = compileProgram(source);
+    // Mirror compile state back into the context — server.js's
+    // onErrorsChange callback will update _workerLastErrors so the
+    // supervisor polling endpoint sees the new errors immediately.
+    ctx.setErrors(r.errors);
+    ctx.setLastCompileResult(r);
+
+    // ── Factor DB: log this compile attempt ─────────────────────────
+    // One row per compile. test_pass gets updated by a subsequent run_tests.
+    if (ctx.factorDB && source) {
+      try {
+        const compileOk = r.errors.length === 0 ? 1 : 0;
+        const errorSig = r.errors.length > 0
+          ? sha1(r.errors.map(e => e.message).join('\n') + '\x00' + sha1(source))
+          : null;
+        // source_before captures what Meph compiled. If he called edit_code
+        // + compile in sequence, sourceBeforeEdit has the pre-edit state.
+        // Fall back to source so we always have SOMETHING — otherwise we lose
+        // the whole point of the trajectory row.
+        const sourceForLog = ctx.sourceBeforeEdit && ctx.sourceBeforeEdit.length > 0
+          ? ctx.sourceBeforeEdit
+          : source;
+        const step = currentStep(source, ctx.sessionSteps);
+        ctx.hintState.lastFactorRowId = ctx.factorDB.logAction({
+          session_id: ctx.sessionId,
+          archetype: safeArchetype(source),
+          task_type: 'compile_cycle',
+          error_sig: errorSig,
+          file_state_hash: sha1(source),
+          source_before: sourceForLog.slice(0, 5000),
+          patch_ops: [],
+          patch_summary: r.errors.length === 0
+            ? `Clean compile (${source.split('\n').length} lines)`
+            : `Compile with ${r.errors.length} error(s): ${r.errors[0]?.message?.slice(0, 120) || 'unknown'}`,
+          compile_ok: compileOk,
+          test_pass: 0,
+          test_score: 0.0,
+          score_delta: 0.0,
+          step_id: step?.id || null,
+          step_index: step?.index ?? null,
+          step_name: step?.name || null,
+        });
+        // Inference fallback: if hints were already served on an earlier
+        // compile in this turn, track the minimum error count seen since.
+        // If Meph later forgets to emit HINT_APPLIED, a drop in errors is
+        // a reasonable signal that the hint helped.
+        if (ctx.hintState.hintsInjectedRowId
+            && ctx.hintState.lastFactorRowId !== ctx.hintState.hintsInjectedRowId) {
+          if (ctx.hintState.postHintMinErrorCount === null
+              || r.errors.length < ctx.hintState.postHintMinErrorCount) {
+            ctx.hintState.postHintMinErrorCount = r.errors.length;
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+    // ────────────────────────────────────────────────────────────────
+
+    // ── Context-size optimizations (Session 41 cost-reduction pass) ──
+    // 155:1 input:output ratio in April meant most API cost was context.
+    // Four trims that preserve Meph's ability to fix errors while cutting
+    // ~40-60% of per-compile input tokens at sweep scale.
+
+    // (1) Strip `Example: ...` blocks from error messages. Meph's system
+    //     prompt already covers canonical Clear; the Example blocks duplicate
+    //     that at ~300-600 chars per error.
+    const trimmedErrors = (r.errors || []).map(e => {
+      if (!e || typeof e !== 'object') return e;
+      const msg = String(e.message || '');
+      const exIdx = msg.search(/\n?\s*Example:/i);
+      const trimmed = exIdx > 0 ? msg.slice(0, exIdx).trim() : msg;
+      return { ...e, message: trimmed };
+    });
+
+    // (2) Cap warnings at 3. On apps with 8-10 security/quality warnings Meph
+    //     only reads the first few; the rest are noise × every compile ×
+    //     every sweep.
+    const cappedWarnings = (r.warnings || []).slice(0, 3);
+    const warningsMore = (r.warnings || []).length - cappedWarnings.length;
+
+    const result = {
+      errors: trimmedErrors,
+      warnings: cappedWarnings,
+      hasHTML: !!r.html,
+      hasServerJS: !!r.serverJS,
+      hasJavascript: !!r.javascript,
+      hasPython: !!r.python,
+    };
+    if (warningsMore > 0) result.warningsTruncated = warningsMore;
+
+    // (3) Tests field dropped from compile result — Meph uses run_tests tool
+    //     separately. The auto-generated test source was ~1-3KB per compile
+    //     and Meph never read it directly. (No code needed — just don't add
+    //     it to `result`.)
+
+    // (4) Handled below at the hints block: we now emit `hints.text` only
+    //     (the prose Meph actually reads) and drop the duplicate
+    //     `hints.references` JSON array (~1-2KB per hint-serve).
+
+    // ── Factor DB suggestion injection (flywheel closes here) ──
+    // When compile fails, retrieve up-to-3 hints using layered retrieval:
+    //   Tier 1: exact same error_sig previously fixed in this archetype
+    //   Tier 2: exact same error_sig previously fixed anywhere
+    //   Tier 3: same-archetype passing gold rows (archetype-only fallback)
+    // Tier is attached to each hint so Meph sees which signal produced it.
+    if (ctx.factorDB && r.errors.length > 0 && source) {
+      try {
+        const archetype = safeArchetype(source);
+        const errorSig = sha1(r.errors.map(e => e.message).join('\n') + '\x00' + sha1(source));
+        // Retrieve wider pool (topK=10) when any reranker is loaded so the
+        // reranker has room to reorder. Without rerankers, keep the historical
+        // topK=3 behavior so no regression from retrieval alone.
+        const retrievalK = (ctx.pairwiseBundle || ctx.ebmBundle) ? 10 : 3;
+        let hintRows = ctx.factorDB.querySuggestions({
+          archetype,
+          error_sig: errorSig,
+          topK: retrievalK,
+        });
+
+        // Rerank order of preference (highest → fallback):
+        //   1. Pairwise logistic — scores each candidate AGAINST the current
+        //      error, so a high-test_score fix for a different problem gets
+        //      demoted. This is the one that answers the retrieval question
+        //      directly.
+        //   2. Pointwise EBM — regression on row quality; some lift over BM25.
+        //   3. BM25 raw — ordering from querySuggestions.
+        let rerankedBy = 'bm25';
+        if (ctx.pairwiseBundle && hintRows.length > 0) {
+          try {
+            const errorCategory = classifyErrorCategory(
+              'Compile with ' + r.errors.length + ' error(s): ' +
+              (r.errors[0]?.message || '')
+            );
+            const currentStepHere = currentStep(source, ctx.sessionSteps);
+            for (const c of hintRows) {
+              try {
+                const prev = ctx.factorDB._db.prepare(
+                  'SELECT patch_summary FROM code_actions WHERE session_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 1'
+                ).get(c.session_id, c.created_at);
+                c.target_error_category = classifyErrorCategory(prev?.patch_summary || '');
+              } catch { c.target_error_category = 'none'; }
+            }
+            const rerankerCtx = {
+              archetype,
+              error_sig: errorSig,
+              error_category: errorCategory,
+              step_index: currentStepHere?.index ?? 0,
+              source_before: source,
+            };
+            const ranked = rankPairwise(ctx.pairwiseBundle, rerankerCtx, hintRows);
+            hintRows = ranked.slice(0, 3);
+            rerankedBy = 'pairwise';
+          } catch {
+            // Fall through to EBM on any failure — better to ship a hint
+            // ranked by the older model than to ship nothing.
+          }
+        }
+        if (rerankedBy === 'bm25' && ctx.ebmBundle && hintRows.length > 0) {
+          try {
+            const ranked = rankEBM(ctx.ebmBundle, hintRows, featurizeRow);
+            hintRows = ranked.slice(0, 3);
+            rerankedBy = 'ebm';
+          } catch {
+            hintRows = hintRows.slice(0, 3);
+          }
+        } else if (rerankedBy === 'bm25') {
+          hintRows = hintRows.slice(0, 3);
+        }
+        // Observability: always log retrieval outcome so we can distinguish
+        // "no candidates found" from "Meph ignored the hints he saw".
+        console.log(`[hints] archetype=${archetype} retrieved=${hintRows.length} reranked_by=${rerankedBy}${hintRows.length > 0 ? ' top_tier=' + hintRows[0].tier : ''}`);
+        if (hintRows.length > 0) {
+          const tiers = hintRows.map(h => h.tier);
+          const hasExact = tiers.some(t => t.startsWith('exact_error'));
+          const note = hasExact
+            ? `Found ${hintRows.length} past session(s) that hit this exact error and fixed it. Study the reference snippets and adapt the fix.`
+            : `No past session hit this exact error yet. Here are ${hintRows.length} working ${archetype} apps for shape-level reference.`;
+
+          // Prose-formatted hint block. This is what Meph actually reads —
+          // the JSON `references` array dropped in Session 41 was a duplicate
+          // of content in `text` plus scoring metadata Meph never reasoned
+          // about. Session 38 finding: Meph ignored hints buried in JSON.
+          // Prose works better because Meph's attention is text-first.
+          const tierLabel = (t) => {
+            if (!t) return 'retrieved match';
+            if (t.startsWith('exact_error_same_archetype')) return 'SAME ERROR in same archetype';
+            if (t.startsWith('exact_error')) return 'SAME ERROR anywhere';
+            if (t.startsWith('same_archetype')) return 'same archetype, different error';
+            return t.replace(/_/g, ' ');
+          };
+          const hintBlocks = hintRows.map((h, i) => {
+            const scoreLabel = typeof h.pairwise_score === 'number'
+              ? `pairwise=${h.pairwise_score.toFixed(3)}`
+              : typeof h.ebm_score === 'number'
+                ? `EBM=${h.ebm_score.toFixed(3)}`
+                : 'score=n/a';
+            const header = `── Past Fix #${i + 1} [${tierLabel(h.tier)}, ${scoreLabel}, test_score=${h.test_score || 0}] ──`;
+            const summary = h.patch_summary ? `What happened: ${h.patch_summary}` : '';
+            const raw = (h.source_before || '').slice(0, 600);
+            const trimmed = raw.lastIndexOf('\n') > 400 ? raw.slice(0, raw.lastIndexOf('\n')) : raw;
+            const code = trimmed ? `Source that worked:\n\`\`\`clear\n${trimmed}\n\`\`\`` : '';
+            return [header, summary, code].filter(Boolean).join('\n');
+          }).join('\n\n');
+          const guidance = `\nHow to use: pattern-match the FIX, don't copy-paste. These are from different tasks — look at what structure works (validate blocks, guard clauses, auth placement, endpoint shape) and adapt to your current error.`;
+
+          // Per-hint-serve REQUIRED-tag line, placed in the hint payload itself
+          // (not just the system prompt) so Meph's attention catches it right
+          // where he's reading the hint. Measured: system-prompt-only reminders
+          // land ~45% of the time.
+          const topTier = hintRows[0]?.tier || '';
+          const tagRequired = `\n\n⚠ REQUIRED: Start your very next text block with \`HINT_APPLIED: yes, tier=${topTier}, helpful=<yes|no|partial>\` if you're going to use these hints, OR \`HINT_APPLIED: no, reason=<short reason>\` if they don't fit your real problem. Tag first, then your analysis. This is tracking signal, not optional.`;
+
+          const text = `${note}\n\n${hintBlocks}\n${guidance}${tagRequired}`;
+
+          result.hints = {
+            note,
+            reranked_by: rerankedBy,
+            text,
+          };
+          // Remember which row carried the hints so the end-of-response
+          // HINT_APPLIED parse can update the right row.
+          ctx.hintState.hintsInjectedRowId = ctx.hintState.lastFactorRowId;
+          // Snapshot error count + best-hint-tier at hint-serve time — used
+          // for the inference fallback if Meph forgets the tag.
+          ctx.hintState.hintsInjectedErrorCount = r.errors.length;
+          ctx.hintState.hintsInjectedTier = hintRows[0]?.tier || null;
+          ctx.hintState.postHintMinErrorCount = null; // reset window
+        }
+      } catch { /* non-fatal */ }
+    }
+    // ────────────────────────────────────────────────────────────
+
+    // Only embed compiled output when compile HAS errors OR when Meph
+    // explicitly opted in via input.include_compiled. On a clean compile
+    // with no opt-in, he just needs to know it worked — hasServerJS /
+    // hasHTML flags signal that. Saves ~8-28KB of tool-result payload per
+    // clean compile = ~1-2K tokens at Haiku input rate × thousands of
+    // compiles per sweep. Meph can:
+    //   • pass include_compiled=true to force it in
+    //   • use edit_code action='read' for source
+    //   • use source_map for compiled-line↔source-line mapping
+    const wantCompiled = r.errors.length > 0 || input.include_compiled === true;
+    if (wantCompiled) {
+      if (r.serverJS) result.serverJS = r.serverJS.slice(0, 8000);
+      if (r.javascript) result.javascript = r.javascript.slice(0, 8000);
+      if (r.html) result.html = r.html.slice(0, 4000);
+      if (r.python) result.python = r.python.slice(0, 8000);
+      if (r.serverJS || r.javascript || r.html || r.python) {
+        result.note = r.errors.length > 0
+          ? 'Compiled output included because compile had errors — inspect for debugging.'
+          : 'Compiled output included because you set include_compiled=true.';
+      }
+    }
+    return JSON.stringify(result);
+  } catch (err) {
+    return JSON.stringify({ error: err.message });
+  }
+}
+
+/**
  * http_request tool — fetch the running child app at ctx.getRunningPort().
  * Used by Meph to drive the app end-to-end — hitting endpoints, pushing
  * form submissions, reading back JSON. 10s timeout (matches the pre-port
