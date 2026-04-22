@@ -622,5 +622,57 @@ console.log('\n👑 transferOwnership — the escape hatch from last-owner guard
   // simulate concurrent deletes. Document in the impl + test post-85a.)
 }
 
+// =============================================================================
+// Schema drift-guard — CC-2b migration file has to exist and carry the
+// tables/columns the code above assumes. Catches the class of bug where
+// someone renames a column in code but forgets to update the migration
+// (or vice versa) before Phase 85a runs the SQL against real Postgres.
+// =============================================================================
+console.log('\n📐 Schema drift-guard — migration ↔ code alignment\n');
+
+{
+  const fs = await import('fs');
+  const path = await import('path');
+  const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\//, ''));
+  const migrationPath = path.join(here, 'migrations', '001-teams.sql');
+  const exists = fs.existsSync(migrationPath);
+  assert(exists, `migration file exists at ${migrationPath}`);
+
+  if (exists) {
+    const sql = fs.readFileSync(migrationPath, 'utf8');
+    // Three tables the code depends on.
+    assert(/CREATE TABLE\s+(IF NOT EXISTS\s+)?teams\b/i.test(sql),
+      'migration creates teams table');
+    assert(/CREATE TABLE\s+(IF NOT EXISTS\s+)?team_members\b/i.test(sql),
+      'migration creates team_members table');
+    assert(/CREATE TABLE\s+(IF NOT EXISTS\s+)?team_invites\b/i.test(sql),
+      'migration creates team_invites table');
+
+    // Columns referenced by index.js queries — each MUST appear in the SQL
+    // or a real Postgres run will 42703 error at first query.
+    const teamsCols = ['slug', 'name', 'tenant_id', 'status', 'created_at', 'updated_at'];
+    for (const col of teamsCols) {
+      assert(new RegExp('\\b' + col + '\\b', 'i').test(sql),
+        `migration declares teams.${col}`);
+    }
+    const memberCols = ['team_id', 'user_id', 'role', 'joined_at'];
+    for (const col of memberCols) {
+      assert(new RegExp('\\b' + col + '\\b', 'i').test(sql),
+        `migration declares team_members.${col}`);
+    }
+    const inviteCols = ['email', 'token', 'invited_by', 'expires_at',
+      'accepted_at', 'accepted_by', 'revoked_at', 'invited_at'];
+    for (const col of inviteCols) {
+      assert(new RegExp('\\b' + col + '\\b', 'i').test(sql),
+        `migration declares team_invites.${col}`);
+    }
+    // Role values enforced by can() matrix — at least one CHECK constraint
+    // or enum-like CHECK listing owner|admin|member must exist on
+    // team_members.role so bad inserts fail at the DB boundary too.
+    assert(/\bowner\b[\s\S]*\badmin\b[\s\S]*\bmember\b|\bmember\b[\s\S]*\badmin\b[\s\S]*\bowner\b/i.test(sql),
+      'migration constrains role values to owner|admin|member somewhere');
+  }
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
