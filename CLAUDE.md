@@ -379,6 +379,24 @@ When Meph fails at a task, the failure is not just data for the Factor DB — it
 
 For any feature whose behavior depends on an LLM — system prompts, tool-use routing, Meph tools, agent flows, Claude-in-the-loop helpers — write a real-LLM eval harness alongside the unit tests and run it before declaring the feature done. Unit tests with mocked LLM responses prove the plumbing; only the real model proves the feature. Minimum scenario set: happy path, edge cases (required fields, ambiguous inputs), explicit refusals, and at least one adversarial/social-engineering input. Iterate on the prompt until all scenarios pass on real Claude. Mocks hide the failure modes that matter most — tool mis-routing, reflexive refusals, and prompt-injection-style slips.
 
+## Cross-Path Tool Side-Effects Belong IN The Tool (MANDATORY — LEARNED EXPENSIVELY)
+
+Any side-effect that depends on a tool's result — Factor DB writes, event emits, state mutations, session-level accounting — belongs **inside the tool function in `playground/meph-tools.js`**, not in `/api/chat`'s post-tool-call callback block in `playground/server.js`.
+
+**Why:** cc-agent mode dispatches tool calls through the MCP server, which does NOT execute any code in `/api/chat` after a tool returns. Any side-effect living in the server.js tool-result loop is invisible to cc-agent runs. This bit us on 2026-04-22: the `http_request 2xx → test_pass=1` Factor DB write lived in server.js, so every cc-agent curriculum sweep produced rows with `test_pass=0` even when the endpoint returned 200. Looked like the tool was broken — it wasn't; the write was in the wrong layer.
+
+**How to apply:**
+- Anytime you see `if (tb.name === 'X') { sideEffect(...) }` in server.js's `/api/chat` post-tool block, move the side-effect into tool X's implementation in meph-tools.js. Pass the state it needs (factorDB, sessionId, etc.) through `ctx`.
+- Before wiring a new closure-level side-effect, ask: "would this fire in cc-agent mode?" If no, it's wrong.
+- The MCP server's `buildMephContext` in `playground/ghost-meph/mcp-server/tools.js` MUST wire every ctx callback the tool uses — `isAppRunning`, `setRunningChild`, `allocatePort`, `getRunningPort`, `stopRunningApp`, `factorDB`. No-op defaults silently break cc-agent runs.
+- **Red flag:** a tool that says "Not yet available in MCP mode" in its description. Either wire it up or remove it from the MCP TOOLS array — a half-advertised tool lets Meph call it, fail, and the sweep looks like a Meph bug when it's an infrastructure gap.
+
+**What "side-effect in the tool" means:**
+- Tool reads `ctx.factorDB + ctx.hintState.lastFactorRowId` → runs `UPDATE code_actions SET test_pass = 1 WHERE id = ?` itself.
+- Tool emits via `ctx.send({ type: ... })` — every caller (server.js, MCP) provides its own `send` implementation.
+- Tool mutates source → calls `ctx.setSource(s)`, which fires the caller's `onSourceChange` hook.
+- Never: "call the tool, then check the result and do the work on the side." That's the pattern that broke.
+
 ## Maintaining This File (MANDATORY)
 
 This is the project-level rule file for Clear. The global rules (voice, format, Node/Anthropic gotchas, cross-project engineering defaults) live in `~/.claude/CLAUDE.md`.
