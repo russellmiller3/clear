@@ -273,15 +273,21 @@ export function buildPostgresConnStr(hostUrl, role, password, schema) {
 }
 
 /**
- * Random high-entropy password. 32 bytes base64 — 256 bits of entropy,
- * safe inside a connection string (URL-safe-ish; we URL-encode when
- * embedding). Lazy-import crypto so this module has zero import cost
- * when only used for sqlite provisioning.
+ * Random high-entropy password. 32 bytes of crypto randomness encoded
+ * as base64url (URL-safe, no `+`/`/`/`=`) so we don't need to strip
+ * chars and risk a short password. Always produces 43 chars, sliced
+ * to 32 for a clean target length. 256 bits of source entropy, ~192
+ * bits after slicing — still far beyond brute-force range for a DB
+ * role password.
  */
 function randomPassword() {
   const { randomBytes } = globalThis.crypto
     ? { randomBytes: (n) => Buffer.from(globalThis.crypto.getRandomValues(new Uint8Array(n))) }
     : require('crypto');
-  // Using 24 bytes so the base64url output is 32 chars without padding.
-  return randomBytes(24).toString('base64').replace(/[+/=]/g, '').slice(0, 32);
+  // base64url is URL-safe out of the box (no `+`/`/`/`=`). 32 bytes →
+  // 43 chars, deterministic length. Slicing to 32 keeps the output
+  // uniform length for tests + user-visible logs. Previous impl used
+  // plain base64 + .replace(/[+/=]/g,'') which produced variable
+  // length (sometimes under 30 chars when random bytes hit +// heavy).
+  return randomBytes(32).toString('base64url').slice(0, 32);
 }

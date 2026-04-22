@@ -389,9 +389,12 @@ console.log('\n🛡  CC-1d — Isolation contract\n');
     hostUrl: 'postgres://pg/t',
   });
   const password = decodeURIComponent(new URL(r.connStr).password);
-  assert(password.length >= 30, `password length ≥ 30 chars (got ${password.length})`);
-  assert(/^[A-Za-z0-9]+$/.test(password),
-    `password is URL-safe alphanumeric (got first chars: ${password.slice(0, 10)})`);
+  assert(password.length === 32,
+    `password is exactly 32 chars (deterministic — got ${password.length})`);
+  // base64url charset: A-Z a-z 0-9 plus `-` and `_` (URL-safe substitutes
+  // for `+` and `/`). All round-trip through URL encoding cleanly.
+  assert(/^[A-Za-z0-9_-]+$/.test(password),
+    `password is base64url charset (got first chars: ${password.slice(0, 10)})`);
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
