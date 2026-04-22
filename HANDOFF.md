@@ -406,6 +406,21 @@ Completes CC-3 scaffolding except the Stripe Usage API transport wrapper (thin �
 
 Project totals after tick 20: **3078 tests green** (+10 rollup).
 
+## Session 42 tick 21 — CC-5b DNS poller (post-ship)
+
+`9795bb1` — `verifyPendingDomains(db, resolveCnameFn)` in cloud-domains. The cron that wakes every N minutes reads pending app_domains rows, does DNS, updates status. State transitions:
+  - verified → `status='verified'`, `verified_at=NOW()`, clear `last_error`
+  - wrong → `status='failed'`, `last_error` describes expected vs actual
+  - pending (empty records OR resolver threw) → just bump `last_checked_at`
+
+Resolver is injected (`node:dns/promises.resolveCname` in prod, mock in tests). Throws are caught and treated as pending so transient DNS errors don't crash the poller.
+
+12 new TDD assertions. cloud-domains: 63/63.
+
+**CC-5 now fully scaffolded** at the library layer: normalizeDomain + expectedCnameFor + verifyCname (pure) + app_domains schema + addDomain/listForApp/listPending (storage) + verifyPendingDomains (poller). Post-85a work is the cron wrapper (1-line `setInterval` around verifyPendingDomains) + CC-5c/d (Fly Certificate API + router update — require prod Fly).
+
+Project totals after tick 21: **3090 tests green** (+12 cc-5b).
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
