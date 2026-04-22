@@ -15517,6 +15517,57 @@ when user calls PUT /api/items/:id sending data:
     expect((r.serverJS || r.javascript)).toContain("db.update('items'");
     expect((r.serverJS || r.javascript)).toContain('data.id = req.params.id');
   });
+
+  // Regression — Session 42 L3 counter diagnostic:
+  // `save { value: 1 } to Counters` compiled silently to
+  //   db.update('values', _pick(_, valueSchema))
+  // where `_` is undefined → 500 at runtime. Meph hit this pattern
+  // repeatedly in curriculum sweeps (3/3 L3 counter attempts compiled
+  // clean but crashed at runtime). Parser must reject the inline-literal
+  // form and steer Meph to assign-then-save.
+  it('save with inline object literal is rejected with helpful error', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Counter table:
+  value (number), default 0
+when user calls POST /api/increment:
+  save { value: 1 } to Counters
+  send back { count: 1 }`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+    const msg = r.errors.map(e => e.message).join(' | ');
+    // Error should name the offending syntax AND suggest the fix
+    expect(msg.toLowerCase()).toContain('save');
+    expect(msg).toMatch(/assign|variable|first|before/i);
+  });
+
+  it('save with inline array literal is also rejected', () => {
+    const src = `build for javascript backend
+database is local memory
+create a Tags table:
+  name, required
+when user calls POST /api/seed:
+  save [1, 2, 3] to Tags
+  send back 'ok'`;
+    const r = compileProgram(src);
+    expect(r.errors.length).toBeGreaterThan(0);
+  });
+
+  it('save with named variable still works (regression sanity)', () => {
+    // The assign-then-save form that Meph should've written instead.
+    // Must keep working — this is the canonical pattern.
+    const src = `build for javascript backend
+database is local memory
+create a Counter table:
+  value (number), default 0
+when user calls POST /api/increment:
+  new_entry = { value: 1 }
+  save new_entry to Counters
+  send back { count: 1 }`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect((r.serverJS || r.javascript)).toContain("db.update('counters'");
+  });
 });
 
 // =============================================================================

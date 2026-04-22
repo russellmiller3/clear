@@ -5351,6 +5351,19 @@ function parseSave(tokens, line) {
   if (pos >= tokens.length) {
     return { error: 'The save statement needs a variable and target. Example: save new_user to Users' };
   }
+  // Reject inline object/array/string literals. Clear's "one operation per
+  // line" philosophy says assign first, then save — and the compiler can't
+  // emit a correct db.insert/update from an inline {...} anyway (we saw
+  // this compile silently to `db.update('values', _pick(_, valueSchema))`
+  // during the L3 counter curriculum sweep, crashing every POST).
+  if (tokens[pos].type === TokenType.LBRACE
+      || tokens[pos].type === TokenType.LBRACKET
+      || tokens[pos].type === TokenType.STRING
+      || tokens[pos].type === TokenType.NUMBER) {
+    return {
+      error: 'The save statement needs a variable name, not an inline literal. Assign it to a variable first, then save. Example: "new_entry = { value: 1 }" then "save new_entry to Counters"',
+    };
+  }
   const variable = tokens[pos].value;
   pos++;
 
