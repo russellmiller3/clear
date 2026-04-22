@@ -55,7 +55,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 #editor-pane { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; }
 #ep-resizer { width: 5px; flex-shrink: 0; background: var(--bd2); cursor: col-resize; transition: background .15s; position: relative; z-index: 10; }
 #ep-resizer:hover, #ep-resizer.dragging { background: var(--accent); }
-#preview-pane { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; border-left: 1px solid var(--bd); }
+#preview-pane { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; border-left: 1px solid var(--bd); position: relative; }
 #chat-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--bg2); flex: 0 0 360px; min-width: 0; transition: flex-basis .2s ease; position: relative; }
 #chat-pane.collapsed { flex-basis: 0 !important; }
 #chat-resizer { width: 5px; flex-shrink: 0; background: var(--bd2); cursor: col-resize; transition: background .15s; position: relative; z-index: 10; }
@@ -427,6 +427,22 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 .empty-state .hint { font-size: 12px; opacity: .7; }
 .empty-state kbd { background: var(--bg3); border: 1px solid var(--bd2); border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 11px; }
 
+/* BM-6: tile gallery — overlay sibling of #preview-content (which gets innerHTML-wiped on tab switches). Visible only in builder mode and only until something compiles. */
+#tile-gallery { display: none; position: absolute; top: 38px; left: 0; right: 0; bottom: 0; padding: 32px 28px; background: var(--bg); overflow-y: auto; z-index: 5; }
+body.builder-mode:not(.has-compiled) #preview-content > .empty-state { display: none; }
+body.builder-mode:not(.has-compiled) #tile-gallery { display: block; }
+.tile-gallery-h { font-size: 18px; font-weight: 700; color: var(--tx); margin: 0 0 6px; }
+.tile-gallery-sub { font-size: 13px; color: var(--tx3); margin: 0 0 24px; }
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.tile-grid.featured { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom: 28px; }
+.tile-card { background: var(--bg2); border: 1px solid var(--bd); border-radius: 12px; padding: 18px 18px 16px; cursor: pointer; transition: transform .15s, border-color .15s, box-shadow .15s; text-align: left; }
+.tile-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 16px var(--accent-glow); }
+.tile-card.featured { background: linear-gradient(135deg, var(--bg2) 0%, var(--accent-glow) 100%); }
+.tile-name { font-size: 14px; font-weight: 700; color: var(--tx); margin-bottom: 6px; }
+.tile-desc { font-size: 12px; color: var(--tx3); line-height: 1.5; }
+.tile-more-btn { background: transparent; border: 1px dashed var(--bd2); color: var(--tx2); font-size: 13px; font-weight: 500; padding: 10px 16px; border-radius: 10px; cursor: pointer; margin: 8px 0 16px; transition: all .15s; }
+.tile-more-btn:hover { border-color: var(--accent); color: var(--accent); }
+
 /* Saved toast */
 @keyframes toastIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
@@ -679,6 +695,8 @@ body.builder-mode.show-source #editor-pane {
         <div class="hint">Start typing Clear code or pick a template</div>
       </div>
     </div>
+    <!-- BM-6: tile gallery — overlay sibling of #preview-content so showTab() innerHTML wipes don't nuke it. Visible only in builder mode + when nothing has been compiled yet. -->
+    <div id="tile-gallery"></div>
   </div>
 
   </div><!-- /#main-area -->
@@ -1266,6 +1284,10 @@ async function autoCompile() {
     });
     const elapsed = Math.round(performance.now() - t0);
     lastCompiled = await r.json();
+    // BM-6: first successful compile means the user has chosen something — hide the tile gallery
+    if (lastCompiled && (!lastCompiled.errors || lastCompiled.errors.length === 0)) {
+      document.body.classList.add('has-compiled');
+    }
     // Build persistent source map from compiled output — pick the target with markers
     if (lastCompiled.serverJS) { sourceMapData = buildSourceMap(lastCompiled.serverJS); sourceMapTab = 'serverJS'; }
     else if (lastCompiled.javascript) { sourceMapData = buildSourceMap(lastCompiled.javascript); sourceMapTab = 'javascript'; }
@@ -4542,6 +4564,11 @@ database is local memory
   autoCompile();
 };
 
+// Shared list of template names — populated by loadTemplates(), consumed by
+// the template-picker <select> AND the BM-6 tile gallery. Stored on window so
+// renderTileGallery() can pick it up after detectStudioMode() runs.
+window._allTemplateNames = [];
+
 async function loadTemplates() {
   try {
     const r = await fetch('/api/templates');
@@ -4560,15 +4587,19 @@ async function loadTemplates() {
       opt.textContent = t.name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       sel.appendChild(opt);
     });
+    window._allTemplateNames = templates.map(t => t.name);
+    // BM-6: re-render the tile gallery now that we have the full template list
+    if (typeof renderTileGallery === 'function') renderTileGallery();
   } catch (err) {
     console.error('Failed to load templates:', err);
   }
 }
 
-document.getElementById('template-picker').addEventListener('change', async function() {
-  if (!this.value) return;
+// Shared template-load logic — wired from both <select> change and tile click.
+async function loadTemplateByName(name) {
+  if (!name) return;
   try {
-    const r = await fetch('/api/template/' + this.value);
+    const r = await fetch('/api/template/' + name);
     const source = await r.text();
     suppressAutoCompile = true;
     editor.dispatch({
@@ -4576,11 +4607,18 @@ document.getElementById('template-picker').addEventListener('change', async func
     });
     suppressAutoCompile = false;
     clearTimeout(compileTimer);
-    // Update editor header with template name
     const label = document.getElementById('editor-label');
-    if (label) label.textContent = this.value + '/main.clear';
+    if (label) label.textContent = name + '/main.clear';
     lastCompiled = null;
+    // BM-6: once a template loads, the gallery becomes irrelevant —
+    // autoCompile() will replace #preview-content with the iframe.
+    autoCompile();
   } catch {}
+}
+window.loadTemplateByName = loadTemplateByName;
+
+document.getElementById('template-picker').addEventListener('change', function() {
+  loadTemplateByName(this.value);
 });
 
 // ==========================================================================
@@ -4954,6 +4992,75 @@ function detectStudioMode() {
 // Run on initial load. Every mode change is a full navigation (URL param),
 // so no need for ongoing listeners.
 detectStudioMode();
+
+// ==========================================================================
+// BM-6: TILE GALLERY (Builder Mode v0.2)
+// Replaces the empty preview area with a tile picker when in builder mode
+// and nothing is loaded yet. Five Marcus apps are pinned at the top; the
+// rest sit behind a "See more" expander populated from /api/templates.
+// CSS in the style block already hides the gallery in classic mode and
+// hides the .empty-state in builder mode — JS just fills the container.
+// ==========================================================================
+const MARCUS_FEATURED = [
+  { name: 'deal-desk',           desc: 'Discount approvals routed to the CRO. AI-drafted summaries on every request over 20%.' },
+  { name: 'approval-queue',      desc: 'Generic submit → review → approve/reject. Expenses, PTO, vendor purchases, anything.' },
+  { name: 'lead-router',         desc: 'Score inbound leads, enrich, auto-assign by territory and segment.' },
+  { name: 'onboarding-tracker',  desc: 'Customer onboarding steps, who is stuck, how long, which CSM owns it.' },
+  { name: 'support-triage',      desc: 'AI classifies incoming tickets into category + priority. SLA tracking on top.' },
+];
+
+function renderTileGallery() {
+  const host = document.getElementById('tile-gallery');
+  if (!host) return;
+
+  const featuredHTML = MARCUS_FEATURED.map(t => `
+    <button class="tile-card featured" data-template="${t.name}" type="button">
+      <div class="tile-name">${t.name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</div>
+      <div class="tile-desc">${t.desc}</div>
+    </button>
+  `).join('');
+
+  const featuredNames = new Set(MARCUS_FEATURED.map(t => t.name));
+  const others = (window._allTemplateNames || []).filter(n => !featuredNames.has(n));
+  const otherCount = others.length;
+
+  const otherHTML = others.map(name => `
+    <button class="tile-card" data-template="${name}" type="button">
+      <div class="tile-name">${name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</div>
+      <div class="tile-desc">Template app</div>
+    </button>
+  `).join('');
+
+  host.innerHTML = `
+    <h2 class="tile-gallery-h">What do you want to build today?</h2>
+    <p class="tile-gallery-sub">Start from a Marcus-shaped template, or describe your own to Meph in the chat.</p>
+    <div class="tile-grid featured">${featuredHTML}</div>
+    ${otherCount > 0 ? `
+      <button id="tile-more-btn" class="tile-more-btn" type="button">See ${otherCount} more templates ↓</button>
+      <div id="tile-more-grid" class="tile-grid" style="display:none">${otherHTML}</div>
+    ` : ''}
+  `;
+
+  // Click delegation — one listener for both featured + expanded grids
+  host.onclick = (e) => {
+    const card = e.target.closest('[data-template]');
+    if (card) {
+      loadTemplateByName(card.dataset.template);
+      return;
+    }
+    if (e.target.id === 'tile-more-btn') {
+      const grid = document.getElementById('tile-more-grid');
+      const btn  = document.getElementById('tile-more-btn');
+      if (grid && btn) {
+        const opening = grid.style.display === 'none';
+        grid.style.display = opening ? 'grid' : 'none';
+        btn.textContent = opening ? `Hide additional templates ↑` : `See ${otherCount} more templates ↓`;
+      }
+    }
+  };
+}
+
+renderTileGallery();
 
 // ==========================================================================
 // FIRST-VISIT ONBOARDING (GTM-5)
