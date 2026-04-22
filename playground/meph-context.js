@@ -119,6 +119,13 @@ export class MephContext {
     this.getRunningChild = options.getRunningChild || (() => null);
     this.setRunningChild = options.setRunningChild || (() => {});
     this.allocatePort = options.allocatePort || (() => null);
+
+    // Anthropic API key forwarded into `node cli/clear.js test` so agent-
+    // backed tests can call real Claude. /api/chat hooks this to the
+    // closure-level storedApiKey populated from Meph's config pane.
+    // Unset → no ANTHROPIC_API_KEY in the child env (agent tests will fail
+    // cleanly with a missing-key error from cli/clear.js).
+    this.apiKey = options.apiKey || null;
   }
 
   /**

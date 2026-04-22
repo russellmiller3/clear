@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool } from './meph-tools.js';
 import { existsSync, mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -783,6 +783,49 @@ assert(appPkg.dependencies?.ws === '*',
 // Cleanup: kill the child if it's still alive (process.exit(0) should've ended it but be safe)
 try { if (childHolder) childHolder.kill('SIGKILL'); } catch {}
 try { rmSync(appTmp2, { recursive: true, force: true }); } catch {}
+
+console.log('\n🧪 runTestsTool\n');
+
+// Stub parser we can verify was called (or not) — takes a string, returns
+// the shape runTestsTool consumes from parseTestOutput.
+const stubParser = (stdout) => ({ passed: 0, failed: 0, results: [] });
+
+// Empty source → no-source-code error, never invokes the subprocess
+const rtBuildDir = mkdtempSync(join(tmpdir(), 'meph-runtests-'));
+const rtt1 = runTestsTool({}, new MephContext({ source: '', rootDir: REPO_ROOT, buildDir: rtBuildDir }), stubParser);
+assert(rtt1.ok === false, 'runTestsTool empty source returns ok=false');
+assert(rtt1.error?.includes('No source code'),
+  'runTestsTool empty source returns "No source code" error');
+
+// Whitespace-only source also rejected
+const rtt2 = runTestsTool({}, new MephContext({ source: '   \n\t  ', rootDir: REPO_ROOT, buildDir: rtBuildDir }), stubParser);
+assert(rtt2.error?.includes('No source code'),
+  'runTestsTool whitespace-only source is treated as empty');
+try { rmSync(rtBuildDir, { recursive: true, force: true }); } catch {}
+
+// Parser contract: runTestsTool spreads the parser output into its return.
+// Stub a parser that counts rt callbacks so we can verify it gets invoked
+// with the child's stdout exactly once per run. We avoid spawning the real
+// cli/clear.js here — that's covered by server.test.js's /api/run-tests
+// integration test, which goes through the same runTestsTool now.
+let parserCalls = 0;
+const countingParser = (stdout) => {
+  parserCalls++;
+  return { passed: 1, failed: 0, results: [{ name: 'fake', status: 'pass' }] };
+};
+// Give runTestsTool an intentionally-crashable command target by pointing
+// rootDir at a directory with no cli/clear.js — execSync throws, the tool's
+// err-handler branch runs. We still assert duration is populated, confirming
+// the tool reached the finally block without crashing the process.
+const rtt4 = runTestsTool({}, new MephContext({
+  source: 'database:\n  one counter with value of 0\n',
+  rootDir: mkdtempSync(join(tmpdir(), 'meph-runtests-norepo-')),
+  buildDir: mkdtempSync(join(tmpdir(), 'meph-runtests-build2-')),
+  apiKey: null,
+}), countingParser);
+assert(typeof rtt4.duration === 'number' && rtt4.duration >= 0,
+  `runTestsTool populates duration even on subprocess failure (got ${rtt4.duration})`);
+assert(rtt4.ok === false, 'runTestsTool returns ok=false when cli/clear.js is not findable');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

@@ -666,6 +666,83 @@ export function runAppTool(input, ctx) {
 }
 
 /**
+ * run_tests tool — exec `node cli/clear.js test <tmp>` against ctx.source
+ * and parse the PASS/FAIL lines out of stdout. Writes the current source
+ * to a timestamped tmp file in ctx.buildDir so concurrent tool calls don't
+ * stomp each other (we still clean it up in `finally`). ANTHROPIC_API_KEY
+ * is forwarded via ctx.apiKey so agent-backed tests can call real Claude.
+ *
+ * The outer timeout (default 180s, overridable via CLEAR_STUDIO_TEST_TIMEOUT_MS)
+ * wraps the whole child — npm install, server startup, and the actual test
+ * execution. On Windows this is the only reliable way to time out an
+ * execSync that's stuck inside a child process.
+ *
+ * Exit-code contract from cli/clear.js test:
+ *   0 — all tests passed
+ *   1 — compile errors (JSON on stdout)
+ *   4 — some tests failed (normal PASS/FAIL output on stdout)
+ *
+ * @param {object} input - unused
+ * @param {MephContext} ctx - source + rootDir + buildDir + apiKey used
+ * @param {(stdout: string) => {passed, failed, results}} parseTestOutput - injected
+ *   so meph-tools.js doesn't need to duplicate the parser. server.js passes its
+ *   existing parseTestOutput; tests pass their own.
+ * @returns {object} parsed test result — caller stringifies before returning to Meph
+ */
+export function runTestsTool(input, ctx, parseTestOutput) {
+  const start = Date.now();
+  const source = ctx.source;
+  if (!source || !source.trim()) {
+    return { ok: false, error: 'No source code. Load or write a .clear file first.' };
+  }
+  mkdirSync(ctx.buildDir, { recursive: true });
+  const tmpPath = join(ctx.buildDir, '_test-source-' + Date.now() + '.clear');
+  writeFileSync(tmpPath, source);
+  const outerTimeoutMs = Math.max(15000, Number(process.env.CLEAR_STUDIO_TEST_TIMEOUT_MS) || 180000);
+  try {
+    const testEnv = { ...process.env, ...(ctx.apiKey ? { ANTHROPIC_API_KEY: ctx.apiKey } : {}) };
+    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, {
+      cwd: ctx.rootDir,
+      encoding: 'utf8',
+      timeout: outerTimeoutMs,
+      maxBuffer: 5 * 1024 * 1024,
+      env: testEnv,
+    });
+    const parsed = parseTestOutput(stdout);
+    return { ok: true, ...parsed, duration: Date.now() - start };
+  } catch (err) {
+    if (err.status === 4) {
+      const parsed = parseTestOutput(err.stdout || '');
+      return { ok: false, ...parsed, duration: Date.now() - start };
+    }
+    if (err.status === 1) {
+      try {
+        const errData = JSON.parse(err.stdout);
+        return { ok: false, error: 'Compile errors', errors: errData.errors || [], duration: Date.now() - start };
+      } catch {
+        return { ok: false, error: (err.stdout || err.stderr || err.message).slice(0, 2000), duration: Date.now() - start };
+      }
+    }
+    // Timeout shows as ETIMEDOUT on Windows, killed=true + SIGTERM on Unix.
+    // Translate both to a message the user can act on, not a stack trace
+    // pointing at cmd.exe.
+    const timedOut = err.code === 'ETIMEDOUT' || (err.killed && err.signal === 'SIGTERM');
+    if (timedOut) {
+      const secs = Math.round(outerTimeoutMs / 1000);
+      return {
+        ok: false,
+        error: `Test runner timed out after ${secs}s. Templates with live agent calls can be slow — try running fewer tests, or set CLEAR_STUDIO_TEST_TIMEOUT_MS to raise the limit.`,
+        timedOut: true,
+        duration: Date.now() - start,
+      };
+    }
+    return { ok: false, error: (err.stderr || err.message || 'Test runner failed').slice(0, 2000), duration: Date.now() - start };
+  } finally {
+    try { unlinkSync(tmpPath); } catch {}
+  }
+}
+
+/**
  * edit_file tool — read / append / insert / replace / overwrite on files in
  * the repo root. Restricted to safe extensions (.clear/.md/.json/.txt/.csv/
  * .html/.css/.js/.py) and a writable allowlist (.clear files anywhere,

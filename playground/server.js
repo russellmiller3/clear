@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -559,56 +559,18 @@ export { parseTestOutput };
 // agent-endpoint grading bugs (empty bodies, dropped structured payloads).
 export { _extractSSEFrameText, _parseSSEFrames };
 
+// Shared wrapper so /api/run-tests and the run_tests tool both go through
+// the ported runTestsTool. Keeps the caller side simple — pass source,
+// get result — while the ctx wiring (buildDir, apiKey, parser) stays here
+// in one place.
 function runTestProcess(source) {
-  const start = Date.now();
-  if (!source || !source.trim()) {
-    return { ok: false, error: 'No source code. Load or write a .clear file first.' };
-  }
-  const tmpPath = join(BUILD_DIR, '_test-source-' + Date.now() + '.clear');
-  mkdirSync(BUILD_DIR, { recursive: true });
-  writeFileSync(tmpPath, source);
-  // Outer timeout wraps both npm install + server startup + actual test
-  // execution. Multi-agent templates with real `ask claude` E2E calls can
-  // easily push past 30s. 180s is generous enough for those without letting
-  // a truly hung run block the Studio UI forever. Override via env.
-  const outerTimeoutMs = Math.max(15000, Number(process.env.CLEAR_STUDIO_TEST_TIMEOUT_MS) || 180000);
-  try {
-    // Pass API key from Meph config so agent tests can call Claude
-    const testEnv = { ...process.env, ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}) };
-    const stdout = execSync(`node cli/clear.js test "${tmpPath}"`, { cwd: ROOT_DIR, encoding: 'utf8', timeout: outerTimeoutMs, maxBuffer: 5 * 1024 * 1024, env: testEnv });
-    const parsed = parseTestOutput(stdout);
-    return { ok: true, ...parsed, duration: Date.now() - start };
-  } catch (err) {
-    if (err.status === 4) {
-      const parsed = parseTestOutput(err.stdout || '');
-      return { ok: false, ...parsed, duration: Date.now() - start };
-    }
-    if (err.status === 1) {
-      try {
-        const errData = JSON.parse(err.stdout);
-        return { ok: false, error: 'Compile errors', errors: errData.errors || [], duration: Date.now() - start };
-      } catch {
-        return { ok: false, error: (err.stdout || err.stderr || err.message).slice(0, 2000), duration: Date.now() - start };
-      }
-    }
-    // Translate the cryptic "spawnSync C:\Windows\system32\cmd.exe ETIMEDOUT"
-    // that Node emits on Windows when execSync hits its timeout. On macOS/Linux
-    // it shows up as killed=true + signal=SIGTERM. Either way the user needs
-    // a message they can act on, not a stack trace pointing at cmd.exe.
-    const timedOut = err.code === 'ETIMEDOUT' || (err.killed && err.signal === 'SIGTERM');
-    if (timedOut) {
-      const secs = Math.round(outerTimeoutMs / 1000);
-      return {
-        ok: false,
-        error: `Test runner timed out after ${secs}s. Templates with live agent calls can be slow — try running fewer tests, or set CLEAR_STUDIO_TEST_TIMEOUT_MS to raise the limit.`,
-        timedOut: true,
-        duration: Date.now() - start,
-      };
-    }
-    return { ok: false, error: (err.stderr || err.message || 'Test runner failed').slice(0, 2000), duration: Date.now() - start };
-  } finally {
-    try { unlinkSync(tmpPath); } catch {}
-  }
+  const ctx = new MephContext({
+    source,
+    rootDir: ROOT_DIR,
+    buildDir: BUILD_DIR,
+    apiKey: storedApiKey || null,
+  });
+  return runTestsTool({}, ctx, parseTestOutput);
 }
 
 app.post('/api/run-tests', (req, res) => {
@@ -3189,7 +3151,17 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'run_tests': {
-        const testResult = runTestProcess(currentSource);
+        // Extracted to playground/meph-tools.js (GM-2 port). The subprocess
+        // + parser live there; executeTool keeps the UI tab-switching and
+        // SSE emission because those are Studio-specific (MCP callers
+        // won't need them).
+        const ctx = new MephContext({
+          source: currentSource,
+          rootDir: ROOT_DIR,
+          buildDir: BUILD_DIR,
+          apiKey: storedApiKey || null,
+        });
+        const testResult = runTestsTool(input, ctx, parseTestOutput);
         send({ type: 'switch_tab', tab: 'tests' });
         send({ type: 'test_results', testType: 'app', ...testResult });
         return JSON.stringify(testResult);
