@@ -357,6 +357,22 @@ Throws Error with `.status=403` (Express error middleware handles it). Deny path
 
 Project totals after tick 17: **3013 tests green** (2809 from before + 194 server + 10 assertCanAccessApp).
 
+## Session 42 tick 18 — CC-5a app_domains storage
+
+`0e41241` — schema migration + 3 query helpers for the CC-5 custom-domain backend:
+
+  - `playground/cloud-domains/migrations/001-domains.sql` — app_domains table with `domain UNIQUE`, status CHECK (pending|verified|failed|removed), partial index on pending rows for the CC-5b poller hot path
+  - `loadMigration001()` — same pattern as tenants-db/cloud-auth/cloud-teams
+  - `addDomain(db, {appId, domain, appSlug, rootDomain?})` — normalizes + computes expected_cname + catches 23505 for readable "already attached" error
+  - `listDomainsForApp(db, appId)` — dashboard read (non-removed)
+  - `listPendingDomains(db)` — CC-5b poller hot path (order by last_checked_at NULLS FIRST)
+
+25 new TDD assertions. cloud-domains: 51/51 green.
+
+With this, **every CC backend module has schema + helpers + tests:** tenants-db, subdomain-router, per-app-db, cloud-auth, cloud-teams, cloud-quota, cloud-billing, cloud-domains. The remaining Clear Cloud work is integration (endpoint wiring), UI (CC-2c dashboard, CC-4 publish polish), and Phase 85a infrastructure (domain, Stripe, Fly prod, Postgres host).
+
+Project totals after tick 18: **3038 tests green** (+25 cloud-domains storage).
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
