@@ -509,7 +509,7 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 - Phase 6 (Merge Step) ⬜ Deferred until needed
 - Phase 7 (Observability — Studio panel) ✅ — Flywheel tab + Supervisor tab
 
-~50 tests across supervisor modules; 2108 compiler tests still green.
+~50 tests across supervisor modules; 2096 compiler tests still green.
 
 ---
 

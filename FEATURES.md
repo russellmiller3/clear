@@ -2,7 +2,7 @@
 
 Capability reference for the Clear compiler. The authoritative node-type spec is `intent.md`; this file is the human-readable "what can I do with Clear today?" list. Moved out of ROADMAP.md on 2026-04-21 so the roadmap can focus on what's *next*, not what's already shipped.
 
-**Headline numbers:** 126 node types. 2108 compiler tests. Zero npm dependencies in the compiler.
+**Headline numbers:** 124 node types. 2096 compiler tests. Zero npm dependencies in the compiler.
 **Targets:** JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4).
 
 ---
