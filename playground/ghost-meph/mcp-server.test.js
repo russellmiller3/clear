@@ -570,6 +570,40 @@ function assert(cond, msg) {
   assert(typeof ctxA.sessionId === 'string' && ctxA.sessionId.length > 0,
     `Phase 9: session_id is a non-empty string (got ${typeof ctxA.sessionId})`);
 
+  // =========================================================================
+  // PHASE 10 — per-pid isolation for parallel sweeps
+  //
+  // Russell's tick-7 diagnostic showed the parallel ceiling at L6-L7: every
+  // MCP child initializes `_nextPortCounter = 4001` on load, so 3 parallel
+  // workers race for port 4001 and 2 lose. Same story for the shared
+  // `.meph-build/` dir — concurrent writes to server.js + package.json +
+  // node_modules clobber each other.
+  //
+  // Fix: namespace both by `process.pid`.
+  //   - Port band: 4001 + (process.pid % 1000) * 10 gives each subprocess a
+  //     10-port slot. Disjoint up to 1000 concurrent subprocesses.
+  //   - buildDir: `.meph-build/<pid>` under repo root keeps builds isolated.
+  //
+  // These assertions catch regression to the shared-4001/shared-build-dir
+  // state that forced `--workers=1` after tick 7.
+  // =========================================================================
+  console.log('\n🔀 Phase 10 — per-pid isolation for parallel sweeps');
+
+  _resetMcpState();
+  const ctxP = await _testBuildMephContext();
+  assert(ctxP.buildDir.endsWith(String(process.pid)),
+    `Phase 10: buildDir ends with pid for parallel isolation (got ${ctxP.buildDir})`);
+
+  // First allocatePort() call should return the pid-namespaced base.
+  const expectedBase = 4001 + (process.pid % 1000) * 10;
+  const firstPort = ctxP.allocatePort();
+  assert(firstPort === expectedBase,
+    `Phase 10: first allocatePort() is pid-based band start (expected ${expectedBase}, got ${firstPort})`);
+  // Second allocatePort() should increment within the same band.
+  const secondPort = ctxP.allocatePort();
+  assert(secondPort === expectedBase + 1,
+    `Phase 10: allocatePort increments within the band (expected ${expectedBase + 1}, got ${secondPort})`);
+
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 })();

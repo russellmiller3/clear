@@ -73,7 +73,16 @@ const hintState = {
 // curriculum sweeps even though Meph had just called run_app.
 let _runningChild = null;
 let _runningPort = null;
-let _nextPortCounter = 4001;
+
+// Port namespacing for parallel sweeps — Russell's tick-7 diagnostic:
+// every MCP subprocess used to init `_nextPortCounter = 4001`, so 3 workers
+// in parallel all raced for the same port and 2 lost (the L6-L7 parallel
+// ceiling). Namespace by pid: 4001 + (pid % 1000) * 10 gives each subprocess
+// a disjoint 10-port slot. Disjoint up to 1000 concurrent subprocesses,
+// which is well above anything a laptop would spawn.
+const _portBandBase = 4001 + (process.pid % 1000) * 10;
+const _portBandTop = _portBandBase + 9;
+let _nextPortCounter = _portBandBase;
 
 // Session id — cached at module load so every tool call in this MCP
 // subprocess shares ONE session_id. Before this, buildMephContext's fallback
@@ -83,9 +92,15 @@ let _nextPortCounter = 4001;
 // it) — falls back to per-process stamp exactly once.
 const _sessionId = process.env.MEPH_SESSION_ID
   || ('mcp_' + process.pid + '_' + Date.now());
+
+// Per-pid build directory. Same parallel-ceiling story — every subprocess
+// used to share `.meph-build/`, so concurrent writes to server.js +
+// package.json + node_modules clobbered each other. Namespace by pid.
+const _buildDir = join(REPO_ROOT, '.meph-build', String(process.pid));
+
 function _allocateNextPort() {
   const p = _nextPortCounter;
-  _nextPortCounter = _nextPortCounter >= 4100 ? 4001 : _nextPortCounter + 1;
+  _nextPortCounter = _nextPortCounter >= _portBandTop ? _portBandBase : _nextPortCounter + 1;
   _runningPort = p;
   return p;
 }
@@ -146,7 +161,7 @@ function buildMephContext() {
     errors: currentErrors,
     lastCompileResult,
     rootDir: REPO_ROOT,
-    buildDir: join(REPO_ROOT, '.meph-build'),
+    buildDir: _buildDir,
     todos: mephTodos,
     onTodosChange: (t) => { mephTodos = t; },
     onSourceChange: (s) => { currentSource = s; },
@@ -363,6 +378,9 @@ export function _resetMcpState() {
   hintState.hintsInjectedErrorCount = null;
   hintState.hintsInjectedTier = null;
   hintState.postHintMinErrorCount = null;
+  // Reset the port allocator to the band start so Phase 10's pid-band test
+  // isn't polluted by whatever Phase 8's run_app consumed.
+  _nextPortCounter = _portBandBase;
 }
 
 /** Testing hook — inspect the MephContext the MCP server would build. */
