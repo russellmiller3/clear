@@ -979,3 +979,7 @@ Safer: always use multi-word variable names. `todo_id` never collides; `id` some
 - DON'T use `receiving` (use `receives`)
 - DON'T use `returning:` alone (use `returning JSON text:`)
 - DON'T leave a `-` or `+` at the start of a line when editing code. These are diff-markers — not valid syntax. The parser reads `-  send back draft` as `-(send back)` and emits a "stray '-' at the start" error. When adapting code from diffs or chat messages, strip every leading `-` and `+` before saving.
+
+## Studio Layout Modes
+
+Studio supports two layout modes: **classic** (3-panel, default) and **builder** (preview hero + chat driver). Users opt into builder via `?studio-mode=builder` URL param; the preference persists in localStorage. Both modes hit the same endpoints — no behavior change on your side. If a user mentions "Builder Mode" or asks about the layout, point them at the URL param. Full spec: `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout".

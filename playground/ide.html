@@ -476,6 +476,87 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 #chat-send, #errors, .msg, .toast, #theme-toggle, select {
   transition: background-color .2s, border-color .2s, color .15s;
 }
+
+/* ==========================================================================
+   BUILDER MODE v0.1 (Marcus-first layout — opt-in via ?studio-mode=builder)
+   Feature-flagged. Classic 3-panel remains the default.
+   ========================================================================== */
+body.builder-mode #main-area { flex-direction: column; position: relative; }
+
+/* BM-2: Preview as hero — full-width, ~60vh. DOM order is chat → editor → preview,
+   so we need `order` to put preview on top in column layout. */
+body.builder-mode #preview-pane {
+  order: 0;
+  flex: 1 1 auto;
+  min-height: 60vh;
+  width: 100%;
+  border-left: 0;
+  border-bottom: 1px solid var(--bd);
+}
+
+/* BM-1: Chat as bottom driver — full-width, ~40vh */
+body.builder-mode #chat-pane {
+  order: 1;
+  flex: 0 0 40vh;
+  width: 100% !important;   /* overrides mobile breakpoint at line 73 */
+  min-width: 0;
+  border-top: 1px solid var(--bd);
+  border-bottom: 0;
+}
+/* Defense-in-depth for E-4: .collapsed class gets removed on mode enter,
+   but if something else toggles it after, keep the 40vh layout. */
+body.builder-mode #chat-pane.collapsed { flex-basis: 40vh !important; }
+
+/* Hide classic-mode horizontal resizers in builder mode */
+body.builder-mode #ep-resizer { display: none; }
+body.builder-mode #chat-resizer { display: none; }
+
+/* Override mobile breakpoint specifically for builder mode (E-6) */
+@media (max-width: 1100px) {
+  body.builder-mode #chat-pane { width: 100% !important; }
+}
+
+/* BM-6: Chat can't collapse below 40vh in builder mode — hide the toggle */
+body.builder-mode #chat-toggle-btn { display: none; }
+
+/* BM-5: Publish button — builder-mode restyle of #deploy-btn. Applied via
+   detectStudioMode() adding .publish-btn class. */
+.publish-btn {
+  padding: 6px 20px !important;
+  font-weight: 700 !important;
+  font-size: 12.5px !important;
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 6px rgba(108, 140, 255, 0.25);
+  letter-spacing: 0.3px;
+  transition: transform 0.12s, box-shadow 0.18s, background 0.12s;
+}
+.publish-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px var(--accent), 0 6px 14px rgba(108, 140, 255, 0.4);
+}
+.publish-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow), 0 2px 6px rgba(108, 140, 255, 0.25);
+}
+.publish-btn:active { transform: translateY(0); }
+
+/* BM-3-minimal: Editor hidden by default in builder mode; Source toggle
+   reveals it as right-side overlay rail */
+body.builder-mode #editor-pane { display: none; }
+body.builder-mode.show-source #editor-pane {
+  display: flex;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(400px, 85vw);  /* E-9: clamp on narrow viewports */
+  z-index: 20;
+  background: var(--bg);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.18);
+  border-left: 1px solid var(--bd);
+}
 </style>
 </head>
 <body>
@@ -493,6 +574,7 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
     <select id="template-picker"><option value="">Templates...</option></select>
     <span class="toolbar-sep"></span>
     <button class="toolbar-btn" onclick="doCompile()" title="Ctrl+S">Compile</button>
+    <button id="source-toggle-btn" class="toolbar-btn" onclick="toggleSource()" title="Show/hide .clear source" style="display:none">Show Source ◀</button>
     <button id="run-btn" class="toolbar-btn primary" onclick="doRun()" title="Ctrl+Enter" style="display:none">Run</button>
     <button id="stop-btn" class="toolbar-btn" onclick="doStop()" style="display:none">Stop</button>
     <button id="deploy-btn" class="toolbar-btn primary" onclick="doDeploy()" title="Ship to a live URL" style="display:none">Deploy</button>
@@ -4691,6 +4773,16 @@ window.toggleChat = function() {
   btn.title = collapsed ? 'Show Meph panel' : 'Hide Meph panel';
 };
 
+// Builder Mode v0.1 — BM-3-minimal: toolbar-driven source toggle.
+// Full 3-session auto-hide logic deferred to later PRES.
+window.toggleSource = function() {
+  const body = document.body;
+  const btn = document.getElementById('source-toggle-btn');
+  const shown = body.classList.toggle('show-source');
+  btn.textContent = shown ? 'Hide Source ▶' : 'Show Source ◀';
+  btn.title = shown ? 'Hide .clear source' : 'Show .clear source';
+};
+
 // ==========================================================================
 // EDITOR / PREVIEW DRAG RESIZER
 // ==========================================================================
@@ -4775,6 +4867,93 @@ loadTemplates();
     updatePlanBadge(t);
   } catch {}
 })();
+
+// ==========================================================================
+// STUDIO MODE (builder / classic) — Builder Mode v0.1
+// ?studio-mode=builder flips Studio to Marcus-first layout (preview hero +
+// chat driver). Opt-in via URL param; preference persists in localStorage.
+// Full spec: plans/plan-builder-mode-v0.1-04-21-2026.md
+// ==========================================================================
+const STUDIO_MODES = ['builder', 'classic'];
+function detectStudioMode() {
+  const body = document.body;
+
+  // 1. Read URL param (case-insensitive)
+  let urlMode = null;
+  try {
+    const p = new URLSearchParams(window.location.search).get('studio-mode');
+    if (p !== null) {
+      const norm = String(p).trim().toLowerCase();
+      if (STUDIO_MODES.includes(norm)) urlMode = norm;
+      else console.warn(`[studio-mode] unrecognized value: "${p}", defaulting to classic`);
+    }
+  } catch (e) { /* URLSearchParams always works in a browser, defensive only */ }
+
+  // 2. Read localStorage (best-effort — private browsing throws)
+  let storedMode = null;
+  try {
+    const s = localStorage.getItem('studio-mode-pref');
+    if (s && STUDIO_MODES.includes(s)) storedMode = s;
+  } catch (e) {
+    console.warn('[studio-mode] localStorage unavailable; mode will not persist across sessions');
+  }
+
+  // 3. Resolve: URL param wins, else stored, else classic
+  const mode = urlMode || storedMode || 'classic';
+
+  // 4. Persist URL-param choice (best-effort)
+  if (urlMode) {
+    try { localStorage.setItem('studio-mode-pref', urlMode); } catch (e) { /* silent */ }
+  }
+
+  // 5. Clear inline styles from any prior resizer drag (plan edge case E-5)
+  ['editor-pane', 'preview-pane', 'chat-pane'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.removeProperty('flex');
+    el.style.removeProperty('width');
+    el.style.removeProperty('height');
+  });
+
+  // 6. Clear .collapsed on chat-pane in builder mode (edge case E-4)
+  if (mode === 'builder') {
+    document.getElementById('chat-pane')?.classList.remove('collapsed');
+  }
+
+  // 7. Apply class
+  body.classList.toggle('builder-mode', mode === 'builder');
+
+  // 8. Show/hide Source toggle button based on mode; reset show-source on exit
+  const srcBtn = document.getElementById('source-toggle-btn');
+  if (srcBtn) {
+    srcBtn.style.display = (mode === 'builder') ? '' : 'none';
+    if (mode !== 'builder') body.classList.remove('show-source');
+  }
+
+  // 9. Rebrand Deploy button as Publish in builder mode
+  const depBtn = document.getElementById('deploy-btn');
+  if (depBtn) {
+    if (mode === 'builder') {
+      depBtn.textContent = 'Publish';
+      depBtn.classList.add('publish-btn');
+    } else {
+      depBtn.textContent = 'Deploy';
+      depBtn.classList.remove('publish-btn');
+    }
+  }
+
+  // 10. Chat input placeholder — Marcus-first prompt in builder mode
+  const chatIn = document.getElementById('chat-input');
+  if (chatIn) {
+    chatIn.placeholder = (mode === 'builder')
+      ? 'What do you want to build today, or which app to change? (Enter to send)'
+      : 'Ask Meph to build something... (Enter to send)';
+  }
+}
+
+// Run on initial load. Every mode change is a full navigation (URL param),
+// so no need for ongoing listeners.
+detectStudioMode();
 </script>
 <!-- Deploy modal — injected populated by doDeploy() -->
 <div id="deploy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center"></div>

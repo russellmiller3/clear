@@ -6,6 +6,25 @@ Newest entries at the top.
 
 ---
 
+## Builder Mode v0.1 — Marcus-first Studio layout (2026-04-21)
+
+Feature-flagged Studio layout flip via `?studio-mode=builder` URL param. Four changes:
+
+- **BM-1 chat-as-driver** — chat pane drops to bottom 40vh in builder mode, full-width. Placeholder updated to "What do you want to build today, or which app to change?"
+- **BM-2 preview-as-hero** — preview pane rises to top 60vh, full-width. `order: 0` flips DOM order (chat is earlier in markup).
+- **BM-3-minimal Source toggle** — editor hidden by default; toolbar `Show Source ◀ / Hide Source ▶` button overlays editor as right-side rail (`position: absolute`, `z-index: 20`, `width: min(400px, 85vw)`). Full 3-session auto-hide logic deferred.
+- **BM-5 Publish button** — `#deploy-btn` renamed to "Publish" and gains `.publish-btn` class in builder mode. Accent-filled background, bolder type, hover lift, focus glow. Same handler, same `/api/deploy` endpoint.
+
+Classic 3-panel layout remains default. Preference persists in localStorage. Private-browsing safe (localStorage wrapped in try/catch).
+
+Tests: `playground/builder-mode.test.js` (new, 31 assertions, all passing). `playground/ide.test.js` and `playground/deploy.test.js` regressions clean.
+
+Deferred to later PRES cycles: BM-3 full (3-session auto-hide counter), BM-4 click-to-edit on preview, BM-6 "what are you building?" tile gallery, status bar, `cmd+.` revert shortcut.
+
+Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Full spec: `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout".
+
+---
+
 ## Recently Completed
 
 | Feature | Syntax | Status |

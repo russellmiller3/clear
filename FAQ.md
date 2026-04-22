@@ -84,6 +84,7 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 - [Where does the archetype classifier live?](#where-does-the-archetype-classifier-live)
 
 **How do I do X?**
+- [How do I try Builder Mode (Marcus-first Studio layout)?](#how-do-i-try-builder-mode-marcus-first-studio-layout)
 - [How do I add a new node type?](#how-do-i-add-a-new-node-type)
 - [How do I add a new synonym?](#how-do-i-add-a-new-synonym)
 - [How do I add a new Meph tool?](#how-do-i-add-a-new-meph-tool)
@@ -499,6 +500,34 @@ Validation: all 8 core templates classify to the correct archetype (see `archety
 ---
 
 ## How do I do X?
+
+### How do I try Builder Mode (Marcus-first Studio layout)?
+
+Visit Studio with `?studio-mode=builder` in the URL. Example: `http://localhost:3456/?studio-mode=builder`.
+
+**What changes in builder mode:**
+- Preview fills the top 60% of the screen (full width). Chat drops to the bottom 40%. Editor is hidden.
+- Chat input placeholder becomes "What do you want to build today, or which app to change?" — Marcus-first prompt instead of "Ask Meph."
+- Toolbar gains a **Show Source ◀** button that opens the `.clear` editor as a right-side overlay rail.
+- The Run/Deploy button becomes a loud **Publish** button (accent-filled, bolder type). Same handler, same `/api/deploy` endpoint.
+- The `Hide Chat` toggle is hidden (chat can't collapse below 40vh in this layout).
+
+**Opt-out:** `?studio-mode=classic`. Preference persists in localStorage so you don't have to keep adding the param.
+
+**What's not in v0.1 (deferred):**
+- Auto-hide source editor after 3 successful ships (BM-3 full)
+- Click-to-edit on preview elements (BM-4)
+- "What are you building?" tile gallery on empty state (BM-6)
+- Status bar (users / agent spend / last ship)
+- `cmd+.` shortcut to force classic layout
+
+**Tests:** `node playground/builder-mode.test.js` (31 assertions, port 3459).
+
+**Source:** `playground/ide.html` CSS block starting at "BUILDER MODE v0.1" comment, `detectStudioMode()` function near end of main script block, `window.toggleSource` next to `window.toggleChat`.
+
+**Full spec:** `ROADMAP.md` → "Builder Mode — Marcus-first Studio layout". Plan: `plans/plan-builder-mode-v0.1-04-21-2026.md`. Changelog entry at top of `CHANGELOG.md`.
+
+---
 
 ### How do I add a new node type?
 

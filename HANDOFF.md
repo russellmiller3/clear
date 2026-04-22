@@ -1,85 +1,145 @@
-# Handoff — 2026-04-21 (ROADMAP reorg + Clear Cloud north-star decision)
+# Handoff — Next Claude: plough through the roadmap
 
-## Current state
+**Your mandate:** continue shipping P0 → P4 work in priority order. Russell wants momentum. Ship as you go. Don't stop and ask.
 
-- **Branch being shipped:** `docs/roadmap-reorg` (created + merged + pushed this session)
-- **Tests:** no compiler code changed — doc-only ship, no test run needed
-- **Product status:** Phase 85 (one-click deploy to Fly) shipped in Session 37 but blocked on real-world provisioning (buildclear.dev domain, Fly Trust Verified quota, Stripe signup, Anthropic org key). Deploy button works end-to-end in tests but has nowhere to deploy to until Phase 85a lands.
+**Your budget:** your own Claude Code / Claude API — not Russell's ANTHROPIC_API_KEY. Ground rules:
+- **No calls to Meph's `/api/chat`.** That hits Russell's Anthropic org.
+- **`SKIP_MEPH_EVAL=1 git push`** — the pre-push hook runs `eval-meph.js` otherwise (hits his key).
+- **No `curriculum-sweep.js` runs against real Meph.** Wait until Ghost Meph lands.
+- **Any Clear app that uses `ask claude`** → wrap in `mock claude responding:` test blocks so tests don't fire real LLM calls.
+- **Post running cost tally** to Russell at each ship point — his Claude Code plan still has limits.
 
-## What shipped this session
+**Your rules:**
+- Every feature ships on `feature/<name>` or `fix/<name>` branch, NEVER commit to main. Merge `--no-ff` when green.
+- Doc-only commits: `git commit --no-verify` + `git push --no-verify` (HARD RULE).
+- Code commits: let hooks run unless they fail for pre-existing reasons (note pre-existing failures in commit message).
+- Edit big docs in small pieces with narration between.
+- Test before declaring done — run Playwright / compiler tests, verify user-visible outcome.
+- BLUF summaries for Russell: plain English, bigger picture, opinionated next move.
 
-Three things, all documentation.
+## Current state (read these first)
 
-### 1. ROADMAP.md split + Clear Cloud north-star decision
+- **Last merged to main:** `docs/roadmap-reorg` (Session 2026-04-21 part 1) → commit `9594086`.
+- **Pending branch:** `feature/builder-mode-v01` — 5 commits on branch, 31/31 Playwright tests passing, docs partially updated. **Needs:** finish HANDOFF.md update (this file), commit, merge to main, push.
+- **ROADMAP.md → "North Star: Clear Cloud (P0 — Q2 2026)"** — read before anything else. Decision context for everything below.
+- **ROADMAP.md → "What's Next" priority table** — authoritative ordering for tonight's queue.
+- **ROADMAP.md → "Ghost Meph — research-velocity unlock"** — research track #1 is a real build item now.
+- **Pre-existing test failures on `main`:** `ide.test.js` shows 8 passed / 3 failed (strict-mode locator ambiguity on "New" button). Not caused by any active branch — treat as background noise.
 
-The roadmap ballooned to 1054 lines. Unreadable. Split into three files:
+## Autonomous queue — plough through in this order
 
-- **`ROADMAP.md` (707 lines, was 1054):** Forward-looking only. Opens with a new top-level section called "North Star: Clear Cloud (P0 — Q2 2026)" that locks the Marcus-first product decision, then a priority table (P0/P1/P2/P3/P4), then individual tracks in physical-order priority.
-- **`FEATURES.md` (new, 280 lines):** Capability reference — "what can Clear do today?" Every feature row: syntax + notes. Replaces the "What's Built" section that used to live in ROADMAP.
-- **`CHANGELOG.md` (new, 109 lines):** Session-by-session history of what shipped. Newest at top. Replaces the "Recently Completed" section that used to live in ROADMAP.
+### Queue A: Wrap Builder Mode v0.1 (IN PROGRESS — finish first)
 
-### 2. Clear Cloud product-positioning lock
+1. **Commit this HANDOFF.md + remaining Builder Mode docs (FAQ entry, FEATURES row, CHANGELOG entry, system-prompt note) on the active `feature/builder-mode-v01` branch.**
+2. **Merge `feature/builder-mode-v01` to main** with `--no-ff`, push (SKIP_MEPH_EVAL=1).
+3. **Delete the feature branch.**
 
-**The decision:** Clear is a **Marcus product**, not a Dave tool.
+### Queue B: P0 go-to-market code work (fully autonomous)
 
-- Primary interface is the Studio **Publish** button, not a terminal `clear deploy`.
-- Compiler auto-picks hosting by app type (v2, post-launch): static → Cloudflare Pages, web CRUD → Cloudflare Workers + D1, agents → Workers + AI Gateway, Python ETL → Modal, native binaries → Fly Docker. Marcus never sees a vendor name.
-- Phase 85 (Fly) stays as the default shipping target. Don't rebuild on Cloudflare before Clear Cloud is paying.
-- Five missing pieces to ship Clear Cloud on top of existing Phase-85 infrastructure: **CC-1** multi-tenant hosting, **CC-2** buildclear.dev auth, **CC-3** Stripe billing, **CC-4** Publish button wired to Clear Cloud, **CC-5** custom domain flow. Total ~6–8 weeks of platform engineering.
-- **Before any CC-* lands:** Phase 85a needs to provision the real stack (domain registration, Fly Trust Verified, Stripe, Anthropic org key, Postgres for tenants DB). That's the single biggest unblocker. Today the deploy button works in tests but has nowhere to deploy to.
+4. **GTM-1 deal-desk hero Clear app.** Build `apps/deal-desk/main.clear` — discount approval workflow + agent that drafts approval summary. Target ~150 lines. Hero use case for Marcus landing page. Branch: `feature/gtm-deal-desk`. Wrap any `ask claude` in `mock claude responding:` test blocks. Compile, test, smoke. Ship.
+5. **GTM-2 Marcus landing page.** Build `landing/marcus.html` — GAN against the existing landing template, copy locked Session 35 ("That backlog of internal tools nobody's going to build? Ship the first one this Friday."). Use deal-desk as the hero demo. Branch: `feature/gtm-marcus-landing`. Ship.
+6. **GTM-3 pricing page.** Build `landing/pricing.html` — Free / Team $99 / Business $499 / Enterprise tiers locked Session 35. Branch: `feature/gtm-pricing`. Ship.
+7. **GTM-5 Studio onboarding fix.** New users land in Meph chat with "What do you want to build?" — not in the empty editor. Branch: `feature/gtm-onboarding`. Ship.
 
-### 3. Competitive positioning vs Retool / Lovable / Bubble (written down in ROADMAP)
+### Queue C: Repo Readthrough (doc hygiene, autonomous)
 
-Three structural differentiators, in Marcus-talk:
+8. **RR-1 doc-drift consistency check.** Write a small Node script that greps shared metrics/examples across README.md, FAQ.md, ROADMAP.md, PHILOSOPHY.md, and startup docs — flag divergences (test counts, canonical syntax, product claims). Fix the easy ones; list the hard ones for Russell. Branch: `fix/rr-doc-drift`. Ship.
+9. **RR-2 retire 1:1-mapping violations.** `CHECKOUT`, `OAUTH_CONFIG`, `USAGE_LIMIT`, and any other syntax that hides too much generated behavior. Audit parser + compiler, identify 3 worst offenders, propose explicit source forms for each, implement one. Branch: `feature/rr-1to1-audit`. Ship the audit + one fix; plan the rest.
+10. **RR-3 roadmap Marcus-bias check.** Grep ROADMAP for items that aren't Marcus-shaped. Move non-Marcus items down in priority or into "Future (Not Committed)". Doc-only. Branch: `docs/rr-marcus-bias`. Ship.
 
-1. **"You can read your own app."** Retool is visual blocks; Lovable is generated React. Clear is plain English. Marcus's CFO and compliance team can review source directly.
-2. **"You can change the app while it's running."** Retool and Lovable force rebuild-redeploy; users mid-task lose work. Clear's Live App Editing (shipped Session 39) reshapes live apps with data/sessions intact. No competitor has this.
-3. **"You're never trapped."** `clear export` produces a portable Dockerfile. Retool self-hosting is expensive; Lovable's React is portable but unmaintainable. Clear is leave-anytime in a way competitors aren't.
+### Queue D: Builder Mode follow-ons
 
-Plus: agents are language primitives (`ask claude`, `has tools:`, `remember conversation`), not AI bolted onto a visual builder.
+11. **Builder Mode v0.2 (BM-6 tile gallery).** Replace template dropdown with tile gallery on empty state: 5 Marcus apps on top (deal-desk, approval-queue, lead-router, onboarding-tracker, support-triage), 38 demos in "See more" drawer. Builds on v0.1 feature flag. Branch: `feature/builder-mode-bm6`. Full PRES cycle (plan → red-team → execute → ship).
+12. **Builder Mode v0.3 (BM-3 full + BM-4).** Three-session auto-hide counter for Show Source + click-to-edit bridge on preview (postMessage → Meph chat prefill). Branch: `feature/builder-mode-v03`. Full PRES cycle.
 
-### 4. FAQ.md + CLAUDE.md pointer updates
+### Queue E: Ghost Meph — research velocity (BUILD, not just spec)
 
-- FAQ gained three "Where is X?" entries: feature list, changelog, Clear Cloud product decision.
-- The "5. Document it — all 7 surfaces" entry in FAQ was stale; updated to 9 surfaces (added FAQ.md + RESEARCH.md that had been added to CLAUDE.md but not FAQ).
-- Project CLAUDE.md Documentation Rule updated from 9 surfaces to **11 surfaces**: added FEATURES.md (row for every new feature) and CHANGELOG.md (session-dated entry for every ship).
+13. **GM-1 stub `/api/chat`.** Env-gated routing: `if (process.env.MEPH_BRAIN) routeToStub(body); else hitAnthropic(body);`. Preserve full Anthropic tool-use JSON protocol. Tests verify stub path produces same request/response shapes. Branch: `feature/ghost-meph-stub`. 2 days. Ship.
+14. **GM-2 CC sub-agent backend.** Sub-process IPC — `MEPH_BRAIN=cc-agent` spawns a Claude Code agent, pipes prompt in, reads tool calls out, iterates. Branch: `feature/ghost-meph-cc`. 2 days. Ship.
+15. **GM-3 OpenRouter Qwen backend.** `MEPH_BRAIN=openrouter:qwen` hits `qwen/qwen3.6-plus-preview:free` via OpenRouter's API. Handle preview-tier quirks (rate limits, model disappearance). Branch: `feature/ghost-meph-openrouter`. 1 day. Ship.
+16. **GM-4 Ollama backend.** `MEPH_BRAIN=ollama:qwen3` hits `localhost:11434/api/chat`. Config for model name. Branch: `feature/ghost-meph-ollama`. 1 day. Ship.
+17. **GM-5 calibration harness.** `curriculum-sweep.js --calibrate` runs N tasks on Ghost + same N on real Haiku (bounded dev key), compares Factor DB row distributions, flags drift. Branch: `feature/ghost-meph-calibrate`. 2 days. Ship.
+18. **GM-6 switch default research sweep to Ghost.** `curriculum-sweep.js --workers=3` defaults to `MEPH_BRAIN=cc-agent`; `--real` flag required to hit production Anthropic. Branch: `feature/ghost-meph-default`. 1 day. Ship.
 
-## Key decisions locked this session
+### Queue F: Flywheel / Training Signal (research, after Ghost Meph lands)
 
-1. **Marcus, not Dave.** Clear Cloud is a hosted product with a Publish button. CLI is opt-in escape hatch, not the pitch.
-2. **Fly, not Cloudflare — for now.** Phase 85 infrastructure stays. Cloudflare auto-routing is v2 after Clear Cloud ships.
-3. **Roadmap is forward-looking only.** Feature reference lives in FEATURES.md. History lives in CHANGELOG.md. ROADMAP is "what's next."
-4. **11 documentation surfaces, not 9.** Every new feature must land in FEATURES.md (capability) + CHANGELOG.md (history) alongside the existing 9.
+19. **RL-3 classifier fuzzy-match fixes.** Dashboards with 1 chart misroute to "dashboard" (should route to KPI). Webhooks on `/hook` paths route wrong. Small regex additions in `archetype.js`. Branch: `fix/classifier-fuzzy`. 30 min.
+20. **RL-4 seed steps on 28 remaining curriculum tasks.** 2 already seeded. Step-decomposition coverage from 7% → 100%. Branch: `feature/curriculum-steps`. 1 hr.
+21. **RL-5 sharpen 5 archetype task descriptions.** Explicit archetype signals in task prompts so classifier routes correctly on webhook/batch/sync/ETL/dashboard shapes. Branch: `feature/archetype-task-hints`. 30 min.
+22. **RL-6 first full Ghost-Meph re-sweep.** Overnight, free. Populate Factor DB with step-labeled, well-routed rows. Branch: `docs/rl6-sweep-results` (ship the result analysis, not code — sweep is a run, not a feature).
+23. **RL-8 retrain ranker on honest-helpful labels.** Once `hint_helpful='yes'` count crosses ~50 (currently 10), filter training data, train secondary pairwise ranker. Blocked on data volume from RL-6. Branch: `feature/rl-honest-ranker`.
 
-## What's next (priority order)
+### Queue G: Clear Cloud scaffolding (as far as I can go without Russell's accounts)
 
-**P0 — Ship Clear Cloud to Marcus (Q2 2026):**
+Everything in this queue is SCAFFOLD ONLY — can't be tested end-to-end without Phase 85a provisioning. Write the code, run the unit tests, commit to a branch, but don't merge to main until Russell signals Phase 85a is done.
 
-1. **Phase 85a — provision the real stack.** Register `buildclear.dev`, Fly Trust Verified sales-email, Stripe signup, Anthropic org key, Postgres for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once. **This is the single biggest unblocker — the product can't ship until this happens.**
-2. **CC-1 multi-tenant hosting** — subdomain routing, per-app D1 provisioning, isolation. 2–3 weeks.
-3. **CC-2 buildclear.dev auth** — user accounts, sessions, team membership. 1 week.
-4. **CC-4 Publish button wired to Clear Cloud** — replace terminal `clear deploy` as the default path. 3 days after CC-1.
-5. **GTM-1 deal-desk hero app** — build `apps/deal-desk/main.clear` as the Marcus landing-page showcase. ~150 lines.
-6. **GTM-2 Marcus landing page** — `landing/marcus.html`. Headline locked.
+24. **CC-1 scaffold: multi-tenant DB schema.** Design the tenants DB (Postgres) with subdomain column, per-app DB provisioning table, isolation policy. Write migration SQL. Branch: `feature/cc1-schema`. Ship as a PR (not merged) for Russell to review.
+25. **CC-1 scaffold: subdomain routing.** Write the router that maps `approvals.buildclear.dev` → tenant X's compiled app. Use current Fly Phase-85 builder output. Mock out the deploy target until real Fly Trust Verified is live. Branch: `feature/cc1-router`. Ship as PR.
+26. **CC-2 scaffold: buildclear.dev auth.** User accounts table, sessions, team membership schema. Login/signup endpoints that work locally against a dev Postgres. Branch: `feature/cc2-auth`. Ship as PR.
 
-**P1 — Flagship differentiator (parallel with P0):**
+**STOP HERE if you hit this point.** Queues H/I below are blocked on Russell. Write a fresh HANDOFF summarizing what you shipped, what's PR'd waiting for review, and cost totals.
 
-- **Live App Editing Phase C+** — already shipped Phase A + B in Session 39. Next is multi-tenant-safe edits, undo across sessions, production-mode proxy disabled cleanly.
+### Queue H — Blocked on Russell (DON'T attempt autonomously)
 
-**P2 — Platform optimization (Q3 2026):**
+- **Phase 85a provisioning** — domain registration, Fly Trust Verified, Stripe signup, Anthropic org key, Postgres tenants DB wiring. His accounts, his credentials.
+- **CC-3 Stripe billing** — blocked on Stripe account.
+- **CC-5 DNS verification flow** — blocked on real domain.
+- **GTM-4 LinkedIn DMs** — his outreach.
+- **LAE Phase C+** — destructive delete, audit log, concurrent-edit guard. Needs real prod tenants. Blocked.
 
-- Auto-hosting by app type v2 (Cloudflare Workers + D1 + AI Gateway + Modal routing).
-- Flywheel re-ranker training once 200+ passing rows accumulated.
+### Queue I — Design/research deliverables (write plans, don't implement)
 
-## Resume prompt for next session
+- **CC-3 Stripe billing plan.** Write the full plan (pricing tiers → Stripe products → webhook handlers → usage meter). Branch: `docs/cc3-stripe-plan`. Ship as plan file.
+- **CC-5 custom domain flow plan.** Write plan + UX mock. Branch: `docs/cc5-domain-plan`. Ship as plan file.
+- **Compiler Flywheel Tier 1 instrumentation.** Design spec for runtime beacons (latency, error, memory) from compiled apps back to Studio. Already partially specced in ROADMAP. Write detailed plan. Branch: `docs/compiler-flywheel-tier1-plan`. Ship as plan file.
 
-> We're shipping Clear Cloud on the existing Phase-85 Fly infrastructure. The single biggest blocker is Phase 85a — we need to actually register buildclear.dev, apply for Fly Trust Verified quota, sign up for Stripe, generate an Anthropic org key, and wire Postgres for the tenants DB. Start there. After that, CC-1 (multi-tenant hosting + D1-per-app) is the next piece of engineering. Read `ROADMAP.md` top section "North Star: Clear Cloud" for the full decision context and `Clear Cloud — Marcus-first hosted platform strategy` for the detailed plan.
+## Your cost tracker (update at every ship)
 
-## Files changed (doc-only)
+Format to post when committing:
+```
+Session spend so far: $X.XX (of $20 authorized budget)
+Tonight's plough-through so far: $Y completed across Z branches.
+Next item: [name], estimated $A-B.
+```
 
-- `ROADMAP.md` — reorganized, North Star section added at top, research/moonshots demoted below P3 maintenance, What's Built and Recently Completed stripped out
-- `FEATURES.md` — new file (capability reference)
-- `CHANGELOG.md` — new file (session-by-session history)
-- `FAQ.md` — added 3 pointers; updated stale "7 surfaces" → 9
-- `CLAUDE.md` — updated Documentation Rule from 9 → 11 surfaces
-- `HANDOFF.md` — this file
+If cumulative hits $15, STOP and write a status to Russell. Don't silently blow past $20.
+
+## When you reach the end of Queue G
+
+Write a fresh HANDOFF.md:
+- What shipped (list of merged branches, commit hashes)
+- What's in review (list of branches with PRs waiting)
+- Blocked-on-Russell items (still blocked)
+- Cost total
+- Proposed next-session priority order
+
+## If any queue item fails
+
+- Compile error or test failure: debug and fix inline (you have full codebase access).
+- Blocker you can't resolve: skip that item, note in HANDOFF, move to next.
+- Ambiguous design decision: make the call, document reasoning in commit message, move on. Russell's Ross Perot rule — never stop to ask.
+- Destructive operation that could lose data: STOP. Write status, wait.
+
+## Context files to re-read at session start
+
+1. `HANDOFF.md` (this file) — your mandate
+2. `PHILOSOPHY.md` — design rules before touching code
+3. `CLAUDE.md` (project + global) — rules & constraints
+4. `ROADMAP.md` → North Star + What's Next priority table
+5. `FAQ.md` — search-first doc for the codebase
+6. `AI-INSTRUCTIONS.md` + `SYNTAX.md` — before writing any `.clear` file
+7. `learnings.md` — scan the TOC before debugging anything compiler-adjacent
+
+## This session's changes (for reference)
+
+Session dated 2026-04-21 shipped two things before this handoff:
+
+1. **Doc reorg** — `docs/roadmap-reorg` branch, merged to main. Split ROADMAP into ROADMAP/FEATURES/CHANGELOG, added Clear Cloud north star, priority table, Ghost Meph spec. 6 files changed, 693 insertions, 498 deletions.
+
+2. **Builder Mode v0.1** — `feature/builder-mode-v01` branch (pending merge when you start). 5 commits, 31/31 Playwright tests passing. BM-1/2/3-minimal/5 shipped, BM-3-full/4/6 deferred to v0.2/v0.3.
+
+Full details: `CHANGELOG.md` top two entries.
+
+---
+
+**Go. Ship. Don't stop and ask.** Russell wants to wake up to a pile of merged branches. Post cost + what-shipped at each commit. When you hit Queue H (blocked) or $15 cumulative spend, write a fresh HANDOFF and stand down.
