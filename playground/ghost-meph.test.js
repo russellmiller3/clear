@@ -327,6 +327,63 @@ function parseSSE(text) {
   // Cleanup
   delete process.env.MEPH_BRAIN;
 
+  // =========================================================================
+  // PHASE 10 — cc-agent TOOL MODE (GM-2 steps 2b-2d)
+  // Verifies MCP config generation, env-gate, and graceful fallback when
+  // `claude` CLI is missing. Doesn't run the real subprocess — stream-json
+  // parser is tested separately at playground/ghost-meph/cc-agent-stream-json.test.js
+  // =========================================================================
+  console.log('\n🔧 Phase 10 — cc-agent tool mode (GM-2 steps 2b-d)');
+
+  const { writeMcpConfigOrNull } = await import('./ghost-meph/cc-agent.js');
+  const { existsSync, readFileSync, unlinkSync } = await import('fs');
+
+  // MCP config generation writes a well-formed JSON file
+  const mcpPath = writeMcpConfigOrNull();
+  assert(mcpPath && existsSync(mcpPath),
+    `writeMcpConfigOrNull returns a valid path that exists on disk (got ${mcpPath})`);
+  const mcpConfig = JSON.parse(readFileSync(mcpPath, 'utf8'));
+  assert(mcpConfig.mcpServers?.meph?.command === 'node',
+    `MCP config registers the meph server with command=node (got ${mcpConfig.mcpServers?.meph?.command})`);
+  assert(Array.isArray(mcpConfig.mcpServers?.meph?.args) && mcpConfig.mcpServers.meph.args[0].endsWith('index.js'),
+    'MCP config args point at the MCP server index.js');
+  try { unlinkSync(mcpPath); } catch {}
+
+  // Tool mode env gate: without GHOST_MEPH_CC_TOOLS=1, we should NOT hit
+  // the stream-json code path. Easiest check — set MEPH_BRAIN=cc-agent and
+  // break PATH; the error message should be the text-mode error ("cc-agent error:")
+  // not the tool-mode one ("cc-agent tool-mode error:").
+  const origBrain = process.env.MEPH_BRAIN;
+  const origTools = process.env.GHOST_MEPH_CC_TOOLS;
+  const origPathPh10 = process.env.PATH;
+
+  process.env.MEPH_BRAIN = 'cc-agent';
+  delete process.env.GHOST_MEPH_CC_TOOLS;
+  process.env.PATH = '/nonexistent-bin-dir-for-cc-agent-toolmode-test';
+  const rText = await fetchViaBackend({ messages: [{ role: 'user', content: 'hi' }] }, {});
+  const textFallback = parseSSE(await streamToString(rText.body))
+    .find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
+  assert(textFallback.includes('cc-agent error') && !textFallback.includes('tool-mode'),
+    `tool mode OFF: text-mode error path runs (got ${textFallback.slice(0, 80)})`);
+
+  // Tool mode ON: env var flips the path. Still with broken PATH so claude
+  // subprocess fails — verify we get the tool-mode error message back.
+  process.env.GHOST_MEPH_CC_TOOLS = '1';
+  const rTool = await fetchViaBackend({ messages: [{ role: 'user', content: 'hi' }] }, {});
+  assert(rTool.ok === true,
+    'tool mode with missing claude CLI still returns ok=true (no thrown exception)');
+  const toolText = parseSSE(await streamToString(rTool.body))
+    .find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
+  assert(toolText.includes('tool-mode error'),
+    `tool mode ON: tool-mode error path runs (got ${toolText.slice(0, 80)})`);
+  assert(toolText.includes('GHOST_MEPH_CC_TOOLS=0'),
+    'tool-mode error message tells the user how to fall back');
+
+  // Restore env
+  process.env.PATH = origPathPh10;
+  if (origBrain === undefined) delete process.env.MEPH_BRAIN; else process.env.MEPH_BRAIN = origBrain;
+  if (origTools === undefined) delete process.env.GHOST_MEPH_CC_TOOLS; else process.env.GHOST_MEPH_CC_TOOLS = origTools;
+
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 })();
