@@ -69,8 +69,8 @@ async function main() {
   let buf = '';
 
   const seenEventTypes = new Set();
-  const toolUseBlocks = [];
-  let stopReason = null;
+  const toolUseNames = [];
+  let doneFired = false;
   let finalSource = null;
   let textSoFar = '';
 
@@ -89,13 +89,12 @@ async function main() {
       try { ev = JSON.parse(raw); } catch { continue; }
       seenEventTypes.add(ev.type);
 
-      // /api/chat wraps Anthropic events with additional ones like 'text',
-      // 'code_update', 'done'. Capture the interesting ones.
-      if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
-        toolUseBlocks.push({ id: ev.content_block.id, name: ev.content_block.name });
-      }
-      if (ev.type === 'message_delta' && ev.delta?.stop_reason) {
-        stopReason = ev.delta.stop_reason;
+      // /api/chat consumes Anthropic's raw SSE and emits its OWN events
+      // (text, tool_start, tool_done, code_update, done, etc.). We watch
+      // those — the raw Anthropic message_delta / content_block_start never
+      // make it to the SSE consumer.
+      if (ev.type === 'tool_start' && typeof ev.name === 'string') {
+        toolUseNames.push(ev.name);
       }
       if (ev.type === 'code_update' && typeof ev.code === 'string') {
         finalSource = ev.code;
@@ -104,7 +103,8 @@ async function main() {
         textSoFar += ev.delta;
       }
       if (ev.type === 'done') {
-        if (typeof ev.source === 'string') finalSource = ev.source;
+        doneFired = true;
+        if (typeof ev.source === 'string' && ev.source) finalSource = ev.source;
       }
       if (ev.type === 'error') {
         console.error('[smoke] ✗ Studio emitted error event:', ev.message || ev);
@@ -119,12 +119,10 @@ async function main() {
     console.log(`  - ${t}`);
   }
 
-  console.log('\n[smoke] tool_use blocks:', toolUseBlocks.length);
-  for (const tb of toolUseBlocks) {
-    console.log(`  - ${tb.name} (id=${tb.id})`);
+  console.log('\n[smoke] tool_start events:', toolUseNames.length);
+  for (const name of toolUseNames) {
+    console.log(`  - ${name}`);
   }
-
-  console.log('\n[smoke] stop_reason:', stopReason);
 
   if (textSoFar) {
     console.log('\n[smoke] text preview:', textSoFar.slice(0, 200).replace(/\n/g, ' '));
@@ -138,20 +136,28 @@ async function main() {
   }
 
   // --- Pass/fail signal ---
-  // Minimum bar: we got SOMETHING back (events, stop_reason set). If
-  // Studio's closure hung or the SSE never drained, we'd have timed out.
-  const gotAnything = seenEventTypes.size > 0;
-  const cleanExit = stopReason === 'end_turn';
-  if (!gotAnything) {
+  // Minimum bar: `done` event fired → Studio's tool-use loop terminated
+  // cleanly. /api/chat emits `done` only after processing stop_reason=end_turn
+  // (or end of iterations), so this is the right proxy for "end_turn reached".
+  if (seenEventTypes.size === 0) {
     console.error('\n[smoke] ✗ No SSE events received. Did Studio crash mid-stream?');
     process.exit(1);
   }
-  if (!cleanExit) {
-    console.error(`\n[smoke] ⚠ stop_reason was "${stopReason}" — expected "end_turn" for cc-agent mode.`);
-    console.error('[smoke]   This means /api/chat would have tried to re-execute tools locally.');
+  if (!doneFired) {
+    console.error('\n[smoke] ✗ `done` event never fired — Studio did not complete the turn cleanly.');
     process.exit(1);
   }
-  console.log('\n[smoke] ✓ cc-agent round-trip works end-to-end');
+  // The smoke test considers a run successful if `done` fires AND at least
+  // one MCP tool was invoked. A bare-text response (no tool calls) means
+  // Claude didn't actually use Meph's tool surface — likely a permission
+  // issue or a prompt that didn't require tools.
+  const mephToolsCalled = toolUseNames.filter(n => n.includes('meph')).length;
+  if (mephToolsCalled === 0) {
+    console.error(`\n[smoke] ⚠ done fired but no meph_* tools were called (saw ${toolUseNames.length} other tool_start events).`);
+    console.error('[smoke]   Check the text preview — Claude may have hit a permission prompt or punted.');
+    process.exit(1);
+  }
+  console.log(`\n[smoke] ✓ cc-agent round-trip works end-to-end (${mephToolsCalled} meph_* tool calls)`);
 }
 
 main().catch(err => {

@@ -38,9 +38,9 @@
  */
 
 import { spawn } from 'child_process';
-import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
-import { tmpdir } from 'os';
+import { tmpdir, homedir, platform } from 'os';
 import { fileURLToPath } from 'url';
 import { buildSSEEvents } from './router.js';
 import { translateStreamJsonBuffer, extractFinalSourceFromStreamJson } from './cc-agent-stream-json.js';
@@ -59,6 +59,104 @@ const SUBPROCESS_TIMEOUT_MS = 180_000;
 /** Tool mode is opt-in while the stream-json parser is being battle-tested. */
 function toolModeEnabled() {
   return process.env.GHOST_MEPH_CC_TOOLS === '1';
+}
+
+// Cache the resolved binary path so we don't re-scan the filesystem on
+// every Meph turn. Resets per-process (any new Studio start re-resolves).
+let _cachedClaudeBinary = undefined;
+
+/**
+ * Resolve the absolute path to the `claude` CLI. Prefers PATH (bare
+ * "claude" name — spawn handles the lookup); falls back to known install
+ * locations when PATH is empty — which is especially common on Windows
+ * where Node doesn't pick up the PATH additions `claude-code` installer
+ * made because the installer updated the user-level PATH, not whatever
+ * shell actually launched Studio.
+ *
+ * Returns either:
+ *   - "claude" (the bare name — let spawn use PATH)
+ *   - an absolute path to the newest installed claude binary
+ *   - null if nothing was found
+ *
+ * Exported for tests.
+ */
+export function resolveClaudeBinary(env = process.env) {
+  if (_cachedClaudeBinary !== undefined) return _cachedClaudeBinary;
+
+  // Honor explicit override if set — useful for testing + shim paths.
+  if (env.CLAUDE_CLI_PATH && existsSync(env.CLAUDE_CLI_PATH)) {
+    _cachedClaudeBinary = env.CLAUDE_CLI_PATH;
+    return _cachedClaudeBinary;
+  }
+
+  const isWindows = platform() === 'win32';
+  const exe = isWindows ? 'claude.exe' : 'claude';
+
+  // Fast path: check PATH. If the binary is there, spawn can find it — no
+  // need to compute the absolute path.
+  const pathDirs = (env.PATH || env.Path || '').split(isWindows ? ';' : ':');
+  for (const dir of pathDirs) {
+    if (!dir) continue;
+    const candidate = join(dir, exe);
+    if (existsSync(candidate)) {
+      _cachedClaudeBinary = 'claude';  // let spawn do the PATH lookup
+      return _cachedClaudeBinary;
+    }
+  }
+
+  // Fallback: known install locations. Claude Code's Windows installer
+  // drops builds into %APPDATA%\Claude\claude-code\<version>\claude.exe;
+  // macOS/Linux installs typically use ~/.claude/local/claude or Homebrew.
+  const home = homedir();
+  const candidates = [];
+  if (isWindows) {
+    const appData = env.APPDATA || join(home, 'AppData', 'Roaming');
+    candidates.push(join(appData, 'Claude', 'claude-code'));        // versioned builds
+    candidates.push(join(appData, 'Claude', 'claude-code-vm'));     // VM builds
+  } else {
+    candidates.push(join(home, '.claude', 'local'));                 // canonical install location
+    candidates.push('/usr/local/bin');                                // Homebrew / manual
+    candidates.push('/opt/homebrew/bin');                             // Apple Silicon Homebrew
+  }
+
+  // For versioned directories (Windows), pick the newest sub-version.
+  for (const dir of candidates) {
+    if (!existsSync(dir)) continue;
+    // Either the directory IS the versioned root (has sub-dirs like "2.1.111")
+    // or it directly contains claude[.exe].
+    const direct = join(dir, exe);
+    if (existsSync(direct)) {
+      _cachedClaudeBinary = direct;
+      return _cachedClaudeBinary;
+    }
+    // Scan for versioned subdirs and pick the newest by mtime.
+    let subdirs;
+    try {
+      subdirs = readdirSync(dir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => join(dir, d.name));
+    } catch { continue; }
+    if (subdirs.length === 0) continue;
+    // Sort by mtime descending — newest first.
+    subdirs.sort((a, b) => {
+      try { return statSync(b).mtimeMs - statSync(a).mtimeMs; } catch { return 0; }
+    });
+    for (const sub of subdirs) {
+      const candidate = join(sub, exe);
+      if (existsSync(candidate)) {
+        _cachedClaudeBinary = candidate;
+        return _cachedClaudeBinary;
+      }
+    }
+  }
+
+  _cachedClaudeBinary = null;
+  return _cachedClaudeBinary;
+}
+
+/** Test hook — reset the cached resolution. */
+export function _resetClaudeBinaryCache() {
+  _cachedClaudeBinary = undefined;
 }
 
 /**
@@ -108,6 +206,14 @@ async function chatViaClaudeCodeWithTools(prompt) {
     return wrapAsTextResponse(`[cc-agent tool-mode error: ${err.message}. Set GHOST_MEPH_CC_TOOLS=0 to fall back to text mode, or drop MEPH_BRAIN to use real Anthropic.]`);
   }
   try { unlinkSync(configPath); } catch {}
+  // Debug hook: set GHOST_MEPH_CC_DEBUG=1 to dump the raw claude stream-json
+  // to /tmp/ghost-meph-last-stream.ndjson so we can inspect the exact
+  // event shape if translation produces unexpected results.
+  if (process.env.GHOST_MEPH_CC_DEBUG === '1') {
+    try {
+      writeFileSync(join(tmpdir(), 'ghost-meph-last-stream.ndjson'), ndjson, 'utf8');
+    } catch {}
+  }
   const events = translateStreamJsonBuffer(ndjson);
   // Pull the final source Claude wrote (if any) out of the event log and
   // attach it to the Response as a sidecar field. /api/chat reads this
@@ -209,9 +315,13 @@ export function runClaudeCli(prompt) {
     let settled = false;
     const finish = (fn, val) => { if (!settled) { settled = true; fn(val); } };
 
+    const claudeBin = resolveClaudeBinary();
+    if (!claudeBin) {
+      return reject(new Error('`claude` CLI not found — checked PATH and known install locations (%APPDATA%/Claude on Windows, ~/.claude/local on Unix). Install Claude Code or set CLAUDE_CLI_PATH.'));
+    }
     let child;
     try {
-      child = spawn('claude', ['--print'], {
+      child = spawn(claudeBin, ['--print'], {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
     } catch (err) {
@@ -264,11 +374,32 @@ export function runClaudeCliStreamJson(prompt, configPath) {
     let settled = false;
     const finish = (fn, val) => { if (!settled) { settled = true; fn(val); } };
 
+    const claudeBin = resolveClaudeBinary();
+    if (!claudeBin) {
+      return reject(new Error('`claude` CLI not found — checked PATH and known install locations. Install Claude Code or set CLAUDE_CLI_PATH.'));
+    }
     let child;
     try {
+      // Flag notes:
+      //  --print: single-shot mode (not interactive)
+      //  --verbose: required when pairing --print with --output-format=stream-json
+      //             (claude 2.x enforces it — without, CLI exits 1)
+      //  --permission-mode=bypassPermissions: auto-run MCP tool calls instead
+      //             of asking the user to approve each one. Without this, every
+      //             meph_edit_code / meph_compile call ends the turn with
+      //             "Waiting on your permission" and nothing gets done.
+      //             Safe here because the MCP server only exposes Meph's
+      //             scoped tool surface (no Bash, no arbitrary file writes
+      //             outside /.clear + allowlisted docs).
       child = spawn(
-        'claude',
-        ['--print', '--mcp-config', configPath, '--output-format', 'stream-json'],
+        claudeBin,
+        [
+          '--print',
+          '--verbose',
+          '--permission-mode', 'bypassPermissions',
+          '--mcp-config', configPath,
+          '--output-format', 'stream-json',
+        ],
         { stdio: ['pipe', 'pipe', 'pipe'] },
       );
     } catch (err) {
