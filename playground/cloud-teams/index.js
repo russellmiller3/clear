@@ -189,3 +189,43 @@ export async function createInvite(db, input) {
   );
   return rows[0];
 }
+
+/**
+ * Consume a pending invite. Validates the token isn't expired, revoked,
+ * or already accepted, then adds the user to the team with the invite's
+ * role and marks the invite accepted (single-use).
+ *
+ * Returns { teamId, role } so the caller (buildclear.dev/accept-invite
+ * route handler) can redirect to the team dashboard with the fresh role.
+ * Throws "Invalid invite token." for ALL failure modes so callers don't
+ * leak which invites exist vs. which are expired.
+ */
+export async function acceptInvite(db, token, acceptingUserId) {
+  if (!token || typeof token !== 'string') throw new Error('Invalid invite token.');
+  const { rows } = await db.query(
+    `SELECT * FROM team_invites
+     WHERE token = $1
+       AND accepted_at IS NULL
+       AND revoked_at IS NULL
+       AND expires_at > NOW()
+     LIMIT 1`,
+    [token]
+  );
+  const invite = rows[0];
+  if (!invite) throw new Error('Invalid invite token.');
+  // Add membership (skip if already a member — idempotent on re-accept
+  // after DB rows were nuked, or if user joined via a different path).
+  const existing = await getMembership(db, invite.team_id, acceptingUserId);
+  if (!existing) {
+    await db.query(
+      `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)`,
+      [invite.team_id, acceptingUserId, invite.role]
+    );
+  }
+  // Mark the invite consumed.
+  await db.query(
+    `UPDATE team_invites SET accepted_at = NOW(), accepted_by = $1 WHERE id = $2`,
+    [acceptingUserId, invite.id]
+  );
+  return { teamId: invite.team_id, role: invite.role };
+}

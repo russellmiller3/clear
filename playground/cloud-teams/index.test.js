@@ -85,6 +85,24 @@ function makeMockDb() {
         invites.push(row);
         return { rows: [row] };
       }
+      if (/^SELECT \* FROM team_invites WHERE token/i.test(t)) {
+        const [token] = params;
+        const row = invites.find(i =>
+          i.token === token &&
+          i.accepted_at === null &&
+          i.revoked_at === null &&
+          i.expires_at > new Date()
+        );
+        return { rows: row ? [row] : [] };
+      }
+      if (/^UPDATE team_invites SET accepted_at/i.test(t)) {
+        const [userId, id] = params;
+        const i = invites.find(x => x.id === id);
+        if (!i) return { rows: [], rowCount: 0 };
+        i.accepted_at = new Date();
+        i.accepted_by = userId;
+        return { rows: [i], rowCount: 1 };
+      }
       if (/SELECT t\.\*, tm\.role AS my_role/i.test(t)) {
         const [userId] = params;
         const list = [];
@@ -331,6 +349,51 @@ console.log('\n📨 createInvite\n');
   const a = await createInvite(db, { teamId: team.id, email: 'a@b.co', invitedBy: 1 });
   const b = await createInvite(db, { teamId: team.id, email: 'c@d.co', invitedBy: 1 });
   assert(a.token !== b.token, 'each invite gets a unique token');
+}
+
+// ─── TDD cycle 10: acceptInvite consumes token + adds user ───────────────
+console.log('\n✅ acceptInvite — single-use + adds member\n');
+
+{
+  const { createTeam, createInvite, acceptInvite, getMembership } = await import('./index.js');
+  const db = makeMockDb();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+  const invite = await createInvite(db, {
+    teamId: team.id, email: 'new@example.com', role: 'admin', invitedBy: 1,
+  });
+
+  const result = await acceptInvite(db, invite.token, 99);
+  assert(result.teamId === team.id && result.role === 'admin',
+    `acceptInvite returns {teamId, role} for the caller (got ${JSON.stringify(result)})`);
+  const m = await getMembership(db, team.id, 99);
+  assert(m && m.role === 'admin',
+    'accepting user is added to team with the invite\'s role');
+
+  // Second accept with same token is rejected (single-use)
+  let threw;
+  try { await acceptInvite(db, invite.token, 100); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('invalid'),
+    `second accept of same token rejected (got "${threw}")`);
+
+  // Bogus token rejected
+  try { await acceptInvite(db, 'not-a-real-token', 99); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('invalid'),
+    'bogus token rejected');
+
+  // Expired invite rejected
+  const db2 = makeMockDb();
+  const team2 = await createTeam(db2, { slug: 't2', name: 'T2', ownerUserId: 1 });
+  const invite2 = await createInvite(db2, {
+    teamId: team2.id, email: 'x@y.co', invitedBy: 1,
+  });
+  // Mutate the stored invite to be expired
+  db2.invites[0].expires_at = new Date(Date.now() - 1000);
+  try { await acceptInvite(db2, invite2.token, 50); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('invalid'),
+    `expired token rejected (got "${threw}")`);
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
