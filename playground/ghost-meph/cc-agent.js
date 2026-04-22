@@ -384,6 +384,37 @@ export function runClaudeCli(prompt) {
  *
  * Exported for tests so they can mock it.
  */
+/**
+ * Build the exact argv vector we hand to `claude` in stream-json mode.
+ * Exported so tests can assert on the flags without actually spawning.
+ *
+ * Flag notes:
+ *  --print: single-shot mode (not interactive)
+ *  --verbose: required when pairing --print with --output-format=stream-json
+ *             (claude 2.x enforces it — without, CLI exits 1)
+ *  --permission-mode=bypassPermissions: auto-run MCP tool calls instead of
+ *             asking the user to approve each one. Without this, every
+ *             meph_edit_code / meph_compile call ends the turn with
+ *             "Waiting on your permission" and nothing gets done.
+ *  --tools "": disable Claude Code's built-in tools (Bash, Read, Write,
+ *             Edit, Glob, Grep, WebFetch, etc). Forces claude through the
+ *             MCP surface only — our 28 meph_* tools. Critical for Factor
+ *             DB instrumentation: if claude grabs the Bash tool to curl
+ *             an endpoint, the request bypasses meph_http_request and the
+ *             test_pass=1 write never happens. MCP tools registered via
+ *             --mcp-config stay available regardless of --tools.
+ */
+export function buildClaudeStreamJsonSpawnArgs(configPath) {
+  return [
+    '--print',
+    '--verbose',
+    '--permission-mode', 'bypassPermissions',
+    '--tools', '',
+    '--mcp-config', configPath,
+    '--output-format', 'stream-json',
+  ];
+}
+
 export function runClaudeCliStreamJson(prompt, configPath) {
   return new Promise((resolve, reject) => {
     let stdout = '';
@@ -397,26 +428,9 @@ export function runClaudeCliStreamJson(prompt, configPath) {
     }
     let child;
     try {
-      // Flag notes:
-      //  --print: single-shot mode (not interactive)
-      //  --verbose: required when pairing --print with --output-format=stream-json
-      //             (claude 2.x enforces it — without, CLI exits 1)
-      //  --permission-mode=bypassPermissions: auto-run MCP tool calls instead
-      //             of asking the user to approve each one. Without this, every
-      //             meph_edit_code / meph_compile call ends the turn with
-      //             "Waiting on your permission" and nothing gets done.
-      //             Safe here because the MCP server only exposes Meph's
-      //             scoped tool surface (no Bash, no arbitrary file writes
-      //             outside /.clear + allowlisted docs).
       child = spawn(
         claudeBin,
-        [
-          '--print',
-          '--verbose',
-          '--permission-mode', 'bypassPermissions',
-          '--mcp-config', configPath,
-          '--output-format', 'stream-json',
-        ],
+        buildClaudeStreamJsonSpawnArgs(configPath),
         { stdio: ['pipe', 'pipe', 'pipe'] },
       );
     } catch (err) {

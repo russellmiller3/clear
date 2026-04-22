@@ -18,8 +18,28 @@
 
 import { dispatch } from './protocol.js';
 import { buildToolRegistry } from './tools.js';
+import { existsSync, appendFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 const registry = buildToolRegistry();
+
+// Startup diagnostic — dump the env we got so we can tell when claude CLI
+// spawned us with missing FACTOR_DB_PATH / MEPH_SESSION_ID. Only fires
+// when GHOST_MEPH_CC_DEBUG=1 is set, so zero overhead in normal operation.
+if (process.env.GHOST_MEPH_CC_DEBUG === '1') {
+  try {
+    const factorDbPath = process.env.FACTOR_DB_PATH || '(unset)';
+    const factorDbExists = factorDbPath !== '(unset)' ? existsSync(factorDbPath) : false;
+    const sessionId = process.env.MEPH_SESSION_ID || '(unset)';
+    const studioUrl = process.env.STUDIO_URL || '(unset)';
+    const logLine = `[${new Date().toISOString()}] pid=${process.pid} cwd=${process.cwd()}\n`
+      + `  FACTOR_DB_PATH=${factorDbPath} (exists=${factorDbExists})\n`
+      + `  MEPH_SESSION_ID=${sessionId}\n`
+      + `  STUDIO_URL=${studioUrl}\n\n`;
+    appendFileSync(join(tmpdir(), 'ghost-meph-mcp-env.log'), logLine, 'utf8');
+  } catch { /* never crash on diagnostic write */ }
+}
 
 // Accumulate stdin chunks and parse newline-delimited JSON.
 let buffer = '';

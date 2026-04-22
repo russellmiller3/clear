@@ -1230,6 +1230,23 @@ export async function httpRequestTool(input, ctx) {
     const text = await r.text();
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
+
+    // Training signal: a 2xx against the running child app is a weak test
+    // pass on the most recent compile row. Curriculum sweeps tell Meph to
+    // verify via http_request (Clear `test` blocks don't exist in curriculum
+    // skeletons), so without this hop Factor DB never records a passing row
+    // for cc-agent sweeps. Guarded by compile_ok=1 so a successful fetch
+    // against stale binaries doesn't false-positive. Non-fatal on any error.
+    if (r.status >= 200 && r.status < 300 && ctx.factorDB && ctx.hintState?.lastFactorRowId) {
+      try {
+        ctx.factorDB._db.prepare(`
+          UPDATE code_actions
+          SET test_pass = 1,
+              test_score = CASE WHEN test_score > 0.9 THEN test_score ELSE 0.9 END
+          WHERE id = ? AND compile_ok = 1
+        `).run(ctx.hintState.lastFactorRowId);
+      } catch { /* non-fatal */ }
+    }
     return JSON.stringify({ status: r.status, data });
   } catch (err) {
     return JSON.stringify({ error: err.message });
