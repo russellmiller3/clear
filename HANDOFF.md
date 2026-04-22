@@ -225,6 +225,22 @@ With getAppAccess (CC-2d enforcement) + listAppsForUser (CC-2c dashboard query) 
 
 Totals after tick 10: **2101 compiler + 270 meph-tools + 156 mcp-server + 7 runtime + 117 cloud-teams + 13 tenants-db = 2664 tests green.**
 
+## Session 42 tick 11 — CC-3d quota module
+
+`8770acd` — new `playground/cloud-quota/` module. Pure-function helpers for "can tenant T on plan P make another agent call this billing period?"
+
+Exports:
+  - `PLAN_QUOTAS` — frozen const mirroring landing/pricing.html (free=100/3/1, team=5000/25/10, business=50000/unlimited/50, enterprise=unlimited×3). Single source of truth — drift between this and the pricing page means billing lies or marketing lies.
+  - `OVERAGE_PER_CALL_USD` = $0.02 (paid plans; free is a hard stop per the pricing page).
+  - `getPlanQuotas(plan)` — safe lookup, throws with a grep-able message on unknown plans.
+  - `checkQuota(db, tenantId, plan, now?)` — one SQL JOIN (usage_rows → apps where tenant_id = $1) scoped to the calendar month. Returns `{ok, used, limit, remaining}`. ok=false is the 402 trigger; remaining can go negative to surface the overage count for billing.
+
+23 TDD assertions: plan shape matches pricing (including unlimited=null), unknown plan throws, under/at/over limit decisions all correct, enterprise always ok with null limit+remaining.
+
+**CC-3 still open** (not in this commit): the composition — AI proxy consults checkQuota before forwarding; Stripe Checkout flow (CC-3b); usage-row rollup (CC-3c); upgrade UX on the pricing page.
+
+Totals after tick 11: **+23 cloud-quota tests = 2687 tests green across the project.** 8/8 core templates clean.
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
