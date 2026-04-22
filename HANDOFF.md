@@ -69,6 +69,28 @@ With the parser fix:
 
 **Flywheel cadence:** 9 passing rows per 6-min parallel sweep. 191 rows to re-ranker retrain threshold = roughly 21 more sweeps = ~2 hours of parallel sweep time. Spinning up an L5-L7 sweep now (auth-todo, user-profiles, booking-calendar, batch-prune, rate-limited-api, validated-forms, approval-queue, webhook-stripe) — 8 tasks × 3 workers.
 
+## Session 42 tick 6 — L5-L7 sweep + discovered grader bug
+
+Ran 8-task L5-L7 sweep (auth-todo, user-profiles, booking-calendar, batch-prune, rate-limited-api, validated-forms, approval-queue, webhook-stripe). Parallel: 3 workers, 472s wall clock.
+
+  - Sweep grader: **6/8 passing** (auth-todo, user-profiles, booking-calendar, batch-prune, rate-limited-api, approval-queue)
+  - Real DB delta: **+3 passing rows** (not 6) — grader is over-counting
+  - Failures: **L7 webhook-stripe (70.5s)** + **L7 validated-forms (112.3s)** — short durations suggest compile-clean + runtime-500 pattern, same class as the L3 counter bug
+
+**New bug: parallel sweep grader over-counts passes.** `playground/supervisor/curriculum-sweep.js:160` grades each task with `SELECT 1 FROM code_actions WHERE test_pass = 1 AND created_at >= ? LIMIT 1` — any row with test_pass=1 created after THIS task started counts, including rows written by OTHER concurrent workers. With 3 workers running in parallel, if worker-1 passes at t=100s, worker-2's grader (task started at t=5s) also sees that row as "my task passed."
+
+Fix: scope by session_id. Needs session_id to flow `/api/chat` → cc-agent → MCP child via `MEPH_SESSION_ID` env. Currently the MCP child generates its own fallback session_id so the sweep doesn't know what to filter on. Chain:
+1. Sweep passes `sessionId` in `/api/chat` POST body
+2. /api/chat exports `process.env.MEPH_SESSION_ID = sessionId` before calling cc-agent
+3. cc-agent already forwards `MEPH_SESSION_ID` to MCP (line 309 of cc-agent.js)
+4. Grader query changes to `WHERE session_id = ? AND test_pass = 1`
+
+Not urgent — the Factor DB itself is correct, only the sweep's reporting is inflated. Flywheel cadence is ~3-4 real passing per parallel 8-task sweep, not 6-9.
+
+**L7 webhook-stripe + validated-forms diagnostic** — run each solo: `node playground/supervisor/curriculum-sweep.js --tasks=webhook-stripe --workers=1 --timeout=300 --strict` with `GHOST_MEPH_CC_DEBUG=1`. Look for same pattern as L3 counter (compile_ok=1 but runtime 500). Parser bugs or system-prompt gaps around webhook/validation archetypes.
+
+Session totals as of this tick: **521 → 546 passing rows** (+25 over session). DB at 1528 rows total.
+
 ## Expected impact of `06913c0` on next L3+ sweep — CONFIRMED
 
 Tick 5 re-ran `--tasks=counter --workers=1 --strict`:
