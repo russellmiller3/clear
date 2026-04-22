@@ -1,0 +1,176 @@
+/*
+Deal Desk — discount approval workflow with AI-drafted summaries
+
+A sales rep submits a discount request. Anything 20% or under is auto-approved
+on the spot. Anything over 20% gets routed to the CRO. The CRO can ask the
+AI to draft a one-paragraph approval summary that covers why the rep wants
+this, the dollar impact, the strategic risk, and a clear approve/reject
+recommendation.
+
+  ┌──────────┐  POST /api/deals       ┌──────────┐
+  │   Rep    │ ─────────────────────> │  Server  │
+  │  (form)  │ <───────────────────── │          │
+  └──────────┘    response            └────┬─────┘
+                                           │ save
+  ┌──────────┐  GET /api/deals/pending     v
+  │   CRO    │ <─────────────────────  ┌─────────┐
+  │  (queue) │                         │  Deals  │
+  └──────────┘  POST /api/deals/draft  │  table  │
+       │         ┌──────────┐          └─────────┘
+       └───────> │ Drafter  │  ask claude  ┌─────┐
+                 │  Agent   │ ───────────> │ AI  │
+                 └──────────┘ <─────────── └─────┘
+*/
+
+build for web and javascript backend
+database is local memory
+
+# Database
+
+create a Deals table:
+  rep_name, required
+  customer, required
+  list_price (number), default 0
+  discount_percent (number), default 0
+  status, default 'pending_cro'
+  summary
+  recommendation
+  risk_score (number), default 0
+  created_at_date, auto
+
+# Backend
+
+allow cross-origin requests
+allow signup and login
+log every request
+
+# Drafter
+
+/*
+draft_approval — given a deal, asks the AI to write a CRO-ready summary
+plus a clear approve/reject recommendation and a risk score from 1 (low)
+to 10 (high). Used by the /api/deals/draft endpoint when the CRO wants
+AI help on a pending deal.
+*/
+
+define function draft_approval(deal_data):
+  drafted = ask claude 'You are a deal-desk analyst writing for the CRO. Given a discount request, write a one-paragraph approval summary. Cover: why the rep wants this discount, the financial impact in dollars, the strategic risk if approved, and a clear approve or reject recommendation. Keep it under 100 words. Be direct.' with deal_data returning JSON text:
+    summary
+    recommendation
+    risk_score (number)
+  return drafted
+
+# Endpoints
+
+when user requests data from /api/deals:
+  send back all Deals
+
+when user requests data from /api/deals/pending:
+  send back all Deals where status is 'pending_cro'
+
+when user sends deal to /api/deals:
+  validate deal:
+    rep_name is text, required, min 1, max 100
+    customer is text, required, min 1, max 200
+    list_price is number, min 0
+    discount_percent is number, min 0, max 100
+  if deal's discount_percent is greater than 20:
+    # Above the rep's authority — sits in the CRO queue until reviewed
+    deal's status is 'pending_cro'
+  otherwise:
+    # Inside the rep's authority — auto-approve, no CRO needed
+    deal's status is 'auto_approved'
+    deal's recommendation is 'auto'
+  new_deal = save deal as new Deal
+  send back new_deal with success message
+
+when user sends deal_request to /api/deals/draft:
+  drafted = draft_approval(deal_request)
+  send back drafted
+
+when user updates deal at /api/deals/:id:
+  requires login
+  save deal to Deals
+  send back 'updated' with success message
+
+# Seed
+
+when user sends seed to /api/seed:
+  create d1:
+    rep_name is 'sarah.j'
+    customer is 'Acme Corp — 3-year renewal'
+    list_price = 240000
+    discount_percent = 25
+    status is 'pending_cro'
+    summary is 'Acme is renewing for three years and asking for 25% off list. Annual revenue impact is -$60K vs full price, but locks in $540K of committed ARR. Risk: setting a precedent for tier-2 accounts who watch Acme. Recommend approve with a quarterly business review clause.'
+    recommendation is 'approve'
+    risk_score = 4
+  save d1 as new Deal
+  create d2:
+    rep_name is 'mike.l'
+    customer is 'Beta Industries — new logo'
+    list_price = 80000
+    discount_percent = 35
+    status is 'pending_cro'
+    summary is 'Net-new logo in healthcare vertical. Rep wants 35% to close before quarter-end. Financial impact is -$28K but opens a vertical we have no presence in. Risk: high — heavy discount on first deal sets the negotiation floor for future expansion. Recommend reject and counter at 20%.'
+    recommendation is 'reject'
+    risk_score = 8
+  save d2 as new Deal
+  create d3:
+    rep_name is 'alex.p'
+    customer is 'Gamma LLC — expansion'
+    list_price = 36000
+    discount_percent = 15
+    status is 'auto_approved'
+    recommendation is 'auto'
+  save d3 as new Deal
+  send back 'seeded' with success message
+
+# Frontend
+
+page 'Deal Desk' at '/':
+  on page load:
+    send nothing to '/api/seed'
+    get pending from '/api/deals/pending'
+
+  section 'Header' centered, padded:
+    heading 'Deal Desk'
+    pending_count = count of pending
+    text '{pending_count} deals awaiting CRO approval'
+
+  section 'Submit a discount request' with style card_bordered:
+    'Your name' as text input saves to rep_name
+    'Customer' as text input saves to customer
+    'List price ($)' as number input saves to list_price
+    'Discount %' as number input saves to discount_percent
+    button 'Submit for approval':
+      send rep_name, customer, list_price, and discount_percent to '/api/deals'
+      get pending from '/api/deals/pending'
+      rep_name is ''
+      customer is ''
+      list_price = 0
+      discount_percent = 0
+
+  section 'Pending CRO approval':
+    display pending as table showing customer, rep_name, discount_percent, recommendation, summary
+
+# Tests
+
+/*
+The /api/deals/draft endpoint calls ask claude. We don't write a unit test
+for draft_approval here because the test runner can't reach functions
+defined inside the .clear file (compiler limitation — same as ecom-agent
+and support-agent). The endpoint is exercised manually from the CRO UI.
+The auto-generated CRUD tests cover the rep submission flow.
+*/
+
+test:
+  can user submit a deal with rep_name: 'mike.l', customer: 'Beta Co', list_price: 50000, discount_percent: 10
+  expect it succeeds
+
+test:
+  can user submit a deal with rep_name: 'sarah.j', customer: 'Acme Corp', list_price: 240000, discount_percent: 25
+  expect it succeeds
+
+test:
+  updating a deal should require login
