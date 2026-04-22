@@ -24,6 +24,36 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync, unlinkSync, realpathSync, existsSync } from 'fs';
 
+/**
+ * Decide up front whether the sweep can run with the env it was given.
+ *
+ * Two legitimate paths into `/api/chat`:
+ *   1. Real Anthropic API — requires ANTHROPIC_API_KEY. Preflight probes
+ *      the API with 5 tokens to catch obvious key/usage problems before
+ *      spawning workers that would all fail instantly.
+ *   2. Ghost Meph backend (MEPH_BRAIN=cc-agent | ollama:* | openrouter:* | ...)
+ *      — routes model calls via the local `claude` CLI subscription (cc-agent)
+ *      or a local/free backend (ollama/openrouter). Does NOT use the Anthropic
+ *      API at all, so ANTHROPIC_API_KEY is irrelevant and preflight is wrong.
+ *
+ * Returns: { ok: true, needsApiPreflight: bool } | { ok: false, reason: string }
+ *
+ * Why this matters: on 2026-04-22 a cc-agent sweep aborted with "API usage
+ * limit exceeded" — but cc-agent doesn't USE the API. The sweep was blocked
+ * on a check that didn't apply. This predicate makes the branch explicit and
+ * testable.
+ */
+export function validateSweepPreconditions(env = process.env) {
+  const brain = typeof env.MEPH_BRAIN === 'string' ? env.MEPH_BRAIN.trim() : '';
+  if (brain.length > 0) {
+    return { ok: true, needsApiPreflight: false, backend: brain };
+  }
+  if (!env.ANTHROPIC_API_KEY) {
+    return { ok: false, reason: 'ANTHROPIC_API_KEY not set — required for real sweep. Use --dry-run to preview, or set MEPH_BRAIN=cc-agent to route via the Claude CLI subscription.' };
+  }
+  return { ok: true, needsApiPreflight: true, backend: null };
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..', '..');
 
@@ -246,21 +276,27 @@ export async function runSweep({
     return { tasksRun: 0, rowsAdded: 0, dryRun: true };
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY not set — required for real sweep. Use --dry-run to preview.');
+  const pre = validateSweepPreconditions(process.env);
+  if (!pre.ok) {
+    throw new Error(pre.reason);
   }
 
-  console.log('\nPre-flight API check...');
-  const preflightError = await preflightApiCheck(process.env.ANTHROPIC_API_KEY);
-  if (preflightError) {
-    console.error(`\n❌ ${preflightError}`);
-    console.error('\nSweep aborted — all tasks would fail. Common causes:');
-    console.error('  • API usage limit exceeded (check https://console.anthropic.com/settings/limits)');
-    console.error('  • Invalid API key');
-    console.error('  • Anthropic API outage');
-    throw new Error('Pre-flight API check failed');
+  if (pre.needsApiPreflight) {
+    console.log('\nPre-flight API check...');
+    const preflightError = await preflightApiCheck(process.env.ANTHROPIC_API_KEY);
+    if (preflightError) {
+      console.error(`\n❌ ${preflightError}`);
+      console.error('\nSweep aborted — all tasks would fail. Common causes:');
+      console.error('  • API usage limit exceeded (check https://console.anthropic.com/settings/limits)');
+      console.error('  • Invalid API key');
+      console.error('  • Anthropic API outage');
+      console.error('\nIf your subscription is intact, you can route via `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1` to bypass the API entirely.');
+      throw new Error('Pre-flight API check failed');
+    }
+    console.log('API reachable ✓');
+  } else {
+    console.log(`\nGhost Meph backend active (MEPH_BRAIN=${pre.backend}) — skipping Anthropic preflight.`);
   }
-  console.log('API reachable ✓');
 
   // Count rows before the sweep so we can report delta
   const factorDB = new FactorDB(FACTOR_DB_PATH);

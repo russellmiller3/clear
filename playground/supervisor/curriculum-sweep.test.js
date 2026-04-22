@@ -1,5 +1,5 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
-import { partitionTasks, buildPrompt, runSweep } from './curriculum-sweep.js';
+import { partitionTasks, buildPrompt, runSweep, validateSweepPreconditions } from './curriculum-sweep.js';
 
 describe('partitionTasks', () => {
   it('splits evenly when divisible', () => {
@@ -92,5 +92,51 @@ describe('runSweep dry-run', () => {
     const result = await runSweep({ taskFilter: ['does-not-exist'], dryRun: true });
     expect(result.tasksRun).toEqual(0);
     expect(result.rowsAdded).toEqual(0);
+  });
+});
+
+describe('validateSweepPreconditions', () => {
+  it('requires ANTHROPIC_API_KEY when ghost-meph is NOT active', () => {
+    const result = validateSweepPreconditions({ /* no MEPH_BRAIN, no key */ });
+    expect(result.ok).toEqual(false);
+    expect(result.reason.includes('ANTHROPIC_API_KEY')).toEqual(true);
+  });
+
+  it('accepts ANTHROPIC_API_KEY alone when ghost-meph is NOT active', () => {
+    const result = validateSweepPreconditions({ ANTHROPIC_API_KEY: 'sk-ant-test' });
+    expect(result.ok).toEqual(true);
+    expect(result.needsApiPreflight).toEqual(true);
+  });
+
+  it('bypasses API key requirement when MEPH_BRAIN=cc-agent', () => {
+    // cc-agent uses the `claude` CLI subscription, not a direct API call.
+    // Preflight hits api.anthropic.com with the key — if the key is maxed out
+    // (monthly cap) the sweep aborts even though cc-agent would have worked.
+    // That's the exact scenario cc-agent was built for. Skip both checks.
+    const result = validateSweepPreconditions({ MEPH_BRAIN: 'cc-agent' });
+    expect(result.ok).toEqual(true);
+    expect(result.needsApiPreflight).toEqual(false);
+  });
+
+  it('bypasses API key requirement for any non-empty MEPH_BRAIN', () => {
+    // Not just cc-agent — ollama:qwen, openrouter:kimi-k2, etc. all route
+    // around the Anthropic API. If someone sets MEPH_BRAIN, they've opted
+    // out of the Anthropic path, period.
+    for (const brain of ['ollama:qwen', 'openrouter:kimi-k2', 'haiku-dev']) {
+      const result = validateSweepPreconditions({ MEPH_BRAIN: brain });
+      expect(result.ok).toEqual(true);
+      expect(result.needsApiPreflight).toEqual(false);
+    }
+  });
+
+  it('treats empty MEPH_BRAIN like unset (real Anthropic required)', () => {
+    const result = validateSweepPreconditions({ MEPH_BRAIN: '' });
+    expect(result.ok).toEqual(false);
+    expect(result.reason.includes('ANTHROPIC_API_KEY')).toEqual(true);
+  });
+
+  it('treats whitespace-only MEPH_BRAIN like unset', () => {
+    const result = validateSweepPreconditions({ MEPH_BRAIN: '   ' });
+    expect(result.ok).toEqual(false);
   });
 });
