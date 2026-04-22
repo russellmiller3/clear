@@ -197,19 +197,21 @@ Read the TOC before working in the file so you know where things are.
 
 ## Documentation Rule (MANDATORY)
 **If a feature exists in the compiler but not in the docs, it doesn't exist.** Every new feature MUST be documented in ALL of these before shipping:
-1. `intent.md` — node type row in the spec table
+1. `intent.md` — node type row in the spec table (authoritative node-type reference)
 2. `SYNTAX.md` — complete syntax reference with example
 3. `AI-INSTRUCTIONS.md` — conventions, when to use, gotchas
 4. `USER-GUIDE.md` — tutorial coverage with worked example
-5. `ROADMAP.md` — mark the phase complete, update counts
+5. `ROADMAP.md` — mark the phase complete, update counts (forward-looking: what's next)
 6. `landing/*.html` — when the feature is user-facing (new syntax, new agent capability, new primitive), sync the marketing pages. `landing/business-agents.html` and related pages show end users what Clear looks like; stale examples there mislead prospects. Grep `landing/` for any old syntax being replaced and update every example/code snippet to match the new canonical form.
 7. `playground/system-prompt.md` — Meph reads this every session; if Meph should know about the feature, document it here.
 8. `FAQ.md` — "Where does X live?", "How do I Y?", "Why did we Z?" entries. FAQ is the search-first doc for the codebase; if you touched a subsystem, its FAQ entry needs to reflect the change. Add new "Where / How / Why" questions when you introduce new infrastructure.
 9. `RESEARCH.md` — the theory / flywheel / re-ranker / self-play file. Update whenever you ship anything that affects the training-signal architecture (Factor DB schema, archetype classifier, hint retrieval, curriculum, eval pipeline). The "Read This First" plain-English section at the top is the capability surface for non-technical readers — keep it current.
+10. `FEATURES.md` — add a row describing what Clear can do today. This is the capability reference Russell or a new contributor reads to answer "can Clear do X?". Separate from ROADMAP (which is forward-looking) and intent.md (which is node-type spec). Split out from ROADMAP on 2026-04-21.
+11. `CHANGELOG.md` — add a session-dated entry describing what shipped. Session-by-session history, newest at top. Split out from ROADMAP on 2026-04-21.
 
 `intent.md` is the **authoritative spec** — always check it before building. If a feature isn't in intent.md, check the parser before assuming it doesn't exist. We have 119+ node types; the docs have historically lagged behind the implementation.
 
-**Canonical-syntax changes are extra dangerous — they must propagate everywhere.** When a keyword becomes canonical (or a legacy form gets deprecated), update ALL nine surfaces above PLUS all 8+ core templates and any reference apps. Missing the landing page is the worst case: prospective users see syntax that's either wrong or not what you'd write today. Grep broadly before calling a canonical change done.
+**Canonical-syntax changes are extra dangerous — they must propagate everywhere.** When a keyword becomes canonical (or a legacy form gets deprecated), update ALL eleven surfaces above PLUS all 8+ core templates and any reference apps. Missing the landing page is the worst case: prospective users see syntax that's either wrong or not what you'd write today. Grep broadly before calling a canonical change done.
 
 Before building a new feature, grep the parser for similar existing features. We've nearly rebuilt things that already existed (e.g. SERVICE_CALL for Stripe/SendGrid/Twilio was implemented but undocumented, which almost led to building a parallel "batteries" system).
 

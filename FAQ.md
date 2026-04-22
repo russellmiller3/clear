@@ -58,6 +58,9 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 ## Table of Contents
 
 **Where is X?**
+- [Where is the feature list / what can Clear do today?](#where-is-the-feature-list--what-can-clear-do-today)
+- [Where is the changelog / what shipped recently?](#where-is-the-changelog--what-shipped-recently)
+- [Where is the Clear Cloud product decision documented?](#where-is-the-clear-cloud-product-decision-documented)
 - [Where does the Studio server run?](#where-does-the-studio-server-run)
 - [What ports does everything use?](#what-ports-does-everything-use)
 - [Where does a compiled app run?](#where-does-a-compiled-app-run)
@@ -109,6 +112,36 @@ These match what Marcus's RevOps team actually builds. They're the demo.
 ---
 
 ## Where is X?
+
+### Where is the feature list / what can Clear do today?
+
+**`FEATURES.md`** at repo root. Capability reference by category: core language, expressions, web frontend, backend, database, service integrations, data operations, AI agents, workflows, scheduling, testing, policies, Studio IDE.
+
+Moved out of `ROADMAP.md` on 2026-04-21 so the roadmap can focus on what's *next*. If a row doesn't appear in `FEATURES.md`, Clear probably can't do it yet — but also cross-check `intent.md` (the authoritative node-type spec) and the parser before assuming, since docs have historically lagged behind the implementation.
+
+**For each feature row, the pattern is:** `| Feature name | Canonical syntax example | Notes (synonyms, gotchas, edge cases) |`. Use this to write `.clear` quickly without re-reading every syntax file.
+
+---
+
+### Where is the changelog / what shipped recently?
+
+**`CHANGELOG.md`** at repo root. Session-by-session history, newest at the top. Moved out of `ROADMAP.md` on 2026-04-21 for the same reason FEATURES.md was carved out — roadmap is forward-looking, changelog is backward-looking.
+
+If you want "what shipped this week?", check CHANGELOG. If you want "what's been committed but not yet merged?", check `git log main..` on the active feature branch.
+
+---
+
+### Where is the Clear Cloud product decision documented?
+
+**`ROADMAP.md` → `North Star: Clear Cloud (P0 — Q2 2026)`** — the short version at the top of ROADMAP: Marcus-first positioning, build on Phase-85 Fly infrastructure, five missing pieces (CC-1 through CC-5), ~6–8 weeks to ship.
+
+**`ROADMAP.md` → `Clear Cloud — Marcus-first hosted platform strategy (2026-04-21)`** — the full strategy further down: reasoning for Marcus over Dave, what Marcus experiences, detailed breakdown of each CC-* item, competitive positioning vs Retool / Lovable / Bubble.
+
+**`ROADMAP.md` → `Auto-hosting by app type (v2, post-Clear-Cloud)`** — the v2 plan for compiler-driven routing to Cloudflare Workers + D1 (compatible apps), Modal (Python ETL), or Fly Docker (native binaries) once Clear Cloud is stable on Fly.
+
+Key decision locked 2026-04-21: **keep the Fly-based Phase-85 infrastructure as default**; Cloudflare auto-routing lands as v2 after Marcus is paying. Don't rebuild the hosting layer before shipping the product.
+
+---
 
 ### Where does the Live App Editing widget live?
 
@@ -479,7 +512,7 @@ Five steps. Don't skip any.
 
 4. **Update both TOCs** — `parser.js` and `compiler.js` each have a TABLE OF CONTENTS at the top. Update them. Non-negotiable.
 
-5. **Document it** — all 7 surfaces: `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `ROADMAP.md`, `landing/*.html` (if user-facing), `playground/system-prompt.md` (if Meph should use it). If it's not in the docs, it doesn't exist.
+5. **Document it** — all 9 surfaces: `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `ROADMAP.md` (only if the feature was on the roadmap; otherwise skip), `landing/*.html` (if user-facing), `playground/system-prompt.md` (if Meph should use it), `FAQ.md` (add a "How do I X?" or "Where does X live?" entry), `RESEARCH.md` (if it affects training-signal architecture). Plus: add a row to **`FEATURES.md`** (the feature reference) and an entry in **`CHANGELOG.md`** (the session-by-session history). If it's not in the docs, it doesn't exist.
 
 Then run `node clear.test.js` + template smoke test (8 core templates, 0 errors).
 
