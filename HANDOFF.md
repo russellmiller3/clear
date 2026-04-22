@@ -343,6 +343,20 @@ Totals after tick 15: **2800 tests green** (+26 cloud-billing).
 
 Russell switched /loop cadence to 5-min cron (f1ee2eb2) for faster iteration.
 
+## Session 42 tick 17 — assertCanAccessApp + all tests green
+
+`ec2a5ec` + `ded0051` — fixed the 17 pre-existing server.test.js failures (three drift classes: test fetched `/ide` but server routes at `/`, templates target ≥40 when actual FEATURED_TEMPLATES=14, error-string check looked for "auth" when compiler says "requires login"). server.test: 194/194 green. Zero runtime changes — tests were stale.
+
+`4b7d982` — `assertCanAccessApp(db, userId, appId, action)` composes `getAppAccess + can()` into one throw-on-reject wrapper. Every protected endpoint now has a one-liner:
+```js
+await assertCanAccessApp(db, userId, appId, 'app.deploy');
+```
+Throws Error with `.status=403` (Express error middleware handles it). Deny paths: non-member, orphan app, non-existent app, unknown action, role not allowed — all 403 (not 404 — info leak guard). 10 new TDD assertions. cloud-teams: 127/127.
+
+**CC-2d is now fully scaffolded** (schema via migration 002, `getAppAccess` lookup, `assertCanAccessApp` guard). Last CC-2d step is wiring `await assertCanAccessApp(...)` into `/api/deploy`, `/api/apps/:id`, `/api/usage/:app_id` in server.js.
+
+Project totals after tick 17: **3013 tests green** (2809 from before + 194 server + 10 assertCanAccessApp).
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
