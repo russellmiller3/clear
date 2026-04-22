@@ -1,11 +1,52 @@
-# Handoff — 2026-04-22 (end of GM-2 + cc-agent session)
+# Handoff — 2026-04-22 (GM-2 branch — cc-agent VALIDATED against real claude)
 
 ## Current State
 
-- **Branch:** `feature/gm-2-tool-use-rest` (long-running, 17+ commits added this session, NOT pushed to origin yet, NOT merged to main).
-- **Last commit:** `1f79487` feat(mcp): proxy meph_run_evals / meph_run_eval back to Studio via HTTP.
+- **Branch:** `feature/gm-2-tool-use-rest` (24+ commits, NOT pushed to origin, NOT merged to main).
+- **Last commit:** `455349e` fix(ghost-meph): missing-binary tests now use CLAUDE_CLI_PATH override.
+- **Sibling branch:** `feature/clear-cloud` (independent) carries the 4 consolidated Clear Cloud scaffolds + CC-2b TDD. Check that branch too; it's a whole separate body of work.
 - **Main:** unchanged from prior handoff at `2a9eee3`.
 - **Working tree:** dirty with pre-existing files unrelated to this session (`.claude/settings.local.json`, `index.html`, `meph-memory.md`, `requests.md`, `style.css`, `playground/factor-db.sqlite-shm/-wal`, `playground/sessions/`, etc.) — ignore.
+
+## The Big Landing (commits 837a002–455349e)
+
+**cc-agent tool mode validated end-to-end against Russell's real `claude` 2.1.111 binary.** Smoke test:
+```
+GHOST_MEPH_CC_TOOLS=1 MEPH_BRAIN=cc-agent node playground/server.js  &
+node playground/smoke-cc-agent.js
+```
+Produces: `tool_start → mcp__meph__meph_edit_code → code_update → done`. Cost: $0.07. The $200/mo subscription path works; curriculum sweeps + Meph evals can move off the metered API.
+
+### Three real-world blockers surfaced and fixed in sequence
+
+1. **`claude` binary not on PATH.** Windows installer drops it in `%APPDATA%/Claude/claude-code/<version>/claude.exe` — not visible to the shell Studio was launched from. Fix: `resolveClaudeBinary()` in `cc-agent.js` probes PATH first, then falls back to known install locations on Windows (`%APPDATA%/Claude/claude-code` + `claude-code-vm`, newest versioned subdir by mtime) and Unix (`~/.claude/local`, `/usr/local/bin`, `/opt/homebrew/bin`). `CLAUDE_CLI_PATH` env override for tests + shims.
+
+2. **`claude --print --output-format=stream-json` requires `--verbose`.** Without it, claude 2.x exits 1 with a clear error. Added `--verbose` to the spawn args — doesn't make stdout noisier in stream-json mode, just satisfies the flag-combo constraint.
+
+3. **MCP tool calls hit a permission prompt.** Default claude behavior is to ask the user before running MCP tools. Added `--permission-mode=bypassPermissions` — safe here because the MCP server only exposes Meph's scoped surface (no Bash, no arbitrary file writes outside `meph_edit_code`/`meph_edit_file` allowlist).
+
+### Post-turn source sync — state-sharing gap closed
+
+Claude Code's MCP child runs in a separate process from Studio's `/api/chat` closure. Before this session, edits via `meph_edit_code` updated the MCP child's state but Studio's editor stayed stale. Fixed by `extractFinalSourceFromStreamJson` — scans the stream-json event log for the LAST `meph_edit_code` write, returns the code string. cc-agent.js attaches it to the Response as a `ccAgentFinalSource` sidecar; `/api/chat` mirrors it back into `currentSource` and fires a `code_update` SSE event. No IPC bridge, no new endpoint — the data was already in the event log we were discarding.
+
+### runEvalSuite HTTP proxy — last MCP-side gap
+
+`meph_run_evals` / `meph_run_eval` used to fail with "helpers.runEvalSuite is not a function" because the eval runner is tied to Studio's `evalChild` lifecycle. Fixed by making the MCP-side `runEvalSuite` helper a thin HTTP client that POSTs `{source, id}` to Studio's existing `/api/run-eval` endpoint. `cc-agent.js` sets `STUDIO_URL` in the MCP config's env so the child knows where to call. Every Meph tool now works in cc-agent mode.
+
+### Defensive parser normalization
+
+Two stream-json shape variants I didn't see on the happy-path smoke but that would bite real sessions:
+- `assistant.message.content` as a STRING (not array) → wrap as `[{type:"text", text}]`
+- `tool_use.input` as a JSON STRING (not object) → JSON.parse at the boundary
+
+### `parseTestOutput` + `compileForEval` extracted
+
+Moved out of server.js closures into `playground/meph-helpers.js`. Now importable by the MCP server so `run_tests` + `list_evals` work in cc-agent mode without starting Studio on a port. `runEvalSuite` stays in server.js (too tied to the `evalChild` lifecycle); MCP reaches it via the HTTP proxy above.
+
+### Drift guard + realistic fixture
+
+- MEPH_TOOLS drift guard: every name in the MCP registry must be recognized by `dispatchTool`'s validator. Catches silent skew if someone adds an MCP tool without wiring the dispatcher.
+- Realistic full-turn fixture: claude-style stream-json of a compile→fix→recompile flow, 24 SSE frames, asserts `stop_reason=end_turn` and correct block-index monotonicity.
 
 ## What Landed This Session
 
@@ -32,13 +73,14 @@ Two wins this session:
 
 Plus one user-level rule add: `~/.claude/CLAUDE.md` → **Periodic Progress Checkpoints** (narrate session-level status at chunk boundaries; different cadence from the per-action Science Documentary Rule).
 
-### Tests green at every step
+### Tests green (end-of-session totals on this branch)
 - `node clear.test.js` → **2097/2097**
-- `node playground/meph-tools.test.js` → **254/254** (was 179 at session start — 75 new)
-- `node playground/meph-helpers.test.js` → **20/20** (new this session)
-- `node playground/ghost-meph.test.js` → **66/66** (was 59 — 7 new in Phase 10)
-- `node playground/ghost-meph/mcp-server.test.js` → **111/111** (was 30 — 81 new; 28 tools exposed, integration for write→read→compile flow, Phase 6 for HTTP proxy)
-- `node playground/ghost-meph/cc-agent-stream-json.test.js` → **56/56** (new this session — parser + final-source extraction)
+- `node playground/meph-tools.test.js` → **254/254**
+- `node playground/meph-helpers.test.js` → **20/20**
+- `node playground/ghost-meph.test.js` → **66/66**
+- `node playground/ghost-meph/mcp-server.test.js` → **139/139**
+- `node playground/ghost-meph/cc-agent-stream-json.test.js` → **69/69**
+- **Total: 2645 passing, zero failures introduced by this session**
 
 ### MephContext shape
 
@@ -53,25 +95,21 @@ Plus one user-level rule add: `~/.claude/CLAUDE.md` → **Periodic Progress Chec
 
 ## Next Session Priority Order
 
-### 1. Validate cc-agent tool mode against the REAL claude CLI
+### 1. Russell reviews + merges both branches to main
 
-The architecture is in place — parser tested with synthetic events, MCP server wired, config generation landed. What remains is proving it works against Russell's actual `claude` binary.
+Real CLI validation passed. This branch is ready for Russell to look at as a cohesive PR (or fast-forward if he's OK skipping that). Sibling branch `feature/clear-cloud` has the CC scaffolds + TDD'd cloud-teams — also ready for a review pass.
 
-**Smoke test sequence (needs `claude` on PATH):**
-```
-GHOST_MEPH_CC_TOOLS=1 MEPH_BRAIN=cc-agent node playground/eval-meph.js
-```
-Expected: all 16 eval scenarios run at $0 (via subscription). Any that fail: look at `stream-json` output shape vs. the parser's assumptions in `cc-agent-stream-json.js`. The fixture-driven tests in `cc-agent-stream-json.test.js` are how you fix the parser — add a failing fixture, fix the translation, land.
+After merge: pre-push hook stops skipping Meph eval (cc-agent path now works), curriculum sweeps can opt into `MEPH_BRAIN=cc-agent` for $0 runs, Factor DB starts filling from sweep rows, Queue F (RL flywheel) unblocks.
 
-**Likely iteration points** (stream-json isn't a documented stable interface):
-- `assistant.message.content` may be an object (not an array) for single-block messages
-- `result.usage` field may be named differently (`input_tokens` vs `inputTokens` etc.)
-- `tool_use.input` may be a JSON string (not an object) depending on claude version
-- There may be additional event types we haven't mapped (e.g. `thinking`, `partial_json` deltas)
+### 2. Continue TDD on cloud-teams (sibling branch `feature/clear-cloud`)
 
-**State sharing — FIXED post-turn.** Previously a known gap; now closed. The stream-json event log already carries every `meph_edit_code` tool_use with its full input (including action="write" and the new source). `extractFinalSourceFromStreamJson` scans the log at end-of-turn, grabs the LAST write, and cc-agent.js attaches it to the Response as a sidecar. `/api/chat` mirrors that back into its closure + fires a `code_update` SSE event so Studio's editor re-renders. No IPC bridge needed — the data was already in the event log. Mid-turn updates (during a multi-edit session) still aren't visible in real-time, but end-of-turn sync means every /api/chat cycle leaves Studio's state coherent with what Meph produced. Follow-up if mid-turn visibility matters later: parse the stream-json line-by-line as it arrives instead of buffering, and emit `code_update` events in the SSE stream alongside the `content_block_delta` events.
+10 TDD cycles done there. Remaining: `revokeInvite`, `listPendingInvites`, `updateMemberRole`, owner-transfer flow. Each under full RED→GREEN→commit discipline per the new "TDD — Red Before Code, Always" HARD RULE in global CLAUDE.md.
 
-**runEvalSuite — FIXED via HTTP proxy.** The last MCP-side gap. `meph_run_evals` / `meph_run_eval` now proxy back to Studio's `/api/run-eval` endpoint when `STUDIO_URL` is set in the MCP child's env (cc-agent.js sets it automatically). Studio owns the evalChild lifecycle; MCP just forwards `{source, id}` and unwraps JSON. Per-spec progress events don't cross the HTTP boundary, but the final aggregate result does, and per-spec streaming still shows in Studio's terminal pane via `termLog`. Every one of Meph's 28 tools now works in cc-agent mode.
+### 3. Optional follow-ups on THIS branch (cc-agent)
+
+**Mid-turn source sync.** Current sync happens post-turn (at end of `/api/chat` response). For a multi-edit Meph session, Studio's editor only updates once at the end. Fix: stream-parse the claude NDJSON line-by-line as it arrives, emit `code_update` events alongside `content_block_delta`s. ~30 lines change in `cc-agent.js`, test via extending the existing fixtures.
+
+**More fixture coverage.** The smoke test against real claude produced one specific event-shape pattern. Running more Meph prompts (different task types, error paths, longer turns) would surface other patterns the defensive parser hasn't yet been exercised against.
 
 ### 2. Clear Cloud (Russell's CC pivot) — unchanged from prior handoff
 
