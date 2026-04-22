@@ -5,6 +5,32 @@
  * history encoded in commit log.
  */
 
+// ─── Permission matrix ──────────────────────────────────────────────────
+// Fail-closed: missing action → deny, missing role → deny. Owner-only
+// actions are the dangerous ones (billing, delete). Admin gets the
+// collaboration surface. Member gets the deploy + read surface.
+const PERMISSIONS = {
+  'billing.manage':       ['owner'],
+  'team.delete':          ['owner'],
+  'team.invite':          ['owner', 'admin'],
+  'team.remove-member':   ['owner', 'admin'],
+  'team.view-members':    ['owner', 'admin', 'member'],
+  'app.deploy':           ['owner', 'admin', 'member'],
+  'app.delete-with-data': ['owner'],
+};
+
+/**
+ * Static permission check. No DB hit — compose with a caller's own
+ * membership lookup. Returns true iff `role` is in the action's
+ * allowlist. Unknown role or unknown action → false (fail closed).
+ */
+export function can(role, action) {
+  if (!role || typeof role !== 'string') return false;
+  const allowed = PERMISSIONS[action];
+  if (!allowed) return false;
+  return allowed.includes(role);
+}
+
 /**
  * Create a new team. Inserts into teams, adds the caller as owner in
  * team_members, returns the team row.

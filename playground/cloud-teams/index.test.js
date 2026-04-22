@@ -163,5 +163,39 @@ console.log('\n🎫 getMembership\n');
     `unknown team returns null (got ${JSON.stringify(wrongTeam)})`);
 }
 
+// ─── TDD cycle 6: can(role, action) pure permission check ────────────────
+console.log('\n🔐 can() — permission matrix\n');
+
+{
+  const { can } = await import('./index.js');
+
+  // Owner can everything defined in the matrix
+  assert(can('owner', 'team.delete'), 'owner can team.delete');
+  assert(can('owner', 'billing.manage'), 'owner can billing.manage');
+  assert(can('owner', 'team.invite'), 'owner can team.invite');
+
+  // Admin can invite + remove + view, NOT billing.manage or team.delete
+  assert(can('admin', 'team.invite'), 'admin can team.invite');
+  assert(can('admin', 'team.remove-member'), 'admin can team.remove-member');
+  assert(!can('admin', 'billing.manage'),
+    'admin CANNOT billing.manage (owner-only)');
+  assert(!can('admin', 'team.delete'),
+    'admin CANNOT team.delete (owner-only, dangerous)');
+
+  // Member can deploy + read, not manage team
+  assert(can('member', 'app.deploy'), 'member can app.deploy');
+  assert(!can('member', 'team.invite'),
+    'member CANNOT team.invite');
+  assert(!can('member', 'team.remove-member'),
+    'member CANNOT team.remove-member');
+
+  // Defensive
+  assert(!can(null, 'app.deploy'), 'null role → deny everything');
+  assert(!can('owner', 'made.up.action'),
+    'unknown action → deny for every role (fail closed)');
+  assert(!can('superadmin', 'team.delete'),
+    'unknown role → deny (no privilege escalation via typo)');
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
