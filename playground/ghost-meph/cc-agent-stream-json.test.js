@@ -403,5 +403,98 @@ console.log('\n🔁 extractFinalSourceFromStreamJson — end-of-turn source sync
     'non-string code field is rejected (defensive against malformed MCP events)');
 }
 
+console.log('\n🏗  Realistic end-to-end fixture — Meph builds an app\n');
+
+// Simulates a full Meph turn: claude reads the spec, writes source, compiles,
+// iterates on a compile error, writes again, compiles clean, ends the turn.
+// If this fixture translates without error and produces the right final
+// source + matching Anthropic SSE envelope, the pipeline is working.
+{
+  const events = [
+    { type: 'system', subtype: 'init', session_id: 'sess-e2e', tools: ['meph_edit_code', 'meph_compile'] },
+    { type: 'assistant', message: { content: [
+      { type: 'text', text: "I'll build a simple counter." },
+    ] } },
+    { type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'tu_1', name: 'meph_edit_code', input: { action: 'write', code: 'database:\n  one counter with value 0\n' } },
+    ] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tu_1', content: JSON.stringify({ applied: true, errors: [] }) },
+    ] } },
+    { type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'tu_2', name: 'meph_compile', input: {} },
+    ] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tu_2', content: JSON.stringify({
+        errors: [{ line: 2, message: "'one' should be 'a'" }],
+        warnings: [],
+        hasServerJS: false,
+      }) },
+    ] } },
+    { type: 'assistant', message: { content: [
+      { type: 'text', text: 'Fix the keyword:' },
+    ] } },
+    { type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'tu_3', name: 'meph_edit_code', input: { action: 'write', code: 'database:\n  a counter with value 0\n' } },
+    ] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tu_3', content: JSON.stringify({ applied: true, errors: [] }) },
+    ] } },
+    { type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'tu_4', name: 'meph_compile', input: {} },
+    ] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tu_4', content: JSON.stringify({ errors: [], warnings: [], hasServerJS: true }) },
+    ] } },
+    { type: 'assistant', message: { content: [
+      { type: 'text', text: 'Compiled clean.' },
+    ] } },
+    { type: 'result', subtype: 'success', total_cost_usd: 0.03, usage: { input_tokens: 1200, output_tokens: 180 } },
+  ];
+  const ndjson = events.map(e => JSON.stringify(e)).join('\n');
+  const frames = translateStreamJsonBuffer(ndjson);
+
+  // Frame shape expectations:
+  //   1 message_start
+  //   3 blocks × text (3 text events) = 9 frames
+  //   4 blocks × tool_use (4 tool_use events) = 12 frames
+  //   [4 user/tool_result events SKIPPED — no frames]
+  //   2 result frames (message_delta + message_stop)
+  //   Total = 1 + 9 + 12 + 2 = 24
+  assert(frames.length === 24,
+    `full Meph-turn fixture produces 24 SSE frames (got ${frames.length})`);
+
+  // Final source is the v2 fix (tu_3)
+  const finalSource = extractFinalSourceFromStreamJson(ndjson);
+  assert(finalSource === 'database:\n  a counter with value 0\n',
+    `extractFinalSourceFromStreamJson returns the last write (got ${JSON.stringify(finalSource)})`);
+
+  // stop_reason must be end_turn to tell /api/chat's loop not to re-execute tools
+  const lastFrames = frames.slice(-2).map(parseSse);
+  assert(lastFrames[0].event === 'message_delta' && lastFrames[0].data.delta.stop_reason === 'end_turn',
+    'final message_delta carries stop_reason=end_turn');
+  assert(lastFrames[1].event === 'message_stop',
+    'fixture ends with message_stop');
+
+  // Block indices increment monotonically across the turn (0..6 because we
+  // have 3 text blocks + 4 tool_use blocks = 7 blocks)
+  const blockStarts = frames.filter(f => parseSse(f).event === 'content_block_start').map(parseSse);
+  assert(blockStarts.length === 7, `7 content_block_start events across the turn (got ${blockStarts.length})`);
+  const indices = blockStarts.map(s => s.data.index);
+  const monotonic = indices.every((idx, i) => idx === i);
+  assert(monotonic,
+    `block indices monotonic 0..6 (got ${indices.join(',')})`);
+
+  // Every tool_use in the fixture shows up as a tool_use content_block
+  const toolUseStarts = blockStarts.filter(s => s.data.content_block.type === 'tool_use');
+  const toolNames = toolUseStarts.map(s => s.data.content_block.name);
+  assert(toolNames.length === 4 &&
+         toolNames[0] === 'meph_edit_code' &&
+         toolNames[1] === 'meph_compile' &&
+         toolNames[2] === 'meph_edit_code' &&
+         toolNames[3] === 'meph_compile',
+    `tool names preserve order across the turn (got ${toolNames.join(',')})`);
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
