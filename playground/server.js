@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3339,14 +3339,15 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'read_network': {
-        if (!runningChild) return JSON.stringify({ error: 'No app running. Network capture starts when the app runs.' });
-        await getPage(); // ensure browser is connected
-        const limit = Math.min(input.limit || 20, 100);
-        let requests = _networkBuffer.slice(-limit);
-        if (input.filter) {
-          requests = requests.filter(r => r.url.includes(input.filter));
-        }
-        return JSON.stringify({ count: requests.length, requests });
+        // Extracted to playground/meph-tools.js (GM-2 port). Browser
+        // connection ensured here (the tool can't await getPage from
+        // inside meph-tools.js — that's Studio plumbing) before
+        // delegating.
+        if (runningChild) await getPage();
+        return readNetworkTool(input, new MephContext({
+          isAppRunning: () => !!runningChild,
+          networkBuffer: _networkBuffer,
+        }));
       }
 
       // inspect_element + read_storage handled in the unified bridge-tools
@@ -3367,11 +3368,13 @@ app.post('/api/chat', async (req, res) => {
       // read_dom handled in the unified bridge-tools case above.
 
       case 'websocket_log': {
-        if (!runningChild) return JSON.stringify({ error: 'No app running. WebSocket capture starts when the app runs.' });
-        await getPage();
-        const limit = Math.min(input.limit || 20, 100);
-        const messages = _websocketBuffer.slice(-limit);
-        return JSON.stringify({ count: messages.length, messages });
+        // Extracted to playground/meph-tools.js. Same browser-ensure pattern
+        // as read_network.
+        if (runningChild) await getPage();
+        return websocketLogTool(input, new MephContext({
+          isAppRunning: () => !!runningChild,
+          websocketBuffer: _websocketBuffer,
+        }));
       }
 
       case 'db_inspect': {

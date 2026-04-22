@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool } from './meph-tools.js';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
 import { patch } from '../patch.js';
@@ -399,6 +399,52 @@ assert(recorded.cmd === 'read-storage', 'readStorageTool sends "read-storage" co
 
 await readDomTool({}, ctxLive);
 assert(recorded.cmd === 'read-dom', 'readDomTool sends "read-dom" command');
+
+console.log('\n📡 Buffer tools (read_network, websocket_log)\n');
+
+// read_network — no app
+const rn1 = JSON.parse(readNetworkTool({}, new MephContext()));
+assert(rn1.error?.includes('Network capture'),
+  'readNetworkTool returns "Network capture" error when isAppRunning false');
+
+// read_network — populated buffer + slice + filter
+const reqs = Array.from({ length: 30 }, (_, i) => ({ url: `https://api/x/${i}`, status: 200 }));
+const rn2 = JSON.parse(readNetworkTool(
+  { limit: 5 },
+  new MephContext({ isAppRunning: () => true, networkBuffer: reqs }),
+));
+assert(rn2.count === 5, `readNetworkTool slices last N (got count ${rn2.count})`);
+assert(rn2.requests[0].url === 'https://api/x/25', 'readNetworkTool keeps the most recent N');
+
+const rn3 = JSON.parse(readNetworkTool(
+  { limit: 50, filter: '/x/2' },
+  new MephContext({ isAppRunning: () => true, networkBuffer: reqs }),
+));
+// Filter should match URLs containing /x/2 — that's /x/2, /x/20-29 — 11 items
+assert(rn3.count === 11, `readNetworkTool filter narrows by URL substring (got ${rn3.count})`);
+
+// read_network — limit caps at 100
+const big = Array.from({ length: 200 }, (_, i) => ({ url: `u${i}`, status: 200 }));
+const rn4 = JSON.parse(readNetworkTool(
+  { limit: 500 },
+  new MephContext({ isAppRunning: () => true, networkBuffer: big }),
+));
+assert(rn4.count === 100, 'readNetworkTool caps limit at 100 even when caller asks for more');
+
+// websocket_log — no app
+const ws1 = JSON.parse(websocketLogTool({}, new MephContext()));
+assert(ws1.error?.includes('WebSocket capture'),
+  'websocketLogTool returns "WebSocket capture" error when isAppRunning false');
+
+// websocket_log — populated buffer + tail slice
+const frames = Array.from({ length: 50 }, (_, i) => ({ payload: `frame-${i}`, dir: 'in' }));
+const ws2 = JSON.parse(websocketLogTool(
+  {},
+  new MephContext({ isAppRunning: () => true, websocketBuffer: frames }),
+));
+assert(ws2.count === 20, `websocketLogTool defaults to 20 (got ${ws2.count})`);
+assert(ws2.messages[0].payload === 'frame-30',
+  'websocketLogTool keeps the most recent 20');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
