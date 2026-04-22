@@ -1,11 +1,11 @@
-# Handoff — 2026-04-22 (end of session, both big branches shipped to main)
+# Handoff — 2026-04-22 (cloud-teams COMPLETE, pushed to origin)
 
 ## Current State
 
 - **Branch:** `main` (all feature branches merged + deleted)
-- **Last commit:** `eef94f2` Merge feature/clear-cloud — CC-1 (+ CC-1d) + CC-2a + CC-2b (12 TDD cycles)
+- **Last commit:** merge of `feature/cc2b-finish` — cloud-teams cycles 13 + 14 (updateMemberRole + transferOwnership). Main fully caught up with all session work.
 - **Working tree:** pre-existing dirty files only (`.claude/settings.local.json`, `index.html`, `meph-memory.md`, `requests.md`, `style.css`, `app.clear`, `counter.clear`, `test.js`, `server.js`, `playground/factor-db.sqlite-shm/-wal`, `playground/sessions/`, `apps/approval-queue/*`, `apps/deal-desk/*` — all unrelated to shipped work). Ignore.
-- **NOT YET PUSHED to origin.** Main is ahead of `origin/main` by 2 merge commits + ~52 feature commits underneath. First thing next session: `git push --no-verify` (pre-push may need `SKIP_MEPH_EVAL=1` for the pre-existing todo-fullstack e2e failures).
+- **Origin:** in sync after the recent push (earlier ship) and one more push after cycle 13 + 14 merged.
 
 ## What Was Done This Session
 
@@ -48,11 +48,17 @@ Five new modules under `playground/`, each with its own tests. Production deploy
 
 ## What's In Progress
 
-### cloud-teams — 1 primitive missing + final polish
+### cloud-teams — COMPLETE (14 TDD cycles, 77 tests)
 
-Implemented: createTeam + duplicate-slug guard, getTeamBySlug, listTeamsForUser, getMembership, `can()` permission matrix (7 actions × 3 roles, fail-closed), addMember + role validation, removeMember + last-owner guard, createInvite (crypto token + TTL + email normalize), acceptInvite (single-use + idempotent), revokeInvite (idempotent soft-delete), listPendingInvites (filtered by status + expiry + team-scoped).
+Cycles 13 + 14 closed the primitive set this iteration:
+- **cycle 13: updateMemberRole** — promote/demote with last-owner-demote guard + owner→owner no-op doesn't trip the guard
+- **cycle 14: transferOwnership** — atomic demote+promote in a transaction. THE primitive that lets a sole owner leave cleanly (promote first → demote second, so countOwners > 1 when demote runs)
 
-**Missing:** `updateMemberRole(db, teamId, userId, newRole)`. Next TDD cycle — pattern's established, should be one red→green→commit loop. Also consider owner-transfer flow (hand ownership from one user to another atomically).
+Full implementation now: createTeam + duplicate-slug guard, getTeamBySlug, listTeamsForUser, getMembership, `can()` permission matrix (7 actions × 3 roles, fail-closed), addMember + role validation, removeMember + last-owner guard, **updateMemberRole + last-owner-demote guard**, createInvite (crypto token + TTL + email normalize), acceptInvite (single-use + idempotent), revokeInvite (idempotent soft-delete), listPendingInvites (filtered by status + expiry + team-scoped), **transferOwnership (atomic)**.
+
+### Nothing else in progress.
+
+Clean state — next session picks from the Priority Order section below.
 
 ## Key Decisions Made
 
@@ -89,13 +95,12 @@ Implemented: createTeam + duplicate-slug guard, getTeamBySlug, listTeamsForUser,
 
 ## Next Steps (Priority Order)
 
-1. **Push main to origin.** `git push --no-verify` from project root. Everything is merged + green locally; just needs the remote sync. Pre-push hook may flake on pre-existing e2e; use `SKIP_MEPH_EVAL=1 git push --no-verify` if needed. Literally 30 seconds and unblocks review.
-2. **Finish cloud-teams TDD.** One primitive missing: `updateMemberRole(db, teamId, userId, newRole)` with last-owner-demote guard. Pattern's established — one red→green→commit cycle. After that, consider an owner-transfer helper (atomic demote-A + promote-B). Branch: `feature/cc2b-finish`.
-3. **Phase 85a unblocker (Russell's call).** Until Phase 85a lands (domain, Fly Trust Verified, Stripe, Postgres hosting pick) none of CC-1 through CC-5 can go live. Russell owns this; once done the scaffolds merge into the deploy pipeline.
-4. **Curriculum sweep via cc-agent.** Set `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1` and run a small curriculum sweep. Expected cost: $0. If it works: Queue F (RL flywheel) unblocks, Factor DB starts filling from sweep rows, pre-push Meph eval stops being skipped.
-5. **CC-2c account dashboard.** Clear Cloud users land on `buildclear.dev/dashboard` after login. Shows their apps, team, usage. Can be built as a Clear app (meta!) or custom HTML. Plan: `plans/plan-clear-cloud-master-04-21-2026.md` §CC-2c.
-6. **CC-3 Stripe billing.** Blocks on Phase 85a's Stripe signup. Scaffold work (webhooks, quota enforcement) doable against Stripe test mode before 85a.
-7. **Mid-turn source sync (cc-agent polish).** Currently post-turn — Studio editor only updates at end of cc-agent response. Streaming the stream-json parse would emit `code_update` events per edit_code write mid-turn. ~30 lines, test via extending existing fixtures.
+1. **Phase 85a unblocker (Russell's call).** Until Phase 85a lands (domain, Fly Trust Verified, Stripe, Postgres hosting pick) none of CC-1 through CC-5 can go live. Russell owns this; once done the scaffolds merge into the deploy pipeline.
+2. **Curriculum sweep via cc-agent.** Set `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1` and run a small curriculum sweep. Expected cost: $0. If it works: Queue F (RL flywheel) unblocks, Factor DB starts filling from sweep rows, pre-push Meph eval stops being skipped. Doable WITHOUT Phase 85a — cc-agent is validated.
+3. **CC-2c account dashboard.** Clear Cloud users land on `buildclear.dev/dashboard` after login. Shows their apps, team, usage. Can be built as a Clear app (meta!) or custom HTML. Plan: `plans/plan-clear-cloud-master-04-21-2026.md` §CC-2c. Doable before 85a as scaffold.
+4. **CC-3 Stripe billing.** Blocks on Phase 85a's Stripe signup. Scaffold work (webhooks, quota enforcement) doable against Stripe test mode before 85a.
+5. **Mid-turn source sync (cc-agent polish).** Currently post-turn — Studio editor only updates at end of cc-agent response. Streaming the stream-json parse would emit `code_update` events per edit_code write mid-turn. ~30 lines, test via extending existing fixtures.
+6. **Queue F RL flywheel** (after cc-agent curriculum sweep proves itself): RL-3 classifier fuzzy-match fixes, RL-4 step seeds on 28 curriculum tasks, RL-5 archetype task hints, RL-6 first full Ghost-Meph re-sweep overnight (free via cc-agent), RL-8 honest-helpful retrain (when ~50 tags accumulate).
 
 ## Files to Read First
 
@@ -114,7 +119,7 @@ Implemented: createTeam + duplicate-slug guard, getTeamBySlug, listTeamsForUser,
 
 ## Resume Prompt
 
-> Read `HANDOFF.md`. We just shipped GM-2 + Clear Cloud scaffolds to main (both branches merged, 7 feature branches deleted, 2948 tests green). Main hasn't been pushed to origin yet — that's step 1. After push, continue cloud-teams TDD: one primitive missing (`updateMemberRole` with last-owner-demote guard), then ownership-transfer. Use strict Kent Beck TDD per the new global rule — RED test first (run it, see the fail), GREEN minimum code, commit per cycle. After cloud-teams wraps, options: curriculum sweep via `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1` (free on subscription), or CC-2c account dashboard, or mid-turn source sync polish. Real-cloud production deploys are gated on Russell's Phase 85a paperwork — flag it but don't block on it.
+> Read `HANDOFF.md`. GM-2 + Clear Cloud scaffolds + cloud-teams (14 TDD cycles) are all shipped to main and pushed to origin. 2963 tests green (2097 compiler + 254 meph-tools + 20 meph-helpers + 66 ghost-meph + 139 MCP + 69 cc-agent-stream-json + 51 tenants-db + 9 client + 44 subdomain-router + 80 per-app-db + 57 cloud-auth + 77 cloud-teams). Pick from priority order: the non-blocked items are (2) curriculum sweep via cc-agent to prove $0 Meph runs, (3) CC-2c account dashboard scaffold, (4) CC-3 Stripe billing scaffold against test mode, (5) mid-turn source sync polish. Phase 85a is on Russell — flag it but work around. Kent Beck TDD for anything non-trivial (global rule).
 
 ---
 
