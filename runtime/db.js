@@ -341,7 +341,25 @@ function update(table, filterOrRecord, data) {
       filter = { id: record.id };
       updateData = record;
     } else {
-      return 0;
+      // Silent no-op (return 0) used to hide a common Meph mistake:
+      //   initial = { value: 0 }
+      //   save initial to Counters        ← compiler emits db.update
+      // initial has no id, so the update matched nothing. Counters stayed
+      // empty. Subsequent GET / POST endpoints crashed dereferencing the
+      // non-existent first row. The original return-0 here made the bug
+      // invisible: POST still returned 200, weak-signal tripped test_pass=1,
+      // flywheel credited the attempt despite no state change.
+      //
+      // Throw instead — the Clear error wrapper catches and returns a 500
+      // with the hint, `_clearTry` surfaces it to Meph, and the 2xx
+      // weak-signal never fires. Honest failure signal beats silent no-op.
+      const err = new Error(
+        'Cannot update ' + table + ' without an id on the record — '
+        + 'use "save ... as new ' + table + '" to insert a new row instead, '
+        + 'or look up an existing row first and mutate it.'
+      );
+      err.status = 400;
+      throw err;
     }
   } else {
     // Convention 2: db.update('table', filter, data)
