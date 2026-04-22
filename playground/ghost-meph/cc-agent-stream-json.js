@@ -166,6 +166,7 @@ export function translateStreamJsonBuffer(ndjsonBuffer) {
     catch { continue; }  // skip malformed lines (defensive)
     frames.push(...translateStreamJsonEvent(event, state));
   }
+
   // If we never saw a result event, the subprocess crashed mid-stream. Emit
   // a synthetic end_turn so /api/chat doesn't hang waiting for message_delta.
   const sawMessageStop = frames.some(f => f.includes('"type":"message_stop"'));
@@ -198,4 +199,47 @@ export function translateStreamJsonBuffer(ndjsonBuffer) {
 
 function sse(type, data) {
   return `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+}
+
+/**
+ * Extract the final Clear source from a claude stream-json buffer. Scans
+ * the event log for `meph_edit_code` tool_use calls with action="write",
+ * returns the LAST one's `code` field (or null if Meph made no edits).
+ *
+ * This is how Studio's /api/chat learns the final source after an
+ * autonomous cc-agent turn — Claude Code's MCP child owns the mid-turn
+ * source state, but the edits are visible in the stream-json event log
+ * so we don't need an IPC back-channel. cc-agent.js calls this at the
+ * end of the turn and mirrors the result into /api/chat's closure
+ * (via a sidecar on the Response object — see cc-agent.js).
+ *
+ * @param {string} ndjsonBuffer - accumulated stdout from claude
+ * @returns {string|null} final source after the last meph_edit_code write
+ */
+export function extractFinalSourceFromStreamJson(ndjsonBuffer) {
+  let lastWrite = null;
+  for (const line of ndjsonBuffer.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let event;
+    try { event = JSON.parse(trimmed); } catch { continue; }
+    if (event?.type !== 'assistant') continue;
+    const blocks = event.message?.content;
+    if (!Array.isArray(blocks)) continue;
+    for (const block of blocks) {
+      if (block?.type !== 'tool_use') continue;
+      // MCP tool names get prefixed with mcp__<server>__ by Claude Code.
+      // We exposed the tool as `meph_edit_code` in our tools.js registry,
+      // so the final name is `mcp__meph__meph_edit_code`. Match both the
+      // bare Meph name and the prefixed version for forward-compat.
+      const isEdit = block.name === 'meph_edit_code'
+                  || block.name === 'mcp__meph__meph_edit_code';
+      if (!isEdit) continue;
+      const input = block.input || {};
+      if (input.action === 'write' && typeof input.code === 'string') {
+        lastWrite = input.code;
+      }
+    }
+  }
+  return lastWrite;
 }

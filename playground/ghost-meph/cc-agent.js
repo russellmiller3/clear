@@ -43,7 +43,7 @@ import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 import { buildSSEEvents } from './router.js';
-import { translateStreamJsonBuffer } from './cc-agent-stream-json.js';
+import { translateStreamJsonBuffer, extractFinalSourceFromStreamJson } from './cc-agent-stream-json.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SYSTEM_PROMPT_PATH = join(__dirname, '..', 'system-prompt.md');
@@ -109,7 +109,15 @@ async function chatViaClaudeCodeWithTools(prompt) {
   }
   try { unlinkSync(configPath); } catch {}
   const events = translateStreamJsonBuffer(ndjson);
-  return wrapAsSseResponse(events);
+  // Pull the final source Claude wrote (if any) out of the event log and
+  // attach it to the Response as a sidecar field. /api/chat reads this
+  // on the cc-agent path to update its closure-level currentSource after
+  // the turn — without it, Studio's editor stays stale across turns when
+  // MEPH_BRAIN=cc-agent and Meph edits code via MCP.
+  const finalSource = extractFinalSourceFromStreamJson(ndjson);
+  const response = wrapAsSseResponse(events);
+  if (finalSource !== null) response.ccAgentFinalSource = finalSource;
+  return response;
 }
 
 function extractUserPrompt(payload) {

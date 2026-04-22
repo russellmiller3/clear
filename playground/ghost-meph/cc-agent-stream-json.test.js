@@ -9,7 +9,7 @@
 // Run: node playground/ghost-meph/cc-agent-stream-json.test.js
 // =============================================================================
 
-import { translateStreamJsonEvent, translateStreamJsonBuffer } from './cc-agent-stream-json.js';
+import { translateStreamJsonEvent, translateStreamJsonBuffer, extractFinalSourceFromStreamJson } from './cc-agent-stream-json.js';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -295,6 +295,112 @@ console.log('\n📝 translateStreamJsonBuffer — full NDJSON buffer translation
     'empty buffer still produces a minimal valid SSE sequence');
   assert(types.includes('message_delta'),
     'empty buffer includes a message_delta for stop_reason');
+}
+
+console.log('\n🔁 extractFinalSourceFromStreamJson — end-of-turn source sync\n');
+
+// No tool calls → null (no edits)
+{
+  const ndjson = [
+    JSON.stringify({ type: 'system', subtype: 'init' }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Just chatting.' }] } }),
+    JSON.stringify({ type: 'result', subtype: 'success' }),
+  ].join('\n');
+  assert(extractFinalSourceFromStreamJson(ndjson) === null,
+    'returns null when no meph_edit_code write calls happened');
+}
+
+// meph_edit_code read (not write) → null
+{
+  const ndjson = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', id: 't1', name: 'meph_edit_code', input: { action: 'read' } }] },
+  });
+  assert(extractFinalSourceFromStreamJson(ndjson) === null,
+    'meph_edit_code action=read does not count as a write');
+}
+
+// Single meph_edit_code write → returns its code
+{
+  const ndjson = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', id: 't1', name: 'meph_edit_code', input: { action: 'write', code: 'v1 source' } }] },
+  });
+  assert(extractFinalSourceFromStreamJson(ndjson) === 'v1 source',
+    `single write returns its code field (got ${extractFinalSourceFromStreamJson(ndjson)})`);
+}
+
+// Multiple writes → returns the LAST one
+{
+  const ndjson = [
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'meph_edit_code', input: { action: 'write', code: 'v1' } }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't2', name: 'meph_edit_code', input: { action: 'write', code: 'v2' } }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't3', name: 'meph_edit_code', input: { action: 'write', code: 'v3-final' } }] } }),
+  ].join('\n');
+  assert(extractFinalSourceFromStreamJson(ndjson) === 'v3-final',
+    `returns the LAST write across multiple edit_code calls (got ${extractFinalSourceFromStreamJson(ndjson)})`);
+}
+
+// MCP-prefixed tool name (mcp__meph__meph_edit_code) also matches
+{
+  const ndjson = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', id: 't1', name: 'mcp__meph__meph_edit_code', input: { action: 'write', code: 'prefixed' } }] },
+  });
+  assert(extractFinalSourceFromStreamJson(ndjson) === 'prefixed',
+    'mcp__meph__meph_edit_code (the prefixed form Claude Code uses) also matches');
+}
+
+// Non-edit tool calls don't affect the result
+{
+  const ndjson = [
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'meph_edit_code', input: { action: 'write', code: 'the source' } }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't2', name: 'meph_compile', input: {} }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't3', name: 'meph_run_tests', input: {} }] } }),
+  ].join('\n');
+  assert(extractFinalSourceFromStreamJson(ndjson) === 'the source',
+    'non-edit tools (compile, run_tests) do not reset the final source');
+}
+
+// Multi-block assistant message with text + edit_code → still finds the edit
+{
+  const ndjson = JSON.stringify({
+    type: 'assistant',
+    message: {
+      content: [
+        { type: 'text', text: 'Let me write this.' },
+        { type: 'tool_use', id: 't1', name: 'meph_edit_code', input: { action: 'write', code: 'multi-block' } },
+      ],
+    },
+  });
+  assert(extractFinalSourceFromStreamJson(ndjson) === 'multi-block',
+    'multi-block messages: edit_code found alongside text');
+}
+
+// Empty buffer → null, no throw
+{
+  assert(extractFinalSourceFromStreamJson('') === null,
+    'empty buffer returns null');
+}
+
+// Malformed line skipped, valid edit still found
+{
+  const ndjson = [
+    'NOT JSON',
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'meph_edit_code', input: { action: 'write', code: 'survived' } }] } }),
+  ].join('\n');
+  assert(extractFinalSourceFromStreamJson(ndjson) === 'survived',
+    'malformed lines skipped; valid edits still detected');
+}
+
+// Non-string code field → skipped (defensive)
+{
+  const ndjson = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', id: 't1', name: 'meph_edit_code', input: { action: 'write', code: { accidentally: 'an object' } } }] },
+  });
+  assert(extractFinalSourceFromStreamJson(ndjson) === null,
+    'non-string code field is rejected (defensive against malformed MCP events)');
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

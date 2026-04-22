@@ -3013,6 +3013,20 @@ app.post('/api/chat', async (req, res) => {
       // Stream ended naturally — clear the watchdog so it doesn't fire later
       if (typeof watchdog !== 'undefined') clearTimeout(watchdog);
 
+      // cc-agent tool-mode sidecar: when Meph drove source edits through
+      // Claude Code's MCP child, the authoritative post-turn source lives
+      // on the Response object (ccAgentFinalSource) because the MCP child
+      // is a separate process from /api/chat's closure. Mirror it back so
+      // subsequent turns see the updated source and Studio's UI renders
+      // the new code. Set to null-or-undefined when Meph made no edits —
+      // skip the mirror in that case.
+      if (r && typeof r.ccAgentFinalSource === 'string' && r.ccAgentFinalSource !== currentSource) {
+        _sourceBeforeEdit = currentSource;
+        currentSource = r.ccAgentFinalSource;
+        _workerLastSource = currentSource;
+        send({ type: 'code_update', code: currentSource });
+      }
+
       // Build assistant content block for next iteration
       // Thinking blocks must come first in the assistant content for multi-turn
       const assistantContent = [];
