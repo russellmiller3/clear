@@ -278,3 +278,4 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Compile + run + test | All from browser |
 | Source maps | Click preview element -> jumps to Clear source line |
 | AI assistant (Meph) | Builds, compiles, fixes apps via tool use |
+| Builder Mode (v0.1) | `?studio-mode=builder` URL param | Marcus-first layout — preview hero (60vh), chat driver (40vh), editor hidden by default with toolbar Source toggle, branded Publish button. Feature-flagged opt-in; preference persists in localStorage. Classic 3-panel remains default. |

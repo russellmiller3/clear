@@ -38,6 +38,7 @@ No terminal. No Dockerfile. No vendor name. One Stripe invoice.
 **Total on top of Phase 85: ~6–8 weeks.** Before any of this works end-to-end: **Phase 85a** (register buildclear.dev, Fly Trust Verified quota, Stripe signup, Anthropic org key, Postgres for tenants DB). That's the single biggest unblocker — deploy passes tests today but has nowhere to deploy to.
 
 **Companion tracks ship in parallel, not after:**
+- **Builder Mode (GTM-6)** — Marcus-first Studio layout: Meph chat drives, preview is the hero, code goes behind a toggle, branded Publish button top-right. ~4 weeks. Ships with CC-4 because the Publish button is Builder Mode's centerpiece — without the layout shift, CC-4 lands in a UI that still says "this is for Dave."
 - **Live App Editing (LAE-*)** — the flagship differentiator nobody else has. Q2/Q3.
 - **Go-To-Market** — hero Marcus app (deal-desk), landing page, first 5 real Marcuses on LinkedIn. Q2.
 
@@ -53,6 +54,7 @@ No terminal. No Dockerfile. No vendor name. One Stripe invoice.
 |---|---|---|---|
 | **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Clear Cloud hosted platform | The product Marcus presses "Publish" in. Build on top of existing Phase-85 Fly infrastructure. | `Clear Cloud — Marcus-first hosted platform strategy`, `One-click deploy follow-ups (Phase 85 shipped)`, `Why Clear Cloud beats Retool and Lovable` |
 | **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Go-to-market & first users | The pitch, the landing page, the first 5 real Marcuses finding Clear. | `Go-To-Market & Positioning`, `Repo Readthrough Priorities` |
+| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Builder Mode (Marcus-first Studio) | Flip Studio hierarchy: chat drives, preview is hero, code is a toggle. Branded Publish button, click-to-edit, "what are you building?" gallery. Promoted P1 → P0 on 2026-04-21 to ship alongside CC-4. ~4 weeks. | `Builder Mode — Marcus-first Studio layout` (GTM-6 detail) |
 | **P1 — Flagship differentiator (Q2/Q3 2026)** | Live App Editing | The single feature no competitor has. Ships in parallel with CC-1 through CC-5. | `Live App Editing (Flagship)` |
 | **P2 — Platform optimization (Q3 2026)** | Auto-hosting v2 + flywheel | Cloudflare auto-routing for compatible apps; Meph reranker training on Factor DB. | `Auto-hosting by app type (v2)`, `Flywheel / Training Signal`, `Compiler Flywheel — Tier 1 only` |
 | **P3 — Maintenance & quality** | Language + performance + tests | Keep the compiler honest and fast as surface expands. | `Language Completeness`, `Performance`, `Platform Quality`, `Mechanical Test Quality Signals`, `Next Up (Session 34 Next Steps)` |
@@ -198,7 +200,7 @@ Retool and Lovable both have "Publish" buttons. Both ship to a URL in seconds. B
 - Enterprise (custom): on-prem, dedicated CSM, $20K–100K ACV
 - Three revenue levers stacking: per-seat × app count × agent usage. Target NDR 3x year over year.
 
-**Studio readiness:** Marcus is comfortable in Studio today (3-panel IDE feels like Retool). Sara is NOT. Builder mode (chat + preview only, "Show code" toggle for trust) is a P1 for ~2026 Q3, blocking the Sara expansion.
+**Studio readiness (revised 2026-04-21):** Marcus is comfortable *enough* in Studio today (3-panel IDE feels like Retool) to get work done — but the current layout still communicates "this is a developer tool." Current default = CodeMirror editor dominant, preview second, chat sidebar. That visual hierarchy tells Marcus he's trespassing in engineering's office. Builder Mode flips it: Meph chat is the driver, preview is the hero, code is a toggle. Promoted to P0 to ship alongside CC-4 (the Publish button is Builder Mode's centerpiece). Full six-change spec in the `Builder Mode` section below. Sara-blocking is now a secondary effect — primary motivation is making Studio feel built *for* Marcus, not tolerated by him.
 
 | Priority | Item | Notes |
 |----------|------|-------|
@@ -207,8 +209,75 @@ Retool and Lovable both have "Publish" buttons. Both ship to a URL in seconds. B
 | GTM-3 | Sketch `landing/pricing.html` | Free / Team $99 / Business $499 / Enterprise. Concrete agent quotas, app limits, seat counts. |
 | GTM-4 | Find 5 real Marcuses on LinkedIn | DM, show Studio, watch what breaks. Fastest validation lever. |
 | GTM-5 | Studio onboarding fix | New users land in Meph chat with "What do you want to build?" — not in the editor. Cuts bounce rate without building Builder mode. |
-| GTM-6 | Builder mode (Studio simple-UI) | Chat + preview only. "Show code" toggle. P1 for ~Q3 2026. Blocks Sara expansion. |
+| GTM-6 | **Builder Mode (Studio Marcus-first layout)** | Flip Studio's hierarchy: Meph chat becomes the driver, preview is the hero (60% of screen), code goes behind a "Show Source" toggle (defaults ON first 3 sessions, auto-hides after). Branded Publish button top-right. Click-to-edit on preview elements. "What are you building?" tile gallery replaces the dropdown. Full detail in the `Builder Mode` section below. **Promoted P1 → P0 this session (2026-04-21)** — ships alongside CC-4 because the Publish button is Builder Mode's centerpiece. ~4 weeks. **v0.1 shipped 2026-04-21** (BM-1/BM-2/BM-3-minimal/BM-5 + feature flag, 31/31 tests) on branch `feature/builder-mode-v01`. |
 | GTM-7 | Instrument Studio | First-click tracking, time-to-first-app, where signups bounce. Data drives Builder mode priorities. |
+
+### Builder Mode — Marcus-first Studio layout (GTM-6 detail, 2026-04-21)
+
+**The vibe shift in one sentence:** Clear Studio today says "here's a code editor (with a preview and a chat bolted on)." Builder Mode says "here's your app (talk to Meph to change it; view the source when you want)." Same primitives, different hierarchy.
+
+**Why this ships alongside CC-4, not later:** the Publish button is Builder Mode's centerpiece. When CC-4 wires Studio's Publish to the Clear Cloud hosting stack, that button deserves to be branded, loud, and top-right — not buried in a menu. Without Builder Mode's layout shift, CC-4 lands in a UI that still communicates "this is for Dave," and the Marcus pitch leaks.
+
+**The six changes:**
+
+| # | Change | What it does | Scope |
+|---|---|---|---|
+| BM-1 | **Meph chat becomes the primary driver, not the sidebar.** Chat lives bottom-center or left, 35–40% of screen. Opens with "What do you want to build today, or which app do you want to change?" — not an empty editor. | Marcus's first instinct should be "type what I want," not "find the right file." | CSS grid shift + empty-state prompt. ~3 days. |
+| BM-2 | **Preview is the hero, not the middle panel.** 60% of screen. Full-fidelity. When Meph ships, preview visibly updates — that's the dopamine. | Today preview feels like a side-effect of compilation; make it the subject. | Layout rework. ~3 days. |
+| BM-3 | **Code goes behind a "Show Source" toggle. Defaults ON for first 3 sessions.** After 3 successful ships, auto-collapse. Source becomes the "prove-to-CFO" feature, not the daily interface. | Readable-source moat only works if Marcus sees source at least once. Then it fades out of the way. | localStorage counter + toggle. ~2 days. |
+| BM-4 | **Click-to-edit on the preview.** Click any button/field/element → Meph chat opens with "Change this [button]?" pre-filled. | Bridges the 90% of Marcuses who can describe but not type code. Closes the gap between "I can see what's wrong" and "I know how to fix it." | Preview-iframe postMessage + Meph chat prefill. ~1 week. |
+| BM-5 | **Publish button is branded, top-right, loud.** Not a menu item. First-time walkthrough: "Publish creates approvals.marcus.buildclear.dev — your teammates can use it in 30 seconds." | "Run" says "this is a dev app"; "Publish" says "this is real, you're shipping to real users." | UX copy + styling + first-time walkthrough. ~1 day. Wires to CC-4. |
+| BM-6 | **"What are you building?" gallery replaces the template dropdown.** Tiles with screenshots, not 43 names. 5 Marcus apps on top, 38 demos in a "See more" drawer. | First impression = "this is built for me," not "this is a generic tool." | New empty-state component + screenshots of Marcus apps. ~3 days. |
+
+**Plus: a status bar.** Users / agent spend / last ship — always visible at bottom. The trust/transparency chip Marcus will glance at all day. ~3 days.
+
+**ASCII mock of the target layout:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Clear Studio   │ approvals-crm.clear         [⎘ Source] [⚡ Publish] │
+├─────────────────────────────────────────────────────────────────┤
+│                                           │                      │
+│                                           │  💬 Meph             │
+│          [ Live preview of the            │                      │
+│            approvals app, 60%             │  > Add a region      │
+│            of the screen ]                │    field, options    │
+│                                           │    NA / EMEA / APAC  │
+│   Click any element to ask Meph about it  │                      │
+│                                           │  Meph: I'll add      │
+│                                           │    'region' to       │
+│                                           │    Approvals. Ship?  │
+│                                           │                      │
+│                                           │  [Ship it]  [Cancel] │
+│                                           │  > _                 │
+├───────────────────────────────────────────┴──────────────────────┤
+│ 12 users · 3 active · $0.03 agent spend today · last ship 4m ago │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+With `⎘ Source` toggled ON, a third pane slides in from the right showing the `.clear` file — highlighted on whatever Meph just changed. Dev-mode escape hatch: `cmd+.` restores the current 3-panel layout for Russell / power users.
+
+**What to keep (don't throw the baby out):**
+
+- Compile-in-browser speed — that's the magic ingredient.
+- Meph's existing tool set (edit_code, run_tests, compile, http_request, etc.).
+- Source maps (click preview → jumps to source line) — still useful when source pane is open.
+- Light/dark/nova themes. Ivory should be the Marcus default — warmer, less terminal-ish.
+- 3-panel mode as an opt-in power layout via `cmd+.` or settings. Dave/Russell keep what they love; Marcus gets what he needs.
+
+**Build order (BM-1 first, sequenced for visible progress each week):**
+
+1. **BM-1 + BM-2 together** (1 week) — layout shift. Biggest visual change, ships as a feature flag `?studio-mode=builder`.
+2. **BM-5** (1 day) — Publish button branding. Trivial, huge first-impression win. Wires to CC-4 dry when CC-4 lands.
+3. **BM-6** (3 days) — "What are you building?" tile gallery. Replaces dropdown on empty state.
+4. **BM-3** (2 days) — Show Source toggle + first-3-sessions logic.
+5. **Status bar** (3 days) — users / spend / last ship chip.
+6. **BM-4** (1 week) — click-to-edit bridge. Highest-leverage but most tricky — preview postMessage + Meph chat prefill + element inspection.
+7. **Feature flag flip** (1 day) — Builder Mode becomes default for new users; `cmd+.` reveals 3-panel.
+
+Total ~4 weeks of focused work. Ships alongside CC-4 (the Publish button is the visible Marcus-facing proof of everything CC-1/2/3 built underneath).
+
+**The meta-insight:** Marcus's vibe isn't "I want a simpler tool." It's "I want a tool that believes in me." Current Studio's layout says *you're an engineer who uses AI as a helper*. Builder Mode says *you're a business operator, Meph is your pair, the source is proof that it's real*.
 
 ### Live App Editing (Flagship — "Change your app while it's running")
 
@@ -303,6 +372,55 @@ The technical backing is **additive-by-default with expand-and-contract migratio
 - Vibe-coding incidents: *"wiped production databases while explicitly instructed not to"* — 7 documented cases in 2025-2026 (Autonoma)
 - Lovable 2.0: *"none of my changes are getting pushed to prod even after updating"* (Trustpilot)
 - v0: *"Cannot edit a published generation"* (Vercel community)
+
+### Ghost Meph — research-velocity unlock (2026-04-21, P2 research #1)
+
+**The insight:** Every curriculum sweep, flywheel training run, and A/B reranker test that uses real Meph bills against `ANTHROPIC_API_KEY`. Session 41 burned $168 in one day on sweeps. If `/api/chat` can route to a non-Anthropic-org brain for research runs, sweeps become ~free and research velocity goes up 10×.
+
+**Why this works for RL flywheel data specifically:** most of the Factor DB's value is in deterministic signals — compile outcomes, parser errors, archetype classification, patch success/failure. These are the same regardless of which model writes the source. A weaker model writing broken Clear triggers the exact same validator errors real Meph does. That means ~90% of the training signal transfers from a Ghost-Meph brain to real Meph. Only the "which hints THIS model found useful" label doesn't transfer cleanly — reserve real Meph for periodic calibration runs, use Ghost Meph for bulk data.
+
+**Architecture — provider-agnostic brain:**
+
+```
+MEPH_BRAIN=cc-agent          # Claude Code sub-agents (MVP default)
+MEPH_BRAIN=openrouter:qwen   # Scale — truly $0, overnight bulk
+MEPH_BRAIN=ollama:qwen3      # Fully local / air-gapped
+MEPH_BRAIN=anthropic-haiku   # Calibration on bounded dev key
+```
+
+One pluggable interface in `playground/server.js`. Call sites never know which brain answered. Swap is a config change, not a code change.
+
+**Backend comparison:**
+
+| Backend | Cost | Quality | Latency | Use case |
+|---|---|---|---|---|
+| CC sub-agents | $0 on Anthropic org, counts CC quota | Highest (Claude family, same as real Meph) | Sub-second | MVP + iterative research |
+| OpenRouter Qwen Free | $0 truly | Respectable, more drift from Clear conventions | 11.5s TTFT | Overnight bulk sweeps |
+| Ollama local | $0 + compute | Depends on model | Slow on consumer HW | Air-gapped demos, total privacy |
+| Haiku via dev key | Bounded $ | Production-match | Sub-second | Calibration runs (every 100 apps, confirm Ghost data matches real) |
+
+**Research-data implications:**
+
+- **Bulk curriculum data + compile/archetype signal** → Ghost Meph gives 90%+ of what you need, free.
+- **Honest-label quality data** ("did THIS model find the hint useful?") → still needs real Meph occasionally. Run calibration batches with Haiku backend once per 100 Ghost-Meph apps.
+- **Cross-model transfer research** → Qwen backend produces a second data distribution. If reranker hints trained on Ghost-Meph-Claude data still help Ghost-Meph-Qwen, transfer claim becomes publishable.
+
+**Build order (separate PRES cycle, not tonight):**
+
+| # | Item | Scope |
+|---|---|---|
+| GM-1 | **Stub `/api/chat`.** Env-gate: `if (process.env.MEPH_BRAIN) routeToStub(body); else hitAnthropic(body);`. Preserve full tool-use protocol (tool_use blocks match Anthropic's JSON shape). | 2 days |
+| GM-2 | **CC sub-agent backend.** IPC to a Claude Code agent process. Protocol: prompt in, tool calls out, iterate. | 2 days |
+| GM-3 | **OpenRouter backend.** HTTP calls to `qwen/qwen3.6-plus-preview:free`. Handle preview-tier quirks (rate limits, disappearing models). | 1 day |
+| GM-4 | **Ollama backend.** HTTP to `localhost:11434/api/chat`. Config for model name. | 1 day |
+| GM-5 | **Calibration harness.** `curriculum-sweep.js --calibrate` runs N tasks on Ghost + same N on real Haiku, compares Factor DB row distributions, flags drift. | 2 days |
+| GM-6 | **Switch default research sweep to Ghost.** `curriculum-sweep.js --workers=3` uses `MEPH_BRAIN=cc-agent` by default. Explicit `--real` flag required to hit production Anthropic. | 1 day |
+
+Total ~9 days. Highest-ROI research-velocity investment on the roadmap.
+
+**Privacy posture:** curriculum tasks are synthetic ("build an approval queue") — safe to send to any backend. Ghost Meph must NEVER be used for real customer apps in production; it's a research-only tool.
+
+**Call it out explicitly:** this doesn't replace real Meph — it supplements. Real Meph still ships to Marcuses. Ghost Meph just lets research move 10× faster without Russell's API bill being the constraint.
 
 ### Flywheel / Training Signal (Session 38 in-flight)
 
