@@ -150,6 +150,44 @@ export function computeOverageCost(used, limit) {
  *     overLimit:           boolean,            // true iff used > limit
  *   }
  */
+/**
+ * Deploy gate — can this tenant create another app? Same shape as
+ * checkQuota but counts active rows in `apps` for the tenant, not
+ * usage_rows for agent calls. Called BEFORE creating a new apps
+ * row, so the ok=false comparison is "used >= limit" (the next
+ * create would exceed the cap).
+ *
+ * Unlimited plans (business/enterprise) always return ok:true with
+ * limit + remaining null — UI shows "unlimited" copy.
+ *
+ * @param {object} db - pg Pool or compatible { query(text, params) }
+ * @param {number} tenantId
+ * @param {string} plan
+ * @returns {Promise<{ok:boolean, used:number, limit:(number|null), remaining:(number|null)}>}
+ */
+export async function checkAppCountQuota(db, tenantId, plan) {
+  const quotas = getPlanQuotas(plan);
+  const limit = quotas.apps;
+
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::integer AS count
+     FROM apps
+     WHERE tenant_id = $1 AND status = 'active'`,
+    [tenantId]
+  );
+  const used = Number(rows[0]?.count || 0);
+
+  if (limit === null) {
+    return { ok: true, used, limit: null, remaining: null };
+  }
+  return {
+    ok: used < limit,
+    used,
+    limit,
+    remaining: limit - used,
+  };
+}
+
 export function billingSummary(plan, used) {
   const quotas = getPlanQuotas(plan);
   const limit = quotas.agent_calls;

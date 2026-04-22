@@ -188,5 +188,64 @@ console.log('\n📈 billingSummary — aggregate dashboard shape\n');
   assert(s4.remaining === 0, 'at limit → remaining 0');
 }
 
+// ─── checkAppCountQuota — block deploys past the app cap ─────────────────
+// Same shape as checkQuota but counts apps (active only) instead of agent
+// calls. Fires BEFORE a deploy creates a new apps row, so the comparison
+// is "will adding one push me over?" → ok=false when used >= limit.
+console.log('\n🏠 checkAppCountQuota — deploy gate\n');
+
+{
+  const { checkAppCountQuota } = await import('./index.js');
+
+  function mockAppsDb(activeCount) {
+    return {
+      async query(text) {
+        if (/COUNT\(\*\).*FROM apps/i.test(text.replace(/\s+/g, ' '))) {
+          return { rows: [{ count: String(activeCount) }] };
+        }
+        throw new Error('mockAppsDb unhandled query: ' + text.slice(0, 80));
+      },
+    };
+  }
+
+  // Under limit → ok:true, remaining = limit - used (room for more)
+  const r1 = await checkAppCountQuota(mockAppsDb(2), 1, 'free');
+  assert(r1.ok === true, `free plan, 2 apps → ok:true`);
+  assert(r1.used === 2 && r1.limit === 3 && r1.remaining === 1,
+    `shape: used=2, limit=3, remaining=1 (got ${JSON.stringify(r1)})`);
+
+  // At limit → ok:false (next deploy would exceed the cap)
+  const r2 = await checkAppCountQuota(mockAppsDb(3), 1, 'free');
+  assert(r2.ok === false, `free plan, 3 apps (at cap) → ok:false`);
+  assert(r2.remaining === 0, `at cap → remaining 0`);
+
+  // Over limit (shouldn't happen, but test it) → remaining negative
+  const r3 = await checkAppCountQuota(mockAppsDb(5), 1, 'free');
+  assert(r3.ok === false && r3.remaining === -2,
+    `over cap → remaining -2 (got ${JSON.stringify(r3)})`);
+
+  // Team plan — 25 cap
+  const r4 = await checkAppCountQuota(mockAppsDb(24), 1, 'team');
+  assert(r4.ok === true && r4.remaining === 1,
+    `team, 24 of 25 → ok with 1 remaining`);
+
+  // Business plan — unlimited (apps: null)
+  const r5 = await checkAppCountQuota(mockAppsDb(100), 1, 'business');
+  assert(r5.ok === true && r5.limit === null && r5.remaining === null,
+    `business (unlimited apps) → ok, limit+remaining null`);
+
+  // Enterprise — also unlimited
+  const r6 = await checkAppCountQuota(mockAppsDb(9999), 1, 'enterprise');
+  assert(r6.ok === true && r6.limit === null,
+    `enterprise → ok, unlimited apps`);
+
+  // Unknown plan throws
+  let threw;
+  try { await checkAppCountQuota(mockAppsDb(0), 1, 'mystery'); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('mystery'),
+    `unknown plan → throws (got "${threw}")`);
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
