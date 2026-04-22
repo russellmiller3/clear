@@ -215,6 +215,16 @@ Started closing CC-2b/CC-2d gaps:
 
 Totals after tick 9: **2101 compiler + 270 meph-tools + 156 mcp-server + 7 runtime + 109 cloud-teams + 13 tenants-db = 2656 tests green.** 8/8 core templates clean.
 
+## Session 42 tick 10 — CC-2c dashboard primitive
+
+`7063c88` — `listAppsForUser(db, userId)`: every app the user can access, with my_role on each, one SQL JOIN. Filters team_id NOT NULL + status=active so orphans and archived apps don't surface. Ordered by most-recent team join → app slug (the "what am I working on this week" UX).
+
+8 TDD assertions pin the shape: owner across 2 teams sees 3 apps with my_role=owner; member of 1 team sees 2 apps with my_role=member; archived + orphan apps filtered; non-member returns `[]` (not null, not throw). cloud-teams: 117/117 green.
+
+With getAppAccess (CC-2d enforcement) + listAppsForUser (CC-2c dashboard query) + listTeamsForUser (CC-2b pre-existing), CC-2c has enough backend primitives to render. Next slice: either Clear-app dashboard (dogfood) or HTML page. Plan doesn't lock the choice yet.
+
+Totals after tick 10: **2101 compiler + 270 meph-tools + 156 mcp-server + 7 runtime + 117 cloud-teams + 13 tenants-db = 2664 tests green.**
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
