@@ -390,6 +390,22 @@ Completes the transactional email library layer: cloud-auth/cloud-teams produce 
 
 Project totals after tick 19: **3068 tests green** (+30 cloud-email).
 
+## Session 42 tick 20 — CC-3c usage rollup
+
+`0890c84` — `rollupMonthlyUsageByTenant(db, now?)` in cloud-quota. One SQL JOIN (usage_rows → apps → tenants) aggregates the current calendar month per tenant, emitting billingSummary-shaped rows. The Stripe metered-billing cron filters:
+```js
+rows.filter(r => r.overage > 0 && ['team','business'].includes(r.plan))
+```
+Free plan over-cap has `overage` computed for honesty but is a hard stop per pricing.html (no Stripe billing). Enterprise returns `overage:null` because unlimited has no overage concept.
+
+10 TDD assertions across 5 plan tiers: under-cap, over-cap, unlimited, empty-result, filter-by-plan+overage pattern.
+
+cloud-quota: 69/69 green.
+
+Completes CC-3 scaffolding except the Stripe Usage API transport wrapper (thin — POSTs each billable row's overage as a Usage Record with quantity=overage, timestamp=period end). Scaffolds against Stripe test mode until 85a.
+
+Project totals after tick 20: **3078 tests green** (+10 rollup).
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
