@@ -106,18 +106,21 @@ Clean state — next session picks from the Priority Order section below.
 
 ## Next Steps (Priority Order)
 
-1. **Full cc-agent curriculum sweep (overnight-able).** `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=3` runs all 20 tasks at $0 cost. Each task adds 1-N rows to Factor DB. Expected wall-clock: ~20-40 min with 3 workers (single task took 82-124s). This is now the highest-leverage item: validates the flywheel AT SCALE and produces the raw data Queue F depends on.
-2. **Queue F (RL flywheel) — now unblocked.** After the overnight sweep yields ~50+ new passing rows:
+1. **Full cc-agent curriculum sweep with --strict grading (overnight-able).**
+   ```
+   MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=3 --strict
+   ```
+   Runs all 20 tasks at $0 cost. `--strict` (new this session) rejects "said TC" as sufficient — requires `test_pass=1` Factor DB row. Loose-mode false positives would poison Queue F retrains, so strict is the right bar for training data. Expected wall-clock: ~20-40 min with 3 workers. Each ok'd task adds 1-N passing rows.
+2. **Queue F (RL flywheel) — unblocked after sweep produces rows.**
    - RL-3 classifier fuzzy-match fixes
    - RL-4 step seeds on 28 curriculum tasks
    - RL-5 archetype task hints
    - RL-6 retrain ranker on fresh data
    - RL-8 honest-helpful retrain (at ~50 tags)
-3. **"said TC" quality — Meph signals task-complete without test-passes.** During the 1-task validation, hello-world was marked ✅ because Meph said "TC" but actual `test_pass` rows didn't grow. Look at sweep grading logic — should require `test_pass=1` on at least one row, not just a TC emit from Meph. File: `playground/supervisor/curriculum-sweep.js`, around the success-criterion logic.
-4. **Phase 85a unblocker (Russell's call).** Domain, Fly Trust Verified, Stripe, Postgres hosting. Blocks CC-1..CC-5 production deploy but no scaffold work.
-5. **CC-2c account dashboard scaffold.** User-facing dashboard for Clear Cloud. Plan §CC-2c. Doable before 85a.
-6. **CC-3 Stripe billing scaffold** against test mode. Blocks on 85a Stripe signup for e2e.
-7. **Mid-turn source sync (cc-agent polish).** Studio editor currently updates only at end of cc-agent response — streaming the parse would push code_update mid-turn. ~30-60 lines.
+3. **Phase 85a unblocker (Russell's call).** Domain, Fly Trust Verified, Stripe, Postgres hosting. Blocks CC-1..CC-5 production deploy but no scaffold work.
+4. **CC-2c account dashboard scaffold.** User-facing dashboard for Clear Cloud. Plan §CC-2c. Doable before 85a.
+5. **CC-3 Stripe billing scaffold** against test mode. Blocks on 85a Stripe signup for e2e.
+6. **Mid-turn source sync (cc-agent polish).** Studio editor currently updates only at end of cc-agent response — streaming the parse would push code_update mid-turn. ~30-60 lines.
 
 ## Files to Read First
 
@@ -136,7 +139,7 @@ Clean state — next session picks from the Priority Order section below.
 
 ## Resume Prompt
 
-> Read `HANDOFF.md`. Flywheel is UNBLOCKED — cc-agent sweeps run at $0 AND feed Factor DB now (verified: 1 task added +1 row). 2965 tests green on main. Main has 2 unpushed merges (cc2b-finish + mcp-factor-db). First move: push (`SKIP_MEPH_EVAL=1 git push --no-verify`). Then priority 1 = full 20-task sweep via `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=3`. ~20-40 min wall clock, $0 cost, yields ~50+ new rows that unblock Queue F retrains. After that: fix the sweep's "said TC"-means-pass loophole (task ✅ without real test_pass rows), then Queue F (RL-3..8), then CC-2c dashboard scaffold. Kent Beck TDD for anything non-trivial.
+> Read `HANDOFF.md`. Flywheel UNBLOCKED — cc-agent sweeps feed Factor DB at $0 AND now have `--strict` grading so only real `test_pass=1` rows count as wins. 2972 tests green on main. Priority 1: full overnight sweep via `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=3 --strict`. ~20-40 min, $0, should yield clean passing rows (no "said TC" false positives). Queue F retrains (RL-3..8) unblock after that. Then CC-2c dashboard scaffold, CC-3 Stripe scaffold, mid-turn sync polish. Kent Beck TDD for anything non-trivial.
 
 ---
 
