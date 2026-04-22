@@ -5,6 +5,14 @@
  * history encoded in commit log.
  */
 
+import { randomBytes } from 'crypto';
+
+// Invite expires after this many days unless the caller overrides.
+// 7 days matches common SaaS convention — enough time for the recipient
+// to see the email through a weekend, short enough to rotate stale
+// invites out quickly.
+export const INVITE_TTL_DAYS = Number(process.env.CC_INVITE_TTL_DAYS) || 7;
+
 // ─── Permission matrix ──────────────────────────────────────────────────
 // Fail-closed: missing action → deny, missing role → deny. Owner-only
 // actions are the dangerous ones (billing, delete). Admin gets the
@@ -150,4 +158,34 @@ export async function removeMember(db, teamId, userId) {
     [teamId, userId]
   );
   return rowCount > 0;
+}
+
+/**
+ * Create a pending invite. Generates a 32-byte crypto-random hex token
+ * (64 chars), stores the row with INVITE_TTL_DAYS expiry. The caller
+ * sends the email with a link containing the token; the recipient
+ * clicks to accept (cycle 10).
+ *
+ * Email normalized (lowercased + trimmed) at the boundary so the
+ * database never sees mixed-case duplicates.
+ */
+export async function createInvite(db, input) {
+  const email = (input.email || '').trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Invalid email address.');
+  }
+  const role = input.role || 'member';
+  if (!VALID_ROLES.includes(role)) {
+    throw new Error(`invalid role "${role}" — must be one of ${VALID_ROLES.join(', ')}`);
+  }
+  if (!input.teamId) throw new Error('teamId required');
+  const token = randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const { rows } = await db.query(
+    `INSERT INTO team_invites (team_id, email, role, token, invited_by, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [input.teamId, email, role, token, input.invitedBy || null, expiresAt]
+  );
+  return rows[0];
 }

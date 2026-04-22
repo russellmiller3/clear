@@ -20,9 +20,10 @@ function assert(cond, msg) {
 function makeMockDb() {
   const teams = [];
   const members = [];
-  let nextTeamId = 1, nextMemberId = 1;
+  const invites = [];
+  let nextTeamId = 1, nextMemberId = 1, nextInviteId = 1;
   return {
-    teams, members,
+    teams, members, invites,
     async query(text, params = []) {
       const t = text.replace(/\s+/g, ' ').trim();
       if (/^BEGIN|^COMMIT|^ROLLBACK/i.test(t)) return { rows: [] };
@@ -71,6 +72,18 @@ function makeMockDb() {
         if (idx < 0) return { rows: [], rowCount: 0 };
         members.splice(idx, 1);
         return { rows: [], rowCount: 1 };
+      }
+      if (t.startsWith('INSERT INTO team_invites')) {
+        const [team_id, email, role, token, invited_by, expires_at] = params;
+        const row = {
+          id: nextInviteId++, team_id, email, role, token,
+          invited_by: invited_by || null,
+          invited_at: new Date(),
+          expires_at: new Date(expires_at),
+          accepted_at: null, accepted_by: null, revoked_at: null,
+        };
+        invites.push(row);
+        return { rows: [row] };
       }
       if (/SELECT t\.\*, tm\.role AS my_role/i.test(t)) {
         const [userId] = params;
@@ -275,6 +288,49 @@ console.log('\n➖ removeMember — last-owner guard is security-critical\n');
   const remaining = await getMembership(db, team.id, 3);
   assert(remaining && remaining.role === 'owner',
     'other owner still present');
+}
+
+// ─── TDD cycle 9: createInvite generates a 64-hex token + expiry ─────────
+console.log('\n📨 createInvite\n');
+
+{
+  const { createTeam, createInvite } = await import('./index.js');
+  const db = makeMockDb();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+
+  const invite = await createInvite(db, {
+    teamId: team.id,
+    email: 'NEW@example.com',
+    role: 'admin',
+    invitedBy: 1,
+  });
+  assert(invite.email === 'new@example.com',
+    `email lowercased at the boundary (got "${invite.email}")`);
+  assert(invite.role === 'admin', 'role stored as provided');
+  assert(typeof invite.token === 'string' && invite.token.length === 64,
+    `token is 64-char hex (got length ${invite.token?.length})`);
+  assert(/^[0-9a-f]+$/.test(invite.token),
+    'token is hex (no non-hex chars)');
+  assert(invite.expires_at instanceof Date && invite.expires_at > new Date(),
+    `expires_at is a future Date (got ${invite.expires_at})`);
+
+  // Invalid email rejected
+  let threw;
+  try { await createInvite(db, { teamId: team.id, email: 'not-an-email', invitedBy: 1 }); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('email'),
+    `bad email rejected (got "${threw}")`);
+
+  // Invalid role rejected
+  try { await createInvite(db, { teamId: team.id, email: 'x@y.co', role: 'god', invitedBy: 1 }); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('invalid role'),
+    `bad role rejected (got "${threw}")`);
+
+  // Two invites get different tokens
+  const a = await createInvite(db, { teamId: team.id, email: 'a@b.co', invitedBy: 1 });
+  const b = await createInvite(db, { teamId: team.id, email: 'c@d.co', invitedBy: 1 });
+  assert(a.token !== b.token, 'each invite gets a unique token');
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
