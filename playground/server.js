@@ -3110,26 +3110,15 @@ app.post('/api/chat', async (req, res) => {
         // through it like every other tool (GM-2 ports).
         const result = await executeTool(tb.name, input);
 
-        // Track run_tests outcomes for session quality signals + Factor DB
+        // Track run_tests outcomes for the /api/chat session-quality UI.
+        // The Factor DB write lives INSIDE runTestsTool now (Session 42
+        // cross-path-side-effect cleanup) so cc-agent sweeps get the same
+        // training signal — we only push to sessionTestCalls here because
+        // that array is Studio-UI-specific.
         if (tb.name === 'run_tests') {
           try {
             const tr = typeof result === 'string' ? JSON.parse(result) : result;
             sessionTestCalls.push({ ok: tr.ok === true, error: tr.error || null });
-
-            // ── Factor DB: update latest compile row with test outcome ──
-            if (_factorDB && _lastFactorRowId) {
-              const passed = Number(tr.passed || 0);
-              const failed = Number(tr.failed || 0);
-              const total = passed + failed;
-              const testScore = total > 0 ? passed / total : (tr.ok === true ? 1.0 : 0.0);
-              const testPass = (tr.ok === true && failed === 0 && total > 0) ? 1 : 0;
-              try {
-                _factorDB._db.prepare(`
-                  UPDATE code_actions SET test_pass = ?, test_score = ? WHERE id = ?
-                `).run(testPass, testScore, _lastFactorRowId);
-              } catch { /* non-fatal */ }
-            }
-            // ──────────────────────────────────────────────────────────────
           } catch { sessionTestCalls.push({ ok: false, error: 'parse error' }); }
         }
 

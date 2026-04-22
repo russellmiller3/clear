@@ -845,6 +845,39 @@ export function runAppTool(input, ctx) {
  *   existing parseTestOutput; tests pass their own.
  * @returns {object} parsed test result — caller stringifies before returning to Meph
  */
+/**
+ * Write the test outcome (pass/fail counts + ok flag) back to the most
+ * recent compile row in Factor DB. Extracted from server.js's /api/chat
+ * inline block so cc-agent-driven sweeps get the same training signal
+ * (same cross-path bug class as the http_request 2xx→test_pass=1 move).
+ *
+ * Rules:
+ *   - No-op when ctx.factorDB is null or no lastFactorRowId on hintState.
+ *   - test_pass=1 requires ok=true AND failed=0 AND at least one passed.
+ *     Mixed runs (some pass, some fail) leave test_pass=0 — we only
+ *     reward all-green runs so the flywheel's "pass" signal stays honest.
+ *   - test_score = passed/total when any tests ran, else 1.0 for ok runs
+ *     (no tests counts as a non-win with a high score) and 0.0 for failed.
+ *   - Non-fatal on any error (DB locked, prepared-statement failure, etc.).
+ *
+ * @param {MephContext} ctx - factorDB + hintState.lastFactorRowId required
+ * @param {{ok:boolean, passed?:number, failed?:number}} result - test outcome
+ * @returns {void}
+ */
+export function _applyTestOutcomeToFactorDb(ctx, result) {
+  if (!ctx?.factorDB || !ctx.hintState?.lastFactorRowId) return;
+  const passed = Number(result?.passed || 0);
+  const failed = Number(result?.failed || 0);
+  const total = passed + failed;
+  const testScore = total > 0 ? passed / total : (result?.ok === true ? 1.0 : 0.0);
+  const testPass = (result?.ok === true && failed === 0 && total > 0) ? 1 : 0;
+  try {
+    ctx.factorDB._db.prepare(
+      'UPDATE code_actions SET test_pass = ?, test_score = ? WHERE id = ?',
+    ).run(testPass, testScore, ctx.hintState.lastFactorRowId);
+  } catch { /* non-fatal */ }
+}
+
 export function runTestsTool(input, ctx, parseTestOutput) {
   const start = Date.now();
   const source = ctx.source;
@@ -865,11 +898,15 @@ export function runTestsTool(input, ctx, parseTestOutput) {
       env: testEnv,
     });
     const parsed = parseTestOutput(stdout);
-    return { ok: true, ...parsed, duration: Date.now() - start };
+    const ok = { ok: true, ...parsed, duration: Date.now() - start };
+    _applyTestOutcomeToFactorDb(ctx, ok);
+    return ok;
   } catch (err) {
     if (err.status === 4) {
       const parsed = parseTestOutput(err.stdout || '');
-      return { ok: false, ...parsed, duration: Date.now() - start };
+      const fail = { ok: false, ...parsed, duration: Date.now() - start };
+      _applyTestOutcomeToFactorDb(ctx, fail);
+      return fail;
     }
     if (err.status === 1) {
       try {

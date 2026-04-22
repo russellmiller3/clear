@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool, compileTool, dispatchTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool, compileTool, dispatchTool, _applyTestOutcomeToFactorDb } from './meph-tools.js';
 import { existsSync, mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -826,6 +826,108 @@ const rtt4 = runTestsTool({}, new MephContext({
 assert(typeof rtt4.duration === 'number' && rtt4.duration >= 0,
   `runTestsTool populates duration even on subprocess failure (got ${rtt4.duration})`);
 assert(rtt4.ok === false, 'runTestsTool returns ok=false when cli/clear.js is not findable');
+
+// ── _applyTestOutcomeToFactorDb — pure helper that owns the Factor DB
+// write-through on test outcomes. Extracted from server.js:3114-3134 so
+// cc-agent sweeps get the same training signal /api/chat already wrote.
+// Same bug class as the http_request side-effect move that landed earlier
+// this session: cross-path tool side-effects belong IN the tool. ──
+console.log('\n🎡 _applyTestOutcomeToFactorDb (test-outcome → Factor DB)\n');
+
+const { FactorDB: _FactorDB2 } = await import('./supervisor/factor-db.js');
+const tdbPath = join(tmpdir(), `meph-tools-tdbtest-${Date.now()}.sqlite`);
+const tdb = new _FactorDB2(tdbPath);
+
+function freshCompileRow() {
+  return tdb.logAction({
+    session_id: 't-outcome-test',
+    task_type: 'compile_cycle',
+    compile_ok: 1,
+    test_pass: 0,
+  });
+}
+function rowAfter(id) {
+  return tdb._db.prepare('SELECT test_pass, test_score FROM code_actions WHERE id = ?').get(id);
+}
+
+// (1) All-pass result → test_pass=1, test_score=1.0
+{
+  const rowId = freshCompileRow();
+  _applyTestOutcomeToFactorDb(
+    new MephContext({ factorDB: tdb, hintState: { lastFactorRowId: rowId } }),
+    { ok: true, passed: 3, failed: 0 },
+  );
+  const r = rowAfter(rowId);
+  assert(r?.test_pass === 1, `all-pass: test_pass=1 (got ${r?.test_pass})`);
+  assert(r?.test_score === 1.0, `all-pass: test_score=1.0 (got ${r?.test_score})`);
+}
+
+// (2) Partial-pass result → test_pass=0 (must be all-green to earn 1),
+//     test_score=passed/total. This is the critical difference from the
+//     http_request side-effect: a mix of pass+fail is NOT a win, but the
+//     score still reflects how close Meph got.
+{
+  const rowId = freshCompileRow();
+  _applyTestOutcomeToFactorDb(
+    new MephContext({ factorDB: tdb, hintState: { lastFactorRowId: rowId } }),
+    { ok: false, passed: 2, failed: 3 },
+  );
+  const r = rowAfter(rowId);
+  assert(r?.test_pass === 0, `partial-pass: test_pass=0 (got ${r?.test_pass})`);
+  assert(Math.abs(r?.test_score - 0.4) < 0.001, `partial-pass: test_score=2/5=0.4 (got ${r?.test_score})`);
+}
+
+// (3) All-fail result → test_pass=0, test_score=0 (passed/total=0)
+{
+  const rowId = freshCompileRow();
+  _applyTestOutcomeToFactorDb(
+    new MephContext({ factorDB: tdb, hintState: { lastFactorRowId: rowId } }),
+    { ok: false, passed: 0, failed: 4 },
+  );
+  const r = rowAfter(rowId);
+  assert(r?.test_pass === 0, `all-fail: test_pass=0 (got ${r?.test_pass})`);
+  assert(r?.test_score === 0, `all-fail: test_score=0 (got ${r?.test_score})`);
+}
+
+// (4) No tests ran (passed=0, failed=0) BUT ok=true → test_score=1.0
+//     falls through to the "ok-with-no-tests" branch. test_pass stays 0
+//     because we require at least one real test to have run.
+{
+  const rowId = freshCompileRow();
+  _applyTestOutcomeToFactorDb(
+    new MephContext({ factorDB: tdb, hintState: { lastFactorRowId: rowId } }),
+    { ok: true, passed: 0, failed: 0 },
+  );
+  const r = rowAfter(rowId);
+  assert(r?.test_pass === 0, `no-tests+ok: test_pass=0 (got ${r?.test_pass})`);
+  assert(r?.test_score === 1.0, `no-tests+ok: test_score=1.0 (got ${r?.test_score})`);
+}
+
+// (5) ctx.factorDB = null → silent no-op (backwards compat for callers
+//     without the flywheel wired)
+{
+  // Should not throw — returns undefined, leaves nothing behind.
+  const result = _applyTestOutcomeToFactorDb(
+    new MephContext({ factorDB: null, hintState: { lastFactorRowId: 1 } }),
+    { ok: true, passed: 1, failed: 0 },
+  );
+  assert(result === undefined, 'null factorDB: returns undefined (no-op)');
+}
+
+// (6) No lastFactorRowId → silent no-op (compile hadn't run yet)
+{
+  const result = _applyTestOutcomeToFactorDb(
+    new MephContext({ factorDB: tdb, hintState: { lastFactorRowId: null } }),
+    { ok: true, passed: 1, failed: 0 },
+  );
+  assert(result === undefined, 'no lastFactorRowId: returns undefined (no-op)');
+}
+
+// Cleanup
+try { tdb._db.close(); } catch {}
+try { rmSync(tdbPath, { force: true }); } catch {}
+try { rmSync(tdbPath + '-shm', { force: true }); } catch {}
+try { rmSync(tdbPath + '-wal', { force: true }); } catch {}
 
 console.log('\n🎯 runEvalsTool / runEvalTool\n');
 
