@@ -144,15 +144,22 @@ try {
 
   // ==========================================================================
   // PHASE 3 — Source toggle
+  // BM-3 full (v0.3): the first 3 successful Publishes leave the source pane
+  // visible (onboarding); after ship #3 it auto-hides on next load. Tests that
+  // assert source-hidden-by-default need to seed the counter past 3 first.
   // ==========================================================================
   console.log('\n📄 Phase 3 — Source toggle');
 
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  // Seed counter past the auto-hide threshold so this phase exercises the
+  // post-onboarding behavior. Reload to re-run detectStudioMode().
+  await page.evaluate(() => { try { localStorage.setItem('clear-bm-ships-counter', '99'); } catch {} });
   await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
 
   assert(await page.locator('#source-toggle-btn').isVisible(),
     'Source button visible in builder mode');
   assert(!(await page.locator('#editor-pane').isVisible()),
-    'editor hidden by default in builder mode');
+    'editor hidden by default in builder mode (counter ≥ 3)');
 
   await page.locator('#source-toggle-btn').click();
   await page.waitForTimeout(150);
@@ -186,6 +193,18 @@ try {
   await page.goto(`${BASE}/?studio-mode=classic`, { waitUntil: 'networkidle' });
   assert(!(await page.locator('#source-toggle-btn').isVisible()),
     'Source button hidden in classic mode');
+
+  // BM-3 full (v0.3): when the ship counter is below 3, source pane should
+  // default visible — onboarding mode for new Marcus users.
+  await page.evaluate(() => { try { localStorage.setItem('clear-bm-ships-counter', '0'); } catch {} });
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  assert(await page.locator('#editor-pane').isVisible(),
+    'BM-3 onboarding: editor visible by default when ship counter < 3');
+  // And after the 3-ship threshold, editor goes back to hidden by default.
+  await page.evaluate(() => { try { localStorage.setItem('clear-bm-ships-counter', '3'); } catch {} });
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  assert(!(await page.locator('#editor-pane').isVisible()),
+    'BM-3 onboarding: editor hidden by default once ship counter reaches 3');
 
   // ==========================================================================
   // PHASE 4 — Publish button rebrand
