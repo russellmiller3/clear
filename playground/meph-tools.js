@@ -351,6 +351,59 @@ export function readNetworkTool(input, ctx) {
 }
 
 /**
+ * todo tool — get or set Meph's per-session todo list.
+ *
+ *   action='get' → returns ctx.todos
+ *   action='set' → ctx.setTodos(input.todos) (fires onTodosChange so /api/chat
+ *                  mirrors back to its closure mephTodos), emits a todo_update
+ *                  SSE event so the editor pane can re-render the list, returns
+ *                  { ok, count }
+ *
+ * @param {object} input - { action, todos? }
+ * @param {MephContext} ctx
+ * @returns {string} JSON-stringified result
+ */
+export function todoTool(input, ctx) {
+  if (input.action === 'get') {
+    return JSON.stringify({ todos: ctx.todos });
+  }
+  if (input.action === 'set') {
+    ctx.setTodos(input.todos || []);
+    ctx.send({ type: 'todo_update', todos: ctx.todos });
+    return JSON.stringify({ ok: true, count: ctx.todos.length });
+  }
+  return JSON.stringify({ error: 'action must be "set" or "get"' });
+}
+
+/**
+ * read_actions tool — fetch the user-action recorder buffer from Studio's
+ * own API. Used by Meph to see what the user just clicked/typed in the
+ * iframe before deciding what to do next.
+ *
+ * Stateless except for ctx.mephActionsUrl. fetchFn defaults to global fetch
+ * but can be injected for tests. Returns the most recent N actions (default
+ * 50, capped at 100).
+ *
+ * @param {object} input - { limit? }
+ * @param {MephContext} ctx - mephActionsUrl required
+ * @param {function} [fetchFn] - optional fetch override for tests
+ * @returns {string} JSON-stringified result
+ */
+export async function readActionsTool(input, ctx, fetchFn = fetch) {
+  try {
+    const limit = Math.min(input.limit || 50, 100);
+    const r = await fetchFn(ctx.mephActionsUrl);
+    const data = await r.json();
+    return JSON.stringify({
+      count: Math.min(data.actions.length, limit),
+      actions: data.actions.slice(-limit),
+    });
+  } catch (err) {
+    return JSON.stringify({ error: err.message.slice(0, 300) });
+  }
+}
+
+/**
  * websocket_log — surface the most recent WebSocket messages captured from
  * the running app. Reads ctx.websocketBuffer (mirrored from /api/run's WS
  * frame listener).

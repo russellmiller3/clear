@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool } from './meph-tools.js';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
 import { patch } from '../patch.js';
@@ -445,6 +445,63 @@ const ws2 = JSON.parse(websocketLogTool(
 assert(ws2.count === 20, `websocketLogTool defaults to 20 (got ${ws2.count})`);
 assert(ws2.messages[0].payload === 'frame-30',
   'websocketLogTool keeps the most recent 20');
+
+console.log('\n📝 todoTool\n');
+
+// get
+const td1 = JSON.parse(todoTool({ action: 'get' }, new MephContext({ todos: [{ content: 'x' }] })));
+assert(Array.isArray(td1.todos) && td1.todos[0].content === 'x',
+  'todoTool get returns ctx.todos');
+
+// set fires onTodosChange + send
+let setTodos = null;
+let sentMsg = null;
+const ctxTodo = new MephContext({
+  send: (m) => { if (m.type === 'todo_update') sentMsg = m; },
+  onTodosChange: (t) => { setTodos = t; },
+});
+const td2 = JSON.parse(todoTool(
+  { action: 'set', todos: [{ content: 'a', status: 'pending', activeForm: 'doing a' }, { content: 'b', status: 'in_progress', activeForm: 'doing b' }] },
+  ctxTodo,
+));
+assert(td2.ok === true, 'todoTool set returns ok=true');
+assert(td2.count === 2, 'todoTool set returns count of new todos');
+assert(setTodos?.length === 2, 'todoTool set fires onTodosChange callback');
+assert(sentMsg?.type === 'todo_update' && sentMsg.todos.length === 2,
+  'todoTool set emits ctx.send({type:"todo_update"}) with updated todos');
+
+// set with no todos → defaults to empty array
+const td3 = JSON.parse(todoTool({ action: 'set' }, new MephContext()));
+assert(td3.count === 0, 'todoTool set with no todos defaults to empty');
+
+// invalid action
+const td4 = JSON.parse(todoTool({ action: 'frobnicate' }, new MephContext()));
+assert(td4.error?.includes('action must be'),
+  'todoTool with bad action returns "action must be"');
+
+console.log('\n📡 readActionsTool\n');
+
+// fetch returns actions array → sliced by limit
+const fakeFetch = async (url) => ({
+  json: async () => ({ actions: Array.from({ length: 30 }, (_, i) => ({ kind: 'click', i })) }),
+});
+const ra1 = JSON.parse(await readActionsTool({ limit: 10 },
+  new MephContext({ mephActionsUrl: 'http://x' }), fakeFetch));
+assert(ra1.count === 10, `readActionsTool slices to limit (got ${ra1.count})`);
+assert(ra1.actions[0].i === 20, 'readActionsTool keeps the most recent N');
+
+// limit caps at 100
+const fakeFetchBig = async () => ({
+  json: async () => ({ actions: Array.from({ length: 200 }, (_, i) => ({ i })) }),
+});
+const ra2 = JSON.parse(await readActionsTool({ limit: 500 }, new MephContext(), fakeFetchBig));
+assert(ra2.count === 100, 'readActionsTool caps limit at 100');
+
+// fetch failure → error
+const fakeFetchErr = async () => { throw new Error('network down'); };
+const ra3 = JSON.parse(await readActionsTool({}, new MephContext(), fakeFetchErr));
+assert(ra3.error?.includes('network down'),
+  'readActionsTool surfaces fetch errors as { error: ... }');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

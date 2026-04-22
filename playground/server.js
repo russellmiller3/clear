@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3353,17 +3353,10 @@ app.post('/api/chat', async (req, res) => {
       // inspect_element + read_storage handled in the unified bridge-tools
       // case above (extracted to playground/meph-tools.js).
 
-      case 'read_actions': {
-        // Fetch user-action history from our recorder buffer
-        try {
-          const limit = Math.min(input.limit || 50, 100);
-          const r = await fetch('http://localhost:' + (process.env.PORT || 3456) + '/api/meph-actions');
-          const data = await r.json();
-          return JSON.stringify({ count: Math.min(data.actions.length, limit), actions: data.actions.slice(-limit) });
-        } catch (err) {
-          return JSON.stringify({ error: err.message.slice(0, 300) });
-        }
-      }
+      case 'read_actions':
+        // Extracted to playground/meph-tools.js (GM-2 port). Default
+        // mephActionsUrl computed from process.env.PORT in MephContext.
+        return await readActionsTool(input, new MephContext());
 
       // read_dom handled in the unified bridge-tools case above.
 
@@ -3398,15 +3391,15 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'todo': {
-        if (input.action === 'get') {
-          return JSON.stringify({ todos: mephTodos });
-        }
-        if (input.action === 'set') {
-          mephTodos = input.todos || [];
-          send({ type: 'todo_update', todos: mephTodos });
-          return JSON.stringify({ ok: true, count: mephTodos.length });
-        }
-        return JSON.stringify({ error: 'action must be "set" or "get"' });
+        // Extracted to playground/meph-tools.js. Mirror mephTodos closure
+        // var through onTodosChange so other code paths that read mephTodos
+        // see the latest value.
+        const todoCtx = new MephContext({
+          todos: mephTodos,
+          send,
+          onTodosChange: (t) => { mephTodos = t; },
+        });
+        return todoTool(input, todoCtx);
       }
 
       case 'browse_templates':

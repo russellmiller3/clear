@@ -70,6 +70,16 @@ export class MephContext {
     // a real running app.
     this.isAppRunning = options.isAppRunning || (() => false);
     this.sendBridgeCommand = options.sendBridgeCommand || (async () => ({ error: 'Bridge command not wired in this MephContext.' }));
+
+    // Meph todo state. /api/chat owns a closure-level mephTodos array;
+    // setTodos() fires onTodosChange so the closure var stays in sync.
+    this.todos = options.todos || [];
+    this.onTodosChange = options.onTodosChange || (() => {});
+
+    // URL for the recorder-buffer endpoint (used by read_actions). Defaults
+    // to the same Studio server the tool is running inside; injection point
+    // for tests.
+    this.mephActionsUrl = options.mephActionsUrl || `http://localhost:${process.env.PORT || 3456}/api/meph-actions`;
   }
 
   /**
@@ -97,6 +107,15 @@ export class MephContext {
    */
   setLastCompileResult(result) {
     this.lastCompileResult = result;
+  }
+
+  /**
+   * Replace the Meph todos list. Fires onTodosChange so /api/chat can
+   * mirror back to its closure-level mephTodos var.
+   */
+  setTodos(newTodos) {
+    this.todos = Array.isArray(newTodos) ? newTodos : [];
+    this.onTodosChange(this.todos);
   }
 }
 
