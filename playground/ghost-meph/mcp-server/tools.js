@@ -64,6 +64,23 @@ const hintState = {
   postHintMinErrorCount: null,
 };
 
+// Running-app state — owned by the MCP subprocess when cc-agent drives the
+// session without Studio in the loop. Mirrors server.js's closure:
+// runningChild is the spawned compiled-app node process; runningPort is the
+// TCP port it's bound to; NEXT_PORT is the rotating counter. Without these
+// wired, run_app's ctx.setRunningChild is a no-op and http_request sees
+// isAppRunning=false forever — which was the "No app running" error during
+// curriculum sweeps even though Meph had just called run_app.
+let _runningChild = null;
+let _runningPort = null;
+let _nextPortCounter = 4001;
+function _allocateNextPort() {
+  const p = _nextPortCounter;
+  _nextPortCounter = _nextPortCounter >= 4100 ? 4001 : _nextPortCounter + 1;
+  _runningPort = p;
+  return p;
+}
+
 // ── Helpers (pure) ──────────────────────────────────────────────────
 // Mirror the server.js closure helpers. sha1 uses crypto directly;
 // safeArchetype wraps classifyArchetype; currentStep is a no-op in MCP
@@ -134,6 +151,26 @@ function buildMephContext() {
     // a per-process stamp if caller didn't provide one.
     sessionId: process.env.MEPH_SESSION_ID || ('mcp_' + process.pid + '_' + Date.now()),
     hintState,
+    // Running-app wiring — points at the module-level state above so
+    // run_app + http_request + stop_app + db_inspect form a coherent
+    // lifecycle without needing Studio to own the child process.
+    isAppRunning: () => _runningChild !== null,
+    getRunningChild: () => _runningChild,
+    setRunningChild: (c) => {
+      _runningChild = c;
+      if (c === null) _runningPort = null;
+    },
+    getRunningPort: () => _runningPort,
+    allocatePort: _allocateNextPort,
+    stopRunningApp: () => {
+      if (_runningChild) {
+        try { _runningChild.kill('SIGTERM'); } catch {}
+        _runningChild = null;
+        _runningPort = null;
+        return true;
+      }
+      return false;
+    },
   });
   return ctx;
 }
@@ -212,8 +249,8 @@ const MEPH_TOOLS = [
   { name: 'compile',           desc: 'Compile the current Clear source. Returns errors + warnings + shape flags. Input: { include_compiled?: boolean }.' },
   { name: 'run_command',       desc: 'Exec an allowlisted shell command from the repo root. Input: { command: string }. 15s timeout.' },
   { name: 'http_request',      desc: 'Fetch a running app endpoint. Input: { method, path, body? }. Requires run_app first.' },
-  { name: 'run_app',           desc: 'Spawn `node server.js` from the compiled output. Returns { started, port }. Not yet available in MCP mode.' },
-  { name: 'stop_app',          desc: 'Kill the child started by run_app. Not yet available in MCP mode.' },
+  { name: 'run_app',           desc: 'Spawn `node server.js` from the compiled output. Returns { started, port }.' },
+  { name: 'stop_app',          desc: 'Kill the child started by run_app.' },
   { name: 'run_tests',         desc: 'Run the app\'s test blocks via `node cli/clear.js test`. Not yet available in MCP mode (needs parseTestOutput extraction).' },
   { name: 'list_evals',        desc: 'List agent-eval specs the current source would run. Not yet available in MCP mode (needs compileForEval extraction).' },
   { name: 'run_evals',         desc: 'Run the full agent eval suite. Not yet available in MCP mode (needs runEvalSuite extraction).' },

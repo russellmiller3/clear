@@ -3133,26 +3133,6 @@ app.post('/api/chat', async (req, res) => {
           } catch { sessionTestCalls.push({ ok: false, error: 'parse error' }); }
         }
 
-        // Track http_request 2xx outcomes as weak test signal for Factor DB.
-        // Curriculum sweeps tell Meph to verify via http_request (no Clear test
-        // blocks exist in skeletons), so without this we never set test_pass=1
-        // on curriculum runs. Weaker signal than run_tests (no assertion count),
-        // but directionally correct: 2xx responses indicate the endpoint works.
-        if (tb.name === 'http_request' && _factorDB && _lastFactorRowId) {
-          try {
-            const hr = typeof result === 'string' ? JSON.parse(result) : result;
-            const status = Number(hr?.status || 0);
-            if (status >= 200 && status < 300) {
-              _factorDB._db.prepare(`
-                UPDATE code_actions
-                SET test_pass = 1,
-                    test_score = CASE WHEN test_score > 0.9 THEN test_score ELSE 0.9 END
-                WHERE id = ? AND compile_ok = 1
-              `).run(_lastFactorRowId);
-            }
-          } catch { /* non-fatal */ }
-        }
-
         // Log every tool call to terminal so the user can see what's happening
         const toolLog = (() => {
           const res = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return {}; } })() : {};
