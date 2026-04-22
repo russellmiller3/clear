@@ -281,5 +281,115 @@ console.log('\n🗂️  addDomain + listDomainsForApp + listPendingDomains\n');
     `all returned rows have status='pending'`);
 }
 
+// ─── verifyPendingDomains — CC-5b background poller ─────────────────────
+// The cron that wakes every N minutes, reads pending app_domains rows,
+// does DNS lookups, and updates status. Caller injects resolveCnameFn
+// so tests mock it without real DNS; production injects
+// node:dns/promises.resolveCname.
+console.log('\n⏱️  verifyPendingDomains — DNS poller\n');
+
+{
+  function mockPollerDb() {
+    const rows = [];
+    let nextId = 1;
+    const updates = [];
+    return {
+      rows, updates,
+      async query(text, params = []) {
+        const t = text.replace(/\s+/g, ' ').trim();
+        if (/^INSERT INTO app_domains/i.test(t)) {
+          const [app_id, domain, expected_cname] = params;
+          const row = {
+            id: nextId++, app_id, domain, expected_cname,
+            status: 'pending', verified_at: null, last_checked_at: null,
+            last_error: null,
+          };
+          rows.push(row);
+          return { rows: [row] };
+        }
+        if (/^SELECT \* FROM app_domains WHERE status\s*=\s*'pending'/i.test(t)) {
+          return { rows: rows.filter(r => r.status === 'pending') };
+        }
+        if (/^UPDATE app_domains SET status\s*=\s*'verified'/i.test(t)) {
+          const [id] = params;
+          const r = rows.find(x => x.id === id);
+          if (r) { r.status = 'verified'; r.verified_at = new Date(); r.last_checked_at = new Date(); r.last_error = null; }
+          updates.push({ id, to: 'verified' });
+          return { rowCount: r ? 1 : 0 };
+        }
+        if (/^UPDATE app_domains SET status\s*=\s*'failed'/i.test(t)) {
+          const [id, err] = params;
+          const r = rows.find(x => x.id === id);
+          if (r) { r.status = 'failed'; r.last_checked_at = new Date(); r.last_error = err; }
+          updates.push({ id, to: 'failed', err });
+          return { rowCount: r ? 1 : 0 };
+        }
+        if (/^UPDATE app_domains SET last_checked_at\s*=\s*NOW\(\)/i.test(t)) {
+          const [id] = params;
+          const r = rows.find(x => x.id === id);
+          if (r) r.last_checked_at = new Date();
+          updates.push({ id, to: 'still-pending' });
+          return { rowCount: r ? 1 : 0 };
+        }
+        throw new Error('mockPollerDb unhandled: ' + t.slice(0, 100));
+      },
+    };
+  }
+
+  const { addDomain, verifyPendingDomains } = await import('./index.js');
+
+  // Setup: 3 pending domains
+  const db = mockPollerDb();
+  await addDomain(db, { appId: 1, domain: 'a.com', appSlug: 'alpha' });
+  await addDomain(db, { appId: 2, domain: 'b.com', appSlug: 'beta' });
+  await addDomain(db, { appId: 3, domain: 'c.com', appSlug: 'charlie' });
+
+  // Mock resolver:
+  //   - a.com resolves to the expected CNAME → verified
+  //   - b.com resolves to something else → failed (wrong)
+  //   - c.com returns [] (DNS not propagated) → still pending
+  const resolver = async (domain) => {
+    if (domain === 'a.com') return ['app-alpha.buildclear.dev'];
+    if (domain === 'b.com') return ['some-other-target.com'];
+    if (domain === 'c.com') return [];
+    throw new Error(`unexpected domain: ${domain}`);
+  };
+
+  const summary = await verifyPendingDomains(db, resolver);
+
+  assert(summary.checked === 3, `checked all 3 pending rows (got ${summary.checked})`);
+  assert(summary.verified === 1, `1 verified (got ${summary.verified})`);
+  assert(summary.failed === 1, `1 failed (got ${summary.failed})`);
+  assert(summary.stillPending === 1,
+    `1 still pending (got ${summary.stillPending})`);
+
+  // Row-level state after the run
+  const a = db.rows.find(r => r.domain === 'a.com');
+  const b = db.rows.find(r => r.domain === 'b.com');
+  const c = db.rows.find(r => r.domain === 'c.com');
+  assert(a.status === 'verified', `a.com → verified (got ${a.status})`);
+  assert(a.verified_at instanceof Date, `a.com has verified_at timestamp`);
+  assert(b.status === 'failed', `b.com → failed (got ${b.status})`);
+  assert(b.last_error && b.last_error.toLowerCase().includes('wrong'),
+    `b.com last_error names the wrong target (got "${b.last_error}")`);
+  assert(c.status === 'pending', `c.com stays pending (got ${c.status})`);
+  assert(c.last_checked_at instanceof Date,
+    `c.com last_checked_at timestamp bumped`);
+
+  // Resolver throws (DNS error) → row stays pending, last_checked_at bumps
+  const db2 = mockPollerDb();
+  await addDomain(db2, { appId: 1, domain: 'timeout.com', appSlug: 'alpha' });
+  const throwingResolver = async () => { throw new Error('ETIMEDOUT'); };
+  const summary2 = await verifyPendingDomains(db2, throwingResolver);
+  assert(summary2.checked === 1 && summary2.stillPending === 1,
+    `resolver error → row stays pending, not crashed (got ${JSON.stringify(summary2)})`);
+
+  // Empty pending list → summary with zero counts
+  const db3 = mockPollerDb();
+  const summary3 = await verifyPendingDomains(db3, resolver);
+  assert(summary3.checked === 0 && summary3.verified === 0,
+    `no pending rows → all counts zero (got ${JSON.stringify(summary3)})`);
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
