@@ -237,6 +237,37 @@ function assert(cond, msg) {
   assert(noAppText.includes('No app running'),
     `meph_http_request fails clean when no child app ("No app running" — got ${noAppText.slice(0, 120)})`);
 
+  // meph_list_evals was stubbed until compileForEval extracted — verify it
+  // now runs the real impl. Empty source → structured "No source code" error
+  // from compileForEval; any source without backends → "no backend" error.
+  // We use the edit_code/write source we stored earlier (small frontend app)
+  // which should produce the "no backend" path cleanly.
+  const listEvals = await dispatch({
+    jsonrpc: '2.0', id: 108, method: 'tools/call',
+    params: { name: 'meph_list_evals', arguments: {} },
+  }, registry);
+  const listText = listEvals.result.content[0].text;
+  const listParsed = JSON.parse(listText);
+  // Before compileForEval was extracted this threw with "helpers.compileForEval
+  // is not a function"; now it returns a real structured result. The source
+  // currently stored has no evals, so we expect { ok: true, suite: [], count: 0 }.
+  assert(typeof listParsed === 'object' && !listParsed.schemaError,
+    `meph_list_evals returns structured result (not undefined-helper throw) — got ${listText.slice(0, 120)}`);
+  assert(listParsed.ok === true && Array.isArray(listParsed.suite),
+    `meph_list_evals via real compileForEval returns {ok, suite} shape (got ${listText.slice(0, 120)})`);
+
+  // meph_run_tests with empty source → "No source code" from the real
+  // runTestsTool (the subprocess branch never fires; guard rail catches first).
+  _resetMcpState();
+  const runTests = await dispatch({
+    jsonrpc: '2.0', id: 109, method: 'tools/call',
+    params: { name: 'meph_run_tests', arguments: {} },
+  }, registry);
+  const runTestsText = runTests.result.content[0].text;
+  const runTestsParsed = JSON.parse(runTestsText);
+  assert(runTestsParsed.ok === false && runTestsParsed.error?.includes('No source code'),
+    `meph_run_tests returns structured "No source code" error on empty source (got ${runTestsText.slice(0, 120)})`);
+
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 })();

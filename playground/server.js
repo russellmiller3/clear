@@ -526,38 +526,10 @@ app.post('/api/meph-actions/clear', (req, res) => {
 // =============================================================================
 // TEST RUNNER — parse test output into structured results
 // =============================================================================
-function parseTestOutput(stdout) {
-  const results = [];
-  const lines = (stdout || '').split('\n');
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    // Test output format: "PASS: test name" or "FAIL: test name - error [clear:N]"
-    // Older runs used " -- " as the separator; accept both.
-    const passMatch = trimmed.match(/^PASS:\s*(.+)/);
-    const failMatch = trimmed.match(/^FAIL:\s*(.+?)(?:\s*-{1,2}\s*(.+))?$/);
-    if (passMatch) {
-      results.push({ name: passMatch[1], status: 'pass' });
-    } else if (failMatch) {
-      let err = failMatch[2] || '';
-      // Extract the [clear:N] tag the compiler emits so the Studio UI can jump to source
-      let sourceLine = null;
-      const tagMatch = err.match(/\s*\[clear:(\d+)\]\s*$/);
-      if (tagMatch) {
-        sourceLine = parseInt(tagMatch[1], 10);
-        err = err.slice(0, tagMatch.index).trim();
-      }
-      results.push({ name: failMatch[1], status: 'fail', error: err, sourceLine });
-    }
-  }
-
-  const passed = results.filter(r => r.status === 'pass').length;
-  const failed = results.filter(r => r.status === 'fail').length;
-  return { passed, failed, results };
-}
-
-// Exported for testing
+// parseTestOutput + compileForEval moved to playground/meph-helpers.js so
+// the MCP server can import them without pulling in server.js's closure.
+// Re-export here keeps existing test suites (server.test.js) compiling.
+import { parseTestOutput, compileForEval as _compileForEval } from './meph-helpers.js';
 export { parseTestOutput };
 // Exposed for unit testing — the SSE drainer has been the source of
 // agent-endpoint grading bugs (empty bodies, dropped structured payloads).
@@ -1136,27 +1108,11 @@ async function runOneEval(spec, port) {
 }
 
 // Compile the given source. Returns { ok, compiled?, error? }.
+// Thin wrapper — real impl in playground/meph-helpers.js. Pre-fills
+// compileProgram so callers keep the one-arg signature they've had since
+// the beginning.
 function compileForEval(source) {
-  if (!source || !source.trim()) return { ok: false, error: 'No source code. Load or write a .clear file first.' };
-  let compiled, compiledEvalMode;
-  try {
-    // Regular compile — used to surface the suite shape (needed even for
-    // the estimate endpoint which doesn't spin up the child).
-    compiled = compileProgram(source);
-    // Eval-mode compile — serverJS includes the /_eval/* synthetic
-    // handlers. Used by the eval child runner.
-    compiledEvalMode = compileProgram(source, { evalMode: true });
-  } catch (err) {
-    return { ok: false, error: 'Compile threw: ' + err.message };
-  }
-  if (compiled.errors && compiled.errors.length > 0) {
-    return { ok: false, error: 'Source has compile errors — fix them before running evals.', errors: compiled.errors };
-  }
-  // `serverJS` exists when the app builds both web + backend. For a pure
-  // backend-only app the code lives in `javascript` instead. Accept either.
-  const server = compiledEvalMode.serverJS || compiledEvalMode.javascript;
-  if (!server) return { ok: false, error: 'App has no backend to run evals against (need a javascript backend build target).' };
-  return { ok: true, compiled, serverJS: server };
+  return _compileForEval(source, compileProgram);
 }
 
 // POST /api/eval-suite — returns the suite list (no execution, no child).

@@ -39,6 +39,7 @@ import {
 import { classifyArchetype } from '../../supervisor/archetype.js';
 import { dispatchTool, validateToolInput } from '../../meph-tools.js';
 import { MephContext } from '../../meph-context.js';
+import { parseTestOutput, compileForEval as _compileForEval } from '../../meph-helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Repo root: this file is at <repo>/playground/ghost-meph/mcp-server/tools.js,
@@ -111,13 +112,16 @@ function buildHelpers() {
     rankPairwise,
     rankEBM,
     featurizeRow,
-    // compileForEval / parseTestOutput / runEvalSuite stay null until we
-    // extract them out of server.js (or the MCP host exposes them via
-    // IPC). The tools that need these (list_evals, run_tests, run_evals,
-    // run_eval) will throw on calling undefined — server.js's handler loop
-    // protects against that by catching the exception and returning the
-    // message. In practice Claude Code shouldn't be calling these tools
-    // in the cc-agent path yet; they get wired when the eval bridge lands.
+    // parseTestOutput + compileForEval extracted from server.js so the
+    // MCP server can run run_tests + list_evals without starting Studio.
+    parseTestOutput,
+    compileForEval: (source) => _compileForEval(source, compileProgram),
+    // runEvalSuite still stays null — it manages an evalChild subprocess
+    // lifecycle tied to Studio's internal state (evalChild, evalChildPort,
+    // evalChildAuthScheme). Extracting that is a bigger refactor because
+    // the child needs its own port allocation and auth bootstrap. The
+    // run_evals / run_eval tools in MCP mode throw on calling undefined;
+    // surface it via a clean "not available" error below.
   };
 }
 
