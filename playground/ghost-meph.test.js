@@ -98,7 +98,11 @@ function parseSSE(text) {
   // =========================================================================
   console.log('\n🔌 Phase 3 — fetchViaBackend response envelope');
 
-  process.env.MEPH_BRAIN = 'cc-agent';
+  // Use 'haiku-dev' here — it's a registered backend in the dispatch table
+  // but doesn't have its own implementation yet (GM-3/4-style backends),
+  // so it falls through to the stub. cc-agent now hits the real
+  // chatViaClaudeCode (tested in Phase 6), so it's no longer a stub asserter.
+  process.env.MEPH_BRAIN = 'haiku-dev';
   const r = await fetchViaBackend({ model: 'haiku', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }] }, {});
   assert(r.ok === true, 'response.ok is true');
   assert(r.status === 200, 'response.status is 200');
@@ -114,7 +118,7 @@ function parseSSE(text) {
 
   const textEvent = parsed.find(e => e.data.type === 'content_block_delta');
   assert(textEvent.data.delta.text.includes('Ghost Meph stub'), 'stub text identifies itself');
-  assert(textEvent.data.delta.text.includes('cc-agent'), 'stub text echoes selected MEPH_BRAIN value');
+  assert(textEvent.data.delta.text.includes('haiku-dev'), 'stub text echoes selected MEPH_BRAIN value');
 
   // =========================================================================
   // PHASE 4 — unknown backends still respond (don't crash server)
@@ -143,6 +147,43 @@ function parseSSE(text) {
   assert(tParsed.length === 6, `r.text() yields 6 events (got ${tParsed.length})`);
   assert(tParsed[4].data.delta.stop_reason === 'end_turn',
     'r.text() stop_reason matches streamed body');
+
+  // =========================================================================
+  // PHASE 6 — cc-agent backend wiring (GM-2 MVP)
+  // We test only the deterministic paths that don't require the `claude`
+  // CLI to be installed: empty payload -> graceful stub message, and
+  // missing-binary -> graceful Anthropic-shaped error stream.
+  // =========================================================================
+  console.log('\n🤖 Phase 6 — cc-agent backend (GM-2 MVP)');
+
+  process.env.MEPH_BRAIN = 'cc-agent';
+  // Empty payload: no user message → returns a clear "no user message" stub
+  // wrapped as a normal Anthropic SSE response (same envelope, no exception).
+  const r4 = await fetchViaBackend({ messages: [] }, {});
+  assert(r4.ok === true, 'cc-agent with empty payload still returns ok=true');
+  const body4 = await streamToString(r4.body);
+  const parsed4 = parseSSE(body4);
+  const text4 = parsed4.find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
+  assert(text4.includes('no user message'), 'cc-agent surfaces the empty-payload case in plain English');
+  assert(parsed4.find(e => e.data.type === 'message_delta')?.data.delta.stop_reason === 'end_turn',
+    'cc-agent empty-payload response carries stop_reason=end_turn');
+
+  // Missing-binary path: temporarily break PATH so spawn('claude') fails,
+  // then verify we get an Anthropic-shaped error stream (not a thrown exception).
+  // Skip this test if `claude` is on PATH for real — we can't guarantee the
+  // spawn fails. Only assert behavior when we've actively broken PATH.
+  const origPath = process.env.PATH;
+  process.env.PATH = '/nonexistent-bin-dir-for-cc-agent-test';
+  const r5 = await fetchViaBackend(
+    { messages: [{ role: 'user', content: 'hello' }] },
+    {},
+  );
+  process.env.PATH = origPath;
+  assert(r5.ok === true, 'cc-agent with missing `claude` binary still returns ok=true (no thrown exception)');
+  const text5 = parseSSE(await streamToString(r5.body)).find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
+  assert(text5.includes('cc-agent error'), 'cc-agent error message is named and surfaced to caller');
+  assert(text5.includes('claude') || text5.includes('CLI'),
+    'cc-agent error message mentions the missing CLI');
 
   // Cleanup
   delete process.env.MEPH_BRAIN;
