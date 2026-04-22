@@ -190,6 +190,29 @@ function parseSSE(text) {
   assert(text5.includes('claude') || text5.includes('CLI'),
     'cc-agent error message mentions the missing CLI');
 
+  // Spawn-args contract: the argv we hand to `claude` must disable the
+  // built-in tool set (`--tools ""`). Without this, claude can reach for
+  // Bash/Read/Write to sidestep our MCP surface, and every end-to-end
+  // sweep loses its Factor DB instrumentation (no meph_http_request →
+  // no test_pass=1 write). Asserting on args is cheap and catches any
+  // future change that drops the flag.
+  const { buildClaudeStreamJsonSpawnArgs } = await import('./ghost-meph/cc-agent.js');
+  const ccArgs = buildClaudeStreamJsonSpawnArgs('/tmp/fake-config.json');
+  const toolsIdx = ccArgs.indexOf('--tools');
+  assert(toolsIdx >= 0, `cc-agent spawn args include --tools (got ${JSON.stringify(ccArgs)})`);
+  assert(ccArgs[toolsIdx + 1] === '',
+    `cc-agent --tools value is empty string to disable built-ins (got ${JSON.stringify(ccArgs[toolsIdx + 1])})`);
+  const mcpIdx = ccArgs.indexOf('--mcp-config');
+  assert(mcpIdx >= 0 && ccArgs[mcpIdx + 1] === '/tmp/fake-config.json',
+    `cc-agent spawn args wire --mcp-config to the provided path (got ${ccArgs[mcpIdx + 1]})`);
+  const fmtIdx = ccArgs.indexOf('--output-format');
+  assert(fmtIdx >= 0 && ccArgs[fmtIdx + 1] === 'stream-json',
+    `cc-agent spawn args set --output-format=stream-json (got ${ccArgs[fmtIdx + 1]})`);
+  assert(ccArgs.includes('--print') && ccArgs.includes('--verbose'),
+    `cc-agent spawn args include --print + --verbose (required by claude 2.x for stream-json)`);
+  assert(ccArgs.includes('bypassPermissions'),
+    `cc-agent spawn args include bypassPermissions (needed for MCP auto-run)`);
+
   // =========================================================================
   // PHASE 7 — format-bridge (Anthropic ↔ OpenAI translation, GM-4 prereq)
   // =========================================================================

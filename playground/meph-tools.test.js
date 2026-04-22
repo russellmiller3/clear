@@ -933,6 +933,79 @@ const hr5 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/' },
   new MephContext({ isAppRunning: () => true, getRunningPort: () => 1 })));
 assert(hr5.error, `httpRequestTool returns structured error on fetch failure (got ${JSON.stringify(hr5)})`);
 
+// Factor DB write-through: 2xx response on the running app must update
+// test_pass=1 on the most recent compile row. This is the behavior that
+// was only firing in server.js's /api/chat callback — moving it INTO the
+// tool means cc-agent sweeps get the same training signal.
+const { FactorDB: _FactorDB1 } = await import('./supervisor/factor-db.js');
+const fdbPath = join(tmpdir(), `meph-tools-hrtest-${Date.now()}.sqlite`);
+const fdb = new _FactorDB1(fdbPath);
+const compileRowId = fdb.logAction({
+  session_id: 'hr-test',
+  task_type: 'compile_cycle',
+  compile_ok: 1,
+  test_pass: 0,
+});
+const hr6HintState = { lastFactorRowId: compileRowId };
+const hr6Ctx = new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => hrPort,
+  factorDB: fdb,
+  hintState: hr6HintState,
+});
+const hr6 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/api/hello' }, hr6Ctx));
+assert(hr6.status === 200, `httpRequestTool 2xx: status is 200 (got ${hr6.status})`);
+const hrRow = fdb._db.prepare('SELECT test_pass, test_score FROM code_actions WHERE id = ?').get(compileRowId);
+assert(hrRow?.test_pass === 1,
+  `httpRequestTool 2xx updates test_pass=1 on the current compile row (got ${JSON.stringify(hrRow)})`);
+assert(hrRow?.test_score >= 0.9,
+  `httpRequestTool 2xx sets test_score >= 0.9 (got ${hrRow?.test_score})`);
+
+// Non-2xx must NOT update — a 500 response is not a pass signal.
+const errSrv = createServer((req, res) => { res.writeHead(500); res.end('boom'); });
+await new Promise(res => errSrv.listen(0, '127.0.0.1', res));
+const errPort = errSrv.address().port;
+const errRowId = fdb.logAction({ session_id: 'hr-test', task_type: 'compile_cycle', compile_ok: 1, test_pass: 0 });
+const errCtx = new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => errPort,
+  factorDB: fdb,
+  hintState: { lastFactorRowId: errRowId },
+});
+await httpRequestTool({ method: 'GET', path: '/boom' }, errCtx);
+const errRow = fdb._db.prepare('SELECT test_pass FROM code_actions WHERE id = ?').get(errRowId);
+assert(errRow?.test_pass === 0,
+  `httpRequestTool non-2xx leaves test_pass=0 (got ${errRow?.test_pass})`);
+
+// A compile row with compile_ok=0 must NOT be flipped by a 2xx — it's
+// a contradiction to claim tests pass on code that didn't compile. This
+// mirrors the WHERE compile_ok=1 guard in the original /api/chat code.
+const failedCompileRowId = fdb.logAction({ session_id: 'hr-test', task_type: 'compile_cycle', compile_ok: 0, test_pass: 0 });
+const failedCtx = new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => hrPort,
+  factorDB: fdb,
+  hintState: { lastFactorRowId: failedCompileRowId },
+});
+await httpRequestTool({ method: 'GET', path: '/api/hello' }, failedCtx);
+const failedRow = fdb._db.prepare('SELECT test_pass FROM code_actions WHERE id = ?').get(failedCompileRowId);
+assert(failedRow?.test_pass === 0,
+  `httpRequestTool does not flip test_pass on a compile_ok=0 row (got ${failedRow?.test_pass})`);
+
+// No factorDB on ctx → tool still works, does not throw
+const noFdbCtx = new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => hrPort,
+});
+const hr7 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/api/hello' }, noFdbCtx));
+assert(hr7.status === 200,
+  `httpRequestTool works when ctx has no factorDB (got ${JSON.stringify(hr7).slice(0, 80)})`);
+
+// Cleanup
+fdb.close();
+try { rmSync(fdbPath, { force: true }); } catch {}
+await new Promise(res => errSrv.close(res));
+
 // Cleanup
 await new Promise(res => httpSrv.close(res));
 await new Promise(res => textSrv.close(res));
@@ -1017,20 +1090,20 @@ const fakeFactorDB = {
   querySuggestions: () => [],
   _db: { prepare: () => ({ get: () => null }) },
 };
-const fdbCtx = new MephContext({
+const hrFdbCtx = new MephContext({
   source: cleanSrc,
   factorDB: fakeFactorDB,
   sessionId: 'sess-abc',
 });
-const comp6 = JSON.parse(compileTool({}, fdbCtx, compileHelpers));
+const comp6 = JSON.parse(compileTool({}, hrFdbCtx, compileHelpers));
 assert(loggedActions.length === 1,
   `compileTool invokes factorDB.logAction exactly once (got ${loggedActions.length})`);
 assert(loggedActions[0].session_id === 'sess-abc',
   `compileTool logAction carries sessionId (got ${loggedActions[0].session_id})`);
 assert(loggedActions[0].compile_ok === 1,
   'compileTool logAction records compile_ok=1 for clean compile');
-assert(fdbCtx.hintState.lastFactorRowId === 777,
-  `compileTool mirrors logAction return into hintState.lastFactorRowId (got ${fdbCtx.hintState.lastFactorRowId})`);
+assert(hrFdbCtx.hintState.lastFactorRowId === 777,
+  `compileTool mirrors logAction return into hintState.lastFactorRowId (got ${hrFdbCtx.hintState.lastFactorRowId})`);
 
 // --- 7. Factor DB + errors + hint rows: hints attached to result
 let querySuggestionCalls = 0;
