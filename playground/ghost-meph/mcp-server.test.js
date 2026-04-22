@@ -173,6 +173,22 @@ function assert(cond, msg) {
     assert(allNames.includes(expected), `meph_${expected.slice(5)} registered`);
   }
 
+  // Drift guard — every MEPH_TOOLS entry must pass dispatchTool's
+  // validateToolInput without "Unknown tool". If someone adds a tool name to
+  // MEPH_TOOLS that dispatchTool's switch doesn't handle, the MCP server
+  // would expose a tool that always fails. This catches the drift.
+  const { validateToolInput: validate } = await import('../meph-tools.js');
+  for (const t of fullList.result.tools) {
+    const bareName = t.name.replace(/^meph_/, '');
+    // We call validate with an empty object — it may complain about
+    // missing fields, but should NOT complain about "Unknown tool" if the
+    // tool name is in dispatchTool's switch.
+    const err = validate(bareName, {});
+    const recognized = err === null || !err.includes('Unknown tool');
+    assert(recognized,
+      `MEPH_TOOLS.${t.name} — dispatchTool recognizes the bare name "${bareName}" (got "${err?.slice(0, 80)}")`);
+  }
+
   // Happy path: edit_code write → stores source in module state
   const write = await dispatch({
     jsonrpc: '2.0', id: 101, method: 'tools/call',
