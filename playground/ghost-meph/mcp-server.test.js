@@ -268,6 +268,124 @@ function assert(cond, msg) {
   assert(runTestsParsed.ok === false && runTestsParsed.error?.includes('No source code'),
     `meph_run_tests returns structured "No source code" error on empty source (got ${runTestsText.slice(0, 120)})`);
 
+  // =========================================================================
+  // PHASE 6 — runEvalSuite HTTP proxy (cc-agent follow-up to GM-2 step 2d)
+  // Verifies the MCP server proxies run_evals / run_eval back to Studio's
+  // /api/run-eval endpoint when STUDIO_URL is set. Without STUDIO_URL (the
+  // standalone case) a clean error surfaces. With STUDIO_URL we exercise a
+  // local HTTP mock to avoid depending on a real Studio process.
+  // =========================================================================
+  console.log('\n📡 Phase 6 — runEvalSuite HTTP proxy to Studio');
+
+  // --- 6a. Without STUDIO_URL: clear "standalone mode" error
+  delete process.env.STUDIO_URL;
+  _resetMcpState();
+  // Store source first so the tool doesn't short-circuit on empty-source
+  await dispatch({
+    jsonrpc: '2.0', id: 600, method: 'tools/call',
+    params: { name: 'meph_edit_code', arguments: { action: 'write', code: "on GET '/':\n  send 'hi'\n" } },
+  }, registry);
+  const standaloneEvals = await dispatch({
+    jsonrpc: '2.0', id: 601, method: 'tools/call',
+    params: { name: 'meph_run_evals', arguments: {} },
+  }, registry);
+  const standaloneText = standaloneEvals.result.content[0].text;
+  const standaloneParsed = JSON.parse(standaloneText);
+  assert(standaloneParsed.ok === false && standaloneParsed.error?.includes('STUDIO_URL'),
+    `meph_run_evals without STUDIO_URL returns clear error naming the missing env var (got ${standaloneText.slice(0, 150)})`);
+
+  // --- 6b. With STUDIO_URL pointing at a mock server: proxy round-trips
+  const { createServer } = await import('http');
+  let lastProxyRequest = null;
+  const mockStudio = createServer((req, res) => {
+    // Only serve /api/run-eval for this test; everything else is 404.
+    if (req.method !== 'POST' || req.url !== '/api/run-eval') {
+      res.writeHead(404); res.end(); return;
+    }
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        lastProxyRequest = JSON.parse(body);
+      } catch {
+        lastProxyRequest = { parse_error: body };
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        results: [
+          { id: 'spec-one', status: 'pass', feedback: 'mocked' },
+        ],
+        passed: 1,
+        failed: 0,
+        duration: 123,
+      }));
+    });
+  });
+  await new Promise(r => mockStudio.listen(0, '127.0.0.1', r));
+  const mockPort = mockStudio.address().port;
+  process.env.STUDIO_URL = `http://127.0.0.1:${mockPort}`;
+
+  const proxied = await dispatch({
+    jsonrpc: '2.0', id: 602, method: 'tools/call',
+    params: { name: 'meph_run_evals', arguments: {} },
+  }, registry);
+  const proxiedText = proxied.result.content[0].text;
+  const proxiedParsed = JSON.parse(proxiedText);
+  assert(proxiedParsed.ok === true && proxiedParsed.passed === 1,
+    `meph_run_evals with STUDIO_URL round-trips the mock's response (got ${proxiedText.slice(0, 150)})`);
+  assert(lastProxyRequest && typeof lastProxyRequest.source === 'string',
+    `meph_run_evals forwards source to Studio /api/run-eval (got keys: ${lastProxyRequest ? Object.keys(lastProxyRequest).join(',') : 'no request'})`);
+  assert(lastProxyRequest.source.includes("send 'hi'"),
+    'source in the proxied request matches MCP module state from the prior meph_edit_code write');
+  assert(lastProxyRequest.id === undefined,
+    'meph_run_evals (full suite) does NOT send an id field');
+
+  // --- 6c. meph_run_eval (single spec) forwards the id
+  const proxiedOne = await dispatch({
+    jsonrpc: '2.0', id: 603, method: 'tools/call',
+    params: { name: 'meph_run_eval', arguments: { id: 'spec-one' } },
+  }, registry);
+  const proxiedOneText = proxiedOne.result.content[0].text;
+  const proxiedOneParsed = JSON.parse(proxiedOneText);
+  assert(proxiedOneParsed.ok === true,
+    `meph_run_eval single-spec via proxy returns ok=true (got ${proxiedOneText.slice(0, 120)})`);
+  assert(lastProxyRequest.id === 'spec-one',
+    `meph_run_eval forwards the id field to Studio (got ${lastProxyRequest.id})`);
+
+  // --- 6d. Studio returns 500 → graceful error surface
+  await new Promise(r => mockStudio.close(r));
+  const errServer = createServer((req, res) => {
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('evalChild crashed');
+  });
+  await new Promise(r => errServer.listen(0, '127.0.0.1', r));
+  const errPort = errServer.address().port;
+  process.env.STUDIO_URL = `http://127.0.0.1:${errPort}`;
+  const errResp = await dispatch({
+    jsonrpc: '2.0', id: 604, method: 'tools/call',
+    params: { name: 'meph_run_evals', arguments: {} },
+  }, registry);
+  const errText = errResp.result.content[0].text;
+  const errParsed = JSON.parse(errText);
+  assert(errParsed.ok === false && errParsed.error?.includes('500'),
+    `meph_run_evals surfaces Studio 5xx errors as {ok:false, error} (got ${errText.slice(0, 150)})`);
+  await new Promise(r => errServer.close(r));
+
+  // --- 6e. Studio unreachable → clean proxy-failed error
+  process.env.STUDIO_URL = 'http://127.0.0.1:1';  // reserved port → connection refused
+  const unreach = await dispatch({
+    jsonrpc: '2.0', id: 605, method: 'tools/call',
+    params: { name: 'meph_run_evals', arguments: {} },
+  }, registry);
+  const unreachText = unreach.result.content[0].text;
+  const unreachParsed = JSON.parse(unreachText);
+  assert(unreachParsed.ok === false && unreachParsed.error?.includes('proxy failed'),
+    `meph_run_evals surfaces unreachable Studio as "Studio proxy failed" (got ${unreachText.slice(0, 150)})`);
+
+  // Cleanup
+  delete process.env.STUDIO_URL;
+
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 })();

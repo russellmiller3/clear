@@ -116,12 +116,44 @@ function buildHelpers() {
     // MCP server can run run_tests + list_evals without starting Studio.
     parseTestOutput,
     compileForEval: (source) => _compileForEval(source, compileProgram),
-    // runEvalSuite still stays null — it manages an evalChild subprocess
-    // lifecycle tied to Studio's internal state (evalChild, evalChildPort,
-    // evalChildAuthScheme). Extracting that is a bigger refactor because
-    // the child needs its own port allocation and auth bootstrap. The
-    // run_evals / run_eval tools in MCP mode throw on calling undefined;
-    // surface it via a clean "not available" error below.
+    // runEvalSuite proxies back to Studio's /api/run-eval endpoint when
+    // STUDIO_URL is set in the MCP child's env. Studio owns the
+    // evalChild subprocess lifecycle (spawn, port 4999, auth bootstrap,
+    // grader calls); we just forward {source, id} and unwrap the JSON
+    // result. In cc-agent mode the cc-agent.js config writer sets
+    // STUDIO_URL automatically. Without it, we return a clean error.
+    runEvalSuite: async (source, id, onProgress) => {
+      const studioUrl = process.env.STUDIO_URL;
+      if (!studioUrl) {
+        return {
+          ok: false,
+          error: 'MCP server has no STUDIO_URL set — run_evals / run_eval not available in standalone mode. Set STUDIO_URL to the Studio host (e.g. http://localhost:3456) in the MCP config env.',
+        };
+      }
+      // onProgress callbacks can't cross the HTTP boundary cleanly
+      // (Studio would need SSE + we'd need to parse it) so we drop them
+      // here. Meph gets the final aggregate result; per-spec progress
+      // happens in Studio's terminal pane and is visible there.
+      try {
+        const res = await fetch(`${studioUrl}/api/run-eval`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source, id }),
+          // 5-minute cap matches Studio's own test runner; eval suites
+          // can exceed this but the 180s-per-spec default × up to 17
+          // specs = ~50 minutes worst case. If Meph hits the cap it's
+          // a real signal the suite is too big for one call.
+          signal: AbortSignal.timeout(300000),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          return { ok: false, error: `Studio /api/run-eval returned ${res.status}: ${text.slice(0, 200)}` };
+        }
+        return await res.json();
+      } catch (err) {
+        return { ok: false, error: `Studio proxy failed: ${err.message}` };
+      }
+    },
   };
 }
 

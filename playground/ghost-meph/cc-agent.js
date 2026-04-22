@@ -172,11 +172,19 @@ export function writeMcpConfigOrNull() {
     const dir = join(tmpdir(), 'ghost-meph-mcp-configs');
     mkdirSync(dir, { recursive: true });
     const configPath = join(dir, `config-${Date.now()}-${process.pid}.json`);
+    // STUDIO_URL tells the MCP child how to proxy tools that need live
+    // Studio infrastructure (specifically run_tests + run_evals, which both
+    // depend on the evalChild subprocess lifecycle the MCP child can't
+    // own on its own). When absent, those tools fail clean with a
+    // "backend not available" error from the MCP server.
+    const studioPort = process.env.PORT || '3456';
+    const studioUrl = `http://localhost:${studioPort}`;
     const config = {
       mcpServers: {
         meph: {
           command: 'node',
           args: [MCP_SERVER_PATH],
+          env: { STUDIO_URL: studioUrl },
         },
       },
     };
