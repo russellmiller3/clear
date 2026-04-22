@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3409,33 +3409,10 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ error: 'action must be "set" or "get"' });
       }
 
-      case 'browse_templates': {
-        const TEMPLATE_DIR = join(ROOT_DIR, 'apps');
-        if (input.action === 'list') {
-          try {
-            const dirs = readdirSync(TEMPLATE_DIR).filter(d => {
-              try { return statSync(join(TEMPLATE_DIR, d)).isDirectory(); } catch { return false; }
-            });
-            const templates = dirs.map(d => {
-              const mainFile = join(TEMPLATE_DIR, d, 'main.clear');
-              if (!existsSync(mainFile)) return null;
-              const src = readFileSync(mainFile, 'utf8');
-              const firstComment = src.match(/^#\s*(.+)/m);
-              const lineCount = src.split('\n').filter(l => l.trim()).length;
-              return { name: d, description: firstComment?.[1] || '', lines: lineCount };
-            }).filter(Boolean);
-            return JSON.stringify({ templates, count: templates.length });
-          } catch (e) { return JSON.stringify({ error: e.message }); }
-        }
-        if (input.action === 'read') {
-          if (!input.name) return JSON.stringify({ error: 'Need a template name. Use action="list" first to see available templates.' });
-          const safeName = input.name.replace(/[^a-zA-Z0-9_-]/g, '');
-          const mainFile = join(TEMPLATE_DIR, safeName, 'main.clear');
-          if (!existsSync(mainFile)) return JSON.stringify({ error: `Template "${safeName}" not found. Use action="list" to see available templates.` });
-          return JSON.stringify({ name: safeName, source: readFileSync(mainFile, 'utf8') });
-        }
-        return JSON.stringify({ error: 'action must be "list" or "read"' });
-      }
+      case 'browse_templates':
+        // Extracted to playground/meph-tools.js (GM-2 port). Stateless aside
+        // from rootDir.
+        return browseTemplatesTool(input, new MephContext({ rootDir: ROOT_DIR }));
 
       default:
         return JSON.stringify({ error: 'Unknown tool: ' + name });
