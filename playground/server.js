@@ -29,7 +29,11 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool, compileTool } from './meph-tools.js';
+// dispatchTool is the post-GM-2 single entry point for every Meph tool call.
+// The runTestsTool import stays alongside because /api/run-tests (the Studio
+// UI button) bypasses dispatchTool — it doesn't want the Meph-facing tab-
+// switch SSE events since the UI is already on the Tests pane.
+import { validateToolInput, describeMephTool, dispatchTool, runTestsTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -2736,338 +2740,105 @@ app.post('/api/chat', async (req, res) => {
   // Tool execution. `validateToolInput` and `describeMephTool` extracted to
   // `playground/meph-tools.js` (GM-2 step 2) so the future MCP server can
   // share them. Both are pure functions — no closure access. The much larger
-  // `executeTool` below stays inline because it accesses ~12 closure vars
-  // (currentSource, _factorDB, sessionId, send, termLog, ...); separate
-  // refactor step.
-
+  // GM-2 executeTool extraction complete: every tool body lives in
+  // playground/meph-tools.js and the 28-case switch is gone. /api/chat
+  // builds one fat MephContext with every callback wired to its closure
+  // state, hands it to dispatchTool, and mirrors back the state fields
+  // tools mutated (lastCompileResult, hintState, mephTodos, etc.).
   async function executeTool(name, input) {
     termLog(`[meph] ${describeMephTool(name, input)}`);
+    // Validate here so the [meph] ✗ schema error terminal line still lands
+    // on failures (the dispatcher also validates, so we double-check, but
+    // the duplication is cheap and the user-facing log matters).
     const validationError = validateToolInput(name, input);
     if (validationError) {
       termLog(`[meph] ✗ schema error: ${validationError}`);
       return JSON.stringify({ error: validationError, schemaError: true });
     }
-    switch (name) {
-      case 'edit_code': {
-        // Extracted to playground/meph-tools.js (GM-2 step 3a). Build a
-        // MephContext that reflects /api/chat's mutable closure state and
-        // hook the onSourceChange/onErrorsChange callbacks to mirror back
-        // into _workerLastSource/_workerLastErrors for supervisor polling.
-        // _sourceBeforeEdit is captured automatically inside ctx.setSource().
-        const ctx = new MephContext({
-          source: currentSource,
-          errors: currentErrors,
-          send,
-          onSourceChange: (s) => {
-            _workerLastSource = s;
-            currentSource = s;
-            _sourceBeforeEdit = ctx.sourceBeforeEdit;
-          },
-          onErrorsChange: (e) => {
-            _workerLastErrors = e;
-            currentErrors = e;
-          },
-        });
-        const result = editCodeTool(input, ctx, compileProgram);
-        if (ctx.lastCompileResult) lastCompileResult = ctx.lastCompileResult;
-        return result;
-      }
-
-      case 'compile': {
-        // Extracted to playground/meph-tools.js (GM-2 port — the biggest
-        // one). The Factor DB trajectory row, hint retrieval, reranker
-        // hand-off, and context-size optimizations all live in compileTool
-        // now. MephContext carries the stateful bits (factorDB, sessionId,
-        // sessionSteps, pairwiseBundle, ebmBundle, hintState); helpers
-        // carry the pure functions the tool needs.
-        //
-        // hintState is passed by reference so the tool's writes mirror
-        // back into /api/chat's closure vars automatically — no explicit
-        // setter callbacks needed.
-        const ctx = new MephContext({
-          source: currentSource,
-          errors: currentErrors,
-          sourceBeforeEdit: _sourceBeforeEdit || '',
-          factorDB: _factorDB,
-          sessionId,
-          sessionSteps,
-          pairwiseBundle: _pairwiseBundle,
-          ebmBundle: _ebmBundle,
-          hintState: {
-            lastFactorRowId: _lastFactorRowId,
-            hintsInjectedRowId: _hintsInjectedRowId,
-            hintsInjectedErrorCount: _hintsInjectedErrorCount,
-            hintsInjectedTier: _hintsInjectedTier,
-            postHintMinErrorCount: _postHintMinErrorCount,
-          },
-          onErrorsChange: (e) => {
-            _workerLastErrors = e;
-            currentErrors = e;
-          },
-        });
-        const helpers = {
-          compileProgram,
-          sha1: _sha1,
-          currentStep: _currentStep,
-          safeArchetype: _safeArchetype,
-          classifyErrorCategory: _classifyErrorCategory,
-          rankPairwise: _rankPairwise,
-          rankEBM: _rankEBM,
-          featurizeRow: _featurizeRow,
-        };
-        const result = compileTool(input, ctx, helpers);
-        // Mirror the updated compile + hint state back into the closure.
-        if (ctx.lastCompileResult) lastCompileResult = ctx.lastCompileResult;
-        _lastFactorRowId = ctx.hintState.lastFactorRowId;
-        _hintsInjectedRowId = ctx.hintState.hintsInjectedRowId;
-        _hintsInjectedErrorCount = ctx.hintState.hintsInjectedErrorCount;
-        _hintsInjectedTier = ctx.hintState.hintsInjectedTier;
-        _postHintMinErrorCount = ctx.hintState.postHintMinErrorCount;
-        return result;
-      }
-
-      case 'run_command':
-        // Extracted to playground/meph-tools.js (GM-2 port). Pass the
-        // closure-level ALLOWED_PREFIXES through so the security policy
-        // stays in /api/chat's hands.
-        return runCommandTool(input, new MephContext({
-          rootDir: ROOT_DIR,
-          allowedCommandPrefixes: ALLOWED_PREFIXES,
-        }));
-
-      case 'run_app': {
-        // Extracted to playground/meph-tools.js (GM-2 port). The closure
-        // owns runningChild + runningPort; MephContext exposes them via
-        // callbacks so the tool can stay subprocess-aware without closing
-        // over server.js internals.
-        const ctx = new MephContext({
-          lastCompileResult,
-          buildDir: BUILD_DIR,
-          rootDir: ROOT_DIR,
-          getRunningChild: () => runningChild,
-          setRunningChild: (c) => { runningChild = c; },
-          allocatePort: () => {
-            runningPort++;
-            if (runningPort > 4100) runningPort = 4001;
-            return runningPort;
-          },
-        });
-        return runAppTool(input, ctx);
-      }
-
-      case 'stop_app':
-        // Extracted to playground/meph-tools.js. ctx.stopRunningApp()
-        // closes over /api/run's runningChild singleton.
-        return stopAppTool(input, new MephContext({
-          stopRunningApp: () => {
-            if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
-          },
-        }));
-
-      case 'read_file':
-        // Extracted to playground/meph-tools.js so the MCP server's
-        // meph_read_file handler can share the implementation. See
-        // GM-2 step 3a in plan-ghost-meph-cc-agent-tool-use-04-21-2026.md.
-        return readFileTool(input, { rootDir: ROOT_DIR });
-
-      case 'edit_file':
-        // Extracted to playground/meph-tools.js (GM-2 port). All ~80 lines
-        // of the action switch + safety checks live there now; this is a
-        // 1-line MephContext call.
-        return editFileTool(input, new MephContext({ rootDir: ROOT_DIR }));
-
-      case 'read_terminal':
-        // Extracted to playground/meph-tools.js. Mirror /api/chat's
-        // closure-level diagnostic buffers into the MephContext as
-        // read-only arrays; the tool just slices the tail.
-        return readTerminalTool(input, new MephContext({ terminal: terminalBuffer, frontendErrors }));
-
-      case 'screenshot_output': {
-        // Extracted to playground/meph-tools.js (GM-2 port). Previously this
-        // case returned a dead marker and the loop below special-cased the
-        // tool to run inline screenshot logic; now both call sites (executeTool
-        // AND the loop) converge on screenshotOutputTool. Playwright stays
-        // imported only in server.js — the tool function calls ctx.getPage()
-        // which /api/chat hooks to the closure-level chromium launch.
-        const screenshotCtx = new MephContext({
-          isAppRunning: () => !!runningChild,
-          getPage: () => getPage(),
-          getRunningPort: () => runningPort,
-        });
-        return await screenshotOutputTool(input, screenshotCtx);
-      }
-
-      case 'http_request': {
-        // Extracted to playground/meph-tools.js (GM-2 port). The previous
-        // marker + loop-special-case dance was a workaround from when
-        // executeTool was sync; executeTool is async now so http_request
-        // flows through here like every other tool.
-        const ctx = new MephContext({
-          isAppRunning: () => !!runningChild,
-          getRunningPort: () => runningPort,
-        });
-        return httpRequestTool(input, ctx);
-      }
-
-      case 'source_map': {
-        // Extracted to playground/meph-tools.js with the new MephContext
-        // shape — first stateful tool to use the context object pattern.
-        // GM-2 step 3a continued. compileProgram passed in as the third
-        // arg so meph-tools.js stays free of compiler imports.
-        const ctx = new MephContext({ source: currentSource });
-        return sourceMapTool(input, ctx, compileProgram);
-      }
-
-      case 'highlight_code':
-        // Extracted to playground/meph-tools.js — UI-only ack; actual highlight
-        // effect is still emitted via send({type:'highlight',...}) in the
-        // post-execution block below. GM-2 step 3a port.
-        return highlightCodeTool(input);
-
-      case 'patch_code': {
-        // Extracted to playground/meph-tools.js (GM-2 port). Same MephContext
-        // shape as edit_code — onSourceChange mirrors back into the closure.
-        const ctx = new MephContext({
-          source: currentSource,
-          send,
-          onSourceChange: (s) => {
-            _workerLastSource = s;
-            currentSource = s;
-            _sourceBeforeEdit = ctx.sourceBeforeEdit;
-          },
-        });
-        return patchCodeTool(input, ctx, patch);
-      }
-
-      case 'run_tests': {
-        // Extracted to playground/meph-tools.js (GM-2 port). The subprocess
-        // + parser live there; executeTool keeps the UI tab-switching and
-        // SSE emission because those are Studio-specific (MCP callers
-        // won't need them).
-        const ctx = new MephContext({
-          source: currentSource,
-          rootDir: ROOT_DIR,
-          buildDir: BUILD_DIR,
-          apiKey: storedApiKey || null,
-        });
-        const testResult = runTestsTool(input, ctx, parseTestOutput);
-        send({ type: 'switch_tab', tab: 'tests' });
-        send({ type: 'test_results', testType: 'app', ...testResult });
-        return JSON.stringify(testResult);
-      }
-
-      case 'list_evals':
-        // Extracted to playground/meph-tools.js. compileForEval passed in
-        // so meph-tools.js doesn't need the eval-specific compile import.
-        return listEvalsTool(input, new MephContext({ source: currentSource }), compileForEval);
-
-      case 'run_evals': {
-        // Extracted to playground/meph-tools.js (GM-2 port). The tab-switch
-        // SSE stays out here because it's Studio-specific; the tool emits
-        // per-spec eval_row events through ctx.send and returns the final
-        // aggregate object for executeTool to fan out + stringify.
-        send({ type: 'switch_tab', tab: 'tests' });
-        const ctx = new MephContext({ source: currentSource, send });
-        const evalResult = await runEvalsTool(input, ctx, runEvalSuite);
-        send({ type: 'eval_results', ...evalResult });
-        return JSON.stringify(evalResult);
-      }
-
-      case 'run_eval': {
-        // Extracted to playground/meph-tools.js (GM-2 port). Same ctx shape
-        // as run_evals; the tool's missing-id guard returns a structured
-        // error so the existing Meph-hallucinates-no-id failure path stays
-        // identical.
-        send({ type: 'switch_tab', tab: 'tests' });
-        const ctx = new MephContext({ source: currentSource, send });
-        const evalResult = await runEvalTool(input, ctx, runEvalSuite);
-        send({ type: 'eval_results', ...evalResult });
-        return JSON.stringify(evalResult);
-      }
-
-      // Bridge tools (click_element, fill_input, inspect_element, read_storage,
-      // read_dom) all share the same shape — extracted to playground/meph-tools.js
-      // (GM-2 port). Build a single MephContext with isAppRunning + sendBridgeCommand
-      // wired to /api/run's runningChild + sendBridgeCommandFromServer.
-      case 'click_element':
-      case 'fill_input':
-      case 'inspect_element':
-      case 'read_storage':
-      case 'read_dom': {
-        const bridgeCtx = new MephContext({
-          isAppRunning: () => !!runningChild,
-          sendBridgeCommand: (cmd, payload, timeoutMs) =>
-            sendBridgeCommandFromServer(send, cmd, payload, timeoutMs),
-        });
-        switch (name) {
-          case 'click_element':   return await clickElementTool(input, bridgeCtx);
-          case 'fill_input':      return await fillInputTool(input, bridgeCtx);
-          case 'inspect_element': return await inspectElementTool(input, bridgeCtx);
-          case 'read_storage':    return await readStorageTool(input, bridgeCtx);
-          case 'read_dom':        return await readDomTool(input, bridgeCtx);
-        }
-      }
-
-      case 'read_network': {
-        // Extracted to playground/meph-tools.js (GM-2 port). Browser
-        // connection ensured here (the tool can't await getPage from
-        // inside meph-tools.js — that's Studio plumbing) before
-        // delegating.
-        if (runningChild) await getPage();
-        return readNetworkTool(input, new MephContext({
-          isAppRunning: () => !!runningChild,
-          networkBuffer: _networkBuffer,
-        }));
-      }
-
-      // inspect_element + read_storage handled in the unified bridge-tools
-      // case above (extracted to playground/meph-tools.js).
-
-      case 'read_actions':
-        // Extracted to playground/meph-tools.js (GM-2 port). Default
-        // mephActionsUrl computed from process.env.PORT in MephContext.
-        return await readActionsTool(input, new MephContext());
-
-      // read_dom handled in the unified bridge-tools case above.
-
-      case 'websocket_log': {
-        // Extracted to playground/meph-tools.js. Same browser-ensure pattern
-        // as read_network.
-        if (runningChild) await getPage();
-        return websocketLogTool(input, new MephContext({
-          isAppRunning: () => !!runningChild,
-          websocketBuffer: _websocketBuffer,
-        }));
-      }
-
-      case 'db_inspect':
-        // Extracted to playground/meph-tools.js (GM-2 port). Dynamic
-        // import of better-sqlite3 happens inside the tool now, not here.
-        return await dbInspectTool(input, new MephContext({
-          isAppRunning: () => !!runningChild,
-          buildDir: BUILD_DIR,
-        }));
-
-      case 'todo': {
-        // Extracted to playground/meph-tools.js. Mirror mephTodos closure
-        // var through onTodosChange so other code paths that read mephTodos
-        // see the latest value.
-        const todoCtx = new MephContext({
-          todos: mephTodos,
-          send,
-          onTodosChange: (t) => { mephTodos = t; },
-        });
-        return todoTool(input, todoCtx);
-      }
-
-      case 'browse_templates':
-        // Extracted to playground/meph-tools.js (GM-2 port). Stateless aside
-        // from rootDir.
-        return browseTemplatesTool(input, new MephContext({ rootDir: ROOT_DIR }));
-
-      default:
-        return JSON.stringify({ error: 'Unknown tool: ' + name });
-    }
+    // Build one MephContext that covers every tool's state slice. Tools
+    // only read the fields they care about — unused callbacks sit as safe
+    // no-op defaults. Callbacks that reference `ctx` (for sourceBeforeEdit
+    // capture) resolve lazily when fired, so constructing ctx once at the
+    // top is safe.
+    const ctx = new MephContext({
+      source: currentSource,
+      errors: currentErrors,
+      sourceBeforeEdit: _sourceBeforeEdit || '',
+      lastCompileResult,
+      send,
+      termLog,
+      terminal: terminalBuffer,
+      frontendErrors,
+      networkBuffer: _networkBuffer,
+      websocketBuffer: _websocketBuffer,
+      rootDir: ROOT_DIR,
+      buildDir: BUILD_DIR,
+      allowedCommandPrefixes: ALLOWED_PREFIXES,
+      apiKey: storedApiKey || null,
+      todos: mephTodos,
+      onTodosChange: (t) => { mephTodos = t; },
+      onSourceChange: (s) => {
+        _workerLastSource = s;
+        currentSource = s;
+        _sourceBeforeEdit = ctx.sourceBeforeEdit;
+      },
+      onErrorsChange: (e) => {
+        _workerLastErrors = e;
+        currentErrors = e;
+      },
+      isAppRunning: () => !!runningChild,
+      sendBridgeCommand: (cmd, payload, timeoutMs) =>
+        sendBridgeCommandFromServer(send, cmd, payload, timeoutMs),
+      stopRunningApp: () => {
+        if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
+      },
+      getPage: () => getPage(),
+      getRunningPort: () => runningPort,
+      getRunningChild: () => runningChild,
+      setRunningChild: (c) => { runningChild = c; },
+      allocatePort: () => {
+        runningPort++;
+        if (runningPort > 4100) runningPort = 4001;
+        return runningPort;
+      },
+      // Compile-tool state
+      factorDB: _factorDB,
+      sessionId,
+      sessionSteps,
+      pairwiseBundle: _pairwiseBundle,
+      ebmBundle: _ebmBundle,
+      hintState: {
+        lastFactorRowId: _lastFactorRowId,
+        hintsInjectedRowId: _hintsInjectedRowId,
+        hintsInjectedErrorCount: _hintsInjectedErrorCount,
+        hintsInjectedTier: _hintsInjectedTier,
+        postHintMinErrorCount: _postHintMinErrorCount,
+      },
+    });
+    const helpers = {
+      compileProgram,
+      compileForEval,
+      patch,
+      parseTestOutput,
+      runEvalSuite,
+      sha1: _sha1,
+      currentStep: _currentStep,
+      safeArchetype: _safeArchetype,
+      classifyErrorCategory: _classifyErrorCategory,
+      rankPairwise: _rankPairwise,
+      rankEBM: _rankEBM,
+      featurizeRow: _featurizeRow,
+    };
+    const result = await dispatchTool(name, input, ctx, helpers);
+    // Mirror state the tools mutated on ctx back to the closure. Each
+    // tool only writes the slice it cares about, so this covers them all.
+    if (ctx.lastCompileResult) lastCompileResult = ctx.lastCompileResult;
+    _lastFactorRowId = ctx.hintState.lastFactorRowId;
+    _hintsInjectedRowId = ctx.hintState.hintsInjectedRowId;
+    _hintsInjectedErrorCount = ctx.hintState.hintsInjectedErrorCount;
+    _hintsInjectedTier = ctx.hintState.hintsInjectedTier;
+    _postHintMinErrorCount = ctx.hintState.postHintMinErrorCount;
+    return result;
   }
 
   // Async HTTP request tool

@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool, compileTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool, compileTool, dispatchTool } from './meph-tools.js';
 import { existsSync, mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -1119,6 +1119,71 @@ const throwingHelpers = {
 const comp11 = JSON.parse(compileTool({}, new MephContext({ source: 'x' }), throwingHelpers));
 assert(comp11.error?.includes('synthetic compile crash'),
   `compileTool catches compiler throws and returns { error } (got ${JSON.stringify(comp11)})`);
+
+console.log('\n🧭 dispatchTool\n');
+
+// Unknown tool names are caught by the validator (schemaError path) BEFORE
+// dispatchTool's default case runs. This is the stronger guard — we don't
+// want an unknown tool to silently run; we want a clear rejection.
+const dt1 = JSON.parse(await dispatchTool('definitely_not_a_tool', {},
+  new MephContext(), {}));
+assert(dt1.schemaError === true && dt1.error?.includes('Unknown tool'),
+  `dispatchTool rejects unknown tool names with schemaError=true (got ${JSON.stringify(dt1)})`);
+
+// Schema error: unknown input shape is rejected up front
+const dt2 = JSON.parse(await dispatchTool('edit_code', { action: 'write' },
+  new MephContext(), { compileProgram: () => ({ errors: [], warnings: [] }) }));
+assert(dt2.schemaError === true && dt2.error?.includes('"code" string'),
+  'dispatchTool returns { schemaError: true } when validateToolInput rejects input');
+
+// Routing: highlight_code (stateless, lightest tool) goes through and returns ack
+const dt3 = JSON.parse(await dispatchTool('highlight_code', { start_line: 3, end_line: 5 },
+  new MephContext(), {}));
+assert(dt3.ok === true, `dispatchTool routes highlight_code and returns ack (got ${JSON.stringify(dt3)})`);
+
+// Routing: read_file succeeds against the real repo. SYNTAX.md may be small
+// enough for full content OR large enough to return a TOC — both shapes
+// prove the routing works.
+const dt4 = JSON.parse(await dispatchTool('read_file', { filename: 'SYNTAX.md' },
+  new MephContext({ rootDir: REPO_ROOT }), {}));
+const dt4Delivered = (typeof dt4.content === 'string' && dt4.content.length > 0)
+                  || (dt4.mode === 'toc' && typeof dt4.toc === 'string');
+assert(dt4Delivered,
+  `dispatchTool routes read_file and returns either content or toc (got keys: ${Object.keys(dt4).join(',')})`);
+
+// Routing: todo tool (action=get) flows through ctx
+const dt5 = JSON.parse(await dispatchTool('todo', { action: 'get' },
+  new MephContext({ todos: [{ content: 'x', status: 'pending', activeForm: 'doing x' }] }), {}));
+assert(Array.isArray(dt5.todos) && dt5.todos.length === 1,
+  `dispatchTool routes todo and reads ctx.todos (got ${JSON.stringify(dt5)})`);
+
+// Routing: run_tests tab-switch side-effect happens through ctx.send
+const dtSends = [];
+const dtTmp = mkdtempSync(join(tmpdir(), 'meph-dispatch-'));
+await dispatchTool('run_tests', {},
+  new MephContext({
+    source: '', // will short-circuit on "No source code"
+    rootDir: REPO_ROOT,
+    buildDir: dtTmp,
+    send: (ev) => dtSends.push(ev),
+  }),
+  { parseTestOutput: () => ({ passed: 0, failed: 0, results: [] }) });
+const hasTabSwitch = dtSends.some(e => e.type === 'switch_tab' && e.tab === 'tests');
+const hasResults = dtSends.some(e => e.type === 'test_results');
+assert(hasTabSwitch, `dispatchTool run_tests fires switch_tab=tests through ctx.send (got ${JSON.stringify(dtSends.map(e => e.type))})`);
+assert(hasResults, 'dispatchTool run_tests fires test_results through ctx.send after the tool returns');
+try { rmSync(dtTmp, { recursive: true, force: true }); } catch {}
+
+// Routing: run_evals fires tab-switch + eval_results through ctx.send
+const dtEvalSends = [];
+const fakeSuiteForDispatch = async () => ({ ok: true, passed: 3, failed: 0 });
+await dispatchTool('run_evals', {},
+  new MephContext({ source: 'x', send: (ev) => dtEvalSends.push(ev) }),
+  { runEvalSuite: fakeSuiteForDispatch });
+assert(dtEvalSends.some(e => e.type === 'switch_tab' && e.tab === 'tests'),
+  'dispatchTool run_evals fires switch_tab=tests');
+assert(dtEvalSends.some(e => e.type === 'eval_results'),
+  'dispatchTool run_evals fans out eval_results through ctx.send');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

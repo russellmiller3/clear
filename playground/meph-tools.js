@@ -29,6 +29,162 @@ import { join } from 'path';
 import { execSync, spawn } from 'child_process';
 
 /**
+ * Top-level tool dispatcher. Routes a validated tool_use to the right
+ * per-tool function, threading ctx + helpers through. Replaces the ~330-line
+ * inline switch that used to live inside /api/chat's executeTool closure in
+ * playground/server.js.
+ *
+ * Contract:
+ *   - `name` is the tool name exactly as the model emitted it.
+ *   - `input` is the validated-or-not input object. dispatchTool runs the
+ *     schema validator first and short-circuits on failure, so callers don't
+ *     need to re-validate.
+ *   - `ctx` is ONE MephContext with every callback + state slice wired up.
+ *     Tools only read the fields they care about; unrelated defaults are
+ *     no-ops. No per-tool sub-contexts to build at the call site.
+ *   - `helpers` is the pure-function bundle: compileProgram, compileForEval,
+ *     patch, parseTestOutput, runEvalSuite, plus the reranker/Factor-DB
+ *     helpers. These are injected (not imported inside meph-tools.js) so
+ *     the module stays free of heavy deps.
+ *
+ * Side effects:
+ *   - Tools that need to surface progress to the Studio UI (run_tests,
+ *     run_evals, run_eval) emit their own SSE events through ctx.send —
+ *     dispatchTool only does the tab-switch wrapper sends. In an MCP/CC
+ *     context where ctx.send is a no-op, nothing UI-shaped leaks out.
+ *   - Closure state mirroring (e.g. compile's hintState, edit_code's
+ *     lastCompileResult) happens INSIDE the tool on the ctx object;
+ *     server.js reads ctx.* after dispatchTool returns and mirrors back
+ *     into its closure vars.
+ *
+ * @param {string} name
+ * @param {object} input
+ * @param {MephContext} ctx
+ * @param {object} helpers
+ * @returns {Promise<string|object|Array>} tool_result content
+ */
+export async function dispatchTool(name, input, ctx, helpers) {
+  const validationError = validateToolInput(name, input);
+  if (validationError) {
+    return JSON.stringify({ error: validationError, schemaError: true });
+  }
+  switch (name) {
+    case 'edit_code':
+      return editCodeTool(input, ctx, helpers.compileProgram);
+
+    case 'compile':
+      return compileTool(input, ctx, {
+        compileProgram: helpers.compileProgram,
+        sha1: helpers.sha1,
+        currentStep: helpers.currentStep,
+        safeArchetype: helpers.safeArchetype,
+        classifyErrorCategory: helpers.classifyErrorCategory,
+        rankPairwise: helpers.rankPairwise,
+        rankEBM: helpers.rankEBM,
+        featurizeRow: helpers.featurizeRow,
+      });
+
+    case 'run_command':
+      return runCommandTool(input, ctx);
+
+    case 'run_app':
+      return runAppTool(input, ctx);
+
+    case 'stop_app':
+      return stopAppTool(input, ctx);
+
+    case 'read_file':
+      return readFileTool(input, ctx);
+
+    case 'edit_file':
+      return editFileTool(input, ctx);
+
+    case 'read_terminal':
+      return readTerminalTool(input, ctx);
+
+    case 'screenshot_output':
+      return await screenshotOutputTool(input, ctx);
+
+    case 'http_request':
+      return await httpRequestTool(input, ctx);
+
+    case 'source_map':
+      return sourceMapTool(input, ctx, helpers.compileProgram);
+
+    case 'highlight_code':
+      return highlightCodeTool(input);
+
+    case 'patch_code':
+      return patchCodeTool(input, ctx, helpers.patch);
+
+    case 'run_tests': {
+      const testResult = runTestsTool(input, ctx, helpers.parseTestOutput);
+      // Tab switch + test_results fan-out are Studio-specific niceties; in an
+      // MCP/CC context these are no-ops because ctx.send defaults to () => {}.
+      ctx.send({ type: 'switch_tab', tab: 'tests' });
+      ctx.send({ type: 'test_results', testType: 'app', ...testResult });
+      return JSON.stringify(testResult);
+    }
+
+    case 'list_evals':
+      return listEvalsTool(input, ctx, helpers.compileForEval);
+
+    case 'run_evals': {
+      ctx.send({ type: 'switch_tab', tab: 'tests' });
+      const evalResult = await runEvalsTool(input, ctx, helpers.runEvalSuite);
+      ctx.send({ type: 'eval_results', ...evalResult });
+      return JSON.stringify(evalResult);
+    }
+
+    case 'run_eval': {
+      ctx.send({ type: 'switch_tab', tab: 'tests' });
+      const evalResult = await runEvalTool(input, ctx, helpers.runEvalSuite);
+      ctx.send({ type: 'eval_results', ...evalResult });
+      return JSON.stringify(evalResult);
+    }
+
+    case 'click_element':
+      return await clickElementTool(input, ctx);
+    case 'fill_input':
+      return await fillInputTool(input, ctx);
+    case 'inspect_element':
+      return await inspectElementTool(input, ctx);
+    case 'read_storage':
+      return await readStorageTool(input, ctx);
+    case 'read_dom':
+      return await readDomTool(input, ctx);
+
+    case 'read_network': {
+      // Lazy-launch the browser so the network listeners wire before we slice
+      // the buffer. The tool itself doesn't touch Playwright — it just reads
+      // ctx.networkBuffer, which server.js pre-populates via page listeners.
+      if (ctx.isAppRunning()) { try { await ctx.getPage(); } catch {} }
+      return readNetworkTool(input, ctx);
+    }
+
+    case 'read_actions':
+      return await readActionsTool(input, ctx);
+
+    case 'websocket_log': {
+      if (ctx.isAppRunning()) { try { await ctx.getPage(); } catch {} }
+      return websocketLogTool(input, ctx);
+    }
+
+    case 'db_inspect':
+      return await dbInspectTool(input, ctx);
+
+    case 'todo':
+      return todoTool(input, ctx);
+
+    case 'browse_templates':
+      return browseTemplatesTool(input, ctx);
+
+    default:
+      return JSON.stringify({ error: 'Unknown tool: ' + name });
+  }
+}
+
+/**
  * Runtime schema validation for Meph's tool inputs.
  * @param {string} name - tool name
  * @param {object} input - the input object from Anthropic's tool_use block
