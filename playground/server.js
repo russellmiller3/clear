@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3269,23 +3269,18 @@ app.post('/api/chat', async (req, res) => {
         return highlightCodeTool(input);
 
       case 'patch_code': {
-        if (!currentSource) return JSON.stringify({ error: 'No code in editor. Write code first.' });
-        const ops = input.operations;
-        if (!Array.isArray(ops) || ops.length === 0) return JSON.stringify({ error: 'Need an operations array. Example: [{ op: "fix_line", line: 5, replacement: "  send back user" }]' });
-        _sourceBeforeEdit = currentSource;
-        const result = patch(currentSource, ops);
-        if (result.applied > 0) {
-          currentSource = result.source;
-          _workerLastSource = currentSource;
-          // Push updated source to editor via SSE
-          send({ type: 'code_update', code: result.source });
-        }
-        return JSON.stringify({
-          applied: result.applied,
-          skipped: result.skipped,
-          errors: result.errors,
-          totalLines: result.source.split('\n').length,
+        // Extracted to playground/meph-tools.js (GM-2 port). Same MephContext
+        // shape as edit_code — onSourceChange mirrors back into the closure.
+        const ctx = new MephContext({
+          source: currentSource,
+          send,
+          onSourceChange: (s) => {
+            _workerLastSource = s;
+            currentSource = s;
+            _sourceBeforeEdit = ctx.sourceBeforeEdit;
+          },
         });
+        return patchCodeTool(input, ctx, patch);
       }
 
       case 'run_tests': {

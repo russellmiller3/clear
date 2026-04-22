@@ -286,6 +286,40 @@ export function editCodeTool(input, ctx, compileProgram) {
 }
 
 /**
+ * patch_code tool — apply an array of structured edit operations to the
+ * current source. Uses patch.js's 11-op grammar (fix_line, add_endpoint,
+ * add_field, etc.). On any successful application, mutates ctx.source via
+ * ctx.setSource() (which captures sourceBeforeEdit + fires the change
+ * callback) and emits a code_update SSE event so the editor re-renders.
+ *
+ * Same shape as editCodeTool — patch is just passed in instead of
+ * compileProgram so meph-tools.js doesn't import patch.js directly.
+ *
+ * @param {object} input - { operations: PatchOp[] }
+ * @param {MephContext} ctx
+ * @param {function} patch - the patch.js entry point (source, ops) => {applied, skipped, errors, source}
+ * @returns {string} JSON-stringified result
+ */
+export function patchCodeTool(input, ctx, patch) {
+  if (!ctx.source) return JSON.stringify({ error: 'No code in editor. Write code first.' });
+  const ops = input.operations;
+  if (!Array.isArray(ops) || ops.length === 0) {
+    return JSON.stringify({ error: 'Need an operations array. Example: [{ op: "fix_line", line: 5, replacement: "  send back user" }]' });
+  }
+  const result = patch(ctx.source, ops);
+  if (result.applied > 0) {
+    ctx.setSource(result.source);
+    ctx.send({ type: 'code_update', code: result.source });
+  }
+  return JSON.stringify({
+    applied: result.applied,
+    skipped: result.skipped,
+    errors: result.errors,
+    totalLines: result.source.split('\n').length,
+  });
+}
+
+/**
  * source_map tool — given current Clear source, compile it with the source
  * map flag and return either the full mapping or just the compiled lines
  * for one Clear line (when input.clear_line is set).
