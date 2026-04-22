@@ -185,6 +185,114 @@ function parseSSE(text) {
   assert(text5.includes('claude') || text5.includes('CLI'),
     'cc-agent error message mentions the missing CLI');
 
+  // =========================================================================
+  // PHASE 7 — format-bridge (Anthropic ↔ OpenAI translation, GM-4 prereq)
+  // =========================================================================
+  console.log('\n🌉 Phase 7 — format-bridge (Anthropic ↔ OpenAI)');
+
+  const { anthropicToOpenAI, accumulateOpenAIText, wrapOpenAIJsonAsAnthropicSSE } =
+    await import('./ghost-meph/format-bridge.js');
+
+  // anthropicToOpenAI: string content
+  const oai1 = anthropicToOpenAI({
+    model: 'haiku',
+    max_tokens: 100,
+    messages: [{ role: 'user', content: 'hello' }],
+  });
+  assert(oai1.model === 'haiku', 'anthropicToOpenAI preserves model');
+  assert(oai1.max_tokens === 100, 'anthropicToOpenAI preserves max_tokens');
+  assert(oai1.messages.length === 1 && oai1.messages[0].content === 'hello',
+    'anthropicToOpenAI passes string content unchanged');
+
+  // anthropicToOpenAI: system as string AND content array
+  const oai2 = anthropicToOpenAI({
+    model: 'm', system: 'be concise',
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'hi' }, { type: 'text', text: 'there' }] },
+    ],
+  });
+  assert(oai2.messages[0].role === 'system' && oai2.messages[0].content === 'be concise',
+    'anthropicToOpenAI prepends system message when system is a string');
+  assert(oai2.messages[1].content === 'hi\nthere',
+    'anthropicToOpenAI flattens content array of text blocks');
+
+  // anthropicToOpenAI: system as array of blocks
+  const oai3 = anthropicToOpenAI({
+    model: 'm',
+    system: [{ type: 'text', text: 'block1' }, { type: 'text', text: 'block2' }],
+    messages: [{ role: 'user', content: 'x' }],
+  });
+  assert(oai3.messages[0].content === 'block1\n\nblock2',
+    'anthropicToOpenAI flattens system array form (cache_control style) to joined text');
+
+  // anthropicToOpenAI: drops tool_use blocks (text-only MVP)
+  const oai4 = anthropicToOpenAI({
+    model: 'm',
+    messages: [{
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'thinking' },
+        { type: 'tool_use', id: 't1', name: 'edit_code', input: {} },
+      ],
+    }],
+  });
+  assert(oai4.messages[0].content === 'thinking',
+    'anthropicToOpenAI drops tool_use blocks for text-only MVP (tool support is GM-2 follow-up)');
+
+  // accumulateOpenAIText: drains a real ReadableStream of OpenAI SSE chunks
+  const enc = new TextEncoder();
+  const oaiStream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(enc.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: 'Hel' } }] }) + '\n\n'));
+      controller.enqueue(enc.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: 'lo!' } }] }) + '\n\n'));
+      controller.enqueue(enc.encode('data: [DONE]\n\n'));
+      controller.close();
+    },
+  });
+  const accumulated = await accumulateOpenAIText(oaiStream);
+  assert(accumulated === 'Hello!', `accumulateOpenAIText concatenates delta chunks (got "${accumulated}")`);
+
+  // wrapOpenAIJsonAsAnthropicSSE: non-streaming response
+  const wrapped = wrapOpenAIJsonAsAnthropicSSE({
+    choices: [{ message: { content: 'final response' } }],
+  });
+  const wrappedText = parseSSE(await wrapped.text())
+    .find(e => e.data.type === 'content_block_delta')?.data.delta.text;
+  assert(wrappedText === 'final response',
+    'wrapOpenAIJsonAsAnthropicSSE extracts non-streaming choices[0].message.content');
+
+  // =========================================================================
+  // PHASE 8 — ollama backend (GM-4)
+  // We can't depend on a real ollama daemon being installed in test
+  // environments, so we test the deterministic paths: model resolution,
+  // ECONNREFUSED handling, and the brain-string-to-model parsing.
+  // =========================================================================
+  console.log('\n🦙 Phase 8 — ollama backend (GM-4)');
+
+  // Brain string parsing test — uses the router dispatch path end-to-end.
+  // OLLAMA_HOST set to a port nothing listens on → ECONNREFUSED → graceful error.
+  const origHost = process.env.OLLAMA_HOST;
+  process.env.OLLAMA_HOST = 'http://127.0.0.1:1';  // port 1 reserved, will refuse
+  process.env.MEPH_BRAIN = 'ollama:qwen3';
+  const r6 = await fetchViaBackend({ messages: [{ role: 'user', content: 'hi' }] }, {});
+  assert(r6.ok === true, 'ollama with refused connection still returns ok=true (no thrown exception)');
+  const text6 = parseSSE(await streamToString(r6.body)).find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
+  assert(text6.includes('ollama'), 'ollama error message names the backend');
+  // Either "not running" (ECONNREFUSED) or "error:" (some other network failure)
+  assert(text6.includes('not running') || text6.includes('error') || text6.includes('HTTP'),
+    `ollama error message surfaces failure mode (got: ${text6.slice(0, 150)})`);
+  assert(parseSSE(await wrapped.text()).find(e => e.data.type === 'message_delta')?.data.delta.stop_reason === 'end_turn',
+    'wrapped helper carries stop_reason=end_turn');
+
+  // Brain-string variant: 'ollama:llama3:8b' should still route (colon in model name)
+  process.env.MEPH_BRAIN = 'ollama:llama3:8b';
+  const r7 = await fetchViaBackend({ messages: [{ role: 'user', content: 'hi' }] }, {});
+  assert(r7.ok === true, 'ollama with colon-bearing model name still routes (no parse error)');
+
+  // Restore env
+  if (origHost === undefined) delete process.env.OLLAMA_HOST;
+  else process.env.OLLAMA_HOST = origHost;
+
   // Cleanup
   delete process.env.MEPH_BRAIN;
 

@@ -46,18 +46,21 @@ export function getBackendId() {
  */
 export async function fetchViaBackend(payload, headers) {
   const brain = getBackendId();
+  // Dynamic imports keep slightly heavier modules out of the hot path when
+  // their backend isn't selected, and avoid a circular import — cc-agent /
+  // ollama / openrouter all depend on buildSSEEvents from this file.
+  if (brain === 'cc-agent') {
+    const { chatViaClaudeCode } = await import('./cc-agent.js');
+    return chatViaClaudeCode(payload);
+  }
+  if (brain && brain.startsWith('ollama:')) {
+    const { chatViaOllama } = await import('./ollama.js');
+    return chatViaOllama(payload);
+  }
   switch (brain) {
-    case 'cc-agent': {
-      // Dynamic import keeps the (slightly heavier) cc-agent module out of
-      // the hot path when cc-agent isn't selected. Also avoids a circular
-      // import — cc-agent depends on buildSSEEvents from this file.
-      const { chatViaClaudeCode } = await import('./cc-agent.js');
-      return chatViaClaudeCode(payload);
-    }
     case 'openrouter:qwen':
-    case 'ollama:qwen3':
     case 'haiku-dev':
-      // GM-3/4 / haiku-dev land in follow-up commits. Stub for now — same
+      // GM-3 / haiku-dev land in follow-up commits. Stub for now — same
       // contract, stop_reason=end_turn, server doesn't hang.
       return stubResponse(brain, payload);
     default:
