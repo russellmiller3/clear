@@ -743,6 +743,41 @@ export function runTestsTool(input, ctx, parseTestOutput) {
 }
 
 /**
+ * http_request tool — fetch the running child app at ctx.getRunningPort().
+ * Used by Meph to drive the app end-to-end — hitting endpoints, pushing
+ * form submissions, reading back JSON. 10s timeout (matches the pre-port
+ * inline behavior) so a hung request can't stall the whole tool-use loop.
+ *
+ * Returns JSON-stringified { status, data } on success where data is the
+ * parsed JSON body if parseable, else the raw text. On failure returns
+ * { error } with the fetch exception message.
+ *
+ * Requires on ctx:
+ *   - isAppRunning()    — gate: no app running → clear error, no fetch attempted
+ *   - getRunningPort()  — port the child app is bound to
+ *
+ * @param {object} input - { method: GET|POST|PUT|DELETE|PATCH, path, body? }
+ * @param {MephContext} ctx
+ * @returns {Promise<string>} JSON-stringified { status, data } or { error }
+ */
+export async function httpRequestTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: 'No app running. Use run_app first.' });
+  try {
+    const port = ctx.getRunningPort();
+    const url = `http://localhost:${port}${input.path || '/'}`;
+    const opts = { method: input.method || 'GET', headers: { 'Content-Type': 'application/json' } };
+    if (input.body && input.method !== 'GET') opts.body = JSON.stringify(input.body);
+    const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(10000) });
+    const text = await r.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = text; }
+    return JSON.stringify({ status: r.status, data });
+  } catch (err) {
+    return JSON.stringify({ error: err.message });
+  }
+}
+
+/**
  * run_evals tool — run the full agent eval suite against ctx.source. Per-spec
  * progress events fire through ctx.send as { type: 'eval_row', ... } so the
  * Studio Tests pane can render a live list as each eval lands; the final

@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool } from './meph-tools.js';
 import { existsSync, mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -877,6 +877,65 @@ assert(sends.length === 2, `runEvalsTool fires one ctx.send per progress event (
 assert(sends[0].type === 'eval_row' && sends[0].spec_id === 'a',
   'runEvalsTool send events have type="eval_row" and forward progress fields');
 assert(sends[1].status === 'fail', 'runEvalsTool forwards status field from progress');
+
+console.log('\n🌐 httpRequestTool\n');
+
+// No app running → no fetch attempted, clear error
+const hr1 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/api/x' },
+  new MephContext()));
+assert(hr1.error?.includes('No app running'),
+  'httpRequestTool returns "No app running" when isAppRunning false');
+
+// Spin up a tiny local HTTP server to exercise the happy path
+const { createServer } = await import('http');
+const httpSrv = createServer((req, res) => {
+  let body = '';
+  req.on('data', c => body += c);
+  req.on('end', () => {
+    // Echo back JSON so we can verify round-tripping
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ got_method: req.method, got_path: req.url, got_body: body || null }));
+  });
+});
+await new Promise(res => httpSrv.listen(0, '127.0.0.1', res));
+const hrPort = httpSrv.address().port;
+const hrCtx = new MephContext({
+  isAppRunning: () => true,
+  getRunningPort: () => hrPort,
+});
+
+// GET — hits the echoing server, returns status + parsed JSON data
+const hr2 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/api/ping' }, hrCtx));
+assert(hr2.status === 200, `httpRequestTool GET returns status 200 (got ${hr2.status})`);
+assert(hr2.data?.got_method === 'GET' && hr2.data?.got_path === '/api/ping',
+  `httpRequestTool GET reaches the right path (got ${JSON.stringify(hr2.data)})`);
+
+// POST with a body — body is JSON-stringified before send
+const hr3 = JSON.parse(await httpRequestTool({ method: 'POST', path: '/api/x', body: { name: 'meph' } }, hrCtx));
+assert(hr3.status === 200, `httpRequestTool POST returns status 200 (got ${hr3.status})`);
+assert(hr3.data?.got_body?.includes('"name":"meph"'),
+  `httpRequestTool POST serializes body as JSON (got ${JSON.stringify(hr3.data?.got_body)})`);
+
+// Non-JSON response → data is the raw text, not an error
+const textSrv = createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('hello not-json');
+});
+await new Promise(res => textSrv.listen(0, '127.0.0.1', res));
+const textPort = textSrv.address().port;
+const hr4 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/' },
+  new MephContext({ isAppRunning: () => true, getRunningPort: () => textPort })));
+assert(hr4.status === 200 && hr4.data === 'hello not-json',
+  `httpRequestTool falls back to raw text when response is not JSON (got ${JSON.stringify(hr4)})`);
+
+// Fetch failure → returns { error }, does not throw
+const hr5 = JSON.parse(await httpRequestTool({ method: 'GET', path: '/' },
+  new MephContext({ isAppRunning: () => true, getRunningPort: () => 1 })));
+assert(hr5.error, `httpRequestTool returns structured error on fetch failure (got ${JSON.stringify(hr5)})`);
+
+// Cleanup
+await new Promise(res => httpSrv.close(res));
+await new Promise(res => textSrv.close(res));
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

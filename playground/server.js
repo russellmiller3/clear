@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool, runTestsTool, runEvalsTool, runEvalTool, httpRequestTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3115,9 +3115,15 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'http_request': {
-        // Sync HTTP is tricky — return a promise indicator
-        // Actually, we'll handle this async in the loop
-        return '__ASYNC_HTTP__';
+        // Extracted to playground/meph-tools.js (GM-2 port). The previous
+        // marker + loop-special-case dance was a workaround from when
+        // executeTool was sync; executeTool is async now so http_request
+        // flows through here like every other tool.
+        const ctx = new MephContext({
+          isAppRunning: () => !!runningChild,
+          getRunningPort: () => runningPort,
+        });
+        return httpRequestTool(input, ctx);
       }
 
       case 'source_map': {
@@ -3282,21 +3288,8 @@ app.post('/api/chat', async (req, res) => {
   }
 
   // Async HTTP request tool
-  async function executeHttpRequest(input) {
-    if (!runningChild) return JSON.stringify({ error: 'No app running. Use run_app first.' });
-    try {
-      const url = `http://localhost:${runningPort}${input.path || '/'}`;
-      const opts = { method: input.method || 'GET', headers: { 'Content-Type': 'application/json' } };
-      if (input.body && input.method !== 'GET') opts.body = JSON.stringify(input.body);
-      const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(10000) });
-      const text = await r.text();
-      let data;
-      try { data = JSON.parse(text); } catch { data = text; }
-      return JSON.stringify({ status: r.status, data });
-    } catch (err) {
-      return JSON.stringify({ error: err.message });
-    }
-  }
+  // executeHttpRequest was removed in the GM-2 http_request port — the tool
+  // now flows through executeTool like every other async tool.
 
   // Multi-turn tool-use loop with streaming.
   // Meph runs on Haiku 4.5 by default — ~3x cheaper than Sonnet on this workload.
@@ -3588,15 +3581,10 @@ app.post('/api/chat', async (req, res) => {
           send({ type: 'switch_tab', tab: 'tests' });
         }
 
-        let result;
-        if (tb.name === 'http_request') {
-          result = await executeHttpRequest(input);
-        } else {
-          // screenshot_output used to be special-cased here before GM-2 ported
-          // it to screenshotOutputTool in meph-tools.js — executeTool now runs
-          // the real implementation directly.
-          result = await executeTool(tb.name, input);
-        }
+        // screenshot_output + http_request used to be special-cased above the
+        // executeTool call back when executeTool was sync; both now flow
+        // through it like every other tool (GM-2 ports).
+        const result = await executeTool(tb.name, input);
 
         // Track run_tests outcomes for session quality signals + Factor DB
         if (tb.name === 'run_tests') {
