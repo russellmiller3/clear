@@ -60,6 +60,13 @@ export class MephContext {
     this.termLog = options.termLog || (() => {});
     this.onSourceChange = options.onSourceChange || (() => {});
     this.onErrorsChange = options.onErrorsChange || (() => {});
+
+    // Bridge-tool callbacks. /api/chat hooks these to /api/run's
+    // runningChild + sendBridgeCommandFromServer; the MCP server can
+    // mock or skip them depending on whether tools are connected to
+    // a real running app.
+    this.isAppRunning = options.isAppRunning || (() => false);
+    this.sendBridgeCommand = options.sendBridgeCommand || (async () => ({ error: 'Bridge command not wired in this MephContext.' }));
   }
 
   /**

@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3315,17 +3315,27 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify(evalResult);
       }
 
-      case 'click_element': {
-        // Click via the bridge — acts on the user's visible iframe so they SEE Meph clicking.
-        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        const result = await sendBridgeCommandFromServer(send, 'click', { selector: input.selector }, 4000);
-        return JSON.stringify(result);
-      }
-
-      case 'fill_input': {
-        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        const result = await sendBridgeCommandFromServer(send, 'fill', { selector: input.selector, value: input.value }, 4000);
-        return JSON.stringify(result);
+      // Bridge tools (click_element, fill_input, inspect_element, read_storage,
+      // read_dom) all share the same shape — extracted to playground/meph-tools.js
+      // (GM-2 port). Build a single MephContext with isAppRunning + sendBridgeCommand
+      // wired to /api/run's runningChild + sendBridgeCommandFromServer.
+      case 'click_element':
+      case 'fill_input':
+      case 'inspect_element':
+      case 'read_storage':
+      case 'read_dom': {
+        const bridgeCtx = new MephContext({
+          isAppRunning: () => !!runningChild,
+          sendBridgeCommand: (cmd, payload, timeoutMs) =>
+            sendBridgeCommandFromServer(send, cmd, payload, timeoutMs),
+        });
+        switch (name) {
+          case 'click_element':   return await clickElementTool(input, bridgeCtx);
+          case 'fill_input':      return await fillInputTool(input, bridgeCtx);
+          case 'inspect_element': return await inspectElementTool(input, bridgeCtx);
+          case 'read_storage':    return await readStorageTool(input, bridgeCtx);
+          case 'read_dom':        return await readDomTool(input, bridgeCtx);
+        }
       }
 
       case 'read_network': {
@@ -3339,17 +3349,8 @@ app.post('/api/chat', async (req, res) => {
         return JSON.stringify({ count: requests.length, requests });
       }
 
-      case 'inspect_element': {
-        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        const result = await sendBridgeCommandFromServer(send, 'inspect', { selector: input.selector }, 4000);
-        return JSON.stringify(result);
-      }
-
-      case 'read_storage': {
-        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        const result = await sendBridgeCommandFromServer(send, 'read-storage', {}, 4000);
-        return JSON.stringify(result);
-      }
+      // inspect_element + read_storage handled in the unified bridge-tools
+      // case above (extracted to playground/meph-tools.js).
 
       case 'read_actions': {
         // Fetch user-action history from our recorder buffer
@@ -3363,11 +3364,7 @@ app.post('/api/chat', async (req, res) => {
         }
       }
 
-      case 'read_dom': {
-        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        const result = await sendBridgeCommandFromServer(send, 'read-dom', {}, 4000);
-        return JSON.stringify(result);
-      }
+      // read_dom handled in the unified bridge-tools case above.
 
       case 'websocket_log': {
         if (!runningChild) return JSON.stringify({ error: 'No app running. WebSocket capture starts when the app runs.' });

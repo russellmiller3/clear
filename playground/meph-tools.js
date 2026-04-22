@@ -285,6 +285,52 @@ export function editCodeTool(input, ctx, compileProgram) {
   return JSON.stringify({ error: 'Invalid action' });
 }
 
+/*
+ * Bridge tools — uniform shape: check ctx.isAppRunning(), then delegate to
+ * ctx.sendBridgeCommand(cmd, payload, timeoutMs) which Studio wires up to
+ * its postMessage bridge. Each tool just picks the bridge command name and
+ * forwards the relevant input fields. The error message phrasing is preserved
+ * verbatim from the inline implementations so existing Meph eval scenarios
+ * keep matching.
+ */
+
+const NO_APP_ERR = 'No app running. Start with run_app first.';
+
+/** click_element — clicks the element matching the CSS selector in the running app's iframe. */
+export async function clickElementTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: NO_APP_ERR });
+  const result = await ctx.sendBridgeCommand('click', { selector: input.selector }, 4000);
+  return JSON.stringify(result);
+}
+
+/** fill_input — types a value into the element matching the CSS selector. */
+export async function fillInputTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: NO_APP_ERR });
+  const result = await ctx.sendBridgeCommand('fill', { selector: input.selector, value: input.value }, 4000);
+  return JSON.stringify(result);
+}
+
+/** inspect_element — returns computed style + bounding-box for an element. */
+export async function inspectElementTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: NO_APP_ERR });
+  const result = await ctx.sendBridgeCommand('inspect', { selector: input.selector }, 4000);
+  return JSON.stringify(result);
+}
+
+/** read_storage — reads localStorage / sessionStorage from the running app. */
+export async function readStorageTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: NO_APP_ERR });
+  const result = await ctx.sendBridgeCommand('read-storage', {}, 4000);
+  return JSON.stringify(result);
+}
+
+/** read_dom — returns a structured snapshot of the running app's DOM. */
+export async function readDomTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: NO_APP_ERR });
+  const result = await ctx.sendBridgeCommand('read-dom', {}, 4000);
+  return JSON.stringify(result);
+}
+
 /**
  * browse_templates tool — list all template apps in the apps/ directory or
  * read one template's main.clear source.

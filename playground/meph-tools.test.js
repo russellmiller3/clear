@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool } from './meph-tools.js';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
 import { patch } from '../patch.js';
@@ -353,6 +353,52 @@ assert(bt4.error?.includes('not found'),
 const bt5 = JSON.parse(browseTemplatesTool({ action: 'frobnicate' }, new MephContext({ rootDir: REPO_ROOT })));
 assert(bt5.error?.includes('action must be'),
   'browseTemplatesTool with bad action surfaces "action must be"');
+
+console.log('\n🌉 Bridge tools (click_element, fill_input, inspect_element, read_storage, read_dom)\n');
+
+// All 5 bridge tools share the same shape — when isAppRunning is false,
+// they short-circuit to the same NO_APP_ERR string.
+for (const [tool, name] of [
+  [clickElementTool, 'clickElement'],
+  [fillInputTool, 'fillInput'],
+  [inspectElementTool, 'inspectElement'],
+  [readStorageTool, 'readStorage'],
+  [readDomTool, 'readDom'],
+]) {
+  const r = JSON.parse(await tool({ selector: 'button.x', value: 'y' }, new MephContext()));
+  assert(r.error?.includes('No app running'),
+    `${name}Tool returns "No app running" when isAppRunning() is false`);
+}
+
+// When isAppRunning is true, each tool calls sendBridgeCommand with the
+// expected command name and forwards the relevant input.
+let recorded = null;
+const ctxLive = new MephContext({
+  isAppRunning: () => true,
+  sendBridgeCommand: async (cmd, payload, timeoutMs) => {
+    recorded = { cmd, payload, timeoutMs };
+    return { ok: true, cmd };
+  },
+});
+
+const clickRes = JSON.parse(await clickElementTool({ selector: '#submit' }, ctxLive));
+assert(recorded.cmd === 'click', 'clickElementTool sends "click" command');
+assert(recorded.payload.selector === '#submit', 'clickElementTool forwards selector');
+assert(clickRes.ok === true, 'clickElementTool returns the bridge result');
+
+const fillRes = JSON.parse(await fillInputTool({ selector: '#email', value: 'a@b.c' }, ctxLive));
+assert(recorded.cmd === 'fill', 'fillInputTool sends "fill" command');
+assert(recorded.payload.value === 'a@b.c', 'fillInputTool forwards value');
+assert(fillRes.ok === true, 'fillInputTool returns the bridge result');
+
+await inspectElementTool({ selector: '.thing' }, ctxLive);
+assert(recorded.cmd === 'inspect', 'inspectElementTool sends "inspect" command');
+
+await readStorageTool({}, ctxLive);
+assert(recorded.cmd === 'read-storage', 'readStorageTool sends "read-storage" command');
+
+await readDomTool({}, ctxLive);
+assert(recorded.cmd === 'read-dom', 'readDomTool sends "read-dom" command');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
