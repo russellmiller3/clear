@@ -476,6 +476,12 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
 #chat-send, #errors, .msg, .toast, #theme-toggle, select {
   transition: background-color .2s, border-color .2s, color .15s;
 }
+
+/* ==========================================================================
+   BUILDER MODE v0.1 (Marcus-first layout — opt-in via ?studio-mode=builder)
+   Feature-flagged. Classic 3-panel remains the default.
+   ========================================================================== */
+body.builder-mode #main-area { flex-direction: column; position: relative; }
 </style>
 </head>
 <body>
@@ -4775,6 +4781,66 @@ loadTemplates();
     updatePlanBadge(t);
   } catch {}
 })();
+
+// ==========================================================================
+// STUDIO MODE (builder / classic) — Builder Mode v0.1
+// ?studio-mode=builder flips Studio to Marcus-first layout (preview hero +
+// chat driver). Opt-in via URL param; preference persists in localStorage.
+// Full spec: plans/plan-builder-mode-v0.1-04-21-2026.md
+// ==========================================================================
+const STUDIO_MODES = ['builder', 'classic'];
+function detectStudioMode() {
+  const body = document.body;
+
+  // 1. Read URL param (case-insensitive)
+  let urlMode = null;
+  try {
+    const p = new URLSearchParams(window.location.search).get('studio-mode');
+    if (p !== null) {
+      const norm = String(p).trim().toLowerCase();
+      if (STUDIO_MODES.includes(norm)) urlMode = norm;
+      else console.warn(`[studio-mode] unrecognized value: "${p}", defaulting to classic`);
+    }
+  } catch (e) { /* URLSearchParams always works in a browser, defensive only */ }
+
+  // 2. Read localStorage (best-effort — private browsing throws)
+  let storedMode = null;
+  try {
+    const s = localStorage.getItem('studio-mode-pref');
+    if (s && STUDIO_MODES.includes(s)) storedMode = s;
+  } catch (e) {
+    console.warn('[studio-mode] localStorage unavailable; mode will not persist across sessions');
+  }
+
+  // 3. Resolve: URL param wins, else stored, else classic
+  const mode = urlMode || storedMode || 'classic';
+
+  // 4. Persist URL-param choice (best-effort)
+  if (urlMode) {
+    try { localStorage.setItem('studio-mode-pref', urlMode); } catch (e) { /* silent */ }
+  }
+
+  // 5. Clear inline styles from any prior resizer drag (plan edge case E-5)
+  ['editor-pane', 'preview-pane', 'chat-pane'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.removeProperty('flex');
+    el.style.removeProperty('width');
+    el.style.removeProperty('height');
+  });
+
+  // 6. Clear .collapsed on chat-pane in builder mode (edge case E-4)
+  if (mode === 'builder') {
+    document.getElementById('chat-pane')?.classList.remove('collapsed');
+  }
+
+  // 7. Apply class
+  body.classList.toggle('builder-mode', mode === 'builder');
+}
+
+// Run on initial load. Every mode change is a full navigation (URL param),
+// so no need for ongoing listeners.
+detectStudioMode();
 </script>
 <!-- Deploy modal — injected populated by doDeploy() -->
 <div id="deploy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center"></div>
