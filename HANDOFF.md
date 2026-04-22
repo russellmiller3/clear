@@ -271,6 +271,52 @@ Unblocks CC-5b DNS poller + CC-5a settings UI + eventually CC-5c/d (cert + routi
 
 Totals after tick 13: **2740 tests green.**
 
+## Session 42 tick 14 — CC-3b cloud-billing scaffold
+
+`47c4921` — new `playground/cloud-billing/` module. Pure helpers for the Stripe Checkout upgrade flow; Stripe SDK stays out of scope (tests run without Stripe credentials).
+
+Exports:
+  - `PRICE_IDS` — plan → Stripe price ID. free + enterprise = null (hard-stop + contract-sales respectively). team/business read from `STRIPE_PRICE_TEAM` / `STRIPE_PRICE_BUSINESS` env or fail-loud placeholders.
+  - `getStripePriceId(plan)` — throws on unknown plan (typo guard), free (wrong flow), enterprise (contact-sales CTA).
+  - `buildCheckoutSessionParams({plan, tenantId, customerEmail, successUrl, cancelUrl})` — exact shape `stripe.checkout.sessions.create()` expects. `client_reference_id = tenantId` carries the tenant through the opaque Checkout flow; `metadata.tenant_id + metadata.plan` mirror for analytics + double safety.
+  - `parseCheckoutCompletedEvent(event)` → `{ok:true, tenantId, plan, stripeCustomerId, stripeSubscriptionId, customerEmail}` OR `{ok:false, reason:string}`. Rejects wrong event type, payment pending, missing tenant_id, corrupt tenant_id, missing plan metadata. Grep-able reasons for retry-log patterning.
+
+34 TDD assertions cover: PRICE_IDS shape, all getStripePriceId throw paths, buildCheckoutSessionParams happy + missing fields + free-plan guard, parseCheckoutCompletedEvent happy (6 field extractions) + wrong-type + no-tenant + unpaid + no-plan.
+
+Caller glue (future commit):
+  - Upgrade endpoint: `stripe.checkout.sessions.create(buildCheckoutSessionParams(...))`
+  - Webhook handler: `parsed = parseCheckoutCompletedEvent(stripe.webhooks.constructEvent(body, sig, secret)); if (parsed.ok) await updateTenantPlan(...)`
+
+Post-85a:
+  - Real price IDs in env (CC-3a Stripe dashboard)
+  - Live-mode webhook endpoint registered in Stripe
+
+Totals after tick 14: **2774 tests green** (+34 cloud-billing).
+
+## Clear Cloud scaffold — state of the union
+
+After tick 14, the Clear Cloud scaffold surface covers:
+
+| Module | Status | Tests |
+|---|---|---|
+| `tenants-db` CC-1a (schema + client) | ✅ scaffolded | 13 |
+| `tenants-db` migration 002 CC-2d (apps.team_id) | ✅ scaffolded | (in 13) |
+| `subdomain-router` CC-1b | ✅ scaffolded | 44 |
+| `per-app-db` CC-1c/d | ✅ scaffolded | 80 |
+| `cloud-auth` CC-2a | ✅ scaffolded | 57 |
+| `cloud-teams` CC-2b + CC-2c + CC-2d helpers | ✅ scaffolded | 117 |
+| `cloud-quota` CC-3c + CC-3d | ✅ scaffolded | 50 |
+| `cloud-billing` CC-3b | ✅ scaffolded | 34 |
+| `cloud-domains` CC-5a/b | ✅ scaffolded | 26 |
+
+Phase 85a still unblocks production deploy (domain, Fly Trust Verified, Stripe account, production Postgres, production ANTHROPIC_API_KEY). Scaffolds mean the code is written + tested + ready to wire to real infra the moment 85a lands.
+
+Remaining non-scaffold work (all blocked on 85a for end-to-end):
+  - CC-2c dashboard UI (HTML or Clear app — decision pending)
+  - CC-4 publish-flow UX polish (modals, copy, diff-summary)
+  - CC-5c/d SSL provisioning + router update (Fly Certificate API calls)
+  - Wire getAppAccess/checkQuota into actual endpoints (server.js endpoints exist but don't consult the primitives yet)
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
