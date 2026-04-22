@@ -202,6 +202,24 @@ export async function createInvite(db, input) {
  */
 
 /**
+ * List pending invites for a team — admin UI "outstanding invites"
+ * view. Filters out accepted + revoked + expired invites so the list
+ * only contains invites a user can still act on.
+ */
+export async function listPendingInvites(db, teamId) {
+  const { rows } = await db.query(
+    `SELECT * FROM team_invites
+     WHERE team_id = $1
+       AND accepted_at IS NULL
+       AND revoked_at IS NULL
+       AND expires_at > NOW()
+     ORDER BY invited_at DESC`,
+    [teamId]
+  );
+  return rows;
+}
+
+/**
  * Revoke a pending invite (admin cancels it before it's accepted).
  * Soft-delete: sets revoked_at. Idempotent — returns false on already-
  * revoked or non-existent invites, doesn't throw. Revoked invites

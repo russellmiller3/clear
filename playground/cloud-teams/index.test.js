@@ -95,6 +95,19 @@ function makeMockDb() {
         );
         return { rows: row ? [row] : [] };
       }
+      if (/^SELECT \* FROM team_invites WHERE team_id/i.test(t)) {
+        const [teamId] = params;
+        const now = new Date();
+        const rows = invites
+          .filter(i =>
+            i.team_id === teamId &&
+            i.accepted_at === null &&
+            i.revoked_at === null &&
+            i.expires_at > now
+          )
+          .sort((a, b) => b.invited_at - a.invited_at);
+        return { rows };
+      }
       if (/^UPDATE team_invites SET accepted_at/i.test(t)) {
         const [userId, id] = params;
         const i = invites.find(x => x.id === id);
@@ -434,6 +447,53 @@ console.log('\n🗑  revokeInvite\n');
   const ghost = await revokeInvite(db, 99999);
   assert(ghost === false,
     `revoking a non-existent invite returns false (got ${ghost})`);
+}
+
+// ─── TDD cycle 12: listPendingInvites for admin dashboards ───────────────
+console.log('\n📋 listPendingInvites\n');
+
+{
+  const { createTeam, createInvite, acceptInvite, revokeInvite, listPendingInvites } = await import('./index.js');
+  const db = makeMockDb();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+
+  // Empty — no invites yet
+  const empty = await listPendingInvites(db, team.id);
+  assert(Array.isArray(empty) && empty.length === 0,
+    `empty team → [] (got ${JSON.stringify(empty)})`);
+
+  // 3 invites, 1 accepted, 1 revoked → only 1 remains pending
+  const i1 = await createInvite(db, { teamId: team.id, email: 'pending@example.com', invitedBy: 1 });
+  const i2 = await createInvite(db, { teamId: team.id, email: 'accepted@example.com', invitedBy: 1 });
+  const i3 = await createInvite(db, { teamId: team.id, email: 'revoked@example.com', invitedBy: 1 });
+  await acceptInvite(db, i2.token, 99);
+  await revokeInvite(db, i3.id);
+
+  const pending = await listPendingInvites(db, team.id);
+  assert(pending.length === 1,
+    `only pending invites returned (got ${pending.length} — expected 1)`);
+  assert(pending[0].email === 'pending@example.com',
+    `the right one came through (got ${pending[0]?.email})`);
+
+  // Expired invites should ALSO be filtered out — stale pending invites
+  // shouldn't clutter the admin UI
+  const i4 = await createInvite(db, { teamId: team.id, email: 'expired@example.com', invitedBy: 1 });
+  db.invites.find(x => x.id === i4.id).expires_at = new Date(Date.now() - 1000);
+  const afterExpiry = await listPendingInvites(db, team.id);
+  assert(afterExpiry.length === 1,
+    `expired invites filtered out of pending list (got ${afterExpiry.length})`);
+  assert(!afterExpiry.some(x => x.email === 'expired@example.com'),
+    'expired invite NOT in the list');
+
+  // Another team — scoped by team_id
+  const team2 = await createTeam(db, { slug: 'beta', name: 'Beta', ownerUserId: 2 });
+  await createInvite(db, { teamId: team2.id, email: 'beta-invitee@example.com', invitedBy: 2 });
+  const acmePending = await listPendingInvites(db, team.id);
+  const betaPending = await listPendingInvites(db, team2.id);
+  assert(acmePending.length === 1 && betaPending.length === 1,
+    'each team sees only its own pending invites (no cross-team leak)');
+  assert(!acmePending.some(x => x.email.includes('beta-invitee')),
+    'acme does NOT see beta\'s invite');
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
