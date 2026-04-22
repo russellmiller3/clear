@@ -24,7 +24,7 @@
  *   See plan step 2-3 followups.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 /**
@@ -460,6 +460,110 @@ export function browseTemplatesTool(input, ctx) {
     return JSON.stringify({ name: safeName, source: readFileSync(mainFile, 'utf8') });
   }
   return JSON.stringify({ error: 'action must be "list" or "read"' });
+}
+
+/**
+ * edit_file tool — read / append / insert / replace / overwrite on files in
+ * the repo root. Restricted to safe extensions (.clear/.md/.json/.txt/.csv/
+ * .html/.css/.js/.py) and a writable allowlist (.clear files anywhere,
+ * requests.md, meph-memory.md). Path traversal blocked by stripping
+ * non-alphanumerics from the filename.
+ *
+ * Stateless except for ctx.rootDir. Behavior matches the inline version
+ * exactly so existing Meph eval scenarios stay valid.
+ *
+ * @param {object} input - { filename, action, content?, line?, find?, replace_all? }
+ * @param {MephContext} ctx - rootDir required
+ * @returns {string} JSON-stringified result
+ */
+export function editFileTool(input, ctx) {
+  if (!input || !input.filename) {
+    return JSON.stringify({ error: 'Missing required parameter "filename". You called edit_file without specifying which file. Example: edit_file({ filename: "requests.md", action: "append", content: "..." })' });
+  }
+  if (!input.action) {
+    return JSON.stringify({ error: `Missing required parameter "action" for file "${input.filename}". Must be one of: append, insert, replace, overwrite, read. For adding content to the end of a file, use action="append".` });
+  }
+  const safeName = String(input.filename).replace(/[^a-zA-Z0-9._-]/g, '-');
+  const ALLOWED_EXT = ['.clear', '.md', '.json', '.txt', '.csv', '.html', '.css', '.js', '.py'];
+  const ext = safeName.includes('.') ? '.' + safeName.split('.').pop() : '';
+  if (!ALLOWED_EXT.includes(ext)) {
+    return JSON.stringify({ error: `File extension "${ext}" is not allowed. Allowed: ${ALLOWED_EXT.join(', ')}. You tried to access "${safeName}" — check the filename.` });
+  }
+  const dest = join(ctx.rootDir, safeName);
+  const fileExists = existsSync(dest);
+  // Safety: only allow modifying .clear files and requests.md/meph-memory.md
+  const WRITABLE_EXISTING = ['requests.md', 'meph-memory.md'];
+  const canWrite = !fileExists || ext === '.clear' || WRITABLE_EXISTING.includes(safeName);
+  if (!canWrite && input.action !== 'read') {
+    return JSON.stringify({ error: `Permission denied: "${safeName}" is read-only. You can only modify .clear files, requests.md, and meph-memory.md. To read this file instead, use action="read". To create a new file, pick a name that doesn't already exist.` });
+  }
+
+  switch (input.action) {
+    case 'read': {
+      if (!fileExists) return JSON.stringify({ error: `File "${safeName}" does not exist in the project root. Check the filename. Available writable files: requests.md, meph-memory.md, and any .clear files.` });
+      const text = readFileSync(dest, 'utf8');
+      const lines = text.split('\n');
+      return JSON.stringify({ content: text, lines: lines.length, path: safeName });
+    }
+    case 'append': {
+      if (input.content == null) return JSON.stringify({ error: `Missing "content" parameter for append action on "${safeName}". You need to provide the text to add. Example: edit_file({ filename: "${safeName}", action: "append", content: "new text here" })` });
+      const existing = fileExists ? readFileSync(dest, 'utf8') : '';
+      const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+      writeFileSync(dest, existing + separator + input.content, 'utf8');
+      const newLines = (existing + separator + input.content).split('\n').length;
+      return JSON.stringify({ ok: true, appended: true, path: safeName, bytes_added: input.content.length, total_lines: newLines });
+    }
+    case 'insert': {
+      if (input.content == null) return JSON.stringify({ error: `Missing "content" parameter for insert action on "${safeName}". Provide the text to insert. Example: edit_file({ filename: "${safeName}", action: "insert", line: 10, content: "new line" })` });
+      if (!input.line || input.line < 1) return JSON.stringify({ error: `Missing or invalid "line" parameter for insert action on "${safeName}". Provide a line number >= 1 where content should be inserted. Example: edit_file({ filename: "${safeName}", action: "insert", line: 5, content: "..." })` });
+      const existing = fileExists ? readFileSync(dest, 'utf8') : '';
+      const lines = existing.split('\n');
+      if (input.line > lines.length + 1) {
+        return JSON.stringify({ error: `Line ${input.line} is past the end of "${safeName}" (file has ${lines.length} lines). Use line=${lines.length + 1} to insert at the end, or use action="append" instead.` });
+      }
+      const idx = Math.min(input.line - 1, lines.length);
+      lines.splice(idx, 0, ...input.content.split('\n'));
+      writeFileSync(dest, lines.join('\n'), 'utf8');
+      return JSON.stringify({ ok: true, inserted: true, path: safeName, at_line: input.line, total_lines: lines.length });
+    }
+    case 'replace': {
+      if (!input.find) return JSON.stringify({ error: `Missing "find" parameter for replace action on "${safeName}". Provide the exact string to search for. Example: edit_file({ filename: "${safeName}", action: "replace", find: "old text", content: "new text" })` });
+      if (input.content == null) return JSON.stringify({ error: `Missing "content" parameter for replace action on "${safeName}". Provide the replacement text. Example: edit_file({ filename: "${safeName}", action: "replace", find: "${(input.find || '').slice(0, 30)}", content: "replacement" })` });
+      if (!fileExists) return JSON.stringify({ error: `Cannot replace in "${safeName}" — file does not exist. Use action="overwrite" or action="append" to create it.` });
+      const text = readFileSync(dest, 'utf8');
+      let result;
+      if (input.replace_all) {
+        const count = text.split(input.find).length - 1;
+        if (count === 0) return JSON.stringify({ error: `String not found anywhere in "${safeName}" (${text.split('\n').length} lines). Your find string was: "${input.find.slice(0, 120)}". Try action="read" first to see the actual file content, then use the exact text from the file. Common causes: extra whitespace, wrong line endings, or the text was already changed by a previous edit.` });
+        result = text.split(input.find).join(input.content);
+        writeFileSync(dest, result, 'utf8');
+        return JSON.stringify({ ok: true, replaced: true, path: safeName, occurrences: count });
+      } else {
+        const pos = text.indexOf(input.find);
+        if (pos === -1) {
+          // Help the AI debug: show nearby content
+          const findLower = input.find.toLowerCase().slice(0, 40);
+          const lowerText = text.toLowerCase();
+          const nearIdx = lowerText.indexOf(findLower.slice(0, 20));
+          const hint = nearIdx >= 0
+            ? `Partial match found near character ${nearIdx}. The actual text there is: "${text.slice(Math.max(0, nearIdx - 10), nearIdx + 60).replace(/\n/g, '\\n')}"`
+            : `No partial match found either. The file has ${text.split('\n').length} lines.`;
+          return JSON.stringify({ error: `Exact string not found in "${safeName}". Your find string (first 120 chars): "${input.find.slice(0, 120)}". ${hint} Suggestion: use action="read" to see the current file content, then copy the exact text you want to replace. Common issues: extra/missing whitespace, the text was already changed, or line endings differ.` });
+        }
+        result = text.slice(0, pos) + input.content + text.slice(pos + input.find.length);
+        writeFileSync(dest, result, 'utf8');
+        return JSON.stringify({ ok: true, replaced: true, path: safeName, occurrences: 1 });
+      }
+    }
+    case 'overwrite': {
+      if (input.content == null) return JSON.stringify({ error: `Missing "content" parameter for overwrite action on "${safeName}". Provide the full file content. Warning: this replaces the entire file. If you only need to add content, use action="append" instead.` });
+      writeFileSync(dest, input.content, 'utf8');
+      const newLines = input.content.split('\n').length;
+      return JSON.stringify({ ok: true, written: true, path: safeName, bytes: input.content.length, total_lines: newLines });
+    }
+    default:
+      return JSON.stringify({ error: `Unknown action "${input.action}" for file "${safeName}". Valid actions: append (add to end), insert (add at line N), replace (find and replace text), overwrite (replace entire file), read (view content). You probably want "append" for adding new content or "replace" for modifying existing text.` });
+  }
 }
 
 /**
