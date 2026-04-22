@@ -1,75 +1,85 @@
-# Handoff — 2026-04-18 (Session 39 — Live App Editing A + B + compiler integration + landing page)
+# Handoff — 2026-04-21 (ROADMAP reorg + Clear Cloud north-star decision)
 
-## Current State
-- **Branch:** `feature/widget-in-compiled-apps` → already on main as of commit `4e115ec`
-- **Tests:** 2079 passing in `clear.test.js` (2 pre-existing failures unrelated to this branch)
-- **Real-Meph eval:** 11/11 widget-mode + 15/16 Studio-mode (one context-dependent, not a regression)
+## Current state
 
-## What Shipped This Session
+- **Branch being shipped:** `docs/roadmap-reorg` (created + merged + pushed this session)
+- **Tests:** no compiler code changed — doc-only ship, no test run needed
+- **Product status:** Phase 85 (one-click deploy to Fly) shipped in Session 37 but blocked on real-world provisioning (buildclear.dev domain, Fly Trust Verified quota, Stripe signup, Anthropic org key). Deploy button works end-to-end in tests but has nowhere to deploy to until Phase 85a lands.
 
-Three big things.
+## What shipped this session
 
-### 1. Landing page — `landing/live-editing.html`
-Story-driven 5-section rewrite in Marcus's voice. Opens on "Tuesday, 2:47pm. Your CRO walks over." Running-app mock with owner-only Edit badge. Small Meph chat panel showing the one-sentence request → additive diff → Ship. "Four seconds. Done." Three-rule explanation (Only you can edit / Nothing is ever gone / Undo always works). Three real competitor quotes. CTA.
+Three things, all documentation.
 
-Zero engineer jargon: no classifier taxonomy, no expand-contract, no "rollback", no `.clear` source snippets, no fours-of-fears grid. All seven landing pages now ship pre-built `tailwind.css` (27KB) instead of the CDN script — fixes the flash-of-unstyled-content.
+### 1. ROADMAP.md split + Clear Cloud north-star decision
 
-### 2. Live App Editing — Phase A + Phase B (logic + Studio integration)
-- **Phase A (cycles 1–10):** owner-gated Meph widget, 3 additive tools (field/endpoint/page), AST-diff classifier, ship flow with rollback on failure, Studio endpoints live. 67 tests + 10/10 real-LLM eval.
-- **Phase B (reversible + state preservation + snapshot):** `, hidden` and `, renamed to X` field syntax; `db.findAll`/`findOne` strip hidden by default; snapshot + rollback primitives; ship auto-snapshots; 5-tool Meph prompt; widget Undo button; sessionStorage form preservation. 44 more tests + 11/11 real-LLM eval.
+The roadmap ballooned to 1054 lines. Unreadable. Split into three files:
 
-Semantic lock-in: **"remove" = hide, not delete.** Propagated through plan, ROADMAP LAE-3, landing page, docs.
+- **`ROADMAP.md` (707 lines, was 1054):** Forward-looking only. Opens with a new top-level section called "North Star: Clear Cloud (P0 — Q2 2026)" that locks the Marcus-first product decision, then a priority table (P0/P1/P2/P3/P4), then individual tracks in physical-order priority.
+- **`FEATURES.md` (new, 280 lines):** Capability reference — "what can Clear do today?" Every feature row: syntax + notes. Replaces the "What's Built" section that used to live in ROADMAP.
+- **`CHANGELOG.md` (new, 109 lines):** Session-by-session history of what shipped. Newest at top. Replaces the "Recently Completed" section that used to live in ROADMAP.
 
-### 3. Compiler integration — widget ships with every auth-enabled app
-The big finish. Before today, Live App Editing only worked inside Studio. Now:
-- Compiler emits `<script src="/__meph__/widget.js" defer>` in HTML whenever source has `allow signup and login`.
-- Compiler emits `GET /__meph__/widget.js` serving the widget file from `clear-runtime/`.
-- Compiler emits `ALL /__meph__/api/:action` proxy forwarding to `process.env.STUDIO_PORT`.
-- Proxy returns a clean 503 in production (no `STUDIO_PORT` set).
-- Studio copies `runtime/meph-widget.js` into `clear-runtime/` on every `/api/run` and passes `STUDIO_PORT` in the child's env.
+### 2. Clear Cloud product-positioning lock
 
-7 new unit tests in `lib/widget-injection.test.js`. All 8 Core templates still compile clean.
+**The decision:** Clear is a **Marcus product**, not a Dave tool.
 
-## Rule Added Mid-Session — CLAUDE.md
+- Primary interface is the Studio **Publish** button, not a terminal `clear deploy`.
+- Compiler auto-picks hosting by app type (v2, post-launch): static → Cloudflare Pages, web CRUD → Cloudflare Workers + D1, agents → Workers + AI Gateway, Python ETL → Modal, native binaries → Fly Docker. Marcus never sees a vendor name.
+- Phase 85 (Fly) stays as the default shipping target. Don't rebuild on Cloudflare before Clear Cloud is paying.
+- Five missing pieces to ship Clear Cloud on top of existing Phase-85 infrastructure: **CC-1** multi-tenant hosting, **CC-2** buildclear.dev auth, **CC-3** Stripe billing, **CC-4** Publish button wired to Clear Cloud, **CC-5** custom domain flow. Total ~6–8 weeks of platform engineering.
+- **Before any CC-* lands:** Phase 85a needs to provision the real stack (domain registration, Fly Trust Verified, Stripe, Anthropic org key, Postgres for tenants DB). That's the single biggest unblocker. Today the deploy button works in tests but has nowhere to deploy to.
 
-`## Real-LLM Eval Before Declaring AI Feature Done (MANDATORY)`
+### 3. Competitive positioning vs Retool / Lovable / Bubble (written down in ROADMAP)
 
-After I declared Phase A "done" on unit tests alone and Russell called it out ("SMH"), I wrote the eval harness, caught two prompt bugs, fixed them, re-ran. For Phase B the eval caught zero slippage on the first run — rule paid for itself immediately. Memory also saved at `~/.claude/.../memory/feedback_real_llm_eval_before_done.md`.
+Three structural differentiators, in Marcus-talk:
 
-## What's Next (priority order)
+1. **"You can read your own app."** Retool is visual blocks; Lovable is generated React. Clear is plain English. Marcus's CFO and compliance team can review source directly.
+2. **"You can change the app while it's running."** Retool and Lovable force rebuild-redeploy; users mid-task lose work. Clear's Live App Editing (shipped Session 39) reshapes live apps with data/sessions intact. No competitor has this.
+3. **"You're never trapped."** `clear export` produces a portable Dockerfile. Retool self-hosting is expensive; Lovable's React is portable but unmaintainable. Clear is leave-anytime in a way competitors aren't.
 
-### 1. Playwright e2e in a real browser
-The plumbing is done; the logic is tested; the widget injects into compiled apps. What's left is a browser test that actually clicks the badge, types a request, clicks Ship, and verifies the effect. One Playwright test file covering todo/crm/blog templates. Plus a refusal test ("remove notes field" → hide-not-delete flow end-to-end).
+Plus: agents are language primitives (`ask claude`, `has tools:`, `remember conversation`), not AI bolted onto a visual builder.
 
-### 2. Security hardening before any multi-user demo
-`liveEditAuth` in `playground/server.js` parses JWTs without verifying the HMAC signature. Fine for the single-owner spike; replace with `runtime/auth.js`'s `verifyToken` before any real user touches this.
+### 4. FAQ.md + CLAUDE.md pointer updates
 
-### 3. Phase C — destructive path
-LAE-5 schema migration planner for type changes ("12 rows don't parse — coerce / default / reject?"). Plus the explicit "permanently delete" command with type-DELETE confirmation.
+- FAQ gained three "Where is X?" entries: feature list, changelog, Clear Cloud product decision.
+- The "5. Document it — all 7 surfaces" entry in FAQ was stale; updated to 9 surfaces (added FAQ.md + RESEARCH.md that had been added to CLAUDE.md but not FAQ).
+- Project CLAUDE.md Documentation Rule updated from 9 surfaces to **11 surfaces**: added FEATURES.md (row for every new feature) and CHANGELOG.md (session-dated entry for every ship).
 
-### 4. Phase D — audit + concurrency + dry-run
-LAE-8 change log, LAE-9 concurrent-edit guard, LAE-10 real dry-run staging URLs.
+## Key decisions locked this session
 
-### 5. Phase 85a infrastructure (still blocked from Session 37)
-Fly Trust Verified, Stripe, Anthropic org key, `buildclear.dev` domain. Russell account pass needed before Phase 85 one-click deploy actually deploys anywhere.
+1. **Marcus, not Dave.** Clear Cloud is a hosted product with a Publish button. CLI is opt-in escape hatch, not the pitch.
+2. **Fly, not Cloudflare — for now.** Phase 85 infrastructure stays. Cloudflare auto-routing is v2 after Clear Cloud ships.
+3. **Roadmap is forward-looking only.** Feature reference lives in FEATURES.md. History lives in CHANGELOG.md. ROADMAP is "what's next."
+4. **11 documentation surfaces, not 9.** Every new feature must land in FEATURES.md (capability) + CHANGELOG.md (history) alongside the existing 9.
 
-### 6. Competitive watch — Retool + AI
-Monthly Retool changelog grep. If they bolt Clark onto Release Manager, the Live App Editing window closes fast.
+## What's next (priority order)
 
-## Commits on main from this session
+**P0 — Ship Clear Cloud to Marcus (Q2 2026):**
 
-```
-4e115ec  feat(live-editing): compile widget into every auth-enabled app + drop engineer jargon
-71dd851  (merge from origin/main with Session 37 Supervisor work)
-1200a15  copy(landing): bare-bones live-editing page
-c02f484  copy(landing): rewrite live-editing in Marcus's voice
-d82d648  fix(landing): ship static Tailwind CSS, drop CDN
-16f753d  docs: document Phase A + Phase B across all doc surfaces
-d30549a  docs(claude-md): Real-LLM Eval rule
-675679d  docs(handoff): session 39 mid-point
-(13 earlier feature commits — Phase A foundations, Phase B primitives, eval harness)
-```
+1. **Phase 85a — provision the real stack.** Register `buildclear.dev`, Fly Trust Verified sales-email, Stripe signup, Anthropic org key, Postgres for tenants DB, run `deploy-builder.sh` + `deploy-proxy.sh` once. **This is the single biggest unblocker — the product can't ship until this happens.**
+2. **CC-1 multi-tenant hosting** — subdomain routing, per-app D1 provisioning, isolation. 2–3 weeks.
+3. **CC-2 buildclear.dev auth** — user accounts, sessions, team membership. 1 week.
+4. **CC-4 Publish button wired to Clear Cloud** — replace terminal `clear deploy` as the default path. 3 days after CC-1.
+5. **GTM-1 deal-desk hero app** — build `apps/deal-desk/main.clear` as the Marcus landing-page showcase. ~150 lines.
+6. **GTM-2 Marcus landing page** — `landing/marcus.html`. Headline locked.
 
-## Resume Prompt
+**P1 — Flagship differentiator (parallel with P0):**
 
-"On main. Live App Editing Phase A + Phase B + compiler integration all landed — 2079 tests passing, widget auto-injects into any compiled Clear app with `allow signup and login`, Studio runs the /__meph__ endpoints with a clean 503 fallback in production. Landing page is story-driven in Marcus's voice, no jargon. Next up: Playwright browser e2e of the full flow on todo/crm/blog templates, then JWT HMAC verify on Studio's middleware before multi-user demo. Phase C (destructive path) is the next logical build."
+- **Live App Editing Phase C+** — already shipped Phase A + B in Session 39. Next is multi-tenant-safe edits, undo across sessions, production-mode proxy disabled cleanly.
+
+**P2 — Platform optimization (Q3 2026):**
+
+- Auto-hosting by app type v2 (Cloudflare Workers + D1 + AI Gateway + Modal routing).
+- Flywheel re-ranker training once 200+ passing rows accumulated.
+
+## Resume prompt for next session
+
+> We're shipping Clear Cloud on the existing Phase-85 Fly infrastructure. The single biggest blocker is Phase 85a — we need to actually register buildclear.dev, apply for Fly Trust Verified quota, sign up for Stripe, generate an Anthropic org key, and wire Postgres for the tenants DB. Start there. After that, CC-1 (multi-tenant hosting + D1-per-app) is the next piece of engineering. Read `ROADMAP.md` top section "North Star: Clear Cloud" for the full decision context and `Clear Cloud — Marcus-first hosted platform strategy` for the detailed plan.
+
+## Files changed (doc-only)
+
+- `ROADMAP.md` — reorganized, North Star section added at top, research/moonshots demoted below P3 maintenance, What's Built and Recently Completed stripped out
+- `FEATURES.md` — new file (capability reference)
+- `CHANGELOG.md` — new file (session-by-session history)
+- `FAQ.md` — added 3 pointers; updated stale "7 surfaces" → 9
+- `CLAUDE.md` — updated Documentation Rule from 9 → 11 surfaces
+- `HANDOFF.md` — this file

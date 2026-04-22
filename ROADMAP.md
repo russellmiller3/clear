@@ -8,392 +8,57 @@
 
 ---
 
-## What's Built
+## North Star: Clear Cloud (P0 — Q2 2026)
 
-126 node types. 1850 compiler tests. Zero npm dependencies in the compiler.
-Targets: JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4).
+**Decision (locked 2026-04-21):** Clear is a **Marcus product**, not a Dave tool. The primary interface is a web IDE with a **Publish** button; the terminal + Docker + vendor-choice path is an opt-in escape hatch, not the main pitch.
 
-### Core Language
+**Where it runs:** build on top of the already-shipped Phase-85 Fly infrastructure (shared builder, AI proxy, tenant layer, 72 passing tests). Cloudflare Workers + D1 auto-routing lands as v2, *after* Marcus is paying on Fly. Don't rebuild the hosting layer before shipping the product.
 
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| Variables | `x = 5` / `name is 'Alice'` | `=` for numbers, `is` for strings/booleans |
-| Functions | `define function greet(name):` | Typed params (`is number`), typed returns |
-| For-each loop | `for each item in items:` | Also `for each key, value in map:` |
-| While loop | `while count is less than 10:` | |
-| Repeat loop | `repeat 5 times:` | |
-| If / else | `if x is 5:` ... `otherwise:` | Also inline: `if x is 5 then show 'yes'` |
-| Match / when | `match x:` + `when 'a':` + `otherwise:` | Pattern matching |
-| Try / catch | `try:` + `if error:` | Typed handlers: `if error 'not found':` (404) |
-| Break / continue | `stop` / `skip` | |
-| Comments | `# text` | |
-| Modules | `use 'helpers'` | Namespaced, selective, or inline-all |
-| Script escape | `script:` + raw JS | For anything Clear doesn't cover |
-| Transactions | `as one operation:` | BEGIN/COMMIT/ROLLBACK |
+**What Marcus experiences (the whole pitch in one flow):**
 
-### Expressions
+```
+open buildclear.dev → log in → write or ask Meph to build
+  → hit "Publish" → app is live at approvals.buildclear.dev in 3 seconds
+  → edit → save → live instantly (Live App Editing)
+  → custom domain = one text field
+```
 
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| Math | `+` `-` `*` `/` `%` `^` | |
-| Comparisons | `is greater than`, `is at least`, etc. | Also `is`, `is not` |
-| Boolean logic | `and`, `or`, `not` | |
-| String interpolation | `'Hello, {name}!'` | Any expression inside `{}` |
-| String concat | `'Hello, ' + name` | |
-| Lists | `['a', 'b', 'c']` | Add, remove, sort, length |
-| Records | `create person:` + indented fields | |
-| Possessive access | `user's name` | Also dot: `user.name` |
-| Map operations | `get key from scope` / `set key in scope to value` | Also `exists in`, `keys of`, `values of` |
-| Higher-order | `apply fn to each in list` / `filter list using fn` | |
-| Optional chaining | `user?.name` | Auto-generated for possessive access |
+No terminal. No Dockerfile. No vendor name. One Stripe invoice.
 
-### Web Frontend
+**The five missing pieces to ship Clear Cloud (on top of Phase 85):**
 
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| Pages | `page 'Dashboard' at '/admin':` | Hash routing, auto-slug from title |
-| Reactive state | Variables auto-update UI | |
-| Text input | `'Name' is a text input saved as name` | |
-| Number input | `'Price' is a number input saved as price` | |
-| Dropdown | `'Role' is a dropdown input saved as role` | With options list |
-| Checkbox | `'Active' is a checkbox input saved as active` | |
-| Textarea | `'Bio' is a textarea input saved as bio` | |
-| File input | `'Upload' is a file input saved as doc` | |
-| Buttons | `button 'Save':` + action block | |
-| Sections | `section 'Results':` | With style presets |
-| Tabs | `tab 'Settings':` | Auto-grouped |
-| Components | `define component Card receiving content:` | Reusable, parameterized |
-| Conditional UI | `if logged_in:` + content block | |
-| On change | `when search changes:` | Also debounced: `after 250ms` |
-| On page load | `on page load get todos from '/api/todos'` | Inline or block form |
-| Navigate | `go to '/dashboard'` | |
+| # | Missing piece | Scope | Blocks |
+|---|---|---|---|
+| **CC-1** | Multi-tenant hosting — subdomain routing + per-app DB provisioning + isolation | 2–3 weeks | Everything else |
+| **CC-2** | Auth for `buildclear.dev` itself — accounts, sessions, team membership | 1 week | Marcus can't log in |
+| **CC-3** | Stripe billing — subscriptions + usage metering + quota enforcement | 1–2 weeks | Revenue |
+| **CC-4** | "Publish" button in Studio wired to Clear Cloud (not local compile) | 3 days (after CC-1) | Terminal-free pitch |
+| **CC-5** | Custom domain flow — DNS routing + SSL provisioning + verification UX | 1 week (builds on Phase 89) | Polished user-facing flow |
 
-| Display Format | Syntax | Output |
-|----------------|--------|--------|
-| Table | `display X as table showing col1, col2` | HTML table |
-| Cards | `display X as cards showing name, description` | Card grid |
-| List | `display X as list` | Bullet list |
-| Currency | `display X as dollars` | `$1,234.56` |
-| Percentage | `display X as percent` | `45%` |
-| Date | `display X as date` | Formatted date |
-| JSON | `display X as json` | Pretty-printed |
-| Gallery | `display X as gallery` | Image grid |
-| Map | `display X as map` | Leaflet map |
-| Calendar | `display X as calendar` | Month grid |
-| QR code | `display X as qr` | QR code image |
-| Count | `display X as count` | Number badge |
+**Total on top of Phase 85: ~6–8 weeks.** Before any of this works end-to-end: **Phase 85a** (register buildclear.dev, Fly Trust Verified quota, Stripe signup, Anthropic org key, Postgres for tenants DB). That's the single biggest unblocker — deploy passes tests today but has nowhere to deploy to.
 
-| Chart Type | Syntax | Engine |
-|------------|--------|--------|
-| Line | `line chart 'Revenue' showing data` | ECharts |
-| Bar | `bar chart 'Sales' showing data` | ECharts |
-| Pie | `pie chart 'Breakdown' showing data` | ECharts |
-| Area | `area chart 'Trend' showing data` | ECharts |
+**Companion tracks ship in parallel, not after:**
+- **Live App Editing (LAE-*)** — the flagship differentiator nobody else has. Q2/Q3.
+- **Go-To-Market** — hero Marcus app (deal-desk), landing page, first 5 real Marcuses on LinkedIn. Q2.
 
-| UI Action | Syntax | Notes |
-|-----------|--------|-------|
-| Toast | `show toast 'Saved!'` | Also `show alert`, `show notification` |
-| Show/hide | `hide the sidebar` | Toggle element visibility |
-| Loading | `show loading` / `hide loading` | Overlay spinner |
-| Clipboard | `copy X to clipboard` | |
-| Download | `download X as 'report.csv'` | |
-| Refresh | `refresh` | Page reload |
-| Video | `video from 'url'` | HTML5 player |
-| Audio | `audio from 'url'` | HTML5 player |
-
-### Backend (JS + Python)
-
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| GET endpoint | `when user calls GET /api/users:` | |
-| POST endpoint | `when user sends signup to /api/users:` | Receiving var = singular entity name; `sending`/`receiving` legacy forms still parse |
-| PUT endpoint | `when user updates profile at /api/users/:id:` | URL params auto-bound |
-| DELETE endpoint | `when user deletes user at /api/users/:id:` | |
-| Send response | `send back signup` / `send back signup with success message` | Status 200/201 |
-| Auth scaffold | `allow signup and login` | JWT + bcrypt, 3 endpoints |
-| Requires login | `requires login` | JWT middleware check |
-| Requires role | `requires role 'admin'` | Role-based access |
-| Define role | `define role 'editor':` + permissions | Custom RBAC |
-| Guard | `guard stock > 0 or 'Out of stock'` | Conditional 400 |
-| Validate | `validate <entity>:` + field rules | Per-field 400 errors |
-| Rate limit | `rate limit 10 per minute` | Request throttling |
-| CORS | `allow cross-origin requests` | |
-| Log requests | `log every request` | |
-| Webhooks | `webhook '/stripe' signed with env('SECRET'):` | HMAC verification |
-| File uploads | `accept file:` + max size, allowed types | Multer |
-| External fetch | `data from 'url':` + timeout, cache, fallback | |
-| HTTP requests | `send to 'url':` + method, headers, body | GET/POST/PUT/DELETE |
-| Email (SMTP) | `send email:` + to, subject, body | Nodemailer |
-| Email config | `configure email:` + service, user, password | |
-| PDF generation | `create pdf 'report.pdf':` + content | pdfkit / reportlab |
-| Shell commands | `run command 'git pull'` | Also capture: `result = run command '...'` |
-| SSE streaming | `stream:` + `send back 'event'` | Server-sent events |
-| Deploy | `deploy to vercel` / `deploy to netlify` | Deployment directive |
-
-### Database & CRUD
-
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| Database backend | `database is local memory` / `supabase` / `PostgreSQL` / `SQLite` | |
-| Create table | `create a Users table:` + fields | Types, constraints, defaults |
-| Save (insert) | `save signup as new User` | Var name = incoming entity |
-| Look up one | `look up User where id is 5` | |
-| Look up all | `look up all Users` / `get all Users` | Optional `where` clause |
-| Delete | `delete the User with this id` | |
-| Update | `save profile to Users` | Var name = incoming entity |
-| Belongs to | `author belongs to Users` | Foreign key |
-| Has many | `Users has many Posts` | Auto-generates nested GET endpoint |
-| Search | `search Posts for query` | Case-insensitive full-text |
-| Aggregates | `sum of amount in Orders` | Also `avg of`, `count of`, `min of`, `max of` |
-| Connect to DB | `connect to database:` + config | PostgreSQL pool |
-| Raw SQL | `query 'SELECT * FROM users' with params` | |
-
-### Service Integrations (SERVICE_CALL)
-
-| Service | Syntax | Env Vars |
-|---------|--------|----------|
-| Stripe | `charge via stripe:` + amount, currency, token | `STRIPE_KEY` |
-| SendGrid | `send email via sendgrid:` + to, from, subject, body | `SENDGRID_KEY` |
-| Twilio | `send sms via twilio:` + to, body | `TWILIO_SID`, `TWILIO_TOKEN` |
-
-All compile to direct REST `fetch()` calls. No SDK required.
-
-### Data Operations
-
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| Load CSV | `load csv 'data.csv'` | Parse into array of objects |
-| Save CSV | `save csv 'export.csv' with data` | Write objects to CSV |
-| Filter | `filter list where field op value` | Array.filter |
-| Group by | `group by field in list` | Object of arrays |
-| Count by | `count by field in list` | Count per group |
-| Unique values | `unique values of field in list` | Distinct values |
-| JSON parse | `parse json text` | |
-| JSON stringify | `to json data` | |
-| Regex find | `find pattern '[0-9]+' in text` | Extract matches |
-| Regex match | `matches pattern '^[a-z]+$' in text` | Boolean test |
-| Regex replace | `replace pattern '\s+' in text with ' '` | Substitute |
-| Current time | `current time` / `current date` | |
-| Format date | `format date now as 'YYYY-MM-DD'` | |
-| Days between | `days between start and end` | |
-
-### AI Agents
-
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| Agent definition | `agent 'Name' receives data:` | Async function |
-| Ask Claude | `response = ask claude 'prompt' with context` | Also `ask ai` |
-| Structured output | `ask claude 'prompt' with X returning JSON text:` + fields | Schema enforcement |
-| Tool use | `has tools: fn1, fn2` | Anthropic tool_use API |
-| Skills | `skill 'Name':` + `has tool(s):` + `instructions:` | Reusable tool bundles |
-| Uses skills | `uses skills: 'Lookup', 'Email'` | Merge into agent |
-| Pipelines | `pipeline 'Name' with var:` + agent steps | Sequential chain |
-| Parallel agents | `do these at the same time:` + calls | Promise.all |
-| Conversation memory | `remember conversation context` | DB-backed history |
-| User memory | `remember user's preferences` | Per-user long-term |
-| RAG | `knows about: Products, FAQs` | Keyword search before prompting |
-| Guardrails | `block arguments matching 'drop\|truncate'` | Regex filter on tool inputs |
-| Policies | `must not:` + rules | Compile-time guardrails |
-| Observability | `track agent decisions` | Logs _askAI calls with timing |
-| Human approval | `ask user to confirm 'message'` | Approval workflow |
-| Mock AI | `mock claude responding:` + fields | Test infrastructure |
-| Model selection | `ask claude 'prompt' with X using 'model'` | |
-| Streaming | Auto-streams by default in endpoints | Opt out: `do not stream` |
-| Scheduled agents | `agent 'Name' runs every 1 hour:` | setInterval |
-| Run agent | `result = call 'Name' with data` | Works inside endpoints AND inside other agents (coordinator pattern) |
-| Run pipeline | `result = call pipeline 'Name' with data` | |
-| Dynamic fan-out | `for each x in list: r = call 'A' with x; add r to results` | Loop over runtime-sized list, accumulate |
-| Agent evals button | Studio IDE "Run Evals" next to "Run Tests" | Cost-gated modal before run; per-row cost chips; running total. Each row individually re-runnable. |
-| Auto-generated eval suite | Per-agent role + format + per-endpoint E2E | Built from receiving-var name + table schema + prompt noun-hints; no `'hello'` probes on core templates |
-| User-defined evals | `eval 'name':` top-level + `evals:` agent subsection | Two syntaxes; both produce specs in `result.evalSuite`; merge with auto-generated rows in the same Tests pane |
-| Export eval report | Markdown + CSV download from Tests pane | Grouped by agent, full criteria + input + output + grader feedback; CSV one-row-per-eval for spreadsheets / regression diffing |
-| Multi-provider grader | `EVAL_PROVIDER` env var | Anthropic (default), Google Gemini, OpenAI. Breaks Claude-grading-Claude when set to google/openai. Per-provider pricing baked in. |
-| Eval child orchestration | Dedicated port 4999, 60s keepalive, mutex serialization, SIGINT cleanup, DB wipe per full run | Run-All + per-row Run never race; Ctrl-C doesn't orphan; deterministic fresh-state runs |
-| Synthetic agent endpoints | `compileProgram(source, { evalMode: true })` emits `/_eval/agent_<name>` natively | Internal agents become individually graddable without polluting the production app. Validator rejects user routes that collide with /_eval/* prefix. |
-| Coordinator drains streams | `call 'StreamingAgent'` from a non-streaming caller | Compiler wraps with generator-drain IIFE — coordinator sees the final string, not an async iterator |
-| Live Tests pane streaming | `/api/run-eval-stream` SSE endpoint + EventSource-style UI rewire | Rows flip pending → running → pass/fail as each spec resolves; no 60-90s blank stare |
-| Terminal trace per spec | Every run (Meph, UI, direct POST) logs `[eval] N/T ✓ id pass $0.0008 — feedback` | Failures include the agent's actual output (truncated to 240 chars) so "why" is visible without opening Tests |
-| Auth-walled endpoint probes | Eval runner mints signed test-user tokens matching whichever auth scheme the compiled child uses (inline jsonwebtoken JWT or runtime/auth.js 2-part HMAC) | 7 of 8 core templates have `requires login`; all now probe-able |
-| Implicit schema tables | Compiler auto-creates `Conversations` / `Memories` tables when any agent declares `remember conversation context` or `remember user's preferences` | Was silently failing with "no such table" before the eval auth fix surfaced it |
-| `repeat until` variable scoping | Vars reassigned inside a `repeat until` stay as awaited strings — only single-assignment vars stream | Iterative-refinement agents (draft → improve → grade) now pass real content between calls |
-
-### Workflows
-
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| Workflow definition | `workflow 'Name' with state:` | Multi-step process |
-| State shape | `state has:` + field definitions | Typed state |
-| Step | `step 'Name' with 'Agent'` | Delegates to agent |
-| Step with save | `step 'Name' with 'Agent' saves to state's field` | |
-| Conditional step | `if state's field is value:` + steps | |
-| Repeat until | `repeat until condition, max N times:` + steps | |
-| Parallel steps | `at the same time:` + steps | |
-| Durable execution | `runs on temporal` | Temporal.io |
-| Progress tracking | `track workflow progress` | State history |
-| Checkpoint | `save progress to Table` | DB persistence |
-| Run workflow | `result = run workflow 'Name' with data` | |
-
-### Scheduling
-
-| Feature | Syntax | Compiles To |
-|---------|--------|-------------|
-| Interval | `every 5 minutes:` + block | `setInterval` |
-| Daily schedule | `every day at 9am:` + block | Cron-style scheduler |
-| Scheduled agent | `agent 'Name' runs every 1 hour:` | `setInterval` in agent |
-| Background job | `background 'cleanup':` + `runs every 1 hour` | `setInterval` |
-
-### Testing
-
-| Feature | Syntax | Notes |
-|---------|--------|-------|
-| Test block | `test 'name':` + body | Named test |
-| Nameless test | `test:` + body | First body line becomes the test name — zero redundancy |
-| Expect | `expect result is 42` | Equality assertion |
-| HTTP test call | `call POST /api/users with name is 'Alice'` | |
-| Expect response | `expect response status 201` | Also `expect response body has id` |
-| Intent-based test | `can user create a todo with title is 'Buy milk'` | English-readable, auto-discovers endpoints |
-| Auth intent test | `does deleting a todo require login` | Asserts 401 without auth |
-| Agent intent test | `can user ask agent 'Support' with message is 'hello'` | Agent smoke test |
-| Semantic expects | `expect it succeeds` / `fails` / `requires login` / `is rejected` | Status code assertions |
-| Mock AI | `mock claude responding:` + fields | Override `_askAI` |
-| Unit assertions | `expect x is 5`, `expect x is greater than N`, `expect x is empty` | Value-level assertions — 8 check forms, friendly error messages, no HTTP needed |
-
-### Policies (App-Level Guards)
-
-30+ built-in rules:
-
-| Rule | What it does |
-|------|-------------|
-| `block schema changes` | Prevents ALTER TABLE |
-| `block deletes without filter` | No bulk deletes |
-| `protect tables: Users` | Whitelist-only access |
-| `block prompt injection` | Input sanitization |
-| `require role 'admin'` | Global role gate |
-| `no mass emails` | Block multi-recipient sends |
-| `block file types: '.env'` | Reject dangerous uploads |
-| `code freeze active` | Block all writes |
-
-### Studio IDE
-
-| Feature | Notes |
-|---------|-------|
-| Three-panel layout | CodeMirror editor + preview/terminal + Claude agent chat |
-| 43 template apps | Dropdown selector |
-| Light/dark theme | Toggle |
-| Save to Desktop | Download .clear file |
-| Compile + run + test | All from browser |
-| Source maps | Click preview element -> jumps to Clear source line |
-| AI assistant (Meph) | Builds, compiles, fixes apps via tool use |
-
----
-
-## Recently Completed
-
-| Feature | Syntax | Status |
-|---------|--------|--------|
-| **Live App Editing — Phase A** (LAE-1, LAE-2, LAE-3 additive, LAE-7) | Studio `/__meph__/widget.js` + `/propose` + `/ship` endpoints; owner-gated Meph widget; 3 additive tools (field/endpoint/page); AST-diff classifier with additive/reversible/destructive taxonomy | Done — 67 tests + 10/10 real-Meph eval |
-| **Live App Editing — Phase B** (LAE-3 reversible, LAE-4, LAE-6) | `, hidden` and `, renamed to X` field modifiers; `db.findAll`/`findOne` strip hidden by default; snapshot + rollback primitives; ship auto-snapshots; `/__meph__/api/rollback` + `/snapshots`; widget Undo button; sessionStorage form-state preservation across reload | Done — 44 more tests + 11/11 real-Meph eval |
-| **Live App Editing — compiler integration** | Widget script + `/__meph__/*` proxy auto-injected into every compiled Clear app that declares `allow signup and login`. `STUDIO_PORT` env var wires the child's proxy to Studio; clean 503 in production. Studio copies `runtime/meph-widget.js` into `clear-runtime/` on every `/api/run`. | Done — 7 tests, landing page rewritten in Marcus's voice |
-| Intent classification | `classify X as 'a', 'b', 'c'` | Done — Claude Haiku call |
-| Extended RAG | `knows about: 'https://url'`, `'file.pdf'`, `'doc.docx'` | Done — URLs + files + tables |
-| Send email inline | `send email to X:` + subject/body block | Done |
-| Scheduled at time | `runs every 1 day at '9:00 AM'` | Done — node-cron |
-| `find all` synonym | `find all Orders where status is 'active'` | Done |
-| `today` literal | `where created_at is today` | Done |
-| Multi-context ask ai | `ask ai 'prompt' with X, Y, Z` | Done |
-| Store-ops GAN target | 230-line e-commerce agent demo | Done — compiles + runs |
-| Error throwing | `send error 'message'` / `throw error` / `fail with` / `raise error` | Done — P1 |
-| Finally blocks | `try:` ... `finally:` / `always do:` / `after everything:` | Done — P2 |
-| First-class functions | Pass function refs as arguments | Done — P3, works natively |
-| Async function await | User-defined async fns auto-get `await` at call sites | Done — pre-scan + transitive |
-| Postgres adapter | `database is PostgreSQL` → `pg.Pool` runtime adapter | Done — `runtime/db-postgres.js`, same API as SQLite |
-| Railway deploy | `clear deploy app.clear` → package + `railway up` | Done — auto-detects db backend, correct deps |
-| Studio Test Runner | Tests tab in IDE with Run App/Compiler buttons | Done — `/api/run-tests`, Meph `run_tests` tool |
-| Intent-based tests | `can user create/view/delete`, `does X require login`, `expect it succeeds` | Done — `TEST_INTENT` + extended `EXPECT_RESPONSE` |
-| English test names | Auto-generated tests use readable names ("Creating a todo succeeds") | Done — `generateE2ETests` rewrite |
-| CRUD flow tests | "User can create a todo and see it in the list" | Done — auto-generated from table + endpoint AST |
-| `dbBackend` field | `compileProgram()` exposes `result.dbBackend` | Done — used by CLI deploy/package |
-| Nameless test blocks | `test:` + body (first line = name) | Done — zero-redundancy test syntax |
-| Auto-test on Run | Tests auto-run when Run clicked, switch to Tests tab on failure | Done — Studio IDE integration |
-| Test runner rewrite | `clear test` starts server, installs deps, shares JWT | Done — replaces legacy test extraction |
-| Studio Bridge | Shared iframe between user + Meph via postMessage | Done — `?clear-bridge=1` / `<meta name="clear-bridge">` gate, compiler-injected |
-| Bridge tools | `read_actions`, `read_dom` + `click/fill/inspect/read_storage` via bridge | Done — replaces separate Playwright page |
-| Friendly test failures | Plain-English errors with hints for 200/201/204/400/401/403/404/409/422/429/5xx | Done — `_expectStatus`/`_expectBodyHas`/etc helpers |
-| Click-to-source on failures | `[clear:N]` tag in error → IDE jumps editor to line | Done — `parseTestOutput` extracts `sourceLine` |
-| Fix with Meph button | Failure row → submit `{name, error, sourceLine, snippet}` to Meph | Done — auto-prompts in chat |
-| Meph sees user test runs | IDE snapshots `testResults` into chat body | Done — `buildSystemWithContext` appends to system prompt |
-| Unified terminal timeline | `[stdout]`/`[stderr]`/`[user]`/`[browser]`/`[meph]` interleaved | Done — single `terminalBuffer`, mirrored from all sources |
-| Fix Windows libuv shutdown | Single SIGTERM handler awaits browser close before exit | Done — eliminates `UV_HANDLE_CLOSING` assertion |
-| Meph tool eval | 16-scenario script + Meph self-report per tool | Done — `playground/eval-meph.js`, 15/15 verified |
-| `incoming` scanner walks wrapper nodes | SEARCH/FILTER `.query` field now triggers binding | Done — `incoming?.q` in compiled output now has matching `const incoming = req.query` |
-| User-test HTTP path tokenizer fix | `/api/todos` no longer collapses to `/` in `_lastCall` | Done — friendly errors show real path |
-| E2E auth helper | JWT signed via node crypto + pinned `JWT_SECRET` on child spawn | Done — 77/77 pass with `requires login` POSTs |
-| `highlight_code` tool case | Was missing from executeTool switch | Done — found by Meph eval self-report |
-| Rich text editor input | `'Body' is a text editor saved as body` | Done — Quill via CDN, toolbar, live `_state` binding |
-| Multi-page Express routing | `page 'X' at '/new':` emits `app.get('/new', ...)` | Done — previously only `/` was served so direct URLs 404'd |
-| Client-side pathname router | Reads `location.pathname`, falls back to hash, intercepts `<a>` clicks for SPA nav | Done — was hash-only, broke every multi-page app on refresh |
-| Studio route selector | Dropdown above preview listing every `page 'X' at '/route'` | Done — includes back/forward/refresh, full-stack apps use real http iframe (not srcdoc) |
-| Layout nesting warning | `page_hero`/`page_section` inside `app_layout` → compiler warning | Done — silent clipping trap now caught |
-| Honest test labels | `UI: ...` vs `Endpoint: ...` based on real UI detection | Done — walks AST for `API_CALL` POSTs in pages, renames flow tests accordingly |
-| Unwired-endpoint warning | POST endpoint with validation but no UI button wired → warning | Done — emitted with the endpoint's line number |
-| `send X as a new post to URL` parser fix | Greedy `post to` synonym was eating resource word, dropping entire send line | Done — respond handler accepts `post_to`/`put_to`/`get_from`/`delete_from` as URL connectors |
-| Express 5 `sendFile` root option | `res.sendFile(absolutePath)` 404'd on non-root URLs under send module | Done — switched to `{ root: __dirname }` form |
-| Streaming is the default | `ask claude 'X' with Y` inside POST endpoint auto-streams; `get X from URL with Y` on frontend auto-reads SSE | Done — no `stream` keyword needed anywhere |
-| Streaming opt-out | `without streaming` → single `res.json({ text })` response | Done — matching frontend auto-detects, uses plain POST + JSON |
-| `_askAIStream` prompt bugfix | Parser used non-existent `NodeType.STRING_LITERAL`, compiler silently emitted `/* ERROR */` in every streaming endpoint | Done — fixed both code paths, `LITERAL_STRING` is correct |
-| Compile badge in Studio | `NwordsClear → NwordsJS · Nx · Nms` toolbar chip + auto-tests badge | Done — visible proof of compiler leverage |
-| Meph voice mode | 🔊 toggle in chat pane — continuous mic + spoken replies in refined British male voice | Done — zero-deps Web Speech API, auto-pause during speech, sentence-buffered TTS, persistent across reloads |
-| Eval criteria clarity | Rubric leads; "non-empty response" check demoted to dim italic footnote | Done — applied to Studio Tests pane + exported Markdown reports |
-| Test runner timeouts | 30s → 120s CLI / 180s Studio; override via `CLEAR_TEST_TIMEOUT_MS`, `CLEAR_STUDIO_TEST_TIMEOUT_MS`, `CLEAR_NPM_INSTALL_TIMEOUT_MS` | Done — cryptic Windows `spawnSync cmd.exe ETIMEDOUT` translated to plain-English guidance |
-| Stray diff-marker detection | Leading `-` / `+` on a source line → plain-English error naming the real cause instead of "undefined variable 'send back'" | Done — validator catches the multi-word-keyword-as-identifier case; AI-INSTRUCTIONS + Meph system prompt updated so edits don't leave diff artifacts |
-| Voice mode tri-state | Off / 🔊 Speak / 🎤 Converse segmented control in chat pane | Done — Speak = TTS only (no mic), Converse = TTS + continuous STT; mic-denial falls back to Speak |
-| SSE grading for structured payloads | Agent endpoints that stream `send back { score, reason }` now land in the grader with full JSON body | Done — session 32 widest-blast-radius bug; 14 unit tests in `playground/sse-drain.test.js` |
-| Terminal newest-first ordering | Newest event at top, accent-highlighted; older entries fade | Done — removed the double-reverse that was burying new entries at the bottom |
-| Eval score-gap display | Rubric scores render with tinted chip showing gap from threshold (+0.2 / -0.4) — green when clear, yellow when borderline, red when clearly failing | Done — flakiness reads as borderline case, not regression. Same format in exported MD reports. |
-| Auto-rerun on eval fail | Failed rubric-graded specs auto-rerun once; pass on retry = flagged "borderline" with prior-attempt score exposed | Done — catches T=0 sampling jitter at ~2x cost on genuine failures only. Override with `CLEAR_EVAL_NO_RERUN=1`. |
-| Probe honors `validate incoming:` | e2e/role/format probes now merge the endpoint's required fields into the body so probes don't 400 before the agent runs | Done — new `buildEndpointBody()` helper. Unblocked page-analyzer + lead-scorer end-to-end. |
-| Concrete sample values | Field-level sample generator emits `"Acme Corp"` / `"quantum computing"` / `"alice@example.com"` instead of `"sample X"` | Done — generic strings made Claude-backed agents refuse ("I need more context"). Real values ground the grader + agent. |
-| Eval child shutdown race | `killEvalChildAndWait()` awaits exit + 200ms OS socket grace before respawn | Done — sync kill was racing the next spawn on port 4999, surfacing as cascading "fetch failed." |
-| Extended eval idle timer | `EVAL_IDLE_MS` 60s → 300s | Done — multi-agent suites run 3+ min; child was being reaped mid-run when grader bursts spanned 60s between probe hits. |
-| **Agent+auth template evals all pass** | page-analyzer, lead-scorer, helpdesk-agent, ecom-agent, multi-agent-research | **29/29** specs pass end-to-end (was 15/29 at session 32 baseline). Real-API validation of the whole eval stack. |
-| **Phase 85 — One-click deploy (Studio → Fly)** | Session 37 | Deploy button in Studio ships compiled apps to a live URL in seconds. Shared builder + metered AI proxy + tenant/billing layer + cross-tenant isolation. 72 passing tests across packaging, builder, proxy, billing, deploy, security. External prerequisites (Fly sales email, Stripe signup, domain registration, Anthropic org key) still required before first real deploy. |
-
-### Session 37 — Supervisor + Factor DB + Marcus apps + HITL compiler fixes
-
-| Feature | Syntax / Where | Status |
-|---------|----------------|--------|
-| **Factor DB** | `playground/factor-db.sqlite` — every Meph compile writes a row: {archetype, error_sig, compile_ok, test_pass, source_before, patch_summary} | Done — SQLite, WAL, indexed. 139 rows / 49 passing. |
-| **Archetype classifier** | `playground/supervisor/archetype.js` — 15 shape-of-work categories | Done — queue_workflow/routing_engine/agent_workflow/dashboard/crud_app/content_app/realtime_app/booking_app/ecommerce/api_service/etl_pipeline/webhook_handler/batch_job/data_sync/general. All 13 templates classify correctly. |
-| **Flywheel loop closure** | `/api/chat` compile error → `_factorDB.querySuggestions()` → injects 3 tier-ranked past examples as `hints` in tool result | Done — v2 layered: exact error + archetype / exact error / archetype gold |
-| **Studio Flywheel tab** | Live dashboard: total rows, passing rows, progress to 200-row threshold, archetype table, recent activity, API health banner | Done — polls `/api/flywheel-stats` every 3s |
-| **Studio Supervisor tab** | Run-sweep control (workers/tasks/timeout), live progress (per-task ✅/❌), session browser with click-to-expand trajectory drill-down | Done — 4 new endpoints (`/api/supervisor/sessions`, `/session/:id`, `/start-sweep`, `/sweep-progress`) |
-| **Session Registry** | `playground/supervisor/registry.js` — SQLite-backed session tracking (state, port, task, pass_rate) | Done — WAL mode, 4 tests |
-| **Worker Spawner** | `playground/supervisor/spawner.js` — spawns `node playground/server.js --port=X --session-id=Y` child processes | Done — port availability check, killAll |
-| **Supervisor Loop** | `playground/supervisor/loop.js` — polls workers, detects TASK COMPLETE / STUCK, SSE status stream | Done — state machine + SSE |
-| **Curriculum sweep harness** | `node playground/supervisor/curriculum-sweep.js --workers=3` — drives 25 curriculum tasks through N parallel workers | Done — pre-flight API check, fail fast on rate limit |
-| **Eval replicated** | `node playground/eval-replicated.js --trials=3` — runs full 16-scenario suite on N workers, reports flake rate per scenario | Done — same infra as curriculum-sweep |
-| **Training data exporter** | `node playground/supervisor/export-training-data.js --stats` or `--out=t.jsonl` — JSONL with 15 structured features per row | Done — ready for EBM once 200 passing rows accumulate |
-| **EBM trainer stub** | `python playground/supervisor/train_reranker.py t.jsonl` — refuses below 200 passing, else trains + exports ONNX | Done — skeleton ready, dormant until threshold |
-| **5 Marcus apps** | `approval-queue`, `lead-router`, `onboarding-tracker`, `support-triage`, `internal-request-queue` — business-ops templates in Studio dropdown | Done — top of dropdown, matching L7-L9 curriculum tasks |
-| **`send back all X` shorthand** | `send back all Users` / `send back the User with this id` / `send back all Users where active is true` — inline retrieval, no named intermediate | Done — parser desugars to `[CRUD, RESPOND]`, 6 templates updated |
-| **`this X` standalone expression** | `workspace_id = this id` / `items = get all Items where owner is this user_id` — URL param access anywhere | Done — parses to `incoming?.X` |
-| **Test verb aliases** | `can user submit`, `add`, `post`, `send`, `make` → canonical `create`. Plus `see/read/get/list` → `view`, `remove` → `delete`, `edit/change/modify` → `update` | Done — `TEST_VERB_ALIAS` map in parser |
-| **Intent hints (validator)** | `find`, `fetch`, `search`, `query`, `lookup`, `select`, `retrieve`, `filter`, `list`, `create`, `insert`, `add`, `remove`, `destroy`, `update`, `id`, `login`, `password`, `this`, `generate`, `summarize`, `classify`, `extract`, `translate`, `rewrite`, `analyze`, `predict` — all get curated hints pointing at canonical form | Done — `INTENT_HINTS` map in `validator.js`, replaces nonsensical Levenshtein suggestions |
-| **Auth guard error UX** | Missing `requires login` on POST/PUT/DELETE shows full corrected endpoint example, not just one-line fix | Done — `validator.js` error message |
-| **Classifier auth detection fix** | archetype.js was checking non-existent `REQUIRES_LOGIN` node type; now checks `REQUIRES_AUTH`, `REQUIRES_ROLE`, `AUTH_SCAFFOLD` | Done — Marcus apps now correctly tagged `queue_workflow` |
-| **http_request 2xx = passing signal** | `/api/chat` http_request tool 2xx response now marks the latest Factor DB row as `test_pass=1` with 0.9 score | Done — curriculum sweeps that verify via HTTP now produce passing rows |
-| **Pre-flight API check** | Sweep harnesses probe API with 5-token request before spawning workers; fail in 2s on rate limit instead of burning 10 min | Done — `curriculum-sweep.js` + `eval-replicated.js` |
-| **Flywheel API health banner** | `/api/flywheel-stats` reports `apiHealth` (ok/no_key/error), Flywheel tab shows red/green banner with actual error text | Done — cached 5 min to avoid quota waste |
-| **Cold-start seeder** | `node playground/supervisor/cold-start.js` — seeds DB with 13 gold templates (all 8 core + 5 Marcus) + 25 curriculum skeleton attempts | Done — idempotent, BM25 retrieval works immediately |
-| **HITL Rule (CLAUDE.md)** | "Meph Failures Are Bug Reports on the System" — when Meph fails, fix compiler/docs/system prompt, merge-as-you-go. Matrix of symptom → root cause layer | Done — codified as mandatory rule + in memory |
-| **Documentation Rule 9 surfaces** | Added FAQ.md + RESEARCH.md to the rule (was 7, now 9). Both skills (ship + write-plan) updated | Done — no new feature ships without updating all 9 |
-| **Measured lift** | Sweep 6 (all HITL fixes active) vs Sweep 4: **+75% task completions (4→7)**, 30% faster wall clock, +38% more passing rows | Done — HITL rule proved itself empirically |
+**Full strategy + competitive positioning vs Retool / Lovable / Bubble** is in the `Clear Cloud — Marcus-first hosted platform strategy` and `Why Clear Cloud beats Retool and Lovable at deploy specifically` sections below. **Session-by-session history** is in `CHANGELOG.md`. **Feature reference (what Clear can do today)** is in `FEATURES.md`.
 
 ---
 
 ## What's Next
 
-Ordered by impact. Three tracks: **go-to-market**, **language completeness**, and **platform quality**.
+**Priority order (revised 2026-04-21).** The product north star is: **paying Marcus customers on Clear Cloud.** Everything below ladders up to that, or it's research. Sections are grouped by priority tier — within a tier they can run in parallel.
+
+| Tier | Track | What this is | Sections |
+|---|---|---|---|
+| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Clear Cloud hosted platform | The product Marcus presses "Publish" in. Build on top of existing Phase-85 Fly infrastructure. | `Clear Cloud — Marcus-first hosted platform strategy`, `One-click deploy follow-ups (Phase 85 shipped)`, `Why Clear Cloud beats Retool and Lovable` |
+| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Go-to-market & first users | The pitch, the landing page, the first 5 real Marcuses finding Clear. | `Go-To-Market & Positioning`, `Repo Readthrough Priorities` |
+| **P1 — Flagship differentiator (Q2/Q3 2026)** | Live App Editing | The single feature no competitor has. Ships in parallel with CC-1 through CC-5. | `Live App Editing (Flagship)` |
+| **P2 — Platform optimization (Q3 2026)** | Auto-hosting v2 + flywheel | Cloudflare auto-routing for compatible apps; Meph reranker training on Factor DB. | `Auto-hosting by app type (v2)`, `Flywheel / Training Signal`, `Compiler Flywheel — Tier 1 only` |
+| **P3 — Maintenance & quality** | Language + performance + tests | Keep the compiler honest and fast as surface expands. | `Language Completeness`, `Performance`, `Platform Quality`, `Mechanical Test Quality Signals`, `Next Up (Session 34 Next Steps)` |
+| **P4 — Long-term research** | Compiler Flywheel CF-2/3/4, SK-*, OL-*, moonshots | Published research, novel capability, delight features. Not on the Marcus critical path. | `Compiler Flywheel Tiers 2-4`, `Research Priority Order`, `Solo Karpathy Moonshot`, `Other Laptop-Scale Research Bets`, `Private Moonshots` |
+
+**Rule of thumb for session prioritization:** if you're working on something tagged P2 or lower while P0 items are incomplete, ask yourself whether this session is actually moving Marcus closer. If not, stop and pick a P0 task. Research is valuable — it's just not urgent.
 
 ### Repo Readthrough Priorities (2026-04-19)
 
@@ -405,103 +70,108 @@ These came out of a full readthrough of the repo/docs stack. They are not new fe
 | RR-2 | **Retire or redesign the last 1:1-mapping violations.** `CHECKOUT`, `OAUTH_CONFIG`, `USAGE_LIMIT`, and any other syntax that still hides too much generated behavior should move toward explicit source forms or be demoted until they do. | Next | Protects Clear's most important philosophical moat |
 | RR-3 | **Bias roadmap energy toward the Marcus wedge, Meph reliability, and live editing.** New syntax should mostly earn its keep by removing `script:` from Marcus-class apps or by fixing repeated Meph failure clusters, not by broadening surface area for its own sake. | Next | Keeps the company/story/product pointed at the strongest wedge |
 
-### Flywheel / Training Signal (Session 38 in-flight)
-
-The RL thesis moves forward in small, measurable steps. Each item below compounds the ones below it — do them in order.
-
-| # | Item | Status | Impact |
-|---|------|--------|--------|
-| RL-1 | **Meph runs on Haiku 4.5 by default.** `MEPH_MODEL` env var overrides to Sonnet for A/B. 15/16 vs 16/16 on eval-meph; within 6% of Sonnet capability at 3x cheaper per row. | ✅ Done (Session 38) | ~$2k saved per 10k-row sweep |
-| RL-2 | **Step-decomposition labeling.** Every compile row now tagged with which task milestone Meph has hit (`step_id`, `step_index`, `step_name`). Sweep prints per-step rollup: attempts, compiles, tests passed per step. Seeded on 2 tasks (todo-crud, webhook-stripe). | ✅ Done (Session 38) | 4x signal density per sweep |
-| RL-3 | **Classifier fuzzy-match fixes.** Dashboards with 1 chart misroute to "dashboard" (should route to KPI). Webhooks on `/hook` paths route wrong. Small regex additions in `archetype.js`. | Next (30 min) | Unlocks balanced archetype distribution |
-| RL-4 | **Seed steps on the other 28 curriculum tasks.** 2 tasks seeded; the rest still fall into the unlabeled bucket in stepStats. | Next (1 hr) | Step-decomposition coverage from 7% → 100% |
-| RL-5 | **Sharpen the 5 archetype task descriptions.** Explicit archetype signals so Meph doesn't guess wrong on webhook/batch/sync/ETL/dashboard shapes. | Next (30 min) | Prevents classifier poisoning the DB |
-| RL-6 | **First full re-sweep with Haiku + steps + fixes.** Overnight run populating the Factor DB with step-labeled, cheap, well-routed rows. First training-ready dataset. | After RL-3/4/5 | Unlocks EBM training at 200 rows |
-| RL-7 | **Honest-label tag reliability + inference fallback.** Meph emits `HINT_APPLIED: yes\|no, tier=X, helpful=Y` after hint-served compiles — but tag rate was ~45% because task-focused agentic loops skip the meta-observation. (a) Tightened the system-prompt as a reflex rule. (b) Added server-side inference: when no tag AND a later compile in the same turn had fewer errors → log `applied=1, helpful='inferred'` (distinct value, doesn't pollute honest set). | ✅ Done (Session 40) | Should double-ish the effective label rate from sweeps; full validation after next 3 sweeps |
-| RL-8 | **Retrain ranker on honest-helpful labels.** Once `hint_helpful='yes'` count crosses ~50 (currently 10), filter training data to those rows and train a secondary pairwise ranker. Honest labels are a stronger signal than the proxy `test_pass` — ranker picks hints Meph himself rated useful. | Next (blocked on data volume) | Quality-filter over the test-score signal |
-| RL-9 | **`caller` as canonical magic var + compiler shadow fix.** Renamed the authenticated-user magic var from the multi-word `current user` to the single-word `caller` (legacy forms still work as synonyms). Fixed a compiler bug where bare `user` in backend mode ignored local shadowing and always emitted `req.user`, even when the endpoint declared a `user` receiving var — `send back user` was returning the caller instead of the body. Users-table endpoints can now use `user` as their receiving var without the previous `signup`/`profile`/`account` workaround. | ✅ Done (Session 40) | Uniform entity-name rule; silent data-leak class of bug closed |
-
-### Compiler Flywheel — second-order moat (Session 38 idea, Phase 2)
-
-**The insight:** Today's flywheel makes *Meph* write better Clear over time. But we never measure whether the *JS/Python/HTML the compiler emits* is optimal. Every emit function is hand-written by Russell/Claude — "reasonable" but not proven best. A second flywheel, running at the compiler layer, can let production data pick the emit strategy that actually performs.
-
-**Four tiers by ROI:**
-
-| # | Tier | Cost | Unlock |
-|---|------|------|--------|
-| CF-1 | **Runtime instrumentation.** Compiled apps emit latency / error / memory beacons to a shared endpoint. Factor DB gains runtime-outcome columns per compile row. | 1 day | We finally *know* which compilation choices produce slow or crashy JS. Data-driven compiler bug-reports instead of gut-feel. |
-| CF-2 | **Candidate emitters + deterministic A/B.** For the top 10 emit patterns, define 2–3 JS/Py variants. Feature-flag which variant is emitted per app (deterministic at compile time, not runtime — preserves "same input = same output" rule within a build). After N apps run each variant, production data picks the winner. | 1 week | Quantitative answer to "which JS pattern is best for `get all X where Y`?" instead of whoever wrote the emitter first. |
-| CF-3 | **Compiler-strategy reranker.** EBM trained on (archetype, app shape, runtime outcome) → which emit variant should I pick? Same glass-box model as the Meph reranker, one layer deeper. | 2 weeks (after Meph reranker trained) | Per-pattern emit strategy auto-selects based on context. Compiler gets smarter per app. |
-| CF-4 | **GA-evolved compiler (research).** Mutate emit functions themselves. Fitness = curriculum pass rate + runtime perf. RESEARCH.md already has a GA for candidate Clear programs — this is the same idea one abstraction up: evolve the compiler. | 2+ months (research, not product) | The compiler becomes a learned artifact, not a hand-coded one. This is the moat nobody else architecturally can copy — a compiler that improves from usage. |
-
-**Error-message flywheel (bonus, easy):** Track which compile error messages correlate with STUCK sessions. Auto-flag "bad error messages" for rewrite. Already half-built via the existing Factor DB.
-
-**Why ship CF-1 soon, not CF-2-4:**
-- The Meph-level flywheel is not yet validated. Don't add a second flywheel before the first is proven.
-- Compiler quality is *not* the current bottleneck — Session 38's webhook bug proved the bottleneck is Meph writing broken Clear (parser gaps, wrong syntax), not the generated JS being suboptimal.
-- BUT: CF-1 is 20 lines of instrumentation that starts collecting data now. Cheap optionality. Data collection compounds before you decide to act.
-
-**Not-now but write it down:** CF-4 is a publishable research direction. If Augment Labs track becomes primary, this is where that work lives.
-
-### Private Moonshots — if the goal is delight, ambition, and "this should not exist"
-
-These are the features that make Clear feel like a private cathedral project instead of a sane startup roadmap.
-
-| # | Item | Status | Why it's fun |
-|---|------|--------|--------------|
-| PM-1 | **Time-travel app editing.** Every ship becomes a named snapshot with source diff, data diff, screenshot diff, and "why this changed" note from Meph. One-click scrub through app history like a video editor. | Idea | Turns software development into a visible narrative instead of invisible file churn |
-| PM-2 | **Compiler strategy arena.** Let multiple emit strategies compete per pattern (`table render`, `CRUD handler`, `auth middleware`, `chat UI`) and keep score from runtime behavior, evals, and visual diffing. | Idea | Makes the compiler feel alive and self-optimizing |
-| PM-3 | **App MRI / X-ray mode.** Click anything in a running app and see the Clear line, generated JS, DB fields, tests, recent failures, and Meph's last relevant edits for that surface. | Idea | The most on-brand expression of "readable software" in the whole repo |
-| PM-4 | **Production replay lab.** Capture real sessions, then replay them deterministically against older and newer compiler/app versions to see what changed, what broke, and what got faster. | Idea | Gives you a toy-box for debugging, evals, and compiler evolution all at once |
-| PM-5 | **Semantic migrations with negotiation.** For destructive schema changes, Clear doesn't just error — it opens an interactive planner: keep, coerce, split, rename, archive, or ask Meph to propose the safest path. | Idea | Feels like database evolution grew a brain |
-| PM-6 | **Multi-agent build theater.** Several Meph variants build or critique the same app from different perspectives (readability, security, speed, design), then a supervisor merges the best parts with a visible reasoning trace. | Idea | Maximalist, theatrical, and perfect for a private software lab |
-| PM-7 | **Generated tests for everything visible.** Not just endpoints and forms — every button, state transition, empty state, chart, permission boundary, and recovery path gets generated probes and explanation text. | Idea | Pushes the "compiler tests everything" thesis to its ludicrous endpoint |
-| PM-8 | **Living architecture reports.** Every app gets a gorgeous browsable dossier: entity graph, endpoint graph, page graph, permission graph, agent graph, and failure hotspots, regenerated on every compile. | Idea | Makes Clear apps feel like inspectable machines, not blobs of code |
-
-### Research Priority Order (revised 2026-04-19)
-
-Previously SK-1 (cross-domain transfer) was treated as the single flagship. It is not the most ambitious laptop-feasible question Clear can answer. Full rationale and candidate comparison in **`RESEARCH.md` → "Flagship Research Candidates — Ranking the Most Ambitious Laptop-Feasible Questions"**.
-
-**Revised sequencing:**
-
-1. **SK-3 — Constrained-language scaling laws.** Does a small LLM writing Clear match a big LLM writing Python on the same spec? If yes, constraints beat scale for bounded problem classes — a Bitter Lesson counterexample. Infrastructure mostly live; a weekend's runs produce a paper or a clean null.
-2. **SK-2 — Provably minimal agent-iterated programs.** Does GA+reranker iteration converge on the provably-minimum Clear program for a spec? Verified by exhaustive enumeration over the 11-op patch space. FunSearch / AlphaEvolve never claim minimality; Clear's closed grammar makes it uniquely tractable.
-3. **SK-1 — Cross-domain transfer (original flagship).** The entry below. Still valuable; stronger as paper #3 because you can frame it as "minima from domain A transfer to domain B" rather than just "F1 improves."
-4. **SK-4 — Emergent-algorithm detection.** "Move 37" for programs — did the GA discover an algorithm genuinely not in the training corpus? Highest intellectual ceiling, hardest to score. Do last once Clear is an established research platform.
-
-**Parking lot** (not first-flagship): decidable Clear (PhD-scale), compression-as-signal (good methodological paper), cross-target transfer (good warm-up paper). All catalogued in RESEARCH.md.
-
-**Why this ordering, not the reverse:** scheduling convenience would put transfer first (infrastructure is most complete). Research strategy puts scaling laws first so each paper makes the next one stronger — "constraints matter" → "constraints find optima" → "optima transfer." Rising arc, not flat sequence.
-
-### Solo Karpathy Moonshot
-
-If the goal is "one obsessed person, some LLM API calls, a ThinkPad, and a result that makes serious ML people raise an eyebrow," the strongest bet is a cross-domain program-evolution lab.
-
-| # | Item | Status | Why this is the one |
-|---|------|--------|---------------------|
-| SK-1 | **Cross-domain program evolution lab.** Run GA-style Clear program evolution on one domain, train an interpretable EBM reranker on structural features of the winning programs, then show that the reranker improves generation-1 results on a different domain. Wrap the whole thing in a replayable "evolution notebook" with variants, scores, learned rules, and transfer charts. | Target (#3 in revised priority order — see above) | Research-grade claim, CPU-friendly, tightly aligned with Clear's core thesis, and impressive precisely because it does not require giant-model fine-tuning or large infra |
-| SK-2 | **Provably minimal agent-iterated programs.** Given a spec, does GA+reranker iteration converge on the provably-minimum Clear program — the one no shorter program can satisfy? Verified by exhaustive enumeration over the 11-op patch space. Full rationale in RESEARCH.md. | Target (#2 in revised priority order) | FunSearch / AlphaEvolve never claim minimality; Clear's closed grammar makes exhaustive enumeration tractable up to ~10-line programs |
-| SK-3 | **Constrained-language scaling laws.** Does a small LLM writing Clear match a big LLM writing Python on the same spec? Fixed specs × {Haiku, Sonnet, Opus} × {Clear, Python}. If the Clear column flattens while Python slopes up, constraints beat scale for bounded problem classes. | Target (#1 in revised priority order — do first) | Bitter Lesson counterexample. Anthropic-relevant. Infrastructure mostly live. Weekend of runs produces paper or null. |
-| SK-4 | **Emergent-algorithm detection.** Did the GA discover an algorithm genuinely not in the training corpus? Clear's readable 1:1 compile output makes novelty auditable in a way FunSearch's cryptic Python output does not. | Target (#4 in revised priority order) | Highest intellectual ceiling of any candidate; hardest to score cleanly. Operationalizing "novel" is the whole game. |
-
-### Other Laptop-Scale Research Bets
-
-If SK-1 is the flagship claim, these are the other compact bets that could still produce a real result on one machine.
-
-| # | Item | Status | Why it might matter |
-|---|------|--------|---------------------|
-| OL-1 | **Search-space compression benchmark.** Compare Clear vs Python on the same program-search tasks: valid-candidate rate, mutation survival rate, convergence speed, and token cost. | Idea | Quantifies the core claim that constrained readable languages make search dramatically easier |
-| OL-2 | **Readable-source debugging benchmark.** Paired bug-fix tasks in Clear vs JS/Python: measure fix rate, latency, retries, and cost for the same model under the same harness. | Idea | Strong practical claim: readable 1:1 source improves automated debugging, not just aesthetics |
-| OL-3 | **Error-message learning loop.** Learn which compiler errors actually unstick Meph, rewrite the worst ones, and measure downstream improvement in repair rate. | Idea | Small, falsifiable, and deeply on-theme: better explanations as capability amplification |
-| OL-4 | **Task-curriculum teacher.** Instead of only learning over programs, learn which next task or archetype best improves the reranker fastest. | Idea | Meta-learning over training order, still feasible with the existing supervisor/factor DB setup |
-| OL-5 | **Counterexample co-evolution.** Evolve small adversarial test generators against Clear programs, then measure whether programs hardened against them transfer better to unseen edge cases. | Idea | More exciting than static evals and still laptop-friendly if the domains stay small |
-
 ### One-click deploy follow-ups (Phase 85 shipped)
 1. **Phase 85a — Provision the real stack.** Register buildclear.dev, apply for Fly Trust Verified status with 10k-machine quota, sign up for Stripe, generate Anthropic org key, wire Postgres for the tenants DB, and run `deploy-builder.sh` + `deploy-proxy.sh` once. Until this is done Deploy works end-to-end in tests but has nowhere to deploy to.
 2. **Phase 86 — Per-tenant usage dashboard.** The plan badge is a teaser; a full breakdown page (spend by day, top apps by AI spend, upgrade CTA) turns the badge into a billing conversion surface.
 3. **Phase 87 — Meph-driven deploy.** Meph gains a `deploy_app` tool so "ship it" from chat does the right thing: prompts for secrets, picks a domain, calls `/api/deploy`, streams progress into the chat bubble.
 4. **Phase 88 — Deploy history drawer.** Rollback API exists; surface it in the UI as a per-app drawer with version + diff preview.
 5. **Phase 89 — Multi-region + custom-domain polish.** Region picker at deploy time, cert-status polling, one-click DNS record copy. Everything is `iad`-only today.
+
+### Clear Cloud — Marcus-first hosted platform strategy (2026-04-21)
+
+**The positioning decision, recorded in one place so it stops drifting.**
+
+Every session drifts toward building a Dave tool — a CLI, a Dockerfile, a compile-to-JS export. That was the Phase-85 shortcut. The *product* is Marcus pressing a button. Dave's path exists as an escape hatch, not the main pitch. Session 35 locked Marcus; this section locks the deploy *experience* that follows from that.
+
+**Two mental models, picked once:**
+
+| Dimension | Dave tool (Terraform/YAML) | Marcus product (Bubble-shaped) |
+|---|---|---|
+| Primary interface | Terminal (`clear deploy`) | Studio button ("Publish") |
+| Who picks the vendor | User does | Compiler does, automatically |
+| Who owns the Dockerfile | User sees and edits | Hidden, never surfaced |
+| Who pays for hosting | User's Cloudflare/Fly/AWS bill | Single Clear Cloud subscription |
+| Escape hatch | *Is* the product | Exists, not advertised |
+
+**We build Marcus.** Reasons: (1) 10x bigger market than devs, (2) Clear's plain-English bet is wasted on Dave, (3) the Factor DB flywheel needs hosted data to compound, (4) Vercel/Stripe/Retool all started technical and expanded down — going up-market from Dave to Marcus is a proven path, going down-market from Marcus to Dave is not.
+
+**What Marcus experiences:**
+
+```
+Studio → writes/asks Meph → hits "Publish"
+  → app is live at approvals.buildclear.dev in 3 seconds
+  → "Add custom domain" = one text field
+  → Edit → Save → live instantly (Live App Editing)
+```
+
+No terminal. No vendor name. No Dockerfile. One Stripe invoice.
+
+**The five missing pieces (on top of Phase 85):**
+
+| # | Missing piece | What it unlocks | Rough scope |
+|---|---|---|---|
+| CC-1 | **Multi-tenant hosting infrastructure** — subdomain routing, per-app database provisioning, isolation boundaries. Phase 85a provisions the stack; this makes it actually route traffic per tenant. | `approvals.buildclear.dev` and `crm.buildclear.dev` are different apps with different databases on the same cluster. | 2–3 weeks |
+| CC-2 | **Auth for `buildclear.dev` itself** — user accounts, sessions, team membership. Not the auth inside a Clear app; the auth Marcus uses to log into Clear Cloud and see his 12 apps. | Marcus has a dashboard. His apps are private to his account. Teammates can be invited. | 1 week |
+| CC-3 | **Billing (Stripe) — subscriptions, usage metering, quota enforcement.** The Session-35 pricing model (Free / $99 Team / $499 Business / Enterprise) turned into actual invoices. | Real money flows. Free tier hits quota and prompts upgrade. | 1–2 weeks |
+| CC-4 | **"Publish" button in Studio wired to Clear Cloud.** Today the Deploy button exists but points at the test builder; wire it to the production Phase-85a stack once CC-1 is live. | Marcus never types `clear deploy`. The terminal command demotes to "power user" page. | 3 days (after CC-1) |
+| CC-5 | **Custom domain flow** — DNS routing + SSL provisioning + verification UX. Phase 89 is the tactical version; CC-5 is the polished user-facing flow. | Marcus types `approvals.acme.com`, copies one DNS record, clicks verify, done. | 1 week (builds on Phase 89) |
+
+**Total: roughly 6–8 weeks of platform engineering on top of Phase 85's existing foundation.**
+
+### Auto-hosting by app type (v2, post-Clear-Cloud)
+
+**Yes — the compiler still picks hosting automatically, but as a v2 layered on top of Clear Cloud.** Phase 85 ships all apps to Fly (one target, simplest mental model). Once that works, v2 is: the compiler reads the `.clear` file and routes to the cheapest/fastest viable backend. Marcus never sees any of it.
+
+| App shape | What the compiler detects | Where it gets deployed |
+|---|---|---|
+| Static pages only | No `endpoint`, no `table`, no backend logic | Cloudflare Pages (free, global CDN) |
+| Web CRUD (most business apps) | `table` + `endpoint` + `page`, no `subscribe to` | Cloudflare Workers + D1 (SQLite-native, free tier deep) |
+| AI agent with memory | `ask claude` + `remember conversation` | Workers + D1 + **AI Gateway** (caching + rate limits + cost safety for free) |
+| Real-time / WebSockets | `subscribe to` / `broadcast to all` | Workers + Durable Objects |
+| Long-lived agent workflows | Multi-step workflows, sleeps, retries | Workers Workflows (Cloudflare's Temporal-equivalent — shipped 2025) |
+| Python ETL / scheduled batch | `compile target: python` + `schedule` | Modal (only real-Python serverless that runs pandas/polars) |
+| Native binaries required (OCR, FFmpeg, Playwright, ODBC) | Compiler detects service-calls or skills that need `apt install` | Fly (current Phase 85 default) — only tier that supports Docker |
+
+**Why this ordering matters:** most Marcus apps are "Web CRUD" or "AI agent" shaped. Those run 3–10× cheaper on Cloudflare than Fly. Keeping Fly as the universal default (current Phase 85) means Clear subsidizes compute Marcus doesn't need. Auto-routing flips that — small apps cost Clear pennies on Cloudflare's free tier, big/complex apps pay for themselves on Fly.
+
+**Build order for v2 (after CC-1 through CC-5 ship):**
+
+1. **Cloudflare Workers + D1 adapter** — emit Workers-compatible JS, swap SQLite driver for D1 driver at compile time. ~2 weeks.
+2. **App-shape classifier in compiler** — deterministic inspection of the AST: "does this app have a `subscribe to`? does it import native binaries? does it have a `schedule`?". Routes to one of the tiers above. ~1 week.
+3. **AI Gateway integration** — when compiling an agent app, inject Cloudflare's AI Gateway URL in front of every `ask claude`. Cost caching + rate limiting + observability for free. ~3 days.
+4. **Modal adapter for Python-ETL apps** — `clear deploy` sees `compile target: python` + `schedule` → emits Modal decorators, calls `modal deploy`. ~1 week.
+5. **Durable Objects adapter** — real-time apps get a DO wrapper. ~1 week.
+6. **Workers Workflows for long-lived agents** — the agent workflow lands in a Workflow function with durable step-wise execution. ~1 week.
+
+Total v2 work: ~6 weeks. Ships after Clear Cloud (CC-1 through CC-5) is stable.
+
+### Why Clear Cloud beats Retool and Lovable at deploy specifically
+
+Retool and Lovable both have "Publish" buttons. Both ship to a URL in seconds. But both have shapes that Clear can beat on structural grounds, not just UX polish:
+
+| Dimension | Retool | Lovable | **Clear Cloud** |
+|---|---|---|---|
+| Source of truth | Proprietary visual config (JSON blob in their DB) | Generated React/Next.js in GitHub | **Plain-English `.clear` file** |
+| Can you leave? | Self-host option ($$$, complex) or trapped | `git clone`, deploy to Netlify/Vercel | **`clear export` → portable Docker, runs anywhere** |
+| Reads like English? | No (visual blocks) | No (React/TypeScript) | **Yes — the whole point** |
+| AI edits the app safely? | Retool AI exists, but can't edit structure, only inside components | Lovable prompts edit React — works but output is opaque | **Meph edits Clear source directly; 1:1 compile makes diffs reviewable** |
+| Live edit running prod app? | No — rebuild/redeploy cycle | No — regenerate/redeploy cycle | **Yes (Live App Editing — flagship LAE-*)** |
+| Multi-tenant hosted? | Yes | Yes | Yes (Phase 85 + Clear Cloud) |
+| Custom domain | One-click (paid) | One-click (Pro $25/mo) | One-click (Team $99/mo) |
+| Agent-first | AI bolted onto visual platform | AI generates code | **AI is native primitive (`ask claude`, `has tools:`)** |
+| Cost safety on AI? | Manual | None — you pay whatever users trigger | **AI Gateway (rate limits + cost caps + caching, free)** — v2 |
+
+**The structural differentiators, stated plainly:**
+
+1. **Portability without penalty.** Retool traps you in their visual editor. Lovable's React is portable but no human reviews it. Clear is portable AND readable — Marcus's CFO can read his own deal-desk app and understand it. That's a trust moat neither competitor has.
+
+2. **Live editing a running prod app.** LAE-* (flagship) reshapes live apps with data/session preservation. Retool and Lovable both require a rebuild-redeploy cycle. This is the single biggest product differentiator Clear has once it ships.
+
+3. **AI cost safety baked in.** Retool and Lovable let a runaway agent burn $500 overnight on your card. Clear's v2 wraps every `ask claude` in Cloudflare AI Gateway automatically — rate limits, spend caps, caching. Marcus never wakes up to a surprise bill.
+
+4. **Agents are first-class, not bolted on.** Retool AI is a copilot inside the builder. Lovable generates React. Clear has `ask claude`, `has tools:`, `remember conversation`, `knows about:` as language primitives that compile deterministically. Building an agent app in Clear is ~20 lines; in Retool it's a stitched-together workflow; in Lovable it's React + vendor SDK.
+
+**The one place Retool/Lovable currently beat Clear:** time from signup to first working app. Retool has 10,000 templates and a years-matured visual editor. Lovable has a mature chat-to-app loop. Clear has Studio + Meph + Core 7 templates. That gap closes with: more templates, better Meph onboarding (GTM-5), Builder mode (GTM-6). All on the near-term roadmap.
 
 ### Go-To-Market & Positioning (locked Session 35)
 
@@ -634,6 +304,44 @@ The technical backing is **additive-by-default with expand-and-contract migratio
 - Lovable 2.0: *"none of my changes are getting pushed to prod even after updating"* (Trustpilot)
 - v0: *"Cannot edit a published generation"* (Vercel community)
 
+### Flywheel / Training Signal (Session 38 in-flight)
+
+The RL thesis moves forward in small, measurable steps. Each item below compounds the ones below it — do them in order.
+
+| # | Item | Status | Impact |
+|---|------|--------|--------|
+| RL-1 | **Meph runs on Haiku 4.5 by default.** `MEPH_MODEL` env var overrides to Sonnet for A/B. 15/16 vs 16/16 on eval-meph; within 6% of Sonnet capability at 3x cheaper per row. | ✅ Done (Session 38) | ~$2k saved per 10k-row sweep |
+| RL-2 | **Step-decomposition labeling.** Every compile row now tagged with which task milestone Meph has hit (`step_id`, `step_index`, `step_name`). Sweep prints per-step rollup: attempts, compiles, tests passed per step. Seeded on 2 tasks (todo-crud, webhook-stripe). | ✅ Done (Session 38) | 4x signal density per sweep |
+| RL-3 | **Classifier fuzzy-match fixes.** Dashboards with 1 chart misroute to "dashboard" (should route to KPI). Webhooks on `/hook` paths route wrong. Small regex additions in `archetype.js`. | Next (30 min) | Unlocks balanced archetype distribution |
+| RL-4 | **Seed steps on the other 28 curriculum tasks.** 2 tasks seeded; the rest still fall into the unlabeled bucket in stepStats. | Next (1 hr) | Step-decomposition coverage from 7% → 100% |
+| RL-5 | **Sharpen the 5 archetype task descriptions.** Explicit archetype signals so Meph doesn't guess wrong on webhook/batch/sync/ETL/dashboard shapes. | Next (30 min) | Prevents classifier poisoning the DB |
+| RL-6 | **First full re-sweep with Haiku + steps + fixes.** Overnight run populating the Factor DB with step-labeled, cheap, well-routed rows. First training-ready dataset. | After RL-3/4/5 | Unlocks EBM training at 200 rows |
+| RL-7 | **Honest-label tag reliability + inference fallback.** Meph emits `HINT_APPLIED: yes\|no, tier=X, helpful=Y` after hint-served compiles — but tag rate was ~45% because task-focused agentic loops skip the meta-observation. (a) Tightened the system-prompt as a reflex rule. (b) Added server-side inference: when no tag AND a later compile in the same turn had fewer errors → log `applied=1, helpful='inferred'` (distinct value, doesn't pollute honest set). | ✅ Done (Session 40) | Should double-ish the effective label rate from sweeps; full validation after next 3 sweeps |
+| RL-8 | **Retrain ranker on honest-helpful labels.** Once `hint_helpful='yes'` count crosses ~50 (currently 10), filter training data to those rows and train a secondary pairwise ranker. Honest labels are a stronger signal than the proxy `test_pass` — ranker picks hints Meph himself rated useful. | Next (blocked on data volume) | Quality-filter over the test-score signal |
+| RL-9 | **`caller` as canonical magic var + compiler shadow fix.** Renamed the authenticated-user magic var from the multi-word `current user` to the single-word `caller` (legacy forms still work as synonyms). Fixed a compiler bug where bare `user` in backend mode ignored local shadowing and always emitted `req.user`, even when the endpoint declared a `user` receiving var — `send back user` was returning the caller instead of the body. Users-table endpoints can now use `user` as their receiving var without the previous `signup`/`profile`/`account` workaround. | ✅ Done (Session 40) | Uniform entity-name rule; silent data-leak class of bug closed |
+
+### Compiler Flywheel — second-order moat (Session 38 idea, Phase 2)
+
+**The insight:** Today's flywheel makes *Meph* write better Clear over time. But we never measure whether the *JS/Python/HTML the compiler emits* is optimal. Every emit function is hand-written by Russell/Claude — "reasonable" but not proven best. A second flywheel, running at the compiler layer, can let production data pick the emit strategy that actually performs.
+
+**Four tiers by ROI:**
+
+| # | Tier | Cost | Unlock |
+|---|------|------|--------|
+| CF-1 | **Runtime instrumentation.** Compiled apps emit latency / error / memory beacons to a shared endpoint. Factor DB gains runtime-outcome columns per compile row. | 1 day | We finally *know* which compilation choices produce slow or crashy JS. Data-driven compiler bug-reports instead of gut-feel. |
+| CF-2 | **Candidate emitters + deterministic A/B.** For the top 10 emit patterns, define 2–3 JS/Py variants. Feature-flag which variant is emitted per app (deterministic at compile time, not runtime — preserves "same input = same output" rule within a build). After N apps run each variant, production data picks the winner. | 1 week | Quantitative answer to "which JS pattern is best for `get all X where Y`?" instead of whoever wrote the emitter first. |
+| CF-3 | **Compiler-strategy reranker.** EBM trained on (archetype, app shape, runtime outcome) → which emit variant should I pick? Same glass-box model as the Meph reranker, one layer deeper. | 2 weeks (after Meph reranker trained) | Per-pattern emit strategy auto-selects based on context. Compiler gets smarter per app. |
+| CF-4 | **GA-evolved compiler (research).** Mutate emit functions themselves. Fitness = curriculum pass rate + runtime perf. RESEARCH.md already has a GA for candidate Clear programs — this is the same idea one abstraction up: evolve the compiler. | 2+ months (research, not product) | The compiler becomes a learned artifact, not a hand-coded one. This is the moat nobody else architecturally can copy — a compiler that improves from usage. |
+
+**Error-message flywheel (bonus, easy):** Track which compile error messages correlate with STUCK sessions. Auto-flag "bad error messages" for rewrite. Already half-built via the existing Factor DB.
+
+**Why ship CF-1 soon, not CF-2-4:**
+- The Meph-level flywheel is not yet validated. Don't add a second flywheel before the first is proven.
+- Compiler quality is *not* the current bottleneck — Session 38's webhook bug proved the bottleneck is Meph writing broken Clear (parser gaps, wrong syntax), not the generated JS being suboptimal.
+- BUT: CF-1 is 20 lines of instrumentation that starts collecting data now. Cheap optionality. Data collection compounds before you decide to act.
+
+**Not-now but write it down:** CF-4 is a publishable research direction. If Augment Labs track becomes primary, this is where that work lives.
+
 ### Language Completeness
 
 Clear's job is: Russell tells an LLM what to build, the LLM writes Clear, it compiles to working software. If the LLM needs a feature to build what Russell asked for, Clear needs it.
@@ -700,6 +408,59 @@ Ordered by impact.
 | N3 | **CLI `clear eval --suite` mode** | Port the structured eval path from Studio to the CLI so CI can run evals outside the browser. Unblocks scheduled regression runs. |
 | N4 | **Probe-validate sweep against nested shapes** | Session 34's probe fix was tested against flat `validate` rules (url, company, email). Validate blocks with nested objects / list constraints haven't been exercised. Sweep every `validate incoming:` in apps/ to confirm. |
 | N5 | **Review SQLite WIP in `apps/todo-fullstack/clear-runtime/db.js`** | Pending migration sitting unstaged in working tree since session 32 or earlier. Decide: ship, stash, or revert. |
+
+### Private Moonshots — if the goal is delight, ambition, and "this should not exist"
+
+These are the features that make Clear feel like a private cathedral project instead of a sane startup roadmap.
+
+| # | Item | Status | Why it's fun |
+|---|------|--------|--------------|
+| PM-1 | **Time-travel app editing.** Every ship becomes a named snapshot with source diff, data diff, screenshot diff, and "why this changed" note from Meph. One-click scrub through app history like a video editor. | Idea | Turns software development into a visible narrative instead of invisible file churn |
+| PM-2 | **Compiler strategy arena.** Let multiple emit strategies compete per pattern (`table render`, `CRUD handler`, `auth middleware`, `chat UI`) and keep score from runtime behavior, evals, and visual diffing. | Idea | Makes the compiler feel alive and self-optimizing |
+| PM-3 | **App MRI / X-ray mode.** Click anything in a running app and see the Clear line, generated JS, DB fields, tests, recent failures, and Meph's last relevant edits for that surface. | Idea | The most on-brand expression of "readable software" in the whole repo |
+| PM-4 | **Production replay lab.** Capture real sessions, then replay them deterministically against older and newer compiler/app versions to see what changed, what broke, and what got faster. | Idea | Gives you a toy-box for debugging, evals, and compiler evolution all at once |
+| PM-5 | **Semantic migrations with negotiation.** For destructive schema changes, Clear doesn't just error — it opens an interactive planner: keep, coerce, split, rename, archive, or ask Meph to propose the safest path. | Idea | Feels like database evolution grew a brain |
+| PM-6 | **Multi-agent build theater.** Several Meph variants build or critique the same app from different perspectives (readability, security, speed, design), then a supervisor merges the best parts with a visible reasoning trace. | Idea | Maximalist, theatrical, and perfect for a private software lab |
+| PM-7 | **Generated tests for everything visible.** Not just endpoints and forms — every button, state transition, empty state, chart, permission boundary, and recovery path gets generated probes and explanation text. | Idea | Pushes the "compiler tests everything" thesis to its ludicrous endpoint |
+| PM-8 | **Living architecture reports.** Every app gets a gorgeous browsable dossier: entity graph, endpoint graph, page graph, permission graph, agent graph, and failure hotspots, regenerated on every compile. | Idea | Makes Clear apps feel like inspectable machines, not blobs of code |
+
+### Research Priority Order (revised 2026-04-19)
+
+Previously SK-1 (cross-domain transfer) was treated as the single flagship. It is not the most ambitious laptop-feasible question Clear can answer. Full rationale and candidate comparison in **`RESEARCH.md` → "Flagship Research Candidates — Ranking the Most Ambitious Laptop-Feasible Questions"**.
+
+**Revised sequencing:**
+
+1. **SK-3 — Constrained-language scaling laws.** Does a small LLM writing Clear match a big LLM writing Python on the same spec? If yes, constraints beat scale for bounded problem classes — a Bitter Lesson counterexample. Infrastructure mostly live; a weekend's runs produce a paper or a clean null.
+2. **SK-2 — Provably minimal agent-iterated programs.** Does GA+reranker iteration converge on the provably-minimum Clear program for a spec? Verified by exhaustive enumeration over the 11-op patch space. FunSearch / AlphaEvolve never claim minimality; Clear's closed grammar makes it uniquely tractable.
+3. **SK-1 — Cross-domain transfer (original flagship).** The entry below. Still valuable; stronger as paper #3 because you can frame it as "minima from domain A transfer to domain B" rather than just "F1 improves."
+4. **SK-4 — Emergent-algorithm detection.** "Move 37" for programs — did the GA discover an algorithm genuinely not in the training corpus? Highest intellectual ceiling, hardest to score. Do last once Clear is an established research platform.
+
+**Parking lot** (not first-flagship): decidable Clear (PhD-scale), compression-as-signal (good methodological paper), cross-target transfer (good warm-up paper). All catalogued in RESEARCH.md.
+
+**Why this ordering, not the reverse:** scheduling convenience would put transfer first (infrastructure is most complete). Research strategy puts scaling laws first so each paper makes the next one stronger — "constraints matter" → "constraints find optima" → "optima transfer." Rising arc, not flat sequence.
+
+### Solo Karpathy Moonshot
+
+If the goal is "one obsessed person, some LLM API calls, a ThinkPad, and a result that makes serious ML people raise an eyebrow," the strongest bet is a cross-domain program-evolution lab.
+
+| # | Item | Status | Why this is the one |
+|---|------|--------|---------------------|
+| SK-1 | **Cross-domain program evolution lab.** Run GA-style Clear program evolution on one domain, train an interpretable EBM reranker on structural features of the winning programs, then show that the reranker improves generation-1 results on a different domain. Wrap the whole thing in a replayable "evolution notebook" with variants, scores, learned rules, and transfer charts. | Target (#3 in revised priority order — see above) | Research-grade claim, CPU-friendly, tightly aligned with Clear's core thesis, and impressive precisely because it does not require giant-model fine-tuning or large infra |
+| SK-2 | **Provably minimal agent-iterated programs.** Given a spec, does GA+reranker iteration converge on the provably-minimum Clear program — the one no shorter program can satisfy? Verified by exhaustive enumeration over the 11-op patch space. Full rationale in RESEARCH.md. | Target (#2 in revised priority order) | FunSearch / AlphaEvolve never claim minimality; Clear's closed grammar makes exhaustive enumeration tractable up to ~10-line programs |
+| SK-3 | **Constrained-language scaling laws.** Does a small LLM writing Clear match a big LLM writing Python on the same spec? Fixed specs × {Haiku, Sonnet, Opus} × {Clear, Python}. If the Clear column flattens while Python slopes up, constraints beat scale for bounded problem classes. | Target (#1 in revised priority order — do first) | Bitter Lesson counterexample. Anthropic-relevant. Infrastructure mostly live. Weekend of runs produces paper or null. |
+| SK-4 | **Emergent-algorithm detection.** Did the GA discover an algorithm genuinely not in the training corpus? Clear's readable 1:1 compile output makes novelty auditable in a way FunSearch's cryptic Python output does not. | Target (#4 in revised priority order) | Highest intellectual ceiling of any candidate; hardest to score cleanly. Operationalizing "novel" is the whole game. |
+
+### Other Laptop-Scale Research Bets
+
+If SK-1 is the flagship claim, these are the other compact bets that could still produce a real result on one machine.
+
+| # | Item | Status | Why it might matter |
+|---|------|--------|---------------------|
+| OL-1 | **Search-space compression benchmark.** Compare Clear vs Python on the same program-search tasks: valid-candidate rate, mutation survival rate, convergence speed, and token cost. | Idea | Quantifies the core claim that constrained readable languages make search dramatically easier |
+| OL-2 | **Readable-source debugging benchmark.** Paired bug-fix tasks in Clear vs JS/Python: measure fix rate, latency, retries, and cost for the same model under the same harness. | Idea | Strong practical claim: readable 1:1 source improves automated debugging, not just aesthetics |
+| OL-3 | **Error-message learning loop.** Learn which compiler errors actually unstick Meph, rewrite the worst ones, and measure downstream improvement in repair rate. | Idea | Small, falsifiable, and deeply on-theme: better explanations as capability amplification |
+| OL-4 | **Task-curriculum teacher.** Instead of only learning over programs, learn which next task or archetype best improves the reranker fastest. | Idea | Meta-learning over training order, still feasible with the existing supervisor/factor DB setup |
+| OL-5 | **Counterexample co-evolution.** Evolve small adversarial test generators against Clear programs, then measure whether programs hardened against them transfer better to unseen edge cases. | Idea | More exciting than static evals and still laptop-friendly if the domains stay small |
 
 ---
 
