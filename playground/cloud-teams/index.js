@@ -350,3 +350,31 @@ export async function acceptInvite(db, token, acceptingUserId) {
   );
   return { teamId: invite.team_id, role: invite.role };
 }
+
+/**
+ * CC-2d access-control primitive. Returns the user's role on the app's
+ * team, or null if the user isn't a member, the app has no team, or the
+ * app doesn't exist. Compose with can(role, action) for the full
+ * permission check.
+ *
+ * One SQL round-trip — JOINs apps → team_members so we don't need the
+ * caller to look up the team_id first. Returns 'owner' | 'admin' |
+ * 'member' | null. UNIQUE(team_id, user_id) on team_members means at
+ * most one row comes back.
+ *
+ * @param {object} db - pg Pool or compatible { query(text, params) }
+ * @param {number} userId
+ * @param {number} appId
+ * @returns {Promise<string|null>}
+ */
+export async function getAppAccess(db, userId, appId) {
+  const { rows } = await db.query(
+    `SELECT tm.role
+     FROM apps a
+     JOIN team_members tm ON tm.team_id = a.team_id
+     WHERE a.id = $1 AND tm.user_id = $2
+     LIMIT 1`,
+    [appId, userId]
+  );
+  return rows[0] ? rows[0].role : null;
+}

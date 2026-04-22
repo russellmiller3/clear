@@ -623,6 +623,95 @@ console.log('\n👑 transferOwnership — the escape hatch from last-owner guard
 }
 
 // =============================================================================
+// CC-2d — getAppAccess: what role does a user have on this app?
+// =============================================================================
+// Closes the CC-2d enforcement story. Every Clear Cloud app belongs to
+// a team (apps.team_id — migration 002 of tenants-db). A user's access to
+// an app is determined by their membership in that team.
+//
+// Returns the role string ('owner' | 'admin' | 'member') if the user is
+// a member of the app's team. Returns null if:
+//   - the app doesn't exist
+//   - the app has no team (pre-backfill)
+//   - the user isn't a member of the app's team
+//
+// Combined with `can(role, action)`, this is the complete CC-2d access
+// check: `can(await getAppAccess(db, userId, appId), 'app.deploy')`.
+console.log('\n🛡️  getAppAccess — CC-2d app-level access control\n');
+
+{
+  // Extend the mock db with an `apps` array so we can exercise the JOIN
+  // across apps → teams → team_members.
+  function makeMockDbWithApps() {
+    const db = makeMockDb();
+    db.apps = [];
+    // Add the getAppAccess SELECT handler to the mock's query switch.
+    const origQuery = db.query;
+    db.query = async function (text, params = []) {
+      const t = text.replace(/\s+/g, ' ').trim();
+      if (/SELECT tm\.role.*FROM apps.*JOIN team_members/i.test(t)) {
+        const [appId, userId] = params;
+        const app = db.apps.find(a => a.id === appId);
+        if (!app || !app.team_id) return { rows: [] };
+        const m = db.members.find(
+          mm => mm.team_id === app.team_id && mm.user_id === userId
+        );
+        return { rows: m ? [{ role: m.role }] : [] };
+      }
+      return origQuery(text, params);
+    };
+    return db;
+  }
+
+  const { createTeam, addMember, getAppAccess } = await import('./index.js');
+
+  // Setup: team with owner + admin + member; one app owned by that team.
+  const db = makeMockDbWithApps();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 10 });
+  await addMember(db, team.id, 20, 'admin');
+  await addMember(db, team.id, 30, 'member');
+  db.apps.push({ id: 100, team_id: team.id, slug: 'dashboard', tenant_id: 1 });
+  db.apps.push({ id: 101, team_id: null,   slug: 'orphan',    tenant_id: 1 });
+
+  // Owner sees 'owner'
+  const roleOwner = await getAppAccess(db, 10, 100);
+  assert(roleOwner === 'owner',
+    `owner of the team sees role='owner' on its app (got ${JSON.stringify(roleOwner)})`);
+
+  // Admin sees 'admin'
+  const roleAdmin = await getAppAccess(db, 20, 100);
+  assert(roleAdmin === 'admin', `admin role returned (got ${JSON.stringify(roleAdmin)})`);
+
+  // Member sees 'member'
+  const roleMember = await getAppAccess(db, 30, 100);
+  assert(roleMember === 'member', `member role returned (got ${JSON.stringify(roleMember)})`);
+
+  // Non-member sees null
+  const roleStranger = await getAppAccess(db, 999, 100);
+  assert(roleStranger === null,
+    `non-member of the team sees null (got ${JSON.stringify(roleStranger)})`);
+
+  // App without a team (pre-backfill) → null for everyone, including
+  // users who'd otherwise be eligible
+  const roleOrphan = await getAppAccess(db, 10, 101);
+  assert(roleOrphan === null,
+    `app with team_id=null returns null (got ${JSON.stringify(roleOrphan)})`);
+
+  // Non-existent app → null, doesn't throw
+  const roleNoApp = await getAppAccess(db, 10, 9999);
+  assert(roleNoApp === null, `non-existent app returns null (got ${JSON.stringify(roleNoApp)})`);
+
+  // Compose with can() — the full CC-2d access check
+  const { can } = await import('./index.js');
+  assert(can(roleOwner, 'app.delete-with-data') === true,
+    'compose: can(owner, app.delete-with-data) true');
+  assert(can(roleMember, 'app.delete-with-data') === false,
+    'compose: can(member, app.delete-with-data) false');
+  assert(can(roleStranger, 'app.deploy') === false,
+    'compose: non-member → can(null, app.deploy) false');
+}
+
+// =============================================================================
 // Schema drift-guard — CC-2b migration file has to exist and carry the
 // tables/columns the code above assumes. Catches the class of bug where
 // someone renames a column in code but forgets to update the migration
