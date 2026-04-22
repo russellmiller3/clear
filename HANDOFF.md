@@ -1,17 +1,21 @@
-# Handoff — 2026-04-22 (end of GM-2 extraction session)
+# Handoff — 2026-04-22 (end of GM-2 + cc-agent session)
 
 ## Current State
 
-- **Branch:** `feature/gm-2-tool-use-rest` (long-running, 9 commits added this session, NOT pushed to origin yet, NOT merged to main).
-- **Last commit:** `8981306` feat(ghost-meph/mcp-server): wire all 28 Meph tools to dispatchTool (cc-agent step 2a).
+- **Branch:** `feature/gm-2-tool-use-rest` (long-running, 11 commits added this session, NOT pushed to origin yet, NOT merged to main).
+- **Last commit:** `33d4eea` feat(ghost-meph/cc-agent): tool mode via MCP + stream-json (GM-2 steps 2b/2c).
 - **Main:** unchanged from prior handoff at `2a9eee3`.
 - **Working tree:** dirty with pre-existing files unrelated to this session (`.claude/settings.local.json`, `index.html`, `meph-memory.md`, `requests.md`, `style.css`, `playground/factor-db.sqlite-shm/-wal`, `playground/sessions/`, etc.) — ignore.
 
 ## What Landed This Session
 
-### On `feature/gm-2-tool-use-rest` (9 commits, all local)
+### On `feature/gm-2-tool-use-rest` (11 commits, all local)
 
-All 28 Meph tools now live in `playground/meph-tools.js` behind a single `dispatchTool(name, input, ctx, helpers)` export. The inline 330-line switch in `playground/server.js` is gone; `/api/chat`'s `executeTool` is now an ~80-line wrapper that builds one fat MephContext, hands it to `dispatchTool`, and mirrors back the state fields the tools mutated.
+Two wins this session:
+
+1. **GM-2 refactor COMPLETE.** All 28 Meph tools now live in `playground/meph-tools.js` behind a single `dispatchTool(name, input, ctx, helpers)` export. The inline 330-line switch in `playground/server.js` is gone; `/api/chat`'s `executeTool` is an ~80-line wrapper that builds one fat MephContext, hands it to `dispatchTool`, and mirrors back the state fields the tools mutated.
+
+2. **cc-agent tool mode SHIPPED (steps 2a/2b/2c).** MCP server now exposes every Meph tool. `cc-agent.js` can spawn `claude --print --mcp-config=<tmp> --output-format stream-json` and translate the NDJSON event stream into Anthropic SSE events for /api/chat. Opt-in via `GHOST_MEPH_CC_TOOLS=1` so the text-only MVP is still default until the stream-json format is validated against real `claude` CLI in Russell's environment.
 
 | Commit | What shipped |
 |---|---|
@@ -23,14 +27,17 @@ All 28 Meph tools now live in `playground/meph-tools.js` behind a single `dispat
 | `b86a02f` | Port `compile` — the 480-line beast (Factor DB + 4-tier re-ranker + hint state) |
 | `b49243a` | executeTool → dispatchTool full extraction |
 | `8981306` | MCP server wired to all 28 tools via dispatchTool (cc-agent step 2a) |
+| `837a002` | HANDOFF checkpoint (GM-2 refactor complete) |
+| `33d4eea` | cc-agent tool mode via MCP + stream-json (steps 2b/2c) |
 
 Plus one user-level rule add: `~/.claude/CLAUDE.md` → **Periodic Progress Checkpoints** (narrate session-level status at chunk boundaries; different cadence from the per-action Science Documentary Rule).
 
 ### Tests green at every step
 - `node clear.test.js` → **2097/2097**
 - `node playground/meph-tools.test.js` → **254/254** (was 179 at session start — 75 new)
-- `node playground/ghost-meph.test.js` → **59/59**
+- `node playground/ghost-meph.test.js` → **66/66** (was 59 — 7 new in Phase 10)
 - `node playground/ghost-meph/mcp-server.test.js` → **99/99** (was 30 — 69 new; 28 tools exposed, Phase 5 integration for write→read→compile flow)
+- `node playground/ghost-meph/cc-agent-stream-json.test.js` → **46/46** (new this session — pure parser unit tests)
 
 ### MephContext shape
 
@@ -45,35 +52,27 @@ Plus one user-level rule add: `~/.claude/CLAUDE.md` → **Periodic Progress Chec
 
 ## Next Session Priority Order
 
-### 1. Finish cc-agent path (steps 2b–2d) — THE BUDGET UNLOCK
+### 1. Validate cc-agent tool mode against the REAL claude CLI
 
-The MCP server exposes all 28 tools. What's left is wiring `cc-agent.js` to actually spawn Claude Code with that MCP server configured and parse the stream-json output back into Anthropic SSE events.
+The architecture is in place — parser tested with synthetic events, MCP server wired, config generation landed. What remains is proving it works against Russell's actual `claude` binary.
 
-**Step 2b — Spawn claude with MCP + stream-json.** In `playground/ghost-meph/cc-agent.js`:
-- Write a temp MCP config JSON pointing at `playground/ghost-meph/mcp-server/index.js`
-- Replace `spawn('claude', ['--print'], ...)` with `spawn('claude', ['--mcp-config', configPath, '--output-format', 'stream-json', '--print'], ...)`
-- Pipe full conversation history to stdin (not just the latest user prompt)
+**Smoke test sequence (needs `claude` on PATH):**
+```
+GHOST_MEPH_CC_TOOLS=1 MEPH_BRAIN=cc-agent node playground/eval-meph.js
+```
+Expected: all 16 eval scenarios run at $0 (via subscription). Any that fail: look at `stream-json` output shape vs. the parser's assumptions in `cc-agent-stream-json.js`. The fixture-driven tests in `cc-agent-stream-json.test.js` are how you fix the parser — add a failing fixture, fix the translation, land.
 
-**Step 2c — Parse stream-json → Anthropic SSE.** Each line of stdout is one JSON event. The `/api/chat` loop only cares about three event types (per the plan):
-- `content_block_start` with `type: 'tool_use'` — when Meph calls a tool
-- `content_block_delta` with `type: 'input_json_delta'` — streaming tool args
-- `message_delta` with `delta.stop_reason` — `'tool_use'` to signal "iterate" or `'end_turn'` to signal "done"
+**Likely iteration points** (stream-json isn't a documented stable interface):
+- `assistant.message.content` may be an object (not an array) for single-block messages
+- `result.usage` field may be named differently (`input_tokens` vs `inputTokens` etc.)
+- `tool_use.input` may be a JSON string (not an object) depending on claude version
+- There may be additional event types we haven't mapped (e.g. `thinking`, `partial_json` deltas)
 
-Text events pass through as `text_delta`. Expect to iterate on the exact shape — `claude --output-format stream-json` isn't a documented stable interface.
+**Known gap — state sharing.** Claude Code's MCP child (spawned as subprocess) has its own module-level `currentSource` / `currentErrors` (see `playground/ghost-meph/mcp-server/tools.js`). Edits via `meph_edit_code` update THAT child's state, not Studio's `/api/chat` closure. So the Studio editor won't reflect mid-turn changes while tool mode is running. Fix: add an HTTP bridge — MCP server POSTs to `/api/set-source` after each edit so Studio's closure sees updates. ~30 lines.
 
-**Step 2d — Tool result feedback loop.** When `/api/chat` runs the tool and posts the result back as a `tool_result` content block, `cc-agent` needs to forward it to claude's subprocess. Plan says to start with re-spawn-per-turn (simple, costs 2-3s/turn) and move to persistent subprocess later if profile shows spawn cost dominates.
+### 2. Extract `parseTestOutput` + `compileForEval` from server.js
 
-**Where to find the starting points:**
-- `playground/ghost-meph/cc-agent.js` — current text-only MVP (169 lines). Entry point is `chatViaClaudeCode(payload)`.
-- `playground/ghost-meph/mcp-server/index.js` — the MCP server that needs to be wired into the MCP config
-- `playground/ghost-meph/mcp-server/tools.js` — all 28 tool handlers, ready to use
-- `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md` — full architecture and step-by-step
-
-**Verification path:** need real `claude` CLI installed. Once wired, `MEPH_BRAIN=cc-agent node playground/eval-meph.js` should run all 16 scenarios through the local subscription at $0 cost. That's the smoke test.
-
-### 2. Extract parseTestOutput + compileForEval + runEvalSuite from server.js
-
-The MCP server's `buildHelpers()` has four TODOs (comments saying "stays unwired until we extract from server.js"): `compileForEval`, `parseTestOutput`, `runEvalSuite`. These live inside `server.js` closures and can't be imported without starting the Studio server.
+The MCP server's `buildHelpers()` has four TODOs (comments saying "stays unwired until we extract from server.js"): `compileForEval`, `parseTestOutput`, `runEvalSuite`. These live inside `server.js` closures and can't be imported without starting the Studio server (which listens on a port).
 
 Work: pull each into a pure helper module (`playground/meph-helpers.js` or similar). `parseTestOutput` is already pure — just needs to move. `compileForEval` just calls `compileProgram` twice. `runEvalSuite` is harder — it manages an `evalChild` subprocess lifecycle that the MCP child would also need. Start with the easy two.
 
@@ -118,8 +117,10 @@ Scaffold work is doable without 85a. Branch per CC item, **do NOT merge to main*
 | File | Why |
 |------|-----|
 | `HANDOFF.md` (this file) | Mandate + priority order |
-| `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md` | Architecture for steps 2b–2d |
-| `playground/ghost-meph/cc-agent.js` | Current text-only MVP to replace |
+| `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md` | Architecture reference |
+| `playground/ghost-meph/cc-agent.js` | Two-mode implementation (text + tool) |
+| `playground/ghost-meph/cc-agent-stream-json.js` | Parser — edit here first when claude's format shifts |
+| `playground/ghost-meph/cc-agent-stream-json.test.js` | Fixture-driven tests — add failing fixture → fix parser → land |
 | `playground/ghost-meph/mcp-server/tools.js` | All 28 tools wired — ready to use |
 | `playground/meph-tools.js` | `dispatchTool` is the single entry point |
 | `playground/meph-context.js` | MephContext shape — every ctx field documented |
@@ -129,7 +130,7 @@ Scaffold work is doable without 85a. Branch per CC item, **do NOT merge to main*
 
 ## Resume Prompt
 
-> Read `HANDOFF.md`. Continue on `feature/gm-2-tool-use-rest`. The GM-2 tool-use refactor + MCP server wiring is DONE — all 28 tools routed through `dispatchTool`, MCP server exposes them all. Next priority: cc-agent steps 2b–2d (spawn claude with MCP + stream-json, parse stream-json → Anthropic SSE, tool-result feedback loop via re-spawn). This unblocks `MEPH_BRAIN=cc-agent` for curriculum sweeps at $0 cost. You need real `claude` CLI installed to iterate on the stream-json format — it's not a documented stable interface. After that, extract `parseTestOutput` + `compileForEval` from `server.js` so the MCP server can wire those four tool handlers (`run_tests`, `list_evals`, `run_evals`, `run_eval`) to real impls. Only after the cc-agent path works should you start Clear Cloud scaffold work (Queue G, branch per CC item, **don't merge to main until Russell signals Phase 85a done**). Use `SKIP_MEPH_EVAL=1 git push --no-verify` for pre-existing todo-fullstack e2e failures. Verify branch with `git branch --show-current` before every commit.
+> Read `HANDOFF.md`. Continue on `feature/gm-2-tool-use-rest`. GM-2 refactor + MCP server + cc-agent tool mode all DONE architecturally. Next priority: validate the whole cc-agent path against Russell's real `claude` CLI. `GHOST_MEPH_CC_TOOLS=1 MEPH_BRAIN=cc-agent node playground/eval-meph.js` should run the 16 eval scenarios at $0 cost. If the parser fixtures are off, edit `playground/ghost-meph/cc-agent-stream-json.js` fixture-by-fixture until real claude output matches. After that, add an HTTP bridge from MCP server back to Studio's `/api/set-source` so mid-turn source edits show up in the editor. Then extract `parseTestOutput` + `compileForEval` from `server.js` into a shared helpers module so the MCP-side `run_tests` / `list_evals` handlers can wire up. Only after cc-agent is battle-tested should you start Clear Cloud scaffold (Queue G, branch per CC item, **don't merge to main until Russell signals Phase 85a done**). Use `SKIP_MEPH_EVAL=1 git push --no-verify` for pre-existing todo-fullstack e2e failures. Verify branch with `git branch --show-current` before every commit.
 
 ---
 
