@@ -161,6 +161,35 @@ Sub-10-line change. After landing, re-run the 8-task L5-L7 to confirm.
 2. Parallel grader scope-by-session_id fix (tick 6 above)
 3. `--workers=1` full-curriculum sweep to generate training data while the parallel fix is in flight
 
+## Session 42 tick 8 — parallel ceiling broken (`70e8678`)
+
+Tick-7's fix sketch landed. Applied exactly as proposed in the HANDOFF note:
+
+  - `_nextPortCounter = 4001 + (process.pid % 1000) * 10` — 10-port disjoint band per MCP subprocess
+  - `_buildDir = join(REPO_ROOT, '.meph-build', String(process.pid))` — namespaced build dir
+  - `_resetMcpState` also resets the port counter so the Phase 10 drift-guard assertion starts from a known band base
+
+**Validation sweep (3 workers, 8 tasks, L5-L7):**
+
+  [✅] L5 user-profiles — 180.1s (DB-graded)
+  [✅] L7 rate-limited-api — 180.1s (DB-graded)
+  [✅] L5 auth-todo — 180.2s (DB-graded)
+  [✅] L7 approval-queue — 43.1s (said TC + DB)
+  [✅] L7 webhook-stripe — 73.2s (said TC + DB)
+  [✅] L6 batch-prune — 37.2s (said TC + DB)
+  [✅] L7 validated-forms — 176.6s (said TC + DB)
+  [✅] L6 booking-calendar — 180.0s (DB-graded)
+
+  Wall: 536.8s. **Completed: 8/8.** Timed out: 0. Stuck: 0. +5 passing rows.
+
+Before tick 8 the same config was 6/8 (webhook-stripe + validated-forms dropped out in parallel). After tick 8 it's **8/8 parallel at 3× throughput**. The L6-L7 ceiling Russell diagnosed yesterday is now broken.
+
+Phase 10 drift-guard (3 assertions) pins the invariant: future refactors can't regress to the shared-4001/shared-build-dir state without this test firing.
+
+**Follow-up still open:** the `.meph-build/<pid>/` dirs accumulate over time. Not blocking (tmpdir won't fill from single-session use), but worth a cleanup-on-exit hook or a Studio-startup prune when we have the bandwidth.
+
+Totals after tick 8: **2101 compiler + 270 meph-tools + 156 mcp-server + 7 runtime = 2534 tests green.** 8/8 core templates clean. Flywheel 552/200-threshold = 28% of the way to re-ranker retrain — at 3× parallel throughput, 2-3 full-curriculum sweeps gets us there.
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
