@@ -29,7 +29,8 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool } from './meph-tools.js';
+import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
   listSnapshots as _listSnapshots,
@@ -3254,35 +3255,12 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'source_map': {
-        if (!currentSource) return JSON.stringify({ error: 'No code in editor. Write code first.' });
-        const compiled = compileProgram(currentSource, { sourceMap: true });
-        const target = compiled.serverJS || compiled.javascript || compiled.python;
-        if (!target) return JSON.stringify({ error: 'No compiled output.' });
-
-        const targetLines = target.split('\n');
-        const map = {};
-        let current = null;
-        for (let i = 0; i < targetLines.length; i++) {
-          const m = targetLines[i].match(/(?:\/\/|#) clear:(\d+)/);
-          if (m) current = parseInt(m[1]);
-          if (current != null) {
-            (map[current] = map[current] || []).push(i + 1);
-          }
-        }
-
-        if (input.clear_line) {
-          const cl = input.clear_line;
-          const compiledLines = map[cl];
-          if (!compiledLines) return JSON.stringify({ result: `No compiled output maps to Clear line ${cl}.` });
-          const snippet = compiledLines.map(n => `${n}: ${targetLines[n-1]}`).join('\n');
-          return JSON.stringify({ result: `Clear line ${cl} compiles to:\n${snippet}` });
-        }
-
-        const summary = Object.entries(map)
-          .sort(([a],[b]) => a - b)
-          .map(([cl, cls]) => `Clear ${cl} → compiled lines ${cls[0]}-${cls[cls.length-1]}`)
-          .join('\n');
-        return JSON.stringify({ result: summary });
+        // Extracted to playground/meph-tools.js with the new MephContext
+        // shape — first stateful tool to use the context object pattern.
+        // GM-2 step 3a continued. compileProgram passed in as the third
+        // arg so meph-tools.js stays free of compiler imports.
+        const ctx = new MephContext({ source: currentSource });
+        return sourceMapTool(input, ctx, compileProgram);
       }
 
       case 'highlight_code':
