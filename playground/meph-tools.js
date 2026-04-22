@@ -24,7 +24,7 @@
  *   See plan step 2-3 followups.
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
 /**
@@ -283,6 +283,49 @@ export function editCodeTool(input, ctx, compileProgram) {
     return JSON.stringify({ undone: true });
   }
   return JSON.stringify({ error: 'Invalid action' });
+}
+
+/**
+ * browse_templates tool — list all template apps in the apps/ directory or
+ * read one template's main.clear source.
+ *
+ *   action='list' → enumerate apps/<dir>/main.clear, return [{name,
+ *                   description (first # comment), lines}]
+ *   action='read' → read apps/<safe-name>/main.clear and return source
+ *
+ * Stateless except for ctx.rootDir. Uses fs (readdirSync, statSync,
+ * readFileSync, existsSync) imported at the top of meph-tools.js.
+ *
+ * @param {object} input - { action, name? }
+ * @param {MephContext} ctx
+ * @returns {string} JSON-stringified result
+ */
+export function browseTemplatesTool(input, ctx) {
+  const TEMPLATE_DIR = join(ctx.rootDir, 'apps');
+  if (input.action === 'list') {
+    try {
+      const dirs = readdirSync(TEMPLATE_DIR).filter(d => {
+        try { return statSync(join(TEMPLATE_DIR, d)).isDirectory(); } catch { return false; }
+      });
+      const templates = dirs.map(d => {
+        const mainFile = join(TEMPLATE_DIR, d, 'main.clear');
+        if (!existsSync(mainFile)) return null;
+        const src = readFileSync(mainFile, 'utf8');
+        const firstComment = src.match(/^#\s*(.+)/m);
+        const lineCount = src.split('\n').filter(l => l.trim()).length;
+        return { name: d, description: firstComment?.[1] || '', lines: lineCount };
+      }).filter(Boolean);
+      return JSON.stringify({ templates, count: templates.length });
+    } catch (e) { return JSON.stringify({ error: e.message }); }
+  }
+  if (input.action === 'read') {
+    if (!input.name) return JSON.stringify({ error: 'Need a template name. Use action="list" first to see available templates.' });
+    const safeName = input.name.replace(/[^a-zA-Z0-9_-]/g, '');
+    const mainFile = join(TEMPLATE_DIR, safeName, 'main.clear');
+    if (!existsSync(mainFile)) return JSON.stringify({ error: `Template "${safeName}" not found. Use action="list" to see available templates.` });
+    return JSON.stringify({ name: safeName, source: readFileSync(mainFile, 'utf8') });
+  }
+  return JSON.stringify({ error: 'action must be "list" or "read"' });
 }
 
 /**

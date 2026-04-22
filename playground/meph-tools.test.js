@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool } from './meph-tools.js';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
 import { patch } from '../patch.js';
@@ -321,6 +321,38 @@ const le3 = JSON.parse(listEvalsTool({}, new MephContext({ source: 'src' }),
   (src) => ({ ok: true, compiled: {} })));
 assert(le3.count === 0 && le3.suite.length === 0,
   'listEvalsTool defaults to empty suite when compileForEval omits evalSuite');
+
+console.log('\n📂 browseTemplatesTool\n');
+
+// list action — uses real apps/ directory
+const bt1 = JSON.parse(browseTemplatesTool({ action: 'list' }, new MephContext({ rootDir: REPO_ROOT })));
+assert(typeof bt1.count === 'number' && bt1.count > 0,
+  `browseTemplatesTool list returns count > 0 (got ${bt1.count})`);
+assert(Array.isArray(bt1.templates) && bt1.templates[0].name && typeof bt1.templates[0].lines === 'number',
+  'browseTemplatesTool list returns templates with name + lines');
+const dealDesk = bt1.templates.find(t => t.name === 'deal-desk');
+assert(dealDesk !== undefined, 'browseTemplatesTool list includes deal-desk app shipped this session');
+
+// read action — read the deal-desk template we shipped this session
+const bt2 = JSON.parse(browseTemplatesTool({ action: 'read', name: 'deal-desk' }, new MephContext({ rootDir: REPO_ROOT })));
+assert(bt2.name === 'deal-desk', 'browseTemplatesTool read returns the requested template name');
+assert(typeof bt2.source === 'string' && bt2.source.includes('Deal Desk'),
+  'browseTemplatesTool read returns source containing the app title');
+
+// read with no name → error
+const bt3 = JSON.parse(browseTemplatesTool({ action: 'read' }, new MephContext({ rootDir: REPO_ROOT })));
+assert(bt3.error?.includes('Need a template name'),
+  'browseTemplatesTool read without name surfaces helpful error');
+
+// read with non-existent template
+const bt4 = JSON.parse(browseTemplatesTool({ action: 'read', name: 'does-not-exist-xyz' }, new MephContext({ rootDir: REPO_ROOT })));
+assert(bt4.error?.includes('not found'),
+  'browseTemplatesTool read with bad name surfaces "not found"');
+
+// invalid action
+const bt5 = JSON.parse(browseTemplatesTool({ action: 'frobnicate' }, new MephContext({ rootDir: REPO_ROOT })));
+assert(bt5.error?.includes('action must be'),
+  'browseTemplatesTool with bad action surfaces "action must be"');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
