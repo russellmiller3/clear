@@ -10,7 +10,9 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool } from './meph-tools.js';
+import { mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
 import { patch } from '../patch.js';
@@ -502,6 +504,87 @@ const fakeFetchErr = async () => { throw new Error('network down'); };
 const ra3 = JSON.parse(await readActionsTool({}, new MephContext(), fakeFetchErr));
 assert(ra3.error?.includes('network down'),
   'readActionsTool surfaces fetch errors as { error: ... }');
+
+console.log('\n📁 editFileTool\n');
+
+// Spin up a tmp dir to scribble in — we don't want test runs touching the real repo.
+const tmpDir = mkdtempSync(join(tmpdir(), 'meph-tools-edit-file-'));
+const tmpCtx = new MephContext({ rootDir: tmpDir });
+
+// Missing filename
+const ef1 = JSON.parse(editFileTool({}, tmpCtx));
+assert(ef1.error?.includes('"filename"'),
+  'editFileTool without filename returns helpful error');
+
+// Missing action
+const ef2 = JSON.parse(editFileTool({ filename: 'x.md' }, tmpCtx));
+assert(ef2.error?.includes('"action"'),
+  'editFileTool without action returns helpful error');
+
+// Disallowed extension
+const ef3 = JSON.parse(editFileTool({ filename: 'x.exe', action: 'append', content: 'x' }, tmpCtx));
+assert(ef3.error?.includes('not allowed'),
+  'editFileTool rejects disallowed extension');
+
+// Append creates new .clear file
+const ef4 = JSON.parse(editFileTool({ filename: 'app.clear', action: 'append', content: 'hello' }, tmpCtx));
+assert(ef4.ok === true && ef4.appended === true, 'editFileTool append creates new .clear file');
+assert(fsReadFileSync(join(tmpDir, 'app.clear'), 'utf8') === 'hello',
+  'editFileTool append writes the content to disk');
+
+// Append again adds newline separator if missing
+const ef5 = JSON.parse(editFileTool({ filename: 'app.clear', action: 'append', content: 'world' }, tmpCtx));
+assert(ef5.ok === true,
+  'editFileTool second append succeeds');
+assert(fsReadFileSync(join(tmpDir, 'app.clear'), 'utf8') === 'hello\nworld',
+  'editFileTool append inserts newline between non-newline-terminated existing + new');
+
+// Read returns content + lines
+const ef6 = JSON.parse(editFileTool({ filename: 'app.clear', action: 'read' }, tmpCtx));
+assert(ef6.content === 'hello\nworld', 'editFileTool read returns full content');
+assert(ef6.lines === 2, `editFileTool read returns line count (got ${ef6.lines})`);
+
+// Insert at line 2
+const ef7 = JSON.parse(editFileTool({ filename: 'app.clear', action: 'insert', line: 2, content: 'middle' }, tmpCtx));
+assert(ef7.ok === true && ef7.inserted === true, 'editFileTool insert succeeds');
+assert(fsReadFileSync(join(tmpDir, 'app.clear'), 'utf8') === 'hello\nmiddle\nworld',
+  'editFileTool insert places new line at the right index');
+
+// Replace single occurrence
+const ef8 = JSON.parse(editFileTool({ filename: 'app.clear', action: 'replace', find: 'middle', content: 'MIDDLE' }, tmpCtx));
+assert(ef8.ok === true && ef8.occurrences === 1, 'editFileTool replace returns occurrences=1');
+assert(fsReadFileSync(join(tmpDir, 'app.clear'), 'utf8').includes('MIDDLE'),
+  'editFileTool replace updates the file');
+
+// Replace non-existent string returns helpful error
+const ef9 = JSON.parse(editFileTool({ filename: 'app.clear', action: 'replace', find: 'nothere', content: 'x' }, tmpCtx));
+assert(ef9.error?.includes('not found'),
+  'editFileTool replace without match returns helpful error');
+
+// Overwrite replaces entire file
+const ef10 = JSON.parse(editFileTool({ filename: 'app.clear', action: 'overwrite', content: 'new content' }, tmpCtx));
+assert(ef10.ok === true && ef10.written === true, 'editFileTool overwrite succeeds');
+assert(fsReadFileSync(join(tmpDir, 'app.clear'), 'utf8') === 'new content',
+  'editFileTool overwrite replaces full content');
+
+// Read non-existent file
+const ef11 = JSON.parse(editFileTool({ filename: 'nope.clear', action: 'read' }, tmpCtx));
+assert(ef11.error?.includes('does not exist'),
+  'editFileTool read on missing file returns helpful error');
+
+// Permission denied: trying to overwrite a non-allowlisted .md file that exists
+fsWriteFileSync(join(tmpDir, 'protected.md'), 'existing protected content');
+const ef12 = JSON.parse(editFileTool({ filename: 'protected.md', action: 'append', content: 'x' }, tmpCtx));
+assert(ef12.error?.includes('Permission denied'),
+  'editFileTool blocks writing to non-allowlisted existing .md file');
+
+// But the same file can be READ
+const ef13 = JSON.parse(editFileTool({ filename: 'protected.md', action: 'read' }, tmpCtx));
+assert(ef13.content === 'existing protected content',
+  'editFileTool can read non-allowlisted files (read-only access)');
+
+// Cleanup
+try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
