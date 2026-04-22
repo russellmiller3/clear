@@ -1,6 +1,32 @@
-# Handoff — Next Claude: continue Queue E (Ghost Meph tool-use) and start Queue F
+# Handoff — 2026-04-22 (late session) — CC scaffolds consolidated, TDD restarted
 
-**Your mandate (unchanged from previous session):** Russell wants to wake up to a pile of merged branches. Ship code in priority order. Don't stop and ask. Don't burn time on retrospective summaries — write a fresh HANDOFF only when you hit a hard blocker, finish Queue F, or finish Queue E end-to-end.
+**Current state: two active branches ahead of main, both green.**
+
+## `feature/gm-2-tool-use-rest` (GM-2 + cc-agent)
+
+GM-2 refactor COMPLETE: all 28 Meph tools in `playground/meph-tools.js` behind `dispatchTool`. MCP server exposes them all. cc-agent tool mode validated end-to-end against Russell's real `claude` CLI (claude 2.1.111 in `%APPDATA%/Claude/claude-code/2.1.111/claude.exe`). Smoke test shows full round-trip: `GHOST_MEPH_CC_TOOLS=1 MEPH_BRAIN=cc-agent` → claude spawns with MCP + stream-json + `--permission-mode=bypassPermissions` → `mcp__meph__meph_edit_code` fires → source syncs back to Studio → `done` emitted. Cost for one smoke: $0.07 on the $200/mo subscription.
+
+Tests: 2097 compiler + 254 meph-tools + 20 meph-helpers + 66 ghost-meph + 139 MCP + 69 cc-agent-stream-json = **2645 green**.
+
+## `feature/clear-cloud` (CC scaffolds — consolidated + TDD restart)
+
+Per Russell's direction ("merge all the cc work into one branch and do TDD"), the 4 green CC scaffolds merged into a single branch:
+- **CC-1a** tenants-db (schema + Node client) — 51 + 9 tests
+- **CC-1b** subdomain-router (Host→app proxy) — 44 tests
+- **CC-1c/1d** per-app-db + isolation contract — 80 tests
+- **CC-2a** cloud-auth (users + sessions + bcrypt + reset) — 57 tests
+
+**CC-2b cloud-teams in progress — 10 Kent Beck TDD cycles, 51 tests.** Each commit message is "TDD cycle N — <feature>"; every cycle was RED first, then minimum GREEN, then commit. Covers: createTeam + duplicate-slug guard, getTeamBySlug, listTeamsForUser (with my_role), getMembership, can() permission matrix (7 actions × 3 roles), addMember with role validation, removeMember with last-owner guard, createInvite (crypto token + expiry + email lowercase), acceptInvite (single-use + idempotent).
+
+Missing from cloud-teams (future TDD cycles): `revokeInvite`, `listPendingInvites`, `updateMemberRole`, owner-transfer flow.
+
+Tests on this branch: 2097 compiler + 241 CC scaffolds + 51 cloud-teams = **2389 green**.
+
+## TDD restart — globally binding rule
+
+Russell caught that I'd been writing tests alongside/after code on the 4 consolidated scaffolds. Added "TDD — Red Before Code, Always" as a HARD RULE in `~/.claude/CLAUDE.md`. Reinforces the existing "Kent Beck TDD by Default" rule with a sharper threshold: anything with logic/state/async/error-paths/new-behavior = test-first. Only trivial (typo, rename, comment, one-line config) allows skip. From here forward: every cycle on cloud-teams commits as `feat(cloud-teams): TDD cycle N — <one thing>` with RED-first discipline visible in the test diff.
+
+## Old mandate (kept below for session context)
 
 ---
 
