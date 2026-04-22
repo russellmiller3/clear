@@ -132,6 +132,35 @@ Totals after tick 6: **2101 compiler + 270 meph-tools + 153 mcp-server + 7 runti
 
 **Pattern observation.** Three silent-fails closed in one day (parse-time `save {literal}`, parse-time `result = save {literal}`, runtime `db.update({no-id})`). Each was invisible because something upstream still looked healthy (compile_ok=1, 200 status, "TASK COMPLETE" said). The flywheel's value depends on honest signals — every silent-fail tightened into a loud error is a direct lever on training-data quality.
 
+## Session 42 tick 7 — parallel ceiling + solo-passes pattern
+
+Observations from running several parallel + solo sweeps after all the fixes above landed:
+
+- **Solo sweeps pass reliably through L7.** webhook-stripe solo ✅ 50.2s; L3 counter solo ✅ 180s; L4 todo-crud solo ✅ 76s. Every task we've tried passes when run alone with `--workers=1`.
+- **Parallel sweeps hit a ceiling around L6-L7.** The 7-task L2-L6 run was 7/7 in parallel, but the 8-task L5-L7 run was 6/8 — webhook-stripe (70.5s) + validated-forms (112.3s) ❌ in parallel; webhook-stripe ✅ 50.2s solo.
+- **Short-duration failures in parallel are the diagnostic tell.** 70.5s (vs 50.2s solo) means Meph wasn't timing out — something aborted him. Port conflict on 4001 is the strongest candidate: every MCP child allocates from its own `_nextPortCounter = 4001` so three workers race for the same port; two lose.
+
+Candidate root causes (ranked by likelihood):
+1. **Port collision on 4001+.** `playground/ghost-meph/mcp-server/tools.js:69` initializes `_nextPortCounter = 4001` on every subprocess start. 3 workers → 3 children all binding 4001 → 2 lose.
+2. **Shared `.meph-build/` directory.** `buildDir: join(REPO_ROOT, '.meph-build')` in every MCP child. Concurrent writes to `server.js`, `package.json`, `node_modules` clobber each other.
+3. **Subscription concurrency cap.** Claude's `$200/mo` subscription may rate-limit per-user parallel tool sessions.
+
+Fix sketch for (1)+(2) in `playground/ghost-meph/mcp-server/tools.js`:
+```js
+let _nextPortCounter = 4001 + (process.pid % 1000) * 10;  // disjoint band per subprocess
+const _buildDir = join(REPO_ROOT, '.meph-build', String(process.pid));  // namespaced
+```
+Sub-10-line change. After landing, re-run the 8-task L5-L7 to confirm.
+
+**Interim recommendation: use `--workers=1` for reliable data.** Full 38-task curriculum sweep serial takes ~60-90 min (at 100s-180s per task). Produces ~30+ real passing rows. The 200-row retrain threshold is ~6-7 full sweeps = half a day of wall clock. Not fast, but predictable.
+
+**Session-wide totals:** 521 → 547 passing rows (+26 this session). 1530 total rows in Factor DB. Seven sweeps run, four parser/runtime/infrastructure bugs fixed + merged + pushed.
+
+**Stopping here to let Russell triage.** Monitor + scheduled wakeup still active; next session picks from:
+1. Port-band + buildDir-namespace fix (sketch above) — unlocks parallel sweeps at 3× throughput
+2. Parallel grader scope-by-session_id fix (tick 6 above)
+3. `--workers=1` full-curriculum sweep to generate training data while the parallel fix is in flight
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
