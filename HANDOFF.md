@@ -108,6 +108,30 @@ This validates the broader pattern: when curriculum-sweep fails systemically, th
 - 8/8 core templates still 0-error
 - Next tick: re-run 4-task L3 sweep (`counter,key-value-store,todo-crud,bookmark-manager`) to measure breadth of impact. If most pass, time to kick off the full 20-task overnight sweep (Priority 1 in the list above).
 
+## Session 42 tick 6 — runtime silent-fail closed (`509bec2`)
+
+Factor DB mining of recent failing rows exposed a second-order silent-fail. Row 1623 was GRADED test_pass=1 by the sweep, but direct runtime replay of the exact source showed POST /reset → 200 (misleading `{count:0}`), GET /count → 200 `{}` (state never changed), POST /increment → 500. Pattern:
+
+  - Meph writes `initial = { value: 0 }; save initial to Counters` (no result var)
+  - Compiler emits `db.update('counters', _pick(initial, schema))`
+  - Runtime `db.update` saw `initial.id === undefined`, silently returned 0
+  - POST still returned 200 (the endpoint's literal `send back { count: 0 }`), so http_request weak-signal tripped test_pass=1 on the compile row
+  - Flywheel credited the attempt; training data poisoned with a false positive
+
+Fix lands at the RUNTIME layer (not parser or compiler) because the trap fires regardless of which save form Meph wrote. `runtime/db.js:update` now throws a 400 with an instructive message:
+
+  > Cannot update <table> without an id on the record — use "save ... as new <table>" to insert a new row instead, or look up an existing row first and mutate it.
+
+`_clearTry` converts the throw into a 500 response, which http_request sees as non-2xx, so the weak-signal doesn't fire. Factor DB correctly records test_pass=0. Meph's next iteration reads the hint and switches to `as new`.
+
+Added `runtime/db.test.cjs` with 7 assertions: throw on no-id + error carries status=400 + message names "as new" + names "id" + 3 sanity checks that update-by-id and filter+data conventions still work.
+
+**Interaction with Russell's tick-5b grader bug note above:** the over-counting in the parallel grader compounds with the false-positive weak signal — noisy rows from one worker get credited to another's task window. Fixing the runtime silent-fail cuts one axis of the noise; scoping the grader by session_id cuts the other.
+
+Totals after tick 6: **2101 compiler + 270 meph-tools + 153 mcp-server + 7 runtime = 2531 tests green.** 8/8 templates clean.
+
+**Pattern observation.** Three silent-fails closed in one day (parse-time `save {literal}`, parse-time `result = save {literal}`, runtime `db.update({no-id})`). Each was invisible because something upstream still looked healthy (compile_ok=1, 200 status, "TASK COMPLETE" said). The flywheel's value depends on honest signals — every silent-fail tightened into a loud error is a direct lever on training-data quality.
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
