@@ -28,6 +28,7 @@ let _ebmBundle = null;
 let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
+import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
 import {
   takeSnapshot as _takeSnapshot,
   listSnapshots as _listSnapshots,
@@ -2657,7 +2658,9 @@ app.post('/api/chat', async (req, res) => {
   // Hidden from Meph by design — we measure natural trajectory, not guided behavior.
   const sessionSteps = Array.isArray(taskSteps) && taskSteps.length > 0 ? taskSteps : null;
   const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
-  if (!resolvedKey) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
+  // GM-1: when MEPH_BRAIN is set, route via local backend instead of Anthropic.
+  // Skip the API-key gate in that case — local backends don't need one.
+  if (!resolvedKey && !isGhostMephActive()) return res.status(400).json({ error: 'Set your Anthropic API key to chat with Claude' });
   if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
 
   // SSE streaming
@@ -3737,10 +3740,18 @@ app.post('/api/chat', async (req, res) => {
             watchdog = setTimeout(() => ctrl.abort(new Error('idle timeout: no data for ' + (IDLE_TIMEOUT_MS / 1000) + 's')), IDLE_TIMEOUT_MS);
             firstByteSeen = true;
           };
-          r = await fetch(endpoint, {
-            method: 'POST', headers, body: JSON.stringify(payload),
-            signal: ctrl.signal,
-          });
+          // GM-1: route via Ghost Meph backend when MEPH_BRAIN is set,
+          // else hit real Anthropic. Backend returns Anthropic-shaped SSE
+          // so the rest of this loop is unchanged.
+          if (isGhostMephActive()) {
+            console.log(`[chat] routing via Ghost Meph (MEPH_BRAIN=${getBackendId()})`);
+            r = await fetchViaBackend(payload, headers);
+          } else {
+            r = await fetch(endpoint, {
+              method: 'POST', headers, body: JSON.stringify(payload),
+              signal: ctrl.signal,
+            });
+          }
           if (r.ok) break;
           // Retry on 429 (rate limit), 500, 502, 503, 529 (overloaded)
           const retryable = [429, 500, 502, 503, 529].includes(r.status);
