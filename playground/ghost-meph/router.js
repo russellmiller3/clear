@@ -44,20 +44,26 @@ export function getBackendId() {
  * Returns a Response-like object with a streaming SSE body that the existing
  * /api/chat reader loop can consume unchanged.
  */
-export function fetchViaBackend(payload, headers) {
+export async function fetchViaBackend(payload, headers) {
   const brain = getBackendId();
-  // GM-2/3/4 will hook real backends here. Until those land, every value
-  // hits the stub — the env gate works, the call doesn't burn API budget.
   switch (brain) {
-    case 'cc-agent':
+    case 'cc-agent': {
+      // Dynamic import keeps the (slightly heavier) cc-agent module out of
+      // the hot path when cc-agent isn't selected. Also avoids a circular
+      // import — cc-agent depends on buildSSEEvents from this file.
+      const { chatViaClaudeCode } = await import('./cc-agent.js');
+      return chatViaClaudeCode(payload);
+    }
     case 'openrouter:qwen':
     case 'ollama:qwen3':
     case 'haiku-dev':
-      return Promise.resolve(stubResponse(brain, payload));
+      // GM-3/4 / haiku-dev land in follow-up commits. Stub for now — same
+      // contract, stop_reason=end_turn, server doesn't hang.
+      return stubResponse(brain, payload);
     default:
       // Unknown backend — still return a stub so the server doesn't crash,
       // but mark the message so a developer knows their MEPH_BRAIN value is unrecognized.
-      return Promise.resolve(stubResponse(`unknown:${brain}`, payload));
+      return stubResponse(`unknown:${brain}`, payload);
   }
 }
 
