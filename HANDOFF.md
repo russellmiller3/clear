@@ -139,6 +139,8 @@ These items are blocked on Ghost Meph landing. Once MEPH_BRAIN=cc-agent works, e
 
 ### Queue G: Clear Cloud scaffolds (PR-only, don't merge)
 
+**Master plan: `plans/plan-clear-cloud-master-04-21-2026.md`** — read this FIRST before starting any CC-* work. It lays out the architecture, what Phase 85 already shipped, CC-1 through CC-5 sub-task breakdown, dependency graph, and integration points. Each CC-* sub-item should get its own detailed `plans/plan-cc<N>-<feature>-MM-DD-YYYY.md` (red-teamed) before execution.
+
 Everything in this queue is scaffold ONLY. Can't be tested end-to-end without Russell completing Phase 85a provisioning (domain reg, Fly Trust Verified, Stripe signup, Anthropic org key). Write the code, run unit tests, commit to a branch, but **do NOT merge to main** until Russell signals Phase 85a is done. Leave as open branches (or local branches) for him to review.
 
 24. **CC-1 scaffold: multi-tenant DB schema.** Design the tenants DB (Postgres) with subdomain column, per-app DB provisioning table, isolation policy. Write migration SQL in `playground/tenants-db/migrations/001-tenants.sql`. Unit tests against a local dev Postgres. Branch: `feature/cc1-schema` (do not merge).
@@ -157,9 +159,12 @@ Everything in this queue is scaffold ONLY. Can't be tested end-to-end without Ru
 
 ### Queue I: Design deliverables (write plans, don't implement)
 
-If you finish Queues B through F and the blockers in H still stand, write out detailed plans for:
+Detailed sub-plans for specific CC-* items. The master plan (`plans/plan-clear-cloud-master-04-21-2026.md`) covers architecture + sub-task breakdown; these are the execution-ready plans.
 
+- **CC-1 multi-tenant plan** — detailed breakdown of CC-1a/b/c/d (schema, router, per-app DB, isolation tests). Save as `plans/plan-cc1-multitenant-MM-DD-YYYY.md`. Red-team then execute Queue G items #24-25 against it.
+- **CC-2 auth plan** — accounts, sessions, teams, dashboard, wire to apps. Save as `plans/plan-cc2-auth-MM-DD-YYYY.md`. Red-team then execute Queue G #26.
 - **CC-3 Stripe billing plan** — full pricing tiers → Stripe products → webhook handlers → usage meter. Save as `plans/plan-cc3-stripe-billing-MM-DD-YYYY.md`.
+- **CC-4 Publish flow plan** — first-click walkthrough, deploy progress UI, publish-vs-update detection. Save as `plans/plan-cc4-publish-flow-MM-DD-YYYY.md`.
 - **CC-5 custom domain flow plan** — UX mock + DNS verification + SSL provisioning. Save as `plans/plan-cc5-custom-domain-MM-DD-YYYY.md`.
 - **Compiler Flywheel Tier 1 plan** — runtime beacons (latency, error, memory) from compiled apps back to Studio. Partially specced in ROADMAP. Detail it out. Save as `plans/plan-compiler-flywheel-tier1-MM-DD-YYYY.md`.
 
