@@ -70,6 +70,14 @@ export class MephContext {
     // a real running app.
     this.isAppRunning = options.isAppRunning || (() => false);
     this.sendBridgeCommand = options.sendBridgeCommand || (async () => ({ error: 'Bridge command not wired in this MephContext.' }));
+    // Subprocess-tool callbacks. stopRunningApp() kills the child started
+    // by run_app. /api/chat hooks it to runningChild.kill('SIGTERM') +
+    // runningChild = null.
+    this.stopRunningApp = options.stopRunningApp || (() => false);
+
+    // Build directory — where the compiled child app writes its SQLite
+    // database (BUILD_DIR/clear-data.db). db_inspect reads from there.
+    this.buildDir = options.buildDir || '';
 
     // Meph todo state. /api/chat owns a closure-level mephTodos array;
     // setTodos() fires onTodosChange so the closure var stays in sync.

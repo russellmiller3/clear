@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool } from './meph-tools.js';
 import { mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
@@ -585,6 +585,49 @@ assert(ef13.content === 'existing protected content',
 
 // Cleanup
 try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+
+console.log('\n🛑 stopAppTool\n');
+
+let stopFired = false;
+const stCtx = new MephContext({ stopRunningApp: () => { stopFired = true; } });
+const st1 = JSON.parse(stopAppTool({}, stCtx));
+assert(st1.stopped === true, 'stopAppTool returns { stopped: true }');
+assert(stopFired === true, 'stopAppTool calls ctx.stopRunningApp()');
+
+// Idempotent: calling again still returns stopped=true
+stopFired = false;
+const st2 = JSON.parse(stopAppTool({}, new MephContext()));
+assert(st2.stopped === true,
+  'stopAppTool returns stopped=true even when stopRunningApp is the no-op default');
+
+console.log('\n🗄  dbInspectTool\n');
+
+// No app running
+const di1 = JSON.parse(await dbInspectTool({ query: 'SELECT 1' }, new MephContext()));
+assert(di1.error?.includes('No app running'),
+  'dbInspectTool returns "No app running" when isAppRunning false');
+
+// Missing query
+const di2 = JSON.parse(await dbInspectTool({}, new MephContext({ isAppRunning: () => true })));
+assert(di2.error?.includes('Missing query'),
+  'dbInspectTool returns "Missing query" with no input.query');
+
+// Non-SELECT query rejected
+const di3 = JSON.parse(await dbInspectTool({ query: 'DROP TABLE users' },
+  new MephContext({ isAppRunning: () => true })));
+assert(di3.error?.includes('Only SELECT'),
+  'dbInspectTool rejects non-SELECT queries');
+
+const di4 = JSON.parse(await dbInspectTool({ query: 'INSERT INTO x VALUES (1)' },
+  new MephContext({ isAppRunning: () => true })));
+assert(di4.error?.includes('Only SELECT'),
+  'dbInspectTool rejects INSERT');
+
+// SELECT against non-existent buildDir
+const di5 = JSON.parse(await dbInspectTool({ query: 'SELECT * FROM x' },
+  new MephContext({ isAppRunning: () => true, buildDir: '/nonexistent-dir-xyz' })));
+assert(di5.error?.includes('No database file'),
+  'dbInspectTool returns "No database file yet" when DB file is absent');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

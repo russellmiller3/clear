@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3144,8 +3144,13 @@ app.post('/api/chat', async (req, res) => {
       }
 
       case 'stop_app':
-        if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
-        return JSON.stringify({ stopped: true });
+        // Extracted to playground/meph-tools.js. ctx.stopRunningApp()
+        // closes over /api/run's runningChild singleton.
+        return stopAppTool(input, new MephContext({
+          stopRunningApp: () => {
+            if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
+          },
+        }));
 
       case 'read_file':
         // Extracted to playground/meph-tools.js so the MCP server's
@@ -3291,25 +3296,13 @@ app.post('/api/chat', async (req, res) => {
         }));
       }
 
-      case 'db_inspect': {
-        if (!runningChild) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
-        const q = String(input.query || '').trim();
-        if (!q) return JSON.stringify({ error: 'Missing query' });
-        // Security: only allow SELECT queries
-        if (!/^select\s/i.test(q)) return JSON.stringify({ error: 'Only SELECT queries allowed. Use db_inspect for reads, not writes.' });
-        try {
-          // The running app has its SQLite DB in BUILD_DIR/clear-data.db
-          const Database = (await import('better-sqlite3')).default;
-          const dbPath = join(BUILD_DIR, 'clear-data.db');
-          if (!existsSync(dbPath)) return JSON.stringify({ error: 'No database file yet. Make a request that writes data first.' });
-          const db = new Database(dbPath, { readonly: true });
-          const rows = db.prepare(q).all();
-          db.close();
-          return JSON.stringify({ ok: true, rowCount: rows.length, rows: rows.slice(0, 100) });
-        } catch (err) {
-          return JSON.stringify({ error: err.message.slice(0, 300) });
-        }
-      }
+      case 'db_inspect':
+        // Extracted to playground/meph-tools.js (GM-2 port). Dynamic
+        // import of better-sqlite3 happens inside the tool now, not here.
+        return await dbInspectTool(input, new MephContext({
+          isAppRunning: () => !!runningChild,
+          buildDir: BUILD_DIR,
+        }));
 
       case 'todo': {
         // Extracted to playground/meph-tools.js. Mirror mephTodos closure

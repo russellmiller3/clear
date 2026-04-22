@@ -463,6 +463,53 @@ export function browseTemplatesTool(input, ctx) {
 }
 
 /**
+ * stop_app tool — kill the child Node app started by run_app. Stateless
+ * except for the ctx.stopRunningApp() callback which /api/chat hooks to
+ * runningChild.kill('SIGTERM') + runningChild = null. Always returns
+ * { stopped: true } even if no app was running (matches inline behavior).
+ *
+ * @param {object} input - unused
+ * @param {MephContext} ctx - stopRunningApp callback used
+ * @returns {string} JSON-stringified ack
+ */
+export function stopAppTool(input, ctx) {
+  ctx.stopRunningApp();
+  return JSON.stringify({ stopped: true });
+}
+
+/**
+ * db_inspect tool — run a SELECT query against the running compiled app's
+ * SQLite database (BUILD_DIR/clear-data.db). Read-only — non-SELECT queries
+ * are rejected up front. Returns the first 100 rows.
+ *
+ * Dynamic imports better-sqlite3 inside the try so the module load only
+ * happens when the tool is actually called (and the parent module doesn't
+ * pull better-sqlite3 in transitively).
+ *
+ * @param {object} input - { query: string }
+ * @param {MephContext} ctx - isAppRunning + buildDir required
+ * @returns {Promise<string>} JSON-stringified result
+ */
+export async function dbInspectTool(input, ctx) {
+  if (!ctx.isAppRunning()) return JSON.stringify({ error: 'No app running. Start with run_app first.' });
+  const q = String(input.query || '').trim();
+  if (!q) return JSON.stringify({ error: 'Missing query' });
+  // Security: only allow SELECT queries
+  if (!/^select\s/i.test(q)) return JSON.stringify({ error: 'Only SELECT queries allowed. Use db_inspect for reads, not writes.' });
+  try {
+    const Database = (await import('better-sqlite3')).default;
+    const dbPath = join(ctx.buildDir, 'clear-data.db');
+    if (!existsSync(dbPath)) return JSON.stringify({ error: 'No database file yet. Make a request that writes data first.' });
+    const db = new Database(dbPath, { readonly: true });
+    const rows = db.prepare(q).all();
+    db.close();
+    return JSON.stringify({ ok: true, rowCount: rows.length, rows: rows.slice(0, 100) });
+  } catch (err) {
+    return JSON.stringify({ error: err.message.slice(0, 300) });
+  }
+}
+
+/**
  * edit_file tool — read / append / insert / replace / overwrite on files in
  * the repo root. Restricted to safe extensions (.clear/.md/.json/.txt/.csv/
  * .html/.css/.js/.py) and a writable allowlist (.clear files anywhere,
