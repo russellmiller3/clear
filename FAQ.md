@@ -477,7 +477,7 @@ Run this after any change to `index.js`, `compiler.js`, `parser.js`, `tokenizer.
 - Phase 6 (Merge Step) ⬜ Deferred until needed
 - Phase 7 (Observability — Studio panel) ✅ — Flywheel tab + Supervisor tab
 
-~50 tests across supervisor modules; 1954 compiler tests still green.
+~50 tests across supervisor modules; 2108 compiler tests still green.
 
 ---
 
@@ -541,7 +541,7 @@ Five steps. Don't skip any.
 
 4. **Update both TOCs** — `parser.js` and `compiler.js` each have a TABLE OF CONTENTS at the top. Update them. Non-negotiable.
 
-5. **Document it** — all 9 surfaces: `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `ROADMAP.md` (only if the feature was on the roadmap; otherwise skip), `landing/*.html` (if user-facing), `playground/system-prompt.md` (if Meph should use it), `FAQ.md` (add a "How do I X?" or "Where does X live?" entry), `RESEARCH.md` (if it affects training-signal architecture). Plus: add a row to **`FEATURES.md`** (the feature reference) and an entry in **`CHANGELOG.md`** (the session-by-session history). If it's not in the docs, it doesn't exist.
+5. **Document it** — all 11 surfaces: `intent.md`, `SYNTAX.md`, `AI-INSTRUCTIONS.md`, `USER-GUIDE.md`, `ROADMAP.md` (only if the feature was on the roadmap; otherwise skip), `landing/*.html` (if user-facing), `playground/system-prompt.md` (if Meph should use it), `FAQ.md` (add a "How do I X?" or "Where does X live?" entry), `RESEARCH.md` (if it affects training-signal architecture), `FEATURES.md` (capability reference row), and `CHANGELOG.md` (session-by-session history entry). If it's not in the docs, it doesn't exist.
 
 Then run `node clear.test.js` + template smoke test (8 core templates, 0 errors).
 
