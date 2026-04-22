@@ -10290,7 +10290,15 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     lines.push('});');
   }
   if (hasAuthScaffold) {
-    lines.push('// Auth scaffolding: JWT secret, middleware, signup/login/me endpoints');
+    // 1:1-mapping provenance — the single Clear line `allow signup and login`
+    // expands to ~70 lines below. Comment names source line + every endpoint /
+    // middleware emitted, so a reader of the compiled JS can map back to the
+    // one Clear line that asked for all this. See docs/one-to-one-mapping-audit.md.
+    const authNode = body.find(n => n.type === NodeType.AUTH_SCAFFOLD);
+    const authLine = authNode && authNode.line ? ` (clear:${authNode.line})` : '';
+    lines.push(`// Auth scaffolding from \`allow signup and login\`${authLine}`);
+    lines.push('//   emits: POST /auth/signup, POST /auth/login, GET /auth/me');
+    lines.push('//   plus:  requireLogin middleware, requireRole middleware, JWT secret, bcrypt + jwt requires');
     lines.push("const _JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');");
     // The app may declare an owner email — the one user who gets role:'owner'
     // at signup and unlocks the Live App Editing widget. Everyone else
