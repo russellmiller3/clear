@@ -426,7 +426,7 @@ Clean state — next session picks from the Priority Order section below.
 ## Known Issues / Bugs
 
 - **Pre-existing e2e failures (7)** in `playground/e2e.test.js` under `todo-fullstack` (seed/CRUD/search). Unrelated to shipped work, present on main pre-session. Push with `SKIP_MEPH_EVAL=1 git push --no-verify` to bypass.
-- **Pre-existing server.test.js failures (17)** around ide.html + templates count. Not introduced this session.
+- ~~**Pre-existing server.test.js failures (17)** around ide.html + templates count.~~ FIXED `ec2a5ec` — all three drift classes (test fetched `/ide` but server routes at `/`, templates target ≥40 when FEATURED_TEMPLATES=14, error-string looked for "auth" when compiler says "requires login"). server.test: 194/194 green.
 - **Known limitation in per-app-db schema names.** `schemaNameFor('a-b', 'crm')` and `schemaNameFor('a', 'b-crm')` both map to `t_a_b_crm` after hyphen→underscore replacement. Slug regex blocks leading/trailing hyphens (mitigates), but a full fix requires a hash-suffix separator. Documented in `per-app-db/index.test.js`. Won't bite until two tenants collide on the transformed name; fix when real Postgres provisioning starts.
 
 ## Next Steps (Priority Order)
