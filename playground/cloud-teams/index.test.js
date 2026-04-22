@@ -55,6 +55,11 @@ function makeMockDb() {
         const row = teams.find(x => x.slug === slug);
         return { rows: row ? [row] : [] };
       }
+      if (/^SELECT \* FROM team_members WHERE team_id/i.test(t)) {
+        const [teamId, userId] = params;
+        const row = members.find(m => m.team_id === teamId && m.user_id === userId);
+        return { rows: row ? [row] : [] };
+      }
       if (/SELECT t\.\*, tm\.role AS my_role/i.test(t)) {
         const [userId] = params;
         const list = [];
@@ -135,6 +140,27 @@ console.log('\n📋 listTeamsForUser\n');
   const nobody = await listTeamsForUser(db, 999);
   assert(Array.isArray(nobody) && nobody.length === 0,
     `unknown user returns empty array, not null (got ${JSON.stringify(nobody)})`);
+}
+
+// ─── TDD cycle 5: getMembership returns the row or null ──────────────────
+console.log('\n🎫 getMembership\n');
+
+{
+  const { createTeam, getMembership } = await import('./index.js');
+  const db = makeMockDb();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 42 });
+
+  const owner = await getMembership(db, team.id, 42);
+  assert(owner && owner.role === 'owner',
+    `owner membership returns row with role=owner (got ${JSON.stringify(owner)?.slice(0, 80)})`);
+
+  const nope = await getMembership(db, team.id, 999);
+  assert(nope === null,
+    `non-member returns null (got ${JSON.stringify(nope)})`);
+
+  const wrongTeam = await getMembership(db, 99, 42);
+  assert(wrongTeam === null,
+    `unknown team returns null (got ${JSON.stringify(wrongTeam)})`);
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

@@ -61,3 +61,14 @@ export async function listTeamsForUser(db, userId) {
   );
   return rows;
 }
+
+/**
+ * Look up a user's membership in a specific team. Row or null.
+ */
+export async function getMembership(db, teamId, userId) {
+  const { rows } = await db.query(
+    `SELECT * FROM team_members WHERE team_id = $1 AND user_id = $2 LIMIT 1`,
+    [teamId, userId]
+  );
+  return rows[0] || null;
+}
