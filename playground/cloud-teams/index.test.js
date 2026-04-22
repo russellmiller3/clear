@@ -904,6 +904,82 @@ console.log('\n📋 listAppsForUser — CC-2c dashboard query\n');
 }
 
 // =============================================================================
+// CC-2c — listAppsWithUsageForUser: dashboard list enriched with usage
+// =============================================================================
+// listAppsForUser returns the app list; this variant also LEFT JOINs the
+// current month's usage_rows COUNT so the dashboard can render
+// "N calls this month" next to each app in a single query. Zero usage
+// rows → calls_this_month = 0 (not null — caller never needs to null-check).
+console.log('\n📈 listAppsWithUsageForUser — dashboard app list + usage\n');
+
+{
+  function makeMockDbWithUsage() {
+    const db = makeMockDb();
+    db.apps = [];
+    db.usageRows = [];  // {app_id, ts}
+    const origQuery = db.query;
+    db.query = async function (text, params = []) {
+      const t = text.replace(/\s+/g, ' ').trim();
+      // The new query: apps JOIN team_members + LEFT JOIN usage_rows with COUNT
+      if (/SELECT a\.\*, tm\.role.*COUNT.*usage_rows/i.test(t)) {
+        const [userId] = params;
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const rows = [];
+        for (const m of db.members) {
+          if (m.user_id !== userId) continue;
+          for (const a of db.apps) {
+            if (a.team_id !== m.team_id) continue;
+            if (a.status && a.status !== 'active') continue;
+            const calls = db.usageRows.filter(u =>
+              u.app_id === a.id && u.ts >= startOfMonth
+            ).length;
+            rows.push({ ...a, my_role: m.role, calls_this_month: calls });
+          }
+        }
+        return { rows };
+      }
+      return origQuery(text, params);
+    };
+    return db;
+  }
+
+  const { createTeam, addMember, listAppsWithUsageForUser } = await import('./index.js');
+
+  const db = makeMockDbWithUsage();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 10 });
+  db.apps.push({ id: 1, team_id: team.id, slug: 'dashboard', status: 'active', tenant_id: 1 });
+  db.apps.push({ id: 2, team_id: team.id, slug: 'reports',   status: 'active', tenant_id: 1 });
+  db.apps.push({ id: 3, team_id: team.id, slug: 'quiet',     status: 'active', tenant_id: 1 });
+
+  // Seed usage: app 1 has 5 calls this month, app 2 has 12, app 3 has 0
+  const now = new Date();
+  for (let i = 0; i < 5;  i++) db.usageRows.push({ app_id: 1, ts: now });
+  for (let i = 0; i < 12; i++) db.usageRows.push({ app_id: 2, ts: now });
+
+  const rows = await listAppsWithUsageForUser(db, 10);
+  assert(rows.length === 3,
+    `returns a row per accessible active app (got ${rows.length})`);
+
+  const bySlug = Object.fromEntries(rows.map(r => [r.slug, r]));
+  assert(bySlug.dashboard.calls_this_month === 5,
+    `dashboard has 5 calls this month (got ${bySlug.dashboard.calls_this_month})`);
+  assert(bySlug.reports.calls_this_month === 12,
+    `reports has 12 calls this month (got ${bySlug.reports.calls_this_month})`);
+  assert(bySlug.quiet.calls_this_month === 0,
+    `quiet has 0 calls (not null/undefined) — got ${bySlug.quiet.calls_this_month}`);
+
+  // Every row still carries my_role (same as listAppsForUser)
+  assert(rows.every(r => r.my_role === 'owner'),
+    `my_role populated on every row`);
+
+  // Non-member → empty array
+  const noAccess = await listAppsWithUsageForUser(db, 999);
+  assert(Array.isArray(noAccess) && noAccess.length === 0,
+    `non-member → empty array`);
+}
+
+// =============================================================================
 // Schema drift-guard — CC-2b migration file has to exist and carry the
 // tables/columns the code above assumes. Catches the class of bug where
 // someone renames a column in code but forgets to update the migration
