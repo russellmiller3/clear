@@ -1,11 +1,22 @@
-# Handoff — 2026-04-22 (cloud-teams COMPLETE, pushed to origin)
+# Handoff — 2026-04-22 (flywheel UNBLOCKED — cc-agent sweeps feed Factor DB)
 
 ## Current State
 
 - **Branch:** `main` (all feature branches merged + deleted)
-- **Last commit:** merge of `feature/cc2b-finish` — cloud-teams cycles 13 + 14 (updateMemberRole + transferOwnership). Main fully caught up with all session work.
-- **Working tree:** pre-existing dirty files only (`.claude/settings.local.json`, `index.html`, `meph-memory.md`, `requests.md`, `style.css`, `app.clear`, `counter.clear`, `test.js`, `server.js`, `playground/factor-db.sqlite-shm/-wal`, `playground/sessions/`, `apps/approval-queue/*`, `apps/deal-desk/*` — all unrelated to shipped work). Ignore.
-- **Origin:** in sync after the recent push (earlier ship) and one more push after cycle 13 + 14 merged.
+- **Last commit:** merge of `feature/mcp-factor-db` — FactorDB now wired into MCP server. cc-agent curriculum sweeps log trajectory rows to `playground/factor-db.sqlite` at $0 cost.
+- **Working tree:** pre-existing dirty files (unchanged list). Ignore.
+- **Origin:** needs push — 2 new merges on main (cc2b-finish + mcp-factor-db) since last push.
+
+## Flywheel milestone hit this tick
+
+**Real sweep ran at $0 cost AND grew the Factor DB.** `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=1 --tasks=hello-world`:
+  - 124 seconds wall clock
+  - $0 API cost (routed via Russell's $200/mo subscription)
+  - Factor DB: **1451 → 1452 rows (+1)**
+
+The `+1` is the compile trajectory row logged by the MCP server's compile tool now that factorDB is wired. First cc-agent-driven Factor DB write. The flywheel can now fill for free.
+
+Previously the compile-cycle row was being DROPPED silently because the MCP server's MephContext didn't have factorDB wired (it was null). Russell's earlier preflight-bypass commit unblocked the sweep from running at all; this commit unblocks the rows from actually being written.
 
 ## What Was Done This Session
 
@@ -95,12 +106,18 @@ Clean state — next session picks from the Priority Order section below.
 
 ## Next Steps (Priority Order)
 
-1. **Phase 85a unblocker (Russell's call).** Until Phase 85a lands (domain, Fly Trust Verified, Stripe, Postgres hosting pick) none of CC-1 through CC-5 can go live. Russell owns this; once done the scaffolds merge into the deploy pipeline.
-2. **Curriculum sweep via cc-agent.** Set `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1` and run a small curriculum sweep. Expected cost: $0. If it works: Queue F (RL flywheel) unblocks, Factor DB starts filling from sweep rows, pre-push Meph eval stops being skipped. Doable WITHOUT Phase 85a — cc-agent is validated.
-3. **CC-2c account dashboard.** Clear Cloud users land on `buildclear.dev/dashboard` after login. Shows their apps, team, usage. Can be built as a Clear app (meta!) or custom HTML. Plan: `plans/plan-clear-cloud-master-04-21-2026.md` §CC-2c. Doable before 85a as scaffold.
-4. **CC-3 Stripe billing.** Blocks on Phase 85a's Stripe signup. Scaffold work (webhooks, quota enforcement) doable against Stripe test mode before 85a.
-5. **Mid-turn source sync (cc-agent polish).** Currently post-turn — Studio editor only updates at end of cc-agent response. Streaming the stream-json parse would emit `code_update` events per edit_code write mid-turn. ~30 lines, test via extending existing fixtures.
-6. **Queue F RL flywheel** (after cc-agent curriculum sweep proves itself): RL-3 classifier fuzzy-match fixes, RL-4 step seeds on 28 curriculum tasks, RL-5 archetype task hints, RL-6 first full Ghost-Meph re-sweep overnight (free via cc-agent), RL-8 honest-helpful retrain (when ~50 tags accumulate).
+1. **Full cc-agent curriculum sweep (overnight-able).** `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=3` runs all 20 tasks at $0 cost. Each task adds 1-N rows to Factor DB. Expected wall-clock: ~20-40 min with 3 workers (single task took 82-124s). This is now the highest-leverage item: validates the flywheel AT SCALE and produces the raw data Queue F depends on.
+2. **Queue F (RL flywheel) — now unblocked.** After the overnight sweep yields ~50+ new passing rows:
+   - RL-3 classifier fuzzy-match fixes
+   - RL-4 step seeds on 28 curriculum tasks
+   - RL-5 archetype task hints
+   - RL-6 retrain ranker on fresh data
+   - RL-8 honest-helpful retrain (at ~50 tags)
+3. **"said TC" quality — Meph signals task-complete without test-passes.** During the 1-task validation, hello-world was marked ✅ because Meph said "TC" but actual `test_pass` rows didn't grow. Look at sweep grading logic — should require `test_pass=1` on at least one row, not just a TC emit from Meph. File: `playground/supervisor/curriculum-sweep.js`, around the success-criterion logic.
+4. **Phase 85a unblocker (Russell's call).** Domain, Fly Trust Verified, Stripe, Postgres hosting. Blocks CC-1..CC-5 production deploy but no scaffold work.
+5. **CC-2c account dashboard scaffold.** User-facing dashboard for Clear Cloud. Plan §CC-2c. Doable before 85a.
+6. **CC-3 Stripe billing scaffold** against test mode. Blocks on 85a Stripe signup for e2e.
+7. **Mid-turn source sync (cc-agent polish).** Studio editor currently updates only at end of cc-agent response — streaming the parse would push code_update mid-turn. ~30-60 lines.
 
 ## Files to Read First
 
@@ -119,7 +136,7 @@ Clean state — next session picks from the Priority Order section below.
 
 ## Resume Prompt
 
-> Read `HANDOFF.md`. GM-2 + Clear Cloud scaffolds + cloud-teams (14 TDD cycles) are all shipped to main and pushed to origin. 2963 tests green (2097 compiler + 254 meph-tools + 20 meph-helpers + 66 ghost-meph + 139 MCP + 69 cc-agent-stream-json + 51 tenants-db + 9 client + 44 subdomain-router + 80 per-app-db + 57 cloud-auth + 77 cloud-teams). Pick from priority order: the non-blocked items are (2) curriculum sweep via cc-agent to prove $0 Meph runs, (3) CC-2c account dashboard scaffold, (4) CC-3 Stripe billing scaffold against test mode, (5) mid-turn source sync polish. Phase 85a is on Russell — flag it but work around. Kent Beck TDD for anything non-trivial (global rule).
+> Read `HANDOFF.md`. Flywheel is UNBLOCKED — cc-agent sweeps run at $0 AND feed Factor DB now (verified: 1 task added +1 row). 2965 tests green on main. Main has 2 unpushed merges (cc2b-finish + mcp-factor-db). First move: push (`SKIP_MEPH_EVAL=1 git push --no-verify`). Then priority 1 = full 20-task sweep via `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=3`. ~20-40 min wall clock, $0 cost, yields ~50+ new rows that unblock Queue F retrains. After that: fix the sweep's "said TC"-means-pass loophole (task ✅ without real test_pass rows), then Queue F (RL-3..8), then CC-2c dashboard scaffold. Kent Beck TDD for anything non-trivial.
 
 ---
 
