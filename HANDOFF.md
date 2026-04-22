@@ -2,8 +2,8 @@
 
 ## Current State
 
-- **Branch:** `feature/gm-2-tool-use-rest` (long-running, 11 commits added this session, NOT pushed to origin yet, NOT merged to main).
-- **Last commit:** `33d4eea` feat(ghost-meph/cc-agent): tool mode via MCP + stream-json (GM-2 steps 2b/2c).
+- **Branch:** `feature/gm-2-tool-use-rest` (long-running, 17+ commits added this session, NOT pushed to origin yet, NOT merged to main).
+- **Last commit:** `1f79487` feat(mcp): proxy meph_run_evals / meph_run_eval back to Studio via HTTP.
 - **Main:** unchanged from prior handoff at `2a9eee3`.
 - **Working tree:** dirty with pre-existing files unrelated to this session (`.claude/settings.local.json`, `index.html`, `meph-memory.md`, `requests.md`, `style.css`, `playground/factor-db.sqlite-shm/-wal`, `playground/sessions/`, etc.) — ignore.
 
@@ -35,9 +35,10 @@ Plus one user-level rule add: `~/.claude/CLAUDE.md` → **Periodic Progress Chec
 ### Tests green at every step
 - `node clear.test.js` → **2097/2097**
 - `node playground/meph-tools.test.js` → **254/254** (was 179 at session start — 75 new)
+- `node playground/meph-helpers.test.js` → **20/20** (new this session)
 - `node playground/ghost-meph.test.js` → **66/66** (was 59 — 7 new in Phase 10)
-- `node playground/ghost-meph/mcp-server.test.js` → **99/99** (was 30 — 69 new; 28 tools exposed, Phase 5 integration for write→read→compile flow)
-- `node playground/ghost-meph/cc-agent-stream-json.test.js` → **46/46** (new this session — pure parser unit tests)
+- `node playground/ghost-meph/mcp-server.test.js` → **111/111** (was 30 — 81 new; 28 tools exposed, integration for write→read→compile flow, Phase 6 for HTTP proxy)
+- `node playground/ghost-meph/cc-agent-stream-json.test.js` → **56/56** (new this session — parser + final-source extraction)
 
 ### MephContext shape
 
@@ -70,15 +71,9 @@ Expected: all 16 eval scenarios run at $0 (via subscription). Any that fail: loo
 
 **State sharing — FIXED post-turn.** Previously a known gap; now closed. The stream-json event log already carries every `meph_edit_code` tool_use with its full input (including action="write" and the new source). `extractFinalSourceFromStreamJson` scans the log at end-of-turn, grabs the LAST write, and cc-agent.js attaches it to the Response as a sidecar. `/api/chat` mirrors that back into its closure + fires a `code_update` SSE event so Studio's editor re-renders. No IPC bridge needed — the data was already in the event log. Mid-turn updates (during a multi-edit session) still aren't visible in real-time, but end-of-turn sync means every /api/chat cycle leaves Studio's state coherent with what Meph produced. Follow-up if mid-turn visibility matters later: parse the stream-json line-by-line as it arrives instead of buffering, and emit `code_update` events in the SSE stream alongside the `content_block_delta` events.
 
-### 2. Extract `parseTestOutput` + `compileForEval` from server.js
+**runEvalSuite — FIXED via HTTP proxy.** The last MCP-side gap. `meph_run_evals` / `meph_run_eval` now proxy back to Studio's `/api/run-eval` endpoint when `STUDIO_URL` is set in the MCP child's env (cc-agent.js sets it automatically). Studio owns the evalChild lifecycle; MCP just forwards `{source, id}` and unwraps JSON. Per-spec progress events don't cross the HTTP boundary, but the final aggregate result does, and per-spec streaming still shows in Studio's terminal pane via `termLog`. Every one of Meph's 28 tools now works in cc-agent mode.
 
-The MCP server's `buildHelpers()` has four TODOs (comments saying "stays unwired until we extract from server.js"): `compileForEval`, `parseTestOutput`, `runEvalSuite`. These live inside `server.js` closures and can't be imported without starting the Studio server (which listens on a port).
-
-Work: pull each into a pure helper module (`playground/meph-helpers.js` or similar). `parseTestOutput` is already pure — just needs to move. `compileForEval` just calls `compileProgram` twice. `runEvalSuite` is harder — it manages an `evalChild` subprocess lifecycle that the MCP child would also need. Start with the easy two.
-
-Once extracted, the MCP server's `run_tests`, `list_evals`, `run_evals`, `run_eval` handlers will work — Claude Code can run full compile-test-eval cycles against the local subscription.
-
-### 3. Clear Cloud (Russell's CC pivot) — unchanged from prior handoff
+### 2. Clear Cloud (Russell's CC pivot) — unchanged from prior handoff
 
 Read `plans/plan-clear-cloud-master-04-21-2026.md` first. Phase 85a (Russell's paperwork) status unknown — confirm before running anything that hits real infrastructure.
 
@@ -88,7 +83,7 @@ Scaffold work is doable without 85a. Branch per CC item, **do NOT merge to main*
 - **CC-1b** Subdomain router
 - **CC-2a/b** buildclear.dev auth
 
-### 4. Queue F (RL flywheel) — unlocks after cc-agent tool-use lands
+### 3. Queue F (RL flywheel) — unlocks after cc-agent tool-use lands
 
 - RL-3 classifier fuzzy-match fixes
 - RL-4 step seeds on 28 curriculum tasks
