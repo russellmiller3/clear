@@ -10,8 +10,8 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool } from './meph-tools.js';
-import { mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool } from './meph-tools.js';
+import { existsSync, mkdtempSync, readFileSync as fsReadFileSync, writeFileSync as fsWriteFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
@@ -715,6 +715,74 @@ const ss5 = await screenshotOutputTool({}, new MephContext({
 }));
 assert(Array.isArray(ss5) && ss5[0].type === 'image',
   'screenshotOutputTool survives waitForLoadState throwing (it is bounded)');
+
+console.log('\n🚀 runAppTool\n');
+
+// No compile result → clear error, no spawn attempted
+const app1 = JSON.parse(runAppTool({}, new MephContext()));
+assert(app1.error?.includes('No compiled server code'),
+  'runAppTool returns "No compiled server code" when lastCompileResult is null');
+
+// lastCompileResult exists but has no serverJS/javascript → error
+const app2 = JSON.parse(runAppTool({}, new MephContext({
+  lastCompileResult: { html: '<h1>hi</h1>', css: '' },
+})));
+assert(app2.error?.includes('No compiled server code'),
+  'runAppTool rejects when html present but no backend code');
+
+// html + javascript (frontend JS, not a server) → also "No compiled server code"
+// because having html means javascript is frontend code, not backend.
+const app3 = JSON.parse(runAppTool({}, new MephContext({
+  lastCompileResult: { html: '<h1>hi</h1>', javascript: 'console.log("client")' },
+})));
+assert(app3.error?.includes('No compiled server code'),
+  'runAppTool treats javascript+html as frontend-only (no server code)');
+
+// Real serverJS but no port allocator → error at allocate step
+const appTmp = mkdtempSync(join(tmpdir(), 'meph-runapp-'));
+const app4 = JSON.parse(runAppTool({}, new MephContext({
+  lastCompileResult: { serverJS: '// noop' },
+  buildDir: appTmp,
+  rootDir: REPO_ROOT,
+  allocatePort: () => null,
+})));
+assert(app4.error?.includes('no port allocator wired'),
+  'runAppTool surfaces allocatePort returning null as a clear error');
+try { rmSync(appTmp, { recursive: true, force: true }); } catch {}
+
+// Happy path: spawn a trivial server that exits immediately. We're not testing
+// the app behaviour — we're verifying the tool returns { started, port } shape
+// and invokes the child-lifecycle callbacks in the right order.
+const appTmp2 = mkdtempSync(join(tmpdir(), 'meph-runapp-'));
+let childHolder = null;
+let allocCalls = 0;
+const appCtx = new MephContext({
+  // Minimal serverJS that just exits — we don't care about the listen.
+  lastCompileResult: { serverJS: 'process.exit(0);' },
+  buildDir: appTmp2,
+  rootDir: REPO_ROOT,
+  getRunningChild: () => childHolder,
+  setRunningChild: (c) => { childHolder = c; },
+  allocatePort: () => { allocCalls++; return 4999; },
+});
+const app5 = JSON.parse(runAppTool({}, appCtx));
+assert(app5.started === true, 'runAppTool returns { started: true } on happy path');
+assert(app5.port === 4999, `runAppTool returns the allocated port (got ${app5.port})`);
+assert(allocCalls === 1, 'runAppTool calls allocatePort exactly once per run');
+// The child was registered via setRunningChild
+assert(childHolder && typeof childHolder.pid === 'number',
+  'runAppTool registers the spawned child via setRunningChild');
+// buildDir side effects: server.js + package.json written
+assert(existsSync(join(appTmp2, 'server.js')),
+  'runAppTool writes the compiled backend to buildDir/server.js');
+assert(existsSync(join(appTmp2, 'package.json')),
+  'runAppTool writes a package.json with runtime deps');
+const appPkg = JSON.parse(fsReadFileSync(join(appTmp2, 'package.json'), 'utf8'));
+assert(appPkg.dependencies?.ws === '*',
+  'runAppTool declares ws as a runtime dep (every compiled app needs it)');
+// Cleanup: kill the child if it's still alive (process.exit(0) should've ended it but be safe)
+try { if (childHolder) childHolder.kill('SIGKILL'); } catch {}
+try { rmSync(appTmp2, { recursive: true, force: true }); } catch {}
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

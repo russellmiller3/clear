@@ -106,6 +106,19 @@ export class MephContext {
     // closure tracks runningPort; screenshot_output references it for the
     // user-facing caption. Returns null when no app is running.
     this.getRunningPort = options.getRunningPort || (() => null);
+
+    // run_app callbacks. /api/chat's closure owns `runningChild` + the
+    // `runningPort` counter that wraps 4001→4100. getRunningChild returns
+    // the current child (so run_app can kill it before respawning);
+    // setRunningChild stores the new child (and fires the exit cleanup);
+    // allocatePort returns the next TCP port to bind, increments + wraps
+    // the counter server-side. Defaults here are safe no-ops that return
+    // null so unwired contexts (MCP server without a running app) behave
+    // predictably — run_app will fail at the spawn step instead of silently
+    // running on a random port.
+    this.getRunningChild = options.getRunningChild || (() => null);
+    this.setRunningChild = options.setRunningChild || (() => {});
+    this.allocatePort = options.allocatePort || (() => null);
   }
 
   /**

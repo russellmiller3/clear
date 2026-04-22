@@ -24,9 +24,9 @@
  *   See plan step 2-3 followups.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 
 /**
  * Runtime schema validation for Meph's tool inputs.
@@ -568,6 +568,101 @@ export async function dbInspectTool(input, ctx) {
   } catch (err) {
     return JSON.stringify({ error: err.message.slice(0, 300) });
   }
+}
+
+/**
+ * run_app tool — materialize the most recent compile result into ctx.buildDir,
+ * detect runtime deps (bcryptjs/jsonwebtoken/nodemailer/multer via require()
+ * substring match), npm install if missing, then spawn `node server.js` on
+ * the next allocated port. Previous child is SIGTERM'd first. After spawn,
+ * a short-lived CJS polling script probes the TCP port (25 tries × 200ms)
+ * so Meph can immediately fire http_request without racing the server.
+ *
+ * Requires on ctx:
+ *   - lastCompileResult   { serverJS?, javascript?, html?, css? } — from compile
+ *   - buildDir            — where to write server.js + package.json + static assets
+ *   - rootDir             — repo root; `runtime/` gets copied into buildDir/clear-runtime
+ *   - getRunningChild()   — returns the child to kill, or null
+ *   - setRunningChild(c)  — stores the new child (and nulls it on exit)
+ *   - allocatePort()      — returns the next port number; must NOT return null
+ *
+ * @param {object} input - unused
+ * @param {MephContext} ctx
+ * @returns {string} JSON-stringified { started, port } or { error }
+ */
+export function runAppTool(input, ctx) {
+  const compiled = ctx.lastCompileResult;
+  // Full-stack apps put backend in .serverJS; backend-only apps put it in
+  // .javascript but only when there's no .html (otherwise .javascript is
+  // frontend code).
+  const agentBackendCode = compiled?.serverJS || (!compiled?.html && compiled?.javascript) || null;
+  if (!agentBackendCode) return JSON.stringify({ error: 'No compiled server code. Compile first.' });
+
+  // Kill previous child before respawning so we don't leak ports.
+  const prev = ctx.getRunningChild();
+  if (prev) {
+    try { prev.kill('SIGTERM'); } catch {}
+    ctx.setRunningChild(null);
+  }
+
+  const rtDir = join(ctx.buildDir, 'clear-runtime');
+  mkdirSync(rtDir, { recursive: true });
+  writeFileSync(join(ctx.buildDir, 'server.js'), agentBackendCode);
+
+  // Runtime dep detection by substring — cheap and deterministic. Every
+  // compiled app needs `ws` (the compiler's WebSocket layer); the others
+  // only land when the Clear source uses auth, email, or file upload.
+  const agentDeps = { ws: '*' };
+  if (agentBackendCode.includes("require('bcryptjs')")) agentDeps.bcryptjs = '*';
+  if (agentBackendCode.includes("require('jsonwebtoken')")) agentDeps.jsonwebtoken = '*';
+  if (agentBackendCode.includes("require('nodemailer')")) agentDeps.nodemailer = '*';
+  if (agentBackendCode.includes("require('multer')")) agentDeps.multer = '*';
+  writeFileSync(join(ctx.buildDir, 'package.json'), JSON.stringify({ dependencies: agentDeps }));
+
+  const depsNeeded = Object.keys(agentDeps).filter(d => !existsSync(join(ctx.buildDir, 'node_modules', d)));
+  if (depsNeeded.length > 0) {
+    try { execSync('npm install --production --silent', { cwd: ctx.buildDir, timeout: 15000, stdio: 'pipe' }); } catch {}
+  }
+
+  if (compiled.html) writeFileSync(join(ctx.buildDir, 'index.html'), compiled.html);
+  writeFileSync(join(ctx.buildDir, 'style.css'), compiled.css || '');
+
+  // Copy runtime helpers the compiled server imports (db.js for SQLite,
+  // auth.js for bcrypt/JWT helpers, rateLimit.js for limits). Optional —
+  // apps that don't use them just don't require() them.
+  const runtimeSrc = join(ctx.rootDir, 'runtime');
+  for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
+    if (existsSync(join(runtimeSrc, f))) copyFileSync(join(runtimeSrc, f), join(rtDir, f));
+  }
+
+  const port = ctx.allocatePort();
+  if (port === null || port === undefined) {
+    return JSON.stringify({ error: 'run_app: ctx.allocatePort() returned null — no port allocator wired.' });
+  }
+  const env = { ...process.env, PORT: String(port) };
+  const child = spawn('node', ['server.js'], { cwd: ctx.buildDir, env, stdio: 'pipe' });
+  ctx.setRunningChild(child);
+  child.on('exit', () => {
+    if (ctx.getRunningChild() === child) ctx.setRunningChild(null);
+  });
+
+  // Sync-poll TCP until port is open (max 5s) so Meph can immediately use
+  // http_request on the next turn without racing the server's listen().
+  // Scripted as a .cjs file because the parent package.json might declare
+  // type:module — writing inline `require()` into an ESM file crashes.
+  const pollPath = join(ctx.buildDir, '_port-poll.cjs');
+  writeFileSync(pollPath, [
+    "var net=require('net'),n=0;",
+    "(function t(){",
+    `  var s=net.createConnection(${port},'127.0.0.1');`,
+    "  s.on('connect',function(){s.destroy();process.exit(0);});",
+    "  s.on('error',function(){if(++n<25)setTimeout(t,200);else process.exit(1);});",
+    "})();",
+  ].join('\n'));
+  try { execSync(`node "${pollPath}"`, { timeout: 6000 }); } catch {}
+  try { unlinkSync(pollPath); } catch {}
+
+  return JSON.stringify({ started: true, port });
 }
 
 /**

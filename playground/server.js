@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool, patchCodeTool, readTerminalTool, listEvalsTool, browseTemplatesTool, clickElementTool, fillInputTool, inspectElementTool, readStorageTool, readDomTool, readNetworkTool, websocketLogTool, todoTool, readActionsTool, editFileTool, stopAppTool, dbInspectTool, runCommandTool, screenshotOutputTool, runAppTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -3091,53 +3091,23 @@ app.post('/api/chat', async (req, res) => {
         }));
 
       case 'run_app': {
-        // backend-only apps put code in .javascript, full-stack in .serverJS
-        const agentBackendCode = lastCompileResult?.serverJS || (!lastCompileResult?.html && lastCompileResult?.javascript) || null;
-        if (!agentBackendCode) return JSON.stringify({ error: 'No compiled server code. Compile first.' });
-        // Kill previous child
-        if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
-        const rtDir = join(BUILD_DIR, 'clear-runtime');
-        mkdirSync(rtDir, { recursive: true });
-        writeFileSync(join(BUILD_DIR, 'server.js'), agentBackendCode);
-        const agentDeps = { ws: '*' };
-        if (agentBackendCode.includes("require('bcryptjs')")) agentDeps.bcryptjs = '*';
-        if (agentBackendCode.includes("require('jsonwebtoken')")) agentDeps.jsonwebtoken = '*';
-        if (agentBackendCode.includes("require('nodemailer')")) agentDeps.nodemailer = '*';
-        if (agentBackendCode.includes("require('multer')")) agentDeps.multer = '*';
-        writeFileSync(join(BUILD_DIR, 'package.json'), JSON.stringify({ dependencies: agentDeps }));
-        const agentDepsNeeded = Object.keys(agentDeps).filter(d => !existsSync(join(BUILD_DIR, 'node_modules', d)));
-        if (agentDepsNeeded.length > 0) {
-          try { execSync('npm install --production --silent', { cwd: BUILD_DIR, timeout: 15000, stdio: 'pipe' }); } catch {}
-        }
-        if (lastCompileResult.html) writeFileSync(join(BUILD_DIR, 'index.html'), lastCompileResult.html);
-        writeFileSync(join(BUILD_DIR, 'style.css'), lastCompileResult.css || '');
-        const runtimeDir = join(ROOT_DIR, 'runtime');
-        for (const f of ['db.js', 'auth.js', 'rateLimit.js']) {
-          if (existsSync(join(runtimeDir, f))) copyFileSync(join(runtimeDir, f), join(rtDir, f));
-        }
-        runningPort++;
-        if (runningPort > 4100) runningPort = 4001;
-        const agentPort = runningPort;
-        const env = { ...process.env, PORT: String(agentPort) };
-        const agentChild = spawn('node', ['server.js'], { cwd: BUILD_DIR, env, stdio: 'pipe' });
-        runningChild = agentChild;
-        agentChild.on('exit', () => { if (runningChild === agentChild) runningChild = null; });
-
-        // Sync-poll TCP until port is open (max 5s) so agent can immediately use http_request.
-        // Write to a .cjs file (forces CJS regardless of parent package.json type:module).
-        const pollPath = join(BUILD_DIR, '_port-poll.cjs');
-        writeFileSync(pollPath, [
-          "var net=require('net'),n=0;",
-          "(function t(){",
-          `  var s=net.createConnection(${agentPort},'127.0.0.1');`,
-          "  s.on('connect',function(){s.destroy();process.exit(0);});",
-          "  s.on('error',function(){if(++n<25)setTimeout(t,200);else process.exit(1);});",
-          "})();",
-        ].join('\n'));
-        try { execSync(`node "${pollPath}"`, { timeout: 6000 }); } catch {}
-        try { unlinkSync(pollPath); } catch {}
-
-        return JSON.stringify({ started: true, port: agentPort });
+        // Extracted to playground/meph-tools.js (GM-2 port). The closure
+        // owns runningChild + runningPort; MephContext exposes them via
+        // callbacks so the tool can stay subprocess-aware without closing
+        // over server.js internals.
+        const ctx = new MephContext({
+          lastCompileResult,
+          buildDir: BUILD_DIR,
+          rootDir: ROOT_DIR,
+          getRunningChild: () => runningChild,
+          setRunningChild: (c) => { runningChild = c; },
+          allocatePort: () => {
+            runningPort++;
+            if (runningPort > 4100) runningPort = 4001;
+            return runningPort;
+          },
+        });
+        return runAppTool(input, ctx);
       }
 
       case 'stop_app':
