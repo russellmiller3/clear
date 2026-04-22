@@ -101,3 +101,81 @@ export async function checkQuota(db, tenantId, plan, now = new Date()) {
     remaining: limit - used,
   };
 }
+
+/**
+ * Pure helper — how many agent calls over plan limit?
+ *   - Paid plans, over limit: returns used - limit
+ *   - Paid plans, under/at limit: returns 0
+ *   - Unlimited plans (limit === null): returns null (no Stripe line item)
+ *
+ * Used by the CC-3c rollup that syncs metered usage to the Stripe
+ * Usage API. A tenant with overage=0 emits no event; overage>0 becomes
+ * a quantity in the Stripe metered-billing call.
+ *
+ * @param {number} used
+ * @param {number|null} limit - null means unlimited
+ * @returns {number|null}
+ */
+export function computeOverage(used, limit) {
+  if (limit === null) return null;
+  return Math.max(0, used - limit);
+}
+
+/**
+ * Pure helper — overage in USD. Multiplies the overage count (see
+ * computeOverage) by OVERAGE_PER_CALL_USD. Unlimited plans return 0
+ * (no overage billing by definition).
+ */
+export function computeOverageCost(used, limit) {
+  const over = computeOverage(used, limit);
+  if (over === null || over === 0) return 0;
+  return over * OVERAGE_PER_CALL_USD;
+}
+
+/**
+ * Aggregate what a billing dashboard wants in one call — plan, used,
+ * limit, remaining, percent-used, overage count, overage cost USD,
+ * overLimit boolean. Pure function; no DB round-trip. Callers pass
+ * `used` from checkQuota (or a cached count) and the plan name.
+ *
+ * Shape of return:
+ *   {
+ *     plan:                'free' | 'team' | 'business' | 'enterprise',
+ *     used:                number,
+ *     limit:               number | null,      // null = unlimited
+ *     remaining:           number | null,      // null = unlimited
+ *     percent:             number | null,      // null = unlimited
+ *     overage:             number | null,      // null = unlimited
+ *     overage_cost_usd:    number,             // 0 if unlimited/under
+ *     overLimit:           boolean,            // true iff used > limit
+ *   }
+ */
+export function billingSummary(plan, used) {
+  const quotas = getPlanQuotas(plan);
+  const limit = quotas.agent_calls;
+  if (limit === null) {
+    return {
+      plan,
+      used,
+      limit: null,
+      remaining: null,
+      percent: null,
+      overage: null,
+      overage_cost_usd: 0,
+      overLimit: false,
+    };
+  }
+  const remaining = limit - used;
+  // Integer percent for UI display. Round toward used/limit ratio.
+  const percent = Math.round((used / limit) * 100);
+  return {
+    plan,
+    used,
+    limit,
+    remaining,
+    percent,
+    overage: computeOverage(used, limit),
+    overage_cost_usd: computeOverageCost(used, limit),
+    overLimit: used > limit,
+  };
+}

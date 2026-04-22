@@ -109,5 +109,84 @@ console.log('\n🛑 checkQuota — hot-path gate before each agent call\n');
     `unknown plan → throws naming it (got "${threw}")`);
 }
 
+// ─── computeOverage — pure overage-count helper ──────────────────────────
+// Used by CC-3c rollup to compute what Stripe Usage API should see. Free
+// plans: overage is always 0 (quota is a hard stop, no billing). Paid
+// plans: overage = max(0, used - limit). Unlimited plans: overage = null
+// (no Stripe metered line item).
+console.log('\n🧮 computeOverage + computeOverageCost\n');
+
+{
+  const { computeOverage, computeOverageCost, OVERAGE_PER_CALL_USD } = await import('./index.js');
+
+  // Under/at limit → 0 overage
+  assert(computeOverage(50, 100) === 0, 'under limit → overage 0');
+  assert(computeOverage(100, 100) === 0, 'at limit → overage 0 (exactly used)');
+
+  // Over limit → the overage count
+  assert(computeOverage(150, 100) === 50, 'over limit → overage = used - limit');
+  assert(computeOverage(1000, 100) === 900, '10x over → overage 900');
+
+  // Unlimited (limit=null) → null overage
+  assert(computeOverage(999999, null) === null,
+    'unlimited plan → overage null (no Stripe line item)');
+
+  // Zero-use edge case
+  assert(computeOverage(0, 100) === 0, 'zero use → overage 0');
+
+  // computeOverageCost: overage * OVERAGE_PER_CALL_USD
+  assert(computeOverageCost(50, 100) === 0, 'under limit → no cost');
+  assert(Math.abs(computeOverageCost(150, 100) - (50 * OVERAGE_PER_CALL_USD)) < 0.001,
+    `50 calls over → $${50 * OVERAGE_PER_CALL_USD} (${OVERAGE_PER_CALL_USD}/call)`);
+  assert(computeOverageCost(999999, null) === 0,
+    'unlimited plan → cost always 0 (no overage billing)');
+}
+
+// ─── billingSummary — aggregate what a dashboard needs in one call ──────
+// Combines plan + usage into the shape a billing UI renders: plan name,
+// used count, limit, remaining, percent, overage, overage cost, and the
+// over-limit flag. One pure call so the dashboard doesn't need to combine
+// checkQuota + computeOverage + percentCalc by hand.
+console.log('\n📈 billingSummary — aggregate dashboard shape\n');
+
+{
+  const { billingSummary, OVERAGE_PER_CALL_USD } = await import('./index.js');
+
+  // Under limit
+  const s1 = billingSummary('free', 25);
+  assert(s1.plan === 'free', 'plan carried through');
+  assert(s1.used === 25 && s1.limit === 100 && s1.remaining === 75,
+    `25/100 shape (got ${JSON.stringify(s1)})`);
+  assert(s1.percent === 25, '25 of 100 → percent 25');
+  assert(s1.overLimit === false, 'under limit → overLimit false');
+  assert(s1.overage === 0, 'under limit → overage 0');
+  assert(s1.overage_cost_usd === 0, 'under limit → cost 0');
+
+  // Over limit (paid plan)
+  const s2 = billingSummary('team', 6000);
+  assert(s2.used === 6000 && s2.limit === 5000 && s2.remaining === -1000,
+    '6000/5000 → remaining -1000');
+  assert(s2.overage === 1000, 'overage = 1000');
+  assert(Math.abs(s2.overage_cost_usd - (1000 * OVERAGE_PER_CALL_USD)) < 0.001,
+    `overage cost = $${1000 * OVERAGE_PER_CALL_USD}`);
+  assert(s2.overLimit === true, 'over limit → overLimit true');
+  assert(s2.percent === 120, '6000/5000 → percent 120');
+
+  // Enterprise (unlimited) — percent/remaining are null to signal "N/A"
+  const s3 = billingSummary('enterprise', 999999);
+  assert(s3.limit === null && s3.remaining === null,
+    'enterprise → limit + remaining null');
+  assert(s3.percent === null, 'enterprise → percent null (N/A)');
+  assert(s3.overLimit === false, 'enterprise can never be over limit');
+  assert(s3.overage === null, 'enterprise → overage null');
+  assert(s3.overage_cost_usd === 0, 'enterprise → cost 0');
+
+  // Exactly at limit → overLimit false (limit is INCLUSIVE, next call
+  // is the one that'd trip)
+  const s4 = billingSummary('free', 100);
+  assert(s4.overLimit === false, 'exactly at limit → overLimit false');
+  assert(s4.remaining === 0, 'at limit → remaining 0');
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
