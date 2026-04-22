@@ -83,8 +83,11 @@ let _cachedClaudeBinary = undefined;
 export function resolveClaudeBinary(env = process.env) {
   if (_cachedClaudeBinary !== undefined) return _cachedClaudeBinary;
 
-  // Honor explicit override if set — useful for testing + shim paths.
-  if (env.CLAUDE_CLI_PATH && existsSync(env.CLAUDE_CLI_PATH)) {
+  // Honor explicit override unconditionally — if Russell / CI / a test sets
+  // CLAUDE_CLI_PATH, use that path verbatim without fallback. If the path
+  // doesn't exist, spawn will ENOENT cleanly (and tests rely on this to
+  // simulate missing-CLI states).
+  if (env.CLAUDE_CLI_PATH) {
     _cachedClaudeBinary = env.CLAUDE_CLI_PATH;
     return _cachedClaudeBinary;
   }

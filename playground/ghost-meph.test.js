@@ -168,20 +168,25 @@ function parseSSE(text) {
   assert(parsed4.find(e => e.data.type === 'message_delta')?.data.delta.stop_reason === 'end_turn',
     'cc-agent empty-payload response carries stop_reason=end_turn');
 
-  // Missing-binary path: temporarily break PATH so spawn('claude') fails,
-  // then verify we get an Anthropic-shaped error stream (not a thrown exception).
-  // Skip this test if `claude` is on PATH for real — we can't guarantee the
-  // spawn fails. Only assert behavior when we've actively broken PATH.
-  const origPath = process.env.PATH;
-  process.env.PATH = '/nonexistent-bin-dir-for-cc-agent-test';
+  // Missing-binary path: point CLAUDE_CLI_PATH at a nonexistent file so
+  // resolveClaudeBinary returns that path verbatim and spawn ENOENTs on
+  // it. This replaces the older PATH-breaking approach which no longer
+  // works now that resolveClaudeBinary falls back to known install
+  // locations (Russell has claude installed — breaking PATH still finds it).
+  const origClaudePath = process.env.CLAUDE_CLI_PATH;
+  const { _resetClaudeBinaryCache } = await import('./ghost-meph/cc-agent.js');
+  process.env.CLAUDE_CLI_PATH = '/nonexistent-claude-binary-for-test.exe';
+  _resetClaudeBinaryCache();
   const r5 = await fetchViaBackend(
     { messages: [{ role: 'user', content: 'hello' }] },
     {},
   );
-  process.env.PATH = origPath;
+  if (origClaudePath === undefined) delete process.env.CLAUDE_CLI_PATH;
+  else process.env.CLAUDE_CLI_PATH = origClaudePath;
+  _resetClaudeBinaryCache();
   assert(r5.ok === true, 'cc-agent with missing `claude` binary still returns ok=true (no thrown exception)');
   const text5 = parseSSE(await streamToString(r5.body)).find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
-  assert(text5.includes('cc-agent error'), 'cc-agent error message is named and surfaced to caller');
+  assert(text5.includes('cc-agent error'), `cc-agent error message is named and surfaced to caller (got ${text5.slice(0, 80)})`);
   assert(text5.includes('claude') || text5.includes('CLI'),
     'cc-agent error message mentions the missing CLI');
 
@@ -350,25 +355,29 @@ function parseSSE(text) {
   try { unlinkSync(mcpPath); } catch {}
 
   // Tool mode env gate: without GHOST_MEPH_CC_TOOLS=1, we should NOT hit
-  // the stream-json code path. Easiest check — set MEPH_BRAIN=cc-agent and
-  // break PATH; the error message should be the text-mode error ("cc-agent error:")
-  // not the tool-mode one ("cc-agent tool-mode error:").
+  // the stream-json code path. Force spawn-failure via CLAUDE_CLI_PATH
+  // pointing at a nonexistent file (the new, resilient way to simulate
+  // missing-binary — old PATH-breaking approach no longer works now that
+  // resolveClaudeBinary has install-location fallbacks).
   const origBrain = process.env.MEPH_BRAIN;
   const origTools = process.env.GHOST_MEPH_CC_TOOLS;
-  const origPathPh10 = process.env.PATH;
+  const origClaudePathPh10 = process.env.CLAUDE_CLI_PATH;
+  const { _resetClaudeBinaryCache: _reset10 } = await import('./ghost-meph/cc-agent.js');
 
   process.env.MEPH_BRAIN = 'cc-agent';
   delete process.env.GHOST_MEPH_CC_TOOLS;
-  process.env.PATH = '/nonexistent-bin-dir-for-cc-agent-toolmode-test';
+  process.env.CLAUDE_CLI_PATH = '/nonexistent-claude-binary-for-test.exe';
+  _reset10();
   const rText = await fetchViaBackend({ messages: [{ role: 'user', content: 'hi' }] }, {});
   const textFallback = parseSSE(await streamToString(rText.body))
     .find(e => e.data.type === 'content_block_delta')?.data.delta.text || '';
   assert(textFallback.includes('cc-agent error') && !textFallback.includes('tool-mode'),
     `tool mode OFF: text-mode error path runs (got ${textFallback.slice(0, 80)})`);
 
-  // Tool mode ON: env var flips the path. Still with broken PATH so claude
+  // Tool mode ON: env var flips the path. Still with missing-binary so claude
   // subprocess fails — verify we get the tool-mode error message back.
   process.env.GHOST_MEPH_CC_TOOLS = '1';
+  _reset10();
   const rTool = await fetchViaBackend({ messages: [{ role: 'user', content: 'hi' }] }, {});
   assert(rTool.ok === true,
     'tool mode with missing claude CLI still returns ok=true (no thrown exception)');
@@ -380,9 +389,11 @@ function parseSSE(text) {
     'tool-mode error message tells the user how to fall back');
 
   // Restore env
-  process.env.PATH = origPathPh10;
+  if (origClaudePathPh10 === undefined) delete process.env.CLAUDE_CLI_PATH;
+  else process.env.CLAUDE_CLI_PATH = origClaudePathPh10;
   if (origBrain === undefined) delete process.env.MEPH_BRAIN; else process.env.MEPH_BRAIN = origBrain;
   if (origTools === undefined) delete process.env.GHOST_MEPH_CC_TOOLS; else process.env.GHOST_MEPH_CC_TOOLS = origTools;
+  _reset10();
 
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
