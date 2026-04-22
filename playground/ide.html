@@ -482,6 +482,39 @@ li { margin:2px 0 2px 20px; color:var(--tx2); }
    Feature-flagged. Classic 3-panel remains the default.
    ========================================================================== */
 body.builder-mode #main-area { flex-direction: column; position: relative; }
+
+/* BM-2: Preview as hero — full-width, ~60vh. DOM order is chat → editor → preview,
+   so we need `order` to put preview on top in column layout. */
+body.builder-mode #preview-pane {
+  order: 0;
+  flex: 1 1 auto;
+  min-height: 60vh;
+  width: 100%;
+  border-left: 0;
+  border-bottom: 1px solid var(--bd);
+}
+
+/* BM-1: Chat as bottom driver — full-width, ~40vh */
+body.builder-mode #chat-pane {
+  order: 1;
+  flex: 0 0 40vh;
+  width: 100% !important;   /* overrides mobile breakpoint at line 73 */
+  min-width: 0;
+  border-top: 1px solid var(--bd);
+  border-bottom: 0;
+}
+/* Defense-in-depth for E-4: .collapsed class gets removed on mode enter,
+   but if something else toggles it after, keep the 40vh layout. */
+body.builder-mode #chat-pane.collapsed { flex-basis: 40vh !important; }
+
+/* Hide classic-mode horizontal resizers in builder mode */
+body.builder-mode #ep-resizer { display: none; }
+body.builder-mode #chat-resizer { display: none; }
+
+/* Override mobile breakpoint specifically for builder mode (E-6) */
+@media (max-width: 1100px) {
+  body.builder-mode #chat-pane { width: 100% !important; }
+}
 </style>
 </head>
 <body>

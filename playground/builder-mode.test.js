@@ -100,6 +100,48 @@ try {
   );
   assert(jsErrors.length === 0, `no new JS errors across mode switches (got: ${jsErrors.join('; ') || 'none'})`);
 
+  // ==========================================================================
+  // PHASE 2 — Preview hero + chat bottom
+  // ==========================================================================
+  console.log('\n🎯 Phase 2 — Preview hero + chat bottom');
+
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+
+  const previewBox = await page.locator('#preview-pane').boundingBox();
+  const chatBox = await page.locator('#chat-pane').boundingBox();
+  const mainBox = await page.locator('#main-area').boundingBox();
+
+  assert(previewBox.height > mainBox.height * 0.5,
+    `preview >50% of main-area height (was ${Math.round(100 * previewBox.height / mainBox.height)}%)`);
+  assert(chatBox.height > mainBox.height * 0.3 && chatBox.height < mainBox.height * 0.5,
+    `chat is 30-50% of main-area height (was ${Math.round(100 * chatBox.height / mainBox.height)}%)`);
+  assert(previewBox.y < chatBox.y, 'preview is ABOVE chat (y-axis)');
+  assert(Math.abs(previewBox.x - mainBox.x) < 2, 'preview is full-width (x starts at main-area x)');
+  assert(Math.abs(chatBox.width - mainBox.width) < 2, 'chat is full-width');
+
+  // Mobile viewport (E-6) — chat must still be full-width despite the 1100px breakpoint
+  await page.setViewportSize({ width: 900, height: 1200 });
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  const chatMobileBox = await page.locator('#chat-pane').boundingBox();
+  assert(chatMobileBox.width > 500,
+    `chat full-width on narrow viewport (was ${chatMobileBox.width}px, should be >500 — E-6)`);
+
+  // Resizer inline-style carryover (E-5): drag in classic first, then switch to builder
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(BASE, { waitUntil: 'networkidle' });  // classic
+  // Simulate a manual flex style as though the resizer had dragged
+  await page.evaluate(() => {
+    document.getElementById('editor-pane').style.flex = '0.3 1 0';
+    document.getElementById('preview-pane').style.width = '200px';
+  });
+  // Now switch to builder
+  await page.goto(`${BASE}/?studio-mode=builder`, { waitUntil: 'networkidle' });
+  const inlineFlex = await page.evaluate(() => document.getElementById('editor-pane').style.flex);
+  const inlineWidth = await page.evaluate(() => document.getElementById('preview-pane').style.width);
+  assert(inlineFlex === '', 'inline flex cleared on mode switch (E-5)');
+  assert(inlineWidth === '', 'inline width cleared on mode switch (E-5)');
+
 } catch (err) {
   console.error('\n❌ Test suite threw:', err);
   failed++;
