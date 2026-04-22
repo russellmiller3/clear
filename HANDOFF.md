@@ -51,6 +51,24 @@ Failure cliff at L3 isn't surprising — L1-L2 are single-endpoint apps; L3+ int
 - **L3 counter ROOT CAUSE FOUND + FIXED (`06913c0`).** Compiled Meph's row-1609 source directly (`node cli/clear.js build` + spawn + curl the 5 curriculum tests) — POST /reset + POST /increment returned 500 `"_ is not defined"`. The culprit: `save { value: 1 } to Counters` parsed as `node.variable='{'`, which sanitizeName turned into `_`, which the compiler emitted as `db.update('values', _pick(_, valueSchema))`. Undefined `_` at runtime → ReferenceError → 500. BUT compile_ok=1 so the flywheel logged it as "Meph wrote clean code" — the worst kind of silent failure. Fixed in parseSave: reject LBRACE/LBRACKET/STRING/NUMBER at tokens[1] with a helpful error pointing Meph to the assign-then-save pattern. 3 regression tests pin the rejection + confirm the canonical form still works. All 8 core templates still compile clean.
 - **Test totals:** 2100 compiler + 270 meph-tools + 153 mcp-server green (+5 this tick: 3 parser regressions, 1 session_id drift-guard, 1 Phase 8 run_app lifecycle). Pre-existing 17 server.test.js failures unchanged.
 
+## Session 42 tick 5 — parser fix validated at parallel scale
+
+Re-ran the 7-task L2-L6 sweep (calculator, counter, key-value-store, todo-crud, bookmark-manager, blog-search, contact-book) against 3 workers AFTER `06913c0` landed:
+
+  - **7/7 passed under strict grading** (+9 passing rows, +18 total)
+  - Wall clock: 360.1s (6 min)
+  - Zero timeouts, zero stuck, zero ❌
+  - Factor DB: 534 → 543 passing
+
+This invalidates the earlier hypothesis that L3-L4 parallel failures were port/buildDir contention. Root cause was the save-syntax parser bug in `06913c0` — Meph wrote `save { ... } to Table` which compiled clean but emitted `_pick(_, schema)` at runtime (undefined `_`), 500'ing every mutation endpoint. Factor DB logged the compile as passing because compile_ok=1, so the "weak http_request 2xx → test_pass=1" write never fired (500 isn't 2xx). That's why the DB passing delta was stuck at +3-4 per parallel sweep: only L1-L2 tasks without mutation passed.
+
+With the parser fix:
+- L1-L4 consistently green in parallel
+- L6 blog-search + contact-book also green (had been flagged ❌ before)
+- L3 counter 180.1s, L6 contact-book 180.1s — tasks genuinely take that long, not timeout noise
+
+**Flywheel cadence:** 9 passing rows per 6-min parallel sweep. 191 rows to re-ranker retrain threshold = roughly 21 more sweeps = ~2 hours of parallel sweep time. Spinning up an L5-L7 sweep now (auth-todo, user-profiles, booking-calendar, batch-prune, rate-limited-api, validated-forms, approval-queue, webhook-stripe) — 8 tasks × 3 workers.
+
 ## Expected impact of `06913c0` on next L3+ sweep — CONFIRMED
 
 Tick 5 re-ran `--tasks=counter --workers=1 --strict`:
