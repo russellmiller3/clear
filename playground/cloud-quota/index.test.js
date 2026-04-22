@@ -247,5 +247,88 @@ console.log('\n🏠 checkAppCountQuota — deploy gate\n');
     `unknown plan → throws (got "${threw}")`);
 }
 
+// ─── rollupMonthlyUsageByTenant — CC-3c Stripe sync feed ────────────────
+// Aggregates the current calendar month's usage rows per tenant. One
+// SQL pass joins usage_rows → apps → tenants so we get plan + used in
+// one round-trip. The cron that fires Stripe metered-billing events
+// filters the result by overage > 0.
+console.log('\n📊 rollupMonthlyUsageByTenant\n');
+
+{
+  const { rollupMonthlyUsageByTenant } = await import('./index.js');
+
+  function mockRollupDb(groupedRows) {
+    // groupedRows: [{tenant_id, plan, used}, ...]
+    return {
+      async query(text, params = []) {
+        const t = text.replace(/\s+/g, ' ').trim();
+        if (/SELECT\s+t\.id.*FROM\s+tenants/i.test(t)
+            && /usage_rows/i.test(t)) {
+          return { rows: groupedRows.map(r => ({
+            tenant_id: r.tenant_id,
+            plan: r.plan,
+            used: String(r.used),
+          })) };
+        }
+        throw new Error('mockRollupDb unhandled query: ' + t.slice(0, 100));
+      },
+    };
+  }
+
+  // Happy path — three tenants on different tiers with varying usage
+  const rows = await rollupMonthlyUsageByTenant(mockRollupDb([
+    { tenant_id: 1, plan: 'free',     used: 50 },    // under cap
+    { tenant_id: 2, plan: 'free',     used: 150 },   // 50 over — still billable=0 (free is hard stop)
+    { tenant_id: 3, plan: 'team',     used: 6000 },  // 1000 over, paid overage
+    { tenant_id: 4, plan: 'business', used: 49999 }, // under cap
+    { tenant_id: 5, plan: 'enterprise', used: 99999 }, // unlimited
+  ]));
+
+  assert(Array.isArray(rows) && rows.length === 5,
+    `returns a row per tenant with usage (got ${rows?.length})`);
+
+  // Each row carries the shape callers expect
+  const byId = Object.fromEntries(rows.map(r => [r.tenant_id, r]));
+
+  // Free under cap
+  assert(byId[1].plan === 'free' && byId[1].used === 50 && byId[1].limit === 100,
+    `tenant 1 (free under) shape: ${JSON.stringify(byId[1])}`);
+  assert(byId[1].overage === 0 && byId[1].overage_cost_usd === 0,
+    `tenant 1 no overage`);
+
+  // Free over cap — overage computed but COST is 0 (free doesn't bill)
+  // Actually — computeOverageCost doesn't know about free-is-hard-stop
+  // policy. It returns overage * $0.02 regardless. The Stripe sync
+  // layer filters by plan to decide if overage_cost_usd actually bills.
+  assert(byId[2].overage === 50,
+    `tenant 2 (free over) overage = 50 (got ${byId[2].overage})`);
+
+  // Team paid overage — 1000 over, $20.00
+  assert(byId[3].overage === 1000,
+    `tenant 3 (team over) overage = 1000 (got ${byId[3].overage})`);
+  assert(Math.abs(byId[3].overage_cost_usd - 20) < 0.01,
+    `tenant 3 overage cost ≈ $20 (got ${byId[3].overage_cost_usd})`);
+
+  // Business under cap — no overage
+  assert(byId[4].overage === 0 && byId[4].used === 49999,
+    `tenant 4 (business under) shape (got ${JSON.stringify(byId[4])})`);
+
+  // Enterprise unlimited — limit null, overage null
+  assert(byId[5].limit === null && byId[5].overage === null,
+    `tenant 5 (enterprise unlimited) → limit + overage null (got ${JSON.stringify(byId[5])})`);
+
+  // Filter helper surface — caller filters by plan + overage > 0 to get
+  // the list to sync to Stripe. Smoke-test the pattern:
+  const billable = rows.filter(r => r.overage > 0
+    && (r.plan === 'team' || r.plan === 'business'));
+  assert(billable.length === 1 && billable[0].tenant_id === 3,
+    `filter (overage>0 AND paid plan) → only tenant 3 (got ${JSON.stringify(billable)})`);
+
+  // Empty result (no usage in period) — empty array, not throw
+  const empty = await rollupMonthlyUsageByTenant(mockRollupDb([]));
+  assert(Array.isArray(empty) && empty.length === 0,
+    `no usage → empty array`);
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

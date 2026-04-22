@@ -188,6 +188,46 @@ export async function checkAppCountQuota(db, tenantId, plan) {
   };
 }
 
+/**
+ * CC-3c usage rollup — aggregate monthly usage per tenant for the
+ * Stripe Usage API sync cron. Runs one SQL pass that joins
+ * usage_rows → apps → tenants and groups by tenant, scoped to the
+ * current calendar month (or the month of `now` if provided).
+ *
+ * Returns a row per tenant that had any usage, with the same billing
+ * shape billingSummary uses (plan, used, limit, remaining, overage,
+ * overage_cost_usd, overLimit). The Stripe sync caller filters by
+ * (plan in 'team'|'business' AND overage > 0) to pick the rows that
+ * become metered-billing events.
+ *
+ * @param {object} db - pg Pool or compatible
+ * @param {Date} [now] - any date within the target month (default: new Date())
+ * @returns {Promise<Array<{tenant_id:number, plan:string, used:number, limit:(number|null), remaining:(number|null), percent:(number|null), overage:(number|null), overage_cost_usd:number, overLimit:boolean}>>}
+ */
+export async function rollupMonthlyUsageByTenant(db, now = new Date()) {
+  const { rows } = await db.query(
+    `SELECT t.id AS tenant_id,
+            t.plan,
+            COUNT(ur.*)::integer AS used
+     FROM tenants t
+     JOIN apps a ON a.tenant_id = t.id
+     JOIN usage_rows ur ON ur.app_id = a.id
+     WHERE ur.ts >= date_trunc('month', $1::timestamptz)
+       AND ur.ts <  date_trunc('month', $1::timestamptz) + interval '1 month'
+     GROUP BY t.id, t.plan
+     ORDER BY t.id ASC`,
+    [now]
+  );
+  return rows.map(r => {
+    const used = Number(r.used || 0);
+    const summary = billingSummary(r.plan, used);
+    return {
+      tenant_id: Number(r.tenant_id),
+      ...summary,
+    };
+  });
+}
+
 export function billingSummary(plan, used) {
   const quotas = getPlanQuotas(plan);
   const limit = quotas.agent_calls;
