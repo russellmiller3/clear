@@ -257,6 +257,20 @@ Feeds two surfaces: CC-3c (Stripe Usage API sync) and CC-2c ("You've used N of M
 
 Totals after tick 12: **2714 tests green across the project** (+27 cloud-quota).
 
+## Session 42 tick 13 — CC-5 cloud-domains scaffold
+
+`2c2f6bd` — new `playground/cloud-domains/` module. Three pure helpers for the custom-domain flow:
+
+  - `normalizeDomain(raw)` — clean string or null. Strips protocol/slash/dot/whitespace, lowercases, rejects single-label/overlong/bad-chars/empty. Idempotent. UI renders null as "please fix" instead of accepting junk.
+  - `expectedCnameFor(slug, rootDomain?)` — returns `app-<slug>.<root>`. Default root from `CLEAR_CLOUD_ROOT_DOMAIN` env or `buildclear.dev`. Defensive slug-safing; empty slug throws (programmer error).
+  - `verifyCname(records, expected)` → `'verified' | 'wrong' | 'pending'`. Pure check against pre-fetched records (caller does the DNS lookup via `node:dns.resolveCname`). `pending` (empty records) ≠ `wrong` (mismatch) — UI branches differently.
+
+26 TDD assertions: clean input, messy input normalization paths, validation rejections, case + trailing-dot tolerance, pending vs wrong vs verified.
+
+Unblocks CC-5b DNS poller + CC-5a settings UI + eventually CC-5c/d (cert + routing, post-85a).
+
+Totals after tick 13: **2740 tests green.**
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
