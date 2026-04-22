@@ -12,6 +12,7 @@
 //   node playground/supervisor/curriculum-sweep.js --tasks=hello-world,echo,calculator
 //   node playground/supervisor/curriculum-sweep.js --dry-run        (no API calls — prints plan)
 //   node playground/supervisor/curriculum-sweep.js --timeout=300    (seconds per task)
+//   node playground/supervisor/curriculum-sweep.js --strict         (require test_pass=1, reject "said TC" alone)
 //
 // Requires ANTHROPIC_API_KEY in env (unless --dry-run).
 // Rough cost: $0.01–0.05 per task, $0.20–1.00 per full sweep.
@@ -144,7 +145,7 @@ If you get stuck on the same error 3+ times, end with "STUCK: <reason>".`;
 // row written during the task's time window — more reliable than string-matching
 // "TASK COMPLETE" in Meph's chat stream (Meph often forgets the magic phrase
 // even when the app works).
-export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = null, factorDB = null, taskStartMs = null) {
+export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = null, factorDB = null, taskStartMs = null, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const start = taskStartMs || Date.now();
@@ -193,13 +194,47 @@ export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = nul
       } catch { /* non-fatal */ }
     }
 
-    const ok = dbPassed || saidTaskComplete;
-    return { ok, stuck, timedOut: false, dbPassed, saidTaskComplete };
+    const outcome = computeTaskOutcome({ dbPassed, saidTaskComplete, strict: options.strict });
+    return { ok: outcome.ok, stuck, timedOut: false, dbPassed, saidTaskComplete, reason: outcome.reason };
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') return { ok: false, stuck: false, timedOut: true };
     return { ok: false, stuck: false, timedOut: false, error: err.message };
   }
+}
+
+/**
+ * Pure function that decides whether a task run counts as a pass.
+ *
+ * Two modes:
+ *   loose (default): EITHER saidTaskComplete OR dbPassed is enough. Legacy
+ *     behavior — preserves sweep grading from before strict mode existed.
+ *   strict: requires dbPassed (at least one Factor DB row with test_pass=1
+ *     written during the task run). Meph saying "TASK COMPLETE" on its
+ *     own doesn't count — Meph can signal TC without producing passing
+ *     tests, and we don't want to poison the training data with inflated
+ *     ok=true rows that have test_pass=0.
+ *
+ * When Queue F retrains on sweep data, every ok=true row is treated as
+ * "Meph solved this archetype" — so loose-mode false positives directly
+ * bias the ranker toward whatever Meph said when he bluffed.
+ *
+ * @param {object} input
+ * @param {boolean} input.dbPassed          — at least one test_pass=1 Factor DB row
+ * @param {boolean} input.saidTaskComplete  — Meph's output contained "TASK COMPLETE"
+ * @param {boolean} [input.strict]          — default false; true requires dbPassed
+ * @returns {{ ok: boolean, reason?: string }}
+ */
+export function computeTaskOutcome({ dbPassed, saidTaskComplete, strict = false } = {}) {
+  if (dbPassed) return { ok: true };
+  if (!strict && saidTaskComplete) return { ok: true };
+  if (strict && saidTaskComplete) {
+    return {
+      ok: false,
+      reason: 'TASK COMPLETE signal ignored in strict mode — requires test_pass=1 row',
+    };
+  }
+  return { ok: false };
 }
 
 // Pre-flight: send a 1-token probe to Anthropic's API. If it fails with 400
@@ -231,12 +266,12 @@ async function preflightApiCheck(apiKey) {
   }
 }
 
-async function processBucket(port, bucketTasks, timeoutMs, onTaskDone, factorDB = null) {
+async function processBucket(port, bucketTasks, timeoutMs, onTaskDone, factorDB = null, options = {}) {
   const results = [];
   for (const task of bucketTasks) {
     const prompt = buildPrompt(task);
     const t0 = Date.now();
-    const result = await driveTaskOnWorker(port, prompt, timeoutMs, task.steps, factorDB, t0);
+    const result = await driveTaskOnWorker(port, prompt, timeoutMs, task.steps, factorDB, t0, options);
     const elapsed = Date.now() - t0;
     results.push({ task: task.id, level: task.level, ...result, elapsedMs: elapsed });
     if (onTaskDone) onTaskDone(task, result, elapsed);
@@ -249,6 +284,7 @@ export async function runSweep({
   taskFilter = null,
   timeoutPerTaskMs = 180_000,
   dryRun = false,
+  strict = false,
 } = {}) {
   const filtered = taskFilter
     ? allTasks.filter(t => taskFilter.includes(t.id))
@@ -328,6 +364,7 @@ export async function runSweep({
     const allResults = await Promise.all(buckets.map((bucket, i) => {
       const port = WORKER_BASE_PORT + i;
       return processBucket(port, bucket, timeoutPerTaskMs, (task, result, elapsed) => {
+        // (callback below — strict flag passed via 6th arg)
         const status = result.ok ? '✅'
           : result.stuck ? '🔶 STUCK'
             : result.timedOut ? '⏱️  TIMEOUT'
@@ -341,7 +378,7 @@ export async function runSweep({
         }
         const detail = result.error ? ` — ${result.error.slice(0, 120)}` : '';
         console.log(`  [${status}] L${task.level} ${task.id} — ${(elapsed / 1000).toFixed(1)}s${whyOk}${detail}`);
-      }, factorDB);
+      }, factorDB, { strict });
     }));
 
     const elapsedTotal = Date.now() - t0;
@@ -402,12 +439,18 @@ if (_thisFile === _entryFile) {
   const tasksArg = argv.find(a => a.startsWith('--tasks='));
   const timeoutArg = argv.find(a => a.startsWith('--timeout='));
   const dryRun = argv.includes('--dry-run');
+  // --strict: reject `said TASK COMPLETE` as sufficient evidence of task
+  // completion. Requires test_pass=1 Factor DB row to count a task as ok.
+  // Honest grade for sweeps that feed the flywheel — loose-mode false
+  // positives directly poison Queue F retrains.
+  const strict = argv.includes('--strict');
 
   const opts = {
     workers: workersArg ? parseInt(workersArg.split('=')[1]) : 3,
     taskFilter: tasksArg ? tasksArg.split('=')[1].split(',') : null,
     timeoutPerTaskMs: timeoutArg ? parseInt(timeoutArg.split('=')[1]) * 1000 : 180_000,
     dryRun,
+    strict,
   };
 
   runSweep(opts)

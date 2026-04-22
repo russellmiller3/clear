@@ -1,5 +1,5 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
-import { partitionTasks, buildPrompt, runSweep, validateSweepPreconditions } from './curriculum-sweep.js';
+import { partitionTasks, buildPrompt, runSweep, validateSweepPreconditions, computeTaskOutcome } from './curriculum-sweep.js';
 
 describe('partitionTasks', () => {
   it('splits evenly when divisible', () => {
@@ -138,5 +138,53 @@ describe('validateSweepPreconditions', () => {
   it('treats whitespace-only MEPH_BRAIN like unset', () => {
     const result = validateSweepPreconditions({ MEPH_BRAIN: '   ' });
     expect(result.ok).toEqual(false);
+  });
+});
+
+describe('computeTaskOutcome', () => {
+  // Default (loose) mode: EITHER saidTaskComplete OR dbPassed counts as ok.
+  // This is the legacy behavior — preserved so sweeps run before today's
+  // change still produce the same graded results.
+  it('loose mode: dbPassed alone → ok', () => {
+    const r = computeTaskOutcome({ dbPassed: true, saidTaskComplete: false });
+    expect(r.ok).toEqual(true);
+  });
+
+  it('loose mode: saidTaskComplete alone → ok', () => {
+    const r = computeTaskOutcome({ dbPassed: false, saidTaskComplete: true });
+    expect(r.ok).toEqual(true);
+  });
+
+  it('loose mode: neither signal → not ok', () => {
+    const r = computeTaskOutcome({ dbPassed: false, saidTaskComplete: false });
+    expect(r.ok).toEqual(false);
+  });
+
+  // Strict mode: requires dbPassed (test_pass=1 row written).
+  // saidTaskComplete alone is NOT enough — Meph can say "TASK COMPLETE"
+  // without actually writing + running a test that passes. For filling
+  // Factor DB with reliable training data, strict is the honest grade.
+  it('strict mode: dbPassed + saidTaskComplete → ok', () => {
+    const r = computeTaskOutcome({ dbPassed: true, saidTaskComplete: true, strict: true });
+    expect(r.ok).toEqual(true);
+  });
+
+  it('strict mode: dbPassed alone → ok', () => {
+    const r = computeTaskOutcome({ dbPassed: true, saidTaskComplete: false, strict: true });
+    expect(r.ok).toEqual(true);
+  });
+
+  it('strict mode: saidTaskComplete alone → NOT ok (loophole closed)', () => {
+    // The honeypot: Meph signals "TASK COMPLETE" without producing passing
+    // tests. In loose mode this gets graded ✅ and poisons the training
+    // data. Strict mode refuses.
+    const r = computeTaskOutcome({ dbPassed: false, saidTaskComplete: true, strict: true });
+    expect(r.ok).toEqual(false);
+    expect(r.reason && r.reason.includes('TASK COMPLETE')).toEqual(true);
+  });
+
+  it('strict mode: neither signal → not ok', () => {
+    const r = computeTaskOutcome({ dbPassed: false, saidTaskComplete: false, strict: true });
+    expect(r.ok).toEqual(false);
   });
 });
