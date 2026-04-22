@@ -542,7 +542,7 @@ Multi-word keywords that can shadow variable names: `page` (page declaration), `
 | `parser.js` | Recursive descent parser | ~4500 |
 | `compiler.js` | Code generation (5 paths) | ~2500 |
 | `validator.js` | AST validation (3 passes) | ~200 |
-| `clear.test.js` | 1089 tests | ~11500 |
+| `clear.test.js` | 2108 tests | ~11500 |
 | `cli/clear.js` | CLI for AI agents: build, check, info, fix, lint, serve, test, deploy | ~600 |
 | `runtime/db.js` | In-memory DB with JSON persistence | ~300 |
 | `runtime/db-postgres.js` | Postgres adapter (same API as SQLite, lazy table creation) | ~200 |
