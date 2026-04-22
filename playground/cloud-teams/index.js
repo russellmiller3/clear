@@ -98,3 +98,21 @@ export async function getMembership(db, teamId, userId) {
   );
   return rows[0] || null;
 }
+
+const VALID_ROLES = ['owner', 'admin', 'member'];
+
+/**
+ * Add a user to a team. Called by admin actions + invite acceptance.
+ * Rejects invalid role strings at the boundary (fail fast, not at the
+ * DB CHECK constraint which surfaces as opaque 23514).
+ */
+export async function addMember(db, teamId, userId, role = 'member') {
+  if (!VALID_ROLES.includes(role)) {
+    throw new Error(`invalid role "${role}" — must be one of ${VALID_ROLES.join(', ')}`);
+  }
+  const { rows } = await db.query(
+    `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3) RETURNING *`,
+    [teamId, userId, role]
+  );
+  return rows[0];
+}

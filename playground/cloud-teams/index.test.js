@@ -197,5 +197,34 @@ console.log('\n🔐 can() — permission matrix\n');
     'unknown role → deny (no privilege escalation via typo)');
 }
 
+// ─── TDD cycle 7: addMember inserts a row, refuses invalid role ──────────
+console.log('\n➕ addMember\n');
+
+{
+  const { createTeam, addMember, getMembership } = await import('./index.js');
+  const db = makeMockDb();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+
+  const added = await addMember(db, team.id, 7, 'admin');
+  assert(added.user_id === 7 && added.role === 'admin',
+    `addMember returns the inserted row (got ${JSON.stringify(added)?.slice(0, 80)})`);
+
+  const verified = await getMembership(db, team.id, 7);
+  assert(verified && verified.role === 'admin',
+    'getMembership confirms the new admin');
+
+  // Invalid role rejected
+  let threw;
+  try { await addMember(db, team.id, 8, 'superadmin'); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('invalid role'),
+    `invalid role rejected (got "${threw}")`);
+
+  // Default role is member when unspecified
+  const defaulted = await addMember(db, team.id, 9);
+  assert(defaulted.role === 'member',
+    `unspecified role defaults to member (got ${defaulted.role})`);
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
