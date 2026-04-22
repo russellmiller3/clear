@@ -173,7 +173,7 @@ Retool and Lovable both have "Publish" buttons. Both ship to a URL in seconds. B
 
 4. **Agents are first-class, not bolted on.** Retool AI is a copilot inside the builder. Lovable generates React. Clear has `ask claude`, `has tools:`, `remember conversation`, `knows about:` as language primitives that compile deterministically. Building an agent app in Clear is ~20 lines; in Retool it's a stitched-together workflow; in Lovable it's React + vendor SDK.
 
-**The one place Retool/Lovable currently beat Clear:** time from signup to first working app. Retool has 10,000 templates and a years-matured visual editor. Lovable has a mature chat-to-app loop. Clear has Studio + Meph + Core 7 templates. That gap closes with: more templates, better Meph onboarding (GTM-5), Builder mode (GTM-6). All on the near-term roadmap.
+**The one place Retool/Lovable currently beat Clear:** time from signup to first working app. Retool has 10,000 templates and a years-matured visual editor. Lovable has a mature chat-to-app loop. Clear has Studio + Meph + Core 8 templates. That gap closes with: more templates, better Meph onboarding (GTM-5), Builder mode (GTM-6). All on the near-term roadmap.
 
 ### Go-To-Market & Positioning (locked Session 35)
 
@@ -804,7 +804,7 @@ Every app compiled from Clear ships with these protections. Fix a pattern once, 
 | Node types | 126 |
 | Compiler tests | 1850 (0 failures) |
 | Sandbox tests | 9 |
-| E2E tests | 80 (core 7 templates, CRUD, curriculum) |
+| E2E tests | 80 (core 8 templates, CRUD, curriculum) |
 | Playground tests | ~127 (server, IDE, agent) |
 | npm dependencies | 0 (compiler is pure JS) |
 | Targets | JS (Express), Python (FastAPI), HTML (DaisyUI v5 + Tailwind v4) |

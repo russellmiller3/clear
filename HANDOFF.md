@@ -152,10 +152,10 @@ If you finish Queue E + F and the blockers in H still stand:
 
 These came up during the session and were noted in commits/findings docs rather than acted on:
 
-1. **Core templates: 7 or 8?** `CLAUDE.md` table header says "Core 7" + lists 7 apps; FAQ + FEATURES + AI-INSTRUCTIONS say "8 core templates" (the 8th is ecom-agent). Recommendation in `docs/doc-drift-findings.md`: promote CLAUDE.md to "Core 8" + add ecom-agent row. Needs Russell decision.
-2. **Curriculum task count: 20/25/28/30 vs 38 on disk.** Different metrics conflated across docs (benchmark subset vs all tasks). Documented in `docs/doc-drift-findings.md`.
+1. ~~**Core templates: 7 or 8?**~~ **RESOLVED** in this session's doc-sync commit. Promoted CLAUDE.md "Core 7 Templates" → "Core 8 Templates" + added the ecom-agent row to the table per `docs/doc-drift-findings.md` recommendation. Two ROADMAP.md refs also updated. Remaining "Core 7" mentions in `learnings.md` are intentional historical session-headers (Session 25b) and stay as-is.
+2. **Curriculum task count: 20/25/28/30 vs 38 on disk.** Different metrics conflated across docs (benchmark subset vs all tasks). Documented in `docs/doc-drift-findings.md`. Needs decision on whether the docs distinguish "benchmark set" from "all tasks" before normalization.
 3. **Node-type count: 119+ vs 126 vs ~156 in parser.** Documented in `docs/doc-drift-findings.md` — needs Russell to decide canonical metric (documented vs implemented).
-4. **CHECKOUT/OAUTH_CONFIG/USAGE_LIMIT removal.** Audit found OAUTH_CONFIG and USAGE_LIMIT have ZERO real-app usage. Recommend deleting in a follow-up cleanup PR. Documented in `docs/one-to-one-mapping-audit.md`.
+4. **CHECKOUT/OAUTH_CONFIG/USAGE_LIMIT removal.** Audit found OAUTH_CONFIG and USAGE_LIMIT have ZERO real-app usage. Recommend deleting in a follow-up cleanup PR. Documented in `docs/one-to-one-mapping-audit.md`. Likely the next safe doc-hygiene commit after this one.
 
 ---
 

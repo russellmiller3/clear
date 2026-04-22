@@ -6,6 +6,45 @@ Newest entries at the top.
 
 ---
 
+## Autonomous session rollup (2026-04-21 evening) — Queues B + C + D + half of E
+
+Russell kicked off an autonomous "plough-through" session before going to sleep. Mandate from `HANDOFF.md`: ship Queue B → C → D → E → F in priority order, branch per feature, no per-session cost tracking under his $200/mo Anthropic unlimited plan, but DO NOT call the production `/api/chat` endpoint until Ghost Meph cc-agent has tool-use support. Result: 26 commits, 13 merge commits, 4 queues meaningfully advanced. Test counts: 2108 compiler / 33 builder-mode / 59 ghost-meph pass; 7 pre-existing todo-fullstack e2e failures unchanged.
+
+### Queue B — P0 GTM (4/5 shipped; GTM-4 LinkedIn DMs blocked on Russell)
+
+- **GTM-1 deal-desk hero app** — `apps/deal-desk/main.clear` (161 lines, 14/14 tests). Discount approval workflow: rep submits a discount, ≤20% auto-approves, >20% routes to CRO queue. AI-drafted approval summaries shipped in seed data + a separate `/api/deals/draft` endpoint that calls a `draft_approval()` function with structured output. Hero demo for the Marcus landing page. Branch `feature/gtm-deal-desk`, merged `2827cf1`.
+- **GTM-2 Marcus landing headline restored** — `landing/marcus.html` reverted to Session-35-locked headline: *"That backlog of internal tools nobody's going to build? Ship the first one this Friday."* Was drifting to a punchier-but-vaguer iteration. Branch `feature/gtm-marcus-landing`, merged `19f3e51`.
+- **GTM-3 pricing page** — new `landing/pricing.html` (~430 lines). Free / Team $99 / Business $499 / Enterprise tiers locked Session 35. Per-tier quotas (apps, seats, agent calls, storage, custom domains, SSO), full compare table, "why no per-seat" Marcus-pain narrative, 8 FAQs. Wired pricing nav links across `marcus.html`. Branch `feature/gtm-pricing`, merged `fabd076`.
+- **GTM-5 Studio first-visit onboarding** — `playground/ide.html` adds an inline welcome card prepended to `#chat-messages` on first load, gated by `localStorage['clear-onboarding-seen']`. Auto-focuses chat input. Per-mode copy (different examples for builder vs classic). Dismissed on first keystroke or × click. 50 lines, no new deps. Branch `feature/gtm-onboarding`, merged `7979736`.
+
+### Queue C — Repo Readthrough (3/3 shipped)
+
+- **RR-1 doc-drift checker** — new `scripts/check-doc-drift.cjs` (~190 lines, no deps). Scans 16 canonical docs for shared metrics that drift across sessions (compiler test count, node-type count, template count, curriculum tasks, Marcus apps, doc-rule surfaces). First run found 6 drifts; fixed unambiguous ones (compiler count 1089/1850/1954 → 2108; doc-rule surfaces 9 → 11 in FAQ). Wrote `docs/doc-drift-findings.md` for the harder ones (Core 7 vs 8, curriculum count metric ambiguity, node-type count). Branch `fix/rr-doc-drift`, merged `6ea720c`.
+- **RR-2 1:1-mapping audit** — new `docs/one-to-one-mapping-audit.md`. Walked the parser+compiler looking for keywords that emit many lines of compiled JS/Python. The handoff-named CHECKOUT/OAUTH_CONFIG/USAGE_LIMIT turned out to already be 1:1 (config-only emits with header comments). Real worst offenders identified: AUTH_SCAFFOLD (~70 lines emitted from `allow signup and login`), AGENT_DEF (~80–150 lines), WEBHOOK (~25–40 lines). Implemented one fix: provenance comment block on AUTH_SCAFFOLD output that names the source line and lists every endpoint+middleware emitted. Branch `feature/rr-1to1-audit`, merged `c43d814`.
+- **RR-3 ROADMAP Marcus-bias trim** — deleted stale "Mechanical Test Quality Signals" subsection (all done — moved to CHANGELOG). Relocated 5 orphaned "Next Up Session 34" items: 4 eval-tooling items into "Future (Not Committed)", 1 SQLite WIP into Refactoring Backlog as R9. Net 24 deletions, 9 insertions. Branch `docs/rr-marcus-bias`, merged `f845dde`.
+
+### Queue D — Builder Mode follow-ons (2/2 shipped)
+
+- **BM-6 tile gallery (Builder Mode v0.2)** — `playground/ide.html` adds a Marcus-first tile gallery on the empty preview pane in builder mode. 5 featured tiles (deal-desk first), "See more" expander for the remaining 9. Click loads template via existing `/api/template/<name>` flow. Sibling-of-preview-content positioning with `position: absolute` so `showTab()` innerHTML wipes don't nuke it. Added `deal-desk` to `FEATURED_TEMPLATES` in server.js. Branch `feature/builder-mode-bm6`, merged `ea21b28`.
+- **Builder Mode v0.3 — BM-3 full + BM-4** — BM-3 full: localStorage `clear-bm-ships-counter`. First 3 successful Publishes the source pane defaults visible (onboarding); ship #3+ source defaults hidden. Counter increments inside `doDeploy()`'s success branch. BM-4: when in builder mode, every iframe click event ALSO prefills the chat input with `Change the "<text>" button/link — ` (cursor at end). Skips if user already typed something. 2 new builder-mode tests (33 total). Branch `feature/builder-mode-v03`, merged `55ef2f2`.
+
+### Queue E — Ghost Meph (4/6 shipped + plans for the rest)
+
+The architecture that lets `/api/chat` route through local backends instead of paying Anthropic per call. Four real backends now wired; tool-use support is the remaining unlock.
+
+- **GM-1 env-gated /api/chat router** — new `playground/ghost-meph/router.js` (~150 lines). `MEPH_BRAIN` env var dispatches to backend; absent = real Anthropic (no behavior change). Stub returns Anthropic-shaped SSE with `stop_reason='end_turn'` so /api/chat tool loop doesn't spin. /api/chat skips the API-key 400 when ghost is active. 34 tests. Branch `feature/ghost-meph-stub`, merged `964d69c`.
+- **GM-2 cc-agent text-only MVP** — new `playground/ghost-meph/cc-agent.js` (~170 lines). `MEPH_BRAIN=cc-agent` spawns `claude --print` subprocess, pipes the latest user message via stdin, wraps captured stdout as Anthropic SSE. System prompt loaded from `playground/system-prompt.md`. Failure modes (missing CLI, timeout, non-zero exit) surfaced as Anthropic-shaped error streams. 6 more tests. **Tool support deferred** — see `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md` for the ~5-day MCP-server implementation. Branch `feature/ghost-meph-cc`, merged `57c10e6`.
+- **GM-4 Ollama backend + shared format-bridge** — new `playground/ghost-meph/format-bridge.js` (~145 lines): Anthropic ↔ OpenAI translation (string + array content, system field both forms, tool_use blocks dropped for text-only MVP). `accumulateOpenAIText()` + `wrapOpenAIStreamAsAnthropicSSE()` helpers. New `playground/ghost-meph/ollama.js` (~80 lines): `MEPH_BRAIN=ollama:<model>` routes to Ollama's OpenAI-compatible endpoint at `OLLAMA_HOST` (default `http://localhost:11434`). ECONNREFUSED / TimeoutError / HTTP-error all become Anthropic-shaped error streams with Marcus-readable hints. 14 tests. Branch `feature/ghost-meph-ollama`, merged `d25ecdc`.
+- **GM-3 OpenRouter backend** — new `playground/ghost-meph/openrouter.js` (~110 lines). `MEPH_BRAIN=openrouter` (or `openrouter:qwen`) routes to OpenRouter's `/v1/chat/completions` endpoint. Default model `qwen/qwen3.6-plus-preview:free`; override with `OPENROUTER_MODEL`. Requires `OPENROUTER_API_KEY`. Handles missing-key, 429 rate limits (no auto-retry — surfaces clearly), 404/400 preview-tier-disappears, timeout. Includes `HTTP-Referer` + `X-Title` attribution headers. Reuses format-bridge from GM-4 — only ~110 lines of new code. 5 more tests. Branch `feature/ghost-meph-openrouter`, merged `f416bcb`.
+
+**Plans for the remaining Queue E items (read before implementing):**
+- `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md` — full architecture for tool dispatch through cc-agent. 3 options (MCP server / stream-json parse / hybrid). Recommendation: Option A (MCP server). ~5 days estimated.
+- `plans/plan-ghost-meph-openrouter-ollama-04-21-2026.md` — GM-3 + GM-4 designs (now both shipped) + GM-5 calibration harness + GM-6 default-switch follow-ups.
+
+**Fresh `HANDOFF.md`** — rewrites the previous handoff with this session's ship pile, the budget rules (still in effect — restriction lifts after cc-agent gets tool support), priority queue (GM-2 tool-use → GM-5 → GM-6 → Queue F), open design questions for Russell, and the explicit branch-verification rule (after `git checkout -b`, run `git branch --show-current` — earlier this session GTM-1 somehow committed straight to main even though I'd just branched). Branch `docs/handoff-next-session`, merged `0a77df0`.
+
+---
+
 ## Builder Mode v0.1 — Marcus-first Studio layout (2026-04-21)
 
 Feature-flagged Studio layout flip via `?studio-mode=builder` URL param. Four changes:
