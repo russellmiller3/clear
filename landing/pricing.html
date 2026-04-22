@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clear — Pricing</title>
+<link rel="stylesheet" href="tailwind.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: #fafbfd; color: #0f172a; -webkit-font-smoothing: antialiased; margin: 0; }
+
+/* Hero mesh gradient (matches marcus.html) */
+.hero-bg {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f0f4ff 0%, #fafbfd 40%, #f5f0ff 70%, #fafbfd 100%);
+}
+.hero-bg::before {
+  content: '';
+  position: absolute;
+  top: -40%; right: -20%;
+  width: 80%; height: 120%;
+  background: radial-gradient(ellipse at center, rgba(99,102,241,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-bg::after {
+  content: '';
+  position: absolute;
+  bottom: -30%; left: -10%;
+  width: 60%; height: 80%;
+  background: radial-gradient(ellipse at center, rgba(67,97,238,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* Pricing tier card */
+.tier-card {
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(0,0,0,0.05);
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.tier-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.06); }
+.tier-card.featured {
+  border: 2px solid #4f46e5;
+  box-shadow: 0 12px 40px rgba(79,70,229,0.12);
+}
+.tier-badge {
+  position: absolute;
+  top: -12px; left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #4338ca, #6366f1);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(67,97,238,0.3);
+}
+
+.tier-name { font-size: 14px; font-weight: 600; color: #4361ee; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px; }
+.tier-price { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+.tier-price-suffix { font-size: 14px; color: #64748b; font-weight: 500; }
+.tier-tagline { font-size: 14px; color: #64748b; line-height: 1.5; min-height: 42px; }
+
+.tier-quota-list { font-size: 13px; line-height: 1.8; color: #334155; }
+.tier-quota-list li { display: flex; align-items: flex-start; gap: 10px; padding: 4px 0; }
+.tier-quota-list .check { flex-shrink: 0; color: #059669; margin-top: 5px; }
+.tier-quota-list .dash { flex-shrink: 0; color: #cbd5e1; margin-top: 5px; }
+.tier-quota-list b { font-weight: 700; color: #0f172a; }
+
+.tier-cta {
+  background: #fff;
+  color: #1e1b4b;
+  border: 1px solid rgba(0,0,0,0.1);
+  font-weight: 600;
+  text-align: center;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.tier-cta:hover { border-color: #1e1b4b; background: #fafbfd; }
+.tier-cta-primary {
+  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #4f46e5 100%);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 16px rgba(67,97,238,0.25);
+}
+.tier-cta-primary:hover {
+  background: linear-gradient(135deg, #3730a3 0%, #4f46e5 50%, #6366f1 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(67,97,238,0.35);
+}
+
+/* Buttons (shared with marcus.html) */
+.btn-hero {
+  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #4f46e5 100%);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 4px 16px rgba(67,97,238,0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  letter-spacing: -0.01em;
+}
+.btn-hero:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 8px 32px rgba(67,97,238,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+  transform: translateY(-2px);
+}
+.btn-white {
+  background: #fff; color: #1e1b4b;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.1);
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+.btn-white:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1), 0 16px 40px rgba(0,0,0,0.15); }
+
+nav { background: rgba(250,251,253,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+
+.fade-up { animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) both; }
+.fade-d1 { animation-delay: 0.1s; }
+.fade-d2 { animation-delay: 0.2s; }
+.fade-d3 { animation-delay: 0.35s; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Compare table */
+.compare-table { background: #fff; border-radius: 20px; border: 1px solid rgba(0,0,0,0.05); overflow: hidden; }
+.compare-table th, .compare-table td {
+  padding: 14px 20px;
+  text-align: left;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.compare-table th {
+  background: #fafbfd;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  font-size: 13px;
+}
+.compare-table td.col-tier { font-weight: 600; color: #1e1b4b; }
+.compare-table td.value { color: #334155; }
+.compare-table td.dim { color: #94a3b8; }
+.compare-table tr:last-child th, .compare-table tr:last-child td { border-bottom: none; }
+.compare-section-row td { background: #fafbfd; font-weight: 700; color: #4361ee; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 18px; padding-bottom: 8px; }
+
+/* FAQ */
+.faq-card { background: #fff; border-radius: 14px; border: 1px solid rgba(0,0,0,0.05); padding: 22px 26px; }
+.faq-q { font-weight: 700; color: #0f172a; font-size: 15px; margin-bottom: 8px; }
+.faq-a { color: #475569; font-size: 14px; line-height: 1.65; }
+
+/* CTA section */
+.cta-section {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #3730a3 100%);
+  position: relative;
+  overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute;
+  top: -50%; right: -30%;
+  width: 80%; height: 200%;
+  background: radial-gradient(ellipse, rgba(129,140,248,0.15) 0%, transparent 60%);
+}
+
+@media (max-width: 1024px) {
+  .tier-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 640px) {
+  .tier-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="sticky top-0 z-50 border-b border-black/[0.04] px-6 py-4">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-10">
+      <a href="marcus.html" class="text-[18px] font-bold tracking-tight text-slate-900">Clear</a>
+      <div class="hidden md:flex items-center gap-7 text-[13px] font-medium text-slate-400">
+        <a href="marcus.html#apps" class="hover:text-slate-600 transition">Apps</a>
+        <a href="pricing.html" class="text-slate-700 font-semibold">Pricing</a>
+        <a href="#" class="hover:text-slate-600 transition">Docs</a>
+        <a href="#" class="hover:text-slate-600 transition">Changelog</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="#" class="text-[13px] font-medium text-slate-500 hover:text-slate-700 transition hidden md:block">Sign in</a>
+      <a href="#" class="btn-hero text-white text-[13px] px-5 py-2.5 rounded-xl font-semibold">Open Studio</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero-bg">
+  <div class="max-w-4xl mx-auto px-6 pt-24 pb-16 text-center relative z-10">
+    <div class="fade-up inline-flex items-center gap-2 text-[13px] font-medium text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-full px-4 py-1.5 mb-8">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg>
+      Flat pricing — no per-seat tax
+    </div>
+    <h1 class="fade-up fade-d1 text-5xl md:text-[60px] font-extrabold leading-[1.08] tracking-[-0.035em] mb-5 max-w-3xl mx-auto">
+      Pricing that doesn't<br>
+      <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-purple-500 bg-clip-text text-transparent">punish your team for shipping.</span>
+    </h1>
+    <p class="fade-up fade-d2 text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-2 leading-relaxed font-light">
+      Free for solo. Flat tiers for teams. Unlimited apps on every paid plan.
+      No "let's get on a call to discuss your seat count."
+    </p>
+  </div>
+</section>
+
+<!-- Tier grid -->
+<section class="bg-white border-t border-black/[0.04]">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="tier-grid grid grid-cols-4 gap-5">
+
+      <!-- FREE -->
+      <div class="tier-card">
+        <div class="tier-name">Free</div>
+        <div class="flex items-baseline gap-1 mb-3">
+          <span class="tier-price">$0</span>
+          <span class="tier-price-suffix">/forever</span>
+        </div>
+        <p class="tier-tagline mb-6">Try Clear. Build a tool. Ship it to a *.fly.dev URL. See if your team likes it.</p>
+        <ul class="tier-quota-list mb-8 flex-1">
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>3 apps</b> deployed at once</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>1 seat</b> (just you)</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>100 agent calls</b> per month</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>100 MB</b> storage per app</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span>Studio access, all templates</span></li>
+          <li><svg class="dash" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg><span class="text-slate-400">No custom domain</span></li>
+          <li><svg class="dash" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg><span class="text-slate-400">No SSO</span></li>
+        </ul>
+        <a href="#" class="tier-cta">Start free</a>
+      </div>
+
+      <!-- TEAM (featured) -->
+      <div class="tier-card featured">
+        <div class="tier-badge">Most teams</div>
+        <div class="tier-name" style="color:#4f46e5">Team</div>
+        <div class="flex items-baseline gap-1 mb-3">
+          <span class="tier-price">$99</span>
+          <span class="tier-price-suffix">/month</span>
+        </div>
+        <p class="tier-tagline mb-6">For an ops or RevOps team replacing a stack of Airtable + Zapier + Retool.</p>
+        <ul class="tier-quota-list mb-8 flex-1">
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>25 apps</b> deployed at once</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>10 seats</b> included</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>5,000 agent calls</b> per month</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>5 GB</b> storage per app</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>1 custom domain</b> (yourcompany.com)</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span>Email support, 1 business day</span></li>
+          <li><svg class="dash" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg><span class="text-slate-400">No SSO</span></li>
+        </ul>
+        <a href="#" class="tier-cta tier-cta-primary">Start 14-day trial</a>
+      </div>
+
+      <!-- BUSINESS -->
+      <div class="tier-card">
+        <div class="tier-name" style="color:#7c3aed">Business</div>
+        <div class="flex items-baseline gap-1 mb-3">
+          <span class="tier-price">$499</span>
+          <span class="tier-price-suffix">/month</span>
+        </div>
+        <p class="tier-tagline mb-6">For mid-market companies running 30+ internal tools across multiple teams.</p>
+        <ul class="tier-quota-list mb-8 flex-1">
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Unlimited apps</b></span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>50 seats</b> included</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>50,000 agent calls</b> per month</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>50 GB</b> storage per app</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Unlimited custom domains</b></span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>SSO</b> (Google, Microsoft)</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span>Priority support, 4 hours</span></li>
+        </ul>
+        <a href="#" class="tier-cta">Start trial</a>
+      </div>
+
+      <!-- ENTERPRISE -->
+      <div class="tier-card">
+        <div class="tier-name" style="color:#0f766e">Enterprise</div>
+        <div class="flex items-baseline gap-1 mb-3">
+          <span class="tier-price">Custom</span>
+        </div>
+        <p class="tier-tagline mb-6">For regulated industries, on-prem deployment, or organizations over 200 seats.</p>
+        <ul class="tier-quota-list mb-8 flex-1">
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span>Everything in Business, plus:</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Unlimited seats</b></span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Self-hosted</b> option (your VPC)</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>SAML SSO</b>, audit log, RBAC</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span>Custom agent quota</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Bring your own AI key</b> (zero markup)</span></li>
+          <li><svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span>Dedicated Slack channel + onboarding</span></li>
+        </ul>
+        <a href="#" class="tier-cta">Talk to sales</a>
+      </div>
+    </div>
+
+    <p class="text-center text-[13px] text-slate-400 mt-8">
+      Need more agent calls than your tier includes? Pay-as-you-go at $0.02/call. No throttling, no surprise bills — your Studio shows the running total.
+    </p>
+  </div>
+</section>
+
+<!-- Why no per-seat -->
+<section class="bg-[#fafbfd] border-t border-black/[0.04] py-20">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-[13px] font-bold text-indigo-500 uppercase tracking-[0.1em] mb-3">Why flat, not per-seat?</div>
+      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
+        Per-seat pricing kills internal tools.
+      </h2>
+      <p class="text-slate-400 text-[16px] leading-relaxed max-w-2xl mx-auto">
+        Every Retool customer story you've heard: "We loved it, then sales doubled and our bill 3x'd. Now we're rebuilding in-house." Per-seat punishes you for the exact thing you bought the tool to enable — getting more people using it.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-5">
+      <div class="bg-white rounded-2xl border border-black/[0.05] p-7">
+        <div class="text-[12px] font-bold text-rose-500 uppercase tracking-wider mb-3">The Retool problem</div>
+        <p class="text-[14px] text-slate-600 leading-relaxed mb-3">
+          You start at $10/seat. RevOps loves it. Marketing wants in. Now finance wants in. Suddenly 60 people across the company touch one Retool dashboard a quarter, and your bill is $7,200/year — for an internal tool that took someone 3 hours to build.
+        </p>
+        <p class="text-[13px] text-slate-400 italic">
+          You stop letting people use it. You start gatekeeping. The thing you built to make work easier becomes another bureaucracy.
+        </p>
+      </div>
+      <div class="bg-white rounded-2xl border border-indigo-100 p-7" style="background: linear-gradient(135deg, #fff 0%, #f5f3ff 100%);">
+        <div class="text-[12px] font-bold text-indigo-500 uppercase tracking-wider mb-3">How Clear works</div>
+        <p class="text-[14px] text-slate-600 leading-relaxed mb-3">
+          One $99/month subscription, 10 seats. Need more seats? $499/month gets you 50. Past that, talk to us. Your bill doesn't move when one more person logs in. Your bill moves when your company outgrows the tier.
+        </p>
+        <p class="text-[13px] text-slate-400 italic">
+          Build the tool. Ship it. Tell everyone. Watch them actually use it.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Compare table -->
+<section class="bg-white border-t border-black/[0.04] py-20">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="text-center mb-10">
+      <div class="text-[13px] font-bold text-indigo-500 uppercase tracking-[0.1em] mb-3">Compare</div>
+      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight mb-4">
+        What's in each plan.
+      </h2>
+    </div>
+
+    <div class="compare-table overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr>
+            <th class="w-[34%]"></th>
+            <th class="text-center">Free</th>
+            <th class="text-center">Team</th>
+            <th class="text-center">Business</th>
+            <th class="text-center">Enterprise</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="compare-section-row"><td colspan="5">Capacity</td></tr>
+          <tr><td class="col-tier">Apps deployed at once</td><td class="value text-center">3</td><td class="value text-center">25</td><td class="value text-center">Unlimited</td><td class="value text-center">Unlimited</td></tr>
+          <tr><td class="col-tier">Seats included</td><td class="value text-center">1</td><td class="value text-center">10</td><td class="value text-center">50</td><td class="value text-center">Unlimited</td></tr>
+          <tr><td class="col-tier">Storage per app</td><td class="value text-center">100 MB</td><td class="value text-center">5 GB</td><td class="value text-center">50 GB</td><td class="value text-center">Custom</td></tr>
+          <tr><td class="col-tier">Agent calls per month</td><td class="value text-center">100</td><td class="value text-center">5,000</td><td class="value text-center">50,000</td><td class="value text-center">Custom</td></tr>
+          <tr><td class="col-tier">Pay-as-you-go agent calls</td><td class="dim text-center">—</td><td class="value text-center">$0.02 each</td><td class="value text-center">$0.015 each</td><td class="value text-center">Custom</td></tr>
+
+          <tr class="compare-section-row"><td colspan="5">Hosting &amp; deploy</td></tr>
+          <tr><td class="col-tier">Subdomain (yourapp.buildclear.dev)</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td></tr>
+          <tr><td class="col-tier">Custom domain</td><td class="dim text-center">—</td><td class="value text-center">1</td><td class="value text-center">Unlimited</td><td class="value text-center">Unlimited</td></tr>
+          <tr><td class="col-tier">Self-hosted (your VPC)</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="value text-center">✓</td></tr>
+          <tr><td class="col-tier">One-click deploy</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td></tr>
+          <tr><td class="col-tier">Live App Editing</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td></tr>
+
+          <tr class="compare-section-row"><td colspan="5">Auth &amp; security</td></tr>
+          <tr><td class="col-tier">Built-in login (JWT)</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td></tr>
+          <tr><td class="col-tier">Google + Microsoft SSO</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="value text-center">✓</td><td class="value text-center">✓</td></tr>
+          <tr><td class="col-tier">SAML / OIDC SSO</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="value text-center">✓</td></tr>
+          <tr><td class="col-tier">Audit log + RBAC</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="value text-center">Basic</td><td class="value text-center">Full</td></tr>
+          <tr><td class="col-tier">Bring your own AI key</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="value text-center">✓</td></tr>
+
+          <tr class="compare-section-row"><td colspan="5">Support</td></tr>
+          <tr><td class="col-tier">Community Discord</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td><td class="value text-center">✓</td></tr>
+          <tr><td class="col-tier">Email support</td><td class="dim text-center">—</td><td class="value text-center">1 business day</td><td class="value text-center">4 hours</td><td class="value text-center">1 hour</td></tr>
+          <tr><td class="col-tier">Dedicated Slack channel</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="value text-center">✓</td></tr>
+          <tr><td class="col-tier">Onboarding session</td><td class="dim text-center">—</td><td class="dim text-center">—</td><td class="value text-center">Optional</td><td class="value text-center">Included</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="bg-[#fafbfd] border-t border-black/[0.04] py-20">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-[13px] font-bold text-indigo-500 uppercase tracking-[0.1em] mb-3">Common questions</div>
+      <h2 class="text-3xl md:text-[40px] font-extrabold tracking-[-0.03em] leading-tight">
+        Things people ask before signing up.
+      </h2>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="faq-card">
+        <div class="faq-q">What counts as an "agent call"?</div>
+        <div class="faq-a">Any call to <code class="bg-slate-100 px-1.5 py-0.5 rounded text-[12px]">ask claude</code> or a tool-using agent inside one of your deployed apps. The Studio chat (Meph helping you build) doesn't count — that's free on every tier.</div>
+      </div>
+      <div class="faq-card">
+        <div class="faq-q">What happens if I exceed my agent call quota?</div>
+        <div class="faq-a">Pay-as-you-go kicks in automatically — $0.02 per call on Team, $0.015 on Business. No app downtime, no email-the-billing-team friction. Your Studio shows the running total so there are no surprises.</div>
+      </div>
+      <div class="faq-card">
+        <div class="faq-q">Can I cancel or downgrade anytime?</div>
+        <div class="faq-a">Yes, no contract. Downgrade and your apps keep running until you exceed the new tier's limits — then we email you, you decide what to do. Your data stays yours.</div>
+      </div>
+      <div class="faq-card">
+        <div class="faq-q">Do you have a free trial of paid tiers?</div>
+        <div class="faq-a">Yes — 14 days on Team or Business, full features, no credit card. If you don't subscribe at the end, you fall back to Free.</div>
+      </div>
+      <div class="faq-card">
+        <div class="faq-q">Can I host Clear on my own infrastructure?</div>
+        <div class="faq-a">On Enterprise. We ship the hosting layer as a Docker bundle that runs in your VPC. Your data, your audit log, your AI key. No traffic leaves your network unless you want it to.</div>
+      </div>
+      <div class="faq-card">
+        <div class="faq-q">What about the source code I write?</div>
+        <div class="faq-a">Yours. Every <code class="bg-slate-100 px-1.5 py-0.5 rounded text-[12px]">.clear</code> file you write is downloadable, version-controlled, and works on your own machine without us. Worst case: we go away, you keep building.</div>
+      </div>
+      <div class="faq-card">
+        <div class="faq-q">Why is your AI cheaper than competitors?</div>
+        <div class="faq-a">Two reasons. We use Anthropic's prompt caching (90% input-token reduction on repeated prefixes) and we default to Haiku 4.5 — 3x cheaper than Sonnet, 94% as good for the structured tasks Clear apps do.</div>
+      </div>
+      <div class="faq-card">
+        <div class="faq-q">Is there a discount for annual billing?</div>
+        <div class="faq-a">Yes — pay annually and save 20%. Team becomes $79/month billed yearly, Business becomes $399/month. Email us if you need a custom invoice.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section py-24 relative">
+  <div class="max-w-3xl mx-auto px-6 text-center relative z-10">
+    <h2 class="text-3xl md:text-[44px] font-extrabold text-white tracking-[-0.03em] leading-tight mb-5">
+      Build something this Friday.<br>Pay nothing until you scale.
+    </h2>
+    <p class="text-indigo-200/70 text-lg mb-10 font-light">
+      Free forever for solo. Flat $99 when your team needs in.
+    </p>
+    <a href="#" class="btn-white text-[16px] px-10 py-4 rounded-2xl font-semibold inline-flex items-center gap-2">Open Studio — free <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+    <p class="text-indigo-300/40 text-[13px] mt-4">No credit card. No install. Browser-based.</p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-black/[0.04] py-10 bg-white">
+  <div class="max-w-5xl mx-auto px-6 flex items-center justify-between">
+    <a href="marcus.html" class="text-[14px] font-semibold text-slate-800">Clear</a>
+    <div class="flex gap-8 text-[13px] text-slate-400 font-medium">
+      <a href="marcus.html#apps" class="hover:text-slate-500 transition">Templates</a>
+      <a href="pricing.html" class="hover:text-slate-500 transition">Pricing</a>
+      <a href="#" class="hover:text-slate-500 transition">Docs</a>
+      <a href="#" class="hover:text-slate-500 transition">Changelog</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
