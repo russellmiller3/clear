@@ -51,15 +51,22 @@ Failure cliff at L3 isn't surprising — L1-L2 are single-endpoint apps; L3+ int
 - **L3 counter ROOT CAUSE FOUND + FIXED (`06913c0`).** Compiled Meph's row-1609 source directly (`node cli/clear.js build` + spawn + curl the 5 curriculum tests) — POST /reset + POST /increment returned 500 `"_ is not defined"`. The culprit: `save { value: 1 } to Counters` parsed as `node.variable='{'`, which sanitizeName turned into `_`, which the compiler emitted as `db.update('values', _pick(_, valueSchema))`. Undefined `_` at runtime → ReferenceError → 500. BUT compile_ok=1 so the flywheel logged it as "Meph wrote clean code" — the worst kind of silent failure. Fixed in parseSave: reject LBRACE/LBRACKET/STRING/NUMBER at tokens[1] with a helpful error pointing Meph to the assign-then-save pattern. 3 regression tests pin the rejection + confirm the canonical form still works. All 8 core templates still compile clean.
 - **Test totals:** 2100 compiler + 270 meph-tools + 153 mcp-server green (+5 this tick: 3 parser regressions, 1 session_id drift-guard, 1 Phase 8 run_app lifecycle). Pre-existing 17 server.test.js failures unchanged.
 
-## Expected impact of `06913c0` on next L3+ sweep
+## Expected impact of `06913c0` on next L3+ sweep — CONFIRMED
 
-The `save { ... } to X` trap was ONE of the ways Meph could produce compile_ok=1 + runtime-broken code. With parse-time rejection:
-1. Meph hits the new error "Assign it to a variable first" on his first attempt
-2. Factor DB records compile_ok=0 + the error message as a proper failure signal (not a false positive)
-3. Meph rewrites as `new_entry = {...}; save new_entry to X` — the pattern counter.clear already uses in the repo
-4. Expected: next L3 sweep goes 4/4 or close. Worth re-running `node playground/supervisor/curriculum-sweep.js --tasks=counter,key-value-store,todo-crud,bookmark-manager --workers=1 --timeout=300 --strict` to confirm.
+Tick 5 re-ran `--tasks=counter --workers=1 --strict`:
+- Before fix: 3 compile_ok=1 rows, 0 passing (all runtime-500)
+- After fix: **[✅] L3 counter — 181s, DB-graded test_pass=1**. **FIRST L3 task to pass cc-agent sweep under strict grading.** +1 passing row in Factor DB.
+- Follow-up `8d349fc` closed the parseSaveAssignment variant (same bug class, assignment form). Both paths now share one instructive error.
 
-This is also a prototype for the broader pattern: when a curriculum-sweep failure is systemic, the fix is almost always "parse-time reject the anti-pattern with an instructive error," not "teach Meph more in the system prompt." The error message travels with every future compile; the system prompt only fires at turn start.
+This validates the broader pattern: when curriculum-sweep fails systemically, the fix is usually "parse-time reject the anti-pattern with an instructive error," not "teach Meph more in the system prompt." The error message travels with every future compile; the system prompt only fires at turn start. The compiler ACCUMULATES quality — every Meph session forever benefits, not just the one in front of us.
+
+## Session 42 tick-5 totals
+
+- 3 commits: parser fix (bare form), HANDOFF doc, parser fix (assignment form)
+- **First L3 passing row in cc-agent sweep history**
+- 2101 compiler + 270 meph-tools + 153 mcp-server green
+- 8/8 core templates still 0-error
+- Next tick: re-run 4-task L3 sweep (`counter,key-value-store,todo-crud,bookmark-manager`) to measure breadth of impact. If most pass, time to kick off the full 20-task overnight sweep (Priority 1 in the list above).
 
 ## What Was Done This Session
 
