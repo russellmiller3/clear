@@ -241,6 +241,22 @@ Exports:
 
 Totals after tick 11: **+23 cloud-quota tests = 2687 tests green across the project.** 8/8 core templates clean.
 
+## Session 42 tick 12 — CC-3c overage + dashboard summary
+
+`ad4d163` — three pure helpers in cloud-quota:
+
+  - `computeOverage(used, limit)` → number | null — calls beyond cap; null for unlimited plans. Used by CC-3c rollup that sends metered events to Stripe Usage API (tenants with overage > 0 become a billing line item; overage=0 emits nothing).
+  - `computeOverageCost(used, limit)` → USD. Overage × $0.02 per call. Unlimited plans always return 0.
+  - `billingSummary(plan, used)` → one aggregate object with plan/used/limit/remaining/percent/overage/overage_cost_usd/overLimit. Dashboard-ready shape so the UI doesn't combine checkQuota + computeOverage + percent-math by hand. Enterprise & other unlimited tiers return null for limit/remaining/percent/overage (UI shows "N/A" copy).
+
+27 new TDD assertions: under-limit zero, over-limit count, 10× over, unlimited null, zero-use edge, overage cost math, at-limit boundary (strict >, not ≥), enterprise shape.
+
+cloud-quota: 50/50 green (+27 this tick).
+
+Feeds two surfaces: CC-3c (Stripe Usage API sync) and CC-2c ("You've used N of M" widget) without either needing the other's logic.
+
+Totals after tick 12: **2714 tests green across the project** (+27 cloud-quota).
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
