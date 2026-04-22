@@ -73,6 +73,13 @@ function makeMockDb() {
         members.splice(idx, 1);
         return { rows: [], rowCount: 1 };
       }
+      if (/^UPDATE team_members SET role/i.test(t)) {
+        const [teamId, userId, role] = params;
+        const m = members.find(x => x.team_id === teamId && x.user_id === userId);
+        if (!m) return { rows: [], rowCount: 0 };
+        m.role = role;
+        return { rows: [m], rowCount: 1 };
+      }
       if (t.startsWith('INSERT INTO team_invites')) {
         const [team_id, email, role, token, invited_by, expires_at] = params;
         const row = {
@@ -494,6 +501,62 @@ console.log('\n📋 listPendingInvites\n');
     'each team sees only its own pending invites (no cross-team leak)');
   assert(!acmePending.some(x => x.email.includes('beta-invitee')),
     'acme does NOT see beta\'s invite');
+}
+
+// ─── TDD cycle 13: updateMemberRole with last-owner-demote guard ─────────
+console.log('\n🔄 updateMemberRole\n');
+
+{
+  const { createTeam, addMember, updateMemberRole, getMembership } = await import('./index.js');
+  const db = makeMockDb();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+  await addMember(db, team.id, 2, 'member');
+
+  // Promote member → admin
+  const promoted = await updateMemberRole(db, team.id, 2, 'admin');
+  assert(promoted.role === 'admin',
+    `promotes member to admin (got ${promoted?.role})`);
+  const verified = await getMembership(db, team.id, 2);
+  assert(verified.role === 'admin', 'change persisted in DB');
+
+  // Demote admin → member
+  const demoted = await updateMemberRole(db, team.id, 2, 'member');
+  assert(demoted.role === 'member',
+    `demotes admin to member (got ${demoted?.role})`);
+
+  // Invalid role rejected
+  let threw;
+  try { await updateMemberRole(db, team.id, 2, 'superadmin'); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('invalid role'),
+    `invalid role rejected (got "${threw}")`);
+
+  // Non-existent membership rejected
+  try { await updateMemberRole(db, team.id, 999, 'admin'); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('not found'),
+    `unknown user rejected (got "${threw}")`);
+
+  // Last-owner-demote guard — can't demote the only owner
+  try { await updateMemberRole(db, team.id, 1, 'admin'); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('last owner'),
+    `demoting the last owner rejected (got "${threw}")`);
+  const ownerStill = await getMembership(db, team.id, 1);
+  assert(ownerStill.role === 'owner',
+    'owner is still there after the blocked demote');
+
+  // With two owners, demoting one is fine
+  await updateMemberRole(db, team.id, 2, 'owner');
+  const nowDemoted = await updateMemberRole(db, team.id, 1, 'admin');
+  assert(nowDemoted.role === 'admin',
+    'with >1 owner, demoting one owner succeeds');
+
+  // Promoting owner to owner is a no-op (not a "last owner" false positive)
+  await addMember(db, team.id, 3, 'member');
+  const againOwner = await updateMemberRole(db, team.id, 2, 'owner');
+  assert(againOwner.role === 'owner',
+    'promoting existing owner to owner is a no-op, not a guard-trigger');
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

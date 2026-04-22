@@ -161,6 +161,36 @@ export async function removeMember(db, teamId, userId) {
 }
 
 /**
+ * Change a member's role (promote or demote). Validates new role at the
+ * boundary. Refuses to demote the last owner — preserves the "at least
+ * one owner" invariant that keeps a team recoverable. Promoting an
+ * existing owner to owner is a no-op (doesn't trigger the last-owner
+ * guard since role isn't actually changing).
+ *
+ * Throws on missing membership. Returns the updated row on success.
+ */
+export async function updateMemberRole(db, teamId, userId, newRole) {
+  if (!VALID_ROLES.includes(newRole)) {
+    throw new Error(`invalid role "${newRole}" — must be one of ${VALID_ROLES.join(', ')}`);
+  }
+  const m = await getMembership(db, teamId, userId);
+  if (!m) throw new Error('Membership not found.');
+  // Last-owner guard — only triggers on an actual demotion (owner → not-owner).
+  // Owner → owner is a no-op and must not trip the guard.
+  if (m.role === 'owner' && newRole !== 'owner') {
+    const owners = await countOwners(db, teamId);
+    if (owners <= 1) {
+      throw new Error('Cannot demote the last owner. Transfer ownership first.');
+    }
+  }
+  const { rows } = await db.query(
+    `UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2 RETURNING *`,
+    [teamId, userId, newRole]
+  );
+  return rows[0];
+}
+
+/**
  * Create a pending invite. Generates a 32-byte crypto-random hex token
  * (64 chars), stores the row with INVITE_TTL_DAYS expiry. The caller
  * sends the email with a link containing the token; the recipient
