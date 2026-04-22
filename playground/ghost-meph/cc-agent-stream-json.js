@@ -77,7 +77,14 @@ export function translateStreamJsonEvent(event, state) {
       // Claude Code wraps its assistant output as Anthropic-style message
       // objects already — .message.content is an array of content blocks.
       // Each block becomes content_block_start/(delta)/stop in the SSE stream.
-      const blocks = event.message?.content;
+      //
+      // Defensive normalization — some SDKs / single-block messages pass
+      // content as a string instead of an array. Wrap it so the loop below
+      // sees a uniform shape.
+      let blocks = event.message?.content;
+      if (typeof blocks === 'string') {
+        blocks = [{ type: 'text', text: blocks }];
+      }
       if (!Array.isArray(blocks)) return frames;
       for (const block of blocks) {
         if (block?.type === 'text') {
@@ -93,6 +100,15 @@ export function translateStreamJsonEvent(event, state) {
           frames.push(sse('content_block_stop', { index: idx }));
         } else if (block?.type === 'tool_use') {
           const idx = state.nextBlockIndex++;
+          // Normalize block.input — Anthropic's spec says this is an object,
+          // but some Claude Code versions have emitted it as a JSON string.
+          // Accept either; /api/chat's loop expects the partial_json delta
+          // below to parse to an object.
+          let toolInput = block.input;
+          if (typeof toolInput === 'string') {
+            try { toolInput = JSON.parse(toolInput); } catch { toolInput = {}; }
+          }
+          if (toolInput === null || typeof toolInput !== 'object') toolInput = {};
           // content_block_start carries the tool name + id but an EMPTY input
           // (matches Anthropic's stream shape — the input arrives via deltas).
           frames.push(sse('content_block_start', {
@@ -104,7 +120,7 @@ export function translateStreamJsonEvent(event, state) {
           // streams this across many deltas; one delta is valid per spec.
           frames.push(sse('content_block_delta', {
             index: idx,
-            delta: { type: 'input_json_delta', partial_json: JSON.stringify(block.input ?? {}) },
+            delta: { type: 'input_json_delta', partial_json: JSON.stringify(toolInput) },
           }));
           frames.push(sse('content_block_stop', { index: idx }));
         }
@@ -235,7 +251,14 @@ export function extractFinalSourceFromStreamJson(ndjsonBuffer) {
       const isEdit = block.name === 'meph_edit_code'
                   || block.name === 'mcp__meph__meph_edit_code';
       if (!isEdit) continue;
-      const input = block.input || {};
+      // Normalize input — accept object OR JSON string (some Claude Code
+      // versions have emitted the latter). Matches the parser's defensive
+      // handling in translateStreamJsonEvent.
+      let input = block.input;
+      if (typeof input === 'string') {
+        try { input = JSON.parse(input); } catch { input = null; }
+      }
+      if (!input || typeof input !== 'object') continue;
       if (input.action === 'write' && typeof input.code === 'string') {
         lastWrite = input.code;
       }

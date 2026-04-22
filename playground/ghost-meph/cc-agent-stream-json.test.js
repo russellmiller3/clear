@@ -403,6 +403,95 @@ console.log('\n🔁 extractFinalSourceFromStreamJson — end-of-turn source sync
     'non-string code field is rejected (defensive against malformed MCP events)');
 }
 
+console.log('\n🛡  Defensive shape normalization\n');
+
+// Content as a string (not an array) — some SDKs emit this for single-block
+// text messages. Normalize to [{type:"text",text:<string>}].
+{
+  const state = { nextBlockIndex: 0, messageStarted: true };
+  const frames = translateStreamJsonEvent(
+    { type: 'assistant', message: { content: 'direct string content' } },
+    state
+  );
+  assert(frames.length === 3,
+    `string-content assistant message produces 3 frames (start+delta+stop) — got ${frames.length}`);
+  const delta = parseSse(frames[1]);
+  assert(delta.data.delta.text === 'direct string content',
+    `string content is wrapped as a text block (got "${delta.data.delta.text}")`);
+}
+
+// tool_use.input as a JSON STRING (not an object) — some versions emit this.
+// Parse and round-trip so /api/chat's loop sees the right shape.
+{
+  const state = { nextBlockIndex: 0, messageStarted: true };
+  const frames = translateStreamJsonEvent(
+    {
+      type: 'assistant',
+      message: { content: [{
+        type: 'tool_use',
+        id: 'tu_str',
+        name: 'meph_compile',
+        input: '{"include_compiled": true}',  // JSON STRING, not object
+      }] },
+    },
+    state
+  );
+  const delta = parseSse(frames[1]);
+  const parsed = JSON.parse(delta.data.delta.partial_json);
+  assert(parsed.include_compiled === true,
+    `JSON-string tool_use input is parsed into an object (got ${JSON.stringify(parsed)})`);
+}
+
+// tool_use.input as garbage string → fall back to empty object, no throw
+{
+  const state = { nextBlockIndex: 0, messageStarted: true };
+  const frames = translateStreamJsonEvent(
+    {
+      type: 'assistant',
+      message: { content: [{
+        type: 'tool_use',
+        id: 'tu_garbage',
+        name: 'meph_compile',
+        input: 'NOT VALID JSON',
+      }] },
+    },
+    state
+  );
+  const delta = parseSse(frames[1]);
+  assert(delta.data.delta.partial_json === '{}',
+    `unparseable tool_use input falls back to empty object (got ${delta.data.delta.partial_json})`);
+}
+
+// extractFinalSourceFromStreamJson: JSON-string input variant
+{
+  const ndjson = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{
+      type: 'tool_use',
+      id: 'tu_1',
+      name: 'meph_edit_code',
+      input: '{"action":"write","code":"stringified"}',
+    }] },
+  });
+  assert(extractFinalSourceFromStreamJson(ndjson) === 'stringified',
+    'extractFinalSourceFromStreamJson handles JSON-string input variant');
+}
+
+// extractFinalSourceFromStreamJson: malformed string input → skipped, no throw
+{
+  const ndjson = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{
+      type: 'tool_use',
+      id: 'tu_1',
+      name: 'meph_edit_code',
+      input: 'garbage that does not parse',
+    }] },
+  });
+  assert(extractFinalSourceFromStreamJson(ndjson) === null,
+    'extractFinalSourceFromStreamJson skips malformed input strings cleanly');
+}
+
 console.log('\n🏗  Realistic end-to-end fixture — Meph builds an app\n');
 
 // Simulates a full Meph turn: claude reads the spec, writes source, compiles,
