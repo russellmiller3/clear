@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool } from './meph-tools.js';
 import { MephContext } from './meph-context.js';
 import {
   takeSnapshot as _takeSnapshot,
@@ -2786,31 +2786,30 @@ app.post('/api/chat', async (req, res) => {
       return JSON.stringify({ error: validationError, schemaError: true });
     }
     switch (name) {
-      case 'edit_code':
-        if (input.action === 'read') {
-          return JSON.stringify({ source: currentSource, errors: currentErrors });
-        }
-        if (input.action === 'write') {
-          _sourceBeforeEdit = currentSource;
-          currentSource = input.code;
-          _workerLastSource = currentSource;
-          // Auto-compile when code is written
-          try {
-            const r = compileProgram(input.code);
-            currentErrors = r.errors;
-            _workerLastErrors = currentErrors;
-            lastCompileResult = r;
-            return JSON.stringify({ applied: true, errors: r.errors, warnings: r.warnings });
-          } catch (err) {
-            return JSON.stringify({ applied: true, compileError: err.message });
-          }
-        }
-        if (input.action === 'undo') {
-          // Signal client to trigger editor undo; actual undo happens client-side
-          send({ type: 'undo' });
-          return JSON.stringify({ undone: true });
-        }
-        return JSON.stringify({ error: 'Invalid action' });
+      case 'edit_code': {
+        // Extracted to playground/meph-tools.js (GM-2 step 3a). Build a
+        // MephContext that reflects /api/chat's mutable closure state and
+        // hook the onSourceChange/onErrorsChange callbacks to mirror back
+        // into _workerLastSource/_workerLastErrors for supervisor polling.
+        // _sourceBeforeEdit is captured automatically inside ctx.setSource().
+        const ctx = new MephContext({
+          source: currentSource,
+          errors: currentErrors,
+          send,
+          onSourceChange: (s) => {
+            _workerLastSource = s;
+            currentSource = s;
+            _sourceBeforeEdit = ctx.sourceBeforeEdit;
+          },
+          onErrorsChange: (e) => {
+            _workerLastErrors = e;
+            currentErrors = e;
+          },
+        });
+        const result = editCodeTool(input, ctx, compileProgram);
+        if (ctx.lastCompileResult) lastCompileResult = ctx.lastCompileResult;
+        return result;
+      }
 
       case 'compile':
         try {

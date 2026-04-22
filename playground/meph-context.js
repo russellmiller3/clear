@@ -36,6 +36,17 @@ export class MephContext {
     this.source = options.source || '';
     this.errors = options.errors || [];
 
+    // Captured source state — populated by setSource() before each write
+    // so subsequent compile/Factor-DB rows can reference what Meph edited
+    // FROM (used for source_before logging and undo).
+    this.sourceBeforeEdit = options.sourceBeforeEdit || '';
+
+    // The full compile result from the most recent compileProgram() call.
+    // Tools that need the compiled JS / Python / HTML / errors / warnings
+    // can read it here without recompiling. Updated by edit_code (write)
+    // and by compile.
+    this.lastCompileResult = options.lastCompileResult || null;
+
     // Callbacks default to no-ops so handlers can call them
     // unconditionally without null-checking.
     this.send = options.send || (() => {});
@@ -45,10 +56,13 @@ export class MephContext {
   }
 
   /**
-   * Update the editor source. Fires onSourceChange so callers like
-   * /api/chat can mirror into _workerLastSource for supervisor polling.
+   * Update the editor source. Captures the previous source into
+   * sourceBeforeEdit (so callers can log source_before for Factor DB
+   * rows or implement undo) and fires onSourceChange so /api/chat can
+   * mirror into _workerLastSource for supervisor polling.
    */
   setSource(newSource) {
+    this.sourceBeforeEdit = this.source;
     this.source = newSource;
     this.onSourceChange(newSource);
   }
@@ -59,6 +73,13 @@ export class MephContext {
   setErrors(newErrors) {
     this.errors = newErrors;
     this.onErrorsChange(newErrors);
+  }
+
+  /**
+   * Update lastCompileResult after a compile. No callback — internal cache.
+   */
+  setLastCompileResult(result) {
+    this.lastCompileResult = result;
   }
 }
 

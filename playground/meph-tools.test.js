@@ -10,7 +10,7 @@
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool, highlightCodeTool, sourceMapTool, editCodeTool } from './meph-tools.js';
 import { MephContext, createMephContext } from './meph-context.js';
 import { compileProgram } from '../index.js';
 
@@ -202,6 +202,52 @@ assert(sm2.result?.includes('Clear'),
 const sm3 = JSON.parse(sourceMapTool({ clear_line: 3 }, new MephContext({ source: helloSrc }), compileProgram));
 assert(typeof (sm3.result) === 'string',
   'sourceMapTool with clear_line returns a result string');
+
+console.log('\n✏️  editCodeTool\n');
+
+// read action
+const ec1 = JSON.parse(editCodeTool({ action: 'read' }, new MephContext({ source: 'foo bar', errors: [{ line: 1, message: 'x' }] }), compileProgram));
+assert(ec1.source === 'foo bar', 'editCodeTool read returns ctx.source');
+assert(ec1.errors.length === 1, 'editCodeTool read returns ctx.errors');
+
+// write action — mutates source via setSource (captures sourceBeforeEdit)
+let sourceChangeFired = null;
+let errorsChangeFired = null;
+const ctxWrite = new MephContext({
+  source: 'old source',
+  onSourceChange: (s) => { sourceChangeFired = s; },
+  onErrorsChange: (e) => { errorsChangeFired = e; },
+});
+const writeSrc = `build for javascript backend\nwhen user requests data from /api/x:\n  send back 'ok'`;
+const ec2 = JSON.parse(editCodeTool({ action: 'write', code: writeSrc }, ctxWrite, compileProgram));
+assert(ec2.applied === true, 'editCodeTool write returns applied=true');
+assert(Array.isArray(ec2.errors), 'editCodeTool write returns errors array from compile');
+assert(Array.isArray(ec2.warnings), 'editCodeTool write returns warnings array');
+assert(ctxWrite.source === writeSrc, 'editCodeTool write updates ctx.source');
+assert(ctxWrite.sourceBeforeEdit === 'old source',
+  'editCodeTool write captures ctx.sourceBeforeEdit (the pre-edit source)');
+assert(sourceChangeFired === writeSrc,
+  'editCodeTool write triggers onSourceChange callback');
+assert(Array.isArray(errorsChangeFired),
+  'editCodeTool write triggers onErrorsChange callback after compile');
+assert(ctxWrite.lastCompileResult !== null,
+  'editCodeTool write stores lastCompileResult on ctx');
+
+// undo action
+let undoSent = null;
+const ctxUndo = new MephContext({
+  source: 'x',
+  send: (msg) => { undoSent = msg; },
+});
+const ec3 = JSON.parse(editCodeTool({ action: 'undo' }, ctxUndo, compileProgram));
+assert(ec3.undone === true, 'editCodeTool undo returns undone=true');
+assert(undoSent && undoSent.type === 'undo',
+  'editCodeTool undo emits ctx.send({type:"undo"})');
+
+// invalid action
+const ec4 = JSON.parse(editCodeTool({ action: 'frobnicate' }, new MephContext(), compileProgram));
+assert(ec4.error?.includes('Invalid action'),
+  'editCodeTool with invalid action returns "Invalid action"');
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

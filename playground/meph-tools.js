@@ -243,6 +243,49 @@ export function highlightCodeTool(input) {
 }
 
 /**
+ * edit_code tool — read/write/undo on the editor source.
+ *
+ *   action='read'  → return current source + errors as JSON
+ *   action='write' → mutate source (via ctx.setSource which captures
+ *                    sourceBeforeEdit + fires the change callback),
+ *                    auto-compile via the passed-in compileProgram, store
+ *                    the result on ctx.lastCompileResult, return errors+warnings
+ *   action='undo'  → emit ctx.send({type:'undo'}) so the editor undoes
+ *                    client-side
+ *
+ * Uses MephContext for source state so /api/chat can mirror into
+ * _workerLastSource via the onSourceChange callback. compileProgram is
+ * passed in to keep meph-tools.js tree-shakable for callers that don't
+ * need the full Clear compiler.
+ *
+ * @param {object} input - { action, code? }
+ * @param {MephContext} ctx
+ * @param {function} compileProgram - the Clear compiler entry point
+ * @returns {string} JSON-stringified result
+ */
+export function editCodeTool(input, ctx, compileProgram) {
+  if (input.action === 'read') {
+    return JSON.stringify({ source: ctx.source, errors: ctx.errors });
+  }
+  if (input.action === 'write') {
+    ctx.setSource(input.code);  // captures sourceBeforeEdit + fires onSourceChange
+    try {
+      const r = compileProgram(input.code);
+      ctx.setErrors(r.errors);
+      ctx.setLastCompileResult(r);
+      return JSON.stringify({ applied: true, errors: r.errors, warnings: r.warnings });
+    } catch (err) {
+      return JSON.stringify({ applied: true, compileError: err.message });
+    }
+  }
+  if (input.action === 'undo') {
+    ctx.send({ type: 'undo' });
+    return JSON.stringify({ undone: true });
+  }
+  return JSON.stringify({ error: 'Invalid action' });
+}
+
+/**
  * source_map tool — given current Clear source, compile it with the source
  * map flag and return either the full mapping or just the compiled lines
  * for one Clear line (when input.clear_line is set).
