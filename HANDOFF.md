@@ -48,8 +48,18 @@ Failure cliff at L3 isn't surprising — L1-L2 are single-endpoint apps; L3+ int
 - **Phase 8 drift-guard (`de6bf71`)** — pins the MCP server's `buildMephContext` wiring for run_app/http_request/stop_app. TDD'd red-first by checking out `595f9267~1 -- tools.js` (5 failures with "ctx.allocatePort() returned null"), then restored (151/151 green). Next time someone refactors MCP's context builder they'll see the guard fire before the failure surfaces on a live cc-agent sweep.
 - **run_tests side-effect move (`8239829`)** — closes the cross-path bug class the new project rule warned about. httpRequestTool moved earlier; runTestsTool now follows the same pattern. Studio UI (`sessionTestCalls` push) stays in server.js because it's not a training signal.
 - **session_id stability (`e88500e`)** — buildMephContext was recomputing the fallback id per tool call (Date.now() per dispatch). Now module-scoped so one MCP subprocess = one session_id. Caught during L3 counter diagnostic (3 compile rows in ~85s with 3 different ids). Phase 9 drift-guard pins the invariant.
-- **L3 counter diagnostic — partial findings (not fixed):** Single-task sweep produced 3 clean-compile rows, 0 passing. Meph's last source looks conceptually right (Counter table + 3 endpoints w/ state mutation). Open questions: did Meph call `run_app`+`http_request`? Did the compiled app runtime-error on the `row's value = new_count; save row to Counters` mutation pattern? `GHOST_MEPH_CC_DEBUG=1` didn't update `tmpdir()/ghost-meph-last-stream.ndjson` during the sweep (file stamp older than the run), so next tick needs a different diagnostic — either re-run and check whether cc-agent.js's debug hook fires through the sweep's worker subprocess, or inspect the compiled server.js from row 1609 directly.
-- **Test totals:** 2097 compiler + 270 meph-tools + 153 mcp-server green (+2 this tick). Pre-existing 17 server.test.js failures unchanged.
+- **L3 counter ROOT CAUSE FOUND + FIXED (`06913c0`).** Compiled Meph's row-1609 source directly (`node cli/clear.js build` + spawn + curl the 5 curriculum tests) — POST /reset + POST /increment returned 500 `"_ is not defined"`. The culprit: `save { value: 1 } to Counters` parsed as `node.variable='{'`, which sanitizeName turned into `_`, which the compiler emitted as `db.update('values', _pick(_, valueSchema))`. Undefined `_` at runtime → ReferenceError → 500. BUT compile_ok=1 so the flywheel logged it as "Meph wrote clean code" — the worst kind of silent failure. Fixed in parseSave: reject LBRACE/LBRACKET/STRING/NUMBER at tokens[1] with a helpful error pointing Meph to the assign-then-save pattern. 3 regression tests pin the rejection + confirm the canonical form still works. All 8 core templates still compile clean.
+- **Test totals:** 2100 compiler + 270 meph-tools + 153 mcp-server green (+5 this tick: 3 parser regressions, 1 session_id drift-guard, 1 Phase 8 run_app lifecycle). Pre-existing 17 server.test.js failures unchanged.
+
+## Expected impact of `06913c0` on next L3+ sweep
+
+The `save { ... } to X` trap was ONE of the ways Meph could produce compile_ok=1 + runtime-broken code. With parse-time rejection:
+1. Meph hits the new error "Assign it to a variable first" on his first attempt
+2. Factor DB records compile_ok=0 + the error message as a proper failure signal (not a false positive)
+3. Meph rewrites as `new_entry = {...}; save new_entry to X` — the pattern counter.clear already uses in the repo
+4. Expected: next L3 sweep goes 4/4 or close. Worth re-running `node playground/supervisor/curriculum-sweep.js --tasks=counter,key-value-store,todo-crud,bookmark-manager --workers=1 --timeout=300 --strict` to confirm.
+
+This is also a prototype for the broader pattern: when a curriculum-sweep failure is systemic, the fix is almost always "parse-time reject the anti-pattern with an instructive error," not "teach Meph more in the system prompt." The error message travels with every future compile; the system prompt only fires at turn start.
 
 ## What Was Done This Session
 
