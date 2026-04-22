@@ -1664,6 +1664,24 @@ window.addEventListener('message', (e) => {
           ts: e.data.ts || Date.now(),
         }),
       }).catch(() => {});
+      // BM-4: in builder mode, ALSO prefill chat input on a click so the
+      // user can describe what to change about that element without typing
+      // out what it is. Skip if user has already typed something (don't
+      // stomp in-progress prompts) and skip non-click actions.
+      if (
+        e.data.action === 'click' &&
+        document.body.classList.contains('builder-mode')
+      ) {
+        const input = document.getElementById('chat-input');
+        if (input && !input.value.trim()) {
+          const label = (e.data.text || '').trim().slice(0, 60) || e.data.selector || 'this element';
+          const quoted = e.data.text ? `"${label}"` : label;
+          input.value = `Change the ${quoted} ${e.data.text ? 'button/link' : 'element'} — `;
+          input.focus();
+          // Place cursor at end so user types after the prompt prefix
+          try { input.selectionStart = input.selectionEnd = input.value.length; } catch (e2) {}
+        }
+      }
     }
     if (e.data.type === 'bridge-ready') {
       // Clear the previous session's actions when the bridge connects
@@ -3159,6 +3177,12 @@ window.doDeploy = async function() {
         const url = s.result?.url || `https://${s.result?.appName || 'app'}.fly.dev`;
         progress.innerHTML = `<div style="margin-top:12px">Live: <a href="${url}" target="_blank">${escHtmlLocal(url)}</a>
           <button onclick="navigator.clipboard.writeText('${url}')">Copy</button></div>`;
+        // BM-3 full: count successful Publishes. After 3 ships, the next page load
+        // in builder mode auto-hides the source editor.
+        try {
+          const cur = parseInt(localStorage.getItem('clear-bm-ships-counter') || '0', 10) || 0;
+          localStorage.setItem('clear-bm-ships-counter', String(cur + 1));
+        } catch (e) { /* private browsing — counter resets each session, harmless */ }
         if (domain) {
           fetch('/api/custom-domain', {
             method: 'POST',
@@ -4961,11 +4985,24 @@ function detectStudioMode() {
   // 7. Apply class
   body.classList.toggle('builder-mode', mode === 'builder');
 
-  // 8. Show/hide Source toggle button based on mode; reset show-source on exit
+  // 8. Show/hide Source toggle button based on mode; reset show-source on exit.
+  // BM-3 full: counter-based auto-hide. First 3 successful Publishes the
+  // source defaults visible (helps new users learn what Clear looks like).
+  // After ship #3, source defaults hidden — they've seen enough.
   const srcBtn = document.getElementById('source-toggle-btn');
   if (srcBtn) {
     srcBtn.style.display = (mode === 'builder') ? '' : 'none';
     if (mode !== 'builder') body.classList.remove('show-source');
+  }
+  if (mode === 'builder') {
+    let shipCount = 0;
+    try { shipCount = parseInt(localStorage.getItem('clear-bm-ships-counter') || '0', 10) || 0; }
+    catch (e) { /* private browsing — treat as 0, source defaults visible */ }
+    if (shipCount < 3) {
+      body.classList.add('show-source');
+    } else {
+      body.classList.remove('show-source');
+    }
   }
 
   // 9. Rebrand Deploy button as Publish in builder mode
