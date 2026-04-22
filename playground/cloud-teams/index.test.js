@@ -103,6 +103,14 @@ function makeMockDb() {
         i.accepted_by = userId;
         return { rows: [i], rowCount: 1 };
       }
+      if (/^UPDATE team_invites SET revoked_at/i.test(t)) {
+        const [id] = params;
+        const i = invites.find(x =>
+          x.id === id && x.accepted_at === null && x.revoked_at === null);
+        if (!i) return { rows: [], rowCount: 0 };
+        i.revoked_at = new Date();
+        return { rows: [i], rowCount: 1 };
+      }
       if (/SELECT t\.\*, tm\.role AS my_role/i.test(t)) {
         const [userId] = params;
         const list = [];
@@ -394,6 +402,38 @@ console.log('\n✅ acceptInvite — single-use + adds member\n');
   catch (err) { threw = err.message; }
   assert(threw && threw.toLowerCase().includes('invalid'),
     `expired token rejected (got "${threw}")`);
+}
+
+// ─── TDD cycle 11: revokeInvite cancels a pending invite ─────────────────
+console.log('\n🗑  revokeInvite\n');
+
+{
+  const { createTeam, createInvite, revokeInvite, acceptInvite } = await import('./index.js');
+  const db = makeMockDb();
+  const team = await createTeam(db, { slug: 'acme', name: 'Acme', ownerUserId: 1 });
+  const invite = await createInvite(db, {
+    teamId: team.id, email: 'changed-our-mind@example.com', invitedBy: 1,
+  });
+
+  const ok = await revokeInvite(db, invite.id);
+  assert(ok === true, 'revokeInvite returns true on success');
+
+  // Revoked invite can no longer be accepted
+  let threw;
+  try { await acceptInvite(db, invite.token, 42); }
+  catch (err) { threw = err.message; }
+  assert(threw && threw.toLowerCase().includes('invalid'),
+    `revoked invite → acceptInvite rejects (got "${threw}")`);
+
+  // Second revoke → false (idempotent — don't throw on no-op)
+  const second = await revokeInvite(db, invite.id);
+  assert(second === false,
+    `second revoke returns false — idempotent (got ${second})`);
+
+  // Revoking non-existent invite returns false, not a throw
+  const ghost = await revokeInvite(db, 99999);
+  assert(ghost === false,
+    `revoking a non-existent invite returns false (got ${ghost})`);
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

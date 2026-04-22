@@ -200,6 +200,22 @@ export async function createInvite(db, input) {
  * Throws "Invalid invite token." for ALL failure modes so callers don't
  * leak which invites exist vs. which are expired.
  */
+
+/**
+ * Revoke a pending invite (admin cancels it before it's accepted).
+ * Soft-delete: sets revoked_at. Idempotent — returns false on already-
+ * revoked or non-existent invites, doesn't throw. Revoked invites
+ * remain in the DB for audit trail ("who revoked whose invite when").
+ */
+export async function revokeInvite(db, inviteId) {
+  const { rowCount } = await db.query(
+    `UPDATE team_invites SET revoked_at = NOW()
+     WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL`,
+    [inviteId]
+  );
+  return rowCount > 0;
+}
+
 export async function acceptInvite(db, token, acceptingUserId) {
   if (!token || typeof token !== 'string') throw new Error('Invalid invite token.');
   const { rows } = await db.query(
