@@ -72,7 +72,7 @@ function assert(cond, msg) {
   // =========================================================================
   console.log('\n🔧 Phase 3 — tools/call dispatch');
 
-  // Valid call
+  // Valid call — README.md isn't in the readable allowlist, expect that error
   const call1 = await dispatch({
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: 'meph_read_file', arguments: { filename: 'README.md' } },
@@ -80,10 +80,27 @@ function assert(cond, msg) {
   assert(call1.result.content !== undefined, 'tools/call returns content array');
   assert(Array.isArray(call1.result.content) && call1.result.content[0].type === 'text',
     'content[0] is text type');
-  assert(call1.result.content[0].text.includes('not yet wired'),
-    'stub handler returns the not-yet-wired message');
-  assert(call1.result.content[0].text.includes('README.md'),
-    'stub handler echoes the filename argument');
+  // GM-2 step 3a: meph_read_file is now wired to the real readFileTool
+  // implementation. README.md is NOT in the allowlist, so we expect an error.
+  const text1 = call1.result.content[0].text;
+  assert(text1.includes('Can only read'),
+    'meph_read_file rejects non-allowlisted filename with the same error /api/chat would return');
+
+  // Real allowed read — SYNTAX.md is in the allowlist
+  const call1b = await dispatch({
+    jsonrpc: '2.0', id: 31, method: 'tools/call',
+    params: { name: 'meph_read_file', arguments: { filename: 'SYNTAX.md' } },
+  }, registry);
+  const text1b = call1b.result.content[0].text;
+  // Result is the JSON-stringified tool output — parse and inspect
+  const parsed = JSON.parse(text1b);
+  assert(parsed.filename === 'SYNTAX.md',
+    'meph_read_file returns filename for an allowed file');
+  assert(typeof parsed.totalLines === 'number' && parsed.totalLines > 0,
+    `meph_read_file returns totalLines (got ${parsed.totalLines})`);
+  // SYNTAX.md is large → expect TOC mode rather than full content
+  assert(parsed.mode === 'toc' || typeof parsed.content === 'string',
+    'meph_read_file returns either toc mode or content string depending on file size');
 
   // Invalid args (missing required field)
   const call2 = await dispatch({
@@ -132,8 +149,10 @@ function assert(cond, msg) {
       'subprocess initialize response correct');
     assert(r2.id === 2 && Array.isArray(r2.result.tools) && r2.result.tools.length >= 2,
       'subprocess tools/list response correct');
-    assert(r3.id === 3 && r3.result.content[0].text.includes('not yet wired'),
-      'subprocess tools/call response correct');
+    // r3 is the meph_read_file call with README.md (not in allowlist) — should
+    // come back with the allowlist error from the now-real handler.
+    assert(r3.id === 3 && r3.result.content[0].text.includes('Can only read'),
+      'subprocess tools/call response correct (real readFileTool, README.md rejected)');
   }
 
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

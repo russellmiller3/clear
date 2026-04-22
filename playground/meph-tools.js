@@ -1,27 +1,31 @@
 /*
- * Meph tool helpers — pure functions extracted from playground/server.js.
+ * Meph tool helpers — extracted from playground/server.js.
  *
- * GM-2 step 2 of `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`:
- * the cc-agent tool-use upgrade needs an MCP server exposing Meph's 8
- * tools. Both /api/chat AND the future MCP server need the same input
- * validation and the same human-readable tool-call descriptions.
- * Extracting the pure helpers now unblocks the MCP server work without
- * touching the much larger stateful `executeTool` function (which lives
- * inside /api/chat's request closure and accesses ~12 closure vars —
- * that extraction is its own follow-up step).
+ * GM-2 of `plans/plan-ghost-meph-cc-agent-tool-use-04-21-2026.md`: the
+ * cc-agent tool-use upgrade needs an MCP server exposing Meph's 8 tools.
+ * Both /api/chat AND the MCP server need the same validation, the same
+ * descriptions, and the same tool implementations. Each tool that doesn't
+ * touch /api/chat's stateful closure (Factor DB, sessionId, send, etc.)
+ * gets ported here as a standalone function; tools that DO need closure
+ * state stay inline pending the MephContext refactor.
  *
  * Exports:
- *   - `validateToolInput(name, input)` — runtime schema validation. Returns
- *     null on valid input, error string on invalid. Anthropic's tool schemas
- *     are advisory; Meph can send malformed JSON (missing required fields,
- *     wrong types, invented keys) and this catches it BEFORE the tool runs
- *     so we return a teaching error instead of a stack trace.
- *   - `describeMephTool(name, input)` — one-line human-readable summary of a
- *     tool call. Used by /api/chat's `[meph]` terminal mirror line so the
- *     user can watch what Meph is doing in real time.
+ *   - `validateToolInput(name, input)` — runtime schema validation. Pure.
+ *   - `describeMephTool(name, input)` — one-line human-readable tool call
+ *     summary for the `[meph]` terminal mirror line. Pure.
+ *   - `readFileTool(input, ctx)` — read a docs file from the repo root.
+ *     Stateless except for ctx.rootDir. Used by both /api/chat read_file
+ *     case and the MCP server's meph_read_file handler.
  *
- * No state, no I/O — both functions are referentially transparent.
+ * Tool ports still pending (need the MephContext refactor):
+ *   edit_code, compile, run_command, run_app, stop_app, http_request,
+ *   write_file, run_tests, patch_code, edit_file, click_element,
+ *   fill_input, browse_templates, screenshot_output, db_inspect, etc.
+ *   See plan step 2-3 followups.
  */
+
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 
 /**
  * Runtime schema validation for Meph's tool inputs.
@@ -162,4 +166,60 @@ export function describeMephTool(name, input) {
     case 'todo': return `todo (${input.action || 'set'})`;
     default: return name;
   }
+}
+
+/**
+ * read_file tool — reads a doc file from the repo root.
+ *
+ * Why this is the FIRST stateful tool to port: it has the simplest closure
+ * contact surface (just a single ROOT_DIR constant). Everything else is
+ * file I/O and string handling. Establishes the pattern for porting the
+ * other 7 tools as they each get freed from /api/chat's closure.
+ *
+ * Behavior matches the inline `case 'read_file':` in playground/server.js
+ * exactly — same READABLE allowlist, same start/end-line slicing, same
+ * <800-line full-content vs >=800-line TOC fallback. Returns a STRING
+ * (the JSON-stringified result), matching the existing tool-result
+ * convention so /api/chat's loop is byte-for-byte unchanged.
+ *
+ * @param {object} input - { filename, startLine?, endLine? }
+ * @param {object} ctx - { rootDir } - absolute path to the repo root
+ * @returns {string} JSON-stringified tool result
+ */
+export function readFileTool(input, ctx) {
+  const READABLE = ['SYNTAX.md', 'AI-INSTRUCTIONS.md', 'PHILOSOPHY.md', 'USER-GUIDE.md', 'requests.md', 'meph-memory.md'];
+  const fname = input.filename;
+  if (!READABLE.includes(fname)) return JSON.stringify({ error: `Can only read: ${READABLE.join(', ')}` });
+  const fpath = join(ctx.rootDir, fname);
+  if (!existsSync(fpath)) return JSON.stringify({ error: `File not found: ${fname}` });
+  const lines = readFileSync(fpath, 'utf8').split('\n');
+
+  // Line-range mode: return specific section
+  if (input.startLine && input.endLine) {
+    const start = Math.max(1, input.startLine) - 1;
+    const end = Math.min(lines.length, input.endLine);
+    const section = lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join('\n');
+    return JSON.stringify({ filename: fname, lines: `${start + 1}-${end}`, totalLines: lines.length, content: section });
+  }
+
+  // Small files (<800 lines): return in full
+  const SMALL_THRESHOLD = 800;
+  if (lines.length < SMALL_THRESHOLD) {
+    return JSON.stringify({ filename: fname, totalLines: lines.length, content: lines.join('\n') });
+  }
+
+  // Large files: return TOC (headings with line numbers)
+  const toc = [];
+  lines.forEach((line, i) => {
+    if (line.startsWith('## ') || line.startsWith('### ') || line.startsWith('# ')) {
+      toc.push(`${i + 1}: ${line}`);
+    }
+  });
+  return JSON.stringify({
+    filename: fname,
+    totalLines: lines.length,
+    mode: 'toc',
+    hint: 'Large file. Use startLine/endLine to read specific sections.',
+    toc: toc.join('\n'),
+  });
 }

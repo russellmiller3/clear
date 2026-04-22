@@ -29,7 +29,7 @@ let _pairwiseBundle = null;
 import { createEditApi } from '../lib/edit-api.js';
 import { callMeph } from '../lib/meph-adapter.js';
 import { isGhostMephActive, fetchViaBackend, getBackendId } from './ghost-meph/router.js';
-import { validateToolInput, describeMephTool } from './meph-tools.js';
+import { validateToolInput, describeMephTool, readFileTool } from './meph-tools.js';
 import {
   takeSnapshot as _takeSnapshot,
   listSnapshots as _listSnapshots,
@@ -3147,43 +3147,11 @@ app.post('/api/chat', async (req, res) => {
         if (runningChild) { try { runningChild.kill('SIGTERM'); } catch {} runningChild = null; }
         return JSON.stringify({ stopped: true });
 
-      case 'read_file': {
-        const READABLE = ['SYNTAX.md', 'AI-INSTRUCTIONS.md', 'PHILOSOPHY.md', 'USER-GUIDE.md', 'requests.md', 'meph-memory.md'];
-        const fname = input.filename;
-        if (!READABLE.includes(fname)) return JSON.stringify({ error: `Can only read: ${READABLE.join(', ')}` });
-        const fpath = join(ROOT_DIR, fname);
-        if (!existsSync(fpath)) return JSON.stringify({ error: `File not found: ${fname}` });
-        const lines = readFileSync(fpath, 'utf8').split('\n');
-
-        // Line-range mode: return specific section
-        if (input.startLine && input.endLine) {
-          const start = Math.max(1, input.startLine) - 1;
-          const end = Math.min(lines.length, input.endLine);
-          const section = lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join('\n');
-          return JSON.stringify({ filename: fname, lines: `${start+1}-${end}`, totalLines: lines.length, content: section });
-        }
-
-        // Small files (<800 lines): return in full
-        const SMALL_THRESHOLD = 800;
-        if (lines.length < SMALL_THRESHOLD) {
-          return JSON.stringify({ filename: fname, totalLines: lines.length, content: lines.join('\n') });
-        }
-
-        // Large files: return TOC (headings with line numbers)
-        const toc = [];
-        lines.forEach((line, i) => {
-          if (line.startsWith('## ') || line.startsWith('### ') || line.startsWith('# ')) {
-            toc.push(`${i + 1}: ${line}`);
-          }
-        });
-        return JSON.stringify({
-          filename: fname,
-          totalLines: lines.length,
-          mode: 'toc',
-          hint: 'Large file. Use startLine/endLine to read specific sections.',
-          toc: toc.join('\n'),
-        });
-      }
+      case 'read_file':
+        // Extracted to playground/meph-tools.js so the MCP server's
+        // meph_read_file handler can share the implementation. See
+        // GM-2 step 3a in plan-ghost-meph-cc-agent-tool-use-04-21-2026.md.
+        return readFileTool(input, { rootDir: ROOT_DIR });
 
       case 'edit_file': {
         // Restrict to safe extensions in project root only — no path traversal
