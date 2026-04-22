@@ -26,6 +26,23 @@ This session fixed 4 bugs in a row that were each silently gating the previous u
 
 **New project rule** (in `CLAUDE.md`): "Cross-Path Tool Side-Effects Belong IN The Tool" — documents the trap so the next Meph-adjacent tool gets built right.
 
+## 8-task stress test result
+
+Ran the same config with 8 tasks L1-L4 (hello-world, greeting, echo, calculator, counter, key-value-store, todo-crud, bookmark-manager) against 3 workers:
+
+  - **4/8 passed under strict grading** (hello-world, greeting, echo, calculator — all L1-L2)
+  - **Factor DB: +6 rows, +4 passing rows** — the flywheel is filling with real training data
+  - $0 API cost
+  - **L3-L4 failures** (counter, key-value-store, todo-crud, bookmark-manager) are the honest signal we need. These are the rows the re-ranker should learn from.
+
+Failure cliff at L3 isn't surprising — L1-L2 are single-endpoint apps; L3+ introduce state, CRUD, multi-route. If the system prompt or compiler has gaps around those archetypes, the fix loop will surface them.
+
+## Known follow-ups (still open)
+
+- **`run_tests` side-effect also lives in server.js:3114–3134.** Same bug class as http_request before we moved it. Currently harmless — curriculum skeletons don't include `test` blocks so Meph can't call run_tests usefully during sweeps — but fix next time the surface grows. The new project rule ("side-effects belong IN the tool") points at it.
+- **`MEPH_SESSION_ID` isn't exported by `/api/chat`.** cc-agent.js would propagate it to the MCP child, but nobody sets it. Rows get `session_id = mcp_<pid>_<timestamp>`. Sweep grader uses `created_at` window instead, so it's non-blocking. Fix when we want cross-session joins in Factor DB queries.
+- **L3+ task success rate.** 0/4 in this run (counter, key-value-store, todo-crud, bookmark-manager). Worth a specific failure diagnostic — what archetypes, what errors Meph hit, what hints would help — before the next overnight sweep. `node playground/supervisor/curriculum-sweep.js --tasks=counter --workers=1 --timeout=300 --strict` with `GHOST_MEPH_CC_DEBUG=1` dumps the tool stream.
+
 ## What Was Done This Session
 
 Two major bodies of work shipped from separate branches, both green at merge:
