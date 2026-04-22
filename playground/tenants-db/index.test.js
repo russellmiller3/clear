@@ -9,7 +9,7 @@
 // Run: node playground/tenants-db/index.test.js
 // =============================================================================
 
-import { loadMigration001, getPool, _resetPool } from './index.js';
+import { loadMigration001, loadMigration002, getPool, _resetPool } from './index.js';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -79,6 +79,31 @@ console.log('\n🔌 getPool — error paths\n');
   if (origUrl === undefined) delete process.env.DATABASE_URL;
   else process.env.DATABASE_URL = origUrl;
   await _resetPool();
+}
+
+// =============================================================================
+// CC-2d — Migration 002 adds apps.team_id for app ownership
+// =============================================================================
+// Each deployed Clear app belongs to a team (team_members → access control
+// for deploy/edit/view operations). tenants.id is the BILLING boundary;
+// team_id is the COLLABORATION boundary. Nullable at schema-add time so
+// existing pre-launch rows don't break the migration — a future backfill
+// + NOT NULL CHECK locks it down once CC-2d's app-layer enforcement ships.
+console.log('\n📄 loadMigration002 (CC-2d — apps.team_id)\n');
+
+{
+  const sql = loadMigration002();
+  assert(typeof sql === 'string' && sql.length > 50,
+    `returns the migration SQL as a string (${sql.length} bytes)`);
+  // Adds team_id column
+  assert(/alter\s+table\s+(if\s+exists\s+)?apps\s+add\s+column\s+(if\s+not\s+exists\s+)?team_id/i.test(sql),
+    'migration adds team_id column to apps table');
+  // References teams(id) for FK — relies on cloud-teams migration having run
+  assert(/references\s+teams\s*\(\s*id\s*\)/i.test(sql),
+    'team_id is a foreign key referencing teams(id)');
+  // Index for the common "apps I can access" query
+  assert(/create\s+index\s+(if\s+not\s+exists\s+)?\S*team_id/i.test(sql),
+    'migration creates an index on apps.team_id');
 }
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);

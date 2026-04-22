@@ -30,6 +30,10 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATION_001_PATH = join(__dirname, 'migrations', '001-tenants.sql');
+// CC-2d — adds apps.team_id so apps are owned by a team (→ access control
+// via cloud-teams/team_members). Depends on cloud-teams migration 001
+// having run first (creates the teams table this FK references).
+const MIGRATION_002_PATH = join(__dirname, 'migrations', '002-apps-team-ownership.sql');
 
 let _pool = null;
 
@@ -84,12 +88,32 @@ export function loadMigration001() {
 }
 
 /**
+ * CC-2d migration: adds apps.team_id + an index. Run AFTER 001-tenants
+ * (creates apps) AND cloud-teams/migrations/001-teams.sql (creates teams
+ * so the FK resolves). Idempotent via IF EXISTS / IF NOT EXISTS clauses.
+ */
+export function loadMigration002() {
+  return readFileSync(MIGRATION_002_PATH, 'utf8');
+}
+
+/**
  * Apply the migration against the pool. Idempotent — the SQL uses
  * CREATE ... IF NOT EXISTS everywhere.
  */
 export async function applyMigration001() {
   const pool = await getPool();
   const sql = loadMigration001();
+  await pool.query(sql);
+}
+
+/**
+ * Apply migration 002 (CC-2d app ownership column). Same pool/idempotent
+ * contract as applyMigration001. Depends on 001-teams.sql from the
+ * cloud-teams module having already applied.
+ */
+export async function applyMigration002() {
+  const pool = await getPool();
+  const sql = loadMigration002();
   await pool.query(sql);
 }
 
