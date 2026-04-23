@@ -2494,7 +2494,7 @@ Workflow directives (before steps):
 - `state has:` — define state shape with types and defaults
 - `save progress to TableName table` — DB checkpoint at each step
 - `track workflow progress` — state history array
-- `runs on temporal` — compile to Temporal.io workflow
+- `runs durably` — durable workflow engine (Temporal SDK on Node target, Cloudflare Workflows on `--target cloudflare`). `runs on temporal` is a legacy synonym.
 
 Invoke with: `result = run workflow 'Content Pipeline' with data`
 

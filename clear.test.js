@@ -19902,6 +19902,20 @@ describe('Workflow durable execution - parser', () => {
     const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
     expect(wf.runsOnTemporal).toBe(true);
   });
+
+  it('parses runs durably — vendor-neutral canonical form', () => {
+    const src = `workflow 'Onboarding' with state:
+  runs durably
+  state has:
+    user_id, required
+  step 'Welcome' with 'Welcome Agent'`;
+    const ast = parse(src);
+    expect(ast.errors).toHaveLength(0);
+    const wf = ast.body.find(n => n.type === NodeType.WORKFLOW);
+    // Same AST flag so downstream compile paths don't need renaming.
+    // `runs on temporal` stays as a legacy synonym for source-level compatibility.
+    expect(wf.runsOnTemporal).toBe(true);
+  });
 });
 
 describe('Workflow durable execution - compiler', () => {

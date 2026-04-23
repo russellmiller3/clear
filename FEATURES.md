@@ -222,7 +222,7 @@ All compile to direct REST `fetch()` calls. No SDK required.
 | Conditional step | `if state's field is value:` + steps | |
 | Repeat until | `repeat until condition, max N times:` + steps | |
 | Parallel steps | `at the same time:` + steps | |
-| Durable execution | `runs on temporal` | Temporal.io |
+| Durable execution | `runs durably` (canonical) / `runs on temporal` (legacy) | Temporal SDK on Node, Cloudflare Workflows on `--target cloudflare` |
 | Progress tracking | `track workflow progress` | State history |
 | Checkpoint | `save progress to Table` | DB persistence |
 | Run workflow | `result = run workflow 'Name' with data` | |

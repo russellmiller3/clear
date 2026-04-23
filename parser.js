@@ -3902,7 +3902,14 @@ function parseWorkflow(lines, startIdx, blockIndent, errors) {
       continue;
     }
 
-    // runs on temporal
+    // runs durably (canonical — vendor-neutral, describes the property not
+    // the backend) and runs on temporal (legacy synonym kept so existing .clear
+    // sources don't break). Both set the same AST flag; the compiler selects
+    // Temporal SDK or Cloudflare Workflows at emit time based on ctx.target.
+    if (dTokens[0].value === 'runs' && dTokens.length >= 2 &&
+        dTokens[1].value === 'durably') {
+      directives.runsOnTemporal = true; bodyStartIdx++; continue;
+    }
     if (dTokens[0].value === 'runs' && dTokens.length >= 3 &&
         dTokens[1].value === 'on' && dTokens[2].value === 'temporal') {
       directives.runsOnTemporal = true; bodyStartIdx++; continue;

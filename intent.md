@@ -326,7 +326,7 @@ Workflow directives (metadata on WORKFLOW node):
 | Directive | What it does |
 |-----------|-------------|
 | `state has:` + fields | Define workflow state shape with types and defaults |
-| `runs on temporal` | Compile to Temporal.io workflow + activities |
+| `runs durably` (canonical) / `runs on temporal` (legacy) | Durable workflow — emits Temporal SDK on Node target, Cloudflare Workflows on `--target cloudflare` |
 | `save progress to TableName table` | DB checkpoint at each step |
 | `track workflow progress` | State history array logged after each step |
 

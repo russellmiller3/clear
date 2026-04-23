@@ -2647,15 +2647,22 @@ workflow 'Onboarding' with state:
   step 'Profile' with 'Profile Agent'
 ```
 
-### Durable Execution (Temporal.io)
+### Durable Execution (external engine)
 ```clear
 workflow 'Onboarding' with state:
-  runs on temporal
+  runs durably
   state has:
     user_id, required
   step 'Welcome' with 'Welcome Agent'
   step 'Profile' with 'Profile Agent'
 ```
+
+`runs durably` is the canonical, vendor-neutral form. The compiler picks the
+backend at emit time based on `--target`:
+- Node / default → Temporal SDK
+- `--target cloudflare` → Cloudflare Workflows
+
+`runs on temporal` is a legacy synonym that still parses to the same AST flag.
 
 ### Workflow Observability
 ```clear
