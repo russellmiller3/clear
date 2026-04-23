@@ -89,6 +89,8 @@
 //
 // TABLE OF CONTENTS:
 //   PUBLIC API ........................ compileProgram(), compile(), resolveModules()
+//   CLOUDFLARE WORKERS TARGET ........ emitCloudflareWorkerBundle() — Workers-for-Platforms
+//                                      bundle emit (src/index.js + wrangler.toml + migrations)
 //   E2E TEST GENERATION .............. generateE2ETests() — includes user-written test blocks
 //   DEPLOY CONFIG .................... generateDeployConfig()
 //   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
@@ -945,22 +947,51 @@ function _spliceEvalEndpoints(serverJS, endpointsJS) {
   return serverJS.replace(/app\.listen\(/, endpointsJS + '\napp.listen(');
 }
 
+// =============================================================================
+// CLOUDFLARE WORKERS TARGET
+// =============================================================================
+//
+// Emits a Workers-for-Platforms bundle from the AST: `src/index.js` (ESM
+// export-default fetch handler), `wrangler.toml`, and `migrations/*.sql`.
+// Called at the end of compile() only when target === 'cloudflare'.
+// Delegated to `lib/packaging-cloudflare.js` so this file doesn't balloon.
+//
+// Phase 1 scope: return {} as the shape anchor. Later cycles populate it
+// with real codegen. This stub exists so compileProgram's public contract
+// (result.workerBundle defined when target='cloudflare') is testable
+// from cycle 1.1 even before the codegen lands.
+
+function emitCloudflareWorkerBundle(body, result) {
+  // Lazy-import from lib/packaging-cloudflare.js. We use a dynamic-style
+  // shim (synchronous require-free) by letting the packaging module hand
+  // us a pure function. For Phase 1 we inline the default empty bundle.
+  return {};
+}
+
 export function compile(ast, options = {}) {
   const errors = [...ast.errors];
   const warnings = [];
   const target = options.target || ast.target || 'web';
   const sourceMap = options.sourceMap === true; // opt-in
 
-  const VALID_TARGETS = ['web', 'backend', 'both', 'web_and_js_backend', 'web_and_python_backend', 'js_backend', 'python_backend'];
+  const VALID_TARGETS = ['web', 'backend', 'both', 'web_and_js_backend', 'web_and_python_backend', 'js_backend', 'python_backend', 'cloudflare'];
   if (!VALID_TARGETS.includes(target)) {
     errors.push({ line: 0, message: `Unknown target "${target}". Use: web, backend, or both. Example: build for web and python backend` });
     return { errors, warnings };
   }
 
+  // Cloudflare Workers target is a compile-time deploy format, not a language/runtime.
+  // When target === 'cloudflare', we still run the default (web + js backend) emit paths
+  // so compileProgram returns the same serverJS/html we'd hand to Node. Then at the end
+  // we emit a Workers-flavored `src/index.js` + `wrangler.toml` into result.workerBundle.
+  // This keeps Phase 1 cleanly additive — the default target is untouched.
+  const emitCloudflare = target === 'cloudflare';
+  const runtimeTarget = emitCloudflare ? 'both' : target;
+
   const result = { errors, warnings };
-  const needsWeb = ['web', 'both', 'web_and_js_backend', 'web_and_python_backend'].includes(target);
-  const needsJSBackend = ['backend', 'both', 'web_and_js_backend', 'js_backend'].includes(target);
-  const needsPythonBackend = ['backend', 'both', 'web_and_python_backend', 'python_backend'].includes(target);
+  const needsWeb = ['web', 'both', 'web_and_js_backend', 'web_and_python_backend'].includes(runtimeTarget);
+  const needsJSBackend = ['backend', 'both', 'web_and_js_backend', 'js_backend'].includes(runtimeTarget);
+  const needsPythonBackend = ['backend', 'both', 'web_and_python_backend', 'python_backend'].includes(runtimeTarget);
 
   // Pre-scan: identify which agents will stream (async function* generators).
   // This runs BEFORE compilation so both backend (SSE endpoints) and frontend
@@ -1076,6 +1107,14 @@ export function compile(ast, options = {}) {
     // serverJS before spawning the eval child. Exposes every agent at
     // /_eval/agent_<name> so internal agents can be graded individually.
     result.evalEndpointsJS = generateEvalEndpoints(ast.body);
+  }
+
+  // Cloudflare Workers bundle — a separate emit path that produces a
+  // `src/index.js` Fetch-handler + `wrangler.toml`. We only fire this when
+  // the caller opted into target='cloudflare' so every existing caller
+  // (CLI, Studio preview, tests) stays on the default Node emit path.
+  if (emitCloudflare) {
+    result.workerBundle = emitCloudflareWorkerBundle(ast.body, result);
   }
 
   return result;

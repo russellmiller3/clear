@@ -23942,5 +23942,8 @@ await import('./lib/snapshot.test.js');
 await import('./lib/widget-injection.test.js');
 await import('./lib/owner-decl.test.js');
 
+// Cloudflare Workers for Platforms target — Phase 1
+await import('./lib/packaging-cloudflare.test.js');
+
 run();
 
