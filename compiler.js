@@ -1359,28 +1359,47 @@ function compileToCloudflareWorker(body, result, opts = {}) {
           // File knowledge — read at COMPILE time (Studio runs on Node), escape,
           // and inline as a module-scope string constant. The Worker sees only
           // the text: no fs, no pdf-parse, no mammoth, zero Node-isms at runtime.
-          // Format table (.txt/.md here; .pdf/.docx in cycle 4.4):
+          //
+          // For .pdf/.docx the caller must pre-warm a knowledgeCache (async
+          // extraction can't run inside synchronous compileProgram). Text
+          // formats (.md/.txt) read synchronously via fs.readFileSync so they
+          // work without any preload step.
           const suffix = _knowledgeSuffix(src.value);
           const constName = '_knowledge_file_' + suffix;
-          const extraction = extractKnowledgeTextSync(src.value, opts.knowledgeBase);
-          if (extraction.error === 'needs-async') {
-            // PDF / DOCX — cycle 4.4 lands async extraction. Until then, surface
-            // a clear error so Marcus knows what's missing rather than a silent
-            // empty-string bundle.
-            if (opts.errors) {
-              opts.errors.push({ line: 0, message: `Knowledge file '${src.value}': binary extraction not yet supported in the synchronous emit path (cycle 4.4). Use .txt or .md for now.` });
+          let resolvedText = null;
+          let resolvedError = null;
+          // 1. Cache hit wins — whatever preload extracted goes through as-is.
+          if (opts.knowledgeCache && opts.knowledgeCache.has(src.value)) {
+            const cached = opts.knowledgeCache.get(src.value);
+            if (cached && typeof cached === 'object' && cached.error) {
+              resolvedError = cached.error;
+            } else {
+              resolvedText = String(cached || '');
             }
-            out.push(`const ${constName} = "";`);
-          } else if (extraction.error) {
+          } else {
+            // 2. No cache: try the sync extractor. .md/.txt succeed; binary
+            // formats return error:'needs-async' which surfaces as a compile
+            // error asking the caller to preload.
+            const extraction = extractKnowledgeTextSync(src.value, opts.knowledgeBase);
+            if (extraction.error === 'needs-async') {
+              resolvedError = `Knowledge file '${src.value}' needs async extraction. Call preloadKnowledgeCache(ast.body, knowledgeBase) and pass the result as options.knowledgeCache before compileProgram.`;
+            } else if (extraction.error) {
+              resolvedError = extraction.error;
+            } else {
+              resolvedText = extraction.text;
+            }
+          }
+
+          if (resolvedError) {
             if (opts.errors) {
-              opts.errors.push({ line: 0, message: extraction.error });
+              opts.errors.push({ line: 0, message: resolvedError });
             }
             out.push(`const ${constName} = "";`);
           } else {
             // Inline the text as a JSON string literal. JSON.stringify handles
             // every escaping concern: backslashes, quotes, unicode, newlines,
             // control characters. The resulting JS string literal IS the content.
-            out.push(`const ${constName} = ${JSON.stringify(extraction.text)};`);
+            out.push(`const ${constName} = ${JSON.stringify(resolvedText)};`);
           }
         }
       }
@@ -1724,6 +1743,7 @@ export function compile(ast, options = {}) {
   if (emitCloudflare) {
     result.workerBundle = emitCloudflareWorkerBundle(ast.body, result, {
       knowledgeBase: options.knowledgeBase,
+      knowledgeCache: options.knowledgeCache,
       errors,
       warnings,
     });
