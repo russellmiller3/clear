@@ -32,9 +32,31 @@ Phase 2's `compileToCloudflareWorker()` overrode Phase 1/3's helper inlining whe
 - **`scripts/factor-db-summary.mjs`** — read-only flywheel snapshot: total rows, pass rate, per-archetype breakdown, rolling 1h/24h windows, hint telemetry. Run anytime, safe during live sweeps.
 - **`scripts/smoke-cf-target.mjs`** — spot-check all 8 core templates for forbidden Node-isms in Workers emit. 112 checks, all green after ship.
 
-## Sweep results (overnight while phases ran)
+## Sweep results (ran after ship) — REGRESSION DETECTED ⚠️
 
-Full 38-task cc-agent curriculum sweep (3 workers, --strict, $0). Completed but low pass rate (~5% — probably overnight subscription throttling since session 42's fix-landed baseline was 89%). Factor DB: 1599 → some fresh rows, mixed signal. Not reran; next session should start a daytime sweep.
+Two sweeps ran on `sweeps/post-cf-ship-2026-04-23` branch (same compiler as main):
+
+1. **Diagnostic 3-task solo (workers=1):** hello-world + greeting + echo = **3/3 passed** at 35-41s each. System works.
+
+2. **10-task parallel (workers=3):** hello-world, greeting, echo, calculator, counter, todo-crud, auth-todo, bookmark-manager, blog-search, contact-book. Result:
+   - **3 passed** (hello-world, todo-crud, calculator)
+   - **1 fast-fail** (blog-search at 74s)
+   - **4 wall-clock timeouts** (counter, bookmark-manager at ~**6700s each**; auth-todo, contact-book at ~750s each)
+   - Wall clock: **7519s = 2h 5min** for 10 tasks (session 42 tick 8's baseline was 536s for 8 similar tasks)
+
+**The 6700s "timeouts" are the signal.** `--timeout=180` was the configured per-task budget — something is NOT enforcing that cap and tasks are hanging far beyond it. Candidate causes:
+
+- Claude subscription throttling stalling the MCP child indefinitely (most likely — timeout detector probably checks "is claude responding" but the process is hung waiting on Anthropic)
+- A recent claude binary version change
+- Port/buildDir contention somehow resurfacing (session 42 tick 7/8 fixed this at 3 workers; maybe regressed)
+- Phase 1/2/3 ship silently broke something in the MCP path (unlikely — compiler tests all green, and solo sweep passes)
+
+**Next session should NOT kick off more sweeps without triaging first.** Start with:
+
+1. `node clear.test.js` — confirm compiler still green (it is as of ship).
+2. Reproduce the 6700s timeout with `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=1 --tasks=counter --timeout=180 --strict` — if it hangs, watch `ps`/`tasklist` for stuck claude processes.
+3. Check `which claude` + `claude --version` — has the binary auto-updated?
+4. If subscription throttling: wait and retry, OR flip to Anthropic API mode (`unset MEPH_BRAIN` + `ANTHROPIC_API_KEY` set) for a paid diagnostic sweep. Budget $5–10.
 
 ## Exit criteria (ALL met)
 
