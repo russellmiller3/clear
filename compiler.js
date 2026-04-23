@@ -124,7 +124,12 @@
 // =============================================================================
 
 import { NodeType, parse } from './parser.js';
-import { buildWorkerBundle, _selectWorkersUtilities, loadAuthWebcryptoSource } from './lib/packaging-cloudflare.js';
+import {
+  buildWorkerBundle,
+  _selectWorkersUtilities,
+  loadAuthWebcryptoSource,
+  extractKnowledgeTextSync,
+} from './lib/packaging-cloudflare.js';
 
 const CLEAR_VERSION = '1.0';
 
@@ -1148,11 +1153,11 @@ function _spliceEvalEndpoints(serverJS, endpointsJS) {
 // compileBody pipeline with `ctx.target = 'cloudflare'` set, so CRUD nodes
 // emit env.DB.prepare/bind/run (see compileCrudD1 below).
 
-function emitCloudflareWorkerBundle(body, result) {
+function emitCloudflareWorkerBundle(body, result, opts = {}) {
   const bundle = buildWorkerBundle(body, result);
   // Replace the Phase-1 stubbed src/index.js with the compiled Worker entry
   // that runs endpoint bodies through compileBody with ctx.target='cloudflare'.
-  const compiledEntry = compileToCloudflareWorker(body, result);
+  const compiledEntry = compileToCloudflareWorker(body, result, opts);
   if (compiledEntry) bundle['src/index.js'] = compiledEntry;
 
   // Emit D1 migrations (one CREATE TABLE per DATA_SHAPE node, SQLite dialect).
@@ -1241,7 +1246,7 @@ function emitD1Migrations(body) {
 // Embeds the compiled HTML (result.html) so GET / still serves the app UI,
 // preserving data-clear-line attributes for click-to-edit (future plan).
 
-function compileToCloudflareWorker(body, result) {
+function compileToCloudflareWorker(body, result, opts = {}) {
   const html = typeof result?.html === 'string' ? result.html : '';
   const schemaNames = new Set();
   const schemaMap = {};
@@ -1350,6 +1355,33 @@ function compileToCloudflareWorker(body, result) {
           out.push(`    return ${cacheName};`);
           out.push(`  } catch (_e) { ${cacheName} = ''; return ''; }`);
           out.push(`}`);
+        } else if (src.type === 'file') {
+          // File knowledge — read at COMPILE time (Studio runs on Node), escape,
+          // and inline as a module-scope string constant. The Worker sees only
+          // the text: no fs, no pdf-parse, no mammoth, zero Node-isms at runtime.
+          // Format table (.txt/.md here; .pdf/.docx in cycle 4.4):
+          const suffix = _knowledgeSuffix(src.value);
+          const constName = '_knowledge_file_' + suffix;
+          const extraction = extractKnowledgeTextSync(src.value, opts.knowledgeBase);
+          if (extraction.error === 'needs-async') {
+            // PDF / DOCX — cycle 4.4 lands async extraction. Until then, surface
+            // a clear error so Marcus knows what's missing rather than a silent
+            // empty-string bundle.
+            if (opts.errors) {
+              opts.errors.push({ line: 0, message: `Knowledge file '${src.value}': binary extraction not yet supported in the synchronous emit path (cycle 4.4). Use .txt or .md for now.` });
+            }
+            out.push(`const ${constName} = "";`);
+          } else if (extraction.error) {
+            if (opts.errors) {
+              opts.errors.push({ line: 0, message: extraction.error });
+            }
+            out.push(`const ${constName} = "";`);
+          } else {
+            // Inline the text as a JSON string literal. JSON.stringify handles
+            // every escaping concern: backslashes, quotes, unicode, newlines,
+            // control characters. The resulting JS string literal IS the content.
+            out.push(`const ${constName} = ${JSON.stringify(extraction.text)};`);
+          }
         }
       }
     }
@@ -1480,6 +1512,22 @@ function _emitWorkersAgentFn(agent) {
       const sourceLiteral = JSON.stringify(src.value);
       lines.push(`  {`);
       lines.push(`    const _text = await _load_url_${suffix}(env);`);
+      lines.push(`    if (_text) {`);
+      lines.push(`      const _chunks = _text.match(/[^.!?\\n]+[.!?\\n]*/g) || [_text];`);
+      lines.push(`      for (const _chunk of _chunks) {`);
+      lines.push(`        const _lower = _chunk.toLowerCase();`);
+      lines.push(`        const _score = _query.filter(w => _lower.includes(w)).length;`);
+      lines.push(`        if (_score > 0) _ragContext.push({ source: ${sourceLiteral}, data: _chunk.trim(), score: _score });`);
+      lines.push(`      }`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (src.type === 'file') {
+      // File knowledge is inlined as a module-scope constant — no loader call needed.
+      const suffix = _knowledgeSuffix(src.value);
+      const sourceLiteral = JSON.stringify(src.value);
+      const constName = '_knowledge_file_' + suffix;
+      lines.push(`  {`);
+      lines.push(`    const _text = ${constName};`);
       lines.push(`    if (_text) {`);
       lines.push(`      const _chunks = _text.match(/[^.!?\\n]+[.!?\\n]*/g) || [_text];`);
       lines.push(`      for (const _chunk of _chunks) {`);
@@ -1674,7 +1722,11 @@ export function compile(ast, options = {}) {
   // the caller opted into target='cloudflare' so every existing caller
   // (CLI, Studio preview, tests) stays on the default Node emit path.
   if (emitCloudflare) {
-    result.workerBundle = emitCloudflareWorkerBundle(ast.body, result);
+    result.workerBundle = emitCloudflareWorkerBundle(ast.body, result, {
+      knowledgeBase: options.knowledgeBase,
+      errors,
+      warnings,
+    });
   }
 
   return result;
