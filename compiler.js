@@ -1149,7 +1149,16 @@ function _spliceEvalEndpoints(serverJS, endpointsJS) {
 // emit env.DB.prepare/bind/run (see compileCrudD1 below).
 
 function emitCloudflareWorkerBundle(body, result) {
-  const bundle = buildWorkerBundle(body, result);
+  // Collect cron expressions once so both wrangler.toml's [triggers] and
+  // src/index.js's scheduled() dispatcher use the same source of truth.
+  // The two must mirror: a cron declared in wrangler without a matching
+  // scheduled() branch is silently dead; a branch without a wrangler
+  // entry will never fire. _collectCronBlocks walks AGENT+schedule,
+  // BACKGROUND, and CRON nodes and produces the cronExpr per block.
+  const cronBlocks = _collectCronBlocks(body, null);
+  const cronExprs = cronBlocks.map((b) => b.cronExpr);
+
+  const bundle = buildWorkerBundle(body, result, { crons: cronExprs });
   // Replace the Phase-1 stubbed src/index.js with the compiled Worker entry
   // that runs endpoint bodies through compileBody with ctx.target='cloudflare'.
   const compiledEntry = compileToCloudflareWorker(body, result);
