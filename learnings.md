@@ -1443,6 +1443,7 @@ The pattern that works: put `await testAsync(...)` at MODULE SCOPE (not inside d
 - Workers bundle drift-guards: hello+askAI and signup+agent both pass `grep -c 'require\|fs\.\|/tmp\|child_process'` → 0
 - Node (default) target: zero behavioral change. Temporal + AI tests all green.
 
+<<<<<<< HEAD
 ## Session: Cloudflare Workers for Platforms — Phase 6 (2026-04-23)
 
 `runs durably` was the architectural shift of the Cloudflare plan. Same three words in a `.clear` file, two totally different deployment realities: Node target keeps emitting Temporal SDK imports (so anyone running their own Temporal cluster is untouched), Cloudflare target emits a standalone `WorkflowEntrypoint` class per durable workflow, plus the `[[workflows]]` bindings that make CF accept the deploy. Six effective cycles landed as one commit (emitter + tests atomically coupled) with per-cycle prefixes in the message (`feat(cf-6.1,6.2,6.7,6.8,6.9)`). Four non-obvious pitfalls worth pinning.
@@ -1530,4 +1531,120 @@ Pattern for any Phase 4+ file that needs async tests: keep sync assertions insid
 - `node scripts/smoke-cf-target.mjs` → 112/112 checks green
 - All 8 core templates still compile clean with target=cloudflare
 - Dispatch semantics proven end-to-end under d1Mock: one branch per cron, other branches silent on the wrong event, errors swallowed per branch, unknown crons fall through harmlessly
+
+## Session: Cloudflare Workers for Platforms — Phase 4 (2026-04-22)
+
+Making `knows about: Table | 'url' | '.md' | '.txt' | '.pdf' | '.docx'` work inside a deployed Worker. The whole point: Workers has no startup phase (no top-level await), no fs, no require. Knowledge sources that use any of those on the Node target have to be transformed into a Workers-compatible shape — lazy getters for data that's live (tables, URLs), compile-time inlining for data that's static (text, PDF, DOCX). 9 TDD cycles.
+
+### Two different "lazy" patterns, one module-scope cache slot
+
+Table knowledge and URL knowledge both need to be LOADED at runtime (fresh D1 rows, live web content), but they can't load at module init because Workers forbids top-level await and has no pre-request phase. Solution: a nullable module-scope cache + an async loader that populates it on FIRST call:
+
+```js
+let _products_cache = null;
+async function _load_products(env) {
+  if (_products_cache) return _products_cache;
+  const _res = await env.DB.prepare('SELECT * FROM products').all();
+  _products_cache = (_res && _res.results) || [];
+  return _products_cache;
+}
+```
+
+Second call returns the cache. The cache lives as long as the V8 isolate — typically tens of minutes to hours — so cross-request amortization is real. Marcus's $25/mo Workers Paid plan covers way more traffic when every agent call after the first doesn't roundtrip to D1.
+
+Drift-guard: the Node target emits `_fetchPageText(URL).then(t => { ... })` at module startup; that exact shape must NOT reach the Workers bundle. Tested with a negative regex assertion.
+
+### Compile-time extraction is a NEW capability, not a move
+
+The plan framed cycle 4.4 as "move pdf-parse from runtime into compile-time." That's structurally wrong. Neither `pdf-parse` nor `mammoth` is (or was) installed as a runtime dep in `package.json`. The existing `_loadFileText` call `const pdf = require('pdf-parse')` threw MODULE_NOT_FOUND silently, the try/catch swallowed it, and `.pdf` knowledge returned empty string on the Node target too.
+
+So Phase 4 cycle 4.4 is the FIRST working binary-knowledge path anywhere. The red-team miss got an EXEC CORRECTION commit (`docs(cf-plan): correction to cycle 4.4`) before the feature commit, per plan protocol.
+
+Phase 4 does NOT install `pdf-parse`/`mammoth`. The two-step API we shipped accepts both states cleanly:
+
+```js
+const cache = await preloadKnowledgeCache(ast.body, baseDir);
+// if pdf-parse missing → cache.get('x.pdf') === { error: 'Cannot find ...' }
+// if pdf-parse present → cache.get('x.pdf') === 'extracted text...'
+const result = compileProgram(src, { target: 'cloudflare', knowledgeCache: cache });
+```
+
+Studio decides at deploy time whether 25MB of pdfkit + native C++ parser is worth shipping. Clean separation: the compiler's job is to bake whatever text it gets handed into the bundle — it doesn't care how the text got there.
+
+### Three-case knowledge emit per agent, one module-scope block
+
+```js
+// Emitted at module scope, ABOVE export default { fetch }:
+
+let _products_cache = null;               // table
+async function _load_products(env) { ... }
+
+let _knowledge_url_a1b2c3d4 = null;       // URL  (FNV-1a hash suffix)
+async function _load_url_a1b2c3d4(env) { ... }
+
+const _knowledge_file_e5f6g7h8 = "...";   // file (compile-time inlined)
+
+// And each agent:
+async function agent_faqbot(env, question) {
+  const _query = ...;
+  const _ragContext = [];
+  { const _recs = await _load_products(env); ... }      // table branch
+  { const _text = await _load_url_a1b2c3d4(env); ... }  // URL branch
+  { const _text = _knowledge_file_e5f6g7h8; ... }       // file branch (no loader call)
+  const _ragStr = ...;
+  return await _askAI_workers(env, question + _ragStr, null, null);
+}
+```
+
+All three source types feed the same `_ragContext` scorer. File sources skip the loader call because the constant's already populated — small perf win, more importantly: it maps exactly to the Node `_searchText(_knowledge_file_N, ...)` shape, so behavior is identical across targets for the same `.md` / `.txt` file.
+
+FNV-1a hashing: tiny deterministic hash over the URL / filename, lowercase hex, collision-safe for the few dozen knowledge sources an app might have. Same source = same suffix across builds, so two agents that share knowledge share the cache slot.
+
+### Bundle-size guardrails are bytes, not chars
+
+`Buffer.byteLength(text, 'utf8')` not `text.length`. Matters because a 500KB Japanese knowledge file can be ~1.5MB as UTF-8 bytes — the char count doesn't tell you what Cloudflare's uploader will see. Phase 4 uses two thresholds:
+
+- `> 1MB`: compile error naming the file + suggesting D1 or R2
+- `> 512KB`: warning, "bundle is growing"
+- `≤ 512KB`: silent
+
+Per-file, not total, because the Workers-for-Platforms 10MB cap is per script. A single 1MB file leaves 9MB for everything else — tolerable. Two 1MB files eats 20% of the cap before any endpoint logic even compiles. Hard-fail at 1MB per file is the cliff.
+
+### Sync compile + async preload is the cleanest seam
+
+`compileProgram` stays synchronous — that's the contract with every existing caller (CLI, Studio, tests). Forcing it async would ripple through 50+ callsites. Instead: a separate `preloadKnowledgeCache(astBody, baseDir) → Promise<Map>` that callers invoke BEFORE compile when they have async-only extractors.
+
+The sync compile path checks the cache first; cache hit = inline text; cache miss + supported ext + sync extractor available = read synchronously; cache miss + binary format = `{ error: 'needs-async' }` surfaces as a compile error telling the caller to preload.
+
+Rule: any async dependency in a pass that USED to be synchronous gets hoisted into a pre-pass that returns cached values. Don't make every compile transitively await.
+
+### Drift-guards are the only safety net for Workers output
+
+Phase 1/2/3 learnings already documented this; Phase 4 adds the PDF/DOCX flavor. The tests don't just assert "bundle works" — they grep the bundle for forbidden substrings:
+
+```js
+const forbidden = ['pdf-parse', 'mammoth', 'require('];
+for (const needle of forbidden) {
+  if (src.includes(needle)) throw new Error(`Forbidden: '${needle}'`);
+}
+if (/\bfs\./.test(src)) throw new Error("'fs.' in bundle");
+```
+
+Why belt-and-suspenders: Cloudflare's uploader rejects `require(` as a static scan. If our bundle has it — even inside a comment or a JSON string — the deploy fails with a cryptic error. The drift-guard catches it in `node clear.test.js`, not at `wrangler deploy` time.
+
+### Agent function Workers emit is a NEW surface
+
+Before Phase 4, `compileToCloudflareWorker` emitted endpoints only. Agent function bodies referenced from endpoints (`call 'Helpdesk' with query`) compiled to `agent_helpdesk(query?.question)` — but `agent_helpdesk` itself was never defined in the Workers bundle. That would have been a silent reference-error at runtime once deployed.
+
+Phase 4 adds `_emitWorkersAgentFn(agent)` + a loop in `compileToCloudflareWorker` that emits one per agent-with-knowledge. The signature is `async function agent_X(env, param)` — first arg is the env, threaded through so `_askAI_workers(env, ...)` + `_load_X(env)` can reach bindings. When Phase 5/6 want to emit ALL agents (scheduled, tool-using, streaming), the same hook expands.
+
+### Phase 4 outcome
+
+- 9 TDD cycles committed (cf-4.1 → cf-4.8 + plan correction; cf-4.9 = this learnings, folded into 4.8 per plan)
+- 2247 → 2274 tests passing (+27 net)
+- `preloadKnowledgeCache` + `extractKnowledgeTextSync` + `extractKnowledgeTextAsync` exported from `lib/packaging-cloudflare.js`
+- `_emitWorkersAgentFn` + `_knowledgeSuffix` new helpers in `compiler.js`
+- Drift-guards pass: zero `pdf-parse|mammoth|require(|fs.` in any fixture bundle
+- Node (default) target: zero behavioral change
+- EXEC CORRECTION to plan row 4.4: pdf-parse wasn't a pre-existing runtime dep; Phase 4 doesn't install it. Studio owner can decide later.
 

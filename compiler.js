@@ -124,7 +124,12 @@
 // =============================================================================
 
 import { NodeType, parse } from './parser.js';
-import { buildWorkerBundle, _selectWorkersUtilities, loadAuthWebcryptoSource } from './lib/packaging-cloudflare.js';
+import {
+  buildWorkerBundle,
+  _selectWorkersUtilities,
+  loadAuthWebcryptoSource,
+  extractKnowledgeTextSync,
+} from './lib/packaging-cloudflare.js';
 
 const CLEAR_VERSION = '1.0';
 
@@ -1148,20 +1153,20 @@ function _spliceEvalEndpoints(serverJS, endpointsJS) {
 // compileBody pipeline with `ctx.target = 'cloudflare'` set, so CRUD nodes
 // emit env.DB.prepare/bind/run (see compileCrudD1 below).
 
-function emitCloudflareWorkerBundle(body, result) {
-  // Collect cron expressions once so both wrangler.toml's [triggers] and
-  // src/index.js's scheduled() dispatcher use the same source of truth.
-  // The two must mirror: a cron declared in wrangler without a matching
-  // scheduled() branch is silently dead; a branch without a wrangler
-  // entry will never fire. _collectCronBlocks walks AGENT+schedule,
-  // BACKGROUND, and CRON nodes and produces the cronExpr per block.
+function emitCloudflareWorkerBundle(body, result, opts = {}) {
+  // Collect cron expressions once (Phase 5) so both wrangler.toml's
+  // [triggers] and src/index.js's scheduled() dispatcher use the same
+  // source of truth. The two must mirror: a cron declared in wrangler
+  // without a matching scheduled() branch is silently dead; a branch
+  // without a wrangler entry never fires. _collectCronBlocks walks
+  // AGENT+schedule, BACKGROUND, and CRON nodes.
   const cronBlocks = _collectCronBlocks(body, null);
   const cronExprs = cronBlocks.map((b) => b.cronExpr);
 
   const bundle = buildWorkerBundle(body, result, { crons: cronExprs });
   // Replace the Phase-1 stubbed src/index.js with the compiled Worker entry
   // that runs endpoint bodies through compileBody with ctx.target='cloudflare'.
-  const compiledEntry = compileToCloudflareWorker(body, result);
+  const compiledEntry = compileToCloudflareWorker(body, result, opts);
   if (compiledEntry) bundle['src/index.js'] = compiledEntry;
 
   // Emit D1 migrations (one CREATE TABLE per DATA_SHAPE node, SQLite dialect).
@@ -1250,7 +1255,7 @@ function emitD1Migrations(body) {
 // Embeds the compiled HTML (result.html) so GET / still serves the app UI,
 // preserving data-clear-line attributes for click-to-edit (future plan).
 
-function compileToCloudflareWorker(body, result) {
+function compileToCloudflareWorker(body, result, opts = {}) {
   const html = typeof result?.html === 'string' ? result.html : '';
   const schemaNames = new Set();
   const schemaMap = {};
@@ -1302,6 +1307,149 @@ function compileToCloudflareWorker(body, result) {
   if (usesAuth) {
     out.push('// --- Web Crypto auth (PBKDF2 via crypto.subtle) — inlined from runtime/auth-webcrypto.mjs ---');
     out.push(loadAuthWebcryptoSource());
+    out.push('');
+  }
+
+  // ── Phase 4: `knows about:` lazy-load helpers + agent functions ──────────
+  // For every agent with `knows about: Table | 'url' | 'file'` we emit a
+  // module-scope nullable cache + an async loader that populates it on the
+  // FIRST agent call. No module-top-level await (Workers forbids it). The
+  // cache lives through the Worker's lifetime — D1 rows fetched once per
+  // isolate and reused across requests.
+  const agentsWithKnowledge = body.filter(
+    (n) => n && n.type === NodeType.AGENT && Array.isArray(n.knowsAbout) && n.knowsAbout.length > 0
+  );
+  if (agentsWithKnowledge.length > 0) {
+    out.push('// --- Phase 4: knows-about lazy-load helpers ---');
+    // Deduplicate by (type, value) so two agents that share knowledge share the cache.
+    const seen = new Set();
+    for (const agent of agentsWithKnowledge) {
+      for (const raw of agent.knowsAbout) {
+        const src = typeof raw === 'string' ? { type: 'table', value: raw } : raw;
+        const key = src.type + ':' + src.value;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (src.type === 'table') {
+          const pluralTable = pluralizeName(src.value);
+          const cacheName = '_' + pluralTable + '_cache';
+          const loaderName = '_load_' + pluralTable;
+          out.push(`let ${cacheName} = null;`);
+          out.push(`async function ${loaderName}(env) {`);
+          out.push(`  if (${cacheName}) return ${cacheName};`);
+          out.push(`  const _res = await env.DB.prepare('SELECT * FROM ${pluralTable}').all();`);
+          out.push(`  ${cacheName} = (_res && _res.results) || [];`);
+          out.push(`  return ${cacheName};`);
+          out.push(`}`);
+        } else if (src.type === 'url') {
+          // URL knowledge — fetch-and-cache. No top-level await (Workers forbids it).
+          // Strip script/style tags + collapse whitespace so the cached string
+          // is clean text ready for RAG scoring.
+          const suffix = _knowledgeSuffix(src.value);
+          const cacheName = '_knowledge_url_' + suffix;
+          const loaderName = '_load_url_' + suffix;
+          const urlLiteral = JSON.stringify(src.value);
+          out.push(`let ${cacheName} = null;`);
+          out.push(`async function ${loaderName}(env) {`);
+          out.push(`  if (${cacheName}) return ${cacheName};`);
+          out.push(`  try {`);
+          out.push(`    const _res = await fetch(${urlLiteral});`);
+          out.push(`    if (!_res.ok) { ${cacheName} = ''; return ''; }`);
+          out.push(`    const _html = await _res.text();`);
+          out.push(`    ${cacheName} = _html`);
+          out.push(`      .replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '')`);
+          out.push(`      .replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '')`);
+          out.push(`      .replace(/<[^>]+>/g, ' ')`);
+          out.push(`      .replace(/\\s+/g, ' ')`);
+          out.push(`      .trim();`);
+          out.push(`    return ${cacheName};`);
+          out.push(`  } catch (_e) { ${cacheName} = ''; return ''; }`);
+          out.push(`}`);
+        } else if (src.type === 'file') {
+          // File knowledge — read at COMPILE time (Studio runs on Node), escape,
+          // and inline as a module-scope string constant. The Worker sees only
+          // the text: no fs, no pdf-parse, no mammoth, zero Node-isms at runtime.
+          //
+          // For .pdf/.docx the caller must pre-warm a knowledgeCache (async
+          // extraction can't run inside synchronous compileProgram). Text
+          // formats (.md/.txt) read synchronously via fs.readFileSync so they
+          // work without any preload step.
+          const suffix = _knowledgeSuffix(src.value);
+          const constName = '_knowledge_file_' + suffix;
+          let resolvedText = null;
+          let resolvedError = null;
+          // 1. Cache hit wins — whatever preload extracted goes through as-is.
+          if (opts.knowledgeCache && opts.knowledgeCache.has(src.value)) {
+            const cached = opts.knowledgeCache.get(src.value);
+            if (cached && typeof cached === 'object' && cached.error) {
+              resolvedError = cached.error;
+            } else {
+              resolvedText = String(cached || '');
+            }
+          } else {
+            // 2. No cache: try the sync extractor. .md/.txt succeed; binary
+            // formats return error:'needs-async' which surfaces as a compile
+            // error asking the caller to preload.
+            const extraction = extractKnowledgeTextSync(src.value, opts.knowledgeBase);
+            if (extraction.error === 'needs-async') {
+              resolvedError = `Knowledge file '${src.value}' needs async extraction. Call preloadKnowledgeCache(ast.body, knowledgeBase) and pass the result as options.knowledgeCache before compileProgram.`;
+            } else if (extraction.error) {
+              resolvedError = extraction.error;
+            } else {
+              resolvedText = extraction.text;
+            }
+          }
+
+          if (resolvedError) {
+            if (opts.errors) {
+              opts.errors.push({ line: 0, message: resolvedError });
+            }
+            out.push(`const ${constName} = "";`);
+          } else {
+            // Size guardrails — Workers-for-Platforms has a 10MB bundle cap.
+            // >1MB single file = hard fail (too close to the wall). 512KB to
+            // 1MB = warn. Below that = silent. Measure by UTF-8 byte length
+            // of the extracted text (not char count) since large multi-byte
+            // scripts balloon from char → byte.
+            const byteLen = Buffer.byteLength(resolvedText, 'utf8');
+            const KB = 1024;
+            const MB = 1024 * 1024;
+            if (byteLen > 1 * MB) {
+              if (opts.errors) {
+                const kb = Math.round(byteLen / KB);
+                opts.errors.push({
+                  line: 0,
+                  message: `Knowledge file '${src.value}' is ${kb}KB — Workers bundle 1MB cap per inlined file exceeded. Move this file to D1 (store text per-row) or R2 (fetch on demand) instead of inlining.`,
+                });
+              }
+              out.push(`const ${constName} = "";`);
+            } else {
+              if (byteLen > 512 * KB && opts.warnings) {
+                const kb = Math.round(byteLen / KB);
+                opts.warnings.push({
+                  line: 0,
+                  message: `Knowledge file '${src.value}' is ${kb}KB. Inlining grows the bundle — consider moving to D1 or R2 for files > 1MB.`,
+                });
+              }
+              // Inline the text as a JSON string literal. JSON.stringify handles
+              // every escaping concern: backslashes, quotes, unicode, newlines,
+              // control characters. The resulting JS string literal IS the content.
+              out.push(`const ${constName} = ${JSON.stringify(resolvedText)};`);
+            }
+          }
+        }
+      }
+    }
+    out.push('');
+
+    // Emit each agent as a module-scope async function. Workers call shape:
+    //   agent_X(env, question) — env is threaded so D1 + AI_PROXY reachable.
+    // For Phase 4 we emit a minimal RAG preamble that calls the lazy loaders
+    // + _askAI_workers. Tool-use + streaming agents still route through the
+    // existing Workers helpers; Phase 4's focus is only the knowledge path.
+    out.push('// --- Phase 4: agent functions (Workers-safe) ---');
+    for (const agent of agentsWithKnowledge) {
+      out.push(_emitWorkersAgentFn(agent));
+    }
     out.push('');
   }
 
@@ -1402,6 +1550,99 @@ function compileToCloudflareWorker(body, result) {
   out.push('};');
   out.push('');
   return out.join('\n');
+}
+
+// Phase 4: derive a stable, JS-safe suffix for a knowledge-source key (URL
+// or filename). Used to name the module-scope cache + loader so each unique
+// source gets its own slot and two agents that mention the same URL share
+// one cache. Deterministic by content — same input produces the same suffix
+// across runs, so the emitted bundle is byte-stable.
+function _knowledgeSuffix(value) {
+  // FNV-1a 32-bit on the bytes — tiny, deterministic, no deps. Result is a
+  // lowercase hex string guaranteed to be a legal JS identifier fragment.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+// Phase 4: emit a Workers-safe async agent function from an AGENT node
+// that has `knows about:` knowledge sources. Takes env as its first arg so
+// the inner RAG preamble can call the module-scope lazy loaders that read
+// from env.DB, and _askAI_workers(env, ...) can reach the AI proxy.
+//
+// This is a MINIMAL emitter — scoped to Phase 4's knowledge-path concern.
+// The richer Node agent pipeline (tools, skills, memory, conversation,
+// guardrails) doesn't run here; when those features matter for Workers,
+// Phase 4+ can expand this helper.
+function _emitWorkersAgentFn(agent) {
+  const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
+  const param = agent.receivingVar ? sanitizeName(agent.receivingVar) : '_input';
+  const sources = (agent.knowsAbout || []).map((s) => (typeof s === 'string' ? { type: 'table', value: s } : s));
+  const lines = [];
+  lines.push(`async function ${fnName}(env, ${param}) {`);
+  lines.push(`  const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);`);
+  lines.push(`  const _ragContext = [];`);
+  for (const src of sources) {
+    if (src.type === 'table') {
+      const plural = pluralizeName(src.value);
+      lines.push(`  {`);
+      lines.push(`    const _recs = await _load_${plural}(env);`);
+      lines.push(`    for (const _rec of _recs) {`);
+      lines.push(`      const _text = Object.values(_rec).join(' ').toLowerCase();`);
+      lines.push(`      const _score = _query.filter(w => _text.includes(w)).length;`);
+      lines.push(`      if (_score > 0) _ragContext.push({ source: '${src.value}', data: _rec, score: _score });`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (src.type === 'url') {
+      const suffix = _knowledgeSuffix(src.value);
+      const sourceLiteral = JSON.stringify(src.value);
+      lines.push(`  {`);
+      lines.push(`    const _text = await _load_url_${suffix}(env);`);
+      lines.push(`    if (_text) {`);
+      lines.push(`      const _chunks = _text.match(/[^.!?\\n]+[.!?\\n]*/g) || [_text];`);
+      lines.push(`      for (const _chunk of _chunks) {`);
+      lines.push(`        const _lower = _chunk.toLowerCase();`);
+      lines.push(`        const _score = _query.filter(w => _lower.includes(w)).length;`);
+      lines.push(`        if (_score > 0) _ragContext.push({ source: ${sourceLiteral}, data: _chunk.trim(), score: _score });`);
+      lines.push(`      }`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (src.type === 'file') {
+      // File knowledge is inlined as a module-scope constant — no loader call needed.
+      const suffix = _knowledgeSuffix(src.value);
+      const sourceLiteral = JSON.stringify(src.value);
+      const constName = '_knowledge_file_' + suffix;
+      lines.push(`  {`);
+      lines.push(`    const _text = ${constName};`);
+      lines.push(`    if (_text) {`);
+      lines.push(`      const _chunks = _text.match(/[^.!?\\n]+[.!?\\n]*/g) || [_text];`);
+      lines.push(`      for (const _chunk of _chunks) {`);
+      lines.push(`        const _lower = _chunk.toLowerCase();`);
+      lines.push(`        const _score = _query.filter(w => _lower.includes(w)).length;`);
+      lines.push(`        if (_score > 0) _ragContext.push({ source: ${sourceLiteral}, data: _chunk.trim(), score: _score });`);
+      lines.push(`      }`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    }
+  }
+  lines.push(`  _ragContext.sort((a, b) => b.score - a.score);`);
+  lines.push(`  const _ragStr = _ragContext.slice(0, 5).length`);
+  lines.push(`    ? '\\n\\nRelevant context:\\n' + _ragContext.slice(0, 5).map(r => JSON.stringify(r.data)).join('\\n')`);
+  lines.push(`    : '';`);
+  // Best-effort: thread through _askAI_workers if the body uses ask_ai. For
+  // Phase 4 the test simply asserts the preamble + loader call; richer
+  // codegen (skills, tools, memory, conversation) is a later expansion.
+  lines.push(`  const _prompt = String(${param} || '') + _ragStr;`);
+  lines.push(`  try {`);
+  lines.push(`    return await _askAI_workers(env, _prompt, null, null);`);
+  lines.push(`  } catch (_e) {`);
+  lines.push(`    return '';`);
+  lines.push(`  }`);
+  lines.push(`}`);
+  return lines.join('\n');
 }
 
 // Build a match snippet + params extraction snippet for a route path.
@@ -1570,7 +1811,12 @@ export function compile(ast, options = {}) {
   // the caller opted into target='cloudflare' so every existing caller
   // (CLI, Studio preview, tests) stays on the default Node emit path.
   if (emitCloudflare) {
-    result.workerBundle = emitCloudflareWorkerBundle(ast.body, result);
+    result.workerBundle = emitCloudflareWorkerBundle(ast.body, result, {
+      knowledgeBase: options.knowledgeBase,
+      knowledgeCache: options.knowledgeCache,
+      errors,
+      warnings,
+    });
   }
 
   return result;
