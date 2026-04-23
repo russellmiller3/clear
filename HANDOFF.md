@@ -2,7 +2,7 @@
 
 ## Current State
 
-- **Branch:** `main` at `62f18ae` — pushed, clean working tree. **Cloudflare Phases 1–7 all live** + `runs durably` canonical syntax + 4 new themes (dusk, vault, sakura, forge) + Windows spawner zombie fix.
+- **Branch:** `main` at `8a056ec` — pushed, clean working tree. **Cloudflare Phases 1–7 all live** + `runs durably` canonical syntax + 4 new themes (dusk, vault, sakura, forge) + Studio Deploy modal theme picker + Windows spawner zombie fix + Phase 8 runbook (§setup + §HITL smoke).
 - **Tests:** 2101 → **2399 green** (+298 net), 0 failing. Across 7 parallel-executed phases + syntax rename + themes.
 - **CF-target drift-guard:** `scripts/smoke-cf-target.mjs` = 112/112 checks green across all 8 core templates.
 - **Cost:** $0 API spend. All agent work on the Claude subscription (cc-agent mode).
@@ -136,7 +136,21 @@ Then `tasklist.exe | grep claude.exe` showed **13 zombie claude.exe processes** 
 
 **Fix shipped:** `playground/supervisor/spawner.js` now uses `taskkill /F /T /PID <worker.pid>` on Windows. `/T` flag cascades the kill through the whole process tree (worker + all claude.exe descendants). POSIX keeps existing SIGTERM since signals already cascade through the process group. Fallback to `child.kill()` if taskkill is missing. 5-second taskkill timeout so a stuck system doesn't wedge `killAll`.
 
-**Next sweep is the real verification** — should see 0 lingering claude.exe after it completes.
+**⚠️ Fix is NOT YET VERIFIED against a real sweep. Next-session triage needed:**
+
+1. **The 15 existing zombie `claude.exe` processes are STILL in memory** (the fix only cascades-kills FUTURE sweep children; it doesn't clean up orphans from before it shipped). Total RAM held hostage: ~1.3GB.
+2. Run `tasklist | grep claude.exe` and identify each PID. The active Claude Code session is one of them — DO NOT kill it.
+3. Kill the stale ones individually: `taskkill /F /PID <pid>` for each zombie. **Never `taskkill /F /IM claude.exe`** — that wildcard kills the active Claude Code session too.
+4. Confirm RAM pressure drops (`tasklist | grep claude.exe` count should go from 15 → 1 or 2).
+5. Run a full 38-task parallel sweep: `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=3 --strict`. Expected wall clock: ~28 min (session 42 tick 9's baseline was 1665s for 34/38 passing).
+6. If pass rate ≥80% and `tasklist | grep claude.exe` shows 0 extra zombies after the sweep completes → **spawner fix verified**, parallel flywheel unblocked at 3× throughput. If not, more to diagnose.
+
+### What sweeps produced this session
+
+- **Session start:** Factor DB 1,599 rows, 582 passing (36.4%)
+- **Now:** 1,620 rows (+21), ~591 passing (+9)
+- **Session pass rate: ~39%** — right on the historical baseline when the system works
+- **All session sweeps ran BEFORE the spawner fix** — every one was resource-starved by existing zombies. Solo workers=1 sweeps passed cleanly (3/3 on hello/greeting/echo at 35-41s each). Parallel workers=3 hit 3/10 with 4 tasks "timed out at 6700s" (that's how the zombie diagnosis happened)
 
 ## Exit criteria (ALL met)
 
@@ -202,7 +216,7 @@ From session 42's Clear Cloud scaffold state. All scaffolds written + tested; re
 
 ## Resume Prompt
 
-> Read `HANDOFF.md`. Cloudflare Phases 1–7 SHIPPED on main at `62f18ae` — `--target cloudflare` produces fully-deployable Workers bundles (D1 CRUD, Web Crypto auth, fetch-only AI, lazy-load knowledge, Cron Triggers, Cloudflare Workflows, shared `src/agents.js` module) AND `/api/deploy` now dispatches to Cloudflare WFP when `CLEAR_DEPLOY_TARGET=cloudflare` (rollback ladder + idempotency lock + reconcile script all wired). 2399 tests green, 112/112 CF drift-guards. Windows spawner zombie fix live. 4 new themes (dusk, vault, sakura, forge) + `CURATED_THEMES` export. **Only Phase 8 remains — Russell's paperwork (~2hr) then HITL smoke (~1hr).** Priority 2: click-to-edit plan expansion. Priority 3: theme picker UI. Kent Beck TDD red-first; no self-assignment in Clear fixtures.
+> Read `HANDOFF.md`. Cloudflare Phases 1–7 SHIPPED on main at `8a056ec` — `--target cloudflare` produces fully-deployable Workers bundles (D1 CRUD, Web Crypto auth, fetch-only AI, lazy-load knowledge, Cron Triggers, Cloudflare Workflows, shared `src/agents.js` module) AND `/api/deploy` dispatches to Cloudflare WFP when `CLEAR_DEPLOY_TARGET=cloudflare` (rollback ladder + idempotency lock + reconcile script wired). 2399 tests green, 112/112 CF drift-guards. **Open Phase 8 runbook** at `plans/runbook-phase-8-2026-04-23.md` — §1 is your ~2hr paperwork, §2 is the HITL smoke. Windows spawner zombie fix shipped but NOT YET VERIFIED — first triage next session: kill 15 existing zombie claude.exe processes (individual `taskkill /F /PID <pid>`, never wildcard), then run a full 38-task workers=3 sweep to confirm. 4 new themes live (dusk, vault, sakura, forge) + curated shortlist + theme picker in Studio's Deploy modal. Kent Beck TDD red-first; no self-assignment in Clear fixtures.
 
 ---
 
