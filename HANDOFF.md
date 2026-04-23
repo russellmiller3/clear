@@ -1,26 +1,33 @@
-# Handoff — 2026-04-23 (session 44 — Cloudflare Phases 1–7 shipped + sweep triage: spawner VERIFIED, stdin-race FIXED)
+# Handoff — 2026-04-23 (session 44 — Cloudflare Phases 1–7 shipped + sweep flywheel: 2 root-cause fixes shipped to main)
 
 ## Current State
 
-- **Branch:** `fix/cc-agent-stdin-race-windows` at `4201693` — local commit, push pending your OK (pre-push hook blocked on a flaky e2e run that happens when a sweep is running concurrently; re-try clean should pass).
-- **Main:** still at `a7de02c` (handoff note commit from this morning).
-- **Tests:** **2399 compiler green** + **79 ghost-meph green** (+4 new TDD assertions for the stdin-race fix). 0 failing anywhere.
+- **Main:** at `c54f3a2` — **pushed**. Two fixes merged:
+  - `2ded7f3` = cc-agent Windows stdin-race fix (commit `4201693` via `fix/cc-agent-stdin-race-windows`)
+  - `c54f3a2` = sweep-grader timeout-DB check (commit `e4d27fe` via `fix/sweep-grader-timeout-db-check`)
+- **Tests:** **2399 compiler green** + **79 ghost-meph green** + **curriculum-sweep +4 new grader assertions**. 0 failing anywhere.
 - **Cost:** $0 API spend. All agent work on the Claude subscription (cc-agent mode).
 
 ### Numbers in one glance
 
-| Metric | Morning sweep (spawner-fix-only) | Post-cc-agent-fix sweep |
-|---|---|---|
-| Pass rate | 2/38 (5.3%) | **20/38 (52.6%)** |
-| Fast-fails | 31 | **3** |
-| Timeouts (180s) | 5 | 15 |
-| Wall clock | 860s | 1861s |
-| claude.exe zombies after | 0 | 0 |
-| Factor DB passing delta | +4 | **+26** |
+| Metric | Morning sweep (spawner-fix-only) | Post-cc-agent-fix sweep | Post-grader-fix (projected) |
+|---|---|---|---|
+| Pass rate (strict) | 2/38 (5.3%) | 20/38 (52.6%) | **~27/38 (71%)** |
+| Fast-fails | 31 | **3** | 3 |
+| Real timeouts (180s with no DB pass) | 5 | ~8 | ~8 |
+| "Timeouts" that were actually passes | 0 | **7** | **0 (fixed)** |
+| Wall clock | 860s | 1861s | ~1861s |
+| claude.exe zombies after | 0 | 0 | 0 |
+| Factor DB passing delta | +4 | **+26** | **+26** |
 
-Pre-fix: 31 tasks were losing the stdin race and silently fast-failing. Post-fix: only 3 fast-fails. Timeouts went up because more tasks are now actually running to their full budget instead of failing in 20s — these are genuinely hard L7–L10 tasks that need longer than 180s to complete on the current stack.
+Pre-stdin-fix: 31 tasks were losing the stdin race and silently fast-failing. Post-stdin-fix: only 3 fast-fails. BUT the strict grader was also under-counting — 7 tasks where Meph actually wrote a passing DB row were being graded as ⏱️ because AbortError skipped the DB check. Post-grader-fix, those 7 now count as ✅. Projected real pass rate: **~71%**.
 
 ## TL;DR — what this session fixed
+
+**Two sweep flywheel bugs shipped to main after the Cloudflare work:**
+
+1. **`4201693` cc-agent Windows stdin race** — claude.exe 2.1.111 on Windows emits "no stdin data received in 3s" and exits code 1 when Node pipes the prompt via stdin. Fix: split delivery — 48KB system prompt → `--system-prompt-file`, 1-2KB user prompt → positional argv, `stdio:['ignore',...]` kills stdin entirely. 5.3% → 52.6% strict pass rate. Fast-fails dropped 31 → 3.
+2. **`e4d27fe` sweep-grader timeout-DB check** — when a task hit the 180s abort, the grader returned ok:false without checking the Factor DB. 7 tasks on the post-stdin-fix sweep had Meph actually writing test_pass=1 rows but losing the race to "TASK COMPLETE" before the stream got yanked. Fix: new `gradeAbortedRun(factorDB, startMs)` pure helper, called from the AbortError branch. DB truth beats wall-clock budget. Projected pass rate: **~71% (27/38)**.
 
 **Spawner zombie fix (shipped morning of 04-23 at `f36c787`): VERIFIED.** 38-task workers=3 sweep completed in 860s (14 min); all 5 timeouts enforced at exactly 180.0s; claude.exe count went 14 → 12 across the sweep (zero accumulation); ports 3490-3495 all released. The 6700s "infinite hang" class is gone.
 
