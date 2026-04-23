@@ -1,8 +1,6 @@
 # Clear Language — Roadmap
 
-> **Read `VISION.md` first.** It's the maximalist strategic framing — the four bets (AlphaFold-for-software, Mother of All Demos, interpretability substrate, bootstrapping loop) that every item in this roadmap ladders up to. This file is the quarter-by-quarter execution plan. `VISION.md` is why any of it matters.
-
-## Vision (tactical — see `VISION.md` for the strategic version)
+## Vision
 
 1. **AI builds things fast.** Clear is the language AI writes. Short programs, deterministic compiler. The faster the write->compile->run->fix loop, the more it ships.
 2. **Hostile to bugs.** Catch mistakes at compile time. If the compiler accepts it, it should work.
@@ -50,32 +48,17 @@ No terminal. No Dockerfile. No vendor name. One Stripe invoice.
 
 ## What's Next
 
-### The four bets (strategic pillars — every item below maps to one of these)
-
-From `VISION.md`. Use these as the "why does this matter" lens when prioritizing any roadmap item. If a task doesn't ladder up to at least one pillar, it's probably dressing.
-
-| # | Pillar | One-line bet | Which roadmap tracks serve it |
-|---|--------|--------------|-------------------------------|
-| **B1** | **AlphaFold for software** (Hassabis — research headline) | Own the benchmark for "AI builds working apps from English." Clear-bench becomes the standard other labs evaluate against. | Flywheel / Training Signal, Compiler Flywheel Tiers 2-4, Curriculum expansion, EBM re-ranker, Factor DB scaling |
-| **B2** | **Mother of All Demos** (Engelbart — product headline) | One unedited video of a non-technical user building real software in under a minute, deployed, used. Shifts the Overton window on what software is. | Clear Cloud CC-1..CC-5, Builder Mode (GTM-6), Live App Editing, Go-To-Market, Hero Marcus apps |
-| **B3** | **Interpretability substrate** (the sleeper) | Clear as the only auditable-by-humans output format for agentic AI. The category that matters in every regulated domain. | Language Completeness (1:1 mapping protection), RR-2 (retire 1:1 violations), PHILOSOPHY.md enforcement, docs |
-| **B4** | **Bootstrapping loop** (Engelbart — operating loop) | Meph fails → compiler absorbs the failure → next Meph is better. Name the compounding, report on it, make it the strategy. | Compiler Flywheel Tier 1, HITL rule follow-through, Factor DB → compiler rule migrations, monthly "compiler-got-better-without-a-human" metric |
-
-**The single riskiest dilution** (repeated from VISION.md because it keeps happening): polishing Meph tools when we should be scaling curriculum + hardening the eval pipeline. The training signal is the moat. Everything else is dressing. Dressing matters for B2 — it does not matter for B1/B3/B4.
-
----
-
 **Priority order (revised 2026-04-21).** The product north star is: **paying Marcus customers on Clear Cloud.** Everything below ladders up to that, or it's research. Sections are grouped by priority tier — within a tier they can run in parallel.
 
-| Tier | Track | Pillars | What this is | Sections |
-|---|---|---|---|---|
-| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Clear Cloud hosted platform | **B2** | The product Marcus presses "Publish" in. Build on top of existing Phase-85 Fly infrastructure. | `Clear Cloud — Marcus-first hosted platform strategy`, `One-click deploy follow-ups (Phase 85 shipped)`, `Why Clear Cloud beats Retool and Lovable` |
-| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Go-to-market & first users | **B2** | The pitch, the landing page, the first 5 real Marcuses finding Clear. | `Go-To-Market & Positioning`, `Repo Readthrough Priorities` |
-| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Builder Mode (Marcus-first Studio) | **B2** | Flip Studio hierarchy: chat drives, preview is hero, code is a toggle. Branded Publish button, click-to-edit, "what are you building?" gallery. Promoted P1 → P0 on 2026-04-21 to ship alongside CC-4. ~4 weeks. | `Builder Mode — Marcus-first Studio layout` (GTM-6 detail) |
-| **P1 — Flagship differentiator (Q2/Q3 2026)** | Live App Editing | **B2**, **B3** | The single feature no competitor has. Ships in parallel with CC-1 through CC-5. | `Live App Editing (Flagship)` |
-| **P2 — Platform optimization (Q3 2026)** | Auto-hosting v2 + flywheel | **B1**, **B4** | Cloudflare auto-routing for compatible apps; Meph reranker training on Factor DB. | `Auto-hosting by app type (v2)`, `Flywheel / Training Signal`, `Compiler Flywheel — Tier 1 only` |
-| **P3 — Maintenance & quality** | Language + performance + tests | **B3** | Keep the compiler honest and fast as surface expands. | `Language Completeness`, `Performance`, `Platform Quality`, `Mechanical Test Quality Signals`, `Next Up (Session 34 Next Steps)` |
-| **P4 — Long-term research** | Compiler Flywheel CF-2/3/4, SK-*, OL-*, moonshots | **B1**, **B4** | Published research, novel capability, delight features. Not on the Marcus critical path. | `Compiler Flywheel Tiers 2-4`, `Research Priority Order`, `Solo Karpathy Moonshot`, `Other Laptop-Scale Research Bets`, `Private Moonshots` |
+| Tier | Track | What this is | Sections |
+|---|---|---|---|
+| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Clear Cloud hosted platform | The product Marcus presses "Publish" in. Build on top of existing Phase-85 Fly infrastructure. | `Clear Cloud — Marcus-first hosted platform strategy`, `One-click deploy follow-ups (Phase 85 shipped)`, `Why Clear Cloud beats Retool and Lovable` |
+| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Go-to-market & first users | The pitch, the landing page, the first 5 real Marcuses finding Clear. | `Go-To-Market & Positioning`, `Repo Readthrough Priorities` |
+| **P0 — Ship Clear Cloud to Marcus (Q2 2026)** | Builder Mode (Marcus-first Studio) | Flip Studio hierarchy: chat drives, preview is hero, code is a toggle. Branded Publish button, click-to-edit, "what are you building?" gallery. Promoted P1 → P0 on 2026-04-21 to ship alongside CC-4. ~4 weeks. | `Builder Mode — Marcus-first Studio layout` (GTM-6 detail) |
+| **P1 — Flagship differentiator (Q2/Q3 2026)** | Live App Editing | The single feature no competitor has. Ships in parallel with CC-1 through CC-5. | `Live App Editing (Flagship)` |
+| **P2 — Platform optimization (Q3 2026)** | Auto-hosting v2 + flywheel | Cloudflare auto-routing for compatible apps; Meph reranker training on Factor DB. | `Auto-hosting by app type (v2)`, `Flywheel / Training Signal`, `Compiler Flywheel — Tier 1 only` |
+| **P3 — Maintenance & quality** | Language + performance + tests | Keep the compiler honest and fast as surface expands. | `Language Completeness`, `Performance`, `Platform Quality`, `Mechanical Test Quality Signals`, `Next Up (Session 34 Next Steps)` |
+| **P4 — Long-term research** | Compiler Flywheel CF-2/3/4, SK-*, OL-*, moonshots | Published research, novel capability, delight features. Not on the Marcus critical path. | `Compiler Flywheel Tiers 2-4`, `Research Priority Order`, `Solo Karpathy Moonshot`, `Other Laptop-Scale Research Bets`, `Private Moonshots` |
 
 **Rule of thumb for session prioritization:** if you're working on something tagged P2 or lower while P0 items are incomplete, ask yourself whether this session is actually moving Marcus closer. If not, stop and pick a P0 task. Research is valuable — it's just not urgent.
 

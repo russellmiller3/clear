@@ -76,6 +76,11 @@
 //   │  _chatClear .. clear messages + optional DELETE
 //   └─ Only emitted when actually used (tree-shaking via _getUsedUtilities)
 //
+//   UTILITY_FUNCTIONS_WORKERS — parallel set for Cloudflare Workers target.
+//   Same contract as Node helpers above but fetch-only, no fs/child_process,
+//   takes `env` as first arg. Emitted into the Workers src/index.js bundle
+//   when the AST contains `ask claude` / `has tools:` nodes.
+//
 // 5 TOP-LEVEL OUTPUT PATHS:
 //   1. Non-reactive JS (simple scripts, no UI state)
 //   2. Reactive JS (inputs + state + _recompute cycle)
@@ -89,6 +94,8 @@
 //
 // TABLE OF CONTENTS:
 //   PUBLIC API ........................ compileProgram(), compile(), resolveModules()
+//   CLOUDFLARE WORKERS TARGET ........ emitCloudflareWorkerBundle() — Workers-for-Platforms
+//                                      bundle emit (src/index.js + wrangler.toml + migrations)
 //   E2E TEST GENERATION .............. generateE2ETests() — includes user-written test blocks
 //   DEPLOY CONFIG .................... generateDeployConfig()
 //   UNIFIED COMPILER ................. compileNode(), exprToCode(), compileBody()
@@ -117,6 +124,7 @@
 // =============================================================================
 
 import { NodeType, parse } from './parser.js';
+import { buildWorkerBundle, _selectWorkersUtilities, loadAuthWebcryptoSource } from './lib/packaging-cloudflare.js';
 
 const CLEAR_VERSION = '1.0';
 
@@ -719,6 +727,187 @@ export const UTILITY_FUNCTIONS = [
 }`, deps: [] },
 ];
 
+// =============================================================================
+// WORKERS-SAFE UTILITY FUNCTIONS (Cloudflare Workers for Platforms target)
+// =============================================================================
+//
+// Cloudflare Workers rejects any CommonJS `require()` call at upload time and
+// has no `fs`, `child_process`, or `/tmp` at runtime. The Node helpers above
+// lean on `require("child_process")` + `"/tmp/..."` as an HTTP_PROXY fallback,
+// which is fine for Node but fatal in a Workers bundle.
+//
+// These helpers are byte-identical in *contract* to their Node counterparts
+// but implemented using only the subset Workers supports:
+//   - globalThis.fetch
+//   - globalThis.crypto / crypto.subtle
+//   - Web Streams API (ReadableStream / TextDecoder)
+//   - env bindings (no module-scope process.env — env is a fetch-handler param)
+//
+// Naming: every helper gets a `_workers` suffix so the two paths never collide
+// in a hybrid test or a debug dump. The compiler emits exactly one set per
+// bundle, selected at emit-time by ctx.target / options.target.
+//
+// Shared prompt-formatting logic lives in `_askAI_core`, a pure function both
+// helpers call. Keeping that DRY means a future prompt-shape change (e.g. a
+// new response schema) lands in one place, not two.
+
+export const UTILITY_FUNCTIONS_WORKERS = [
+  { name: '_askAI_core', code: `function _askAI_core(prompt, context, schema) {
+  let content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  if (schema) {
+    const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\\n");
+    content += "\\n\\nRespond with ONLY a JSON object in this exact shape, no other text:\\n{\\n" + fields + "\\n}";
+  }
+  return content;
+}
+function _askAI_parseResult(text, schema) {
+  if (!schema) return text;
+  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);
+  if (!jsonMatch) throw new Error("AI did not return valid JSON. Response: " + text.slice(0, 200));
+  try { return JSON.parse(jsonMatch[0]); } catch (e) { throw new Error("AI returned invalid JSON: " + e.message + ". Response: " + text.slice(0, 200)); }
+}`, deps: [] },
+
+  { name: '_askAI_workers', code: `async function _askAI_workers(env, prompt, context, schema, model) {
+  const proxyUrl = env && env.ANTHROPIC_PROXY_URL;
+  const endpoint = proxyUrl || 'https://api.anthropic.com/v1/messages';
+  const headers = { 'Content-Type': 'application/json' };
+  if (proxyUrl) {
+    if (!env.TENANT_JWT) throw new Error('ANTHROPIC_PROXY_URL is set but TENANT_JWT is missing — cannot authenticate to Clear AI proxy.');
+    headers['Authorization'] = 'Bearer ' + env.TENANT_JWT;
+  } else {
+    if (!env || !env.ANTHROPIC_API_KEY) throw new Error('Set ANTHROPIC_API_KEY binding on this Worker.');
+    headers['x-api-key'] = env.ANTHROPIC_API_KEY;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  const content = _askAI_core(prompt, context, schema);
+  const payload = JSON.stringify({ model: model || 'claude-sonnet-4-20250514', max_tokens: 1024, messages: [{ role: 'user', content }] });
+  const r = await fetch(endpoint, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(30000) });
+  if (!r.ok) { const e = await r.text(); throw new Error('AI request failed: ' + r.status + ' ' + e); }
+  const data = await r.json();
+  return _askAI_parseResult(data.content[0].text, schema);
+}`, deps: ['_askAI_core'] },
+
+  { name: '_askAIWithTools_workers', code: `async function _askAIWithTools_workers(env, prompt, context, tools, toolFns, model) {
+  const proxyUrl = env && env.ANTHROPIC_PROXY_URL;
+  const endpoint = proxyUrl || 'https://api.anthropic.com/v1/messages';
+  const headers = { 'Content-Type': 'application/json' };
+  if (proxyUrl) {
+    if (!env.TENANT_JWT) throw new Error('ANTHROPIC_PROXY_URL is set but TENANT_JWT is missing — cannot authenticate to Clear AI proxy.');
+    headers['Authorization'] = 'Bearer ' + env.TENANT_JWT;
+  } else {
+    if (!env || !env.ANTHROPIC_API_KEY) throw new Error('Set ANTHROPIC_API_KEY binding on this Worker.');
+    headers['x-api-key'] = env.ANTHROPIC_API_KEY;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  const _model = model || 'claude-sonnet-4-20250514';
+  const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  const messages = [{ role: 'user', content: userContent }];
+  const maxTurns = 10;
+  for (let i = 0; i < maxTurns; i++) {
+    const payload = { model: _model, max_tokens: 4096, messages, tools };
+    const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
+    if (!r.ok) { const e = await r.text(); throw new Error('AI request failed: ' + r.status + ' ' + e); }
+    const data = await r.json();
+    const msg = data.content;
+    messages.push({ role: 'assistant', content: msg });
+    const toolUses = msg.filter(b => b.type === 'tool_use');
+    if (toolUses.length === 0) return (msg.find(b => b.type === 'text') || {}).text || '';
+    const results = [];
+    for (const tu of toolUses) {
+      const fn = toolFns[tu.name];
+      if (!fn) { results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: 'Unknown tool: ' + tu.name }), is_error: true }); continue; }
+      try {
+        const result = await fn(...Object.values(tu.input));
+        results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) });
+      } catch (toolErr) {
+        results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: toolErr.message }), is_error: true });
+      }
+    }
+    messages.push({ role: 'user', content: results });
+  }
+  throw new Error('Agent exceeded maximum tool use turns (10)');
+}`, deps: [] },
+
+  { name: '_askAIStream_workers', code: `function _askAIStream_workers(env, prompt, context, model) {
+  // Returns a Workers-native ReadableStream of SSE text deltas. Caller can
+  // forward it as a Response body directly, or await-consume chunk-by-chunk.
+  const proxyUrl = env && env.ANTHROPIC_PROXY_URL;
+  const endpoint = proxyUrl || 'https://api.anthropic.com/v1/messages';
+  const headers = { 'Content-Type': 'application/json' };
+  if (proxyUrl) {
+    if (!env.TENANT_JWT) throw new Error('ANTHROPIC_PROXY_URL is set but TENANT_JWT is missing — cannot authenticate to Clear AI proxy.');
+    headers['Authorization'] = 'Bearer ' + env.TENANT_JWT;
+  } else {
+    if (!env || !env.ANTHROPIC_API_KEY) throw new Error('Set ANTHROPIC_API_KEY binding on this Worker.');
+    headers['x-api-key'] = env.ANTHROPIC_API_KEY;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  const content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  const payload = JSON.stringify({ model: model || 'claude-sonnet-4-20250514', max_tokens: 4096, stream: true, messages: [{ role: 'user', content }] });
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        const r = await fetch(endpoint, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(60000) });
+        if (!r.ok) { const e = await r.text(); controller.error(new Error('AI stream failed: ' + r.status + ' ' + e)); return; }
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        const encoder = new TextEncoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6);
+            if (data === '[DONE]') { controller.close(); return; }
+            try {
+              const evt = JSON.parse(data);
+              if (evt.type === 'content_block_delta' && evt.delta && evt.delta.text) {
+                controller.enqueue(encoder.encode(evt.delta.text));
+              }
+            } catch (_) { /* partial JSON, skip */ }
+          }
+        }
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      }
+    }
+  });
+}`, deps: [] },
+];
+
+// Tree-shake for the Workers utility set. Mirrors _getUsedUtilities but walks
+// UTILITY_FUNCTIONS_WORKERS. The matching key on the SIGNAL side is any
+// appearance of `_askAI(`, `_askAIWithTools(`, or `_askAIStream(` in the
+// hint code (we get passed the current compiled body text). The emit layer
+// then rewrites those calls to pass `env` and use the _workers suffix.
+export function _getUsedUtilitiesWorkers(signalCode) {
+  const needed = new Set();
+  for (const util of UTILITY_FUNCTIONS_WORKERS) {
+    // Signal names without the _workers suffix — the signalCode is the Node
+    // variant's body text, which the caller passes in to detect usage.
+    const signalName = util.name.replace(/_workers$/, '');
+    const suffix = '_workers';
+    // Match either the Node call shape (_askAI(...)) as a usage signal OR
+    // the Workers call shape (_askAI_workers(...)) if we've already rewritten.
+    const nodeSignal = signalName !== util.name && (
+      signalCode.includes(signalName + '(') ||
+      signalCode.includes(signalName + ',') ||
+      signalCode.includes(signalName + ')')
+    );
+    const workersSignal = signalCode.includes(util.name + '(') || signalCode.includes(util.name + ',');
+    if (nodeSignal || workersSignal) {
+      needed.add(util.name);
+      for (const dep of util.deps) needed.add(dep);
+    }
+  }
+  return UTILITY_FUNCTIONS_WORKERS.filter(u => needed.has(u.name)).map(u => u.code);
+}
+
 // Tree-shake: scan compiled code and return only used utility function definitions
 function _getUsedUtilities(compiledCode) {
   const needed = new Set();
@@ -945,22 +1134,276 @@ function _spliceEvalEndpoints(serverJS, endpointsJS) {
   return serverJS.replace(/app\.listen\(/, endpointsJS + '\napp.listen(');
 }
 
+// =============================================================================
+// CLOUDFLARE WORKERS TARGET
+// =============================================================================
+//
+// Emits a Workers-for-Platforms bundle from the AST: `src/index.js` (ESM
+// export-default fetch handler), `wrangler.toml`, and `migrations/*.sql`.
+// Called at the end of compile() only when target === 'cloudflare'.
+// Delegated to `lib/packaging-cloudflare.js` so this file doesn't balloon.
+//
+// Phase 2 scope (cycle 2.1 landed here, 2.2+ expand): real Workers fetch
+// handler + D1 CRUD emit. Every endpoint compiles through the normal
+// compileBody pipeline with `ctx.target = 'cloudflare'` set, so CRUD nodes
+// emit env.DB.prepare/bind/run (see compileCrudD1 below).
+
+function emitCloudflareWorkerBundle(body, result) {
+  const bundle = buildWorkerBundle(body, result);
+  // Replace the Phase-1 stubbed src/index.js with the compiled Worker entry
+  // that runs endpoint bodies through compileBody with ctx.target='cloudflare'.
+  const compiledEntry = compileToCloudflareWorker(body, result);
+  if (compiledEntry) bundle['src/index.js'] = compiledEntry;
+
+  // Emit D1 migrations (one CREATE TABLE per DATA_SHAPE node, SQLite dialect).
+  const migrations = emitD1Migrations(body);
+  if (migrations) bundle['migrations/001-init.sql'] = migrations;
+
+  return bundle;
+}
+
+// =============================================================================
+// D1 MIGRATIONS — CREATE TABLE from every DATA_SHAPE node (SQLite dialect)
+// =============================================================================
+// D1 is SQLite, so:
+//   - INTEGER PRIMARY KEY AUTOINCREMENT (not SERIAL, not AUTO_INCREMENT)
+//   - IF NOT EXISTS so re-applying is idempotent
+//   - TEXT/INTEGER/REAL/BOOLEAN (BOOLEAN is stored as INTEGER 0/1)
+// One file at migrations/001-init.sql. Phase 2 keeps it simple — one big
+// init script. Later phases can version per-change migrations.
+
+function emitD1Migrations(body) {
+  const shapes = body.filter((n) => n.type === NodeType.DATA_SHAPE);
+  if (shapes.length === 0) return null;
+
+  const sqlTypes = {
+    text: 'TEXT',
+    number: 'REAL',
+    boolean: 'INTEGER',
+    timestamp: 'TEXT',
+    fk: 'INTEGER',
+  };
+
+  const out = ['-- Generated by Clear — D1 migrations (SQLite dialect)', ''];
+
+  for (const shape of shapes) {
+    const tableName = pluralizeName(shape.name);
+    out.push(`-- ${shape.name}`);
+    const cols = ['id INTEGER PRIMARY KEY AUTOINCREMENT'];
+    for (const f of shape.fields) {
+      // Skip "has many" virtual fields — they're relationships, not columns.
+      if (f.hasMany) continue;
+      let col = `${f.name} ${sqlTypes[f.fieldType] || 'TEXT'}`;
+      if (f.required) col += ' NOT NULL';
+      if (f.unique) col += ' UNIQUE';
+      if (f.defaultValue !== null && f.defaultValue !== undefined) {
+        // Type-aware default: booleans stored as 0/1, numbers unquoted, text
+        // quoted with SQL-safe escaping. Prevents `DEFAULT 'false'` on an
+        // INTEGER column (SQLite silently stores the string, breaking queries).
+        const dv = f.defaultValue;
+        if (f.fieldType === 'boolean') {
+          const truthy = dv === true || dv === 'true' || dv === 1 || dv === '1';
+          col += ` DEFAULT ${truthy ? 1 : 0}`;
+        } else if (f.fieldType === 'number' || typeof dv === 'number') {
+          col += ` DEFAULT ${dv}`;
+        } else {
+          col += ` DEFAULT '${String(dv).replace(/'/g, "''")}'`;
+        }
+      }
+      if (f.auto && f.fieldType === 'timestamp') {
+        col += ` DEFAULT CURRENT_TIMESTAMP`;
+      }
+      if (f.fk) col += ` REFERENCES ${pluralizeName(f.fk)}(id)`;
+      cols.push(col);
+    }
+    let stmt = `CREATE TABLE IF NOT EXISTS ${tableName} (\n  ${cols.join(',\n  ')}`;
+    if (shape.compoundUniques && shape.compoundUniques.length > 0) {
+      for (const fields of shape.compoundUniques) {
+        stmt += `,\n  UNIQUE(${fields.join(', ')})`;
+      }
+    }
+    stmt += `\n);`;
+    out.push(stmt);
+    out.push('');
+  }
+
+  return out.join('\n');
+}
+
+// =============================================================================
+// CLOUDFLARE WORKER ENTRY (src/index.js) — Phase 2 D1 codegen
+// =============================================================================
+// Compile the AST into an ESM export-default fetch handler. Endpoints are
+// routed by (method, pathname). Every endpoint body is compiled through the
+// normal compileBody pipeline — since ctx.target='cloudflare' in this pass,
+// CRUD nodes emit env.DB.prepare/bind/run (see compileCrudD1 above).
+//
+// Embeds the compiled HTML (result.html) so GET / still serves the app UI,
+// preserving data-clear-line attributes for click-to-edit (future plan).
+
+function compileToCloudflareWorker(body, result) {
+  const html = typeof result?.html === 'string' ? result.html : '';
+  const schemaNames = new Set();
+  const schemaMap = {};
+  for (const node of body) {
+    if (node.type === NodeType.DATA_SHAPE) {
+      schemaNames.add(node.name);
+      schemaMap[node.name.toLowerCase()] = { fields: node.fields, fkFields: node.fields.filter((f) => f.fk) };
+    }
+  }
+  const declared = new Set();
+  const ctx = {
+    lang: 'js',
+    indent: 2,
+    declared,
+    stateVars: null,
+    mode: 'backend',
+    schemaNames,
+    schemaMap,
+    target: 'cloudflare',
+    _astBody: body,
+    _allNodes: body,
+  };
+
+  const endpoints = body.filter((n) => n.type === NodeType.ENDPOINT);
+
+  const out = [];
+  out.push('// Generated by Clear for Cloudflare Workers for Platforms (Phase 2 D1)');
+  out.push('// DO NOT EDIT — regenerate by recompiling the .clear source');
+  out.push('');
+  out.push(`const __CLEAR_HTML__ = ${JSON.stringify(html)};`);
+  out.push('');
+
+  // Inline Workers-safe helpers (Phase 3). Selects from UTILITY_FUNCTIONS_WORKERS
+  // based on which AI features the AST actually uses — no helper shipped for apps
+  // that don't call `ask claude`. Critically: these are the ONLY AI plumbing
+  // a deployed Worker sees — the Node variants stay on the default target.
+  const needed = _selectWorkersUtilities(body);
+  if (needed.length > 0) {
+    out.push('// --- Workers-safe runtime helpers (inlined) ---');
+    for (const code of needed) out.push(code);
+    out.push('');
+  }
+
+  // Inline Web Crypto auth when `allow signup and login` is present. PBKDF2
+  // via crypto.subtle — no bcryptjs, no Node crypto module needed at runtime.
+  // Source of truth is runtime/auth-webcrypto.mjs; we strip `export ` keywords
+  // and inline the function bodies so the Workers bundle stays a single module.
+  const usesAuth = body.some((n) => n && n.type === NodeType.AUTH_SCAFFOLD);
+  if (usesAuth) {
+    out.push('// --- Web Crypto auth (PBKDF2 via crypto.subtle) — inlined from runtime/auth-webcrypto.mjs ---');
+    out.push(loadAuthWebcryptoSource());
+    out.push('');
+  }
+
+  out.push('export default {');
+  out.push('  async fetch(request, env, ctx) {');
+  out.push('    const url = new URL(request.url);');
+  out.push('    const pathname = url.pathname;');
+  out.push('    const method = request.method;');
+  out.push('');
+
+  for (const ep of endpoints) {
+    const methodUpper = (ep.method || 'GET').toUpperCase();
+    const { match, params } = _cfPathMatchSnippet(ep.path);
+    const hasIdParam = /\/:id(\/|$)/.test(ep.path || '');
+    out.push(`    if (method === ${JSON.stringify(methodUpper)} && ${match}) {`);
+    out.push(`      try {`);
+    if (params.length > 0) {
+      out.push(`        request.params = ${params};`);
+    }
+
+    // Body binding: request.json() for writes, query params for GET.
+    const bodyUsesIncoming = endpointBodyUsesIncoming(ep.body);
+    const needsBinding = ep.receivingVar || bodyUsesIncoming;
+    const dataVar = ep.receivingVar || 'incoming';
+    if (needsBinding) {
+      if (methodUpper === 'GET') {
+        out.push(`        const ${sanitizeName(dataVar)} = Object.fromEntries(url.searchParams.entries());`);
+      } else {
+        out.push(`        let ${sanitizeName(dataVar)} = {};`);
+        out.push(`        try { ${sanitizeName(dataVar)} = await request.json(); } catch (_e) { ${sanitizeName(dataVar)} = {}; }`);
+      }
+    }
+
+    // Compile body with ctx.target='cloudflare'
+    const epDeclared = new Set();
+    if (ep.receivingVar) epDeclared.add(sanitizeName(ep.receivingVar));
+    if (bodyUsesIncoming) epDeclared.add('incoming');
+    const bodyCode = compileBody(ep.body || [], ctx, {
+      indent: 3,
+      declared: epDeclared,
+      endpointMethod: methodUpper,
+      endpointHasId: hasIdParam,
+      target: 'cloudflare',
+    });
+    if (bodyCode) out.push(bodyCode);
+    out.push(`      } catch (err) {`);
+    out.push(`        const _status = err.status || 500;`);
+    out.push(`        const _msg = err.status ? err.message : 'Internal error';`);
+    out.push(`        return new Response(JSON.stringify({ error: _msg }), { status: _status, headers: { 'Content-Type': 'application/json' } });`);
+    out.push(`      }`);
+    out.push(`    }`);
+  }
+
+  // Default GET / → compiled HTML
+  out.push(`    if (method === 'GET' && (pathname === '/' || pathname === '/index.html')) {`);
+  out.push(`      return new Response(__CLEAR_HTML__, {`);
+  out.push(`        headers: { 'Content-Type': 'text/html; charset=utf-8' }`);
+  out.push(`      });`);
+  out.push(`    }`);
+  out.push('');
+  out.push(`    return new Response('Not found', { status: 404 });`);
+  out.push('  }');
+  out.push('};');
+  out.push('');
+  return out.join('\n');
+}
+
+// Build a match snippet + params extraction snippet for a route path.
+// "/api/todos/:id" → match: a regex-test against pathname, params: extracted param object.
+// Kept as a literal equality check for paths without :params.
+function _cfPathMatchSnippet(path) {
+  if (!/:[a-z_][a-z0-9_]*/i.test(path || '')) {
+    return { match: `pathname === ${JSON.stringify(path)}`, params: '' };
+  }
+  const paramNames = [];
+  const regexSource = '^' + path.replace(/:[a-z_][a-z0-9_]*/gi, (m) => {
+    paramNames.push(m.slice(1));
+    return '([^/]+)';
+  }) + '$';
+  const match = `(new RegExp(${JSON.stringify(regexSource)})).test(pathname)`;
+  const params =
+    '(() => { const _m = pathname.match(new RegExp(' + JSON.stringify(regexSource) + ')) || []; return { ' +
+    paramNames.map((n, i) => `${n}: _m[${i + 1}]`).join(', ') +
+    ' }; })()';
+  return { match, params };
+}
+
 export function compile(ast, options = {}) {
   const errors = [...ast.errors];
   const warnings = [];
   const target = options.target || ast.target || 'web';
   const sourceMap = options.sourceMap === true; // opt-in
 
-  const VALID_TARGETS = ['web', 'backend', 'both', 'web_and_js_backend', 'web_and_python_backend', 'js_backend', 'python_backend'];
+  const VALID_TARGETS = ['web', 'backend', 'both', 'web_and_js_backend', 'web_and_python_backend', 'js_backend', 'python_backend', 'cloudflare'];
   if (!VALID_TARGETS.includes(target)) {
     errors.push({ line: 0, message: `Unknown target "${target}". Use: web, backend, or both. Example: build for web and python backend` });
     return { errors, warnings };
   }
 
+  // Cloudflare Workers target is a compile-time deploy format, not a language/runtime.
+  // When target === 'cloudflare', we still run the default (web + js backend) emit paths
+  // so compileProgram returns the same serverJS/html we'd hand to Node. Then at the end
+  // we emit a Workers-flavored `src/index.js` + `wrangler.toml` into result.workerBundle.
+  // This keeps Phase 1 cleanly additive — the default target is untouched.
+  const emitCloudflare = target === 'cloudflare';
+  const runtimeTarget = emitCloudflare ? 'both' : target;
+
   const result = { errors, warnings };
-  const needsWeb = ['web', 'both', 'web_and_js_backend', 'web_and_python_backend'].includes(target);
-  const needsJSBackend = ['backend', 'both', 'web_and_js_backend', 'js_backend'].includes(target);
-  const needsPythonBackend = ['backend', 'both', 'web_and_python_backend', 'python_backend'].includes(target);
+  const needsWeb = ['web', 'both', 'web_and_js_backend', 'web_and_python_backend'].includes(runtimeTarget);
+  const needsJSBackend = ['backend', 'both', 'web_and_js_backend', 'js_backend'].includes(runtimeTarget);
+  const needsPythonBackend = ['backend', 'both', 'web_and_python_backend', 'python_backend'].includes(runtimeTarget);
 
   // Pre-scan: identify which agents will stream (async function* generators).
   // This runs BEFORE compilation so both backend (SSE endpoints) and frontend
@@ -1076,6 +1519,14 @@ export function compile(ast, options = {}) {
     // serverJS before spawning the eval child. Exposes every agent at
     // /_eval/agent_<name> so internal agents can be graded individually.
     result.evalEndpointsJS = generateEvalEndpoints(ast.body);
+  }
+
+  // Cloudflare Workers bundle — a separate emit path that produces a
+  // `src/index.js` Fetch-handler + `wrangler.toml`. We only fire this when
+  // the caller opted into target='cloudflare' so every existing caller
+  // (CLI, Studio preview, tests) stays on the default Node emit path.
+  if (emitCloudflare) {
+    result.workerBundle = emitCloudflareWorkerBundle(ast.body, result);
   }
 
   return result;
@@ -3326,6 +3777,14 @@ function compileCrud(node, ctx, pad) {
   const table = node.target ? pluralizeName(node.target) : 'unknown';
   const lineComment = node.line ? ` // clear:${node.line}` : '';
 
+  // Cloudflare Workers (D1 SQLite) path — emits env.DB.prepare/bind/run.
+  // D1 is SQLite over HTTP, so every query must parameterize through .bind()
+  // to block SQL injection. No template-literal interpolation of user values.
+  // See plans/plan-clear-cloud-wfp-04-23-2026.md Phase 2 + runtime/db-d1.js shim.
+  if (ctx.target === 'cloudflare' && ctx.lang !== 'python') {
+    return compileCrudD1(node, ctx, pad, table, lineComment);
+  }
+
   if (ctx.lang === 'python') {
     // Supabase Python path (supabase-py SDK)
     if (ctx.dbBackend && ctx.dbBackend.includes('supabase')) {
@@ -3535,6 +3994,220 @@ function compileCrud(node, ctx, pad) {
   return `${pad}// CRUD: ${node.operation}`;
 }
 
+// =============================================================================
+// CRUD — CLOUDFLARE D1 (SQLITE) EMIT PATH
+// =============================================================================
+//
+// Invoked when `ctx.target === 'cloudflare'`. Emits env.DB.prepare(SQL).bind(...).run/all/first()
+// for every CRUD op. SECURITY: every user value flows through .bind(), never
+// template-literal interpolation. A WHERE `email = 'alice'` input becomes
+// `WHERE email = ?` + `.bind(value)`, so `' OR 1=1 --' safely fails to match.
+//
+// D1 call shapes:
+//   INSERT  → prepare('INSERT INTO t (a, b) VALUES (?, ?)').bind(a, b).run()
+//   SELECT * → prepare('SELECT * FROM t').all()  → returns { results: [...] }
+//   SELECT 1 → prepare('SELECT * FROM t WHERE id = ?').bind(id).first()
+//   UPDATE  → prepare('UPDATE t SET a=?, b=? WHERE id = ?').bind(a, b, id).run()
+//   DELETE  → prepare('DELETE FROM t WHERE id = ?').bind(id).run()
+//
+// UPDATE invariant: we refuse to run an UPDATE without an id on the record
+// (mirrors the runtime/db.js guard landed in session 42). Silent no-op updates
+// hide the "save initial to Counters with no id" class of Meph bugs.
+
+function compileCrudD1(node, ctx, pad, table, lineComment) {
+  if (node.operation === 'lookup') {
+    return compileCrudD1Lookup(node, ctx, pad, table, lineComment);
+  }
+  if (node.operation === 'save') {
+    return compileCrudD1Save(node, ctx, pad, table, lineComment);
+  }
+  if (node.operation === 'remove') {
+    return compileCrudD1Remove(node, ctx, pad, table, lineComment);
+  }
+  return `${pad}// CRUD (cloudflare): ${node.operation}`;
+}
+
+// Build "WHERE col = ?" + bind-value expressions from a condition AST.
+// Returns { clause: 'col1 = ? AND col2 = ?', binds: ['exprCode1', 'exprCode2'] }
+// Never template-interpolates a user value — every runtime value goes to binds.
+function _d1WhereFromCondition(condExpr, ctx) {
+  if (!condExpr) return { clause: '', binds: [] };
+  const pairs = extractEqPairs(condExpr, ctx) || [];
+  if (pairs.length === 0) {
+    // Fallback: try a single equality via extractFilterKey on BINARY_OP.
+    if (condExpr.type === NodeType.BINARY_OP && (condExpr.operator === '==' || condExpr.operator === '===')) {
+      const key = extractFilterKey(condExpr.left, ctx);
+      const val = exprToCode(condExpr.right, ctx);
+      if (key) return { clause: `${key} = ?`, binds: [val] };
+    }
+    return { clause: '', binds: [] };
+  }
+  const clause = pairs.map(([k]) => `${k} = ?`).join(' AND ');
+  const binds = pairs.map(([, v]) => v);
+  return { clause, binds };
+}
+
+function compileCrudD1Lookup(node, ctx, pad, table, lineComment) {
+  const varName = sanitizeName(node.variable);
+  const isSingle = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
+  const { clause, binds } = _d1WhereFromCondition(node.condition, ctx);
+
+  let sql = `SELECT * FROM ${table}`;
+  if (clause) sql += ` WHERE ${clause}`;
+
+  // Pagination: LIMIT/OFFSET with literal or bound expression.
+  // Note: D1 accepts LIMIT as a literal OR bound, but we prefer literal for
+  // static perPage since it's statically known at compile time.
+  if (!isSingle && node.page && node.perPage) {
+    const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
+    sql += ` LIMIT ${perPage}`;
+    // OFFSET handled via bind for runtime page variable
+    if (typeof node.page === 'number') {
+      sql += ` OFFSET ${(node.page - 1) * perPage}`;
+    } else {
+      sql += ` OFFSET ?`;
+      binds.push(`((${sanitizeName(String(node.page))} - 1) * ${perPage})`);
+    }
+  } else if (!isSingle && !node.noLimit) {
+    sql += ` LIMIT ${DEFAULT_QUERY_LIMIT}`;
+  }
+
+  const bindExpr = binds.length > 0 ? `.bind(${binds.join(', ')})` : '';
+  const tail = isSingle ? '.first()' : '.all()';
+  const unwrap = isSingle
+    ? `await env.DB.prepare('${sql}')${bindExpr}${tail}`
+    : `(await env.DB.prepare('${sql}')${bindExpr}${tail}).results`;
+
+  return `${pad}const ${varName} = ${unwrap};${lineComment}`;
+}
+
+// Extract column names for a table from schemaMap (fallback: pick from record at runtime).
+function _d1ColumnsForTarget(targetName, ctx) {
+  if (!ctx.schemaMap || !targetName) return null;
+  // Try several capitalization/plural forms
+  const keys = [targetName, targetName + 's', pluralizeName(targetName), targetName.toLowerCase()]
+    .concat(ctx.schemaMap ? [pluralizeName(targetName).toLowerCase()] : []);
+  for (const k of keys) {
+    const m = ctx.schemaMap[(k || '').toLowerCase()];
+    if (m && Array.isArray(m.fields)) {
+      return m.fields.map((f) => f.name);
+    }
+  }
+  return null;
+}
+
+function compileCrudD1Save(node, ctx, pad, table, lineComment) {
+  const varCode = sanitizeName(node.variable);
+  const cols = _d1ColumnsForTarget(node.target, ctx);
+
+  // INSERT path: when caller is `save X as new T` (node.resultVar or isInsert),
+  // or when outer context has no id on the record (would be UPDATE territory).
+  const isExplicitInsert = node.resultVar || node.isInsert;
+
+  // "with field is value" overrides merge local vars on top of incoming
+  const overrides = Array.isArray(node.overrides) ? node.overrides : [];
+
+  if (isExplicitInsert) {
+    // Build: env.DB.prepare('INSERT INTO t (a, b) VALUES (?, ?)').bind(rec.a, rec.b).run()
+    // Column list: from schema if known, otherwise pick Object.keys(record) at runtime.
+    if (cols && cols.length > 0) {
+      const colList = cols.join(', ');
+      const placeholders = cols.map(() => '?').join(', ');
+      // Override expressions replace column reads from the record
+      const overrideMap = Object.create(null);
+      for (const o of overrides) overrideMap[o.field] = sanitizeName(o.value);
+      const bindArgs = cols.map((c) => overrideMap[c] !== undefined
+        ? overrideMap[c]
+        : `${varCode}?.${c} ?? null`).join(', ');
+
+      const stmt = `await env.DB.prepare('INSERT INTO ${table} (${colList}) VALUES (${placeholders})').bind(${bindArgs}).run()`;
+      if (node.resultVar) {
+        // Return the inserted row with its id; D1's .run() yields { meta: { last_row_id } }.
+        // Re-fetch via SELECT to have parity with db.insert's return shape.
+        const rv = sanitizeName(node.resultVar);
+        return `${pad}const _d1_res_${rv} = ${stmt};\n${pad}const ${rv} = await env.DB.prepare('SELECT * FROM ${table} WHERE id = ?').bind(_d1_res_${rv}.meta.last_row_id).first();${lineComment}`;
+      }
+      return `${pad}${stmt};${lineComment}`;
+    }
+    // Unknown schema — dynamic column discovery at runtime from the record.
+    // Still parameterizes values via .bind(...args); column names are sanitized
+    // by _d1SafeCol (throws if not /^[a-z_][a-z0-9_]*$/i).
+    return `${pad}{
+${pad}  const _d1_keys = Object.keys(${varCode} || {}).filter(k => k !== 'id' && /^[a-z_][a-z0-9_]*$/i.test(k));
+${pad}  const _d1_sql = 'INSERT INTO ${table} (' + _d1_keys.join(', ') + ') VALUES (' + _d1_keys.map(() => '?').join(', ') + ')';
+${pad}  const _d1_vals = _d1_keys.map(k => ${varCode}[k]);
+${pad}  ${node.resultVar ? `const _d1_res_${sanitizeName(node.resultVar)} = ` : ''}await env.DB.prepare(_d1_sql).bind(..._d1_vals).run();
+${pad}  ${node.resultVar ? `const ${sanitizeName(node.resultVar)} = await env.DB.prepare('SELECT * FROM ${table} WHERE id = ?').bind(_d1_res_${sanitizeName(node.resultVar)}.meta.last_row_id).first();` : ''}
+${pad}}${lineComment}`;
+  }
+
+  // UPDATE path: `save x as T` without `new`. Require id on record (mirrors runtime/db.js).
+  // If the endpoint has :id, merge it onto the record first.
+  const idGuardHint = `Cannot update ${table} without an id — use "save ... as new ${node.target}" to insert instead, or look up an existing row first.`;
+
+  // Column list for SET clause
+  if (cols && cols.length > 0) {
+    const setCols = cols.filter((c) => c !== 'id');
+    const setClause = setCols.map((c) => `${c} = ?`).join(', ');
+    const setBinds = setCols.map((c) => `${varCode}?.${c} ?? null`).join(', ');
+
+    if (ctx.endpointHasId) {
+      // Inject URL param as id so the WHERE clause matches the right row
+      return `${pad}{
+${pad}  const _d1_id = request.params?.id ?? url.pathname.split('/').pop();
+${pad}  if (_d1_id == null || _d1_id === '') { const _e = new Error('${idGuardHint}'); _e.status = 400; throw _e; }
+${pad}  await env.DB.prepare('UPDATE ${table} SET ${setClause} WHERE id = ?').bind(${setBinds}, _d1_id).run();
+${pad}  Object.assign(${varCode} || {}, await env.DB.prepare('SELECT * FROM ${table} WHERE id = ?').bind(_d1_id).first() || {});
+${pad}}${lineComment}`;
+    }
+    // No endpointHasId — require id on the record itself (runtime guard)
+    return `${pad}{
+${pad}  if (!${varCode} || ${varCode}.id == null) { const _e = new Error('${idGuardHint}'); _e.status = 400; throw _e; }
+${pad}  await env.DB.prepare('UPDATE ${table} SET ${setClause} WHERE id = ?').bind(${setBinds}, ${varCode}.id).run();
+${pad}}${lineComment}`;
+  }
+
+  // Unknown schema fallback — dynamic keys
+  if (ctx.endpointHasId) {
+    return `${pad}{
+${pad}  const _d1_id = request.params?.id ?? url.pathname.split('/').pop();
+${pad}  if (_d1_id == null || _d1_id === '') { const _e = new Error('${idGuardHint}'); _e.status = 400; throw _e; }
+${pad}  const _d1_keys = Object.keys(${varCode} || {}).filter(k => k !== 'id' && /^[a-z_][a-z0-9_]*$/i.test(k));
+${pad}  if (_d1_keys.length === 0) { /* nothing to update */ } else {
+${pad}    const _d1_sql = 'UPDATE ${table} SET ' + _d1_keys.map(k => k + ' = ?').join(', ') + ' WHERE id = ?';
+${pad}    const _d1_vals = _d1_keys.map(k => ${varCode}[k]).concat([_d1_id]);
+${pad}    await env.DB.prepare(_d1_sql).bind(..._d1_vals).run();
+${pad}  }
+${pad}}${lineComment}`;
+  }
+  return `${pad}{
+${pad}  if (!${varCode} || ${varCode}.id == null) { const _e = new Error('${idGuardHint}'); _e.status = 400; throw _e; }
+${pad}  const _d1_keys = Object.keys(${varCode}).filter(k => k !== 'id' && /^[a-z_][a-z0-9_]*$/i.test(k));
+${pad}  if (_d1_keys.length > 0) {
+${pad}    const _d1_sql = 'UPDATE ${table} SET ' + _d1_keys.map(k => k + ' = ?').join(', ') + ' WHERE id = ?';
+${pad}    const _d1_vals = _d1_keys.map(k => ${varCode}[k]).concat([${varCode}.id]);
+${pad}    await env.DB.prepare(_d1_sql).bind(..._d1_vals).run();
+${pad}  }
+${pad}}${lineComment}`;
+}
+
+function compileCrudD1Remove(node, ctx, pad, table, lineComment) {
+  // DELETE FROM t [WHERE ...].  Auto-injects :id when endpoint has one and no
+  // explicit WHERE is given — matches the Node path's convenience.
+  if (ctx.endpointHasId && !node.condition) {
+    return `${pad}{
+${pad}  const _d1_id = request.params?.id ?? url.pathname.split('/').pop();
+${pad}  await env.DB.prepare('DELETE FROM ${table} WHERE id = ?').bind(_d1_id).run();
+${pad}}${lineComment}`;
+  }
+  const { clause, binds } = _d1WhereFromCondition(node.condition, ctx);
+  if (!clause) {
+    return `${pad}await env.DB.prepare('DELETE FROM ${table}').run();${lineComment}`;
+  }
+  const bindExpr = binds.length > 0 ? `.bind(${binds.join(', ')})` : '';
+  return `${pad}await env.DB.prepare('DELETE FROM ${table} WHERE ${clause}')${bindExpr}.run();${lineComment}`;
+}
+
 function compileRespond(node, ctx, pad) {
   const val = exprToCode(node.expression, ctx);
   const isStringLiteral = node.expression.type === NodeType.LITERAL_STRING;
@@ -3556,6 +4229,23 @@ function compileRespond(node, ctx, pad) {
     const pyVal = isStringLiteral ? `{"message": ${val}}` : val;
     if (node.status) return `${pad}return JSONResponse(content=${pyVal}, status_code=${node.status})`;
     return `${pad}return ${pyVal}`;
+  }
+
+  // Cloudflare Workers: web Fetch API, not Express. `res` does not exist.
+  // Emit `new Response(JSON.stringify(body), { status, headers })` and return it.
+  if (ctx.target === 'cloudflare') {
+    const jsonHeaders = `{ 'Content-Type': 'application/json' }`;
+    if (node.successMessage) {
+      const successStatus = ctx.endpointMethod === 'POST' ? 201 : 200;
+      const jsVal = isStringLiteral ? `{ message: ${val} }` : `{ ...${val}, message: 'success' }`;
+      return `${pad}return new Response(JSON.stringify(${jsVal}), { status: ${successStatus}, headers: ${jsonHeaders} });`;
+    }
+    if (node.status) {
+      const jsVal = isStringLiteral ? `{ message: ${val} }` : val;
+      return `${pad}return new Response(JSON.stringify(${jsVal}), { status: ${node.status}, headers: ${jsonHeaders} });`;
+    }
+    const jsVal = isStringLiteral ? `{ message: ${val} }` : val;
+    return `${pad}return new Response(JSON.stringify(${jsVal}), { headers: ${jsonHeaders} });`;
   }
 
   // JS responses -- correct HTTP status by method

@@ -7,6 +7,28 @@ description: Use when creating an implementation plan for any feature, fix, or c
 
 **Announce:** "I'm using the write-plan skill."
 
+## Rule 0: WRITE THE PLAN FILE IN SMALL INCREMENTS — ALWAYS
+
+**Never produce the entire plan file with one `Write` call.** Plans are long (300–1000 lines) and a single silent write with no intermediate progress is unusable for the person watching — they sit through minutes of no output and then get a wall of text they can't react to mid-flight.
+
+**Required pattern:**
+1. Create the file with a minimal skeleton (header + problem statement + "the fix" diagram) using `Write`. Target ≤100 lines for the first write.
+2. Append each subsequent section with a separate `Edit` call. Keep each Edit to ~30–80 lines. One section per Edit.
+3. **Narrate before each Edit** — one short sentence (≤15 words) saying what's about to land next. "Phase 3 now — D1 runtime adapter." Nothing more.
+4. The user should see forward motion every 30–60 seconds, not a 5-minute silent pause ending in a wall of text.
+
+**Why this matters:** the person watching is the decision-maker. They need to correct course mid-draft ("actually skip Phase 7, we don't need it") and they can't do that if everything lands at once. Incremental visible writes = steerable writing.
+
+**Do not:**
+- Write the whole plan in one `Write` call because "it's faster."
+- Narrate with paragraphs ("I'm now going to think carefully about the next section…") — one short sentence only.
+- Skip narration "because the file already exists" — narrate before every section.
+- Batch multiple sections into one Edit to "save tool calls" — the cost is the user's ability to steer, not tool-call count.
+
+This rule is **Rule 0** because violating it makes every subsequent step useless — the user can't red-team a plan they haven't seen land piece by piece.
+
+---
+
 ## Step 1: Assess scope (skip if user already said)
 
 If the user hasn't indicated size, ask:

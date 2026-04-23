@@ -1274,3 +1274,172 @@ Sweep cost went from $1.50/run (serial, pre-optimization) to $1.30/run (parallel
 - Total API spend tonight: ~$14 (close to "done good" target)
 
 First time we can say: the ranker trains, deploys, and we're measuring lift on real data — not "someday" per RESEARCH.md.
+
+---
+
+## Session: Cloudflare Workers for Platforms — Phase 1 (2026-04-23)
+
+Plumbing `compileProgram(src, { target: 'cloudflare' })` through to a writable Workers-for-Platforms bundle. 8 TDD cycles, no runtime-API changes yet (that's Phase 2's D1 adapter + Phase 3's webcrypto auth). Key pitfalls we hit while building the skeleton:
+
+### ESM-only is non-negotiable in Workers
+
+Workers-for-Platforms rejects any `require()` call at upload time, and `esbuild --bundle` chokes on mixed CJS/ESM output. The existing Node backend emit (`compileToJSBackend`) is loaded with `require('express')` and `require('child_process')`; we cannot reuse a single line of it. The Workers path is a **separate emit** that produces ESM-only `export default { async fetch(request, env, ctx) { ... } }` — routes by `new URL(request.url).pathname`, no Express, no Node stdlib assumptions.
+
+Runtime guard in `lib/packaging-cloudflare.test.js`: emitted `src/index.js` must parse clean under `node --check` AND must contain zero `require(` substrings. Future additive features (D1 queries, KV lookups, webcrypto auth) must be audited the same way before they land.
+
+### Compat date + flags are single-source constants
+
+The `wrangler.toml` compatibility configuration (`compatibility_date = "2025-04-01"`, `compatibility_flags = ["nodejs_compat_v2"]`) lives ONCE at the top of `lib/packaging-cloudflare.js`:
+
+```js
+export const CF_COMPAT_DATE = '2025-04-01';
+export const CF_COMPAT_FLAGS = ['nodejs_compat_v2'];
+```
+
+When Cloudflare releases a newer compat date (and we test it), it's a one-line edit. Don't ever duplicate these constants into TOML string templates — drift silently breaks bundle uploads.
+
+### data-clear-line preservation via JSON.stringify embed
+
+The compiler emits `data-clear-line="N"` attributes on every HTML element so click-to-edit (future plan) can map a clicked DOM node back to its Clear source line. Workers-target emit embeds the compiled HTML by `JSON.stringify`-ing it into `src/index.js`:
+
+```js
+const __CLEAR_HTML__ = ${JSON.stringify(html)};
+// ...
+return new Response(__CLEAR_HTML__, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+```
+
+This is byte-faithful — no template-literal escaping headaches, no minifier sneaks in later — and preserves every `data-clear-line` attribute verbatim. Added a regression test explicitly: "Workers src/index.js embeds HTML with data-clear-line attrs intact."
+
+### testUtils.it() doesn't await async fn bodies — silent green
+
+`lib/testUtils.js`'s `it()` wraps `fn()` in `try { fn(); passed++; }` — synchronous only. Async test bodies that throw get a pending Promise; the `it()` call has already recorded success by the time the rejection fires. Our first-cut Phase 1 cycle 1.6 tests used `async it(() => { const { packageBundle } = await import(...); ... })` and all showed GREEN even when the file-write assertions were definitively failing (verified via a standalone trace).
+
+Fix: hoist imports to the top of the test file (synchronous ESM imports) and keep `it()` bodies synchronous. Use the existing `testAsync` export if async is genuinely required (rare — the only Phase 1 test needing it was the wrangler smoke, which runs `spawn()` + settle + `fetch()`).
+
+**Rule:** before claiming a new test is GREEN, double-check that it would actually go RED when the production code is broken. A silent-pass test is worse than no test.
+
+### Surfacing pre-existing bugs via longer test runtime
+
+Adding cycle 1.7's wrangler dev smoke (30-60s wall clock) extended the clear.test.js runtime enough that Node's unhandled-rejection handler caught a previously-silent bug in test T19 (`apps/store-ops/main.clear` was deleted in an earlier session but the test still references it). The test was "passing" because `it()` is sync; the readFileSync rejection never got collected.
+
+Defensive fix in clear.test.js:23570 — guard the readFileSync with `existsSync` and return early. Long-term: rewrite testUtils.it to await Promises OR migrate to vitest.
+
+### Windows + wrangler + rmSync = EPERM on cleanup
+
+On Windows, `child.kill()` on a spawned wrangler dev doesn't immediately release file handles in the cwd. The test's `finally { rmSync(outDir, { recursive: true, force: true }) }` threw EPERM, masking the real test outcome.
+
+Fix: after `child.kill()`, wait 1500ms for handles to unwind, then wrap rmSync in try/catch — a temp-dir leak is harmless, but a masked assertion failure is expensive.
+
+### Phase 1 outcome
+
+- 8 TDD cycles committed (cf-1.1 → cf-1.7 + 1.4b + plan correction)
+- 2101 → 2139 tests passing (+38 net, 26+ of them in packaging-cloudflare.test.js)
+- 0 regressions on default target
+- wrangler dev spawn + curl → 200 confirmed end-to-end
+- Phase 2 (D1 runtime) + Phase 3 (webcrypto auth) unblocked
+
+## Session: Cloudflare Workers for Platforms — Phase 2 (2026-04-23)
+
+Wiring the D1 CRUD emit path + migrations + a runtime shim so Workers-compiled Clear apps can actually read and write SQLite over the edge. 9 TDD cycles. Three non-obvious pitfalls worth pinning.
+
+### D1 prepared statements are a hard security floor — never interpolate
+
+Every CRUD path in `compiler.js compileCrudD1*` emits `env.DB.prepare(SQL).bind(value1, value2, ...)` where the SQL is a fixed template-literal with `?` placeholders and values flow through `.bind()`. Template-literal interpolation of user-controlled data inside SQL is forbidden — a single `WHERE email = ${email}` drops the SQL-injection floor across every endpoint the compiler emits. Cycle 2.3 locks the invariant with a global grep over representative endpoints: zero match on `(INSERT INTO |SELECT \*|UPDATE \w+|DELETE FROM) .*\${` anywhere in `src/index.js`.
+
+D1's `.bind()` treats every argument as a literal, so an adversarial `' OR 1=1 --` binds as the exact 9-character string "', OR 1=1', --". The table stays, the query fails to match. Same floor as Postgres parameterized queries or SQLite named parameters — just enforced at compile time instead of hoped for at review time.
+
+### D1 is SQLite, so the dialect is SQLite
+
+D1 on the wire is SQLite over HTTP. That means migrations must use `INTEGER PRIMARY KEY AUTOINCREMENT` (not Postgres `SERIAL`, not MySQL `AUTO_INCREMENT`), boolean columns are `INTEGER` with 0/1 values, and column defaults for text fields need single-quote escaping. Cycle 2.6's migration emitter pins this with a type-aware default formatter: boolean literals coerce to 0/1, numbers stay unquoted, text gets SQL-safe single-quoting. A mixed pattern like `completed BOOLEAN DEFAULT 'false'` silently stores the string "false" inside the INTEGER column and breaks every subsequent `WHERE completed = 1` query. Test files like `apps/todo-fullstack/main.clear` exercise this path because a `default false` field is on the canonical happy path.
+
+### better-sqlite3 doesn't accept booleans; real D1 does
+
+Cycle 2.8's E2E test compiled the todo app, spun up `env = { DB: d1Mock() }`, applied the migrations, and POSTed a `{title: 'first', completed: false}` payload. It crashed with `SQLite3 can only bind numbers, strings, bigints, buffers, and null`. Real D1 accepts booleans and coerces them server-side — our mock has to do the same.
+
+Fix: `d1Mock()`'s `bind()` wraps every argument through `coerceBindArg(v)` — `true → 1`, `false → 0`, `undefined → null`. Now a Worker built for real D1 runs identically against the better-sqlite3 mock in tests. If this coercion lived in the compiled emit instead of the mock, production (real D1) would get double-coerced and lose type fidelity — keep the coercion at the test-mock boundary, not in the codegen.
+
+Log this one here (not a rule) because it's a bug surface specific to the mock: whenever we extend `d1Mock` to support a new D1 feature, check whether real D1 is more permissive than better-sqlite3 and coerce inside the mock.
+
+### ESM/CJS scope drives the `.mjs` extension for runtime/db-d1
+
+`runtime/package.json` contains `{"type":"commonjs"}` so every `.js` file under `runtime/` is treated as CommonJS. But D1 bindings only run inside Workers, and Workers are ESM-only — `export { createD1Shim }` is required. We named the file `runtime/db-d1.mjs` so the extension overrides the package.json scope for this one file.
+
+Don't drop a second `package.json` inside `runtime/d1/` just to flip the scope — it would change the module system for anything added in that subdir and bite future contributors. One `.mjs` file is surgical and obvious.
+
+### Phase 2 outcome
+
+- 9 TDD cycles committed (cf-2.1 → cf-2.7 + cf-2.8 which folds cf-2.9 learnings)
+- 2139 → 2202 tests passing (+63 net, 45+ of them in packaging-cloudflare-d1.test.js + db-d1.test.mjs + packaging-cloudflare-templates.test.js)
+- 0 regressions on default target
+- All 8 core templates compile clean with target=cloudflare
+- hello-world + todo-fullstack run end-to-end against d1Mock — write + read confirmed
+- Phase 3 (webcrypto auth) remains independent — no shared edits to _askAI or auth utilities
+
+## Session: Cloudflare Workers for Platforms — Phase 3 (2026-04-23)
+
+Making agents (`ask claude`, `has tools:`, streaming) and auth (`allow signup and login`) work inside a Cloudflare Worker bundle. The whole point: the deployed Worker must NEVER see Node-only APIs — Workers' bundler rejects `require()` at upload time and has no `fs`, no `child_process`, no `/tmp`. Phase 3 ran 10 TDD cycles and landed a parallel set of Workers-safe runtime helpers alongside the Node ones.
+
+### Emit-time branching beats runtime gating every time
+
+Our first instinct was "gate the Node-specific branch with an `if (typeof require !== 'undefined')`." That's structurally wrong for Workers. Even if the branch never fires at runtime, `require(` as a TEXT SUBSTRING in the bundle trips Cloudflare's static scan and the upload fails. Dead code still ships.
+
+The fix: two parallel helper arrays in `compiler.js` (`UTILITY_FUNCTIONS` for Node, `UTILITY_FUNCTIONS_WORKERS` for Cloudflare) and a compiler switch that emits exactly ONE set, selected by `ctx.target`/`options.target`. The Node set keeps its HTTP_PROXY + curl fallback (uses `require("child_process")`); the Workers set is fetch-only with `env` threaded as a parameter.
+
+**Rule:** substring-checkable drift guards (`expect(src.includes('require(')).toBe(false)`) are the only guards you can trust for Workers output. Runtime gates fail silently; compile-time gates and text grep catch everything.
+
+### Web Crypto in Node 20+ is bit-for-bit identical to Workers
+
+The Workers runtime has `globalThis.crypto.subtle` — the same PBKDF2 / AES / ECDSA the browser exposes. Node 20+ ships the same API surface natively, zero polyfill needed. That meant Phase 3's auth tests could run in pure Node (no miniflare, no wrangler invocation) and still prove out the exact code path the deployed Worker would execute. Fast iteration loop — 100ms per hashPassword test vs. seconds for a miniflare spin-up.
+
+Param choice: PBKDF2-SHA-256, 600,000 iterations, 128-bit random salt, 256-bit output hash. 600k is OWASP 2024's floor. On our dev machine: ~150ms per `hashPassword()` — slow enough to hurt a brute-forcer, fast enough that a login request doesn't feel laggy.
+
+### Versioned hash format makes PBKDF2 upgrades non-breaking
+
+`v1:<salt-hex>:<hash-hex>`. `v1` = PBKDF2-SHA-256, 600k iterations. When compute gets cheap enough that 2M iterations makes sense, or when Argon2 lands for Workers, we add a `v2:` branch to `verifyPassword` — old `v1:` rows still verify using the old params. Zero migration, zero breaking change for stored rows.
+
+Rule: ANY hash format that stores in a database should be versioned. If you don't, you're writing a future migration script or burning sessions on a forced password reset.
+
+### No crypto.timingSafeEqual on Workers — roll the XOR-sum
+
+Node has `crypto.timingSafeEqual`. Workers doesn't. Constant-time compare is too important to skip — an attacker who can measure response-time deltas can peel off a stored hash byte-by-byte via a timing side-channel. The five-line manual implementation works everywhere:
+
+```js
+function _ctEqualBytes(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+```
+
+The important bit: examine every index regardless of mismatch. Returning early on the first mismatch reintroduces the timing leak.
+
+### Scope-asserting runtime files as .mjs when the dir is CJS-scoped
+
+`runtime/package.json` pins `{"type":"commonjs"}` — the existing `runtime/auth.js` is CJS. The new `runtime/auth-webcrypto` must be ESM because the Workers bundle is ESM-only. Two options: drop a sibling `package.json`, OR use the `.mjs` extension to scope-assert explicitly. Went with `.mjs` because it's a visible-at-filename-level hint that this module ships to Workers, not Node.
+
+The test file matches: `runtime/auth-webcrypto.test.mjs`. Node imports resolve to both without the extension being a problem.
+
+### Inline-at-bundle vs. import-at-runtime for shared helpers
+
+Workers bundles are one ESM module. The user's Worker doesn't `import` from a neighboring file — the Workers bundler would have to resolve that against some phantom npm tree. The fix: `lib/packaging-cloudflare.js` reads `runtime/auth-webcrypto.mjs` at BUNDLE time, strips `export ` keywords (a flat regex — `^export\s+(async\s+function|function|const)\s` → `$1 `), and inlines the function bodies directly into `src/index.js`.
+
+Upside: single source of truth (change PBKDF2_ITERATIONS in one file, every future deploy gets the new value). Downside: if `auth-webcrypto.mjs` grows top-level statements that aren't function/const declarations, the regex stripper will leave broken top-level `export` statements. Keep the module pure-function-declarations-only as a load-bearing invariant.
+
+### testAsync inside describe() is silent green (again)
+
+`describe(name, fn)` runs `fn()` synchronously. Any `testAsync(...)` calls inside return an unresolved Promise and the describe body moves on before they finish. The final `run()` might fire before the Promises resolve, in which case the tests silently don't count (or count on the next tick, too late).
+
+The pattern that works: put `await testAsync(...)` at MODULE SCOPE (not inside describe), sandwiched between `console.log('\n📦 ...\n')` for the header. Cycle 1.7's wrangler smoke already uses this; cycle 3.8 did the same.
+
+**Rule (reinforcing Phase 1 learnings):** any Phase 3+ async test that imports, spawns, or awaits goes at top-level `await testAsync(...)`. Reserve describe/it blocks for purely synchronous assertions.
+
+### Phase 3 outcome
+
+- 10 TDD cycles committed (cf-3.0 → cf-3.8; cf-3.9 = learnings, folded into 3.8)
+- 2139 → 2182 tests passing (+43 net)
+- `_askAI_workers` + `_askAIWithTools_workers` + `_askAIStream_workers` — pure-fetch AI helpers, env-parameter-based, zero Node-isms
+- `runtime/auth-webcrypto.mjs` — PBKDF2 via Web Crypto, 600k iterations, versioned v1 hash format, constant-time verify
+- Workers bundle drift-guards: hello+askAI and signup+agent both pass `grep -c 'require\|fs\.\|/tmp\|child_process'` → 0
+- Node (default) target: zero behavioral change. Temporal + AI tests all green.
+

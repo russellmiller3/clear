@@ -1,4 +1,105 @@
-# Handoff — 2026-04-22 (flywheel DOUBLY UNBLOCKED — sweeps write passing rows)
+# Handoff — 2026-04-23 (session 43 — Cloudflare WFP pivot plan ready; execute next)
+
+## Current State
+
+- **Branch:** `claude/cloudflare-temporal-setup-PvwvL` — pushed, clean working tree
+- **Last commit:** `794b851` — plan(cloudflare-wfp): pivot end-user deploy to Cloudflare Workers for Platforms
+- **This session:** strategic pivot from Fly.io one-click deploy to Cloudflare Workers for Platforms (WFP) + Cloudflare Workflows as the durable execution target. No code changes yet — plan + docs only.
+
+## What Shipped This Session (all committed)
+
+1. **`COMPETITION.md`** (repo root, new) — strategic thesis for why Clear beats Lovable/Bolt/v0 structurally even though the day-1 UX is similar. Seven structural advantages: determinism, compiler accumulates quality, edit economics, agent context window, training flywheel, auditability escape hatch, model-drift insurance. Strong opinion: "Lovable wins month 1, Clear wins year 2." Reference this whenever the "but Marcus won't see the language" doubt comes back.
+
+2. **`plans/plan-clear-cloud-wfp-04-23-2026.md`** (new, 683 lines) — the active plan. 10 phases, red-teamed. Supersedes the Fly-specific portions of `plans/plan-one-click-deploy-04-17-2026.md` while keeping UI, tenants.js, billing, sanitize, session cookies intact. Key decisions locked in the plan:
+   - Marcus-first (no end-user CLI, no end-user Cloudflare account)
+   - Workers for Platforms via Russell's single CF account
+   - D1 for storage, Cloudflare Workflows for durable execution, Durable Objects for ai-proxy, Cron Triggers for scheduled agents
+   - `runs on temporal` AST re-points to Cloudflare Workflows emission (Temporal SDK emit stays as fallback)
+   - `--target cloudflare` parallel to existing Node/Docker target — no breaking changes
+   - Delete Railway CLI `deploy` command; archive Fly builder code but don't nuke yet
+   - Phase 0 is Russell's prereqs (CF account, $25/mo WFP, DNS, env vars)
+
+3. **`plans/plan-click-to-edit-04-23-2026.md`** (new, STUB) — captures the three-tier click-to-edit design (deterministic menu $0 / scoped LLM ~$0.005 / full chat ~$0.02) and the CONSTRAINED-design-system rationale (CSS flexibility is a feature, not a cage — Webflow's moat). Not active work; references the Cloudflare plan as prereq and the builder-mode-v0.1 plan as sibling.
+
+4. **`.claude/skills/write-plan/SKILL.md`** — added "Rule 0: WRITE THE PLAN FILE IN SMALL INCREMENTS — ALWAYS" at the top. Mandates skeleton-first + 30-80 line Edit chunks + one-sentence narration before each. Project-level.
+
+5. **`~/.claude/CLAUDE.md`** (created) — three global rules propagated from today's session's pain:
+   - Write large files in small visible pieces
+   - Never stall with "I'll do X now" without actually doing X
+   - When starting a skill, read the skill's internal rules first
+
+## Strategic Context (read COMPETITION.md for the full thesis)
+
+Russell considered pivoting to "just be Lovable-like" and not bother with Clear's language + compiler layer, since Marcus won't read the source. Decision: keep Clear. The moat isn't what Marcus sees — it's determinism + edit economics + training flywheel + model-drift insurance that compound over 12+ months. Lovable can match day-1 UX in 2 weeks; they can't match month-6 cost structure without rebuilding on a DSL (which they won't).
+
+Marcus's interface SHOULD look like Lovable at first glance (chat left, preview right, Publish button). The differentiation appears within 2 minutes of use: click-to-edit on preview elements (deterministic, free), "all 47 features working ✓" badge (compiler already generates the tests), real version rollback (source is 200 lines, not 8000). Those are NOT in this plan — they're in `plan-click-to-edit-04-23-2026.md` + the existing `plan-builder-mode-v0.1-04-21-2026.md`.
+
+## Cloudflare Pricing (verified this session)
+
+- $25/mo flat per Russell's CF account (NOT per customer)
+- First ~1000 scripts included, then $0.02/script/mo
+- First 20M requests included, then ~$0.30/M
+- Napkin: 10k Marcus users = ~$650/mo = $0.065/user. 50× cheaper than Fly at same scale (cold-start-free matters).
+
+## Next Steps — MANDATORY: Execute Phases 1–3 of the plan
+
+Russell authorized agent execution for this batch (he went to bed). Rule override: agents are OK for the Cloudflare-plan execution because every phase has a green test gate — regression surfaces fast if an agent goes off-rails.
+
+**Agents must emit progress periodically** — set `run_in_background: false` so agent output is visible, OR use foreground execution with periodic status prints. Do NOT spawn and disappear. Surface every TDD cycle completion.
+
+### Phase 1 — `--target cloudflare` compilation → Workers bundle
+
+All mockable, no Cloudflare infra needed. ~8 TDD cycles.
+
+Spec: `plans/plan-clear-cloud-wfp-04-23-2026.md` §Phase 1 (lines 218-248).
+
+Exit: 8/8 core templates compile with `target: 'cloudflare'` clean; hello-world bundle passes `wrangler dev` smoke; 2800+ existing tests still green.
+
+### Phase 2 — D1 runtime adapter
+
+All mockable via miniflare's D1 emulator. ~9 TDD cycles.
+
+Spec: plan §Phase 2 (lines 249-280).
+
+Exit: all CRUD node types have D1 emit branch; 0 string-interpolated SQL; migrations emit as standalone .sql; 8/8 templates work under miniflare+D1.
+
+### Phase 3 — Agent + Auth runtime Workers-safe
+
+All mockable (Web Crypto runs native in Node 20+). Red-team restructured this phase to emit-time branching instead of runtime gates — read the plan's restructured version.
+
+Spec: plan §Phase 3 (lines 281-323).
+
+Exit: grep emitted Workers-target output for `fs.`, `require(`, `/tmp`, `spawn` → 0 matches; PBKDF2 iterations ≥600k; signup/login/agent works under miniflare.
+
+## After Phases 1–3 Complete
+
+Stop. Commit. Update HANDOFF with results. Wait for Russell's OK before Phase 4+. Phase 8 (HITL smoke) absolutely requires Russell's presence (real Cloudflare API token + account).
+
+## Agent Execution Guidance
+
+- Use the `execute-plan` skill OR spawn `Task` agents per phase (one at a time, foreground).
+- Between phases run `node clear.test.js` as the green-gate. If red, STOP and surface to Russell via HANDOFF.
+- Commit each phase separately with the commit prefix the plan specifies (e.g. `feat(cf-1.1):`, `feat(cf-2.6):`).
+- Push after each phase so Russell sees progress when he wakes up.
+- If a phase reveals a red-team miss (the plan has an error), DON'T just code around it — document the gap in the plan file itself, commit the doc fix, then code the corrected approach. The plan improves with use.
+
+## Files Russell Should Read First Next Session
+
+| File | Why |
+|------|-----|
+| `HANDOFF.md` (this file) | Current state + next steps |
+| `plans/plan-clear-cloud-wfp-04-23-2026.md` | The active plan — start at Phase 1 |
+| `COMPETITION.md` | Strategic thesis — why we're doing this |
+| `plans/plan-click-to-edit-04-23-2026.md` | Marcus UX stub — for context, not active |
+| `plans/plan-one-click-deploy-04-17-2026.md` | Superseded but references — tenants.js, ide.html, billing patterns all come from here |
+
+## Resume Prompt
+
+> Read `HANDOFF.md`. Plan for Cloudflare WFP pivot is red-teamed and committed at `plans/plan-clear-cloud-wfp-04-23-2026.md`. Execute Phases 1, 2, and 3 (all mockable — no real Cloudflare infra). Agents authorized. Agents MUST emit progress after every TDD cycle. Commit + push after each phase. Stop after Phase 3 and update HANDOFF — Russell takes it from there.
+
+---
+
+# Previous: Handoff — 2026-04-22 (flywheel DOUBLY UNBLOCKED — sweeps write passing rows)
 
 ## Current State
 
@@ -405,31 +506,6 @@ cloud-quota: 69/69 green.
 Completes CC-3 scaffolding except the Stripe Usage API transport wrapper (thin — POSTs each billable row's overage as a Usage Record with quantity=overage, timestamp=period end). Scaffolds against Stripe test mode until 85a.
 
 Project totals after tick 20: **3078 tests green** (+10 rollup).
-
-## Session 42 tick 21 — CC-5b DNS poller (post-ship)
-
-`9795bb1` — `verifyPendingDomains(db, resolveCnameFn)` in cloud-domains. The cron that wakes every N minutes reads pending app_domains rows, does DNS, updates status. State transitions:
-  - verified → `status='verified'`, `verified_at=NOW()`, clear `last_error`
-  - wrong → `status='failed'`, `last_error` describes expected vs actual
-  - pending (empty records OR resolver threw) → just bump `last_checked_at`
-
-Resolver is injected (`node:dns/promises.resolveCname` in prod, mock in tests). Throws are caught and treated as pending so transient DNS errors don't crash the poller.
-
-12 new TDD assertions. cloud-domains: 63/63.
-
-**CC-5 now fully scaffolded** at the library layer: normalizeDomain + expectedCnameFor + verifyCname (pure) + app_domains schema + addDomain/listForApp/listPending (storage) + verifyPendingDomains (poller). Post-85a work is the cron wrapper (1-line `setInterval` around verifyPendingDomains) + CC-5c/d (Fly Certificate API + router update — require prod Fly).
-
-Project totals after tick 21: **3090 tests green** (+12 cc-5b).
-
-## Session 42 tick 22 — CC-2c dashboard app list + usage
-
-`c758f60` — `listAppsWithUsageForUser(db, userId)` in cloud-teams. Same shape as `listAppsForUser` but with a LEFT JOIN subquery that pulls current-month call counts per app. Zero-usage apps come back with `calls_this_month = 0` (COALESCE + Number coercion) so the UI never null-checks. Period = calendar month to match cloud-quota so the number the dashboard shows matches what billing bills.
-
-6 new TDD assertions. cloud-teams: 133/133.
-
-**CC-2c backend trio complete:** `listTeamsForUser` (CC-2b) + `listAppsWithUsageForUser` (this) + `billingSummary` per tenant (cloud-quota). Next CC-2c slice is the HTML page that composes these three calls.
-
-Project totals after tick 22: **3096 tests green** (+6).
 
 ## What Was Done This Session
 
