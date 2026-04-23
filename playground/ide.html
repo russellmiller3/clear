@@ -3109,11 +3109,54 @@ function escHtmlLocal(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// CURATED_THEMES mirrors compiler.js export — the 5 Marcus-facing themes.
+// Each swatch is [surface, accent] for the visual chip. If adding themes
+// here, also update compiler.js CURATED_THEMES and lib/packaging-cloudflare.js.
+window.__CLEAR_CURATED_THEMES = [
+  { name: 'ivory',  label: 'Ivory',  swatch: ['#ffffff', '#0969da'], tag: 'Default · clean SaaS' },
+  { name: 'sakura', label: 'Sakura', swatch: ['#fdf4f1', '#c75d7d'], tag: 'Retail · beauty · wellness' },
+  { name: 'dusk',   label: 'Dusk',   swatch: ['#2c2219', '#d99550'], tag: 'Warm dark · AI chat' },
+  { name: 'vault',  label: 'Vault',  swatch: ['#1a2030', '#c4a050'], tag: 'Enterprise · banking' },
+  { name: 'arctic', label: 'Arctic', swatch: ['#e8f0f5', '#2a5d8f'], tag: 'Cool · tech-forward' },
+];
+
+// Detect current theme directive in source so the picker shows it pre-selected.
+function _detectTheme(src) {
+  const m = String(src || '').match(/^[ \t]*theme[ \t]+['"]([a-z]+)['"]/m);
+  return m ? m[1] : null;
+}
+
+// Insert/replace the `theme 'X'` line in source. Leaves everything else intact.
+// If no theme set, prepends. If one already exists, rewrites in place.
+function _applyTheme(src, themeName) {
+  if (!themeName) return src;
+  const existing = /^[ \t]*theme[ \t]+['"][a-z]+['"][ \t]*$/m;
+  if (existing.test(src)) return src.replace(existing, `theme '${themeName}'`);
+  return `theme '${themeName}'\n\n${src}`;
+}
+
 window.doDeploy = async function() {
   const source = (typeof getSource === 'function') ? getSource() : (window.editor ? window.editor.state.doc.toString() : '');
   if (!source) { alert('Nothing to deploy — compile first.'); return; }
 
   const appSlugDefault = 'app-' + Math.random().toString(36).slice(2, 6);
+  const detected = _detectTheme(source);
+
+  // Initial picked theme: whatever's in source, or 'ivory' as the Marcus default.
+  window.__clearPickedTheme = detected || 'ivory';
+
+  const themeCardsHtml = window.__CLEAR_CURATED_THEMES.map((t) => `
+    <button type="button" class="theme-card" data-theme-name="${t.name}"
+            onclick="window.__clearPickedTheme='${t.name}'; document.querySelectorAll('.theme-card').forEach(el=>el.classList.toggle('active',el.dataset.themeName==='${t.name}'));">
+      <div class="theme-swatch">
+        <span class="theme-swatch-base" style="background:${t.swatch[0]}"></span>
+        <span class="theme-swatch-accent" style="background:${t.swatch[1]}"></span>
+      </div>
+      <div class="theme-label">${t.label}</div>
+      <div class="theme-tag">${t.tag}</div>
+    </button>
+  `).join('');
+
   const modal = document.getElementById('deploy-modal');
   modal.style.display = 'flex';
   modal.innerHTML = `
@@ -3121,7 +3164,9 @@ window.doDeploy = async function() {
       <div class="deploy-title">Deploy to a live URL</div>
       <label>App name</label>
       <input id="deploy-app-slug" type="text" value="${appSlugDefault}">
-      <label>Custom domain (optional)</label>
+      <label style="margin-top:12px">Theme</label>
+      <div class="theme-grid">${themeCardsHtml}</div>
+      <label style="margin-top:12px">Custom domain (optional)</label>
       <input id="deploy-domain" type="text" placeholder="deals.acme.com">
       <div id="deploy-secret-fields"></div>
       <div class="deploy-actions">
@@ -3130,6 +3175,10 @@ window.doDeploy = async function() {
       </div>
       <div id="deploy-progress"></div>
     </div>`;
+  // Pre-select the detected / default theme.
+  const initial = window.__clearPickedTheme;
+  const initialCard = modal.querySelector(`.theme-card[data-theme-name="${initial}"]`);
+  if (initialCard) initialCard.classList.add('active');
   document.getElementById('deploy-cancel-btn').onclick = () => { modal.style.display = 'none'; };
 
   document.getElementById('deploy-submit-btn').onclick = async () => {
@@ -3143,12 +3192,18 @@ window.doDeploy = async function() {
       if (inp.value) secrets[inp.dataset.key] = inp.value;
     });
 
+    // Inject/replace the theme directive in source if the user picked one.
+    // Default ('ivory') is also explicitly injected so the deployed bundle
+    // always declares its theme — makes re-deploys deterministic.
+    const pickedTheme = window.__clearPickedTheme || 'ivory';
+    const sourceWithTheme = _applyTheme(source, pickedTheme);
+
     let r;
     try {
       r = await fetch('/api/deploy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, appSlug, secrets, domain: domain || undefined }),
+        body: JSON.stringify({ source: sourceWithTheme, appSlug, secrets, domain: domain || undefined }),
       }).then(x => x.json().then(j => ({ status: x.status, body: j })));
     } catch (e) {
       progress.innerHTML = `<span style="color:#e74c3c">Network error: ${escHtmlLocal(e.message)}</span>`;
@@ -5163,6 +5218,62 @@ showFirstVisitOnboarding();
 #deploy-modal button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 #deploy-modal #deploy-progress { margin-top: 14px; font-size: 13px; color: var(--tx2); word-break: break-all; }
 #deploy-modal pre { background: var(--bg2); padding: 8px; border-radius: 4px; font-size: 11px; max-height: 180px; overflow: auto; }
+
+/* Theme picker inside the Deploy modal. 5 curated themes (ivory, sakura,
+   dusk, vault, arctic) — the shortlist exported from compiler.js as
+   CURATED_THEMES. Each card shows a color swatch and a one-line vibe tag
+   so Marcus can pick the right aesthetic in 3 seconds. Active card gets
+   a ring in the accent color. */
+#deploy-modal .theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+#deploy-modal .theme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 8px;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+#deploy-modal .theme-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+#deploy-modal .theme-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+#deploy-modal .theme-swatch {
+  height: 36px;
+  border-radius: 5px;
+  display: flex;
+  overflow: hidden;
+  margin-bottom: 6px;
+  border: 1px solid var(--bd);
+}
+#deploy-modal .theme-swatch-base { flex: 2; }
+#deploy-modal .theme-swatch-accent { flex: 1; }
+#deploy-modal .theme-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx1);
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 0;
+}
+#deploy-modal .theme-tag {
+  font-size: 10.5px;
+  color: var(--tx2);
+  margin-top: 2px;
+  line-height: 1.3;
+  text-transform: none;
+  letter-spacing: 0;
+}
 </style>
 </body>
 </html>
