@@ -1,6 +1,37 @@
-# Handoff — 2026-04-23 (session 44 — Cloudflare WFP Phases 1/2/3 SHIPPED; sweeps queued)
+# Handoff — 2026-04-23 (session 44 — Cloudflare WFP Phases 1–6 SHIPPED)
 
 ## Current State
+
+- **Branch:** `main` at `57b76b4` — pushed, clean working tree. **Cloudflare Phases 1, 2, 3, 4, 5, 6 all live** + `runs durably` canonical syntax.
+- **Tests:** 2101 → **2338 green** (+237 net), 0 failing. Across 6 parallel-executed phases + 1 syntax rename.
+- **CF-target drift-guard:** `scripts/smoke-cf-target.mjs` = 112/112 checks green across all 8 core templates.
+- **Cost:** $0 API spend. All agent work on the Claude subscription (cc-agent mode).
+
+## What Shipped This Second Wave (Phases 4/5/6)
+
+Three more phases executed **in parallel worktrees** after Phases 1/2/3 were live. Phase 4 + Phase 5 + Phase 6 ran concurrently in isolated git worktrees, then merged sequentially into main with conflict resolution.
+
+### Phase 4 — `knows about:` lazy-load + compile-time text extraction (9 cycles, +27 tests)
+
+`knows about: Products table` → lazy `_load_products(env)` with module-scope cache. `knows about: 'docs.pdf'` → text extracted AT STUDIO COMPILE TIME (via `preloadKnowledgeCache`) and inlined as a string constant. Workers bundle has **zero** `require(`, `pdf-parse`, `mammoth`, `fs.` references. Bundle-size guardrails: warn at 512KB per inlined file, hard-fail at 1MB. `preloadKnowledgeCache` + `extractKnowledgeTextSync/Async` exported from `lib/packaging-cloudflare.js`.
+
+**Red-team miss caught by agent:** plan said `pdf-parse`/`mammoth` were pre-existing runtime deps; actually they were never installed (the old runtime call silently failed with MODULE_NOT_FOUND in a swallowed try/catch). Phase 4 is the first WORKING binary-knowledge path anywhere. Committed as `docs(cf-plan): correction to cycle 4.4` before the feature commit.
+
+### Phase 5 — Scheduled agents → Cloudflare Cron Triggers (6 cycles, +42 tests)
+
+`runs every 1 hour` on CF target emits NO `node-cron`, NO `setInterval`. Instead: `scheduled(event, env, ctx)` handler on the default export that dispatches on `event.cron`, plus `[triggers] crons = ["0 * * * *"]` in `wrangler.toml`. Duration-phrase translator: every N minutes/hours/days, every day at Nam/pm, etc. Single source of truth for cron strings — `emitCloudflareWorkerBundle` collects them once, feeds both wrangler.toml and the handler dispatcher.
+
+### Phase 6 — `runs durably` → Cloudflare Workflows (6 cycles, +21 tests)
+
+`runs durably` (or legacy `runs on temporal`) on CF target emits a standalone `src/workflows/<slug>.js` ESM module extending `WorkflowEntrypoint`, with each Clear step becoming `await step.do('label', async () => ...)`. `wrangler.toml` grows `[[workflows]]` bindings per workflow. `run workflow 'X' with data` in endpoint body emits `await env.X_WORKFLOW.create({ params: data })` on CF target. Node target: zero regression — Temporal SDK emit unchanged.
+
+**Agent flagged Phase 7 blocker:** emitted workflow files call `agent_<name>(_state)` by name, but those functions aren't inlined into the workflow file yet (workflows run in a separate CF execution context from `src/index.js`). Phase 7 must inline agent functions per-workflow-file OR import from a shared module.
+
+### Syntax rename — `runs on temporal` → `runs durably`
+
+Vendor-neutral canonical form. Same AST flag. Legacy form stays as synonym so existing `.clear` sources don't break. Synced SYNTAX.md, intent.md, AI-INSTRUCTIONS.md, FEATURES.md. Why: when CF Workflows lands as the default durable engine, source code shouldn't say "temporal" — describes the property, not the vendor.
+
+## What Shipped Earlier This Session (Phases 1/2/3 — kept for reference)
 
 - **Branch:** `main` at `4051b12` — pushed, clean working tree. Cloudflare Phases 1/2/3 live.
 - **Also on origin:** `claude/cloudflare-temporal-setup-PvwvL` (feature branch, same commits rolled up into the ship merge).
@@ -74,26 +105,34 @@ Short-term workaround: between sweeps, manually `tasklist | grep claude.exe` and
 
 ## Next Steps
 
-Russell said "if you finish everything just ship and do more sweeps on another branch." Ship complete. Sweeps queued on `sweeps/post-cf-ship-2026-04-23`.
+### Priority 1 — Phase 7 (Dispatch Worker + WFP API client)
 
-### Priority 1 — Daytime cc-agent sweep on fresh branch
+Phases 1–6 prove the BUNDLE is correct. Phase 7 is the DEPLOY path: `playground/wfp-api.js` (thin wrapper for Cloudflare API: upload-script, D1 provision, secrets, domains, delete) + `playground/deploy-cloudflare.js` (the WFP-flavored `deploySource()`). Plus the dispatch Worker itself (routes `*.buildclear.dev` → right script in the namespace). Mockable against `fetch()` stubs; real CF calls fire only on the Phase 8 smoke. Plan §Phase 7. Estimated ~10-12 TDD cycles.
 
-Wait until Claude subscription throttling clears (daytime), then re-run full curriculum sweep to feed the flywheel with real data. Target: 80%+ pass rate like session 42 tick 9's full sweep. Branch: `sweeps/post-cf-ship-2026-04-23`.
+**Phase 6 blocker to clear in Phase 7:** emitted workflow files reference `agent_<name>(_state)` but those function bodies aren't in the workflow module's scope. Phase 7 either inlines agent fns per-workflow-file OR imports from a shared `src/agents.js` that the workflow bundle pulls in.
 
-### Priority 2 — Cloudflare WFP Phases 4–8 (unblocked by this ship)
+### Priority 2 — Phase 0 prereqs (Russell's paperwork)
 
-Phases 4–8 from `plans/plan-clear-cloud-wfp-04-23-2026.md` are now unblocked:
-- **Phase 4** — `knows about:` lazy-load + compile-time pdf/docx extraction (all mockable)
-- **Phase 5** — scheduled agents → Cloudflare Cron Triggers (mockable via miniflare `--test-scheduled`)
-- **Phase 6** — `runs on temporal` → Cloudflare Workflows (emit-only change; Temporal SDK path stays as fallback)
-- **Phase 7** — Dispatch Worker + WFP API client (`playground/wfp-api.js` + `playground/deploy-cloudflare.js`)
-- **Phase 8** — HITL real-deploy smoke (requires Russell's Phase 0 prereqs — CF account, $25/mo WFP, DNS, env vars, dispatch Worker deployed once)
+Blocking Phase 8's HITL real-deploy smoke:
+- Cloudflare account + Workers Paid plan + WFP namespace ($25/mo)
+- `buildclear.dev` DNS → Cloudflare nameservers + wildcard CNAME
+- API token (Zone · Workers Routes, Account · Workers Scripts + D1 + KV + R2, all Edit)
+- Env vars on Studio host: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_DISPATCH_NAMESPACE`, `CLEAR_CLOUD_ROOT_DOMAIN`
+- Dispatch Worker deployed once via wrangler (one-time)
 
-Phases 4–6 are all mockable, safe for agent execution. Phase 8 requires Russell's live presence.
+~2 hours of Russell's time. Unlocks actual deploys.
 
-### Priority 3 — CC-2c dashboard + CC-3 Stripe + CC-4 publish polish
+### Priority 3 — Sweep regression triage
 
-From session 42 tick 14's Clear Cloud scaffold state. All scaffolds written + tested; remaining work is endpoint wiring, UI, and Phase 85a infrastructure (Russell's paperwork).
+13 zombie `claude.exe` from the morning's sweep are starving resources (each holding 12K–660MB). Timeout enforcement works (verified: 60s budget = 60.0s) but abort signals don't kill the spawned claude binary. Fix: add a cleanup-on-exit hook in `playground/supervisor/curriculum-sweep.js` that kills stranded claude.exe processes AFTER identifying them (don't blind `taskkill /F /IM claude.exe` — that kills the user's interactive Claude Code session too). Small change, ~30 min. Until then, cc-agent sweeps at `workers=3` are unreliable; `workers=1` is deterministic but 3× slower.
+
+### Priority 4 — Click-to-edit UX (sibling plan)
+
+`plans/plan-click-to-edit-04-23-2026.md`. Three-tier design (deterministic menu / scoped LLM / full chat). `data-clear-line="N"` attrs already survive every Workers bundle (drift-guard verified). This is the Marcus-UX differentiation that makes Clear visibly better than Lovable in 2 minutes of use.
+
+### Priority 5 — CC-2c dashboard + CC-3 Stripe + CC-4 publish polish
+
+From session 42's Clear Cloud scaffold state. All scaffolds written + tested; remaining work is endpoint wiring, UI, and Phase 85a infrastructure.
 
 ## Files Russell Should Read First Next Session
 
@@ -107,7 +146,7 @@ From session 42 tick 14's Clear Cloud scaffold state. All scaffolds written + te
 
 ## Resume Prompt
 
-> Read `HANDOFF.md`. Cloudflare Phases 1/2/3 SHIPPED on main at `4051b12` — `--target cloudflare` compiles to valid Workers bundles with D1 CRUD + Web Crypto auth + Workers-safe AI helpers across all 8 core templates. 2246 tests green. Priority 1: re-run cc-agent curriculum sweep daytime (first one overnight had subscription throttling). Priority 2: Phases 4–8 of the Cloudflare plan are all mockable except Phase 8 (HITL). Priority 3: CC-2c/3/4 scaffold wiring. Kent Beck TDD red-first; no self-assignment in Clear fixtures.
+> Read `HANDOFF.md`. Cloudflare Phases 1–6 SHIPPED on main at `57b76b4` — `--target cloudflare` produces valid Workers bundles with D1 CRUD, Web Crypto auth, Workers-safe AI helpers, `knows about` lazy-load + compile-time PDF extraction, scheduled agents → Cron Triggers, and `runs durably` → Cloudflare Workflows. 2338 tests green, 112/112 CF drift-guards. Priority 1: Phase 7 (dispatch Worker + WFP API client, mockable). Priority 2: Russell's Phase 0 prereqs (CF account, WFP namespace, DNS, env vars, dispatch Worker) to unblock Phase 8 HITL smoke. Priority 3: sweep regression cleanup hook. Kent Beck TDD red-first; no self-assignment in Clear fixtures.
 
 ---
 
