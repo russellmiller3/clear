@@ -3859,8 +3859,54 @@ ${pad}  ${node.resultVar ? `const ${sanitizeName(node.resultVar)} = await env.DB
 ${pad}}${lineComment}`;
   }
 
-  // UPDATE path is cycle 2.5 — placeholder for now.
-  return `${pad}// CRUD (cloudflare) save-update: stub for cycle 2.5`;
+  // UPDATE path: `save x as T` without `new`. Require id on record (mirrors runtime/db.js).
+  // If the endpoint has :id, merge it onto the record first.
+  const idGuardHint = `Cannot update ${table} without an id — use "save ... as new ${node.target}" to insert instead, or look up an existing row first.`;
+
+  // Column list for SET clause
+  if (cols && cols.length > 0) {
+    const setCols = cols.filter((c) => c !== 'id');
+    const setClause = setCols.map((c) => `${c} = ?`).join(', ');
+    const setBinds = setCols.map((c) => `${varCode}?.${c} ?? null`).join(', ');
+
+    if (ctx.endpointHasId) {
+      // Inject URL param as id so the WHERE clause matches the right row
+      return `${pad}{
+${pad}  const _d1_id = request.params?.id ?? url.pathname.split('/').pop();
+${pad}  if (_d1_id == null || _d1_id === '') { const _e = new Error('${idGuardHint}'); _e.status = 400; throw _e; }
+${pad}  await env.DB.prepare('UPDATE ${table} SET ${setClause} WHERE id = ?').bind(${setBinds}, _d1_id).run();
+${pad}  Object.assign(${varCode} || {}, await env.DB.prepare('SELECT * FROM ${table} WHERE id = ?').bind(_d1_id).first() || {});
+${pad}}${lineComment}`;
+    }
+    // No endpointHasId — require id on the record itself (runtime guard)
+    return `${pad}{
+${pad}  if (!${varCode} || ${varCode}.id == null) { const _e = new Error('${idGuardHint}'); _e.status = 400; throw _e; }
+${pad}  await env.DB.prepare('UPDATE ${table} SET ${setClause} WHERE id = ?').bind(${setBinds}, ${varCode}.id).run();
+${pad}}${lineComment}`;
+  }
+
+  // Unknown schema fallback — dynamic keys
+  if (ctx.endpointHasId) {
+    return `${pad}{
+${pad}  const _d1_id = request.params?.id ?? url.pathname.split('/').pop();
+${pad}  if (_d1_id == null || _d1_id === '') { const _e = new Error('${idGuardHint}'); _e.status = 400; throw _e; }
+${pad}  const _d1_keys = Object.keys(${varCode} || {}).filter(k => k !== 'id' && /^[a-z_][a-z0-9_]*$/i.test(k));
+${pad}  if (_d1_keys.length === 0) { /* nothing to update */ } else {
+${pad}    const _d1_sql = 'UPDATE ${table} SET ' + _d1_keys.map(k => k + ' = ?').join(', ') + ' WHERE id = ?';
+${pad}    const _d1_vals = _d1_keys.map(k => ${varCode}[k]).concat([_d1_id]);
+${pad}    await env.DB.prepare(_d1_sql).bind(..._d1_vals).run();
+${pad}  }
+${pad}}${lineComment}`;
+  }
+  return `${pad}{
+${pad}  if (!${varCode} || ${varCode}.id == null) { const _e = new Error('${idGuardHint}'); _e.status = 400; throw _e; }
+${pad}  const _d1_keys = Object.keys(${varCode}).filter(k => k !== 'id' && /^[a-z_][a-z0-9_]*$/i.test(k));
+${pad}  if (_d1_keys.length > 0) {
+${pad}    const _d1_sql = 'UPDATE ${table} SET ' + _d1_keys.map(k => k + ' = ?').join(', ') + ' WHERE id = ?';
+${pad}    const _d1_vals = _d1_keys.map(k => ${varCode}[k]).concat([${varCode}.id]);
+${pad}    await env.DB.prepare(_d1_sql).bind(..._d1_vals).run();
+${pad}  }
+${pad}}${lineComment}`;
 }
 
 function compileCrudD1Remove(node, ctx, pad, table, lineComment) {
