@@ -1,5 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
+> **Read `VISION.md` first.** This file is the technical architecture of the training pipeline. `VISION.md` is the strategic framing — why the pipeline exists, what it's aimed at, and how it connects to the AlphaFold-for-software bet (#1) and the bootstrapping loop (#4). If you're reading this to understand "why bother with a Factor DB + re-ranker + curriculum at all," start at `VISION.md`.
+
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
 Updated: **2026-04-19 (Session 38: data-quality pass + EBM chosen + compiler flywheel drafted)**.
 
@@ -1309,3 +1311,109 @@ Those are answerable — just not with the methodology Session 41 used. Next tim
 ### The honest bottom line
 
 Session 41 shipped real fixes (compiler shadow bug, tag reliability stack, curriculum expansion) worth maybe $10-15 if you had bought them piecemeal. Cost $50+. The gap — $35-40 of pure waste — was methodology, not research. The research thesis is intact; the execution discipline needed upgrading. The infrastructure to not repeat this is now in place.
+
+---
+
+## Clear-bench v1 — The Benchmark We Own (Bet B1 Deliverable)
+
+**Strategic frame:** `VISION.md` bet B1 (AlphaFold for software) says Clear wins by owning the benchmark other labs evaluate against. This section specifies v1 concretely enough that it can be built.
+
+### The thesis in one sentence
+
+> *"Given an English spec, can your model produce a working full-stack app?"* — a question no existing benchmark answers well, and one Clear is uniquely positioned to grade because the compiler + runtime are the verifier.
+
+### Why existing benchmarks don't cover this
+
+| Benchmark | Measures | What it misses |
+|-----------|----------|----------------|
+| HumanEval / MBPP | Single-function correctness from docstring | No state, no storage, no UI, no auth, no multi-file orchestration |
+| SWE-bench | Can model patch a real GitHub issue | Requires the repo to exist. Doesn't measure "build from zero." |
+| BigCodeBench | API-heavy single-function tasks | Same scope limit as HumanEval |
+| WebArena / VisualWebArena | Can agent use a browser | Measures tool use, not construction |
+| Aider benchmark | Edit existing code to pass tests | No greenfield measurement |
+
+Nobody grades "here's an English spec, build the app." Clear-bench does.
+
+### v1 specification (ship Q3 2026)
+
+**Scope:** 500 tasks across 10 archetypes. Each task is a single English paragraph + a deterministic test harness.
+
+**The 10 archetypes (50 tasks each):**
+
+| # | Archetype | Example task seed |
+|---|-----------|-------------------|
+| 1 | **CRUD basics** | "Track books I'm reading with title, author, status, started and finished dates." |
+| 2 | **Multi-entity with relationships** | "Track jobs for a plumbing shop — customers, jobs at addresses, photos, invoices when done." |
+| 3 | **Content / publishing** | "A personal blog with posts, tags, and a public archive page." |
+| 4 | **Real-time / sockets** | "A shared whiteboard where multiple people can add sticky notes and everyone sees updates." |
+| 5 | **Agent / AI routing** | "A helpdesk that answers customer questions from my FAQ and escalates unclear ones." |
+| 6 | **Workflow / multi-step** | "Booking a haircut — pick stylist, pick time, pay deposit, get email confirmation." |
+| 7 | **Personal finance / aggregate** | "Track expenses by category, see monthly totals, export CSV." |
+| 8 | **E-commerce / catalog** | "Sell handmade soap with a product page, cart, checkout, and order email." |
+| 9 | **Analytics / dashboard** | "Show me my Shopify orders this week as a chart broken down by product." |
+| 10 | **KPI / management app** | "Deal desk — pipeline stages, rep ownership, weekly forecast, approvals over $50k." |
+
+**Grading is deterministic per task:**
+
+```
+score = 0.4 * compiles_cleanly
+      + 0.4 * runtime_tests_pass   (generated from the spec, not the model's output)
+      + 0.2 * archetype_assertions (auth exists where expected, UI renders, endpoints return shape)
+```
+
+No human graders. No LLM-as-judge. The compiler and a spec-derived test suite are the oracle. This is the same discipline that made AlphaFold's CASP results believable — the grader is not the researcher.
+
+### The harness (CB-* tasks)
+
+| # | Item | Scope | Dependency |
+|---|------|-------|------------|
+| **CB-1** | **Task spec format** — JSON schema for `{english_prompt, archetype, deterministic_tests, archetype_assertions}` stored in `bench/tasks/*.json` | 3 days | None |
+| **CB-2** | **Grader** — takes model output (Clear source OR JS/Python code), compiles it, runs `deterministic_tests`, returns weighted score | 1 week | CB-1 |
+| **CB-3** | **Adapter layer** — plug in any API (Anthropic, OpenAI, local, Gemini). Each adapter handles one-shot English → code | 3 days | CB-2 |
+| **CB-4** | **Leaderboard** — static site at `clear-bench.dev` with per-archetype breakdown, cost-per-task, reproducibility hash | 1 week | CB-3 |
+| **CB-5** | **Reference runs** — Claude Opus / Sonnet / Haiku, GPT-5, Gemini 2.5, one open-weights model. Published with full transcripts | 1 week | CB-3 |
+| **CB-6** | **Task expansion** — 50 tasks per archetype × 10 archetypes. Seeded by existing curriculum, extended by structured LLM generation + human review | 6 weeks | CB-1, running in parallel |
+| **CB-7** | **External-lab runs** — contact 3-5 labs, give them the adapter SDK, invite submissions. Track over 6 months. | Ongoing | CB-5 done |
+| **CB-8** | **Adversarial task expansion** — tasks specifically designed to surface failure modes (ambiguous specs, conflicting constraints, scale) | 3 weeks | CB-6 |
+
+**Total to v1 release: ~10 weeks** if run sequentially. ~6 weeks with parallelization.
+
+### What makes Clear-bench hard to game
+
+1. **The grader is the compiler + runtime** — same code that runs production apps. A model can't "fit the benchmark" without actually building working software.
+2. **Test cases are derived from the English spec, not the reference implementation.** Two valid apps can pass; "overfitting to the reference" doesn't help.
+3. **Cost-per-task is published alongside accuracy.** You can't win by throwing 100x compute at it.
+4. **Task pool grows.** Held-out tasks rotate in each quarter. Last quarter's SOTA doesn't carry forward without a re-run.
+5. **Reproducibility hash** — every run is byte-reproducible given the same adapter + task version.
+
+### Why we own this category
+
+We built the compiler, so:
+
+- We understand what "working app" actually means (the 14-year-old test + deterministic compile)
+- We have the grader for free (every compiler run already returns pass/fail)
+- We have the Factor DB already producing graded (spec → output → result) rows — Clear-bench is the extractive projection of our existing training signal
+- Every improvement to the compiler makes the benchmark harder, which reinforces Clear as the substrate: Hassabis-style positive feedback
+
+### What counts as "won"
+
+By end of 2026:
+- **3+ external labs** have run at least one Clear-bench submission
+- **At least one academic paper** cites Clear-bench as its "can your model build an app" eval
+- **Leaderboard has ≥10 model submissions** including at least one non-Anthropic frontier model, one OpenAI model, one open-weights model
+- **Our specialist model trained on the Factor DB** is on the leaderboard at top-5 accuracy, top-3 cost-efficiency
+
+None of this is impossible. The training signal already exists as Factor DB rows; the grader already exists as the compiler test harness; the task seeds already exist in `curriculum/`. **Clear-bench v1 is mostly packaging work, not research work.**
+
+### The single riskiest dilution (specific to Clear-bench)
+
+Building task #501 before shipping tasks 1-500. The leaderboard with 500 tasks and 5 models on it beats the leaderboard with 5000 tasks and 0 external submissions. Ship narrow, let the field engage, expand after.
+
+### Cross-reference
+
+- `curriculum/` — existing 20 tasks, v0 of Clear-bench. Seed the expansion from here.
+- `playground/eval-meph.js` — existing 16-scenario eval. Different purpose (tool-use correctness) but same grading spirit.
+- `playground/eval-fullloop-suite.js` — existing end-to-end eval. Template for CB-2 grader mechanics.
+- `VISION.md` — strategic framing (bet B1).
+- `ROADMAP.md` — schedule and priority tier (P2 track, ladders up to B1).
+
