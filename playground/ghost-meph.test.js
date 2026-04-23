@@ -213,6 +213,39 @@ function parseSSE(text) {
   assert(ccArgs.includes('bypassPermissions'),
     `cc-agent spawn args include bypassPermissions (needed for MCP auto-run)`);
 
+  // Prompt MUST be passed as a positional argument, not piped to stdin.
+  // Windows claude.exe 2.1.111 emits "Warning: no stdin data received in 3s"
+  // and exits with code 1 when stdin-piped — Node's child.stdin.write races
+  // with claude's stdin timeout and loses 100% of the time on Windows pipes.
+  // Fix: pass the prompt as the final positional arg, close stdin, let the
+  // warning hit stderr (harmless). Verified end-to-end on a live sweep.
+  const ccArgsWithPrompt = buildClaudeStreamJsonSpawnArgs('/tmp/fake-config.json', 'Hello world');
+  assert(ccArgsWithPrompt[ccArgsWithPrompt.length - 1] === 'Hello world',
+    'cc-agent spawn args pass prompt as final positional arg (Windows stdin race fix)');
+  assert(ccArgsWithPrompt.length === ccArgs.length + 1,
+    'passing prompt adds exactly one arg to the argv');
+  const ccArgsEmpty = buildClaudeStreamJsonSpawnArgs('/tmp/fake-config.json', '');
+  assert(ccArgsEmpty.length === ccArgs.length,
+    'empty prompt does NOT add a trailing arg (empty string would confuse claude)');
+
+  // System prompt MUST be passed via --system-prompt-file, not concatenated
+  // with the user prompt. Meph's system prompt is ~48KB; if we prepend it to
+  // the user prompt and pass as argv, Windows hits ENAMETOOLONG (32KB argv
+  // ceiling). File delivery keeps the positional arg small.
+  const ccArgsWithSys = buildClaudeStreamJsonSpawnArgs(
+    '/tmp/fake-config.json', 'Build something', '/tmp/fake-sys.txt'
+  );
+  const spfIdx = ccArgsWithSys.indexOf('--system-prompt-file');
+  assert(spfIdx >= 0,
+    'cc-agent spawn args include --system-prompt-file when systemPromptPath given');
+  assert(ccArgsWithSys[spfIdx + 1] === '/tmp/fake-sys.txt',
+    'cc-agent --system-prompt-file points at the provided path');
+  assert(ccArgsWithSys[ccArgsWithSys.length - 1] === 'Build something',
+    'user prompt stays as final positional arg even when system-prompt-file is set');
+  const ccArgsNoSys = buildClaudeStreamJsonSpawnArgs('/tmp/fake-config.json', 'Build something');
+  assert(!ccArgsNoSys.includes('--system-prompt-file'),
+    'cc-agent omits --system-prompt-file when no path given (uses claude default)');
+
   // =========================================================================
   // PHASE 7 — format-bridge (Anthropic ↔ OpenAI translation, GM-4 prereq)
   // =========================================================================
