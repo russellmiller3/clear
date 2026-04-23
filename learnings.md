@@ -1274,3 +1274,67 @@ Sweep cost went from $1.50/run (serial, pre-optimization) to $1.30/run (parallel
 - Total API spend tonight: ~$14 (close to "done good" target)
 
 First time we can say: the ranker trains, deploys, and we're measuring lift on real data — not "someday" per RESEARCH.md.
+
+---
+
+## Session: Cloudflare Workers for Platforms — Phase 1 (2026-04-23)
+
+Plumbing `compileProgram(src, { target: 'cloudflare' })` through to a writable Workers-for-Platforms bundle. 8 TDD cycles, no runtime-API changes yet (that's Phase 2's D1 adapter + Phase 3's webcrypto auth). Key pitfalls we hit while building the skeleton:
+
+### ESM-only is non-negotiable in Workers
+
+Workers-for-Platforms rejects any `require()` call at upload time, and `esbuild --bundle` chokes on mixed CJS/ESM output. The existing Node backend emit (`compileToJSBackend`) is loaded with `require('express')` and `require('child_process')`; we cannot reuse a single line of it. The Workers path is a **separate emit** that produces ESM-only `export default { async fetch(request, env, ctx) { ... } }` — routes by `new URL(request.url).pathname`, no Express, no Node stdlib assumptions.
+
+Runtime guard in `lib/packaging-cloudflare.test.js`: emitted `src/index.js` must parse clean under `node --check` AND must contain zero `require(` substrings. Future additive features (D1 queries, KV lookups, webcrypto auth) must be audited the same way before they land.
+
+### Compat date + flags are single-source constants
+
+The `wrangler.toml` compatibility configuration (`compatibility_date = "2025-04-01"`, `compatibility_flags = ["nodejs_compat_v2"]`) lives ONCE at the top of `lib/packaging-cloudflare.js`:
+
+```js
+export const CF_COMPAT_DATE = '2025-04-01';
+export const CF_COMPAT_FLAGS = ['nodejs_compat_v2'];
+```
+
+When Cloudflare releases a newer compat date (and we test it), it's a one-line edit. Don't ever duplicate these constants into TOML string templates — drift silently breaks bundle uploads.
+
+### data-clear-line preservation via JSON.stringify embed
+
+The compiler emits `data-clear-line="N"` attributes on every HTML element so click-to-edit (future plan) can map a clicked DOM node back to its Clear source line. Workers-target emit embeds the compiled HTML by `JSON.stringify`-ing it into `src/index.js`:
+
+```js
+const __CLEAR_HTML__ = ${JSON.stringify(html)};
+// ...
+return new Response(__CLEAR_HTML__, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+```
+
+This is byte-faithful — no template-literal escaping headaches, no minifier sneaks in later — and preserves every `data-clear-line` attribute verbatim. Added a regression test explicitly: "Workers src/index.js embeds HTML with data-clear-line attrs intact."
+
+### testUtils.it() doesn't await async fn bodies — silent green
+
+`lib/testUtils.js`'s `it()` wraps `fn()` in `try { fn(); passed++; }` — synchronous only. Async test bodies that throw get a pending Promise; the `it()` call has already recorded success by the time the rejection fires. Our first-cut Phase 1 cycle 1.6 tests used `async it(() => { const { packageBundle } = await import(...); ... })` and all showed GREEN even when the file-write assertions were definitively failing (verified via a standalone trace).
+
+Fix: hoist imports to the top of the test file (synchronous ESM imports) and keep `it()` bodies synchronous. Use the existing `testAsync` export if async is genuinely required (rare — the only Phase 1 test needing it was the wrangler smoke, which runs `spawn()` + settle + `fetch()`).
+
+**Rule:** before claiming a new test is GREEN, double-check that it would actually go RED when the production code is broken. A silent-pass test is worse than no test.
+
+### Surfacing pre-existing bugs via longer test runtime
+
+Adding cycle 1.7's wrangler dev smoke (30-60s wall clock) extended the clear.test.js runtime enough that Node's unhandled-rejection handler caught a previously-silent bug in test T19 (`apps/store-ops/main.clear` was deleted in an earlier session but the test still references it). The test was "passing" because `it()` is sync; the readFileSync rejection never got collected.
+
+Defensive fix in clear.test.js:23570 — guard the readFileSync with `existsSync` and return early. Long-term: rewrite testUtils.it to await Promises OR migrate to vitest.
+
+### Windows + wrangler + rmSync = EPERM on cleanup
+
+On Windows, `child.kill()` on a spawned wrangler dev doesn't immediately release file handles in the cwd. The test's `finally { rmSync(outDir, { recursive: true, force: true }) }` threw EPERM, masking the real test outcome.
+
+Fix: after `child.kill()`, wait 1500ms for handles to unwind, then wrap rmSync in try/catch — a temp-dir leak is harmless, but a masked assertion failure is expensive.
+
+### Phase 1 outcome
+
+- 8 TDD cycles committed (cf-1.1 → cf-1.7 + 1.4b + plan correction)
+- 2101 → 2139 tests passing (+38 net, 26+ of them in packaging-cloudflare.test.js)
+- 0 regressions on default target
+- wrangler dev spawn + curl → 200 confirmed end-to-end
+- Phase 2 (D1 runtime) + Phase 3 (webcrypto auth) unblocked
+
