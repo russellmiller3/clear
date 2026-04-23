@@ -1,11 +1,57 @@
-# Handoff — 2026-04-23 (session 44 — Cloudflare WFP Phases 1–6 SHIPPED)
+# Handoff — 2026-04-23 (session 44 — Cloudflare WFP Phases 1–7 SHIPPED; only Phase 8 HITL remains)
 
 ## Current State
 
-- **Branch:** `main` at `57b76b4` — pushed, clean working tree. **Cloudflare Phases 1, 2, 3, 4, 5, 6 all live** + `runs durably` canonical syntax.
-- **Tests:** 2101 → **2338 green** (+237 net), 0 failing. Across 6 parallel-executed phases + 1 syntax rename.
+- **Branch:** `main` at `62f18ae` — pushed, clean working tree. **Cloudflare Phases 1–7 all live** + `runs durably` canonical syntax + 4 new themes (dusk, vault, sakura, forge) + Windows spawner zombie fix.
+- **Tests:** 2101 → **2399 green** (+298 net), 0 failing. Across 7 parallel-executed phases + syntax rename + themes.
 - **CF-target drift-guard:** `scripts/smoke-cf-target.mjs` = 112/112 checks green across all 8 core templates.
 - **Cost:** $0 API spend. All agent work on the Claude subscription (cc-agent mode).
+
+## What's left: Phase 8 only (HITL — your paperwork)
+
+Phase 8 is the first real deploy against live Cloudflare. It's not TDD — it's a checklist:
+1. **Phase 0 prereqs** — Cloudflare account, $25/mo Workers Paid + WFP namespace, `buildclear.dev` DNS moved to CF, API token with the right scopes, env vars on Studio host.
+2. **Deploy the one-time dispatch Worker** via `wrangler deploy`.
+3. **Smoke the pipeline** — `CLEAR_DEPLOY_TARGET=cloudflare node playground/server.js`, paste hello-world, click Deploy, curl the returned URL.
+4. **Deploy a CRUD app** — todo-fullstack against D1.
+5. **Deploy an agent app** — helpdesk-agent with `ask claude`.
+6. **Deploy a workflow app** — anything with `runs durably`.
+
+~2 hours of your time for step 1, then the rest is just watching the pipeline light up.
+
+## What Shipped This Session (Phases 1–7, 27 new tests' worth of themes, + infrastructure)
+
+### Phase 7 — `/api/deploy` swaps Fly → Cloudflare WFP (15 cycles, +53 tests)
+
+`playground/wfp-api.js` (new) = thin REST wrapper: `uploadScript` (multipart PUT with metadata + module files), `provisionD1` (tenant-prefixed name + 409 retry with 4-hex suffix, collision-safe across tenants), `applyMigrations`, `setSecrets` (concurrency 3, partial-fail tolerant), `attachDomain`, `deleteScript`, `rollbackToVersion`, `listD1`.
+
+`playground/deploy-cloudflare.js` (new) = orchestration. Sequence: compile → provision D1 → apply migrations → upload script → set secrets → attach domain → record in tenants-db. Explicit rollback ladder that reverses order and skips steps that didn't run. `DeployLockManager` prevents double-click duplicates (10-parallel torture test = exactly 1 wins).
+
+`scripts/reconcile-wfp.js` (new) = weekly read-only orphan detector: lists CF scripts + D1 databases in our namespace, cross-references `tenants-db`, reports drift. Doesn't auto-delete — emits a report for Russell.
+
+`/api/deploy` dispatches on `CLEAR_DEPLOY_TARGET` env. Default stays `fly` — flip to `cloudflare` once Phase 8 smoke passes.
+
+**Phase 6 blocker cleared (cycle 6.10):** `compileToCloudflareWorker` now splits emit between `src/index.js` and `src/agents.js`. Workflow files import agent functions from `../agents.js`. Bundle is importable as an ESM module when all files are on disk with `{"type":"module"}` package.json.
+
+### 4 new themes + curated shortlist
+
+`compiler.js` THEME_CSS dict now has 11 themes. New ones chosen to fill Marcus + SMB gaps:
+- **dusk** — warm dark (amber on brown). Night mode that feels cozy. AI chat, journaling.
+- **vault** — navy + muted gold. Enterprise trust — PE, banking, legal.
+- **sakura** — cream + dusty rose. Retail, beauty, wellness, hospitality.
+- **forge** — brutalist (pure B/W + hot magenta, sharp corners, 2px borders). Design-forward tech only.
+
+`CURATED_THEMES = ['ivory', 'sakura', 'dusk', 'vault', 'arctic']` exported — the 5 a future theme picker surfaces first. Order = Marcus likelihood.
+
+`themes-preview/theme-picker.html` committed — static HTML mock showing all 11 side-by-side with realistic mini-apps (deals, bookings, portfolio, release candidates). Open it in a browser to compare.
+
+### Sweep zombie fix (spawner.js, `f36c787`)
+
+Morning sweep left 13 `claude.exe` zombies holding ~1.2GB of RAM. Root cause: `child.kill('SIGTERM')` is a no-op for native Windows .exe processes; grandchild `claude.exe` binaries stayed alive forever. Fix: `taskkill /F /T /PID <worker.pid>` on Windows — cascades the kill through the whole process tree. POSIX keeps the existing SIGTERM (signals cascade through process group).
+
+### Syntax rename — `runs on temporal` → `runs durably`
+
+Vendor-neutral canonical form. Same AST flag. Legacy form stays as synonym.
 
 ## What Shipped This Second Wave (Phases 4/5/6)
 
@@ -82,17 +128,15 @@ Two sweeps ran on `sweeps/post-cf-ship-2026-04-23` branch (same compiler as main
 - Port/buildDir contention somehow resurfacing (session 42 tick 7/8 fixed this at 3 workers; maybe regressed)
 - Phase 1/2/3 ship silently broke something in the MCP path (unlikely — compiler tests all green, and solo sweep passes)
 
-**Triaged post-ship — root cause found.**
+**Triaged post-ship — root cause found + FIXED (`f36c787`).**
 
 Ran the same task solo with a 60s budget: `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=1 --tasks=counter --timeout=60 --strict` → `[⏱️ TIMEOUT] L3 counter — 60.0s`. Timeout enforcement WORKS — to the second.
 
-Then `tasklist.exe | grep claude.exe` showed **13 zombie claude.exe processes** from earlier sweeps. Memory footprints 12K–662MB per process, total ≈ 1.2GB held hostage. Each stuck child probably lost its parent when its sweep task was abort-signalled, but the binary itself kept burning CPU + holding its port.
+Then `tasklist.exe | grep claude.exe` showed **13 zombie claude.exe processes** from earlier sweeps. Root cause: `child.kill('SIGTERM')` is a no-op for native Windows .exe processes — SIGTERM doesn't propagate and grandchild claude.exe binaries stayed alive forever.
 
-That's the 6700s mystery: the AbortController aborted the SSE fetch cleanly, but the next task's claude child couldn't get resources (RAM pressure + port collisions with zombies), so it crawled through compile iterations at 100× normal speed.
+**Fix shipped:** `playground/supervisor/spawner.js` now uses `taskkill /F /T /PID <worker.pid>` on Windows. `/T` flag cascades the kill through the whole process tree (worker + all claude.exe descendants). POSIX keeps existing SIGTERM since signals already cascade through the process group. Fallback to `child.kill()` if taskkill is missing. 5-second taskkill timeout so a stuck system doesn't wedge `killAll`.
 
-**The proper fix is a cleanup-on-exit hook** in the curriculum-sweep that kills any claude.exe children before the next sweep starts. Russell can triage next session: add a `process.on('exit', () => spawner.killAllClaudeChildren())` to `playground/supervisor/curriculum-sweep.js`, OR widen the existing `spawner.killAll()` call to also enumerate + kill orphan claude.exe processes on Windows. **Do NOT just `taskkill /F /IM claude.exe`** — that also kills any live Claude Code sessions the user has open.
-
-Short-term workaround: between sweeps, manually `tasklist | grep claude.exe` and kill the ones that aren't the foreground Claude Code session.
+**Next sweep is the real verification** — should see 0 lingering claude.exe after it completes.
 
 ## Exit criteria (ALL met)
 
@@ -105,30 +149,42 @@ Short-term workaround: between sweeps, manually `tasklist | grep claude.exe` and
 
 ## Next Steps
 
-### Priority 1 — Phase 7 (Dispatch Worker + WFP API client)
+### Priority 1 — Phase 8 prereqs (Russell's paperwork, ~2 hours)
 
-Phases 1–6 prove the BUNDLE is correct. Phase 7 is the DEPLOY path: `playground/wfp-api.js` (thin wrapper for Cloudflare API: upload-script, D1 provision, secrets, domains, delete) + `playground/deploy-cloudflare.js` (the WFP-flavored `deploySource()`). Plus the dispatch Worker itself (routes `*.buildclear.dev` → right script in the namespace). Mockable against `fetch()` stubs; real CF calls fire only on the Phase 8 smoke. Plan §Phase 7. Estimated ~10-12 TDD cycles.
+The ONE remaining thing that needs you: real Cloudflare account setup. Everything code-side is shipped and mock-tested. Steps:
 
-**Phase 6 blocker to clear in Phase 7:** emitted workflow files reference `agent_<name>(_state)` but those function bodies aren't in the workflow module's scope. Phase 7 either inlines agent fns per-workflow-file OR imports from a shared `src/agents.js` that the workflow bundle pulls in.
+1. **Cloudflare account** at cloudflare.com → Workers Paid ($5/mo) → add Workers for Platforms ($25/mo). Create a namespace named `clear-apps` (or anything; set the env var to match).
+2. **DNS**: move `buildclear.dev` nameservers to Cloudflare. Add wildcard CNAME `*.buildclear.dev` pointing at your dispatch Worker OR bind the Worker directly to `*.buildclear.dev` via Workers Custom Domains.
+3. **API token** at dash.cloudflare.com/profile/api-tokens → Create Token → Custom with scopes: Zone · Workers Routes (Edit), Account · Workers Scripts (Edit), Account · D1 (Edit), Account · Workers KV (Edit), Account · Workers R2 (Edit), Account · Account Settings (Read).
+4. **Env vars on Studio host:**
+   - `CLOUDFLARE_ACCOUNT_ID=<32-char hex>`
+   - `CLOUDFLARE_API_TOKEN=<from step 3>`
+   - `CLOUDFLARE_DISPATCH_NAMESPACE=clear-apps`
+   - `CLEAR_CLOUD_ROOT_DOMAIN=buildclear.dev`
+   - `CLEAR_DEPLOY_TARGET=cloudflare` (flips `/api/deploy` to the new path)
+5. **Deploy the dispatch Worker** once via wrangler (the code lives in the plan §0.5).
+6. **Smoke test:** `curl -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/dispatch/namespaces/$CLOUDFLARE_DISPATCH_NAMESPACE` → 200.
 
-### Priority 2 — Phase 0 prereqs (Russell's paperwork)
+### Priority 2 — Phase 8 HITL smoke (you sitting at the keyboard, ~1 hour after Phase 8 prereqs)
 
-Blocking Phase 8's HITL real-deploy smoke:
-- Cloudflare account + Workers Paid plan + WFP namespace ($25/mo)
-- `buildclear.dev` DNS → Cloudflare nameservers + wildcard CNAME
-- API token (Zone · Workers Routes, Account · Workers Scripts + D1 + KV + R2, all Edit)
-- Env vars on Studio host: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_DISPATCH_NAMESPACE`, `CLEAR_CLOUD_ROOT_DOMAIN`
-- Dispatch Worker deployed once via wrangler (one-time)
+Walk through the plan's Phase 8 checklist (§8.1–8.7):
+1. Studio starts with CF env set
+2. Seed a test tenant
+3. Deploy hello-world → curl the live URL
+4. Deploy todo-fullstack with D1 → exercise CRUD
+5. Deploy helpdesk-agent with `ask claude`
+6. Deploy a workflow app with `runs durably`
+7. Test the rollback flow
 
-~2 hours of Russell's time. Unlocks actual deploys.
+If any step fails, it produces a concrete bug to file. Plan is designed so a red flag from step 3 doesn't block steps 4–7 — they can run on separate slugs.
 
-### Priority 3 — Sweep regression triage
+### Priority 3 — Click-to-edit UX (sibling plan, agent-able)
 
-13 zombie `claude.exe` from the morning's sweep are starving resources (each holding 12K–660MB). Timeout enforcement works (verified: 60s budget = 60.0s) but abort signals don't kill the spawned claude binary. Fix: add a cleanup-on-exit hook in `playground/supervisor/curriculum-sweep.js` that kills stranded claude.exe processes AFTER identifying them (don't blind `taskkill /F /IM claude.exe` — that kills the user's interactive Claude Code session too). Small change, ~30 min. Until then, cc-agent sweeps at `workers=3` are unreliable; `workers=1` is deterministic but 3× slower.
+`plans/plan-click-to-edit-04-23-2026.md`. Three-tier design (deterministic menu / scoped LLM / full chat). `data-clear-line="N"` attrs already survive every Workers bundle (drift-guard verified). **This is the Marcus-UX differentiation that makes Clear visibly better than Lovable in 2 minutes of use.** Current plan is ~180 lines; needs expansion before agent execution. Recommend expanding the plan in a fresh session (low context + design decisions needed).
 
-### Priority 4 — Click-to-edit UX (sibling plan)
+### Priority 4 — Theme picker UI for Marcus
 
-`plans/plan-click-to-edit-04-23-2026.md`. Three-tier design (deterministic menu / scoped LLM / full chat). `data-clear-line="N"` attrs already survive every Workers bundle (drift-guard verified). This is the Marcus-UX differentiation that makes Clear visibly better than Lovable in 2 minutes of use.
+Now that `CURATED_THEMES` is exported and `themes-preview/theme-picker.html` exists as a visual spec, build the actual picker into Studio's Deploy modal or Settings page. When Marcus hits Publish, the modal should show the 5 curated themes first (with live preview) + a "More themes" reveal for the other 6.
 
 ### Priority 5 — CC-2c dashboard + CC-3 Stripe + CC-4 publish polish
 
@@ -146,7 +202,7 @@ From session 42's Clear Cloud scaffold state. All scaffolds written + tested; re
 
 ## Resume Prompt
 
-> Read `HANDOFF.md`. Cloudflare Phases 1–6 SHIPPED on main at `57b76b4` — `--target cloudflare` produces valid Workers bundles with D1 CRUD, Web Crypto auth, Workers-safe AI helpers, `knows about` lazy-load + compile-time PDF extraction, scheduled agents → Cron Triggers, and `runs durably` → Cloudflare Workflows. 2338 tests green, 112/112 CF drift-guards. Priority 1: Phase 7 (dispatch Worker + WFP API client, mockable). Priority 2: Russell's Phase 0 prereqs (CF account, WFP namespace, DNS, env vars, dispatch Worker) to unblock Phase 8 HITL smoke. Priority 3: sweep regression cleanup hook. Kent Beck TDD red-first; no self-assignment in Clear fixtures.
+> Read `HANDOFF.md`. Cloudflare Phases 1–7 SHIPPED on main at `62f18ae` — `--target cloudflare` produces fully-deployable Workers bundles (D1 CRUD, Web Crypto auth, fetch-only AI, lazy-load knowledge, Cron Triggers, Cloudflare Workflows, shared `src/agents.js` module) AND `/api/deploy` now dispatches to Cloudflare WFP when `CLEAR_DEPLOY_TARGET=cloudflare` (rollback ladder + idempotency lock + reconcile script all wired). 2399 tests green, 112/112 CF drift-guards. Windows spawner zombie fix live. 4 new themes (dusk, vault, sakura, forge) + `CURATED_THEMES` export. **Only Phase 8 remains — Russell's paperwork (~2hr) then HITL smoke (~1hr).** Priority 2: click-to-edit plan expansion. Priority 3: theme picker UI. Kent Beck TDD red-first; no self-assignment in Clear fixtures.
 
 ---
 
