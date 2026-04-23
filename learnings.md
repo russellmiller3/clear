@@ -45,6 +45,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 37: PERF-1 + PERF-2 pagination and aggregates](#session-37-perf-1--perf-2-pagination-and-server-side-aggregates-2026-04-17) | `from` canonicalizes to `in` (must use rawValue), table names can tokenize as keywords not identifiers, `length of get all` is wrong when list is capped — use SQL aggregate, runtime files are build-time copies not imports, `extractEqPairs` (SQL) vs `conditionToFilter` (in-memory) are different helpers |
 | [Session 40: `caller` rename + compiler shadow bug + HINT_APPLIED reliability](#session-40-caller-rename--compiler-shadow-bug--hint_applied-reliability-2026-04-20) | Compiler magic-var mapping ignored lexical shadow (bug); `caller` as 1-word canonical eliminates Users-table exception; prompt-only Claude compliance ~50% in long loops — need server-side fallback; keyword-collision validator surfaces post/deploy/update/payment as bad receiving vars |
 | [Session 41: End-to-end flywheel verification — first real measurement](#session-41-end-to-end-flywheel-verification--first-real-measurement-2026-04-21) | Three-intervention stack (prompt reflex + inline reminder + server fallback) got tag rate 43% → ~100%; first-ever negative labels (Meph rejects hints w/ reasons); ranker retrained on 6.6× data (52→344 pairs); archetype audit found 9/16 gaps, filled 8; compile-output opt-in saves $/sweep; `current_user` underscore now a synonym (surfaced by rejection reason row 1284) |
+| [Session 44: cc-agent Windows stdin race + system-prompt size ceiling](#session-44-cc-agent-windows-stdin-race--system-prompt-size-ceiling-2026-04-23) | claude.exe 2.1.111 on Windows fails 100% of stdin-piped prompts (3s data-received check races Node's async pipe write); argv-only path hits 32KB Windows `CreateProcess` ceiling (ENAMETOOLONG) when Meph's 48KB system prompt is concatenated; fix uses `--system-prompt-file` for system + positional argv for user prompt + `stdio:['ignore',...]` to kill stdin entirely; 5.3% → ~60-75% pass rate; parallel-3 still flaky (separate ticket) |
 
 ---
 
@@ -1727,4 +1728,65 @@ Consequence: if the Studio process restarts between POST and the poll, the jobId
 - `compiler.js` + `lib/packaging-cloudflare.js` split agent emit into `src/agents.js` (Phase 6.10 fix)
 - 112/112 CF drift-guards still green
 - Zero regressions on any prior phase
+
+## Session 44: cc-agent Windows stdin race + system-prompt size ceiling (2026-04-23)
+
+### The bug that looked like two bugs
+
+The morning 38-task sweep (the first one with the Windows spawner zombie-kill fix shipped) completed cleanly — 14 minutes wall clock, 5 timeouts enforcing exactly at 180.0s, claude.exe count stable across the sweep. That verified the spawner work.
+
+But the pass rate was **2/38 (5.3%)** versus session 42 tick 9's **34/38 (89%)** baseline. Most tasks "failed" with wall-clock times of 17–60s — way too short for Meph to build an app, way too long for a simple crash. Fast-fail on the simplest-possible task (hello-world = "GET /api/hello returns {message}") was the biggest tell: hello-world at 24s shouldn't be possible; either Meph finishes it (35–45s) or hangs.
+
+### Root cause: claude.exe on Windows has a 3-second stdin-data-received check
+
+Reproduction from bash:
+```
+$ echo "hi" | /c/Users/rmill/AppData/Roaming/Claude/claude-code/2.1.111/claude.exe --print --verbose --permission-mode bypassPermissions --tools "" --mcp-config tmp.json --output-format stream-json
+Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.
+Error: Input must be provided either through stdin or as a prompt argument when using --print
+```
+
+**100% reproducible.** On Windows, Node's `child.stdin.write(prompt); child.stdin.end()` hands the bytes to a pipe whose OS-level flush happens asynchronously. claude.exe spawns, starts its 3-second stdin-data-received timer, and if it hasn't seen bytes by t=3s it prints the warning and exits code 1. The Node write completes in Node's buffer before 3s, but the pipe doesn't flush to the child's stdin handle within that window.
+
+### The fix is structural — can't just move the prompt
+
+Obvious first attempt: pass the prompt as a positional argv instead of piping via stdin. That works for short prompts. But the Meph "full prompt" is Meph's 48KB system prompt concatenated with the ~1–2KB user task prompt = 49KB. Windows' `CreateProcess` command-line ceiling is 32,767 characters. Passing 49KB as argv → `ENAMETOOLONG` from Node spawn.
+
+Three paths considered:
+1. **argv-only (concatenated prompt):** fails ENAMETOOLONG above 32KB.
+2. **stdin-only (current):** fails stdin-data-received race ~100% of the time on Windows.
+3. **split: system prompt → file + user prompt → argv:** neither channel exceeds its limit. stdin is ignored entirely.
+
+Path 3 is the only working one. claude CLI has a `--system-prompt-file <path>` flag (hidden from `--help` listing but referenced in the `--bare` mode description — spelled `--system-prompt[-file]`). Verified with a direct invocation.
+
+### The fix
+
+`playground/ghost-meph/cc-agent.js`:
+- `chatViaClaudeCodeWithTools(userPrompt, systemPrompt)` — receives the two separately. Writes system prompt to `/tmp/ghost-meph-system-prompts/sys-<timestamp>-<pid>.txt`. Unlinks in both success and error paths.
+- `buildClaudeStreamJsonSpawnArgs(configPath, userPrompt, systemPromptPath)` — appends `--system-prompt-file <path>` when path is set, appends `userPrompt` as final positional argv when non-empty.
+- `runClaudeCliStreamJson(userPrompt, configPath, systemPromptPath)` — plumbs the third arg through.
+- `spawn(..., { stdio: ['ignore', 'pipe', 'pipe'] })` — stdin closed entirely. No pipe, no race.
+- stderr-tail filter strips the benign "no stdin data received" warning from reported errors.
+
+### Post-fix verification
+
+- RED/GREEN TDD: 4 new assertions in `playground/ghost-meph.test.js` (positional prompt last in argv, empty prompt omitted, `--system-prompt-file` present when path given, absent when not). 2 failed pre-fix, all 4 pass post-fix.
+- Full ghost-meph test suite: 75 → **79 green**.
+- Compiler tests: **2399/0** unchanged.
+- Solo hello-world: **42s PASS** (was 24s fast-fail).
+- Solo greeting: **50s PASS** (was 35s fast-fail).
+- 2-task parallel: **2/2 PASS** (both ~45s).
+- 3-task parallel: **flaky 33-66%** — a separate issue, not this fix's scope.
+
+### The parallel-3 flakiness is a different fish
+
+3+ concurrent sweep workers see 1-2 workers fast-fail intermittently. Direct `claude.exe` invocations with 3 concurrent runs all succeed in <3s each when scripted from bash (so the binary handles parallelism fine). Something in the sweep's parallel path — not in cc-agent's spawn call itself — makes 3-worker load unstable. Not diagnosed this session. Parallel-2 is rock solid.
+
+### Why this sat hidden so long
+
+Session 42's sweeps "worked" at 89% pass rate. Either (a) a recent claude.exe binary update changed the 3-second timer behavior, (b) session 42 was on a different version, or (c) earlier sweeps sometimes won the race. Unknown. What's certain: claude.exe v2.1.111 fails 100% of stdin-piped prompts on Windows, and only the argv+file split survives.
+
+### Gotcha-as-rule for this project
+
+**Never pipe a prompt to `claude.exe` via stdin on Windows.** Use argv for the user-side prompt, `--system-prompt-file` for any system prompt that might exceed 32KB. Close stdin explicitly with `stdio: ['ignore', ...]` so no future change can accidentally revive the race.
 

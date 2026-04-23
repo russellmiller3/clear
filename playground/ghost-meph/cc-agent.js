@@ -173,14 +173,18 @@ export async function chatViaClaudeCode(payload) {
     return wrapAsTextResponse('[cc-agent: no user message in payload — nothing to send to Claude Code]');
   }
   const systemPrompt = loadSystemPromptOrEmpty();
+
+  if (toolModeEnabled()) {
+    // Tool mode: keep system + user prompts separate so we can feed the
+    // ~48KB system prompt via --system-prompt-file (avoids Windows 32KB
+    // argv ceiling) and the ~1-2KB user prompt as a positional arg
+    // (avoids the claude.exe stdin-race on Windows pipes).
+    return chatViaClaudeCodeWithTools(userPrompt, systemPrompt);
+  }
+  // Text-only fallback path (original MVP).
   const fullPrompt = systemPrompt
     ? `${systemPrompt}\n\n---\n\n${userPrompt}`
     : userPrompt;
-
-  if (toolModeEnabled()) {
-    return chatViaClaudeCodeWithTools(fullPrompt);
-  }
-  // Text-only fallback path (original MVP).
   let text;
   try {
     text = await runClaudeCli(fullPrompt);
@@ -194,21 +198,41 @@ export async function chatViaClaudeCode(payload) {
  * TOOL MODE: spawn claude with MCP + stream-json, translate events
  * to Anthropic SSE, stream back.
  */
-async function chatViaClaudeCodeWithTools(prompt) {
+async function chatViaClaudeCodeWithTools(userPrompt, systemPrompt) {
   const configPath = writeMcpConfigOrNull();
   if (!configPath) {
     return wrapAsTextResponse('[cc-agent tool mode: failed to write temp MCP config — falling back to text mode message. Check /tmp permissions.]');
   }
+  // Write the 48KB system prompt to a temp file so we can pass it via
+  // --system-prompt-file. Trying to pass it as an argv (concatenated with
+  // the user prompt) hits Windows' 32KB argv ceiling → ENAMETOOLONG.
+  // Trying to pipe the combined prompt via stdin hits claude.exe 2.1.111's
+  // 3-second stdin-data-received check, which races Node's async pipe
+  // write and loses 100% of the time on Windows. File + positional-arg
+  // sidesteps both.
+  let systemPromptPath = null;
+  if (systemPrompt && systemPrompt.length > 0) {
+    try {
+      const dir = join(tmpdir(), 'ghost-meph-system-prompts');
+      mkdirSync(dir, { recursive: true });
+      systemPromptPath = join(dir, `sys-${Date.now()}-${process.pid}.txt`);
+      writeFileSync(systemPromptPath, systemPrompt, 'utf8');
+    } catch {
+      systemPromptPath = null; // fall through — claude will use its default system prompt
+    }
+  }
   let ndjson;
   try {
-    ndjson = await runClaudeCliStreamJson(prompt, configPath);
+    ndjson = await runClaudeCliStreamJson(userPrompt, configPath, systemPromptPath);
   } catch (err) {
     // Surface the error as a text-only SSE so /api/chat's loop terminates
     // cleanly rather than hanging on an incomplete stream.
     try { unlinkSync(configPath); } catch {}
+    if (systemPromptPath) { try { unlinkSync(systemPromptPath); } catch {} }
     return wrapAsTextResponse(`[cc-agent tool-mode error: ${err.message}. Set GHOST_MEPH_CC_TOOLS=0 to fall back to text mode, or drop MEPH_BRAIN to use real Anthropic.]`);
   }
   try { unlinkSync(configPath); } catch {}
+  if (systemPromptPath) { try { unlinkSync(systemPromptPath); } catch {} }
   // Debug hook: set GHOST_MEPH_CC_DEBUG=1 to dump the raw claude stream-json
   // to /tmp/ghost-meph-last-stream.ndjson so we can inspect the exact
   // event shape if translation produces unexpected results.
@@ -403,9 +427,22 @@ export function runClaudeCli(prompt) {
  *             an endpoint, the request bypasses meph_http_request and the
  *             test_pass=1 write never happens. MCP tools registered via
  *             --mcp-config stay available regardless of --tools.
+ *
+ * prompt (optional): appended as the final positional argument when
+ *             non-empty. Required on Windows — claude.exe 2.1.111 emits
+ *             "Warning: no stdin data received in 3s" and exits code 1
+ *             when we try to pipe the prompt via stdin (Node's async
+ *             stdin.write races with claude's 3s stdin-check timer).
+ *             Passing as positional arg sidesteps the race entirely.
+ * systemPromptPath (optional): passed via --system-prompt-file when
+ *             non-empty. The Meph system prompt is ~48KB; concatenating
+ *             it with the user prompt into a single argv blows past the
+ *             32KB Windows argv ceiling (ENAMETOOLONG). File delivery
+ *             keeps the positional argv tiny (just the ~1-2KB user
+ *             prompt) and the 48KB stays in a tmp file.
  */
-export function buildClaudeStreamJsonSpawnArgs(configPath) {
-  return [
+export function buildClaudeStreamJsonSpawnArgs(configPath, prompt, systemPromptPath) {
+  const args = [
     '--print',
     '--verbose',
     '--permission-mode', 'bypassPermissions',
@@ -413,9 +450,14 @@ export function buildClaudeStreamJsonSpawnArgs(configPath) {
     '--mcp-config', configPath,
     '--output-format', 'stream-json',
   ];
+  if (typeof systemPromptPath === 'string' && systemPromptPath.length > 0) {
+    args.push('--system-prompt-file', systemPromptPath);
+  }
+  if (typeof prompt === 'string' && prompt.length > 0) args.push(prompt);
+  return args;
 }
 
-export function runClaudeCliStreamJson(prompt, configPath) {
+export function runClaudeCliStreamJson(prompt, configPath, systemPromptPath) {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
@@ -428,10 +470,18 @@ export function runClaudeCliStreamJson(prompt, configPath) {
     }
     let child;
     try {
+      // Pass prompt as positional arg + system prompt via --system-prompt-file
+      // (not via stdin). On Windows claude.exe 2.1.111's stdin-data-received
+      // check (3s) races with Node's async pipe write and loses 100% of the
+      // time. Combined prompts (~48KB system + ~1KB user) exceed the 32KB
+      // Windows argv ceiling (ENAMETOOLONG). Splitting system→file +
+      // user→argv sidesteps both failures. stdio[0]='ignore' closes stdin
+      // so claude doesn't wait on it at all; the harmless stderr warning
+      // claude emits about closed stdin is filtered below.
       child = spawn(
         claudeBin,
-        buildClaudeStreamJsonSpawnArgs(configPath),
-        { stdio: ['pipe', 'pipe', 'pipe'] },
+        buildClaudeStreamJsonSpawnArgs(configPath, prompt, systemPromptPath),
+        { stdio: ['ignore', 'pipe', 'pipe'] },
       );
     } catch (err) {
       return reject(new Error('failed to spawn `claude` CLI: ' + err.message));
@@ -453,21 +503,19 @@ export function runClaudeCliStreamJson(prompt, configPath) {
     child.on('close', code => {
       clearTimeout(timer);
       if (code !== 0) {
-        const tail = (stderr || '').split('\n').slice(-5).join('\n').trim();
+        // Filter the benign "no stdin data received in 3s" warning — it's
+        // emitted when stdin is ignored AND claude ran fine via positional
+        // arg, so we don't want it surfaced as an error tail.
+        const tail = (stderr || '')
+          .split('\n')
+          .filter(l => !/no stdin data received/i.test(l))
+          .slice(-5).join('\n').trim();
         finish(reject, new Error(`\`claude\` exited with code ${code}: ${tail || '(no stderr)'}`));
         return;
       }
       // Return raw NDJSON — parser handles empty/malformed lines.
       finish(resolve, stdout);
     });
-
-    try {
-      child.stdin.write(prompt);
-      child.stdin.end();
-    } catch (err) {
-      clearTimeout(timer);
-      finish(reject, new Error('failed to write to `claude` stdin: ' + err.message));
-    }
   });
 }
 
