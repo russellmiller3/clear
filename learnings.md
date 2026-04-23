@@ -1443,3 +1443,49 @@ The pattern that works: put `await testAsync(...)` at MODULE SCOPE (not inside d
 - Workers bundle drift-guards: hello+askAI and signup+agent both pass `grep -c 'require\|fs\.\|/tmp\|child_process'` → 0
 - Node (default) target: zero behavioral change. Temporal + AI tests all green.
 
+## Session: Cloudflare Workers for Platforms — Phase 5 (2026-04-23)
+
+Periodic work (`runs every 1 hour`, `every 10 minutes`, `every day at 9am`) can't use `setInterval` or `node-cron` on a Worker — there's no long-lived process to host them. Phase 5 wired Clear's scheduled agents + background blocks + cron blocks into Cloudflare Cron Triggers: wrangler.toml declares the cron expressions, and `src/index.js` exposes a `scheduled(event, env, ctx)` handler that dispatches on `event.cron`. 6 TDD cycles + learnings fold. Three pitfalls worth pinning.
+
+### Cron dispatch and wrangler triggers MUST mirror or silently break
+
+Cloudflare rejects a deploy where `wrangler.toml` declares `[triggers] crons = [...]` but the script has no `scheduled()` export — and the inverse (handler without matching wrangler entries) silently never fires. Both are failure modes the user never sees at build time.
+
+Fix: single source of truth. `emitCloudflareWorkerBundle()` calls `_collectCronBlocks(body)` once, uses the result for BOTH `wranglerTomlTemplate({ crons })` AND `compileToCloudflareWorker()`'s dispatcher emit. Any divergence is structurally impossible. A test in `lib/packaging-cloudflare-cron.test.js` extracts the cron strings from wrangler.toml's `crons = [...]` array and the branch conditions (`_cron === "..."`) from the handler, and asserts set equality — three in the toml, three branches, byte-for-byte.
+
+### Duration-phrase → cron expression is a silent-failure surface
+
+A wrong cron expression doesn't throw. The job just fires on the wrong cadence for as long as the bundle is deployed. `runs every 5 minutes` accidentally mapped to `*/50 * * * *` would silently run once an hour and most people wouldn't notice until the log volume looked off.
+
+Fix: exhaustive unit tests on the pure `_scheduleToCron(spec)` helper — every combination of {value, unit} the parser can produce gets an explicit mapping with a one-line test. Minutes 1, 5, 10, 30, and 60+ (rounds up to hourly). Hours 1, 6, 12, 24+ (rounds to daily). Days 1, 7. Every-day-at-HH:MM (both agent `at:"9am"` shape and CRON `mode:'at', hour, minute` shape). Seconds round UP to 1 minute (Cloudflare's granularity floor; silently-wrong was still better than throwing at compile time). Missing/malformed spec falls back to hourly and never throws.
+
+### `rehydrateBundleAppName` must preserve `[triggers]`, not regenerate
+
+When `packageCloudflareBundle` takes a pre-compiled bundle and the caller passes a different `appName`, the old code regenerated wrangler.toml from scratch. With Phase 5 adding `[triggers] crons = [...]`, regenerating dropped the crons on the floor — the bundle would deploy without any triggers, scheduled work silently dies.
+
+Fix: regex-replace only the `name = "..."` line in place. Preserves every other line (compat date, compat flags, [triggers], crons array, future bindings). The pattern is additive: new sections the compiler bakes into wrangler.toml survive later mutations without each new section needing bespoke handling in the rehydrate step.
+
+### Cloudflare Cron Trigger constraints (April 2026)
+
+Worth pinning so future helpers don't silently fight the platform:
+
+- **Granularity floor: 1 minute.** Sub-minute schedules aren't representable. Clear's `runs every 30 seconds` rounds up to `* * * * *` and gets run every minute. A warning in `.warnings` would be more honest — TODO for a follow-up plan.
+- **Timezone: UTC only.** `every day at 9am` compiles to `0 9 * * *` which is 9am UTC. Users in non-UTC zones need to convert manually. Users will eventually complain; future phase should accept a `in Pacific time` clause.
+- **Max crons on free plan: 3.** Paid plan is unlimited. We don't cap at 3 at compile time — the deploy fails at CF's upload step if the tenant is on free, which is recoverable. Deferring the limit-aware packaging to the deploy orchestration plan.
+- **Event shape:** `{ cron: string, scheduledTime: number, type: 'scheduled' }`. We dispatch on `.cron`; `scheduledTime` is exposed but unused for now. `ctx.waitUntil` is present so the handler can fire-and-forget background work.
+
+### testAsync at module scope is the only async test pattern that works
+
+Reinforced from Phase 3. The 5.6 E2E suite needed to dynamic-import the compiled bundle, spin up `env.DB = d1Mock()`, apply migrations, and invoke `mod.default.scheduled(event, env, ctx)`. All of this is async; running inside `describe() { it(...) }` would have logged a pass before the Promise resolved. Hoisting the three E2E tests to `await testAsync(...)` at module scope makes them block the runner until complete.
+
+Pattern for any Phase 4+ file that needs async tests: keep sync assertions inside describe/it, hoist async scenarios to `await testAsync(...)` right above them.
+
+### Phase 5 outcome
+
+- 6 TDD cycles committed (cf-5.1 → cf-5.6; cf-5.7 learnings folded into this session note)
+- 2247 → 2289 tests passing (+42 net; +38 in packaging-cloudflare-cron.test.js + 4 template smoke additions)
+- 0 regressions on default target
+- `node scripts/smoke-cf-target.mjs` → 112/112 checks green
+- All 8 core templates still compile clean with target=cloudflare
+- Dispatch semantics proven end-to-end under d1Mock: one branch per cron, other branches silent on the wrong event, errors swallowed per branch, unknown crons fall through harmlessly
+
