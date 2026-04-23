@@ -62,6 +62,32 @@ export class InMemoryTenantStore {
 	async appNameFor(slug, appSlug) {
 		return this.appsByTenant.get(`${slug}/${appSlug}`) || null;
 	}
+	// Phase 7.7 — after a successful CF deploy, record script name + d1 id +
+	// hostname so we can cross-reference against CF in the reconcile job.
+	async markAppDeployed({ tenantSlug, appSlug, scriptName, d1_database_id, hostname }) {
+		if (!this.cfDeploys) this.cfDeploys = new Map();
+		const key = `${tenantSlug}/${appSlug}`;
+		this.cfDeploys.set(key, {
+			tenantSlug, appSlug, scriptName, d1_database_id, hostname,
+			deployedAt: new Date().toISOString(),
+		});
+		// Keep appNameFor working by dual-writing the scriptName there too.
+		this.appsByTenant.set(key, scriptName);
+		return { ok: true };
+	}
+	// Phase 7.7c — reconcile job calls this to get the full known-apps view.
+	// Returns two sets so the caller can diff against CF listings.
+	async loadKnownApps() {
+		const scripts = new Set();
+		const databases = new Set();
+		if (this.cfDeploys) {
+			for (const row of this.cfDeploys.values()) {
+				if (row.scriptName) scripts.add(row.scriptName);
+				if (row.d1_database_id) databases.add(row.d1_database_id);
+			}
+		}
+		return { scripts, databases };
+	}
 	async seenStripeEvent(eventId) {
 		return this.stripeEvents.has(eventId);
 	}
