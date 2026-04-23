@@ -1355,6 +1355,41 @@ function compileToCloudflareWorker(body, result) {
   out.push('');
   out.push(`    return new Response('Not found', { status: 404 });`);
   out.push('  }');
+
+  // scheduled(event, env, ctx) — Cloudflare Cron Triggers dispatcher.
+  // One handler, one body per cron expression. Emitted alongside fetch()
+  // in the same export default object. Cloudflare matches event.cron
+  // against the strings in wrangler.toml [triggers] crons = [...]; the
+  // same strings appear as branch conditions here so every trigger maps
+  // to exactly one body. See learnings.md for CF cron semantics.
+  const cronBlocks = _collectCronBlocks(body, ctx);
+  if (cronBlocks.length > 0) {
+    out.push(',');
+    out.push('');
+    out.push('  async scheduled(event, env, ctx) {');
+    out.push('    const _cron = (event && event.cron) || \'\';');
+    for (const block of cronBlocks) {
+      out.push(`    if (_cron === ${JSON.stringify(block.cronExpr)}) {`);
+      out.push(`      // ${block.kind} '${block.name}' — ${block.label}`);
+      out.push(`      try {`);
+      // Compile the body fresh with ctx.target='cloudflare' so CRUD
+      // inside the block emits env.DB.prepare/bind/run and nothing
+      // touches setInterval.
+      const schedCtx = { ...ctx, indent: 3, declared: new Set() };
+      const bodyCode = compileBody(block.body || [], schedCtx, {
+        indent: 3,
+        declared: new Set(),
+        target: 'cloudflare',
+      });
+      if (bodyCode) out.push(bodyCode);
+      out.push(`      } catch (_err) {`);
+      out.push(`        console.error(${JSON.stringify(`Scheduled block '${block.name}' error:`)}, _err);`);
+      out.push(`      }`);
+      out.push(`      return;`);
+      out.push(`    }`);
+    }
+    out.push('  }');
+  }
   out.push('};');
   out.push('');
   return out.join('\n');
@@ -12584,6 +12619,111 @@ function _timeToCron(timeStr, intervalValue, intervalUnit) {
   if (ampm === 'AM' && hour === 12) hour = 0;
   // For daily schedules, use * * * for day/month/dow
   return `${minute} ${hour} * * *`;
+}
+
+// =============================================================================
+// CLOUDFLARE CRON TRIGGER TRANSLATOR
+// =============================================================================
+// Turn Clear's duration phrases into standard crontab expressions for
+// Cloudflare Cron Triggers. UTC only; 1-minute minimum granularity; standard
+// 5-field format (minute hour day-of-month month day-of-week).
+//
+// Covered cases (exhaustive for what the parser produces today):
+//   - every N minutes  → `*/N * * * *`      (N ∈ 1..59; N=1 → `* * * * *`)
+//   - every N hours    → `0 */N * * *`      (N ∈ 1..23; N=1 → `0 * * * *`)
+//   - every N days     → `0 0 */N * *`      (N=1 → `0 0 * * *`, every day)
+//   - every day at H:M → `M H * * *`
+//   - every 1 hour / every hour              → `0 * * * *`
+//   - every 1 day  / every day (no time)     → `0 0 * * *`
+//
+// Callers pass the same schedule shape the parser emits:
+//   - BACKGROUND:   { value: N, unit: 'minute' | 'hour' | 'day' | 'second' }
+//   - CRON interval:{ mode: 'interval', value: N, unit: 'minute' | 'hour' | 'second' }
+//   - CRON at:      { mode: 'at', hour: H, minute: M }
+//   - AGENT:        { value: N, unit, at?: 'H:MM' }
+//
+// Seconds are NOT representable in crontab. If the user wrote `runs every 30
+// seconds` we round up to 1 minute and return a warning string in .warnings
+// at the caller's request. The translator itself just returns the best-fit
+// cron expression.
+export function _scheduleToCron(spec) {
+  if (!spec || typeof spec !== 'object') return '0 * * * *';
+  // Daily-at-time form (e.g. CRON mode:'at' or AGENT with `at`)
+  if (spec.mode === 'at' && Number.isInteger(spec.hour)) {
+    const m = Number.isInteger(spec.minute) ? spec.minute : 0;
+    return `${m} ${spec.hour} * * *`;
+  }
+  if (spec.at && (spec.unit === 'day' || !spec.unit)) {
+    return _timeToCron(spec.at, spec.value, spec.unit);
+  }
+  const rawValue = Number.isInteger(spec.value) ? spec.value : 1;
+  const value = rawValue > 0 ? rawValue : 1;
+  const unit = (spec.unit || '').toLowerCase().replace(/s$/, '');
+  if (unit === 'second') {
+    // Smallest Cloudflare Cron granularity is 1 minute — round up.
+    return '* * * * *';
+  }
+  if (unit === 'minute') {
+    if (value === 1) return '* * * * *';
+    if (value >= 60) return '0 * * * *'; // 60+ minutes → hourly
+    return `*/${value} * * * *`;
+  }
+  if (unit === 'hour') {
+    if (value === 1) return '0 * * * *';
+    if (value >= 24) return '0 0 * * *'; // 24+ hours → daily
+    return `0 */${value} * * *`;
+  }
+  if (unit === 'day') {
+    if (value === 1) return '0 0 * * *';
+    return `0 0 */${value} * *`;
+  }
+  // Unknown unit — fall back to hourly so we don't drop the job silently
+  return '0 * * * *';
+}
+
+// Walk the AST and produce a tuple per schedulable block:
+//   { cronExpr, label, kind, name, bodySource }
+// kinds: 'background' (BACKGROUND), 'cron' (CRON), 'agent' (AGENT+schedule)
+// bodySource is the compiled JS body (already run through compileBody with
+// ctx.target='cloudflare') — callers splice it into the dispatch switch.
+export function _collectCronBlocks(body, ctx) {
+  const blocks = [];
+  if (!Array.isArray(body)) return blocks;
+  for (const node of body) {
+    if (!node || typeof node !== 'object') continue;
+    if (node.type === NodeType.BACKGROUND && node.schedule) {
+      blocks.push({
+        kind: 'background',
+        name: node.name,
+        cronExpr: _scheduleToCron(node.schedule),
+        label: `every ${node.schedule.value} ${node.schedule.unit}(s)`,
+        body: node.body || [],
+      });
+    } else if (node.type === NodeType.CRON) {
+      const spec = node.mode === 'interval'
+        ? { value: node.value, unit: node.unit }
+        : { mode: 'at', hour: node.hour, minute: node.minute };
+      const label = node.mode === 'interval'
+        ? `every ${node.value} ${node.unit}(s)`
+        : `every day at ${String(node.hour).padStart(2,'0')}:${String(node.minute).padStart(2,'0')}`;
+      blocks.push({
+        kind: 'cron',
+        name: label.replace(/\s+/g, '_'),
+        cronExpr: _scheduleToCron(spec),
+        label,
+        body: node.body || [],
+      });
+    } else if (node.type === NodeType.AGENT && node.schedule) {
+      blocks.push({
+        kind: 'agent',
+        name: node.name,
+        cronExpr: _scheduleToCron(node.schedule),
+        label: `agent '${node.name}' every ${node.schedule.value} ${node.schedule.unit}(s)${node.schedule.at ? ' at ' + node.schedule.at : ''}`,
+        body: node.body || [],
+      });
+    }
+  }
+  return blocks;
 }
 
 function sanitizeName(name) {
