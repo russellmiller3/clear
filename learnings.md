@@ -1443,3 +1443,45 @@ The pattern that works: put `await testAsync(...)` at MODULE SCOPE (not inside d
 - Workers bundle drift-guards: hello+askAI and signup+agent both pass `grep -c 'require\|fs\.\|/tmp\|child_process'` → 0
 - Node (default) target: zero behavioral change. Temporal + AI tests all green.
 
+## Session: Cloudflare Workers for Platforms — Phase 6 (2026-04-23)
+
+`runs durably` was the architectural shift of the Cloudflare plan. Same three words in a `.clear` file, two totally different deployment realities: Node target keeps emitting Temporal SDK imports (so anyone running their own Temporal cluster is untouched), Cloudflare target emits a standalone `WorkflowEntrypoint` class per durable workflow, plus the `[[workflows]]` bindings that make CF accept the deploy. Six effective cycles landed as one commit (emitter + tests atomically coupled) with per-cycle prefixes in the message (`feat(cf-6.1,6.2,6.7,6.8,6.9)`). Four non-obvious pitfalls worth pinning.
+
+### Phase 6 emit lives in packaging-cloudflare.js, not in compileWorkflow()
+
+The plan's original framing said "compileWorkflow() gains a target === 'cloudflare' branch." I tried that path first and the design got ugly fast. The Node backend compile pass (where compileWorkflow runs) builds ONE serverJS string — adding a CF branch would mean either conditionally returning empty text (leaving Temporal code in an unused place) or branching the whole function twice. Worse: the CF target's per-workflow-file emit needs to write to a different output slot (`result.workerBundle['src/workflows/<slug>.js']`) that compileWorkflow has no way to reach.
+
+**The clean split:** leave `compileWorkflow` untouched for the Node path (Temporal SDK emit stays), and add an independent emitter `emitCloudflareWorkflow(wfNode)` in `lib/packaging-cloudflare.js` that `buildWorkerBundle()` calls when walking the AST. The CF bundle ends up with its own `src/workflows/<slug>.js` per durable workflow, and the shared serverJS never sees that emit.
+
+**Rule:** when a new target wants the SAME AST node to produce different files in different locations, don't cram the branching inside the shared compileNode() dispatcher. Write a dedicated target-specific emitter and call it from the target-specific bundle assembler. Keeps the Node path stable and the CF path isolated.
+
+### Workflows run in a SEPARATE CF execution context from src/index.js
+
+Cloudflare Workflows don't run "inside" the main Worker — they're independent entrypoints that the dispatch Worker invokes via `env.<BINDING>.create()`. That means the workflow class can't call agent functions defined in `src/index.js` — they're in a different module graph at runtime.
+
+For Phase 6 we emit `agent_<name>(_state)` calls inside `step.do()` bodies and let the test mock supply those globals. Real deploys in Phase 7 will need to inline the agent functions into each workflow file OR have the workflow module import them from a shared `src/agents.js`. This is a Phase 7 concern, flagged here so future sessions don't rediscover it.
+
+### `ctx.target` only propagates to endpoint bodies, not top-level compilation
+
+The Cloudflare branch of the RUN_WORKFLOW invocation (`env.<NAME>.create({ params })`) depends on `ctx.target === 'cloudflare'`. That flag is only set when the CF-specific emit calls `compileBody(ep.body, ctx, { target: 'cloudflare' })` — NOT during the top-level AST walk that compiles `result.javascript`. So the Node backend's `result.javascript` still sees `ctx.target === undefined` and emits the direct `workflow_onboarding(data)` call, while the CF bundle's `src/index.js` sees `ctx.target === 'cloudflare'` and emits `env.ONBOARDING_WORKFLOW.create({ params: data })`. Same endpoint body, two different compile contexts, two different outputs.
+
+**Gotcha:** when I need to branch on target inside `exprToCode`, I must ALSO check `ctx._allNodes` exists — that's the list of top-level AST nodes the CF compile threads through, which lets me look up the workflow by name and confirm it's durable before rewriting the call. Without `_allNodes`, a plain (non-durable) workflow on CF target would also get rewritten to `env.X.create()` which would fail at runtime.
+
+### Worktree vs main checkout — my absolute paths landed in the WRONG tree
+
+Running as a Phase 6 agent in the isolated worktree at `C:\Users\rmill\Desktop\programming\clear\.claude\worktrees\agent-a72d64d4\`, I used absolute paths like `C:\Users\rmill\Desktop\programming\clear\lib\packaging-cloudflare.js` — which resolved to the MAIN checkout, not my worktree. Git saw 0 staged changes on my branch while the main checkout accumulated all my Phase 6 work sitting on top of Phase 4's uncommitted work.
+
+The recovery path: re-apply the same Edits to the worktree's files (absolute-path to `.claude/worktrees/agent-<id>/...`), then `git checkout` the file in main to blow away my contamination without touching Phase 4's WIP. I kept the test file in `/tmp/` as a backup just in case the diff couldn't be cleanly replayed.
+
+**Rule (for any worktree agent):** every file touch must start with the worktree root. Don't rely on shell-CWD since Bash resets between tool calls. The Edit tool's `file_path` should begin with the worktree path, not the repo path.
+
+### Phase 6 outcome
+
+- 5 effective TDD cycles committed in one (cf-6.1, cf-6.2, cf-6.6, cf-6.7, cf-6.8, cf-6.9; commit message groups 6.1/6.2/6.7/6.8/6.9; 6.6 is the RUN_WORKFLOW invocation also in the same commit)
+- 2247 → 2268 tests passing (+21 net, all in `lib/packaging-cloudflare-workflows.test.js`)
+- 0 regressions: existing Temporal tests (js_backend target) still green
+- CF target drift-guard smoke: 112/112 passes — `src/index.js` has zero `@temporalio`, zero `require(`, zero `fs.`, zero `child_process`
+- `emitCloudflareWorkflow(wfNode)` + `collectCloudflareWorkflowBindings(astBody)` — exported from `lib/packaging-cloudflare.js` so Phase 7 can reuse them for the deploy orchestrator
+- `runs durably` on CF target now produces a standalone `src/workflows/<slug>.js` ESM module with `extends WorkflowEntrypoint`, `async run(event, step)`, and one `await step.do('<label>', async () => await agent_<name>(_state))` per step
+- `wrangler.toml` grows one `[[workflows]]` section per durable workflow, with binding/name/class_name derived deterministically from the workflow name
+
