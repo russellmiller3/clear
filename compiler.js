@@ -4284,6 +4284,13 @@ function compileAgent(node, ctx, pad) {
   // Scheduled agent: runs on interval or cron, no input parameter
   if (node.schedule) {
     const { value, unit, at } = node.schedule;
+    // Workers target: the scheduled() handler emitter walks the AST for
+    // AGENT+schedule nodes directly and wires them into a cron-dispatching
+    // switch. Suppress the inline node-cron / setInterval emit so no
+    // Node-only periodic plumbing leaks into the Workers bundle.
+    if (ctx.target === 'cloudflare') {
+      return `${pad}// Scheduled agent '${node.name}' — emitted via scheduled() handler (Cloudflare Cron Triggers)`;
+    }
     if (ctx.lang === 'python') {
       return `${startupCode}${pad}async def ${fnName}():\n${bodyCode}\n${pad}# Schedule: runs every ${value} ${unit}(s)${at ? ' at ' + at : ''}`;
     }
@@ -6744,6 +6751,16 @@ ${pad}}`;
     }
 
     case NodeType.BACKGROUND: {
+      // Workers have no long-lived process, so setInterval can't drive a
+      // periodic job. Cloudflare Cron Triggers (declared in wrangler.toml)
+      // + a scheduled(event, env, ctx) handler take over. Suppress the
+      // inline emit here so no setInterval leaks into the Workers bundle
+      // even if someone later routes BACKGROUND through compileBody with
+      // ctx.target='cloudflare'. The separate scheduled() handler emitter
+      // walks the AST for BACKGROUND nodes directly.
+      if (ctx.target === 'cloudflare') {
+        return `${pad}// Background job '${node.name}' — emitted via scheduled() handler (Cloudflare Cron Triggers)`;
+      }
       const scheduleMs = node.schedule
         ? node.schedule.value * (node.schedule.unit === 'minute' ? 60000 : node.schedule.unit === 'hour' ? 3600000 : 1000)
         : 3600000;
@@ -6773,6 +6790,14 @@ ${pad}}`;
     }
 
     case NodeType.CRON: {
+      // Workers route periodic work through Cloudflare Cron Triggers + the
+      // scheduled(event, env, ctx) handler. Same rationale as BACKGROUND.
+      if (ctx.target === 'cloudflare') {
+        const label = node.mode === 'interval'
+          ? `every ${node.value} ${node.unit}(s)`
+          : `every day at ${String(node.hour).padStart(2,'0')}:${String(node.minute).padStart(2,'0')}`;
+        return `${pad}// Scheduled block (${label}) — emitted via scheduled() handler (Cloudflare Cron Triggers)`;
+      }
       if (ctx.lang === 'python') {
         // Compile body at indent 1 — compileBody adds +1, making it indent 2 = 8 spaces
         const cronCtx = { ...ctx, indent: 1 };

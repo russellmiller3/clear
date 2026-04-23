@@ -23979,5 +23979,8 @@ await import('./lib/packaging-cloudflare-templates.test.js');
 // Cloudflare Workers for Platforms target — Phase 3 (Web Crypto auth)
 await import('./runtime/auth-webcrypto.test.mjs');
 
+// Cloudflare Workers for Platforms target — Phase 5 (Cron Triggers)
+await import('./lib/packaging-cloudflare-cron.test.js');
+
 run();
 
