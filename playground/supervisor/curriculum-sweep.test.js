@@ -1,5 +1,5 @@
 import { describe, it, expect } from '../../lib/testUtils.js';
-import { partitionTasks, buildPrompt, runSweep, validateSweepPreconditions, computeTaskOutcome } from './curriculum-sweep.js';
+import { partitionTasks, buildPrompt, runSweep, validateSweepPreconditions, computeTaskOutcome, gradeAbortedRun } from './curriculum-sweep.js';
 
 describe('partitionTasks', () => {
   it('splits evenly when divisible', () => {
@@ -186,5 +186,53 @@ describe('computeTaskOutcome', () => {
   it('strict mode: neither signal → not ok', () => {
     const r = computeTaskOutcome({ dbPassed: false, saidTaskComplete: false, strict: true });
     expect(r.ok).toEqual(false);
+  });
+});
+
+describe('gradeAbortedRun', () => {
+  // When the sweep's per-task timeout aborts mid-stream, the original
+  // grader returned ok:false without checking the Factor DB. But Meph
+  // often completes the task (writing a test_pass=1 row) and simply
+  // doesn't finish saying "TASK COMPLETE" before the abort. Those are
+  // real passes that were getting graded as timeouts — ~7/38 rows on
+  // the 04-23 sweep. gradeAbortedRun closes the gap: DB truth beats
+  // wall-clock budget.
+
+  function fakeDbWithPass() {
+    return { _db: { prepare: () => ({ get: () => ({ '1': 1 }) }) } };
+  }
+  function fakeDbNoPass() {
+    return { _db: { prepare: () => ({ get: () => undefined }) }, };
+  }
+  function fakeDbThatThrows() {
+    return { _db: { prepare: () => { throw new Error('sqlite is sad'); } } };
+  }
+
+  it('returns ok=true + timedOut=false when a passing row exists after startMs', () => {
+    const r = gradeAbortedRun(fakeDbWithPass(), 100);
+    expect(r.ok).toEqual(true);
+    expect(r.timedOut).toEqual(false);
+    expect(r.dbPassed).toEqual(true);
+  });
+
+  it('returns ok=false + timedOut=true when no passing row exists', () => {
+    const r = gradeAbortedRun(fakeDbNoPass(), 100);
+    expect(r.ok).toEqual(false);
+    expect(r.timedOut).toEqual(true);
+    expect(r.dbPassed).toEqual(false);
+  });
+
+  it('returns timedOut=true when factorDB is null (no way to check)', () => {
+    const r = gradeAbortedRun(null, 100);
+    expect(r.ok).toEqual(false);
+    expect(r.timedOut).toEqual(true);
+    expect(r.dbPassed).toEqual(false);
+  });
+
+  it('swallows sqlite errors and treats as no pass (timedOut=true)', () => {
+    const r = gradeAbortedRun(fakeDbThatThrows(), 100);
+    expect(r.ok).toEqual(false);
+    expect(r.timedOut).toEqual(true);
+    expect(r.dbPassed).toEqual(false);
   });
 });
