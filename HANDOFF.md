@@ -51,12 +51,17 @@ Two sweeps ran on `sweeps/post-cf-ship-2026-04-23` branch (same compiler as main
 - Port/buildDir contention somehow resurfacing (session 42 tick 7/8 fixed this at 3 workers; maybe regressed)
 - Phase 1/2/3 ship silently broke something in the MCP path (unlikely — compiler tests all green, and solo sweep passes)
 
-**Next session should NOT kick off more sweeps without triaging first.** Start with:
+**Triaged post-ship — root cause found.**
 
-1. `node clear.test.js` — confirm compiler still green (it is as of ship).
-2. Reproduce the 6700s timeout with `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=1 --tasks=counter --timeout=180 --strict` — if it hangs, watch `ps`/`tasklist` for stuck claude processes.
-3. Check `which claude` + `claude --version` — has the binary auto-updated?
-4. If subscription throttling: wait and retry, OR flip to Anthropic API mode (`unset MEPH_BRAIN` + `ANTHROPIC_API_KEY` set) for a paid diagnostic sweep. Budget $5–10.
+Ran the same task solo with a 60s budget: `MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 node playground/supervisor/curriculum-sweep.js --workers=1 --tasks=counter --timeout=60 --strict` → `[⏱️ TIMEOUT] L3 counter — 60.0s`. Timeout enforcement WORKS — to the second.
+
+Then `tasklist.exe | grep claude.exe` showed **13 zombie claude.exe processes** from earlier sweeps. Memory footprints 12K–662MB per process, total ≈ 1.2GB held hostage. Each stuck child probably lost its parent when its sweep task was abort-signalled, but the binary itself kept burning CPU + holding its port.
+
+That's the 6700s mystery: the AbortController aborted the SSE fetch cleanly, but the next task's claude child couldn't get resources (RAM pressure + port collisions with zombies), so it crawled through compile iterations at 100× normal speed.
+
+**The proper fix is a cleanup-on-exit hook** in the curriculum-sweep that kills any claude.exe children before the next sweep starts. Russell can triage next session: add a `process.on('exit', () => spawner.killAllClaudeChildren())` to `playground/supervisor/curriculum-sweep.js`, OR widen the existing `spawner.killAll()` call to also enumerate + kill orphan claude.exe processes on Windows. **Do NOT just `taskkill /F /IM claude.exe`** — that also kills any live Claude Code sessions the user has open.
+
+Short-term workaround: between sweeps, manually `tasklist | grep claude.exe` and kill the ones that aren't the foreground Claude Code session.
 
 ## Exit criteria (ALL met)
 
