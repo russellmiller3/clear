@@ -119,6 +119,7 @@
 // =============================================================================
 
 import { NodeType, parse } from './parser.js';
+import { buildWorkerBundle } from './lib/packaging-cloudflare.js';
 
 const CLEAR_VERSION = '1.0';
 
@@ -962,10 +963,7 @@ function _spliceEvalEndpoints(serverJS, endpointsJS) {
 // from cycle 1.1 even before the codegen lands.
 
 function emitCloudflareWorkerBundle(body, result) {
-  // Lazy-import from lib/packaging-cloudflare.js. We use a dynamic-style
-  // shim (synchronous require-free) by letting the packaging module hand
-  // us a pure function. For Phase 1 we inline the default empty bundle.
-  return {};
+  return buildWorkerBundle(body, result);
 }
 
 export function compile(ast, options = {}) {
