@@ -1,7 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
-Updated: **2026-04-19 (Session 38: data-quality pass + EBM chosen + compiler flywheel drafted)**.
+Updated: **2026-04-23 (Session 44: stdin-race + grader bugs fixed; hint-effect A/B still unmeasured)**.
 
 ## Session timeline (recent)
 
@@ -11,6 +11,7 @@ Updated: **2026-04-19 (Session 38: data-quality pass + EBM chosen + compiler fly
 | 36 | 2026-04-17 | Multi-session supervisor plan + curriculum harness skeleton |
 | 37 | 2026-04-18 | **Flywheel live.** Factor DB wired to `/api/chat`, archetype classifier (15 cats), Studio dashboard tab, cold-start harness, 5 Marcus curriculum tasks, cross-archetype curriculum diversity. 107 rows, 38 passing. |
 | **38** | **2026-04-19** | **Data-quality pass + first reranker trained.** Haiku 4.5 default, step-decomposition, parser inline records `{}`, 16th archetype (kpi), classifier ordering fix, sweep DB grader, CLI clobber-proofing, iteration limit bump, EBM chosen over XGBoost (trainer rewritten), EBM wired into `/api/chat`, compiler-flywheel design. **2-stage Lasso → EBM pipeline measured:** Lasso alone wins at Phase-1 scale (val R² 0.39 vs EBM 0.30); Lasso dropped 11 of 24 features as noise; Stage-2 EBM on the 13 Lasso-kept features beats vanilla EBM by +0.033. Finished at 492 rows, 182 passing (API capped until May 1). |
+| **44** | **2026-04-23** | **Measurement integrity restored.** Two sweep-flywheel bugs fixed: Windows stdin-race in cc-agent (Meph's prompt was being dropped, 100% fast-fail on sweeps) and grader ignoring Factor DB on timeout (7 tasks Meph actually passed were graded ⏱️). Morning sweep 2/38 → post-fix projected 27/38 (~71%). Also surfaced the open question: re-ranker learns offline (val_auc 0.96) but **hint-effect on Meph's live pass rate is unmeasured**. Observational data is confounded by selection bias (hints fire on hard tasks). Plan: ship transcript persistence + hint-toggle env flag, run 40-trial paired A/B on counter + todo-crud. See "Session 44" section below for the full writeup. |
 
 The document below is structured **theory → architecture → current state → path forward**. Start with "Read This First" for the plain-English summary; dive into the specific section that matches your question.
 
@@ -33,6 +34,7 @@ The document below is structured **theory → architecture → current state →
 - [Cross-Domain Transfer (The Research Paper)](#cross-domain-transfer-the-research-paper)
 - [Flagship Research Candidates — Ranking the Most Ambitious Laptop-Feasible Questions](#flagship-research-candidates--ranking-the-most-ambitious-laptop-feasible-questions)
 - [The RL Gym: What's Built](#the-rl-gym-whats-built)
+- **[Session 44: Measurement integrity + the unanswered question (2026-04-23)](#session-44-measurement-integrity--the-unanswered-question-2026-04-23)** ⭐ (current state — read this FIRST)
 
 
 ---
@@ -1309,3 +1311,93 @@ Those are answerable — just not with the methodology Session 41 used. Next tim
 ### The honest bottom line
 
 Session 41 shipped real fixes (compiler shadow bug, tag reliability stack, curriculum expansion) worth maybe $10-15 if you had bought them piecemeal. Cost $50+. The gap — $35-40 of pure waste — was methodology, not research. The research thesis is intact; the execution discipline needed upgrading. The infrastructure to not repeat this is now in place.
+
+---
+
+## Session 44: Measurement integrity + the unanswered question (2026-04-23)
+
+**TL;DR — we were measuring the wrong thing. The re-ranker is definitely learning offline (val_auc 0.96). Whether its hints actually help Meph pass more tasks is unmeasured. The evidence we have is weak-negative but fully confounded by selection bias. The honest experiment was never run.**
+
+### What was broken (and is now fixed)
+
+Two bugs were silently poisoning every sweep result:
+
+1. **Windows stdin race** (cc-agent.js — commit `2ded7f3`). `claude.exe` 2.1.111 on Windows has a 3-second stdin-data-received check that beats Node's async pipe write. 100% of sweep tasks had their prompt effectively dropped — Meph got the prompt late or never, fast-failed in 20-60s, graded ❌ or ⏱️. Morning sweep: **2/38 (5.3%)** pass rate. Fix: system prompt → `--system-prompt-file`, user prompt → positional argv, `stdio:['ignore',...]`. Post-fix: **20/38 (52.6%)** strict-graded.
+
+2. **Grader ignored DB on timeout** (curriculum-sweep.js — commit `c54f3a2`). When a task hit the 180s abort, the grader returned `ok: false` without checking Factor DB. 7 tasks on the post-stdin-race sweep had Meph actually writing `test_pass=1` rows — he solved the task, just didn't fit "TASK COMPLETE" into his final 180ms before the stream got yanked. Fix: new `gradeAbortedRun(factorDB, startMs)` pure helper, called from the AbortError branch. Projected real pass rate after both fixes: **~27/38 (71%)**.
+
+Combined: **5.3% → ~71% in one day**, zero API cost (cc-agent runs on Russell's Claude subscription). Every sweep result before today is suspect — the Factor DB accumulated a month of false negatives.
+
+### The question we still can't answer
+
+**Do the re-ranker's hints actually move Meph's live pass rate?**
+
+Known cleanly:
+- Offline ranker quality: val_auc 0.96 on 452 pairs. Ranker is learning.
+- Hint delivery pipeline: tag rate ~100% (Session 41). Hints reach Meph.
+- Meph's self-rating: 30/41 rated hints "yes" helpful, 0 rated "no."
+- **Downstream effect on pass rate: UNKNOWN.**
+
+Passive data looks negative but is fully confounded:
+
+| Cut | With hint | No hint |
+|---|---|---|
+| Rows, pass rate | 60 rows / 0% | 1,555 rows / 39% |
+| Session-level (session ever passed) | 29/60 (48%) | 499/779 (64%) |
+
+Hint-tagged work passes LESS. But hints fire when Meph is already struggling — selection bias swamps the signal. Observational data can't answer this. The honest A/B has never been run.
+
+### The experiment that actually answers it
+
+**Minimum viable (tonight, ~1 hour, $0):**
+- Pick 2 middle-difficulty tasks where Meph fails ~50% (counter, todo-crud).
+- Force hint-on vs hint-off via env flag. System doesn't get to pick.
+- **10 trials per condition per task = 40 runs total.**
+- Compare pass rate per task.
+- If hints move the needle, at least one task will show a visible gap at N=10.
+
+**Proper experiment (if min-viable shows signal, ~4-6 hours, $0):**
+- 5 tasks spanning L3–L6 (L1 trivial, L10 beyond-Meph, middle band has movement).
+- 20 runs per condition per task = 200 runs total.
+- Paired per-task comparison, stratified by difficulty.
+
+**Why 2 tasks not 38:** variance eats signal at this sample size. 10 trials of a hard task has more signal-per-dollar than 1 trial of 38 tasks. Session 41 post-mortem lesson: "Don't measure subtle changes with sweeps. Noise floor ~15%."
+
+### The transcript gap
+
+**Persisted today** (716 files in `playground/sessions/*.json`): task prompt, timestamps, final Clear source, a few count fields.
+
+**Not persisted:** Claude's message thread, tool inputs/outputs, exact hint text injected per retry, Meph's reasoning.
+
+**Cost of the gap:**
+- **No deterministic replay** — can't re-grade a session with a different hint/prompt/grader. Every A/B has to spawn live Meph.
+- **No counterfactual analysis** — "what if we'd injected hint X at turn 7" is unanswerable.
+- **No corpus for later models** — if RLHF-style training ever matters, we'd need conversations, not just code.
+
+**The fix is ~10 lines.** `cc-agent.js` already writes `/tmp/ghost-meph-last-stream.ndjson` when `GHOST_MEPH_CC_DEBUG=1`. Make it unconditional, path per session (`playground/sessions/<session-id>.ndjson`). ~40KB per task, trivial storage. Massive research leverage.
+
+### Tonight's agenda
+
+**Step 1 — Transcript persistence.** Ship BEFORE the A/B so the A/B itself becomes a replayable artifact.
+
+**Step 2 — Hint-toggle env flag.** One flag (`CLEAR_HINT_DISABLE=1`) short-circuits hint-injection in `/api/chat`. Unit-test it.
+
+**Step 3 — A/B sweep, minimum-viable scale.** 40 trials. Counter + todo-crud, 10 per condition. Post pass-rate table. Visible gap → scale to 200. No signal → reconsider.
+
+**Step 4 — RESEARCH.md addendum.** Record the A/B result (positive, negative, or null) with numbers. A null result is publishable — it says where to spend next.
+
+### Why this matters for the thesis
+
+The moat in `COMPETITION.md` rests on the flywheel compounding over months. If hint-injection doesn't measurably help Meph, the "year 2 cost structure" argument softens. The ranker still has value (powers the Flywheel dashboard, surfaces readable code examples, training data for future models) — but the "Meph gets smarter automatically" story needs evidence.
+
+Conversely, if hints DO help measurably, we have the first empirical proof that the architecture compounds. That's a milestone worth naming.
+
+### For the next session's Meph / Claude
+
+Read in this order:
+1. This section (current measurement-state-of-the-art).
+2. `HANDOFF.md` (operational context — what's on main, what's pending).
+3. `learnings.md` "Session 44" (engineering gotchas — stdin race, grader path).
+4. Then ship transcript persistence, then the hint toggle, then run the A/B.
+
+Goal: ONE clean measurement answering ONE question. Not more sweeps. If hints help, scale. If hints don't help, we know where to debug (hint *quality* or *injection point*, not ranker AUC).
