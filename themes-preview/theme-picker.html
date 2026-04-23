@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Clear — Theme Picker (11 themes)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/daisyui.css" />
+<style>
+  /* ========= Existing themes (already shipped in compiler) ========= */
+  [data-theme="midnight"] {
+    color-scheme: dark;
+    --color-base-100: oklch(18% 0.03 255);
+    --color-base-200: oklch(23% 0.03 255);
+    --color-base-300: oklch(29% 0.025 255);
+    --color-base-content: oklch(90% 0.02 240);
+    --color-primary: oklch(64% 0.18 252);
+    --color-primary-content: oklch(98% 0.005 252);
+    --color-secondary: oklch(60% 0.14 190);
+    --color-accent: oklch(76% 0.15 85);
+    --color-neutral: oklch(26% 0.025 255);
+    --color-info: oklch(66% 0.14 240);
+    --color-success: oklch(62% 0.15 155);
+    --color-warning: oklch(76% 0.15 82);
+    --color-error: oklch(62% 0.22 22);
+    --radius-box: 0.75rem; --radius-field: 0.5rem;
+  }
+  [data-theme="ivory"] {
+    color-scheme: light;
+    --color-base-100: oklch(100% 0 0);
+    --color-base-200: oklch(94% 0.008 240);
+    --color-base-300: oklch(88% 0.01 240);
+    --color-base-content: oklch(14% 0.02 255);
+    --color-primary: oklch(52% 0.22 258);
+    --color-primary-content: oklch(100% 0 0);
+    --color-secondary: oklch(55% 0.15 200);
+    --color-accent: oklch(60% 0.18 25);
+    --color-neutral: oklch(25% 0.01 255);
+    --color-info: oklch(55% 0.18 245);
+    --color-success: oklch(50% 0.17 150);
+    --color-warning: oklch(65% 0.15 80);
+    --color-error: oklch(55% 0.2 25);
+    --radius-box: 0.625rem; --radius-field: 0.375rem;
+  }
+  [data-theme="nova"] {
+    color-scheme: light;
+    --color-base-100: oklch(99% 0.008 80);
+    --color-base-200: oklch(96% 0.012 78);
+    --color-base-300: oklch(92% 0.016 75);
+    --color-base-content: oklch(20% 0.025 65);
+    --color-primary: oklch(63% 0.21 38);
+    --color-primary-content: oklch(99% 0.005 38);
+    --color-secondary: oklch(58% 0.18 285);
+    --color-accent: oklch(65% 0.16 165);
+    --color-neutral: oklch(30% 0.02 65);
+    --color-info: oklch(60% 0.16 240);
+    --color-success: oklch(58% 0.16 155);
+    --color-warning: oklch(70% 0.14 80);
+    --color-error: oklch(60% 0.2 25);
+    --radius-box: 1rem; --radius-field: 0.75rem;
+  }
+  [data-theme="arctic"] {
+    color-scheme: light;
+    --color-base-100: oklch(97% 0.01 220);
+    --color-base-200: oklch(93% 0.016 220);
+    --color-base-300: oklch(88% 0.022 220);
+    --color-base-content: oklch(22% 0.04 225);
+    --color-primary: oklch(48% 0.14 220);
+    --color-primary-content: oklch(98% 0.005 220);
+    --color-secondary: oklch(52% 0.12 175);
+    --color-accent: oklch(60% 0.13 250);
+    --color-neutral: oklch(32% 0.025 225);
+    --color-info: oklch(58% 0.14 235);
+    --color-success: oklch(55% 0.14 160);
+    --color-warning: oklch(68% 0.14 80);
+    --color-error: oklch(58% 0.2 22);
+    --radius-box: 0.625rem; --radius-field: 0.375rem;
+  }
+  [data-theme="moss"] {
+    color-scheme: light;
+    --color-base-100: oklch(95.5% 0.01 150);
+    --color-base-200: oklch(92% 0.014 148);
+    --color-base-300: oklch(87% 0.018 145);
+    --color-base-content: oklch(18% 0.025 155);
+    --color-primary: oklch(44% 0.1 155);
+    --color-primary-content: oklch(97% 0.005 155);
+    --color-secondary: oklch(45% 0.09 280);
+    --color-accent: oklch(48% 0.1 75);
+    --color-neutral: oklch(28% 0.02 155);
+    --color-info: oklch(48% 0.12 220);
+    --color-success: oklch(48% 0.12 155);
+    --color-warning: oklch(60% 0.12 80);
+    --color-error: oklch(52% 0.16 25);
+    --radius-box: 0.625rem; --radius-field: 0.375rem;
+  }
+  [data-theme="ember"] {
+    color-scheme: dark;
+    --color-base-100: oklch(16% 0.025 35);
+    --color-base-200: oklch(21% 0.03 35);
+    --color-base-300: oklch(27% 0.025 35);
+    --color-base-content: oklch(90% 0.02 60);
+    --color-primary: oklch(65% 0.22 32);
+    --color-primary-content: oklch(98% 0.005 32);
+    --color-secondary: oklch(60% 0.18 50);
+    --color-accent: oklch(72% 0.16 85);
+    --color-neutral: oklch(24% 0.022 35);
+    --color-info: oklch(62% 0.14 240);
+    --color-success: oklch(58% 0.14 155);
+    --color-warning: oklch(74% 0.16 78);
+    --color-error: oklch(64% 0.22 22);
+    --radius-box: 0.75rem; --radius-field: 0.5rem;
+  }
+  [data-theme="slate"] {
+    color-scheme: dark;
+    --color-base-100: oklch(20% 0.01 240);
+    --color-base-200: oklch(25% 0.01 240);
+    --color-base-300: oklch(32% 0.01 240);
+    --color-base-content: oklch(88% 0.012 240);
+    --color-primary: oklch(56% 0.16 240);
+    --color-primary-content: oklch(98% 0.005 240);
+    --color-secondary: oklch(54% 0.12 180);
+    --color-accent: oklch(68% 0.14 155);
+    --color-neutral: oklch(28% 0.01 240);
+    --color-info: oklch(60% 0.14 240);
+    --color-success: oklch(56% 0.14 155);
+    --color-warning: oklch(72% 0.14 80);
+    --color-error: oklch(60% 0.2 22);
+    --radius-box: 0.5rem; --radius-field: 0.375rem;
+  }
+
+  /* ========= NEW THEMES (proposed) ========= */
+
+  /* 1. DUSK — warm dark. Night mode that feels cozy, not cold. Best for
+     AI chat apps, creative writing, anything where the user is there late.
+     Amber accent on deep warm-brown base. Contrast to midnight's cool blue. */
+  [data-theme="dusk"] {
+    color-scheme: dark;
+    --color-base-100: oklch(19% 0.018 45);    /* deep warm charcoal */
+    --color-base-200: oklch(24% 0.022 45);
+    --color-base-300: oklch(30% 0.025 45);
+    --color-base-content: oklch(92% 0.015 55);
+    --color-primary: oklch(74% 0.16 62);       /* amber / warm gold */
+    --color-primary-content: oklch(15% 0.02 62);
+    --color-secondary: oklch(60% 0.18 15);     /* dusty rose */
+    --color-secondary-content: oklch(98% 0.005 15);
+    --color-accent: oklch(68% 0.14 95);        /* olive-green highlight */
+    --color-accent-content: oklch(12% 0.02 95);
+    --color-neutral: oklch(26% 0.018 45);
+    --color-neutral-content: oklch(86% 0.015 55);
+    --color-info: oklch(68% 0.12 220);
+    --color-success: oklch(62% 0.14 145);
+    --color-warning: oklch(78% 0.15 75);
+    --color-error: oklch(64% 0.2 22);
+    --radius-box: 0.875rem; --radius-field: 0.625rem;
+    --border: 1px;
+  }
+
+  /* 2. VAULT — enterprise navy + gold. For PE, banking, legal, compliance,
+     any "trust is the product" SaaS. Deep navy base, muted gold primary,
+     conservative radii. Looks expensive. */
+  [data-theme="vault"] {
+    color-scheme: dark;
+    --color-base-100: oklch(16% 0.035 260);    /* near-black navy */
+    --color-base-200: oklch(21% 0.04 258);
+    --color-base-300: oklch(27% 0.045 256);
+    --color-base-content: oklch(92% 0.012 250);
+    --color-primary: oklch(72% 0.14 88);       /* muted gold */
+    --color-primary-content: oklch(15% 0.02 88);
+    --color-secondary: oklch(60% 0.12 240);    /* slate blue */
+    --color-secondary-content: oklch(98% 0.005 240);
+    --color-accent: oklch(62% 0.1 100);        /* champagne */
+    --color-accent-content: oklch(12% 0.02 100);
+    --color-neutral: oklch(24% 0.035 258);
+    --color-neutral-content: oklch(86% 0.012 250);
+    --color-info: oklch(62% 0.13 235);
+    --color-success: oklch(58% 0.13 155);
+    --color-warning: oklch(70% 0.14 80);
+    --color-error: oklch(60% 0.2 22);
+    --radius-box: 0.375rem; --radius-field: 0.25rem;  /* conservative */
+    --border: 1px;
+  }
+
+  /* 3. SAKURA — light pink/cream. Soft, warm, human. For retail, beauty,
+     wellness, hospitality, consumer SaaS. Cream base, dusty-rose primary,
+     generous radii. */
+  [data-theme="sakura"] {
+    color-scheme: light;
+    --color-base-100: oklch(98.5% 0.008 25);   /* cream */
+    --color-base-200: oklch(95% 0.014 20);
+    --color-base-300: oklch(90% 0.02 18);
+    --color-base-content: oklch(22% 0.03 18);
+    --color-primary: oklch(62% 0.15 18);       /* dusty rose */
+    --color-primary-content: oklch(98% 0.005 18);
+    --color-secondary: oklch(56% 0.12 290);    /* plum */
+    --color-secondary-content: oklch(98% 0.005 290);
+    --color-accent: oklch(68% 0.1 140);        /* sage */
+    --color-accent-content: oklch(15% 0.02 140);
+    --color-neutral: oklch(32% 0.025 18);
+    --color-neutral-content: oklch(94% 0.01 25);
+    --color-info: oklch(58% 0.14 235);
+    --color-success: oklch(52% 0.14 155);
+    --color-warning: oklch(66% 0.13 80);
+    --color-error: oklch(56% 0.2 22);
+    --radius-box: 1.125rem; --radius-field: 0.875rem;  /* generous */
+    --border: 1px;
+  }
+
+  /* 4. FORGE — brutalist. Pure black on bright surfaces with hot-pink accent.
+     Sharp corners, high contrast. Stripe Press / Vercel opinionated-brand
+     extreme. For design-forward tech teams. */
+  [data-theme="forge"] {
+    color-scheme: light;
+    --color-base-100: oklch(100% 0 0);         /* pure white */
+    --color-base-200: oklch(97% 0 0);
+    --color-base-300: oklch(92% 0 0);
+    --color-base-content: oklch(0% 0 0);       /* pure black */
+    --color-primary: oklch(62% 0.26 355);      /* hot magenta */
+    --color-primary-content: oklch(100% 0 0);
+    --color-secondary: oklch(0% 0 0);          /* black secondary — looks intentional */
+    --color-secondary-content: oklch(100% 0 0);
+    --color-accent: oklch(78% 0.22 100);       /* acid yellow */
+    --color-accent-content: oklch(0% 0 0);
+    --color-neutral: oklch(0% 0 0);
+    --color-neutral-content: oklch(100% 0 0);
+    --color-info: oklch(52% 0.22 260);
+    --color-success: oklch(54% 0.2 155);
+    --color-warning: oklch(78% 0.22 100);
+    --color-error: oklch(58% 0.28 25);
+    --radius-box: 0; --radius-field: 0;         /* sharp */
+    --border: 2px;                               /* heavy */
+  }
+
+  body { font-family: system-ui, -apple-system, sans-serif; }
+
+  .theme-card {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .theme-card h2 { padding: 14px 18px 8px; font-size: 18px; font-weight: 700; }
+  .theme-card .rationale { padding: 0 18px 14px; font-size: 13px; color: #555; line-height: 1.5; }
+  .theme-card .demo {
+    padding: 20px;
+    background: oklch(var(--color-base-100));
+    color: oklch(var(--color-base-content));
+    min-height: 320px;
+  }
+  .theme-card .demo h3 {
+    font-size: 18px; font-weight: 600; margin-bottom: 4px;
+  }
+  .theme-card .demo p {
+    font-size: 13px; opacity: 0.7; margin-bottom: 14px;
+  }
+  .theme-card .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .theme-card .btn {
+    padding: 8px 14px;
+    border-radius: var(--radius-field, 0.5rem);
+    font-size: 13px; font-weight: 600;
+    border: var(--border, 1px) solid transparent;
+    cursor: pointer;
+  }
+  .btn-primary {
+    background: oklch(var(--color-primary));
+    color: oklch(var(--color-primary-content));
+  }
+  .btn-secondary {
+    background: oklch(var(--color-secondary));
+    color: oklch(var(--color-secondary-content));
+  }
+  .btn-ghost {
+    background: transparent;
+    color: oklch(var(--color-base-content));
+    border-color: oklch(var(--color-base-content) / 0.2);
+  }
+  .badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .badge {
+    padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  }
+  .badge-info { background: oklch(var(--color-info) / 0.15); color: oklch(var(--color-info)); }
+  .badge-success { background: oklch(var(--color-success) / 0.15); color: oklch(var(--color-success)); }
+  .badge-warning { background: oklch(var(--color-warning) / 0.15); color: oklch(var(--color-warning)); }
+  .badge-error { background: oklch(var(--color-error) / 0.15); color: oklch(var(--color-error)); }
+
+  .mini-card {
+    background: oklch(var(--color-base-200));
+    border: var(--border, 1px) solid oklch(var(--color-base-content) / 0.1);
+    border-radius: var(--radius-box, 0.625rem);
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .mini-card .label { font-size: 11px; opacity: 0.55; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .mini-card .value { font-size: 20px; font-weight: 700; }
+
+  .swatch-row { display: flex; gap: 4px; margin-top: 10px; }
+  .swatch {
+    width: 32px; height: 32px; border-radius: var(--radius-field, 0.375rem);
+    border: 1px solid oklch(var(--color-base-content) / 0.1);
+  }
+
+  .section-header {
+    grid-column: 1 / -1;
+    font-size: 14px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: #888;
+    margin-top: 24px; margin-bottom: 8px;
+  }
+  .section-header:first-child { margin-top: 0; }
+</style>
+</head>
+<body style="padding: 24px; background: #f6f6f4;">
+
+<div style="max-width: 1400px; margin: 0 auto;">
+
+<header style="margin-bottom: 24px;">
+  <h1 style="font-size: 28px; font-weight: 800; margin-bottom: 4px;">Clear Theme Picker</h1>
+  <p style="color: #666; font-size: 14px;">
+    7 existing themes + 4 proposed. Each card shows a sample app in that theme —
+    buttons, badges, stats, surfaces. Pick which of the 4 new ones to add.
+  </p>
+</header>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px;">
+
+  <div class="section-header">Shipped — already in the compiler</div>
+
+  <div class="theme-card">
+    <h2>Midnight</h2>
+    <div class="rationale">Dark + electric blue. Technical credibility. Linear, Retell AI, Vercel.</div>
+    <div class="demo" data-theme="midnight">
+      <h3>Deals this quarter</h3>
+      <p>8 open · 3 closed won · 1 lost</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">New deal</button>
+        <button class="btn btn-ghost">Filter</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Active</span>
+        <span class="badge badge-success">Funded</span>
+        <span class="badge badge-warning">At risk</span>
+        <span class="badge badge-error">Overdue</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Pipeline value</div>
+        <div class="value">$487,200</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card">
+    <h2>Ivory</h2>
+    <div class="rationale">Light + deep indigo. Trust, clean, conversion. Stripe, Ramp, Deel.</div>
+    <div class="demo" data-theme="ivory">
+      <h3>Deals this quarter</h3>
+      <p>8 open · 3 closed won · 1 lost</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">New deal</button>
+        <button class="btn btn-ghost">Filter</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Active</span>
+        <span class="badge badge-success">Funded</span>
+        <span class="badge badge-warning">At risk</span>
+        <span class="badge badge-error">Overdue</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Pipeline value</div>
+        <div class="value">$487,200</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card">
+    <h2>Nova</h2>
+    <div class="rationale">Warm light + coral. AI/creative, motion-first. Lovable, Amie, Magical.</div>
+    <div class="demo" data-theme="nova">
+      <h3>Deals this quarter</h3>
+      <p>8 open · 3 closed won · 1 lost</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">New deal</button>
+        <button class="btn btn-ghost">Filter</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Active</span>
+        <span class="badge badge-success">Funded</span>
+        <span class="badge badge-warning">At risk</span>
+        <span class="badge badge-error">Overdue</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Pipeline value</div>
+        <div class="value">$487,200</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card">
+    <h2>Arctic</h2>
+    <div class="rationale">Cool light blue + teal. Clean utility. Notion, Height-like.</div>
+    <div class="demo" data-theme="arctic">
+      <h3>Deals this quarter</h3>
+      <p>8 open · 3 closed won · 1 lost</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">New deal</button>
+        <button class="btn btn-ghost">Filter</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Active</span>
+        <span class="badge badge-success">Funded</span>
+        <span class="badge badge-warning">At risk</span>
+        <span class="badge badge-error">Overdue</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Pipeline value</div>
+        <div class="value">$487,200</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card">
+    <h2>Moss</h2>
+    <div class="rationale">Muted earthy green. Calm, focused. Notion-for-gardeners vibe.</div>
+    <div class="demo" data-theme="moss">
+      <h3>Deals this quarter</h3>
+      <p>8 open · 3 closed won · 1 lost</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">New deal</button>
+        <button class="btn btn-ghost">Filter</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Active</span>
+        <span class="badge badge-success">Funded</span>
+        <span class="badge badge-warning">At risk</span>
+        <span class="badge badge-error">Overdue</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Pipeline value</div>
+        <div class="value">$487,200</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card">
+    <h2>Ember</h2>
+    <div class="rationale">Dark + fiery orange. Energetic, DJ/music/gaming startup.</div>
+    <div class="demo" data-theme="ember">
+      <h3>Deals this quarter</h3>
+      <p>8 open · 3 closed won · 1 lost</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">New deal</button>
+        <button class="btn btn-ghost">Filter</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Active</span>
+        <span class="badge badge-success">Funded</span>
+        <span class="badge badge-warning">At risk</span>
+        <span class="badge badge-error">Overdue</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Pipeline value</div>
+        <div class="value">$487,200</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card">
+    <h2>Slate</h2>
+    <div class="rationale">Muted dark gray-blue. Understated. Ops dashboards.</div>
+    <div class="demo" data-theme="slate">
+      <h3>Deals this quarter</h3>
+      <p>8 open · 3 closed won · 1 lost</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">New deal</button>
+        <button class="btn btn-ghost">Filter</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Active</span>
+        <span class="badge badge-success">Funded</span>
+        <span class="badge badge-warning">At risk</span>
+        <span class="badge badge-error">Overdue</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Pipeline value</div>
+        <div class="value">$487,200</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header">Proposed — 4 new themes</div>
+
+  <div class="theme-card" style="border: 2px solid oklch(74% 0.16 62);">
+    <h2>🌆 Dusk <span style="font-size: 11px; font-weight: 500; color: #888;">proposed</span></h2>
+    <div class="rationale">
+      Warm dark. Night mode that feels cozy, not cold. Amber primary on deep warm-brown base.
+      For AI chat apps, creative writing, journaling — anywhere the user stays late.
+      Fills the gap that midnight (cool blue) leaves: warm + dark is empty in the palette.
+    </div>
+    <div class="demo" data-theme="dusk">
+      <h3>Evening writing session</h3>
+      <p>3 drafts · 1 published tonight</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">Start writing</button>
+        <button class="btn btn-ghost">Browse drafts</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Draft</span>
+        <span class="badge badge-success">Published</span>
+        <span class="badge badge-warning">Review</span>
+        <span class="badge badge-error">Retracted</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Words tonight</div>
+        <div class="value">2,840</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card" style="border: 2px solid oklch(72% 0.14 88);">
+    <h2>🏛 Vault <span style="font-size: 11px; font-weight: 500; color: #888;">proposed</span></h2>
+    <div class="rationale">
+      Deep navy + muted gold. "Trust is the product" SaaS — PE firms, banking, legal,
+      compliance tools. Conservative radii. Looks expensive. Russell's COMPETITION.md
+      thesis about auditability shows best in a theme that feels like a bank lobby.
+    </div>
+    <div class="demo" data-theme="vault">
+      <h3>Portfolio review</h3>
+      <p>12 holdings · Q3 performance</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">Generate report</button>
+        <button class="btn btn-ghost">Export PDF</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Active</span>
+        <span class="badge badge-success">Outperforming</span>
+        <span class="badge badge-warning">Under review</span>
+        <span class="badge badge-error">Write-down</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Assets under management</div>
+        <div class="value">$2.4B</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card" style="border: 2px solid oklch(62% 0.15 18);">
+    <h2>🌸 Sakura <span style="font-size: 11px; font-weight: 500; color: #888;">proposed</span></h2>
+    <div class="rationale">
+      Cream + dusty rose. Soft, warm, human. For retail, beauty, wellness, hospitality,
+      consumer SaaS. Generous radii. The existing "light" themes (ivory, nova) skew
+      indigo/coral; sakura fills the softer feminine-retail niche.
+    </div>
+    <div class="demo" data-theme="sakura">
+      <h3>Salon bookings</h3>
+      <p>14 today · 3 waitlist</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">New booking</button>
+        <button class="btn btn-ghost">Block time</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Confirmed</span>
+        <span class="badge badge-success">Paid</span>
+        <span class="badge badge-warning">Pending</span>
+        <span class="badge badge-error">No-show</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Today's revenue</div>
+        <div class="value">$1,420</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-card" style="border: 2px solid oklch(62% 0.26 355);">
+    <h2>⬛ Forge <span style="font-size: 11px; font-weight: 500; color: #888;">proposed</span></h2>
+    <div class="rationale">
+      Brutalist. Pure black on white + hot magenta accent. Sharp corners, heavy borders.
+      Stripe Press / Vercel / Linear opinionated-brand extreme. For design-forward teams
+      that want their internal tools to feel like their marketing site.
+    </div>
+    <div class="demo" data-theme="forge">
+      <h3>Release candidates</h3>
+      <p>3 staged · 1 rolling out</p>
+      <div class="btn-row">
+        <button class="btn btn-primary">Ship to prod</button>
+        <button class="btn btn-ghost">Rollback</button>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-info">Staging</span>
+        <span class="badge badge-success">Live</span>
+        <span class="badge badge-warning">Canary</span>
+        <span class="badge badge-error">Broken</span>
+      </div>
+      <div class="mini-card">
+        <div class="label">Uptime this week</div>
+        <div class="value">99.982%</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #e5e5e5; font-size: 13px; color: #666; line-height: 1.6;">
+  <p><strong>How to review:</strong> look at each card. The demo is the same app rendered
+  in that theme — buttons, badges, a stat card — so you can compare apples to apples.
+  Tell me which of the 4 proposed to add (or to drop) and I'll wire them into the
+  compiler's <code>THEME_CSS</code> dict.</p>
+  <p style="margin-top: 8px;"><strong>To add a 5th:</strong> say what vibe + reference site
+  (e.g. "Stripe-circa-2017", "Figma") and I'll draft it. Themes are ~25 lines of OKLCH
+  tokens each; adding is cheap.</p>
+</footer>
+
+</div>
+</body>
+</html>

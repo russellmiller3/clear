@@ -1393,6 +1393,34 @@ describe('theme directive', () => {
     expect(ast.errors[0].message).toContain('neon');
   });
 
+  // 4 new themes (dusk, vault, sakura, forge) — pick top-of-mind Marcus
+  // targets so this section doubles as a regression guard on the valid
+  // theme allowlist. Curated list check lives further down.
+  it("parses theme 'dusk' (warm dark — AI chat / creative writing)", () => {
+    const ast = parse("theme 'dusk'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].type).toBe(NodeType.THEME);
+    expect(ast.body[0].name).toBe('dusk');
+  });
+
+  it("parses theme 'vault' (enterprise navy + gold — PE/banking trust)", () => {
+    const ast = parse("theme 'vault'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].name).toBe('vault');
+  });
+
+  it("parses theme 'sakura' (cream + rose — retail/beauty/wellness Marcus)", () => {
+    const ast = parse("theme 'sakura'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].name).toBe('sakura');
+  });
+
+  it("parses theme 'forge' (brutalist — design-forward tech teams)", () => {
+    const ast = parse("theme 'forge'");
+    expect(ast.errors).toHaveLength(0);
+    expect(ast.body[0].name).toBe('forge');
+  });
+
   it('errors on missing theme name', () => {
     const ast = parse("theme");
     expect(ast.errors.length).toBeGreaterThan(0);
@@ -1417,6 +1445,31 @@ describe('theme directive', () => {
     const result = compileNode(node, ctx);
     expect(result).toBe(null);
   });
+
+  // Drift-guard for the theme picker's shortlist. If someone reorders
+  // or drops a curated theme, this fires. Order is intentional:
+  // ivory (default SaaS) → sakura (retail/beauty Marcus) →
+  // dusk (warm dark, AI chat) → vault (SMB enterprise trust) →
+  // arctic (cool utility, tech-forward SMB). Changing the order changes
+  // the theme picker's first-impression — don't do it silently.
+  it('CURATED_THEMES exports exactly the 5 Marcus-facing themes in order', async () => {
+    const { CURATED_THEMES } = await import('./compiler.js');
+    expect(CURATED_THEMES).toEqual(['ivory', 'sakura', 'dusk', 'vault', 'arctic']);
+  });
+
+  // Compile-to-CSS drift-guard for the 4 new themes. If the THEME_CSS
+  // entry is missing or malformed, the compiled HTML won't include the
+  // variables and Marcus's app will render with broken colors.
+  for (const t of ['dusk', 'vault', 'sakura', 'forge']) {
+    it(`emits [data-theme="${t}"] CSS vars when theme '${t}' is set`, () => {
+      const source = `build for web\ntheme '${t}'\npage 'Test' at '/':\n  text 'Hello'`;
+      const result = compileProgram(source);
+      expect(result.errors).toHaveLength(0);
+      expect(result.css).toContain(`[data-theme="${t}"]`);
+      expect(result.css).toContain('--color-primary:');
+      expect(result.html).toContain(`data-theme="${t}"`);
+    });
+  }
 });
 
 // =============================================================================

@@ -12757,8 +12757,130 @@ const THEME_CSS = {
   --color-error-content: oklch(10% 0.02 22);
   --radius-box: 0.5rem; --radius-field: 0.375rem; --radius-selector: 0.25rem;
   --border: 1px; --depth: 0; --noise: 0;
+}`,
+  // Dusk — warm dark. Amber on deep warm-brown base. Night mode that feels
+  // cozy, not cold. For AI chat apps, creative writing, journaling — anywhere
+  // the user is there late. Fills the gap midnight (cool blue) leaves.
+  dusk: `[data-theme="dusk"] {
+  color-scheme: dark;
+  --color-base-100: oklch(19% 0.018 45);
+  --color-base-200: oklch(24% 0.022 45);
+  --color-base-300: oklch(30% 0.025 45);
+  --color-base-content: oklch(92% 0.015 55);
+  --color-primary: oklch(74% 0.16 62);
+  --color-primary-content: oklch(15% 0.02 62);
+  --color-secondary: oklch(60% 0.18 15);
+  --color-secondary-content: oklch(98% 0.005 15);
+  --color-accent: oklch(68% 0.14 95);
+  --color-accent-content: oklch(12% 0.02 95);
+  --color-neutral: oklch(26% 0.018 45);
+  --color-neutral-content: oklch(86% 0.015 55);
+  --color-info: oklch(68% 0.12 220);
+  --color-info-content: oklch(10% 0.02 220);
+  --color-success: oklch(62% 0.14 145);
+  --color-success-content: oklch(10% 0.02 145);
+  --color-warning: oklch(78% 0.15 75);
+  --color-warning-content: oklch(15% 0.02 75);
+  --color-error: oklch(64% 0.2 22);
+  --color-error-content: oklch(10% 0.02 22);
+  --radius-box: 0.875rem; --radius-field: 0.625rem; --radius-selector: 0.5rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}`,
+  // Vault — enterprise navy + gold. "Trust is the product" SaaS: PE,
+  // banking, legal, compliance. Conservative radii. Looks expensive.
+  // Russell's COMPETITION.md auditability thesis lands hardest here.
+  vault: `[data-theme="vault"] {
+  color-scheme: dark;
+  --color-base-100: oklch(16% 0.035 260);
+  --color-base-200: oklch(21% 0.04 258);
+  --color-base-300: oklch(27% 0.045 256);
+  --color-base-content: oklch(92% 0.012 250);
+  --color-primary: oklch(72% 0.14 88);
+  --color-primary-content: oklch(15% 0.02 88);
+  --color-secondary: oklch(60% 0.12 240);
+  --color-secondary-content: oklch(98% 0.005 240);
+  --color-accent: oklch(62% 0.1 100);
+  --color-accent-content: oklch(12% 0.02 100);
+  --color-neutral: oklch(24% 0.035 258);
+  --color-neutral-content: oklch(86% 0.012 250);
+  --color-info: oklch(62% 0.13 235);
+  --color-info-content: oklch(10% 0.02 235);
+  --color-success: oklch(58% 0.13 155);
+  --color-success-content: oklch(10% 0.02 155);
+  --color-warning: oklch(70% 0.14 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(60% 0.2 22);
+  --color-error-content: oklch(10% 0.02 22);
+  --radius-box: 0.375rem; --radius-field: 0.25rem; --radius-selector: 0.25rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}`,
+  // Sakura — cream + dusty rose. Soft, warm, human. Retail, beauty,
+  // wellness, hospitality, consumer SaaS. Generous radii. Fills the
+  // female-founded-service-biz niche that ivory (indigo) + nova (coral)
+  // leave empty.
+  sakura: `[data-theme="sakura"] {
+  color-scheme: light;
+  --color-base-100: oklch(98.5% 0.008 25);
+  --color-base-200: oklch(95% 0.014 20);
+  --color-base-300: oklch(90% 0.02 18);
+  --color-base-content: oklch(22% 0.03 18);
+  --color-primary: oklch(62% 0.15 18);
+  --color-primary-content: oklch(98% 0.005 18);
+  --color-secondary: oklch(56% 0.12 290);
+  --color-secondary-content: oklch(98% 0.005 290);
+  --color-accent: oklch(68% 0.1 140);
+  --color-accent-content: oklch(15% 0.02 140);
+  --color-neutral: oklch(32% 0.025 18);
+  --color-neutral-content: oklch(94% 0.01 25);
+  --color-info: oklch(58% 0.14 235);
+  --color-info-content: oklch(98% 0.005 235);
+  --color-success: oklch(52% 0.14 155);
+  --color-success-content: oklch(98% 0.005 155);
+  --color-warning: oklch(66% 0.13 80);
+  --color-warning-content: oklch(15% 0.02 80);
+  --color-error: oklch(56% 0.2 22);
+  --color-error-content: oklch(98% 0.005 22);
+  --radius-box: 1.125rem; --radius-field: 0.875rem; --radius-selector: 0.625rem;
+  --border: 1px; --depth: 0; --noise: 0;
+}`,
+  // Forge — brutalist. Pure black/white + hot magenta accent. Sharp
+  // corners, heavy borders. Stripe Press / Vercel opinionated-brand
+  // extreme. Not curated for Marcus — ships for design-forward tech teams.
+  forge: `[data-theme="forge"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97% 0 0);
+  --color-base-300: oklch(92% 0 0);
+  --color-base-content: oklch(0% 0 0);
+  --color-primary: oklch(62% 0.26 355);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(0% 0 0);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(78% 0.22 100);
+  --color-accent-content: oklch(0% 0 0);
+  --color-neutral: oklch(0% 0 0);
+  --color-neutral-content: oklch(100% 0 0);
+  --color-info: oklch(52% 0.22 260);
+  --color-info-content: oklch(100% 0 0);
+  --color-success: oklch(54% 0.2 155);
+  --color-success-content: oklch(100% 0 0);
+  --color-warning: oklch(78% 0.22 100);
+  --color-warning-content: oklch(0% 0 0);
+  --color-error: oklch(58% 0.28 25);
+  --color-error-content: oklch(100% 0 0);
+  --radius-box: 0; --radius-field: 0; --radius-selector: 0;
+  --border: 2px; --depth: 0; --noise: 0;
 }`
 };
+
+// Curated shortlist for Marcus's theme picker. Order matters — this is
+// what shows up first in any future picker UI. Non-curated themes stay
+// available via `theme 'moss'` etc. but don't get feature-placement.
+// Rationale for the 5-pick: ivory covers default-SaaS, sakura covers
+// retail/service/beauty (huge Marcus segment), dusk is warm-dark for
+// AI chat at night, vault is SMB-enterprise trust (PE/banking clients),
+// arctic is cool utility for tech-forward SMBs.
+export const CURATED_THEMES = ['ivory', 'sakura', 'dusk', 'vault', 'arctic'];
 
 const CSS_COMPONENTS = [
   { class: 'clear-section', css: `.clear-section { padding: 1.5rem; }

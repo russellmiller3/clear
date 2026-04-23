@@ -4,19 +4,54 @@
 
 ---
 
-## Themes
+## Themes (11 total)
 
-Three named themes. Pick one per project. Override with semantic tokens only.
+Pick one per project. Override with semantic tokens only. All themes
+ship in Clear's compiler and are invoked via `theme 'name'` at the top
+of a `.clear` file.
 
-| Token Prefix | Personality | Reference |
+### Curated shortlist (Marcus first)
+
+The 5 themes surfaced first in any picker UI. Covers ~90% of Marcus
+and SMB use cases.
+
+| Name | Personality | Best for | Reference |
+|---|---|---|---|
+| **`ivory`** (default) | Light enterprise — trust, clean, conversion | Any SaaS default | Stripe, Ramp, Deel |
+| **`sakura`** | Cream + dusty rose — soft, warm, human | Retail, beauty, wellness, hospitality (often female-founded service biz) | Japanese-influenced boutique |
+| **`dusk`** | Warm dark — amber on deep brown | AI chat at night, creative writing, journaling | Cozy-warm night mode (opposite of midnight) |
+| **`vault`** | Dark navy + muted gold, conservative radii | PE firms, banking, legal, compliance — "trust is the product" | Bank lobby, private equity decks |
+| **`arctic`** | Cool light blue + teal | Clean utility, tech-forward SMBs | Notion, Height |
+
+### Additional themes
+
+Available but not featured — not targeted at Marcus's primary use cases.
+
+| Name | Personality | Best for |
 |---|---|---|
-| `midnight` | Dark SaaS — technical credibility, focused | Linear, Retell AI, Vercel |
-| `ivory` | Light enterprise — trust, clean, conversion | Stripe, Ramp, Deel |
-| `nova` | AI/creative — warm, human, motion-first | Lovable, Amie, Magical |
+| `midnight` | Dark + electric blue | Tech startups, developer tools (Linear/Vercel) |
+| `nova` | Warm light + coral + purple | AI/creative consumer (Lovable/Amie) |
+| `slate` | Muted dark gray-blue | Late-night ops dashboards |
+| `moss` | Muted earthy green | Permaculture, wellness, notion-gardener |
+| `ember` | Dark + fiery orange | Music, gaming, high-energy consumer |
+| `forge` | Brutalist — pure B/W + hot magenta, sharp corners | Design-forward tech teams (Stripe Press / Vercel) |
+
+### Default behavior
+
+When a `.clear` source has no `theme` directive, the compiler defaults
+to `ivory`. Explicitly set with: `theme 'sakura'` (etc.) on its own
+line near the top of the file.
 
 ---
 
 ## Color Tokens
+
+> **Note:** the CSS blocks below are the original design-token values
+> (hex-based, 3 themes). The canonical shipping tokens live in
+> `compiler.js` → `THEME_CSS` as OKLCH (all 11 themes, including the
+> newer `arctic`, `moss`, `ember`, `slate`, `dusk`, `vault`, `sakura`,
+> `forge`). If you're editing a theme, edit `THEME_CSS` in `compiler.js`
+> — this markdown is reference only.
 
 ### Midnight Theme (dark)
 

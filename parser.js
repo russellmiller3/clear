@@ -987,12 +987,12 @@ const CANONICAL_DISPATCH = new Map([
   }],
   ['theme', (ctx) => {
     if (ctx.tokens.length < 2) {
-      ctx.errors.push({ line: ctx.line, message: "theme needs a name — try: theme 'midnight', theme 'ivory', theme 'nova', theme 'arctic', theme 'moss', theme 'ember', or theme 'slate'" });
+      ctx.errors.push({ line: ctx.line, message: "theme needs a name — try: theme 'ivory' (default, light), theme 'sakura' (soft, retail/wellness), theme 'dusk' (warm dark), theme 'vault' (enterprise navy+gold), theme 'arctic' (cool light), theme 'midnight', theme 'nova', theme 'moss', theme 'ember', theme 'slate', or theme 'forge'" });
       return ctx.i + 1;
     }
     const nameToken = ctx.tokens[1];
     const themeName = nameToken.value.replace(/^['"]|['"]$/g, '');
-    const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss', 'ember', 'slate'];
+    const validThemes = ['midnight', 'ivory', 'nova', 'arctic', 'moss', 'ember', 'slate', 'dusk', 'vault', 'sakura', 'forge'];
     if (!validThemes.includes(themeName)) {
       ctx.errors.push({ line: ctx.line, message: `'${themeName}' isn't a theme Clear knows — try: ${validThemes.join(', ')}` });
     } else {
