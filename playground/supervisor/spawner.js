@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createServer } from 'net';
@@ -69,7 +69,30 @@ export class WorkerSpawner {
 
   async killAll() {
     for (const [sessionId, { child }] of this._workers) {
-      try { child.kill('SIGTERM'); } catch {}
+      // On Windows, child.kill('SIGTERM') is a no-op for native .exe
+      // processes — the signal doesn't propagate and grandchild
+      // processes (the claude.exe subprocesses each worker spawns via
+      // cc-agent) keep running indefinitely. Use `taskkill /F /T /PID`
+      // to forcibly kill the whole process tree rooted at the worker.
+      //
+      // On POSIX, SIGTERM cascades to children if they're in the same
+      // process group — keep the existing behavior.
+      try {
+        if (process.platform === 'win32' && child.pid) {
+          try {
+            execFileSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
+              stdio: 'ignore',
+              timeout: 5000,
+            });
+          } catch {
+            // taskkill throws if the process already exited — safe to ignore.
+            // Fall back to child.kill() in case taskkill itself is missing.
+            try { child.kill('SIGTERM'); } catch {}
+          }
+        } else {
+          child.kill('SIGTERM');
+        }
+      } catch {}
       this._registry.update(sessionId, { state: 'crashed' });
     }
     this._workers.clear();
