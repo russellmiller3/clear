@@ -23953,5 +23953,8 @@ await import('./lib/owner-decl.test.js');
 // Cloudflare Workers for Platforms target — Phase 1
 await import('./lib/packaging-cloudflare.test.js');
 
+// Cloudflare Workers for Platforms target — Phase 3 (Web Crypto auth)
+await import('./runtime/auth-webcrypto.test.mjs');
+
 run();
 
