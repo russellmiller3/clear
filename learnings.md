@@ -1648,3 +1648,83 @@ Phase 4 adds `_emitWorkersAgentFn(agent)` + a loop in `compileToCloudflareWorker
 - Node (default) target: zero behavioral change
 - EXEC CORRECTION to plan row 4.4: pdf-parse wasn't a pre-existing runtime dep; Phase 4 doesn't install it. Studio owner can decide later.
 
+## Cloudflare Workers for Platforms — Phase 7 (direct CF API deploys)
+
+### Phase 6 blocker: agent functions need their own module
+
+Before Phase 7 could wire deploys through, the Phase 6 emit had a latent runtime bug. Compiled workflow files in `src/workflows/<slug>.js` called `agent_helpdesk(_state)` inside every `step.do(...)`, but the function `agent_helpdesk` lived only in `src/index.js`. Each Cloudflare Worker ESM module runs in isolated scope — the workflow class would throw `ReferenceError: agent_helpdesk is not defined` the moment any durable step executed. The Phase 6 tests papered over it with `globalThis` stubs; a real deploy would explode on first run.
+
+Fix was a structural split. The compiler's `compileToCloudflareWorker` now emits TWO module files:
+- `src/agents.js` — every agent function (`export async function agent_welcome_agent(env, ...)`), every knowledge-source loader (`_load_products`, `_load_url_<hash>`), every inlined knowledge constant (`_knowledge_file_<hash>`), and the Workers-safe helpers (`_askAI_workers`, `_askAIStream_workers`, `_askAIWithTools_workers`). All prefixed with `export`.
+- `src/index.js` — routing + endpoint handlers. Imports the symbols it needs from `./agents.js`.
+
+Each workflow file now gets an `import { agent_x, agent_y, ... } from '../agents.js'` header listing exactly the agents it references. A helper `collectWorkflowAgentRefs(steps)` walks every step kind (step / parallel / conditional / repeat) recursively to build that set.
+
+Rule: **any module-scope function that more than one file calls must be an explicit export**. globalThis works in Node test harnesses; Cloudflare has no such safety net.
+
+### combinedBundleText is the right lens for bundle-shape assertions
+
+Phase 3 + 4 tests pinned a bunch of assertions on `result.workerBundle['src/index.js']`. They read "helper X is async, takes env, ends with fetch()". Splitting the bundle into `src/index.js` + `src/agents.js` broke 23 of those — the helpers moved, but the PROPERTY the tests cared about (is the helper present in the Workers emit somewhere?) didn't change.
+
+Fix: a `combinedBundleText(bundle)` helper that concatenates the source of `src/index.js` + `src/agents.js` + any `src/workflows/*.js` files and returns one string. Tests that care about shape (signature, usage, forbidden-string absence) look at the combined text. Tests that care about WHICH file — the drift-guards that prove `src/index.js` stays routing-only — still scope to a single file.
+
+Rule: **bundle shape assertions should not care which emitted file a symbol landed in** unless the test is specifically about file-level isolation (drift-guards).
+
+### FormData with Blob parts — Node 20+ native, no extra deps
+
+Cloudflare's `PUT /scripts/{slug}` upload wants a `multipart/form-data` body with a `metadata` JSON part + one part per module file. No npm package needed in Node 20+: `new FormData()` + `new Blob([contents], { type })` with `form.append(name, blob, filename)` works natively. Setting the module file `type` to `application/javascript+module` (the exact string CF expects) is load-bearing — using `text/javascript` or leaving it blank makes CF reject the upload with a vague error.
+
+The fetch stub in `wfp-api.test.js` captures the FormData by reference and tests read `form.get('metadata')` to pull the Blob back out. That works because FormData in Node 20 is the browser-compatible one. The one gotcha: `metadataBlob.text()` returns a promise (as on the web), not a sync string.
+
+### encodeURIComponent every user-derived path segment
+
+Two layers upstream sanitize app slugs, but defense-in-depth: the `WfpApi` wrapper `encodeURIComponent`s every segment it interpolates into URLs. `uploadScript({ scriptName: 'weird/slug' })` produces `/scripts/weird%2Fslug`, never `/scripts/weird/slug`. One test asserts this. Without the encode, a sufficiently creative slug could traverse out of the dispatch namespace URL and hit the wrong endpoint entirely.
+
+### Token redaction in thrown errors
+
+Any error path that bubbles a Cloudflare message back to the user has to assume it'll land in logs — sometimes captured by third parties. The `_call` private method runs every error message through `replace(new RegExp(this._apiToken, 'g'), '[redacted]')` before throwing. The apiToken itself lives in a non-enumerable slot (`Object.defineProperty` with `enumerable: false`), so `JSON.stringify(instance)` can't leak it either. Plus, `setSecrets()` NEVER includes secret values in its `failed` array — only secret names + the status/code.
+
+### Rollback ladder: reverse order, skip what didn't run
+
+The orchestrator tracks three booleans (`d1Provisioned`, `scriptUploaded`, + implicit "secrets attempted"). Each step updates the right flag when it succeeds. On failure, `_rollback()` walks the flags in REVERSE order (delete script first, delete D1 second). The reverse matters because the script's D1 binding could still hold a handle that prevents clean D1 deletion if you go forward-order.
+
+The rollback is deliberately NOT a try-catch wrapper around `deploySource`. Each step has an explicit try-catch that calls `_rollback()` then returns a structured error object. No thrown exceptions escape `deploySource` to a caller — the caller handles typed failure shapes, not stack traces.
+
+### Double-click guard: module-scope Map, 120s stale
+
+Users double-click Publish. UI has a loading state but under spotty wifi the request can be in-flight for 8-10 seconds — plenty of time to click twice. Without a guard, the second click fires a second deploy that races the first: two provision calls, two script uploads, potentially one tenant with TWO D1 databases for the same app.
+
+The lock is a plain `Map<string, { jobId, startedAt }>` at module scope. Key is `${tenantSlug}:${appSlug}`. `acquire()` returns `{ acquired: true, jobId }` or `{ acquired: false, existingJobId }`. `release()` runs in a `finally` so crashes don't leave stale locks forever. Stale-clear after 120s handles the "deploy hung and never released" case.
+
+Torture test: 10 `Promise.all`-parallel deploys for the same key. Exactly 1 enters provisionD1, 9 return `{ conflict: true, existingJobId }` with the same jobId. Works because `acquire()` is synchronous — two microtasks can't both see the map empty.
+
+### Lazy `getWfpApi()` + `_setWfpApiForTest` hook
+
+`deploy.js` imports `WfpApi` but doesn't instantiate it at module load — instantiation happens inside `getWfpApi()` on first use, reading env at call time. Two wins: (a) envless test setups don't blow up on import, (b) `_setWfpApiForTest(fakeApi)` lets integration tests inject a recording fake without touching real env vars.
+
+Singleton is intentional — a single process should share one wrapper so the underlying `fetch` reference is consistent across deploys. The test helper sets the singleton to `null` in its finally block so subsequent tests get a fresh wrapper.
+
+### CLEAR_DEPLOY_TARGET default stays 'fly' during Phase 7
+
+The plan says "default to cloudflare once Phase 8 smoke passes." Phase 7 lands the dispatch code behind an env gate but does NOT flip the default. This keeps the existing `playground/deploy.test.js` green (it relies on the mock Fly builder) and gives Phase 8 a clean flip point. When real-CF smoke is confirmed, one env-default change turns on the whole new path for every Studio process.
+
+### In-memory job map vs builder /status polling
+
+The Fly path used `/api/deploy-status/:jobId` to poll the builder for build progress (a tarball → docker build → fly deploy sequence taking minutes). The CF path is synchronous-ish: deploy completes in 5-8 seconds. There's no async work to poll for. But the UI still calls `/api/deploy-status` right after the initial response to confirm — so we populate a tiny `Map<jobId, { status, url, ... }>` at module scope during `/api/deploy` and serve lookups from it.
+
+Consequence: if the Studio process restarts between POST and the poll, the jobId 404s. That's fine — the initial POST already returned the URL. Clients shouldn't depend on the poll for correctness, only for progress UX.
+
+### Phase 7 outcome
+
+- 15 TDD cycles committed (cf-6.10 pre-fix + cf-7.1 → cf-7.14)
+- 2337 → 2390 tests green in `node clear.test.js` (+53)
+- `playground/deploy.test.js`: 8 → 15 tests (7 new CF integration tests)
+- `playground/wfp-api.js` + `playground/wfp-api.test.js` (39 tests)
+- `playground/deploy-cloudflare.js` + `playground/deploy-cloudflare.test.js` (14 tests)
+- `scripts/reconcile-wfp.js` (stub — no unit tests; exercised by ops)
+- `playground/deploy.js` gets dispatch gate; env-default still `'fly'`
+- `playground/tenants.js` gains `markAppDeployed` + `loadKnownApps` (additive, non-breaking)
+- `compiler.js` + `lib/packaging-cloudflare.js` split agent emit into `src/agents.js` (Phase 6.10 fix)
+- 112/112 CF drift-guards still green
+- Zero regressions on any prior phase
+

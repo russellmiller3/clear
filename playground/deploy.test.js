@@ -8,7 +8,8 @@ import { describe, it, expect, testAsync } from '../lib/testUtils.js';
 import express from 'express';
 import http from 'http';
 
-import { tarDir, deploySource, wireDeploy } from './deploy.js';
+import { tarDir, deploySource, wireDeploy, _setWfpApiForTest } from './deploy.js';
+import { _resetLockManagerForTest, _resetJobsForTest } from './deploy-cloudflare.js';
 import { extractTarToDir } from './builder/tarExtract.js';
 import { InMemoryTenantStore } from './tenants.js';
 import { signTenantJwt } from './ai-proxy/auth.js';
@@ -215,5 +216,217 @@ when user requests data from /api/secret:
 			expect(r.body.ok).toBe(true);
 			expect(r.body.status).toBe('ok');
 		} finally { await close(); }
+	});
+
+	// ─────────────────────────────────────────────────────────────────────
+	// Phase 7.10 — /api/deploy dispatches to Cloudflare when CLEAR_DEPLOY_TARGET=cloudflare
+	// Inject a fake WfpApi via _setWfpApiForTest so the endpoint exercises the
+	// new orchestrator without any real CF network calls.
+	// ─────────────────────────────────────────────────────────────────────
+
+	function makeFakeWfpApiForDeployTest() {
+		const calls = [];
+		const fake = {
+			calls,
+			provisionD1: async (p) => { calls.push({ op: 'provisionD1', ...p }); return { ok: true, d1_database_id: 'd1-test', name: `${p.tenantSlug}-${p.appSlug}` }; },
+			applyMigrations: async () => { calls.push({ op: 'applyMigrations' }); return { ok: true }; },
+			uploadScript: async (p) => { calls.push({ op: 'uploadScript', scriptName: p.scriptName }); return { ok: true, result: { id: 'script-id' } }; },
+			setSecrets: async () => { calls.push({ op: 'setSecrets' }); return { ok: true, failed: [] }; },
+			attachDomain: async (p) => { calls.push({ op: 'attachDomain', hostname: p.hostname }); return { ok: true }; },
+			deleteScript: async () => ({ ok: true }),
+			listVersions: async () => ({ ok: true, versions: [] }),
+			rollbackToVersion: async () => ({ ok: true }),
+		};
+		return fake;
+	}
+
+	await runSeq('/api/deploy — Cloudflare path returns { ok, url, jobId } (cycle 7.10)', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+				const r = await req(port, '/api/deploy', {
+					method: 'POST',
+					headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'hello' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				expect(r.body.url).toBe('https://hello.buildclear.dev');
+				expect(typeof r.body.jobId).toBe('string');
+				// Verify the fake saw the orchestrated calls.
+				const ops = fake.calls.map((c) => c.op);
+				expect(ops.includes('uploadScript')).toBe(true);
+				expect(ops.includes('attachDomain')).toBe(true);
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy — Cloudflare path returns 409 on double-click (cycle 7.7b integration)', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		// Gate provisionD1 so the first call blocks until we fire the second.
+		let release;
+		const fake = {
+			provisionD1: async (p) => {
+				await new Promise((r) => { release = r; });
+				return { ok: true, d1_database_id: 'd1-1', name: `${p.tenantSlug}-${p.appSlug}` };
+			},
+			applyMigrations: async () => ({ ok: true }),
+			uploadScript: async () => ({ ok: true, result: {} }),
+			setSecrets: async () => ({ ok: true, failed: [] }),
+			attachDomain: async () => ({ ok: true }),
+			deleteScript: async () => ({ ok: true }),
+		};
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\ncreate a Items table:\n  name, required\n\nwhen user requests data from /api/items:\n  items = get all Items\n  send back items\n`;
+				const first = req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'items' },
+				});
+				// Wait a tick for the lock to be taken.
+				await new Promise((r) => setImmediate(r));
+				const second = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'items' },
+				});
+				expect(second.status).toBe(409);
+				expect(second.body.ok).toBe(false);
+				expect(typeof second.body.existingJobId).toBe('string');
+				// Let the first finish.
+				release();
+				const firstR = await first;
+				expect(firstR.status).toBe(200);
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+			_setWfpApiForTest(null);
+			_resetLockManagerForTest();
+		}
+	});
+
+	await runSeq('/api/deploy-status — Cloudflare path reads in-memory job map (cycle 7.11)', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		process.env.CLEAR_CLOUD_ROOT_DOMAIN = 'buildclear.dev';
+		_resetLockManagerForTest();
+		_resetJobsForTest();
+		_setWfpApiForTest(makeFakeWfpApiForDeployTest());
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const CLEAR_APP = `build for javascript backend\n\nwhen user requests data from /api/hello:\n  send back 'hi'\n`;
+				const deployR = await req(port, '/api/deploy', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { source: CLEAR_APP, appSlug: 'hello' },
+				});
+				expect(deployR.status).toBe(200);
+				const jobId = deployR.body.jobId;
+				const statusR = await req(port, `/api/deploy-status/${jobId}`, { headers: { Cookie: cookie } });
+				expect(statusR.status).toBe(200);
+				expect(statusR.body.status).toBe('ok');
+				expect(statusR.body.url).toBe('https://hello.buildclear.dev');
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/deploy-status — Cloudflare path 404s unknown jobId', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		_resetJobsForTest();
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const r = await req(port, '/api/deploy-status/never-existed', { headers: { Cookie: cookie } });
+				expect(r.status).toBe(404);
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+		}
+	});
+
+	await runSeq('/api/custom-domain — Cloudflare path calls attachDomain (cycle 7.13)', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		const fake = makeFakeWfpApiForDeployTest();
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const r = await req(port, '/api/custom-domain', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { appName: 'clear-acme-x', domain: 'deals.acme.com' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				const attachCall = fake.calls.find((c) => c.op === 'attachDomain');
+				expect(attachCall).toBeDefined();
+				expect(attachCall.hostname).toBe('deals.acme.com');
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/custom-domain — Cloudflare path surfaces 409 DOMAIN_TAKEN', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		const fake = {
+			attachDomain: async () => ({ ok: false, code: 'DOMAIN_TAKEN', status: 409 }),
+		};
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const r = await req(port, '/api/custom-domain', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { appName: 'clear-acme-x', domain: 'taken.example.com' },
+				});
+				expect(r.status).toBe(409);
+				expect(r.body.code).toBe('DOMAIN_TAKEN');
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+			_setWfpApiForTest(null);
+		}
+	});
+
+	await runSeq('/api/rollback — Cloudflare path calls rollbackToVersion (cycle 7.12)', async () => {
+		process.env.CLEAR_DEPLOY_TARGET = 'cloudflare';
+		let rollbackCall = null;
+		const fake = {
+			rollbackToVersion: async (p) => { rollbackCall = p; return { ok: true }; },
+		};
+		_setWfpApiForTest(fake);
+		try {
+			const { port, cookie, close } = await startStudio();
+			try {
+				const r = await req(port, '/api/rollback', {
+					method: 'POST', headers: { Cookie: cookie },
+					body: { appName: 'clear-acme-x', version: 'version-42' },
+				});
+				expect(r.status).toBe(200);
+				expect(r.body.ok).toBe(true);
+				expect(rollbackCall.scriptName).toBe('clear-acme-x');
+				expect(rollbackCall.versionId).toBe('version-42');
+			} finally { await close(); }
+		} finally {
+			delete process.env.CLEAR_DEPLOY_TARGET;
+			_setWfpApiForTest(null);
+		}
 	});
 })();

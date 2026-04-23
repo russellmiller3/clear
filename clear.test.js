@@ -24041,5 +24041,11 @@ await import('./lib/packaging-cloudflare-cron.test.js');
 // Cloudflare Workers for Platforms target — Phase 6 (workflows → Cloudflare Workflows)
 await import('./lib/packaging-cloudflare-workflows.test.js');
 
+// Cloudflare Workers for Platforms target — Phase 7 (WFP REST API wrapper)
+await import('./playground/wfp-api.test.js');
+
+// Cloudflare Workers for Platforms target — Phase 7.7 (deploy orchestration + lock)
+await import('./playground/deploy-cloudflare.test.js');
+
 run();
 

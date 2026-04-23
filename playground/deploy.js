@@ -21,12 +21,47 @@ import {
 } from './billing.js';
 import { signTenantJwt, verifyTenantJwt } from './ai-proxy/auth.js';
 import { sanitizeAppName, sanitizeAppSlug, sanitizeDomain, assertOwnership, ValidationError, errorCode } from './sanitize.js';
+// Phase 7 — Cloudflare Workers for Platforms path. Lazy-import WfpApi so
+// tests that never hit CF don't pay the cost and envless setups stay clean.
+import { deploySource as deploySourceCloudflare, recordJob, getJob } from './deploy-cloudflare.js';
+import { WfpApi } from './wfp-api.js';
 
 // -------- config (read lazily so tests can set env before import chain resolves) --------
 function builderUrl() { return process.env.BUILDER_URL || ''; }
 function builderSecret() { return process.env.BUILDER_SHARED_SECRET || ''; }
 function proxyUrl() { return process.env.PROXY_URL || ''; }
 function tenantJwtSecret() { return process.env.TENANT_JWT_SECRET || 'dev-tenant-jwt-secret'; }
+// Phase 7 — which backend ships user apps. 'cloudflare' = direct CF API
+// path; anything else = legacy Fly builder. Default stays on Fly during
+// Phase 7 so existing deploy.test.js mocks keep working. Phase 8 flips
+// the default once the real-CF smoke passes.
+function deployTarget() { return (process.env.CLEAR_DEPLOY_TARGET || 'fly').toLowerCase(); }
+function cloudflareRootDomain() { return process.env.CLEAR_CLOUD_ROOT_DOMAIN || 'buildclear.dev'; }
+function cloudflareAccountId() { return process.env.CLOUDFLARE_ACCOUNT_ID || ''; }
+function cloudflareApiToken() { return process.env.CLOUDFLARE_API_TOKEN || ''; }
+function cloudflareNamespace() { return process.env.CLOUDFLARE_DISPATCH_NAMESPACE || 'clear-apps'; }
+
+// Singleton WfpApi. Built lazily the first time the CF dispatch path fires.
+// Module-scope cache so multiple deploys in the same process share one
+// wrapper (and the same fetch impl).
+let _wfpApi = null;
+function getWfpApi() {
+	if (_wfpApi) return _wfpApi;
+	if (!cloudflareApiToken() || !cloudflareAccountId()) {
+		throw new Error('Cloudflare target requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID');
+	}
+	_wfpApi = new WfpApi({
+		apiToken: cloudflareApiToken(),
+		accountId: cloudflareAccountId(),
+		namespace: cloudflareNamespace(),
+	});
+	return _wfpApi;
+}
+// Test hook — lets deploy-cloudflare integration tests swap in a fake api
+// + wipe the singleton between runs.
+export function _setWfpApiForTest(api) {
+	_wfpApi = api;
+}
 
 // -------- tarball packing (pure Node, matches the builder's tar parser) --------
 function posixTarBlock(name, body, typeflag = '0') {
@@ -199,6 +234,49 @@ export function wireDeploy(app, opts = {}) {
 			catch (e) { return res.status(400).json({ ok: false, code: errorCode(e), input: e.input }); }
 		}
 
+		// Phase 7.10 — dispatch on CLEAR_DEPLOY_TARGET. Cloudflare Workers for
+		// Platforms path uses direct CF API calls and native workflows; the
+		// Fly path (legacy) tars the bundle and POSTs to the builder machine.
+		// Response shape stays identical so the UI never notices.
+		if (deployTarget() === 'cloudflare') {
+			let api;
+			try { api = getWfpApi(); }
+			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
+			const r = await deploySourceCloudflare({
+				source,
+				tenantSlug: tenant.slug,
+				appSlug,
+				secrets: secrets || {},
+				customDomain: domain || null,
+				api,
+				store,
+				rootDomain: cloudflareRootDomain(),
+				// CF doesn't expose D1 delete via the wrapper today — pass a
+				// no-op so the rollback ladder still runs without throwing.
+				// Real delete is tracked in reconcile-wfp.js meanwhile.
+				deleteD1: async () => ({ ok: true, skipped: true }),
+			});
+			// Stash the job snapshot so /api/deploy-status can serve it.
+			if (r.jobId) {
+				recordJob(r.jobId, r.ok
+					? { status: 'ok', url: r.url, degraded: r.degraded || false }
+					: { status: 'failed', stage: r.stage, error: r.error || r.errors || null });
+			}
+			if (!r.ok) {
+				if (r.conflict) return res.status(409).json({ ok: false, existingJobId: r.existingJobId, hint: r.hint });
+				if (r.stage === 'compile') return res.status(400).json({ ok: false, stage: 'compile', errors: r.errors });
+				if (r.stage === 'record') {
+					// Partial success — app IS live, just not recorded yet. UI shows
+					// the URL and tells user to refresh after reconcile catches up.
+					return res.status(500).json({ ok: false, stage: 'record', liveUrl: r.liveUrl, reason: r.reason });
+				}
+				return res.status(502).json({ ok: false, stage: r.stage, error: r.error || 'Cloudflare deploy failed' });
+			}
+			await store.incrementAppsDeployed(tenant.slug);
+			return res.json({ ok: true, jobId: r.jobId, url: r.url, degraded: r.degraded || false });
+		}
+
+		// Legacy Fly builder path.
 		const existingAppName = await store.appNameFor(tenant.slug, appSlug);
 		const r = await deploySource({
 			source, tenantSlug: tenant.slug, appSlug,
@@ -219,6 +297,16 @@ export function wireDeploy(app, opts = {}) {
 	app.get('/api/deploy-status/:jobId', async (req, res) => {
 		const tenant = await requireTenant(req, res);
 		if (!tenant) return;
+		// Phase 7.11 — CF path reads job status from the in-memory map that
+		// /api/deploy populated. Jobs are short-lived (deploy is ~5-8s sync)
+		// so no persistent store — if the process restarts mid-deploy, the
+		// client re-polls once and the jobId won't exist; they'd have seen
+		// the URL in the original POST response anyway.
+		if (deployTarget() === 'cloudflare') {
+			const job = getJob(req.params.jobId);
+			if (!job) return res.status(404).json({ ok: false, error: 'Unknown jobId' });
+			return res.json({ ok: true, ...job });
+		}
 		const r = await postToBuilder(`/status/${encodeURIComponent(req.params.jobId)}`, 'GET');
 		res.status(r.status || 200).json(r.json || { ok: false });
 	});
@@ -233,6 +321,16 @@ export function wireDeploy(app, opts = {}) {
 			sanitizeDomain(domain);
 			assertOwnership(tenant.slug, appName);
 		} catch (e) { return res.status(e.code === 'CROSS_TENANT' ? 403 : 400).json({ ok: false, code: errorCode(e) }); }
+		// Phase 7.13 — CF path attaches the domain via the script domains
+		// endpoint. 409 surfaces as DOMAIN_TAKEN; non-409 as DOMAIN_ATTACH_FAILED.
+		if (deployTarget() === 'cloudflare') {
+			let api;
+			try { api = getWfpApi(); }
+			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
+			const r = await api.attachDomain({ scriptName: appName, hostname: domain });
+			if (!r.ok) return res.status(r.code === 'DOMAIN_TAKEN' ? 409 : 502).json({ ok: false, code: r.code });
+			return res.json({ ok: true, hostname: domain });
+		}
 		const body = Buffer.from(JSON.stringify({ appName, domain, tenantSlug: tenant.slug }));
 		const r = await postToBuilder('/cert', 'POST', { 'Content-Type': 'application/json' }, body);
 		res.status(r.status || 200).json(r.json || { ok: false });
@@ -257,6 +355,19 @@ export function wireDeploy(app, opts = {}) {
 		if (!appName || !version) return res.status(400).json({ ok: false, error: 'missing fields' });
 		try { sanitizeAppName(appName); assertOwnership(tenant.slug, appName); }
 		catch (e) { return res.status(e.code === 'CROSS_TENANT' ? 403 : 400).json({ ok: false, code: errorCode(e) }); }
+		// Phase 7.12 — CF path uses the dispatch namespace script-versions API
+		// to promote a previous version to 100%.
+		if (deployTarget() === 'cloudflare') {
+			let api;
+			try { api = getWfpApi(); }
+			catch (e) { return res.status(503).json({ ok: false, error: e.message }); }
+			try {
+				await api.rollbackToVersion({ scriptName: appName, versionId: version });
+				return res.json({ ok: true });
+			} catch (e) {
+				return res.status(e.status || 500).json({ ok: false, error: e.message });
+			}
+		}
 		const body = Buffer.from(JSON.stringify({ appName, version, tenantSlug: tenant.slug }));
 		const r = await postToBuilder('/rollback', 'POST', { 'Content-Type': 'application/json' }, body);
 		res.status(r.status || 200).json(r.json || { ok: false });
