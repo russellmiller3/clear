@@ -198,8 +198,40 @@ export async function driveTaskOnWorker(port, prompt, timeoutMs, taskSteps = nul
     return { ok: outcome.ok, stuck, timedOut: false, dbPassed, saidTaskComplete, reason: outcome.reason };
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') return { ok: false, stuck: false, timedOut: true };
+    if (err.name === 'AbortError') {
+      // Meph often completes the task (writing a test_pass=1 row) but doesn't
+      // finish saying "TASK COMPLETE" before the per-task abort fires. DB truth
+      // beats wall-clock budget — a task with a passing row in its time window
+      // is a pass even if the stream got yanked mid-sentence.
+      return { stuck: false, ...gradeAbortedRun(factorDB, start) };
+    }
     return { ok: false, stuck: false, timedOut: false, error: err.message };
+  }
+}
+
+/**
+ * Grade a task that hit the per-task timeout. If Factor DB shows a
+ * test_pass=1 row written since the task's start, count it as a pass
+ * (ok: true, timedOut: false) — Meph solved it, he just ran long.
+ * Otherwise count as a real timeout.
+ *
+ * Exported for unit tests. Pure if you pass a fake `factorDB` with a
+ * `_db.prepare(...).get()` shape.
+ *
+ * @param {object|null} factorDB  — Factor DB handle or null
+ * @param {number} startMs        — task start time in epoch ms
+ * @returns {{ ok: boolean, timedOut: boolean, dbPassed: boolean }}
+ */
+export function gradeAbortedRun(factorDB, startMs) {
+  if (!factorDB) return { ok: false, timedOut: true, dbPassed: false };
+  try {
+    const row = factorDB._db
+      .prepare('SELECT 1 FROM code_actions WHERE test_pass = 1 AND created_at >= ? LIMIT 1')
+      .get(startMs);
+    const dbPassed = !!row;
+    return { ok: dbPassed, timedOut: !dbPassed, dbPassed };
+  } catch {
+    return { ok: false, timedOut: true, dbPassed: false };
   }
 }
 
