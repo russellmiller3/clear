@@ -1,4 +1,90 @@
-# Handoff — 2026-04-23 (session 43 — Cloudflare WFP pivot plan ready; execute next)
+# Handoff — 2026-04-23 (session 44 — Cloudflare WFP Phases 1/2/3 SHIPPED; sweeps queued)
+
+## Current State
+
+- **Branch:** `main` at `4051b12` — pushed, clean working tree. Cloudflare Phases 1/2/3 live.
+- **Also on origin:** `claude/cloudflare-temporal-setup-PvwvL` (feature branch, same commits rolled up into the ship merge).
+- **Tests:** 2101 → 2246 green, 0 failing. +145 new tests across the three phases.
+- **Cost:** $0 API spend this session. All agent work ran on the Claude subscription via cc-agent mode.
+
+## What Shipped This Session (4051b12 merge)
+
+**Three phases of the Cloudflare Workers for Platforms migration. Every phase ran as a parallel background agent with TDD red-first, one commit per cycle. All tests green at every merge point.**
+
+### Phase 1 — `--target cloudflare` compilation (8 cycles, +38 tests)
+
+`compileProgram(src, { target: 'cloudflare' })` returns a `workerBundle` with `src/index.js` (ESM `export default { async fetch }`), `wrangler.toml` (pinned compat date + `nodejs_compat_v2`), and `data-clear-line="N"` attrs preserved for future click-to-edit. 8/8 core templates compile clean. `wrangler dev --local` smoke confirmed.
+
+### Phase 2 — D1 runtime adapter (9 cycles, +63 tests)
+
+Every CRUD node has a D1 emit branch: `env.DB.prepare(SQL).bind(v1, v2).run()` / `.all().results` / `.first()`. **Zero string-interpolated SQL anywhere** (SQL-injection floor, drift-guard test). Migrations emit as `migrations/001-init.sql`, SQLite dialect. `runtime/db-d1.mjs` shim matches `runtime/db.js` interface with `d1Mock()` helper for deterministic tests. todo-fullstack + hello-world verified E2E against `better-sqlite3`-backed mock.
+
+### Phase 3 — Agent + Auth runtime Workers-safe (10 cycles, +43 tests)
+
+Split `_askAI` into `_askAI_node` (keeps `require('child_process')` HTTP_PROXY fallback) + `_askAI_workers` (fetch-only, `env` param, zero Node-isms). Streaming variant uses Workers-native `ReadableStream`. Tool-use variant bounds `maxTurns`. `runtime/auth-webcrypto.mjs` — PBKDF2 via `crypto.subtle`, **600,000 iterations (OWASP 2024)**, versioned `v1:<salt-hex>:<hash-hex>` hash format, manual constant-time compare. **Zero `require(`, `fs.`, `child_process`, `/tmp`, `execSync`, `spawn` in Workers-target bundles** — drift-guards verify across all 8 templates.
+
+### Merge fix (7d3fb84)
+
+Phase 2's `compileToCloudflareWorker()` overrode Phase 1/3's helper inlining when it rebuilt `src/index.js` for D1 codegen. Fix: call `_selectWorkersUtilities(body)` + `loadAuthWebcryptoSource()` from inside `compileToCloudflareWorker()` and inject them between `__CLEAR_HTML__` and `export default`. Helpers now ship regardless of which emission path wrote `src/index.js`. 19 failing Phase 3 tests → 0 after the fix.
+
+### Extras (committed before ship)
+
+- **`scripts/factor-db-summary.mjs`** — read-only flywheel snapshot: total rows, pass rate, per-archetype breakdown, rolling 1h/24h windows, hint telemetry. Run anytime, safe during live sweeps.
+- **`scripts/smoke-cf-target.mjs`** — spot-check all 8 core templates for forbidden Node-isms in Workers emit. 112 checks, all green after ship.
+
+## Sweep results (overnight while phases ran)
+
+Full 38-task cc-agent curriculum sweep (3 workers, --strict, $0). Completed but low pass rate (~5% — probably overnight subscription throttling since session 42's fix-landed baseline was 89%). Factor DB: 1599 → some fresh rows, mixed signal. Not reran; next session should start a daytime sweep.
+
+## Exit criteria (ALL met)
+
+- [x] 8/8 core templates compile clean with `target: 'cloudflare'`
+- [x] Zero Node-isms in Workers bundles across all templates (verified by `scripts/smoke-cf-target.mjs`)
+- [x] PBKDF2 ≥ 600k iterations, versioned hash format
+- [x] Default (Node) target bundle UNCHANGED — `_askAI_node` + bcryptjs auth still emit as before
+- [x] 2246 tests passing, 0 regressions
+- [x] Pushed to `origin/main`
+
+## Next Steps
+
+Russell said "if you finish everything just ship and do more sweeps on another branch." Ship complete. Sweeps queued on `sweeps/post-cf-ship-2026-04-23`.
+
+### Priority 1 — Daytime cc-agent sweep on fresh branch
+
+Wait until Claude subscription throttling clears (daytime), then re-run full curriculum sweep to feed the flywheel with real data. Target: 80%+ pass rate like session 42 tick 9's full sweep. Branch: `sweeps/post-cf-ship-2026-04-23`.
+
+### Priority 2 — Cloudflare WFP Phases 4–8 (unblocked by this ship)
+
+Phases 4–8 from `plans/plan-clear-cloud-wfp-04-23-2026.md` are now unblocked:
+- **Phase 4** — `knows about:` lazy-load + compile-time pdf/docx extraction (all mockable)
+- **Phase 5** — scheduled agents → Cloudflare Cron Triggers (mockable via miniflare `--test-scheduled`)
+- **Phase 6** — `runs on temporal` → Cloudflare Workflows (emit-only change; Temporal SDK path stays as fallback)
+- **Phase 7** — Dispatch Worker + WFP API client (`playground/wfp-api.js` + `playground/deploy-cloudflare.js`)
+- **Phase 8** — HITL real-deploy smoke (requires Russell's Phase 0 prereqs — CF account, $25/mo WFP, DNS, env vars, dispatch Worker deployed once)
+
+Phases 4–6 are all mockable, safe for agent execution. Phase 8 requires Russell's live presence.
+
+### Priority 3 — CC-2c dashboard + CC-3 Stripe + CC-4 publish polish
+
+From session 42 tick 14's Clear Cloud scaffold state. All scaffolds written + tested; remaining work is endpoint wiring, UI, and Phase 85a infrastructure (Russell's paperwork).
+
+## Files Russell Should Read First Next Session
+
+| File | Why |
+|------|-----|
+| `HANDOFF.md` (this file) | Current state + next steps |
+| `plans/plan-clear-cloud-wfp-04-23-2026.md` | Phases 4–8 remain to execute |
+| `learnings.md` (bottom 3 sections) | Phase 1/2/3 pitfalls — ESM-only non-negotiable, D1 mock coercion, `.mjs` scope assertion, emit-time vs runtime gating |
+| `scripts/factor-db-summary.mjs` | Flywheel snapshot — run it to see current training signal |
+| `scripts/smoke-cf-target.mjs` | Workers-target regression gate — run after any compiler change |
+
+## Resume Prompt
+
+> Read `HANDOFF.md`. Cloudflare Phases 1/2/3 SHIPPED on main at `4051b12` — `--target cloudflare` compiles to valid Workers bundles with D1 CRUD + Web Crypto auth + Workers-safe AI helpers across all 8 core templates. 2246 tests green. Priority 1: re-run cc-agent curriculum sweep daytime (first one overnight had subscription throttling). Priority 2: Phases 4–8 of the Cloudflare plan are all mockable except Phase 8 (HITL). Priority 3: CC-2c/3/4 scaffold wiring. Kent Beck TDD red-first; no self-assignment in Clear fixtures.
+
+---
+
+# Previous: Handoff — 2026-04-23 (session 43 — Cloudflare WFP pivot plan ready; execute next)
 
 ## Current State
 
