@@ -1326,6 +1326,30 @@ function compileToCloudflareWorker(body, result) {
           out.push(`  ${cacheName} = (_res && _res.results) || [];`);
           out.push(`  return ${cacheName};`);
           out.push(`}`);
+        } else if (src.type === 'url') {
+          // URL knowledge — fetch-and-cache. No top-level await (Workers forbids it).
+          // Strip script/style tags + collapse whitespace so the cached string
+          // is clean text ready for RAG scoring.
+          const suffix = _knowledgeSuffix(src.value);
+          const cacheName = '_knowledge_url_' + suffix;
+          const loaderName = '_load_url_' + suffix;
+          const urlLiteral = JSON.stringify(src.value);
+          out.push(`let ${cacheName} = null;`);
+          out.push(`async function ${loaderName}(env) {`);
+          out.push(`  if (${cacheName}) return ${cacheName};`);
+          out.push(`  try {`);
+          out.push(`    const _res = await fetch(${urlLiteral});`);
+          out.push(`    if (!_res.ok) { ${cacheName} = ''; return ''; }`);
+          out.push(`    const _html = await _res.text();`);
+          out.push(`    ${cacheName} = _html`);
+          out.push(`      .replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '')`);
+          out.push(`      .replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '')`);
+          out.push(`      .replace(/<[^>]+>/g, ' ')`);
+          out.push(`      .replace(/\\s+/g, ' ')`);
+          out.push(`      .trim();`);
+          out.push(`    return ${cacheName};`);
+          out.push(`  } catch (_e) { ${cacheName} = ''; return ''; }`);
+          out.push(`}`);
         }
       }
     }
@@ -1407,6 +1431,22 @@ function compileToCloudflareWorker(body, result) {
   return out.join('\n');
 }
 
+// Phase 4: derive a stable, JS-safe suffix for a knowledge-source key (URL
+// or filename). Used to name the module-scope cache + loader so each unique
+// source gets its own slot and two agents that mention the same URL share
+// one cache. Deterministic by content — same input produces the same suffix
+// across runs, so the emitted bundle is byte-stable.
+function _knowledgeSuffix(value) {
+  // FNV-1a 32-bit on the bytes — tiny, deterministic, no deps. Result is a
+  // lowercase hex string guaranteed to be a legal JS identifier fragment.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
 // Phase 4: emit a Workers-safe async agent function from an AGENT node
 // that has `knows about:` knowledge sources. Takes env as its first arg so
 // the inner RAG preamble can call the module-scope lazy loaders that read
@@ -1433,6 +1473,20 @@ function _emitWorkersAgentFn(agent) {
       lines.push(`      const _text = Object.values(_rec).join(' ').toLowerCase();`);
       lines.push(`      const _score = _query.filter(w => _text.includes(w)).length;`);
       lines.push(`      if (_score > 0) _ragContext.push({ source: '${src.value}', data: _rec, score: _score });`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else if (src.type === 'url') {
+      const suffix = _knowledgeSuffix(src.value);
+      const sourceLiteral = JSON.stringify(src.value);
+      lines.push(`  {`);
+      lines.push(`    const _text = await _load_url_${suffix}(env);`);
+      lines.push(`    if (_text) {`);
+      lines.push(`      const _chunks = _text.match(/[^.!?\\n]+[.!?\\n]*/g) || [_text];`);
+      lines.push(`      for (const _chunk of _chunks) {`);
+      lines.push(`        const _lower = _chunk.toLowerCase();`);
+      lines.push(`        const _score = _query.filter(w => _lower.includes(w)).length;`);
+      lines.push(`        if (_score > 0) _ragContext.push({ source: ${sourceLiteral}, data: _chunk.trim(), score: _score });`);
+      lines.push(`      }`);
       lines.push(`    }`);
       lines.push(`  }`);
     }
