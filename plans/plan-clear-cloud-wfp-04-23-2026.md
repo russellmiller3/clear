@@ -238,6 +238,8 @@ If 0.1–0.5 aren't done, Phase 1 engineering CAN still happen (everything tests
 | 1.7 | Smoke test: run `npx wrangler dev src/index.js --local` against the packaged hello-world, curl `/` → 200 | Fix whatever the smoke surfaces. Guard with `SKIP_WRANGLER_SMOKE` env for CI | `test(cf-1.7): wrangler dev smoke green for hello-world` |
 | 1.8 | 📚 Run `update-learnings` — capture Workers-target pitfalls (ESM-only, no `require`, no `fs`, compat dates) | Write to `learnings.md` | (no separate commit, folds into 1.7) |
 
+> [!NOTE] **EXEC CORRECTION (cycle 1.6 executor, 2026-04-23)**: `lib/testUtils.js`'s `it()` is synchronous and swallows Promise rejections — `async it(...)` tests silently pass even when their bodies throw. The original cycle 1.6 tests used `async` blocks with `await import('./packaging.js')`, which appeared GREEN while the file-write assertions actually ran after `it()` had already recorded success. Fix: hoist `import { packageBundle } from './packaging.js'` to the top of the test file (synchronous ESM import) and keep `it(...)` bodies fully synchronous. Any future Phase 1/2/3 cycle that wants async behavior should use the existing `testAsync` export from `testUtils.js`, not `it + async fn`.
+
 **Phase 1 exit criteria:**
 - [ ] 8/8 core templates compile with `target: 'cloudflare'` — 0 errors
 - [ ] Hello-world bundle passes `wrangler dev` smoke
