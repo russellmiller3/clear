@@ -33,6 +33,8 @@ That demo shifts the Overton window on what "software" means the way 1968 shifte
 
 **Why it's asymmetric:** one shot of a working SMB app, end-to-end, reframes the entire category. Not "another AI coding tool." Not "another no-code builder." Custom software as a commodity.
 
+**Script + production brief:** `demos/MOAD-plumber.md`. The demo is a forcing function — every gap between "claim" and "reality" shows up in the shot list.
+
 ### 3. Clear as the interpretability substrate for agentic AI (the sleeper)
 
 The one nobody's building and the one that compounds hardest. Agents writing Python produce code humans can't audit at scale. Agents writing Clear produce code a 14-year-old can read. **That's the only known path to agentic AI you can actually trust in production.** Every compliance-heavy domain (health, finance, government, legal) will eventually need this, and right now there's no serious candidate for it.

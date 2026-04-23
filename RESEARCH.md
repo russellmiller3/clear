@@ -1,5 +1,7 @@
 # Clear Research Notes — RL, Self-Play, and the Training Signal
 
+> **Read `VISION.md` first.** This file is the technical architecture of the training pipeline. `VISION.md` is the strategic framing — why the pipeline exists, what it's aimed at, and how it connects to the AlphaFold-for-software bet (#1) and the bootstrapping loop (#4). If you're reading this to understand "why bother with a Factor DB + re-ranker + curriculum at all," start at `VISION.md`.
+
 How Clear's architecture creates a self-improving AI coding system without fine-tuning access.
 Updated: **2026-04-19 (Session 38: data-quality pass + EBM chosen + compiler flywheel drafted)**.
 
