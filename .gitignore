@@ -30,3 +30,7 @@ apps/*/build/clear-runtime/
 .clear-serve/
 tests/*/build/clear-runtime/
 tests/guard-bugs/*/build/clear-runtime/
+
+# Claude Code local settings — per-machine permissions + hooks, not shared
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
