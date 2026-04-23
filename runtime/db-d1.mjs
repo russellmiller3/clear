@@ -269,11 +269,22 @@ export function createD1Shim(DB) {
 export function d1Mock() {
 	const db = new Database(':memory:');
 
+	// Real D1 accepts booleans and coerces server-side; better-sqlite3
+	// rejects them (only numbers / strings / bigints / buffers / null).
+	// Undefined → null so the mock doesn't throw on optional fields that
+	// default to undefined in plain JS objects.
+	function coerceBindArg(v) {
+		if (v === true) return 1;
+		if (v === false) return 0;
+		if (v === undefined) return null;
+		return v;
+	}
+
 	function prepare(sql) {
 		const stmt = db.prepare(sql);
 		const state = { boundArgs: [] };
 		const wrapper = {
-			bind(...args) { state.boundArgs = args; return wrapper; },
+			bind(...args) { state.boundArgs = args.map(coerceBindArg); return wrapper; },
 			run() {
 				const res = stmt.run(...state.boundArgs);
 				return {

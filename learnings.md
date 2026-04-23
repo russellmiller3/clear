@@ -1338,3 +1338,40 @@ Fix: after `child.kill()`, wait 1500ms for handles to unwind, then wrap rmSync i
 - wrangler dev spawn + curl → 200 confirmed end-to-end
 - Phase 2 (D1 runtime) + Phase 3 (webcrypto auth) unblocked
 
+## Session: Cloudflare Workers for Platforms — Phase 2 (2026-04-23)
+
+Wiring the D1 CRUD emit path + migrations + a runtime shim so Workers-compiled Clear apps can actually read and write SQLite over the edge. 9 TDD cycles. Three non-obvious pitfalls worth pinning.
+
+### D1 prepared statements are a hard security floor — never interpolate
+
+Every CRUD path in `compiler.js compileCrudD1*` emits `env.DB.prepare(SQL).bind(value1, value2, ...)` where the SQL is a fixed template-literal with `?` placeholders and values flow through `.bind()`. Template-literal interpolation of user-controlled data inside SQL is forbidden — a single `WHERE email = ${email}` drops the SQL-injection floor across every endpoint the compiler emits. Cycle 2.3 locks the invariant with a global grep over representative endpoints: zero match on `(INSERT INTO |SELECT \*|UPDATE \w+|DELETE FROM) .*\${` anywhere in `src/index.js`.
+
+D1's `.bind()` treats every argument as a literal, so an adversarial `' OR 1=1 --` binds as the exact 9-character string "', OR 1=1', --". The table stays, the query fails to match. Same floor as Postgres parameterized queries or SQLite named parameters — just enforced at compile time instead of hoped for at review time.
+
+### D1 is SQLite, so the dialect is SQLite
+
+D1 on the wire is SQLite over HTTP. That means migrations must use `INTEGER PRIMARY KEY AUTOINCREMENT` (not Postgres `SERIAL`, not MySQL `AUTO_INCREMENT`), boolean columns are `INTEGER` with 0/1 values, and column defaults for text fields need single-quote escaping. Cycle 2.6's migration emitter pins this with a type-aware default formatter: boolean literals coerce to 0/1, numbers stay unquoted, text gets SQL-safe single-quoting. A mixed pattern like `completed BOOLEAN DEFAULT 'false'` silently stores the string "false" inside the INTEGER column and breaks every subsequent `WHERE completed = 1` query. Test files like `apps/todo-fullstack/main.clear` exercise this path because a `default false` field is on the canonical happy path.
+
+### better-sqlite3 doesn't accept booleans; real D1 does
+
+Cycle 2.8's E2E test compiled the todo app, spun up `env = { DB: d1Mock() }`, applied the migrations, and POSTed a `{title: 'first', completed: false}` payload. It crashed with `SQLite3 can only bind numbers, strings, bigints, buffers, and null`. Real D1 accepts booleans and coerces them server-side — our mock has to do the same.
+
+Fix: `d1Mock()`'s `bind()` wraps every argument through `coerceBindArg(v)` — `true → 1`, `false → 0`, `undefined → null`. Now a Worker built for real D1 runs identically against the better-sqlite3 mock in tests. If this coercion lived in the compiled emit instead of the mock, production (real D1) would get double-coerced and lose type fidelity — keep the coercion at the test-mock boundary, not in the codegen.
+
+Log this one here (not a rule) because it's a bug surface specific to the mock: whenever we extend `d1Mock` to support a new D1 feature, check whether real D1 is more permissive than better-sqlite3 and coerce inside the mock.
+
+### ESM/CJS scope drives the `.mjs` extension for runtime/db-d1
+
+`runtime/package.json` contains `{"type":"commonjs"}` so every `.js` file under `runtime/` is treated as CommonJS. But D1 bindings only run inside Workers, and Workers are ESM-only — `export { createD1Shim }` is required. We named the file `runtime/db-d1.mjs` so the extension overrides the package.json scope for this one file.
+
+Don't drop a second `package.json` inside `runtime/d1/` just to flip the scope — it would change the module system for anything added in that subdir and bite future contributors. One `.mjs` file is surgical and obvious.
+
+### Phase 2 outcome
+
+- 9 TDD cycles committed (cf-2.1 → cf-2.7 + cf-2.8 which folds cf-2.9 learnings)
+- 2139 → 2202 tests passing (+63 net, 45+ of them in packaging-cloudflare-d1.test.js + db-d1.test.mjs + packaging-cloudflare-templates.test.js)
+- 0 regressions on default target
+- All 8 core templates compile clean with target=cloudflare
+- hello-world + todo-fullstack run end-to-end against d1Mock — write + read confirmed
+- Phase 3 (webcrypto auth) remains independent — no shared edits to _askAI or auth utilities
+
