@@ -3739,6 +3739,9 @@ function compileCrudD1(node, ctx, pad, table, lineComment) {
   if (node.operation === 'save') {
     return compileCrudD1Save(node, ctx, pad, table, lineComment);
   }
+  if (node.operation === 'remove') {
+    return compileCrudD1Remove(node, ctx, pad, table, lineComment);
+  }
   return `${pad}// CRUD (cloudflare): ${node.operation}`;
 }
 
@@ -3858,6 +3861,23 @@ ${pad}}${lineComment}`;
 
   // UPDATE path is cycle 2.5 — placeholder for now.
   return `${pad}// CRUD (cloudflare) save-update: stub for cycle 2.5`;
+}
+
+function compileCrudD1Remove(node, ctx, pad, table, lineComment) {
+  // DELETE FROM t [WHERE ...].  Auto-injects :id when endpoint has one and no
+  // explicit WHERE is given — matches the Node path's convenience.
+  if (ctx.endpointHasId && !node.condition) {
+    return `${pad}{
+${pad}  const _d1_id = request.params?.id ?? url.pathname.split('/').pop();
+${pad}  await env.DB.prepare('DELETE FROM ${table} WHERE id = ?').bind(_d1_id).run();
+${pad}}${lineComment}`;
+  }
+  const { clause, binds } = _d1WhereFromCondition(node.condition, ctx);
+  if (!clause) {
+    return `${pad}await env.DB.prepare('DELETE FROM ${table}').run();${lineComment}`;
+  }
+  const bindExpr = binds.length > 0 ? `.bind(${binds.join(', ')})` : '';
+  return `${pad}await env.DB.prepare('DELETE FROM ${table} WHERE ${clause}')${bindExpr}.run();${lineComment}`;
 }
 
 function compileRespond(node, ctx, pad) {
