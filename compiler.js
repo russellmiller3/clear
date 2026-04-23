@@ -3733,10 +3733,67 @@ function compileCrud(node, ctx, pad) {
 // hide the "save initial to Counters with no id" class of Meph bugs.
 
 function compileCrudD1(node, ctx, pad, table, lineComment) {
+  if (node.operation === 'lookup') {
+    return compileCrudD1Lookup(node, ctx, pad, table, lineComment);
+  }
   if (node.operation === 'save') {
     return compileCrudD1Save(node, ctx, pad, table, lineComment);
   }
   return `${pad}// CRUD (cloudflare): ${node.operation}`;
+}
+
+// Build "WHERE col = ?" + bind-value expressions from a condition AST.
+// Returns { clause: 'col1 = ? AND col2 = ?', binds: ['exprCode1', 'exprCode2'] }
+// Never template-interpolates a user value — every runtime value goes to binds.
+function _d1WhereFromCondition(condExpr, ctx) {
+  if (!condExpr) return { clause: '', binds: [] };
+  const pairs = extractEqPairs(condExpr, ctx) || [];
+  if (pairs.length === 0) {
+    // Fallback: try a single equality via extractFilterKey on BINARY_OP.
+    if (condExpr.type === NodeType.BINARY_OP && (condExpr.operator === '==' || condExpr.operator === '===')) {
+      const key = extractFilterKey(condExpr.left, ctx);
+      const val = exprToCode(condExpr.right, ctx);
+      if (key) return { clause: `${key} = ?`, binds: [val] };
+    }
+    return { clause: '', binds: [] };
+  }
+  const clause = pairs.map(([k]) => `${k} = ?`).join(' AND ');
+  const binds = pairs.map(([, v]) => v);
+  return { clause, binds };
+}
+
+function compileCrudD1Lookup(node, ctx, pad, table, lineComment) {
+  const varName = sanitizeName(node.variable);
+  const isSingle = !node.lookupAll && node.condition && conditionTargetsId(node.condition);
+  const { clause, binds } = _d1WhereFromCondition(node.condition, ctx);
+
+  let sql = `SELECT * FROM ${table}`;
+  if (clause) sql += ` WHERE ${clause}`;
+
+  // Pagination: LIMIT/OFFSET with literal or bound expression.
+  // Note: D1 accepts LIMIT as a literal OR bound, but we prefer literal for
+  // static perPage since it's statically known at compile time.
+  if (!isSingle && node.page && node.perPage) {
+    const perPage = typeof node.perPage === 'number' ? node.perPage : parseInt(node.perPage, 10) || 25;
+    sql += ` LIMIT ${perPage}`;
+    // OFFSET handled via bind for runtime page variable
+    if (typeof node.page === 'number') {
+      sql += ` OFFSET ${(node.page - 1) * perPage}`;
+    } else {
+      sql += ` OFFSET ?`;
+      binds.push(`((${sanitizeName(String(node.page))} - 1) * ${perPage})`);
+    }
+  } else if (!isSingle && !node.noLimit) {
+    sql += ` LIMIT ${DEFAULT_QUERY_LIMIT}`;
+  }
+
+  const bindExpr = binds.length > 0 ? `.bind(${binds.join(', ')})` : '';
+  const tail = isSingle ? '.first()' : '.all()';
+  const unwrap = isSingle
+    ? `await env.DB.prepare('${sql}')${bindExpr}${tail}`
+    : `(await env.DB.prepare('${sql}')${bindExpr}${tail}).results`;
+
+  return `${pad}const ${varName} = ${unwrap};${lineComment}`;
 }
 
 // Extract column names for a table from schemaMap (fallback: pick from record at runtime).
