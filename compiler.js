@@ -7763,8 +7763,27 @@ export function exprToCode(expr, ctx) {
     }
 
     case NodeType.RUN_WORKFLOW: {
-      const fnName = 'workflow_' + sanitizeName(expr.workflowName.toLowerCase().replace(/\s+/g, '_'));
       const arg = expr.argument ? exprToCode(expr.argument, ctx) : '{}';
+      // Phase 6 — Cloudflare target: durable workflows become
+      // env.<NAME>_WORKFLOW.create({ params: <arg> }) so the dispatch
+      // Worker invokes the bound Cloudflare Workflow class. Plain
+      // (non-durable) workflows stay as direct function calls even on
+      // CF — they're just async functions living in src/index.js.
+      if (ctx.target === 'cloudflare' && Array.isArray(ctx._allNodes)) {
+        const wf = ctx._allNodes.find(
+          (n) => n && n.type === NodeType.WORKFLOW &&
+            n.name && n.name.toLowerCase() === String(expr.workflowName || '').toLowerCase()
+        );
+        if (wf && wf.runsOnTemporal) {
+          const binding = String(expr.workflowName)
+            .replace(/[^A-Za-z0-9]+/g, '_')
+            .toUpperCase()
+            .replace(/_+/g, '_')
+            .replace(/^_|_$/g, '') + '_WORKFLOW';
+          return `await env.${binding}.create({ params: ${arg} })`;
+        }
+      }
+      const fnName = 'workflow_' + sanitizeName(expr.workflowName.toLowerCase().replace(/\s+/g, '_'));
       return `await ${fnName}(${arg})`;
     }
 
