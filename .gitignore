@@ -1,6 +1,8 @@
 .env
 node_modules/
 package-lock.json
+# Size-guard test fixtures — generated at test time, not committed
+test-fixtures/knows-about-large/
 apps/*/build/package.json
 apps/*/build/package-lock.json
 apps/*/build/node_modules/

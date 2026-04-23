@@ -1396,10 +1396,36 @@ function compileToCloudflareWorker(body, result, opts = {}) {
             }
             out.push(`const ${constName} = "";`);
           } else {
-            // Inline the text as a JSON string literal. JSON.stringify handles
-            // every escaping concern: backslashes, quotes, unicode, newlines,
-            // control characters. The resulting JS string literal IS the content.
-            out.push(`const ${constName} = ${JSON.stringify(resolvedText)};`);
+            // Size guardrails — Workers-for-Platforms has a 10MB bundle cap.
+            // >1MB single file = hard fail (too close to the wall). 512KB to
+            // 1MB = warn. Below that = silent. Measure by UTF-8 byte length
+            // of the extracted text (not char count) since large multi-byte
+            // scripts balloon from char → byte.
+            const byteLen = Buffer.byteLength(resolvedText, 'utf8');
+            const KB = 1024;
+            const MB = 1024 * 1024;
+            if (byteLen > 1 * MB) {
+              if (opts.errors) {
+                const kb = Math.round(byteLen / KB);
+                opts.errors.push({
+                  line: 0,
+                  message: `Knowledge file '${src.value}' is ${kb}KB — Workers bundle 1MB cap per inlined file exceeded. Move this file to D1 (store text per-row) or R2 (fetch on demand) instead of inlining.`,
+                });
+              }
+              out.push(`const ${constName} = "";`);
+            } else {
+              if (byteLen > 512 * KB && opts.warnings) {
+                const kb = Math.round(byteLen / KB);
+                opts.warnings.push({
+                  line: 0,
+                  message: `Knowledge file '${src.value}' is ${kb}KB. Inlining grows the bundle — consider moving to D1 or R2 for files > 1MB.`,
+                });
+              }
+              // Inline the text as a JSON string literal. JSON.stringify handles
+              // every escaping concern: backslashes, quotes, unicode, newlines,
+              // control characters. The resulting JS string literal IS the content.
+              out.push(`const ${constName} = ${JSON.stringify(resolvedText)};`);
+            }
           }
         }
       }
