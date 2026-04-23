@@ -67,6 +67,49 @@ describe('Phase 3 cycle 3.5 — hashPassword via Web Crypto PBKDF2', () => {
 	});
 });
 
-// Cycle 3.6 — verifyPassword tests land in a followup commit so the TDD
-// story stays honest: 3.5 is hashPassword first, 3.6 adds verifyPassword
-// on top.
+// ─────────────────────────────────────────────────────────────────────────
+// Cycle 3.6 — verifyPassword + constant-time compare
+// ─────────────────────────────────────────────────────────────────────────
+//
+// verifyPassword parses the stored `<version>:<salt>:<hash>` form, runs the
+// same PBKDF2 derivation over the provided plaintext, and compares the
+// two digests constant-time (XOR-sum). Workers has no crypto.timingSafeEqual
+// so the manual compare is the only option that ships.
+//
+// Version-awareness: unknown prefixes fail closed so an attacker can't
+// downgrade by supplying a fake `v0:…` string. Future `v2:…` support is
+// additive — adds a branch, preserves v1 verification.
+
+describe('Phase 3 cycle 3.6 — verifyPassword is constant-time + version-aware', () => {
+	testAsync('verifies the password that was just hashed', async () => {
+		const plain = 'open sesame';
+		const stored = await hashPassword(plain);
+		const ok = await verifyPassword(plain, stored);
+		expect(ok).toBe(true);
+	});
+
+	testAsync('rejects the wrong password', async () => {
+		const stored = await hashPassword('the real one');
+		const ok = await verifyPassword('NOT the real one', stored);
+		expect(ok).toBe(false);
+	});
+
+	testAsync('rejects an empty / malformed stored value', async () => {
+		expect(await verifyPassword('whatever', '')).toBe(false);
+		expect(await verifyPassword('whatever', 'no-version')).toBe(false);
+		expect(await verifyPassword('whatever', 'v1:nothashanything')).toBe(false);
+	});
+
+	testAsync('rejects a stored value with an unknown version prefix', async () => {
+		const ok = await verifyPassword('x', 'v99:ab:cd');
+		expect(ok).toBe(false);
+	});
+
+	testAsync('hex helpers round-trip', () => {
+		const bytes = new Uint8Array([0, 1, 2, 3, 255, 170]);
+		const hex = _bytesToHex(bytes);
+		expect(hex).toBe('00010203ffaa');
+		const roundTripped = _hexToBytes(hex);
+		expect(Array.from(roundTripped)).toEqual([0, 1, 2, 3, 255, 170]);
+	});
+});
