@@ -76,6 +76,11 @@
 //   │  _chatClear .. clear messages + optional DELETE
 //   └─ Only emitted when actually used (tree-shaking via _getUsedUtilities)
 //
+//   UTILITY_FUNCTIONS_WORKERS — parallel set for Cloudflare Workers target.
+//   Same contract as Node helpers above but fetch-only, no fs/child_process,
+//   takes `env` as first arg. Emitted into the Workers src/index.js bundle
+//   when the AST contains `ask claude` / `has tools:` nodes.
+//
 // 5 TOP-LEVEL OUTPUT PATHS:
 //   1. Non-reactive JS (simple scripts, no UI state)
 //   2. Reactive JS (inputs + state + _recompute cycle)
@@ -119,7 +124,7 @@
 // =============================================================================
 
 import { NodeType, parse } from './parser.js';
-import { buildWorkerBundle } from './lib/packaging-cloudflare.js';
+import { buildWorkerBundle, _selectWorkersUtilities, loadAuthWebcryptoSource } from './lib/packaging-cloudflare.js';
 
 const CLEAR_VERSION = '1.0';
 
@@ -722,6 +727,187 @@ export const UTILITY_FUNCTIONS = [
 }`, deps: [] },
 ];
 
+// =============================================================================
+// WORKERS-SAFE UTILITY FUNCTIONS (Cloudflare Workers for Platforms target)
+// =============================================================================
+//
+// Cloudflare Workers rejects any CommonJS `require()` call at upload time and
+// has no `fs`, `child_process`, or `/tmp` at runtime. The Node helpers above
+// lean on `require("child_process")` + `"/tmp/..."` as an HTTP_PROXY fallback,
+// which is fine for Node but fatal in a Workers bundle.
+//
+// These helpers are byte-identical in *contract* to their Node counterparts
+// but implemented using only the subset Workers supports:
+//   - globalThis.fetch
+//   - globalThis.crypto / crypto.subtle
+//   - Web Streams API (ReadableStream / TextDecoder)
+//   - env bindings (no module-scope process.env — env is a fetch-handler param)
+//
+// Naming: every helper gets a `_workers` suffix so the two paths never collide
+// in a hybrid test or a debug dump. The compiler emits exactly one set per
+// bundle, selected at emit-time by ctx.target / options.target.
+//
+// Shared prompt-formatting logic lives in `_askAI_core`, a pure function both
+// helpers call. Keeping that DRY means a future prompt-shape change (e.g. a
+// new response schema) lands in one place, not two.
+
+export const UTILITY_FUNCTIONS_WORKERS = [
+  { name: '_askAI_core', code: `function _askAI_core(prompt, context, schema) {
+  let content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  if (schema) {
+    const fields = schema.map(f => "  " + JSON.stringify(f.name) + ": " + (f.type === 'number' ? '<number>' : f.type === 'boolean' ? '<true or false>' : f.type === 'list' ? '<array>' : '<string>')).join(",\\n");
+    content += "\\n\\nRespond with ONLY a JSON object in this exact shape, no other text:\\n{\\n" + fields + "\\n}";
+  }
+  return content;
+}
+function _askAI_parseResult(text, schema) {
+  if (!schema) return text;
+  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);
+  if (!jsonMatch) throw new Error("AI did not return valid JSON. Response: " + text.slice(0, 200));
+  try { return JSON.parse(jsonMatch[0]); } catch (e) { throw new Error("AI returned invalid JSON: " + e.message + ". Response: " + text.slice(0, 200)); }
+}`, deps: [] },
+
+  { name: '_askAI_workers', code: `async function _askAI_workers(env, prompt, context, schema, model) {
+  const proxyUrl = env && env.ANTHROPIC_PROXY_URL;
+  const endpoint = proxyUrl || 'https://api.anthropic.com/v1/messages';
+  const headers = { 'Content-Type': 'application/json' };
+  if (proxyUrl) {
+    if (!env.TENANT_JWT) throw new Error('ANTHROPIC_PROXY_URL is set but TENANT_JWT is missing — cannot authenticate to Clear AI proxy.');
+    headers['Authorization'] = 'Bearer ' + env.TENANT_JWT;
+  } else {
+    if (!env || !env.ANTHROPIC_API_KEY) throw new Error('Set ANTHROPIC_API_KEY binding on this Worker.');
+    headers['x-api-key'] = env.ANTHROPIC_API_KEY;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  const content = _askAI_core(prompt, context, schema);
+  const payload = JSON.stringify({ model: model || 'claude-sonnet-4-20250514', max_tokens: 1024, messages: [{ role: 'user', content }] });
+  const r = await fetch(endpoint, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(30000) });
+  if (!r.ok) { const e = await r.text(); throw new Error('AI request failed: ' + r.status + ' ' + e); }
+  const data = await r.json();
+  return _askAI_parseResult(data.content[0].text, schema);
+}`, deps: ['_askAI_core'] },
+
+  { name: '_askAIWithTools_workers', code: `async function _askAIWithTools_workers(env, prompt, context, tools, toolFns, model) {
+  const proxyUrl = env && env.ANTHROPIC_PROXY_URL;
+  const endpoint = proxyUrl || 'https://api.anthropic.com/v1/messages';
+  const headers = { 'Content-Type': 'application/json' };
+  if (proxyUrl) {
+    if (!env.TENANT_JWT) throw new Error('ANTHROPIC_PROXY_URL is set but TENANT_JWT is missing — cannot authenticate to Clear AI proxy.');
+    headers['Authorization'] = 'Bearer ' + env.TENANT_JWT;
+  } else {
+    if (!env || !env.ANTHROPIC_API_KEY) throw new Error('Set ANTHROPIC_API_KEY binding on this Worker.');
+    headers['x-api-key'] = env.ANTHROPIC_API_KEY;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  const _model = model || 'claude-sonnet-4-20250514';
+  const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  const messages = [{ role: 'user', content: userContent }];
+  const maxTurns = 10;
+  for (let i = 0; i < maxTurns; i++) {
+    const payload = { model: _model, max_tokens: 4096, messages, tools };
+    const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
+    if (!r.ok) { const e = await r.text(); throw new Error('AI request failed: ' + r.status + ' ' + e); }
+    const data = await r.json();
+    const msg = data.content;
+    messages.push({ role: 'assistant', content: msg });
+    const toolUses = msg.filter(b => b.type === 'tool_use');
+    if (toolUses.length === 0) return (msg.find(b => b.type === 'text') || {}).text || '';
+    const results = [];
+    for (const tu of toolUses) {
+      const fn = toolFns[tu.name];
+      if (!fn) { results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: 'Unknown tool: ' + tu.name }), is_error: true }); continue; }
+      try {
+        const result = await fn(...Object.values(tu.input));
+        results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) });
+      } catch (toolErr) {
+        results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: toolErr.message }), is_error: true });
+      }
+    }
+    messages.push({ role: 'user', content: results });
+  }
+  throw new Error('Agent exceeded maximum tool use turns (10)');
+}`, deps: [] },
+
+  { name: '_askAIStream_workers', code: `function _askAIStream_workers(env, prompt, context, model) {
+  // Returns a Workers-native ReadableStream of SSE text deltas. Caller can
+  // forward it as a Response body directly, or await-consume chunk-by-chunk.
+  const proxyUrl = env && env.ANTHROPIC_PROXY_URL;
+  const endpoint = proxyUrl || 'https://api.anthropic.com/v1/messages';
+  const headers = { 'Content-Type': 'application/json' };
+  if (proxyUrl) {
+    if (!env.TENANT_JWT) throw new Error('ANTHROPIC_PROXY_URL is set but TENANT_JWT is missing — cannot authenticate to Clear AI proxy.');
+    headers['Authorization'] = 'Bearer ' + env.TENANT_JWT;
+  } else {
+    if (!env || !env.ANTHROPIC_API_KEY) throw new Error('Set ANTHROPIC_API_KEY binding on this Worker.');
+    headers['x-api-key'] = env.ANTHROPIC_API_KEY;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  const content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
+  const payload = JSON.stringify({ model: model || 'claude-sonnet-4-20250514', max_tokens: 4096, stream: true, messages: [{ role: 'user', content }] });
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        const r = await fetch(endpoint, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(60000) });
+        if (!r.ok) { const e = await r.text(); controller.error(new Error('AI stream failed: ' + r.status + ' ' + e)); return; }
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        const encoder = new TextEncoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6);
+            if (data === '[DONE]') { controller.close(); return; }
+            try {
+              const evt = JSON.parse(data);
+              if (evt.type === 'content_block_delta' && evt.delta && evt.delta.text) {
+                controller.enqueue(encoder.encode(evt.delta.text));
+              }
+            } catch (_) { /* partial JSON, skip */ }
+          }
+        }
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      }
+    }
+  });
+}`, deps: [] },
+];
+
+// Tree-shake for the Workers utility set. Mirrors _getUsedUtilities but walks
+// UTILITY_FUNCTIONS_WORKERS. The matching key on the SIGNAL side is any
+// appearance of `_askAI(`, `_askAIWithTools(`, or `_askAIStream(` in the
+// hint code (we get passed the current compiled body text). The emit layer
+// then rewrites those calls to pass `env` and use the _workers suffix.
+export function _getUsedUtilitiesWorkers(signalCode) {
+  const needed = new Set();
+  for (const util of UTILITY_FUNCTIONS_WORKERS) {
+    // Signal names without the _workers suffix — the signalCode is the Node
+    // variant's body text, which the caller passes in to detect usage.
+    const signalName = util.name.replace(/_workers$/, '');
+    const suffix = '_workers';
+    // Match either the Node call shape (_askAI(...)) as a usage signal OR
+    // the Workers call shape (_askAI_workers(...)) if we've already rewritten.
+    const nodeSignal = signalName !== util.name && (
+      signalCode.includes(signalName + '(') ||
+      signalCode.includes(signalName + ',') ||
+      signalCode.includes(signalName + ')')
+    );
+    const workersSignal = signalCode.includes(util.name + '(') || signalCode.includes(util.name + ',');
+    if (nodeSignal || workersSignal) {
+      needed.add(util.name);
+      for (const dep of util.deps) needed.add(dep);
+    }
+  }
+  return UTILITY_FUNCTIONS_WORKERS.filter(u => needed.has(u.name)).map(u => u.code);
+}
+
 // Tree-shake: scan compiled code and return only used utility function definitions
 function _getUsedUtilities(compiledCode) {
   const needed = new Set();
@@ -1087,6 +1273,29 @@ function compileToCloudflareWorker(body, result) {
   out.push('');
   out.push(`const __CLEAR_HTML__ = ${JSON.stringify(html)};`);
   out.push('');
+
+  // Inline Workers-safe helpers (Phase 3). Selects from UTILITY_FUNCTIONS_WORKERS
+  // based on which AI features the AST actually uses — no helper shipped for apps
+  // that don't call `ask claude`. Critically: these are the ONLY AI plumbing
+  // a deployed Worker sees — the Node variants stay on the default target.
+  const needed = _selectWorkersUtilities(body);
+  if (needed.length > 0) {
+    out.push('// --- Workers-safe runtime helpers (inlined) ---');
+    for (const code of needed) out.push(code);
+    out.push('');
+  }
+
+  // Inline Web Crypto auth when `allow signup and login` is present. PBKDF2
+  // via crypto.subtle — no bcryptjs, no Node crypto module needed at runtime.
+  // Source of truth is runtime/auth-webcrypto.mjs; we strip `export ` keywords
+  // and inline the function bodies so the Workers bundle stays a single module.
+  const usesAuth = body.some((n) => n && n.type === NodeType.AUTH_SCAFFOLD);
+  if (usesAuth) {
+    out.push('// --- Web Crypto auth (PBKDF2 via crypto.subtle) — inlined from runtime/auth-webcrypto.mjs ---');
+    out.push(loadAuthWebcryptoSource());
+    out.push('');
+  }
+
   out.push('export default {');
   out.push('  async fetch(request, env, ctx) {');
   out.push('    const url = new URL(request.url);');

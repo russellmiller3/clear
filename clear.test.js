@@ -23962,5 +23962,8 @@ await import('./runtime/db-d1.test.mjs');
 // Cloudflare Workers for Platforms target — Phase 2.8 (templates + E2E)
 await import('./lib/packaging-cloudflare-templates.test.js');
 
+// Cloudflare Workers for Platforms target — Phase 3 (Web Crypto auth)
+await import('./runtime/auth-webcrypto.test.mjs');
+
 run();
 

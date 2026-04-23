@@ -1375,3 +1375,71 @@ Don't drop a second `package.json` inside `runtime/d1/` just to flip the scope �
 - hello-world + todo-fullstack run end-to-end against d1Mock — write + read confirmed
 - Phase 3 (webcrypto auth) remains independent — no shared edits to _askAI or auth utilities
 
+## Session: Cloudflare Workers for Platforms — Phase 3 (2026-04-23)
+
+Making agents (`ask claude`, `has tools:`, streaming) and auth (`allow signup and login`) work inside a Cloudflare Worker bundle. The whole point: the deployed Worker must NEVER see Node-only APIs — Workers' bundler rejects `require()` at upload time and has no `fs`, no `child_process`, no `/tmp`. Phase 3 ran 10 TDD cycles and landed a parallel set of Workers-safe runtime helpers alongside the Node ones.
+
+### Emit-time branching beats runtime gating every time
+
+Our first instinct was "gate the Node-specific branch with an `if (typeof require !== 'undefined')`." That's structurally wrong for Workers. Even if the branch never fires at runtime, `require(` as a TEXT SUBSTRING in the bundle trips Cloudflare's static scan and the upload fails. Dead code still ships.
+
+The fix: two parallel helper arrays in `compiler.js` (`UTILITY_FUNCTIONS` for Node, `UTILITY_FUNCTIONS_WORKERS` for Cloudflare) and a compiler switch that emits exactly ONE set, selected by `ctx.target`/`options.target`. The Node set keeps its HTTP_PROXY + curl fallback (uses `require("child_process")`); the Workers set is fetch-only with `env` threaded as a parameter.
+
+**Rule:** substring-checkable drift guards (`expect(src.includes('require(')).toBe(false)`) are the only guards you can trust for Workers output. Runtime gates fail silently; compile-time gates and text grep catch everything.
+
+### Web Crypto in Node 20+ is bit-for-bit identical to Workers
+
+The Workers runtime has `globalThis.crypto.subtle` — the same PBKDF2 / AES / ECDSA the browser exposes. Node 20+ ships the same API surface natively, zero polyfill needed. That meant Phase 3's auth tests could run in pure Node (no miniflare, no wrangler invocation) and still prove out the exact code path the deployed Worker would execute. Fast iteration loop — 100ms per hashPassword test vs. seconds for a miniflare spin-up.
+
+Param choice: PBKDF2-SHA-256, 600,000 iterations, 128-bit random salt, 256-bit output hash. 600k is OWASP 2024's floor. On our dev machine: ~150ms per `hashPassword()` — slow enough to hurt a brute-forcer, fast enough that a login request doesn't feel laggy.
+
+### Versioned hash format makes PBKDF2 upgrades non-breaking
+
+`v1:<salt-hex>:<hash-hex>`. `v1` = PBKDF2-SHA-256, 600k iterations. When compute gets cheap enough that 2M iterations makes sense, or when Argon2 lands for Workers, we add a `v2:` branch to `verifyPassword` — old `v1:` rows still verify using the old params. Zero migration, zero breaking change for stored rows.
+
+Rule: ANY hash format that stores in a database should be versioned. If you don't, you're writing a future migration script or burning sessions on a forced password reset.
+
+### No crypto.timingSafeEqual on Workers — roll the XOR-sum
+
+Node has `crypto.timingSafeEqual`. Workers doesn't. Constant-time compare is too important to skip — an attacker who can measure response-time deltas can peel off a stored hash byte-by-byte via a timing side-channel. The five-line manual implementation works everywhere:
+
+```js
+function _ctEqualBytes(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+```
+
+The important bit: examine every index regardless of mismatch. Returning early on the first mismatch reintroduces the timing leak.
+
+### Scope-asserting runtime files as .mjs when the dir is CJS-scoped
+
+`runtime/package.json` pins `{"type":"commonjs"}` — the existing `runtime/auth.js` is CJS. The new `runtime/auth-webcrypto` must be ESM because the Workers bundle is ESM-only. Two options: drop a sibling `package.json`, OR use the `.mjs` extension to scope-assert explicitly. Went with `.mjs` because it's a visible-at-filename-level hint that this module ships to Workers, not Node.
+
+The test file matches: `runtime/auth-webcrypto.test.mjs`. Node imports resolve to both without the extension being a problem.
+
+### Inline-at-bundle vs. import-at-runtime for shared helpers
+
+Workers bundles are one ESM module. The user's Worker doesn't `import` from a neighboring file — the Workers bundler would have to resolve that against some phantom npm tree. The fix: `lib/packaging-cloudflare.js` reads `runtime/auth-webcrypto.mjs` at BUNDLE time, strips `export ` keywords (a flat regex — `^export\s+(async\s+function|function|const)\s` → `$1 `), and inlines the function bodies directly into `src/index.js`.
+
+Upside: single source of truth (change PBKDF2_ITERATIONS in one file, every future deploy gets the new value). Downside: if `auth-webcrypto.mjs` grows top-level statements that aren't function/const declarations, the regex stripper will leave broken top-level `export` statements. Keep the module pure-function-declarations-only as a load-bearing invariant.
+
+### testAsync inside describe() is silent green (again)
+
+`describe(name, fn)` runs `fn()` synchronously. Any `testAsync(...)` calls inside return an unresolved Promise and the describe body moves on before they finish. The final `run()` might fire before the Promises resolve, in which case the tests silently don't count (or count on the next tick, too late).
+
+The pattern that works: put `await testAsync(...)` at MODULE SCOPE (not inside describe), sandwiched between `console.log('\n📦 ...\n')` for the header. Cycle 1.7's wrangler smoke already uses this; cycle 3.8 did the same.
+
+**Rule (reinforcing Phase 1 learnings):** any Phase 3+ async test that imports, spawns, or awaits goes at top-level `await testAsync(...)`. Reserve describe/it blocks for purely synchronous assertions.
+
+### Phase 3 outcome
+
+- 10 TDD cycles committed (cf-3.0 → cf-3.8; cf-3.9 = learnings, folded into 3.8)
+- 2139 → 2182 tests passing (+43 net)
+- `_askAI_workers` + `_askAIWithTools_workers` + `_askAIStream_workers` — pure-fetch AI helpers, env-parameter-based, zero Node-isms
+- `runtime/auth-webcrypto.mjs` — PBKDF2 via Web Crypto, 600k iterations, versioned v1 hash format, constant-time verify
+- Workers bundle drift-guards: hello+askAI and signup+agent both pass `grep -c 'require\|fs\.\|/tmp\|child_process'` → 0
+- Node (default) target: zero behavioral change. Temporal + AI tests all green.
+
