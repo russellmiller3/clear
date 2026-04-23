@@ -3016,3 +3016,23 @@ Actual remaining backlog (everything else has been verified or moved to DONE):
 - **T3#8 Compile tool source on success** — tooling.
 - **T3#9 Python streaming toggle** — missing feature.
 
+## Request: Bug — `current_user` undefined in endpoint with `requires login` guard\n**Priority:** HIGH\n**Target:** JS + Python\n**App:** Authenticated todo API (Level 5) — any app using `current_user` after `requires login` guard\n**What I needed:** After `requires login`, the variable `current_user` should be available (containing id, email, role, etc)\n**Proposed syntax:**\n```clear\nwhen user calls GET /api/todos:\n  requires login\n  user_id = current_user's id      ← current_user should be available here\n  todos = get all Todos where user_id is user_id\n  send back todos\n```\n**Workaround used:** Skip the feature for now. Use token from header manually or just return all data (losing isolation)\n**Error hit:** Compile error on line N: `You used 'current_user' on line N but it hasn't been created yet. Define it on an earlier line.`\n**Expected:** `requires login` is a directive that auto-populates `current_user` in the endpoint scope. Should NOT require manual definition.\n**Impact:** HIGH — `current_user` is documented in SYNTAX.md (line 1290: \"define user_id as: current user's id\") but doesn't actually work. Every auth-protected endpoint is blocked from accessing the authenticated user's identity.\n
+
+
+## Request: Inline object save with { field = value } compiles with undefined `_` variable
+**Priority:** MEDIUM
+**Target:** JS backend
+**App:** Counter API or any app using `save { field = value } to Table`
+**What I needed:** `initial = save { count = 0 } to Counter` to compile to a proper insert
+**Proposed syntax:**
+```clear
+initial = save { count = 0 } to Counter
+```
+**Workaround used:** Avoid inline object saves, use record variables instead
+**Real compiled output (smoking gun — exact):**
+```javascript
+const initial = await _clearTry(() => db.insert('counters', _pick(_, countSchema)), { ... });
+```
+The `_pick(_, countSchema)` references `_` which is never defined. Should be `_pick({ count: 0 }, countSchema)`.
+**Error hit:** `ReferenceError: _ is not defined` at runtime when endpoint is called
+**Impact:** MEDIUM — inline object saves are completely broken
