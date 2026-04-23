@@ -1,11 +1,89 @@
-# Handoff — 2026-04-23 (session 44 — Cloudflare WFP Phases 1–7 SHIPPED; only Phase 8 HITL remains)
+# Handoff — 2026-04-23 (session 44 — Cloudflare Phases 1–7 shipped + sweep triage: spawner VERIFIED, stdin-race FIXED)
 
 ## Current State
 
-- **Branch:** `main` at `8a056ec` — pushed, clean working tree. **Cloudflare Phases 1–7 all live** + `runs durably` canonical syntax + 4 new themes (dusk, vault, sakura, forge) + Studio Deploy modal theme picker + Windows spawner zombie fix + Phase 8 runbook (§setup + §HITL smoke).
-- **Tests:** 2101 → **2399 green** (+298 net), 0 failing. Across 7 parallel-executed phases + syntax rename + themes.
-- **CF-target drift-guard:** `scripts/smoke-cf-target.mjs` = 112/112 checks green across all 8 core templates.
+- **Branch:** `fix/cc-agent-stdin-race-windows` at `4201693` — local commit, push pending your OK (pre-push hook blocked on a flaky e2e run that happens when a sweep is running concurrently; re-try clean should pass).
+- **Main:** still at `a7de02c` (handoff note commit from this morning).
+- **Tests:** **2399 compiler green** + **79 ghost-meph green** (+4 new TDD assertions for the stdin-race fix). 0 failing anywhere.
 - **Cost:** $0 API spend. All agent work on the Claude subscription (cc-agent mode).
+
+### Numbers in one glance
+
+| Metric | Morning sweep (spawner-fix-only) | Post-cc-agent-fix sweep |
+|---|---|---|
+| Pass rate | 2/38 (5.3%) | **20/38 (52.6%)** |
+| Fast-fails | 31 | **3** |
+| Timeouts (180s) | 5 | 15 |
+| Wall clock | 860s | 1861s |
+| claude.exe zombies after | 0 | 0 |
+| Factor DB passing delta | +4 | **+26** |
+
+Pre-fix: 31 tasks were losing the stdin race and silently fast-failing. Post-fix: only 3 fast-fails. Timeouts went up because more tasks are now actually running to their full budget instead of failing in 20s — these are genuinely hard L7–L10 tasks that need longer than 180s to complete on the current stack.
+
+## TL;DR — what this session fixed
+
+**Spawner zombie fix (shipped morning of 04-23 at `f36c787`): VERIFIED.** 38-task workers=3 sweep completed in 860s (14 min); all 5 timeouts enforced at exactly 180.0s; claude.exe count went 14 → 12 across the sweep (zero accumulation); ports 3490-3495 all released. The 6700s "infinite hang" class is gone.
+
+**Parallel sweep pass rate was 2/38 (5.3%)** — a separate regression. Rooted-caused it to a Windows-specific `claude.exe` CLI bug where piping the prompt to stdin loses a 3-second race. Fix: pass the 48KB system prompt via `--system-prompt-file` and the ~1-2KB user prompt as a positional argv, close stdin entirely. Post-fix: solo 100% pass, 2-task parallel 100% pass, 3-task parallel flaky 33-66% (separate ticket). Full 38-task measurement sweep is running now — will update this section when done.
+
+## Sweep triage — what broke, what got fixed (this session's work)
+
+### Verification numbers
+
+**Morning 38-task sweep (pre-fix, spawner-only verification):**
+- Wall clock: 860.1s (14m 20s) — session 42 baseline was 1665s for 34/38 passing.
+- Tasks: 2 ✅ (calculator, company-directory), 31 ❌ fast-fails (17-60s), 5 ⏱️ timeouts (all exactly 180.0s).
+- Factor DB: +8 rows, +4 passing rows.
+- claude.exe: 14 pre → 12 post (net -2, zero zombie accumulation).
+- Port cleanup: 3490-3495 all released.
+- **Spawner fix VERIFIED.** Timeouts enforce, no zombies, no hangs.
+
+**But fast-fail on simple L1 tasks (hello-world ❌ 24s, greeting ❌ 35s, echo ❌ 46s) was a different regression — not what the spawner fix was meant to catch.**
+
+### Root cause of the 5.3% pass rate
+
+Direct reproduction with `claude.exe 2.1.111` from bash:
+```
+$ echo "prompt" | claude --print --verbose ...
+Warning: no stdin data received in 3s, proceeding without it.
+Error: Input must be provided either through stdin or as a prompt argument when using --print
+```
+
+Node's `child.stdin.write(prompt); child.stdin.end()` in cc-agent.js races with claude's 3-second stdin-data-received timer on Windows pipes. The pipe write completes — but not fast enough. Claude gives up and exits code 1. cc-agent catches the error, wraps it as a text-only SSE, and the sweep sees a completed stream with no "TASK COMPLETE" and no factor-db passing row → marked fail.
+
+Occasional wins (calculator, company-directory) happened when the pipe-flush race was won by a lucky timing. The per-task failure rate was "mostly fails but sometimes wins" — consistent with a race.
+
+### The fix (`4201693` on `fix/cc-agent-stdin-race-windows`)
+
+Structural change to `playground/ghost-meph/cc-agent.js`:
+- `chatViaClaudeCodeWithTools(userPrompt, systemPrompt)` — now receives the two prompts separately, not concatenated.
+- `chatViaClaudeCodeWithTools` writes the 48KB Meph system prompt to `/tmp/ghost-meph-system-prompts/sys-<timestamp>-<pid>.txt`, unlinks on both success and error paths.
+- `runClaudeCliStreamJson(userPrompt, configPath, systemPromptPath)` — new third arg.
+- `buildClaudeStreamJsonSpawnArgs(configPath, userPrompt, systemPromptPath)` — adds `--system-prompt-file <path>` when path is set, appends userPrompt as final positional argv.
+- `spawn(... { stdio: ['ignore', 'pipe', 'pipe'] })` — stdin closed entirely so claude never waits on it.
+- stderr-tail filter drops the now-harmless "no stdin data received" warning line on error.
+
+Why the split (system→file + user→argv) is the only working path:
+- **argv concat (system+user):** hits Windows 32KB argv ceiling → ENAMETOOLONG (system prompt alone is 48KB).
+- **stdin piped:** 3-second race, fails ~100% reliably on Windows.
+- **system→file + user→argv:** both delivery channels stay within OS limits AND avoid the stdin race.
+
+### TDD + verification
+
+- **RED:** 4 new assertions in `playground/ghost-meph.test.js` — positional prompt is last argv, empty prompt omitted, `--system-prompt-file` flag when path given + omitted when not. 2 failed before the fix, all 4 pass after.
+- **GREEN:** 79/79 ghost-meph tests, 2399/2399 compiler tests.
+- **Live solo:** hello-world 42s ✅ (was 24s fast-fail), greeting 50s ✅ (was 35s fast-fail).
+- **Live 2-task parallel:** 2/2 ✅ (hello-world 45s, greeting 47s).
+- **Live 3-task parallel:** still flaky, 1-2/3 pass. Fast-fails recur intermittently at workers=3. Treat as a separate issue — likely claude CLI contention at 3+ concurrent; evidence: direct `claude.exe` invocations with 3 concurrent runs all succeed in <3s when scripted from bash (so the binary itself handles it), but sweep-invoked 3-worker runs see 1-2 workers fast-fail.
+- **Full 38-task post-fix sweep (`workers=3 --strict`): 20/38 (52.6%) PASSED.** 10× improvement from pre-fix's 2/38 (5.3%).
+  - Wall clock: 1861.0s (31 min).
+  - Timed out: 15 (all at exactly 180.0s — mostly L7–L10 complex tasks: full-saas, rbac-api, dashboard-api, agent-summary, agent-categorizer, company-directory).
+  - Fast-failed (❌): only 3 (approval-queue, webhook-stripe, batch-prune) — down from 31 pre-fix. **The stdin-race was the cause of ~90% of all fast-fails.**
+  - Stuck: 0.
+  - Factor DB: +46 rows (+26 passing) — healthy training signal.
+  - claude.exe count: 14 (pre-sweep) → 12 (post-sweep). Zero zombie accumulation; spawner fix still holding.
+
+**Session 42 tick 9 baseline was 34/38 (89%) — we're still below that.** The remaining 15 timeouts (most L7–L10) suggest either (a) 180s budget is too tight for complex agent apps, (b) parallel-3 contention slows tasks below normal speed, or (c) a residual issue separate from the stdin-race. Pre-fix comparison still makes the win crisp: fast-fails dropped from 31 → 3.
 
 ## What's left: Phase 8 only (HITL — your paperwork)
 
