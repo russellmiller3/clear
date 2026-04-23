@@ -23979,5 +23979,8 @@ await import('./lib/packaging-cloudflare-templates.test.js');
 // Cloudflare Workers for Platforms target — Phase 3 (Web Crypto auth)
 await import('./runtime/auth-webcrypto.test.mjs');
 
+// Cloudflare Workers for Platforms target — Phase 4 (knows about: lazy-load)
+await import('./lib/packaging-cloudflare-knows.test.js');
+
 run();
 

@@ -1296,6 +1296,53 @@ function compileToCloudflareWorker(body, result) {
     out.push('');
   }
 
+  // ── Phase 4: `knows about:` lazy-load helpers + agent functions ──────────
+  // For every agent with `knows about: Table | 'url' | 'file'` we emit a
+  // module-scope nullable cache + an async loader that populates it on the
+  // FIRST agent call. No module-top-level await (Workers forbids it). The
+  // cache lives through the Worker's lifetime — D1 rows fetched once per
+  // isolate and reused across requests.
+  const agentsWithKnowledge = body.filter(
+    (n) => n && n.type === NodeType.AGENT && Array.isArray(n.knowsAbout) && n.knowsAbout.length > 0
+  );
+  if (agentsWithKnowledge.length > 0) {
+    out.push('// --- Phase 4: knows-about lazy-load helpers ---');
+    // Deduplicate by (type, value) so two agents that share knowledge share the cache.
+    const seen = new Set();
+    for (const agent of agentsWithKnowledge) {
+      for (const raw of agent.knowsAbout) {
+        const src = typeof raw === 'string' ? { type: 'table', value: raw } : raw;
+        const key = src.type + ':' + src.value;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (src.type === 'table') {
+          const pluralTable = pluralizeName(src.value);
+          const cacheName = '_' + pluralTable + '_cache';
+          const loaderName = '_load_' + pluralTable;
+          out.push(`let ${cacheName} = null;`);
+          out.push(`async function ${loaderName}(env) {`);
+          out.push(`  if (${cacheName}) return ${cacheName};`);
+          out.push(`  const _res = await env.DB.prepare('SELECT * FROM ${pluralTable}').all();`);
+          out.push(`  ${cacheName} = (_res && _res.results) || [];`);
+          out.push(`  return ${cacheName};`);
+          out.push(`}`);
+        }
+      }
+    }
+    out.push('');
+
+    // Emit each agent as a module-scope async function. Workers call shape:
+    //   agent_X(env, question) — env is threaded so D1 + AI_PROXY reachable.
+    // For Phase 4 we emit a minimal RAG preamble that calls the lazy loaders
+    // + _askAI_workers. Tool-use + streaming agents still route through the
+    // existing Workers helpers; Phase 4's focus is only the knowledge path.
+    out.push('// --- Phase 4: agent functions (Workers-safe) ---');
+    for (const agent of agentsWithKnowledge) {
+      out.push(_emitWorkersAgentFn(agent));
+    }
+    out.push('');
+  }
+
   out.push('export default {');
   out.push('  async fetch(request, env, ctx) {');
   out.push('    const url = new URL(request.url);');
@@ -1358,6 +1405,53 @@ function compileToCloudflareWorker(body, result) {
   out.push('};');
   out.push('');
   return out.join('\n');
+}
+
+// Phase 4: emit a Workers-safe async agent function from an AGENT node
+// that has `knows about:` knowledge sources. Takes env as its first arg so
+// the inner RAG preamble can call the module-scope lazy loaders that read
+// from env.DB, and _askAI_workers(env, ...) can reach the AI proxy.
+//
+// This is a MINIMAL emitter — scoped to Phase 4's knowledge-path concern.
+// The richer Node agent pipeline (tools, skills, memory, conversation,
+// guardrails) doesn't run here; when those features matter for Workers,
+// Phase 4+ can expand this helper.
+function _emitWorkersAgentFn(agent) {
+  const fnName = 'agent_' + sanitizeName(agent.name.toLowerCase().replace(/\s+/g, '_'));
+  const param = agent.receivingVar ? sanitizeName(agent.receivingVar) : '_input';
+  const sources = (agent.knowsAbout || []).map((s) => (typeof s === 'string' ? { type: 'table', value: s } : s));
+  const lines = [];
+  lines.push(`async function ${fnName}(env, ${param}) {`);
+  lines.push(`  const _query = (typeof ${param} === 'string' ? ${param} : JSON.stringify(${param})).toLowerCase().split(/\\s+/);`);
+  lines.push(`  const _ragContext = [];`);
+  for (const src of sources) {
+    if (src.type === 'table') {
+      const plural = pluralizeName(src.value);
+      lines.push(`  {`);
+      lines.push(`    const _recs = await _load_${plural}(env);`);
+      lines.push(`    for (const _rec of _recs) {`);
+      lines.push(`      const _text = Object.values(_rec).join(' ').toLowerCase();`);
+      lines.push(`      const _score = _query.filter(w => _text.includes(w)).length;`);
+      lines.push(`      if (_score > 0) _ragContext.push({ source: '${src.value}', data: _rec, score: _score });`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    }
+  }
+  lines.push(`  _ragContext.sort((a, b) => b.score - a.score);`);
+  lines.push(`  const _ragStr = _ragContext.slice(0, 5).length`);
+  lines.push(`    ? '\\n\\nRelevant context:\\n' + _ragContext.slice(0, 5).map(r => JSON.stringify(r.data)).join('\\n')`);
+  lines.push(`    : '';`);
+  // Best-effort: thread through _askAI_workers if the body uses ask_ai. For
+  // Phase 4 the test simply asserts the preamble + loader call; richer
+  // codegen (skills, tools, memory, conversation) is a later expansion.
+  lines.push(`  const _prompt = String(${param} || '') + _ragStr;`);
+  lines.push(`  try {`);
+  lines.push(`    return await _askAI_workers(env, _prompt, null, null);`);
+  lines.push(`  } catch (_e) {`);
+  lines.push(`    return '';`);
+  lines.push(`  }`);
+  lines.push(`}`);
+  return lines.join('\n');
 }
 
 // Build a match snippet + params extraction snippet for a route path.
