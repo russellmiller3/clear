@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clear — The language your coding agent writes without retries</title>
+<meta name="description" content="Clear is the agent-native language. Deterministic compiler, plain-English source, fewer retry loops. Ships as a VSCode + Cursor extension that calls a hosted compiler.">
+<link rel="stylesheet" href="tailwind.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: #fafbfd; color: #0f172a; -webkit-font-smoothing: antialiased; margin: 0; }
+
+.hero-bg {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f0f4ff 0%, #fafbfd 40%, #f5f0ff 70%, #fafbfd 100%);
+}
+.hero-bg::before {
+  content: '';
+  position: absolute;
+  top: -40%; right: -20%;
+  width: 80%; height: 120%;
+  background: radial-gradient(ellipse at center, rgba(99,102,241,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-bg::after {
+  content: '';
+  position: absolute;
+  bottom: -30%; left: -10%;
+  width: 60%; height: 80%;
+  background: radial-gradient(ellipse at center, rgba(67,97,238,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.btn-hero {
+  background: linear-gradient(135deg, #4361ee 0%, #6366f1 100%);
+  box-shadow: 0 4px 16px rgba(67,97,238,0.25);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.btn-hero:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(67,97,238,0.35); }
+
+.btn-secondary {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid rgba(0,0,0,0.08);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.btn-secondary:hover { border-color: rgba(0,0,0,0.16); transform: translateY(-1px); }
+
+.code-card {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13.5px;
+  line-height: 1.85;
+  padding: 28px 32px;
+  box-shadow: 0 12px 40px rgba(15,23,42,0.18);
+  position: relative;
+  overflow: hidden;
+}
+.code-card-light {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.04);
+}
+.code-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.code-tag-cursor { background: rgba(248,113,113,0.12); color: #f87171; }
+.code-tag-clear { background: rgba(99,102,241,0.12); color: #818cf8; }
+.code-tag-clear-light { background: rgba(99,102,241,0.08); color: #4361ee; }
+
+.tk-kw { color: #818cf8; }
+.tk-str { color: #6ee7b7; }
+.tk-cmt { color: #64748b; font-style: italic; }
+.tk-fn  { color: #fbbf24; }
+.tk-num { color: #f472b6; }
+.tk-err { color: #f87171; text-decoration: underline wavy; text-underline-offset: 4px; }
+
+.tk-kw-l { color: #4361ee; font-weight: 600; }
+.tk-str-l { color: #059669; }
+.tk-cmt-l { color: #94a3b8; font-style: italic; }
+.tk-fn-l  { color: #b45309; font-weight: 600; }
+
+.metric-card {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(0,0,0,0.05);
+  padding: 28px 32px;
+  text-align: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.metric-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.06); }
+.metric-num {
+  font-size: 56px; font-weight: 800;
+  background: linear-gradient(135deg, #4361ee, #6366f1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1;
+}
+.metric-num-bad {
+  font-size: 56px; font-weight: 800;
+  color: #475569;
+  line-height: 1;
+}
+
+.diff-card {
+  border-radius: 16px;
+  padding: 32px 28px;
+  position: relative;
+}
+.diff-card-1 { background: linear-gradient(135deg, #fafbfd 0%, #f0f4ff 100%); }
+.diff-card-2 { background: linear-gradient(135deg, #fafbfd 0%, #f5f0ff 100%); }
+.diff-card-3 { background: linear-gradient(135deg, #fafbfd 0%, #ecfdf5 100%); }
+.diff-num {
+  font-size: 32px; font-weight: 800;
+  background: linear-gradient(135deg, #4361ee, #6366f1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 12px;
+}
+
+.install-block {
+  font-family: 'JetBrains Mono', monospace;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 16px 20px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.install-block code { color: #93c5fd; }
+
+a { text-decoration: none; }
+</style>
+</head>
+<body>
+
+<!-- ─── Nav ─── -->
+<nav class="sticky top-0 z-50 border-b border-black/[0.04] bg-white/80 backdrop-blur px-6 py-4">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-10">
+      <a href="marcus.html" class="text-[18px] font-bold tracking-tight">Clear</a>
+      <div class="hidden md:flex items-center gap-7 text-[13px] font-medium text-slate-400">
+        <a href="for-developers.html" class="text-slate-900 transition">For developers</a>
+        <a href="marcus.html" class="hover:text-slate-600 transition">For business</a>
+        <a href="pricing.html" class="hover:text-slate-600 transition">Pricing</a>
+        <a href="#install" class="hover:text-slate-600 transition">Install</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="https://github.com/clearlang" class="text-[13px] font-medium text-slate-500 hover:text-slate-700 transition hidden md:block">GitHub</a>
+      <a href="#install" class="btn-hero text-white text-[13px] px-5 py-2.5 rounded-xl font-semibold">Install</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ─── Hero ─── -->
+<section class="hero-bg pt-20 pb-24 px-6 relative">
+  <div class="max-w-5xl mx-auto text-center relative z-10">
+    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 border border-black/[0.06] text-[12px] font-medium text-slate-600 mb-8">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+      Agent-native language
+    </div>
+    <h1 class="text-[64px] leading-[1.05] font-extrabold tracking-tight text-slate-900 mb-6">
+      The language your coding agent<br>
+      <span class="bg-clip-text text-transparent" style="background-image: linear-gradient(135deg, #4361ee 0%, #6366f1 50%, #8b5cf6 100%);">writes without retries</span>.
+    </h1>
+    <p class="text-[20px] leading-relaxed text-slate-600 max-w-3xl mx-auto mb-10">
+      Clear is built for the world where AI writes most of the code. Deterministic compiler, plain-English source, rich error messages. Cursor and Claude Code stop burning tokens on retry loops.
+    </p>
+    <div class="flex flex-wrap items-center justify-center gap-4">
+      <a href="#install" class="btn-hero text-white text-[14px] px-6 py-3.5 rounded-xl font-semibold">Install for VSCode + Cursor</a>
+      <a href="#side-by-side" class="btn-secondary text-[14px] px-6 py-3.5 rounded-xl font-semibold">See the diff</a>
+    </div>
+    <p class="text-[12px] text-slate-400 mt-8">npm install clear-cli &nbsp;&middot;&nbsp; macOS, Linux, Windows &nbsp;&middot;&nbsp; Free for solo devs</p>
+  </div>
+</section>
+
+<!-- ─── Side-by-side ─── -->
+<section id="side-by-side" class="py-24 px-6 bg-white border-t border-b border-black/[0.04]">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-14">
+      <p class="text-[12px] font-semibold uppercase tracking-wider text-slate-400 mb-3">Same feature, different stacks</p>
+      <h2 class="text-[44px] font-bold tracking-tight text-slate-900">Build a contact form with create endpoint.</h2>
+      <p class="text-[16px] text-slate-500 mt-4 max-w-2xl mx-auto">Both prompts asked an agent to ship the same feature. Same model, same task, different language.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-12">
+      <!-- Cursor + JS -->
+      <div class="code-card">
+        <span class="code-tag code-tag-cursor">Cursor + TypeScript</span>
+        <pre class="m-0"><span class="tk-cmt">// 1st draft — wrong import path</span>
+<span class="tk-kw">import</span> { <span class="tk-fn">Router</span> } <span class="tk-kw">from</span> <span class="tk-str">'express'</span>;
+<span class="tk-kw">import</span> { <span class="tk-fn">db</span> } <span class="tk-kw">from</span> <span class="tk-str">'./db'</span>; <span class="tk-cmt">// fails</span>
+
+<span class="tk-cmt">// 2nd draft — async + manual validation</span>
+router.<span class="tk-fn">post</span>(<span class="tk-str">'/contacts'</span>, <span class="tk-kw">async</span> (req, res) =&gt; {
+  <span class="tk-kw">const</span> { name, email } = req.body;
+  <span class="tk-kw">if</span> (!name || !email) {
+    <span class="tk-kw">return</span> res.<span class="tk-fn">status</span>(<span class="tk-num">400</span>).<span class="tk-fn">json</span>({ error: <span class="tk-str">'Missing'</span> });
+  }
+  <span class="tk-kw">try</span> {
+    <span class="tk-kw">const</span> id = <span class="tk-kw">await</span> db.<span class="tk-fn">insert</span>(<span class="tk-str">'contacts'</span>, { name, email });
+    res.<span class="tk-fn">json</span>({ <span class="tk-err">id, ok: true</span> });
+  } <span class="tk-kw">catch</span> (e) { <span class="tk-cmt">// schema mismatch...</span>
+    res.<span class="tk-fn">status</span>(<span class="tk-num">500</span>).<span class="tk-fn">json</span>({ error: e.message });
+  }
+});</pre>
+      </div>
+
+      <!-- Clear -->
+      <div class="code-card code-card-light">
+        <span class="code-tag code-tag-clear-light">Clear</span>
+        <pre class="m-0"><span class="tk-cmt-l"># compiles first try, deterministic</span>
+<span class="tk-kw-l">table</span> Contacts has:
+  name <span class="tk-kw-l">is</span> <span class="tk-kw-l">required text</span>
+  email <span class="tk-kw-l">is</span> <span class="tk-kw-l">required text</span>
+
+<span class="tk-kw-l">when user sends</span> contact <span class="tk-kw-l">to</span> <span class="tk-str-l">'/api/contacts'</span>:
+  <span class="tk-kw-l">save</span> contact <span class="tk-kw-l">as a new</span> Contact
+  <span class="tk-kw-l">send back</span> contact</pre>
+      </div>
+    </div>
+
+    <!-- Metrics row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="metric-card">
+        <div class="metric-num-bad">3,420</div>
+        <p class="text-[12px] text-slate-500 mt-2 uppercase tracking-wider">Tokens (TS)</p>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num">680</div>
+        <p class="text-[12px] text-slate-500 mt-2 uppercase tracking-wider">Tokens (Clear)</p>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num-bad">4</div>
+        <p class="text-[12px] text-slate-500 mt-2 uppercase tracking-wider">Retries (TS)</p>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num">0</div>
+        <p class="text-[12px] text-slate-500 mt-2 uppercase tracking-wider">Retries (Clear)</p>
+      </div>
+    </div>
+    <p class="text-[12px] text-slate-400 text-center mt-6">Numbers from a single internal benchmark. Your mileage will vary; the gap won't.</p>
+  </div>
+</section>
+
+<!-- ─── Why fewer retries ─── -->
+<section class="py-24 px-6">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-14">
+      <p class="text-[12px] font-semibold uppercase tracking-wider text-slate-400 mb-3">Why retries collapse</p>
+      <h2 class="text-[40px] font-bold tracking-tight text-slate-900">Three properties the agent learns to trust.</h2>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="diff-card diff-card-1">
+        <div class="diff-num">01</div>
+        <h3 class="text-[18px] font-bold mb-3 text-slate-900">Deterministic compile.</h3>
+        <p class="text-[14px] leading-relaxed text-slate-600">
+          Same source → same output, every time. No "regenerate the React component" inference loops. The compiler is a function, not a model.
+        </p>
+      </div>
+      <div class="diff-card diff-card-2">
+        <div class="diff-num">02</div>
+        <h3 class="text-[18px] font-bold mb-3 text-slate-900">Errors are actionable.</h3>
+        <p class="text-[14px] leading-relaxed text-slate-600">
+          Every compile error names the exact Clear line, what's wrong, and what canonical syntax to use. Agents fix on first read, not the third.
+        </p>
+      </div>
+      <div class="diff-card diff-card-3">
+        <div class="diff-num">03</div>
+        <h3 class="text-[18px] font-bold mb-3 text-slate-900">Source IS English.</h3>
+        <p class="text-[14px] leading-relaxed text-slate-600">
+          No framework choices, no ceremony, no boilerplate. The model writes intent; the compiler handles the rest. Smaller surface, fewer mis-steps.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Architecture ─── -->
+<section class="py-24 px-6 bg-white border-t border-b border-black/[0.04]">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-14">
+      <p class="text-[12px] font-semibold uppercase tracking-wider text-slate-400 mb-3">How it fits in your loop</p>
+      <h2 class="text-[40px] font-bold tracking-tight text-slate-900">Your editor, your agent, our compiler.</h2>
+    </div>
+
+    <div class="bg-slate-50 rounded-2xl p-10 border border-black/[0.04]">
+      <pre class="font-mono text-[13.5px] leading-[2] text-slate-700 m-0 overflow-x-auto"><span class="tk-cmt-l"># Loop</span>
+
+<span class="tk-kw-l">VSCode / Cursor</span>  →  <span class="tk-kw-l">clear-lsp</span>  →  <span class="tk-kw-l">compile.clearlang.dev</span>
+       ↑                  ↓                       ↓
+       └── diagnostics ───┴── { errors, html, js } ┘
+
+<span class="tk-cmt-l"># Your agent reads + writes .clear files like any other source.</span>
+<span class="tk-cmt-l"># The LSP shows diagnostics inline. The hosted compiler is the</span>
+<span class="tk-cmt-l"># single source of truth — no version drift across machines.</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Install ─── -->
+<section id="install" class="py-24 px-6">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-14">
+      <p class="text-[12px] font-semibold uppercase tracking-wider text-slate-400 mb-3">Install</p>
+      <h2 class="text-[40px] font-bold tracking-tight text-slate-900">Two minutes from zero to first compile.</h2>
+    </div>
+
+    <div class="space-y-6">
+      <!-- Step 1 -->
+      <div class="flex gap-6 items-start">
+        <div class="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[14px] flex-shrink-0 mt-1">1</div>
+        <div class="flex-1">
+          <h3 class="text-[18px] font-semibold text-slate-900 mb-2">Install the CLI.</h3>
+          <p class="text-[14px] text-slate-500 mb-3">Compiles .clear files, scaffolds projects, runs tests. Pure Node, zero dependencies.</p>
+          <div class="install-block">
+            <code>npm install -g clear-cli</code>
+            <span class="text-[11px] text-slate-400 uppercase tracking-wider">Node 18+</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="flex gap-6 items-start">
+        <div class="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[14px] flex-shrink-0 mt-1">2</div>
+        <div class="flex-1">
+          <h3 class="text-[18px] font-semibold text-slate-900 mb-2">Install the editor extension.</h3>
+          <p class="text-[14px] text-slate-500 mb-3">Syntax highlighting, autocomplete, inline diagnostics. Works in VSCode, Cursor, and any editor with an LSP client.</p>
+          <div class="install-block">
+            <code>code --install-extension clearlang.clear-language</code>
+            <span class="text-[11px] text-slate-400 uppercase tracking-wider">VSCode + Cursor</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="flex gap-6 items-start">
+        <div class="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[14px] flex-shrink-0 mt-1">3</div>
+        <div class="flex-1">
+          <h3 class="text-[18px] font-semibold text-slate-900 mb-2">Scaffold a project.</h3>
+          <p class="text-[14px] text-slate-500 mb-3">Opens with a working todo app — auth, database, frontend, tests, all from one .clear file.</p>
+          <div class="install-block">
+            <code>clear init my-app &amp;&amp; cd my-app &amp;&amp; clear serve main.clear</code>
+            <span class="text-[11px] text-slate-400 uppercase tracking-wider">Opens at :3000</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Marcus footer note ─── -->
+<section class="py-20 px-6 bg-gradient-to-br from-indigo-50 via-white to-purple-50 border-t border-black/[0.04]">
+  <div class="max-w-3xl mx-auto text-center">
+    <p class="text-[12px] font-semibold uppercase tracking-wider text-slate-400 mb-4">And one more thing</p>
+    <h2 class="text-[32px] font-bold tracking-tight text-slate-900 mb-4">Non-developers can use it too.</h2>
+    <p class="text-[16px] text-slate-600 mb-8 max-w-2xl mx-auto">The same language, the same compiler, but with a chat-driven Studio for people who don't write code. Watch a business owner ship a real app in 20 minutes — same .clear file your agent would produce.</p>
+    <a href="marcus.html" class="btn-secondary text-[13px] px-5 py-3 rounded-xl font-semibold inline-block">See Clear for business →</a>
+  </div>
+</section>
+
+<!-- ─── Footer ─── -->
+<footer class="py-12 px-6 border-t border-black/[0.04]">
+  <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+    <div class="text-[13px] text-slate-400">© 2026 Clear Language. All rights reserved.</div>
+    <div class="flex items-center gap-6 text-[13px] text-slate-500">
+      <a href="for-developers.html" class="hover:text-slate-900 transition">For developers</a>
+      <a href="marcus.html" class="hover:text-slate-900 transition">For business</a>
+      <a href="pricing.html" class="hover:text-slate-900 transition">Pricing</a>
+      <a href="https://github.com/clearlang" class="hover:text-slate-900 transition">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

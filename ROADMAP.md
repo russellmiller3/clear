@@ -27,13 +27,19 @@ AI coding is roughly half of all frontier-model inference today, and it's growin
 | # | Build | Scope | Why (ties to big picture) |
 |---|-------|-------|---------------------------|
 | **D-1** | ~~Fix `ui's Card()` namespaced component crash in buildHTML~~ **SHIPPED 2026-04-24** | small | Blocker for the entire module story. Can't pitch multi-file to Dave while qualified component calls crash the compiler. Added `getComponentCall()` helper, updated 4 call sites in compiler.js, 3 new regression tests in clear.test.js cycles 9-11. All 8 core templates still green. |
-| **D-2** | Compiler-as-API service (`compile.clearlang.dev`) on Cloudflare Workers + edge deploy | 1-2 weeks | IP protection + usage telemetry + monetization gate. Everything downstream is a thin client to this. Single source of truth for the compiler across Studio, CLI, LSP, extensions. |
-| **D-3** | `clear-lsp` — language server that calls the Compiler API for diagnostics, local syntax-only parser for autocomplete | 2 weeks | Autocomplete + inline diagnostics + go-to-def in every editor simultaneously (VSCode, Cursor, Zed, JetBrains). LSP is the standard protocol; one server unlocks them all. |
-| **D-4** | VSCode + Cursor extension (thin LSP wrapper) | 1 week | Distribution to Dave's turf. He doesn't switch editors; you meet him where he is. Cursor especially — puts Clear directly in the agent loop he already trusts. |
-| **D-5** | Landing hero rewrite: "The language your coding agent writes without retries." Side-by-side demo: JS+Cursor vs Clear, same feature, 1/5 tokens, 1/10 retries. Marcus demo moves below fold. | 2 days | Category-creation positioning. Anchors the dev wedge publicly. |
-| **D-6** | Public launch: HN Show HN post + X thread + one podcast with measurable receipt ("5 devs installed the extension in the first 48h") | 1 day prep + response | Cheapest possible CAC test. If this lands, Dave-first is validated. If it doesn't, cheap lesson. |
+| **D-2** | ~~Compiler-as-API service on Cloudflare Workers~~ **SHIPPED 2026-04-24** | small | `compiler-api/worker.js` + `wrangler.toml` + 12 passing tests. POST /compile wraps `compileProgram()`, supports multi-file via `modules` dict, structured-JSON telemetry, 1MB source cap, permissive CORS. Russell deploys with `wrangler deploy` after pasting his Cloudflare account into wrangler.toml. |
+| **D-3** | ~~`clear-lsp` language server~~ **SHIPPED 2026-04-24** | small | `clear-lsp/` zero-dep LSP. stdio JSON-RPC, calls Compiler API for diagnostics (debounced 400ms), local scan for keyword + component + function + page completions. 13 passing tests covering completions, prefix extraction, JSON-RPC framing (single, multi, split-chunk). |
+| **D-4** | ~~VSCode + Cursor extension~~ **SHIPPED 2026-04-24** | small | `vscode-extension/` thin LSP wrapper. TextMate grammar, language config, manifest with user settings (`clear.compilerApi`, `clear.debounceMs`). 16 structural tests against manifest + grammar + language config. Russell verifies locally with F5 in VSCode (the only manual gate in the chain). |
+| **D-5** | ~~Separate landing page `landing/for-developers.html`~~ **SHIPPED 2026-04-24** | small | New page (NOT a hero rewrite — Marcus homepage stays as-is). Hero "The language your coding agent writes without retries", side-by-side TS+Cursor vs Clear, 4-metric comparison row, 3-step install (CLI + extension + scaffold), Marcus footer note linking back. Nav link added to `marcus.html`. |
+| **D-6** | Public launch: HN Show HN + X thread + 1 podcast with measurable receipt ("5 devs installed in 48h") | small (Russell-only) | Cheapest possible CAC test. If this lands, Dave-first is validated. If not, cheap lesson. |
 
-**Total to a shippable Dave-first v1: ~5-6 weeks.**
+**D-1 through D-5 shipped 2026-04-24.** Local verification gates remaining for Russell:
+1. `cd compiler-api && wrangler deploy` — deploy the worker (needs his Cloudflare account)
+2. `cd vscode-extension && npm install && code --extensionDevelopmentPath=$PWD` — F5 to verify highlighting + autocomplete in real VSCode
+3. `npm publish` clear-lsp + clear-cli + the extension to their respective registries
+4. Open `landing/for-developers.html` in a browser; eyeball the visual; run a Lighthouse pass
+
+After those four gates: D-6 (the launch) is unblocked.
 
 ### What changes for the existing roadmap
 
