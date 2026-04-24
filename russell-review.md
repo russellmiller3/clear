@@ -76,3 +76,29 @@ Format per item: **design choice** / **alternatives I considered** / **evidence 
 - Python emit: `compiler.js` PICK case — currently uses `_r.get('field')`. If your Python Meph apps use objects with attribute access instead, change to `_r.field`.
 - Unknown-field semantics: currently yields `undefined` (JS) / `None` via `.get()` (Python). Alternative: error at compile-time if the source type is statically known. Low priority — JS already handles undefined fine.
 
+---
+
+## 4. Upsert — `upsert X to Y by <field>` (T2 #47)
+
+**Design choice:** `upsert <var> to <Table> by <matchField>` — one statement, explicit match field, polymorphic. Compiles to: findOne({matchField: var[matchField]}) → if exists, update preserving id + re-fetch; else insert. Mutates the source variable via `Object.assign` so `send back X` returns the canonical record either way.
+
+**Alternatives I considered:**
+- **`save X to Y or update by email`** (requests.md's proposed syntax) — reads nicely but three words longer. Rejected for the shorter form; could add this as a synonym later.
+- **`save X as new Y` with auto-upsert-by-unique-field** — too magic. Meph and humans both need to see explicitly that this line can UPDATE a row, not just insert. The explicit `upsert` keyword signals the destructive-on-match semantics.
+- **Auto-detect match field from unique index** — requires the compiler to peek at the schema at the parser level. Fragile. Explicit `by field` is clearer and works with any field, not just uniques.
+
+**Evidence it works:**
+- 4 new tests: findOne by match field, update branch preserves id + re-fetches, insert branch uses `_pick` (mass-assignment protection), non-email match field works.
+- Manual probe: emits sensible `if (_existing) { update } else { insert }` with error wrapping via `_clearTry`.
+- 2468 → 2472 compiler tests, 8 templates clean.
+
+**Where to change it if you disagree:**
+- Syntax: `parser.js` `upsert` handler. Easy to add `save X to Y or update by F` alias later.
+- Match field validation: today any field works, even non-unique ones. If you want to warn when the match field isn't unique in the schema, add a validator check that reads `schemaMap` and looks for `unique` on the field.
+- Emit shape: `compiler.js` CRUD upsert branch. Currently mutates the source variable. If you prefer a return-the-saved-record form (`saved = upsert X ... → saved is the new record, X unchanged`), that's a larger refactor.
+
+**Not checked:**
+- Concurrent upsert race conditions (two requests with the same email at the same time → both hit findOne=null → both insert; one gets a unique-constraint error). Can be hardened later with SQL `ON CONFLICT DO UPDATE`.
+- Cloudflare D1 path (the `compileCrudD1` has its own branches; upsert not wired there yet — follow-up).
+- Python backend upsert — falls through to the "CRUD: upsert" comment. Needs parallel emit.
+

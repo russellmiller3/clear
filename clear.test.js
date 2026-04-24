@@ -13342,6 +13342,38 @@ describe('Security - sensitive data exposure', () => {
 // on type keywords like `amount is number`. Russell's call: Meph's
 // shorthand is natural English — treat it as a missing feature, add it
 // to the language.
+// T2 #47 — upsert. `upsert X to Y by field` — insert if no match,
+// update if match exists. Returns the saved record via Object.assign.
+describe('TIER 2 #47 — upsert X to Y by <field>', () => {
+  const SRC = "target: backend\ncreate a Users table:\n  email, text, unique\n  name\nwhen user calls POST /api/users receiving profile:\n  upsert profile to Users by email\n  send back profile";
+
+  it('emits findOne by match field + branch on existing', () => {
+    const r = compileProgram(SRC);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("await db.findOne('users', { email: profile.email })");
+    expect(r.javascript).toMatch(/if \(_existing_profile\) \{/);
+  });
+
+  it('update branch preserves existing id + re-reads record', () => {
+    const r = compileProgram(SRC);
+    expect(r.javascript).toContain('_picked_upd_profile.id = _existing_profile.id');
+    expect(r.javascript).toMatch(/db\.update\('users',\s*_picked_upd_profile\)/);
+    expect(r.javascript).toMatch(/Object\.assign\(profile, await db\.findOne\('users'/);
+  });
+
+  it('insert branch uses _pick for mass-assignment protection', () => {
+    const r = compileProgram(SRC);
+    expect(r.javascript).toMatch(/db\.insert\('users',\s*_pick\(profile, UsersSchema\)\)/);
+  });
+
+  it('upsert with non-email match field works', () => {
+    const src = "target: backend\ncreate a Settings table:\n  user_id, number\n  theme\nwhen user calls POST /api/settings receiving s:\n  upsert s to Settings by user_id\n  send back s";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('user_id: s.user_id');
+  });
+});
+
 // T2 #44 — field projection: `pick a, b from X`. Returns a new
 // record (or list of records) with only the named fields. Polymorphic
 // via Array.isArray at runtime — callers don't need to branch on shape.

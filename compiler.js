@@ -4400,6 +4400,34 @@ function compileCrud(node, ctx, pad) {
     const where = node.condition ? `, ${conditionToFilter(node.condition, ctx)}` : '';
     return `${pad}await _clearTry(() => db.remove('${table}'${where}), ${removeCtx});${lineComment}`;
   }
+  if (node.operation === 'upsert') {
+    // T2 #47 — upsert X to Table by field. Insert if no row has the
+    // match-field value; update (preserving id) if it exists. Returns
+    // the saved record so callers can `send back X` safely either way.
+    const varCode = sanitizeName(node.variable);
+    const matchField = sanitizeName(node.matchField);
+    const names = ctx.schemaNames || new Set();
+    const pluralized = node.target[0].toUpperCase() + pluralizeName(node.target).slice(1);
+    let schemaName;
+    if (names.has(node.target)) schemaName = node.target + 'Schema';
+    else if (names.has(node.target + 's')) schemaName = node.target + 's' + 'Schema';
+    else if (names.has(pluralized)) schemaName = pluralized + 'Schema';
+    else if (names.has(node.target.replace(/s$/, ''))) schemaName = node.target.replace(/s$/, '') + 'Schema';
+    else schemaName = node.target + 'Schema';
+    const upsertCtx = `{ op: 'upsert', table: '${table}', line: ${node.line}, file: '${node._sourceFile || 'main.clear'}', source: ${JSON.stringify(node._rawSource || '')} }`;
+    return (
+      `${pad}const _existing_${varCode} = await db.findOne('${table}', { ${matchField}: ${varCode}.${matchField} });\n` +
+      `${pad}if (_existing_${varCode}) {\n` +
+      `${pad}  const _picked_upd_${varCode} = _pick(${varCode}, ${schemaName});\n` +
+      `${pad}  _picked_upd_${varCode}.id = _existing_${varCode}.id;\n` +
+      `${pad}  await _clearTry(() => db.update('${table}', _picked_upd_${varCode}), ${upsertCtx});\n` +
+      `${pad}  Object.assign(${varCode}, await db.findOne('${table}', { id: _existing_${varCode}.id }) || {});\n` +
+      `${pad}} else {\n` +
+      `${pad}  const _new_${varCode} = await _clearTry(() => db.insert('${table}', _pick(${varCode}, ${schemaName})), ${upsertCtx});\n` +
+      `${pad}  Object.assign(${varCode}, _new_${varCode} || {});\n` +
+      `${pad}}${lineComment}`
+    );
+  }
   return `${pad}// CRUD: ${node.operation}`;
 }
 

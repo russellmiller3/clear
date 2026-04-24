@@ -1883,6 +1883,38 @@ const CANONICAL_DISPATCH = new Map([
     // Everything else (set x = 5, create person:) → fall through to assignment
     return undefined;
   }],
+  // Upsert (T2 #47): "upsert X to Y by <field>" — insert if no row
+  // has the match field value, otherwise update the existing row.
+  // Compiles to findOne + if/else in the CRUD emit path.
+  ['upsert', (ctx) => {
+    if (ctx.tokens.length >= 5) {
+      // upsert <var> to <Table> by <field>
+      const varTok = ctx.tokens[1];
+      // Find `to` and `by`
+      let toPos = -1, byPos = -1;
+      for (let k = 2; k < ctx.tokens.length; k++) {
+        if (ctx.tokens[k].canonical === 'to_connector' && toPos < 0) toPos = k;
+        if (ctx.tokens[k].value === 'by' && toPos > 0 && byPos < 0) { byPos = k; break; }
+      }
+      if (varTok && toPos > 0 && byPos > toPos && toPos + 1 < ctx.tokens.length && byPos + 1 < ctx.tokens.length) {
+        const variable = varTok.value;
+        const target = ctx.tokens[toPos + 1].value;
+        const matchField = ctx.tokens[byPos + 1].value;
+        ctx.body.push({
+          type: NodeType.CRUD,
+          operation: 'upsert',
+          variable,
+          target,
+          matchField,
+          line: ctx.line,
+          _sourceFile: ctx.sourceFile || 'main.clear',
+          _rawSource: ctx.lines[ctx.i]?.raw || '',
+        });
+        return ctx.i + 1;
+      }
+    }
+    return undefined;
+  }],
   // `table X:` shorthand — route to parseDataShape without the `create a`
   // prefix. Session 45 friction data showed Meph frequently reached for this
   // form (items #6 + #7, 12 rows combined) expecting it to work because

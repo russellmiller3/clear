@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Upsert: `upsert X to Y by <field>` (TIER 2 #47)
+
+Genuinely missing syntax. The canonical workaround was `look up X where email is Y's email` → `if X is nothing: save Y as new Y else save Y to Y`. Ugly and easy to get wrong.
+
+New: `upsert profile to Users by email` — one statement. Parser: new `upsert` keyword handler builds a CRUD node with `operation='upsert'` + `matchField='email'`. Compiler: emits findOne by match field → if exists, update preserving id + re-fetch; else insert with `_pick` mass-assignment protection. Either path uses `_clearTry` for consistent error wrapping.
+
+```clear
+when user calls POST /api/users receiving profile:
+  upsert profile to Users by email
+  send back profile
+```
+
+The source variable gets updated via `Object.assign` so `send back X` returns the canonical record either way — callers don't need to branch on insert-vs-update.
+
+4 new tests: findOne emission, update-branch id preservation + re-fetch, insert-branch mass-assign protection, non-email match field. 2468 → 2472 green, zero regressions, 8 templates clean.
+
+Closes TIER 2 #47. Follow-ups: Cloudflare D1 upsert path, Python backend parallel emit, `save X to Y or update by email` alias.
+
+---
+
 ## 2026-04-24 — Field projection: `pick a, b from X` (TIER 2 #44)
 
 Missing syntax — requests.md asked for `transform X to include only a, b`. Shipped a cleaner expression form: `pick a, b, c from X` returns a new record (or list of records) with only those fields.
