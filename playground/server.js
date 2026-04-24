@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import { createHash } from 'crypto';
 import { chromium } from 'playwright';
-import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken } from './eval-auth.js';
+import { EVAL_JWT_SECRET, mintEvalAuthToken, mintLegacyEvalAuthToken, verifyLegacyEvalAuthToken } from './eval-auth.js';
 import { wireDeploy } from './deploy.js';
 import { FactorDB } from './supervisor/factor-db.js';
 import { classifyArchetype } from './supervisor/archetype.js';
@@ -129,28 +129,20 @@ try {
 
 // Middleware that populates req.user from a Bearer JWT using Studio's
 // existing eval secret. Matches the shape runtime/auth.js produces.
+//
+// Security: uses verifyLegacyEvalAuthToken which constant-time compares the
+// HMAC-SHA256 signature, rejects expired tokens, rejects malformed tokens.
+// Before Session 44, this middleware parsed the payload WITHOUT verifying
+// the signature — anyone with the token shape could forge {"role":"owner"}
+// and pass the downstream owner-gate. Verify + timing-safe compare closes
+// that hole.
 function liveEditAuth(req, res, next) {
   const h = req.headers.authorization || '';
   if (!h.startsWith('Bearer ')) {
     req.user = null;
     return next();
   }
-  const token = h.slice(7);
-  const parts = token.split('.');
-  if (parts.length !== 2) {
-    req.user = null;
-    return next();
-  }
-  try {
-    const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
-    if (payload.exp && payload.exp < Date.now()) {
-      req.user = null;
-    } else {
-      req.user = payload;
-    }
-  } catch {
-    req.user = null;
-  }
+  req.user = verifyLegacyEvalAuthToken(h.slice(7));
   next();
 }
 
