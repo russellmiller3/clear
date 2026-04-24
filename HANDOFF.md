@@ -1,25 +1,66 @@
 # Handoff — 2026-04-23 (session 44 — Cloudflare Phases 1–7 shipped + sweep flywheel: 2 root-cause fixes shipped to main)
 
-## 🔬 Tonight / Next Session: Research Work (READ THIS FIRST)
+## 🎯 Next Session: Two Parallel Tracks (READ THIS FIRST)
 
-**Primary reference for flywheel/training context:** [`RESEARCH.md`](RESEARCH.md) — specifically the **Session 44** section at the bottom. That's the current measurement-state-of-the-art and explains what we know, what we don't, and what experiment answers the open question.
+Two tracks to run. Track 1 is research and tonight-only ($0, fast). Track 2 is the flagship feature (Live App Editing → Cloud). The user journey we're building is:
 
-**The open question:** Re-ranker is learning offline (val_auc 0.96), hints are being delivered, Meph says they're helpful — but **we have zero evidence they actually lift his pass rate on live sweeps.** Observational data is confounded by selection bias (hints fire on hard tasks). The honest A/B has never been run.
+```
+ Cloud Studio ──deploy──► running on CF ──live-edit──► ship change in ~2s
+ (Marcus builds            (Phases 1-7                 (THIS is the
+  with Meph)                shipped; P8 paperwork      differentiator)
+                            waits on Russell)
+```
 
-**Tonight's agenda (in order):**
+**Track 1 is tonight. Track 2 is "start on the next session, no API cost, ~1 week."**
 
-1. **Ship transcript persistence** — `cc-agent.js` already writes `/tmp/ghost-meph-last-stream.ndjson` when `GHOST_MEPH_CC_DEBUG=1`. Make it unconditional, path per session (`playground/sessions/<session-id>.ndjson`). ~10 lines. Enables deterministic replay of past sessions with different hints — $0, seconds per "run."
+---
+
+### Track 1 — Research: measure if hints actually help Meph (tonight, ~1 hour, $0)
+
+**Primary reference:** [`RESEARCH.md`](RESEARCH.md) — **Session 44** section at the bottom.
+
+**The open question:** Re-ranker is learning offline (val_auc 0.96), hints are delivered, Meph says they're helpful — but we have zero evidence they lift his live pass rate. Observational data is confounded by selection bias. Honest A/B never run.
+
+**Steps (in order):**
+1. **Ship transcript persistence** — `cc-agent.js` already writes `/tmp/ghost-meph-last-stream.ndjson` when `GHOST_MEPH_CC_DEBUG=1`. Make it unconditional, path per session (`playground/sessions/<session-id>.ndjson`). ~10 lines. Enables deterministic replay of past sessions with different hints.
 2. **Add hint-toggle env flag** — `CLEAR_HINT_DISABLE=1` short-circuits hint-injection in `/api/chat`. Unit-test it.
 3. **Run 40-trial paired A/B** — counter + todo-crud, 10 trials per condition per task. ~1 hour, $0. Post pass-rate table.
-4. **Write up result in RESEARCH.md** — positive, negative, or null, record it with numbers. A null result is publishable.
+4. **Write up result in RESEARCH.md** — positive, negative, or null, record it with numbers.
 
-**Why this shape:** Session 41 blew $50 chasing metric shifts inside noise. Budget-first rule now says: single falsifiable hypothesis, pre-estimated cost, capped runs. The 40-trial design is calibrated to that rule.
+Session 41 blew $50 chasing metric shifts inside noise. Budget-first rule: single falsifiable hypothesis, pre-estimated cost, capped runs. The 40-trial design is calibrated to that rule.
 
-**Read order for the next session:**
+---
+
+### Track 2 — Flagship feature: Live App Editing (next session, ~1 week)
+
+**This is the differentiator nobody else has.** Marcus talks to a running app ("add a field called email"), classifier enforces additive-only safety, change ships live. Plan already exists at [`plans/plan-live-editing-phase-a-04-18-2026.md`](plans/plan-live-editing-phase-a-04-18-2026.md) (299 lines, April 18).
+
+**The order we landed on this session (2026-04-23):**
+
+| Order | Plan | Why |
+|---|---|---|
+| 1 | **LAE Phase A** (`plans/plan-live-editing-phase-a-04-18-2026.md`) | 299-line plan already thought through. Targets LOCAL running apps — zero dependency on CF paperwork. Proves classifier + chat UX + additive-only semantics. |
+| 2 | **LAE Phase B+** (cloud shipping) | Once LAE works locally, add cloud-shipping. This absorbs the "one-click updates" plan I wrote today (`plans/plan-one-click-updates-04-23-2026.md` — 470 lines, covers incremental redeploy, tenants-db versions schema, migration-safety gate, rollback UX). Don't ship that plan standalone; fold it into LAE Phase B. |
+
+**Why this ordering:**
+- LAE Phase A proves the user-visible differentiation FAST (local loop, no CF).
+- Phase B wires in the cloud-shipping path once Phase A works AND your CF paperwork is done.
+- Building cloud-first would block everything on the Phase 8 prereq; local-first unblocks the agent.
+
+**How to start Track 2 on the next session:**
+1. Read [`plans/plan-live-editing-phase-a-04-18-2026.md`](plans/plan-live-editing-phase-a-04-18-2026.md) end-to-end.
+2. Decide: is it current (no drift since April 18)? Needs red-team? Run `/pres plans/plan-live-editing-phase-a-04-18-2026.md`.
+3. Treat `plans/plan-one-click-updates-04-23-2026.md` as **Phase B preview** — don't execute it, reference it when drafting Phase B.
+
+---
+
+### Read order for the next session
+
 1. This block (you're here).
-2. [`RESEARCH.md` — Session 44 section](RESEARCH.md) — plan + why.
+2. [`RESEARCH.md` — Session 44 section](RESEARCH.md) — Track 1 plan + why.
 3. [`learnings.md` — Session 44 section](learnings.md) — engineering gotchas (stdin race, grader path).
-4. Ship steps 1-3 above, record result.
+4. Run Track 1 steps 1-3 above, record result in RESEARCH.md.
+5. Then read [`plans/plan-live-editing-phase-a-04-18-2026.md`](plans/plan-live-editing-phase-a-04-18-2026.md) — Track 2 starts here.
 
 ---
 
