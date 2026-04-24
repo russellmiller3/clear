@@ -58,6 +58,14 @@
 
 **5. Self-play synthetic task generation (SK-5).** Scoping pass first: write `plans/plan-self-play-synthetic-tasks-DATE.md` that designs a meta-Meph agent that (a) generates app specs from a prompt library + archetype priors, (b) hands specs to Meph via the existing sweep machinery, (c) grades outcomes via the Factor DB's existing test-pass pipeline, (d) feeds failed specs back as next-level curriculum, (e) runs overnight unattended. AlphaGo-shaped — unlimited training data without humans. Implementation is ~a week; scoping is one evening. Execute only after (1)-(4) land.
 
+**6. Four more hooks queued (from Session 44 mining pass).** Each ~30 min once approved. Building all four closes the "enforce rules mechanically, not by memory" loop for this repo:
+   - **Template smoke test after parser/synonyms/compiler edits** (PostToolUse) — auto-runs the 8-core-template compile check from CLAUDE.md. Session 10/11 documented synonym traps that unit tests miss but templates catch.
+   - **`SYNONYM_VERSION` bump enforcer** (PostToolUse on synonyms.js) — checks git diff for the version bump; warns if absent. Prevents cache-staleness bugs documented in Session 11.
+   - **Plans-directory redirect** (PreToolUse on Write matching `*plan*.md`) — if path isn't under `plans/`, inject warning. User-memory rule; corrected 4+ times.
+   - **Factor-DB pre-commit guard** (PreToolUse on Bash matching `git commit`) — checks WAL has checkpointed + .sqlite changes are staged intentionally. Session 38 lost 343 training rows to this exact failure class.
+
+**7. Periodic hook-miner (SessionStart, 7-day gate).** `.claude/hooks/propose-new-hooks.mjs` scans learnings.md for "bit us" / "gotcha-as-rule" / "cost us" language AND compares against already-installed hooks, surfaces the top N proposals. Automates the "what else should we hook?" question. **Already shipped in this commit chain — will self-propose additions going forward.**
+
 ### Later (post-queue, still ranked)
 
 - **Tiny-model distillation (SK-6)** — ~\$500-5000 first experiment, fine-tune Qwen/Llama on 10K Meph traces. Frame for the company-moat result: "Clear runs at 1/100 the cost of frontier models." Unblock after self-play has generated enough training data.

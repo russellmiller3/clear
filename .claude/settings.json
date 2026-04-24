@@ -19,6 +19,18 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/propose-new-hooks.mjs",
+            "timeout": 10,
+            "statusMessage": "Scanning learnings.md for new hook candidates..."
+          }
+        ]
+      }
     ]
   }
 }

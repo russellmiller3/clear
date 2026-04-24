@@ -32,3 +32,4 @@ apps/*/build/clear-runtime/
 .clear-serve/
 tests/*/build/clear-runtime/
 tests/guard-bugs/*/build/clear-runtime/
+.claude/.hook-proposal-stamp
