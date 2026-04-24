@@ -804,3 +804,17 @@ the debugging tool.
 
 Bad: `Error: Unexpected token at line 5`
 Good: `Line 5: 'send back' needs a value to return. Example: send back result — see Syntax Reference > Endpoints`
+
+## Rule 17: Safety Properties Are Cross-Target
+
+Any safety property Clear promises — timeouts, retries, bounded loops, depth caps, input validation, auth enforcement — must hold **in every compiled target**. Node, Python FastAPI, Cloudflare Workers, browser, and any future target ship with the same guarantee or the promise is hollow.
+
+An author writes a single Clear program. The compiler decides which backend it lands on. If `ask claude` retries transient failures on Node but silently gives up on Workers, the same program has two different reliability profiles — and the author has no way to know which one their deployment got. That's a foot-gun by target-routing. Worse: the author can't even test it because their dev machine hits one path and production hits another.
+
+**When adding or changing a runtime safety property:**
+- Update every target's emission in the same commit (search `compiler.js` for every `_askAI` / `_ask_ai` / `_clearError` / equivalent helper variant, plus the Workers twins and the browser-proxy twins).
+- If a target *can't* support the property (e.g. Workers has no `/tmp`), either find a target-native equivalent or document the gap explicitly in `intent.md` and surface a compile-time warning when that target is selected.
+- Never leave a target behind with "we'll add it to Python later" — that's how the promise drifts.
+- Tests assert the property in every target's emission, not just the most-used one.
+
+The 14-year-old reader doesn't know what target their program compiles to. They don't read about Workers vs Node. They read `ask claude 'hi'` and trust that it hangs-gracefully and retries-transient-errors everywhere. Clear's job is to make that trust correct.

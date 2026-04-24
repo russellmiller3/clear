@@ -24452,6 +24452,41 @@ describe('Weak assertion lint — single assertion yellow flag', () => {
   });
 });
 
+describe('AI helpers — exponential-backoff retry (Session 46)', () => {
+  it('emits retry loop in _askAI (Node target)', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Three retry markers: the comment, the attempt loop, and the backoff math
+    expect(r.serverJS).toContain('exponential-backoff retry');
+    expect(r.serverJS).toContain('_attempt < 3');
+    expect(r.serverJS).toContain('Math.pow(2, _attempt)');
+  });
+  it('retry loop retries on 429 and 5xx but not on 4xx', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    // The retry gate: r.status === 429 || r.status >= 500
+    expect(r.serverJS).toMatch(/r\.status === 429 \|\| r\.status >= 500/);
+  });
+  it('retry loop caps backoff at 8 seconds', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    expect(r.serverJS).toContain('Math.min(1000 * Math.pow(2, _attempt), 8000)');
+  });
+  it('retry loop treats AbortError + network failures as transient', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    expect(r.serverJS).toMatch(/err\.name === 'AbortError'/);
+    expect(r.serverJS).toMatch(/fetch failed\|ECONNREFUSED\|ETIMEDOUT/);
+  });
+  it('compiled server JS is syntactically valid', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    // Throws if invalid
+    new Function(r.serverJS);
+  });
+});
+
 // Live App Editing — Phase A test files
 await import('./lib/change-classifier.test.js');
 await import('./lib/live-edit-auth.test.js');

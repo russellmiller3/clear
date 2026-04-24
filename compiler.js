@@ -405,27 +405,41 @@ export const UTILITY_FUNCTIONS = [
     if (!jsonMatch) throw new Error("AI did not return valid JSON. Response: " + text.slice(0, 200));
     try { return JSON.parse(jsonMatch[0]); } catch (e) { throw new Error("AI returned invalid JSON: " + e.message + ". Response: " + text.slice(0, 200)); }
   }
-  // Use fetch (works in most environments). If behind a proxy, fall back to curl.
-  try {
-    const r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(30000) });
-    if (!r.ok) { const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e); }
-    const data = await r.json();
-    return parseResult(data.content[0].text);
-  } catch (fetchErr) {
-    if (!process.env.HTTP_PROXY && !process.env.HTTPS_PROXY && !process.env.http_proxy) throw fetchErr;
-    // Proxy environment: fetch may not respect HTTP_PROXY, fall back to curl
-    const { execSync } = require("child_process");
-    const tmp = "/tmp/_askAI_" + Date.now() + ".json";
-    require("fs").writeFileSync(tmp, payload);
+  // Fetch with exponential-backoff retry on 429 / 5xx / network timeouts.
+  // Delays: 1s, 2s, 4s (capped at 8s). 4xx user errors surface immediately.
+  let lastFetchErr = null;
+  for (let _attempt = 0; _attempt <= 3; _attempt++) {
     try {
-      const hdr = Object.entries(headers).map(([k,v]) => '-H "' + k + ": " + v + '"').join(" ");
-      const out = execSync('curl -s -X POST ' + hdr + ' -d @' + tmp + ' "' + endpoint + '"', { encoding: "utf8", timeout: 30000 });
-      require("fs").unlinkSync(tmp);
-      const data = JSON.parse(out);
-      if (data.error) throw new Error("AI error: " + data.error.message);
-      return parseResult(data.content[0].text);
-    } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
+      const r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(30000) });
+      if (r.ok) { const data = await r.json(); return parseResult(data.content[0].text); }
+      if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {
+        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+        continue;
+      }
+      const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e);
+    } catch (err) {
+      lastFetchErr = err;
+      const transient = err.name === 'AbortError' || err.code === 'ECONNRESET' || /fetch failed|ECONNREFUSED|ETIMEDOUT/.test(err.message || '');
+      if (_attempt < 3 && transient) {
+        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+        continue;
+      }
+      break;
+    }
   }
+  // Proxy fallback: fetch may not respect HTTP_PROXY, fall back to curl.
+  if (!process.env.HTTP_PROXY && !process.env.HTTPS_PROXY && !process.env.http_proxy) throw lastFetchErr;
+  const { execSync } = require("child_process");
+  const tmp = "/tmp/_askAI_" + Date.now() + ".json";
+  require("fs").writeFileSync(tmp, payload);
+  try {
+    const hdr = Object.entries(headers).map(([k,v]) => '-H "' + k + ": " + v + '"').join(" ");
+    const out = execSync('curl -s -X POST ' + hdr + ' -d @' + tmp + ' "' + endpoint + '"', { encoding: "utf8", timeout: 30000 });
+    require("fs").unlinkSync(tmp);
+    const data = JSON.parse(out);
+    if (data.error) throw new Error("AI error: " + data.error.message);
+    return parseResult(data.content[0].text);
+  } catch (curlErr) { try { require("fs").unlinkSync(tmp); } catch(_) {} throw curlErr; }
 }`, deps: [] },
   { name: '_askAIWithTools', code: `async function _askAIWithTools(prompt, context, tools, toolFns, model) {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLEAR_AI_KEY;
@@ -436,11 +450,34 @@ export const UTILITY_FUNCTIONS = [
   const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === "string" ? context : JSON.stringify(context)) : prompt;
   const messages = [{ role: "user", content: userContent }];
   const maxTurns = 10;
+  // One API call with exponential-backoff retry on 429/5xx/network timeouts.
+  // Delays: 1s, 2s, 4s (capped at 8s). 4xx user errors surface immediately.
+  const _callOnce = async (payload) => {
+    let lastErr = null;
+    for (let _attempt = 0; _attempt <= 3; _attempt++) {
+      try {
+        const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
+        if (r.ok) return await r.json();
+        if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {
+          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+          continue;
+        }
+        const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e);
+      } catch (err) {
+        lastErr = err;
+        const transient = err.name === 'AbortError' || err.code === 'ECONNRESET' || /fetch failed|ECONNREFUSED|ETIMEDOUT/.test(err.message || '');
+        if (_attempt < 3 && transient) {
+          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastErr;
+  };
   for (let i = 0; i < maxTurns; i++) {
     const payload = { model: _model, max_tokens: 4096, messages, tools };
-    const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
-    if (!r.ok) { const e = await r.text(); throw new Error("AI request failed: " + r.status + " " + e); }
-    const data = await r.json();
+    const data = await _callOnce(payload);
     const msg = data.content;
     messages.push({ role: "assistant", content: msg });
     const toolUses = msg.filter(b => b.type === "tool_use");
@@ -467,8 +504,29 @@ export const UTILITY_FUNCTIONS = [
   const content = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
   const payload = JSON.stringify({ model: model || "claude-sonnet-4-20250514", max_tokens: 4096, stream: true, messages: [{ role: "user", content }] });
   const headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
-  const r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(60000) });
-  if (!r.ok) { const e = await r.text(); throw new Error("AI stream failed: " + r.status + " " + e); }
+  // Retry only the initial connect on 429 / 5xx / network timeouts. Once the
+  // stream starts yielding chunks we can't retry mid-stream.
+  let r = null, lastErr = null;
+  for (let _attempt = 0; _attempt <= 3; _attempt++) {
+    try {
+      r = await fetch(endpoint, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(60000) });
+      if (r.ok) break;
+      if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {
+        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+        continue;
+      }
+      const e = await r.text(); throw new Error("AI stream failed: " + r.status + " " + e);
+    } catch (err) {
+      lastErr = err;
+      const transient = err.name === 'AbortError' || err.code === 'ECONNRESET' || /fetch failed|ECONNREFUSED|ETIMEDOUT/.test(err.message || '');
+      if (_attempt < 3 && transient) {
+        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  if (!r || !r.ok) throw lastErr || new Error("AI stream: all retries exhausted");
   const reader = r.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -786,10 +844,28 @@ function _askAI_parseResult(text, schema) {
   }
   const content = _askAI_core(prompt, context, schema);
   const payload = JSON.stringify({ model: model || 'claude-sonnet-4-20250514', max_tokens: 1024, messages: [{ role: 'user', content }] });
-  const r = await fetch(endpoint, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(30000) });
-  if (!r.ok) { const e = await r.text(); throw new Error('AI request failed: ' + r.status + ' ' + e); }
-  const data = await r.json();
-  return _askAI_parseResult(data.content[0].text, schema);
+  // Exponential-backoff retry on 429 / 5xx / network timeouts. 1s, 2s, 4s (cap 8s).
+  let lastErr = null;
+  for (let _attempt = 0; _attempt <= 3; _attempt++) {
+    try {
+      const r = await fetch(endpoint, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(30000) });
+      if (r.ok) { const data = await r.json(); return _askAI_parseResult(data.content[0].text, schema); }
+      if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {
+        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+        continue;
+      }
+      const e = await r.text(); throw new Error('AI request failed: ' + r.status + ' ' + e);
+    } catch (err) {
+      lastErr = err;
+      const transient = err.name === 'AbortError' || /fetch failed|ECONNREFUSED|ETIMEDOUT/.test(err.message || '');
+      if (_attempt < 3 && transient) {
+        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 }`, deps: ['_askAI_core'] },
 
   { name: '_askAIWithTools_workers', code: `async function _askAIWithTools_workers(env, prompt, context, tools, toolFns, model) {
@@ -808,11 +884,33 @@ function _askAI_parseResult(text, schema) {
   const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === 'string' ? context : JSON.stringify(context)) : prompt;
   const messages = [{ role: 'user', content: userContent }];
   const maxTurns = 10;
+  // One API call with exponential-backoff retry on 429/5xx/network timeouts.
+  const _callOnce = async (payload) => {
+    let lastErr = null;
+    for (let _attempt = 0; _attempt <= 3; _attempt++) {
+      try {
+        const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
+        if (r.ok) return await r.json();
+        if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {
+          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+          continue;
+        }
+        const e = await r.text(); throw new Error('AI request failed: ' + r.status + ' ' + e);
+      } catch (err) {
+        lastErr = err;
+        const transient = err.name === 'AbortError' || /fetch failed|ECONNREFUSED|ETIMEDOUT/.test(err.message || '');
+        if (_attempt < 3 && transient) {
+          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastErr;
+  };
   for (let i = 0; i < maxTurns; i++) {
     const payload = { model: _model, max_tokens: 4096, messages, tools };
-    const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60000) });
-    if (!r.ok) { const e = await r.text(); throw new Error('AI request failed: ' + r.status + ' ' + e); }
-    const data = await r.json();
+    const data = await _callOnce(payload);
     const msg = data.content;
     messages.push({ role: 'assistant', content: msg });
     const toolUses = msg.filter(b => b.type === 'tool_use');
@@ -852,8 +950,28 @@ function _askAI_parseResult(text, schema) {
   return new ReadableStream({
     async start(controller) {
       try {
-        const r = await fetch(endpoint, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(60000) });
-        if (!r.ok) { const e = await r.text(); controller.error(new Error('AI stream failed: ' + r.status + ' ' + e)); return; }
+        // Retry initial connect on 429/5xx/network timeouts; cannot retry mid-stream.
+        let r = null, lastErr = null;
+        for (let _attempt = 0; _attempt <= 3; _attempt++) {
+          try {
+            r = await fetch(endpoint, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(60000) });
+            if (r.ok) break;
+            if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {
+              await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+              continue;
+            }
+            const e = await r.text(); controller.error(new Error('AI stream failed: ' + r.status + ' ' + e)); return;
+          } catch (err) {
+            lastErr = err;
+            const transient = err.name === 'AbortError' || /fetch failed|ECONNREFUSED|ETIMEDOUT/.test(err.message || '');
+            if (_attempt < 3 && transient) {
+              await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));
+              continue;
+            }
+            controller.error(err); return;
+          }
+        }
+        if (!r || !r.ok) { controller.error(lastErr || new Error('AI stream: all retries exhausted')); return; }
         const reader = r.body.getReader();
         const decoder = new TextDecoder();
         const encoder = new TextEncoder();
@@ -12042,17 +12160,39 @@ function compileToBrowserServer(body, errors) {
   lines.push('  return new Response(JSON.stringify({ error: "Not found: " + method + " " + path }), { status: 404, headers: { "Content-Type": "application/json" }});');
   lines.push('};');
 
-  // Override _askAI for browser: route through proxy endpoint instead of direct Anthropic call
+  // Override _askAI for browser: route through proxy endpoint instead of direct Anthropic call.
+  // Exponential-backoff retry (PHILOSOPHY Rule 17: cross-target safety). Delays 1s, 2s, 4s (cap 8s).
   lines.push('');
   lines.push('// Browser AI proxy — calls /api/ai-proxy instead of Anthropic directly');
   lines.push('async function _askAI(prompt, context, schema) {');
   lines.push('  const proxyUrl = window._clearAIProxy || "/api/ai-proxy";');
   lines.push('  const schemaObj = schema ? Object.fromEntries(schema.map(f => [f.name, f.type || "text"])) : null;');
-  lines.push('  const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, context, schema: schemaObj }) });');
-  lines.push('  const data = await r.json();');
-  lines.push('  if (!r.ok) throw new Error(data.error || "AI request failed");');
-  lines.push('  if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
-  lines.push('  return data.result;');
+  lines.push('  const body = JSON.stringify({ prompt, context, schema: schemaObj });');
+  lines.push('  let lastErr = null;');
+  lines.push('  for (let _attempt = 0; _attempt <= 3; _attempt++) {');
+  lines.push('    try {');
+  lines.push('      const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body });');
+  lines.push('      const data = await r.json();');
+  lines.push('      if (r.ok) {');
+  lines.push('        if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
+  lines.push('        return data.result;');
+  lines.push('      }');
+  lines.push('      if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {');
+  lines.push('        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));');
+  lines.push('        continue;');
+  lines.push('      }');
+  lines.push('      throw new Error(data.error || "AI request failed");');
+  lines.push('    } catch (err) {');
+  lines.push('      lastErr = err;');
+  lines.push('      const transient = err.name === "TypeError" || /fetch|network/i.test(err.message || "");');
+  lines.push('      if (_attempt < 3 && transient) {');
+  lines.push('        await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));');
+  lines.push('        continue;');
+  lines.push('      }');
+  lines.push('      throw err;');
+  lines.push('    }');
+  lines.push('  }');
+  lines.push('  throw lastErr;');
   lines.push('}');
 
   // Browser _askAIWithTools — agentic loop via proxy
@@ -12064,10 +12204,33 @@ function compileToBrowserServer(body, errors) {
     lines.push('  const proxyUrl = window._clearAIProxy || "/api/ai-proxy";');
     lines.push('  const userContent = context ? prompt + "\\n\\nContext: " + (typeof context === "string" ? context : JSON.stringify(context)) : prompt;');
     lines.push('  const messages = [{ role: "user", content: userContent }];');
+    // Exponential-backoff retry for each API call (PHILOSOPHY Rule 17).
+    lines.push('  const _callOnce = async (body) => {');
+    lines.push('    let lastErr = null;');
+    lines.push('    for (let _attempt = 0; _attempt <= 3; _attempt++) {');
+    lines.push('      try {');
+    lines.push('        const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body });');
+    lines.push('        const data = await r.json();');
+    lines.push('        if (r.ok) return data;');
+    lines.push('        if (_attempt < 3 && (r.status === 429 || r.status >= 500)) {');
+    lines.push('          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));');
+    lines.push('          continue;');
+    lines.push('        }');
+    lines.push('        throw new Error(data.error || "AI request failed");');
+    lines.push('      } catch (err) {');
+    lines.push('        lastErr = err;');
+    lines.push('        const transient = err.name === "TypeError" || /fetch|network/i.test(err.message || "");');
+    lines.push('        if (_attempt < 3 && transient) {');
+    lines.push('          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, _attempt), 8000)));');
+    lines.push('          continue;');
+    lines.push('        }');
+    lines.push('        throw err;');
+    lines.push('      }');
+    lines.push('    }');
+    lines.push('    throw lastErr;');
+    lines.push('  };');
     lines.push('  for (let i = 0; i < 10; i++) {');
-    lines.push('    const r = await _origFetch(proxyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: null, messages, tools, model }) });');
-    lines.push('    const data = await r.json();');
-    lines.push('    if (!r.ok) throw new Error(data.error || "AI request failed");');
+    lines.push('    const data = await _callOnce(JSON.stringify({ prompt: null, messages, tools, model }));');
     lines.push('    if (data.remaining != null && window._onAICallUsed) window._onAICallUsed(data.remaining);');
     lines.push('    if (data.result && typeof data.result === "string") return data.result;');
     lines.push('    const msg = data.content || [];');
@@ -12203,6 +12366,9 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('import httpx');
     lines.push('');
     lines.push('async def _ask_ai(prompt, context=None, schema=None, model=None):');
+    lines.push('    # Exponential-backoff retry on 429/5xx/network timeouts (PHILOSOPHY Rule 17).');
+    lines.push('    # Delays: 1s, 2s, 4s (capped at 8s). 4xx user errors surface immediately.');
+    lines.push('    import asyncio');
     lines.push('    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLEAR_AI_KEY")');
     lines.push('    if not key: raise Exception("Set ANTHROPIC_API_KEY environment variable")');
     lines.push('    endpoint = os.environ.get("CLEAR_AI_ENDPOINT", "https://api.anthropic.com/v1/messages")');
@@ -12213,10 +12379,27 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('        content += f"\\n\\nRespond with ONLY a JSON object: {{{fields}}}"');
     lines.push('    payload = {"model": model or "claude-sonnet-4-20250514", "max_tokens": 1024, "messages": [{"role": "user", "content": content}]}');
     lines.push('    headers = {"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}');
-    lines.push('    async with httpx.AsyncClient(timeout=30) as client:');
-    lines.push('        r = await client.post(endpoint, json=payload, headers=headers)');
-    lines.push('        r.raise_for_status()');
-    lines.push('        text = r.json()["content"][0]["text"]');
+    lines.push('    last_err = None');
+    lines.push('    text = None');
+    lines.push('    for _attempt in range(4):');
+    lines.push('        try:');
+    lines.push('            async with httpx.AsyncClient(timeout=30) as client:');
+    lines.push('                r = await client.post(endpoint, json=payload, headers=headers)');
+    lines.push('            if r.status_code == 200:');
+    lines.push('                text = r.json()["content"][0]["text"]');
+    lines.push('                break');
+    lines.push('            if _attempt < 3 and (r.status_code == 429 or r.status_code >= 500):');
+    lines.push('                await asyncio.sleep(min(1 * (2 ** _attempt), 8))');
+    lines.push('                continue');
+    lines.push('            r.raise_for_status()');
+    lines.push('        except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as err:');
+    lines.push('            last_err = err');
+    lines.push('            if _attempt < 3:');
+    lines.push('                await asyncio.sleep(min(1 * (2 ** _attempt), 8))');
+    lines.push('                continue');
+    lines.push('            raise');
+    lines.push('    if text is None:');
+    lines.push('        raise last_err or Exception("AI request failed: retries exhausted")');
     lines.push('    if not schema: return text');
     lines.push('    import re as _re');
     lines.push('    m = _re.search(r"\\{[\\s\\S]*\\}", text)');
@@ -12227,6 +12410,9 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     if (hasStreamingAgent) {
     lines.push('async def _ask_ai_stream(prompt, context=None, model=None):');
     lines.push('    """Async generator — yields text chunks from Anthropic streaming API."""');
+    lines.push('    # Retry only the initial connect on 429/5xx/network timeouts (PHILOSOPHY Rule 17).');
+    lines.push('    # Cannot retry mid-stream — once chunks start flowing, errors surface to the caller.');
+    lines.push('    import asyncio');
     lines.push('    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLEAR_AI_KEY")');
     lines.push('    if not key: raise Exception("Set ANTHROPIC_API_KEY environment variable")');
     lines.push('    endpoint = os.environ.get("CLEAR_AI_ENDPOINT", "https://api.anthropic.com/v1/messages")');
@@ -12234,22 +12420,37 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('    if context: content += "\\n\\nContext: " + (context if isinstance(context, str) else json.dumps(context))');
     lines.push('    payload = {"model": model or "claude-sonnet-4-20250514", "max_tokens": 4096, "stream": True, "messages": [{"role": "user", "content": content}]}');
     lines.push('    headers = {"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}');
-    lines.push('    async with httpx.AsyncClient(timeout=60) as client:');
-    lines.push('        async with client.stream("POST", endpoint, json=payload, headers=headers) as r:');
-    lines.push('            r.raise_for_status()');
-    lines.push('            buffer = ""');
-    lines.push('            async for chunk in r.aiter_text():');
-    lines.push('                buffer += chunk');
-    lines.push('                while "\\n" in buffer:');
-    lines.push('                    line, buffer = buffer.split("\\n", 1)');
-    lines.push('                    if not line.startswith("data: "): continue');
-    lines.push('                    data = line[6:]');
-    lines.push('                    if data == "[DONE]": return');
-    lines.push('                    try:');
-    lines.push('                        evt = json.loads(data)');
-    lines.push('                        if evt.get("type") == "content_block_delta" and evt.get("delta", {}).get("text"):');
-    lines.push('                            yield evt["delta"]["text"]');
-    lines.push('                    except json.JSONDecodeError: pass');
+    lines.push('    last_err = None');
+    lines.push('    for _attempt in range(4):');
+    lines.push('        try:');
+    lines.push('            async with httpx.AsyncClient(timeout=60) as client:');
+    lines.push('                async with client.stream("POST", endpoint, json=payload, headers=headers) as r:');
+    lines.push('                    if r.status_code != 200:');
+    lines.push('                        if _attempt < 3 and (r.status_code == 429 or r.status_code >= 500):');
+    lines.push('                            await asyncio.sleep(min(1 * (2 ** _attempt), 8))');
+    lines.push('                            continue');
+    lines.push('                        r.raise_for_status()');
+    lines.push('                    buffer = ""');
+    lines.push('                    async for chunk in r.aiter_text():');
+    lines.push('                        buffer += chunk');
+    lines.push('                        while "\\n" in buffer:');
+    lines.push('                            line, buffer = buffer.split("\\n", 1)');
+    lines.push('                            if not line.startswith("data: "): continue');
+    lines.push('                            data = line[6:]');
+    lines.push('                            if data == "[DONE]": return');
+    lines.push('                            try:');
+    lines.push('                                evt = json.loads(data)');
+    lines.push('                                if evt.get("type") == "content_block_delta" and evt.get("delta", {}).get("text"):');
+    lines.push('                                    yield evt["delta"]["text"]');
+    lines.push('                            except json.JSONDecodeError: pass');
+    lines.push('                    return');
+    lines.push('        except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as err:');
+    lines.push('            last_err = err');
+    lines.push('            if _attempt < 3:');
+    lines.push('                await asyncio.sleep(min(1 * (2 ** _attempt), 8))');
+    lines.push('                continue');
+    lines.push('            raise');
+    lines.push('    if last_err: raise last_err');
     lines.push('');
     } // end hasStreamingAgent
   }
