@@ -104,7 +104,7 @@ I wrote the ASH-1 result as a negative finding for the Bitter Lesson, but the in
 **Where to change it if you disagree:**
 - Default secret policy: `compiler.js` cookie-scan block. Swap the console.warn for `throw new Error(...)` if you want fail-fast.
 - Python parity still deferred — same Response dep-injection blocker as plain cookies.
-- Cookie TTL (`for N days` maxAge): parser scans for it but the `for` canonicalization didn't match cleanly on first try — left as TODO. Would unblock `set signed cookie 'session' to token for 7 days`.
+- ~~Cookie TTL (`for N days` maxAge)~~ — fixed in follow-up. The `for` canonical was `for_target`, not `for`. Belt-and-suspenders: check both. Works for signed and unsigned cookies; supports days/hours/minutes.
 
 ---
 

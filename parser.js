@@ -1905,7 +1905,12 @@ const CANONICAL_DISPATCH = new Map([
         let valueEnd = ctx.tokens.length;
         let maxAgeMs = null;
         for (let k = toPos + 1; k < ctx.tokens.length; k++) {
-          if (ctx.tokens[k].canonical === 'for' && k + 2 < ctx.tokens.length) {
+          // `for` canonicalizes to `for_target` in the synonym table; that's
+          // the canonical I check. Raw-value check as belt-and-suspenders
+          // in case a future synonym pass changes the canonical.
+          const isFor = ctx.tokens[k].canonical === 'for_target' ||
+            (typeof ctx.tokens[k].value === 'string' && ctx.tokens[k].value.toLowerCase() === 'for');
+          if (isFor && k + 2 < ctx.tokens.length) {
             const num = ctx.tokens[k + 1];
             const unit = typeof ctx.tokens[k + 2].value === 'string' ? ctx.tokens[k + 2].value.toLowerCase() : '';
             if (num.type === TokenType.NUMBER && ['hour', 'hours', 'day', 'days', 'minute', 'minutes'].includes(unit)) {

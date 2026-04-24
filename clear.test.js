@@ -13575,6 +13575,23 @@ describe('TIER 2 #42 — cookies (JS backend, secure-by-default)', () => {
     const r = compileProgram(src);
     expect(r.javascript).toMatch(/console\.warn\(.*COOKIE_SECRET/);
   });
+
+  it('set cookie for N days emits maxAge in ms', () => {
+    const src = "target: backend\nwhen user calls POST /api/login receiving data:\n  set cookie 'session' to 'abc' for 7 days\n  send back 'ok'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('maxAge: 604800000');  // 7 * 86400000
+  });
+
+  it('set cookie for N hours / minutes converts correctly', () => {
+    const srcHours = "target: backend\nwhen user calls POST /api/login receiving data:\n  set cookie 'a' to '1' for 2 hours\n  send back 'ok'";
+    const rHours = compileProgram(srcHours);
+    expect(rHours.javascript).toContain('maxAge: 7200000');  // 2 * 3600000
+
+    const srcMins = "target: backend\nwhen user calls POST /api/login receiving data:\n  set cookie 'b' to '1' for 30 minutes\n  send back 'ok'";
+    const rMins = compileProgram(srcMins);
+    expect(rMins.javascript).toContain('maxAge: 1800000');  // 30 * 60000
+  });
 });
 
 // T2#8 — `display X as bar chart` / `show X as line chart` shorthand.

@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Cookie maxAge shorthand `for N days/hours/minutes` (T2 #42 continuation)
+
+Tiny fix for a tiny bug. The original cookies parser had a `for N days` scan hooked up but checked `tokens[k].canonical === 'for'` — which never fires because `for` canonicalizes to `for_target` in the synonym table. Result: `set cookie 'session' to token for 7 days` parsed but dropped the TTL silently.
+
+Fix: check both canonical `for_target` and raw lowercased value `for` (belt-and-suspenders against future synonym changes).
+
+```clear
+set cookie 'session' to token for 7 days         # maxAge: 604800000
+set cookie 'remember_me' to flag for 30 days     # maxAge: 2592000000
+set cookie 'flash' to msg for 30 minutes         # maxAge: 1800000
+```
+
+Also works for signed cookies: `set signed cookie 'session' to token for 7 days`.
+
+2 new tests: days conversion + hours/minutes unit conversion. 2486 → 2488 green, 8 templates clean.
+
+---
+
 ## 2026-04-24 — Signed cookies (T2 #42 continuation)
 
 `set signed cookie 'name' to value` + `get signed cookie 'name'` — HMAC-signed cookies via `cookie-parser(secret)`. Only wired when the program actually uses signed cookies (no dead code on plain-cookie-only apps).
