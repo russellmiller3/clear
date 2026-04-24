@@ -13342,6 +13342,48 @@ describe('Security - sensitive data exposure', () => {
 // on type keywords like `amount is number`. Russell's call: Meph's
 // shorthand is natural English — treat it as a missing feature, add it
 // to the language.
+// T2 #42 — cookies. `set cookie 'name' to value` + `get cookie 'name'`.
+// JS backend auto-wires cookie-parser middleware + emits res.cookie with
+// secure defaults (httpOnly, sameSite='lax', secure in prod). Python
+// backend is a follow-up (needs FastAPI Response dep-injection).
+describe('TIER 2 #42 — cookies (JS backend, secure-by-default)', () => {
+  const SRC = "target: backend\nwhen user calls POST /api/login receiving creds:\n  set cookie 'session' to 'abc123'\n  send back 'ok'\nwhen user calls GET /api/me:\n  token = get cookie 'session'\n  send back token";
+
+  it('auto-imports cookie-parser when any cookie op exists', () => {
+    const r = compileProgram(SRC);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("require('cookie-parser')");
+    expect(r.javascript).toContain('app.use(cookieParser())');
+  });
+
+  it('set cookie emits res.cookie with secure defaults', () => {
+    const r = compileProgram(SRC);
+    expect(r.javascript).toMatch(/res\.cookie\("session",/);
+    expect(r.javascript).toContain('httpOnly: true');
+    expect(r.javascript).toContain("sameSite: 'lax'");
+    expect(r.javascript).toContain("secure: process.env.NODE_ENV === 'production'");
+  });
+
+  it('get cookie emits req.cookies[name] read', () => {
+    const r = compileProgram(SRC);
+    expect(r.javascript).toContain('req.cookies && req.cookies["session"]');
+  });
+
+  it('no cookie-parser import when no cookie ops exist (no dead code)', () => {
+    const src = "target: backend\nwhen user calls GET /api/x:\n  send back 'ok'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).not.toContain("require('cookie-parser')");
+  });
+
+  it('cookie value can be a variable, not just a string literal', () => {
+    const src = "target: backend\nwhen user calls POST /api/login receiving data:\n  token = 'xyz'\n  set cookie 'session' to token\n  send back 'ok'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toMatch(/res\.cookie\("session", String\(token\)/);
+  });
+});
+
 // T2#8 — `display X as bar chart` / `show X as line chart` shorthand.
 // Before: parsed silently as a DISPLAY node with format='bar'; compiler had
 // no 'bar' format so it emitted nothing. Meph got no chart, no error — the

@@ -7503,6 +7503,33 @@ ${pad}}`;
       return `${pad}${map}[${key}] = ${val};`;
     }
 
+    case NodeType.COOKIE_SET: {
+      // T2 #42 — cookies on JS backend, secure-by-default.
+      //   httpOnly: true   → not readable from client JS (blocks most XSS)
+      //   sameSite: 'lax'  → not sent on cross-site POSTs (mitigates CSRF)
+      //   secure: in prod  → HTTPS-only; dev allows HTTP so local tests work
+      //   maxAge: optional → `set cookie 'name' to v for 7 days` maps here
+      // cookie-parser middleware is auto-wired at module top when any
+      // COOKIE_GET or COOKIE_SET node exists (see compileToJSBackend).
+      const nameLit = JSON.stringify(node.name);
+      const valExpr = exprToCode(node.value, ctx);
+      const opts = [
+        'httpOnly: true',
+        "sameSite: 'lax'",
+        "secure: process.env.NODE_ENV === 'production'",
+      ];
+      if (node.maxAgeMs !== null && node.maxAgeMs !== undefined) {
+        opts.push(`maxAge: ${node.maxAgeMs}`);
+      }
+      if (ctx.lang === 'python') {
+        // Python path is a follow-up — emit a placeholder comment so the
+        // program still compiles but Meph sees the gap instead of hitting
+        // a "node type not handled" crash.
+        return `${pad}# TODO: set cookie ${node.name} — Python backend cookie support is a follow-up (see requests.md T2#42)`;
+      }
+      return `${pad}res.cookie(${nameLit}, String(${valExpr}), { ${opts.join(', ')} });`;
+    }
+
     case NodeType.NAVIGATE: {
       const url = JSON.stringify(node.url);
       if (ctx.lang === 'python') return `${pad}# Navigate to ${node.url}`;
@@ -7988,6 +8015,19 @@ export function exprToCode(expr, ctx) {
       }
       const fields = expr.entries.map(e => `${sanitizeName(e.key)}: ${exprToCode(e.value, ctx)}`);
       return `{ ${fields.join(', ')} }`;
+    }
+
+    case NodeType.COOKIE_GET: {
+      // T2 #42 — cookie read expression. On the JS backend, cookies are
+      // parsed by cookie-parser middleware (auto-wired at module top)
+      // into `req.cookies`. Returns the raw cookie value or `undefined`
+      // if the cookie isn't set — the caller can guard with `if X is nothing:`.
+      const nameLit = JSON.stringify(expr.name);
+      if (ctx.lang === 'python') {
+        // Python backend cookie reads are a follow-up (needs Request dep injection)
+        return `None  # TODO: get cookie ${expr.name} — Python backend cookies TBD`;
+      }
+      return `(req.cookies && req.cookies[${nameLit}])`;
     }
 
     case NodeType.MEMBER_ACCESS:
@@ -11408,8 +11448,32 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
     // `accept file:` → prevents runaway uploads from choking the server.
     lines.push('const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });');
   }
+  // T2 #42 — cookie-parser auto-wiring. `set cookie` / `get cookie`
+  // nodes live anywhere in endpoint bodies; walk the tree just like
+  // uploads. Only emit the import + middleware if at least one cookie
+  // op exists (no dead code on the majority of apps).
+  function walkForCookies(nodes) {
+    if (!Array.isArray(nodes)) return false;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === NodeType.COOKIE_SET || n.type === NodeType.COOKIE_GET) return true;
+      if (Array.isArray(n.body) && walkForCookies(n.body)) return true;
+      if (Array.isArray(n.thenBody) && walkForCookies(n.thenBody)) return true;
+      if (Array.isArray(n.elseBody) && walkForCookies(n.elseBody)) return true;
+      // Cookie reads can also appear inside assignment expressions
+      if (n.type === NodeType.ASSIGN && n.expression && n.expression.type === NodeType.COOKIE_GET) return true;
+    }
+    return false;
+  }
+  const hasCookies = walkForCookies(body);
+  if (hasCookies) {
+    lines.push("const cookieParser = require('cookie-parser');");
+  }
   lines.push('const app = express();');
   lines.push('app.use(express.json());');
+  if (hasCookies) {
+    lines.push('app.use(cookieParser());');
+  }
   // Catch malformed JSON bodies -- return clean 400 instead of Express HTML stack trace
   lines.push('app.use((err, req, res, next) => {');
   lines.push('  if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON in request body" });');

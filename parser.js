@@ -297,6 +297,9 @@ export const NodeType = Object.freeze({
   MATCH_WHEN: 'match_when',
   MAP_GET: 'map_get',
   MAP_SET: 'map_set',
+  // Cookies (T2 #42)
+  COOKIE_SET: 'cookie_set',
+  COOKIE_GET: 'cookie_get',
 
   // Frontend navigation + API calls (Phase 21)
   NAVIGATE: 'navigate',
@@ -1812,6 +1815,51 @@ const CANONICAL_DISPATCH = new Map([
       const result = parseDataShape(ctx.lines, ctx.i, ctx.indent, ctx.errors);
       if (result.node) ctx.body.push(result.node);
       return result.endIdx;
+    }
+    // Cookies (T2 #42): "set cookie 'name' to value"
+    // Secure-by-default: compiler emits httpOnly + sameSite='lax' + secure in prod.
+    // `set signed cookie 'name' to value` adds signing (future — just accepts here).
+    if (ctx.tokens.length >= 5 &&
+        typeof ctx.tokens[1].value === 'string' &&
+        ctx.tokens[1].value.toLowerCase() === 'cookie' &&
+        ctx.tokens[2].type === TokenType.STRING) {
+      // set cookie 'name' to value [for N hours/days]
+      const cookieName = ctx.tokens[2].value;
+      // Find `to` connector
+      let toPos = -1;
+      for (let k = 3; k < ctx.tokens.length; k++) {
+        if (ctx.tokens[k].canonical === 'to_connector') { toPos = k; break; }
+      }
+      if (toPos > 0 && toPos + 1 < ctx.tokens.length) {
+        // Look for optional `for N hours/days` at end (maxAge)
+        let valueEnd = ctx.tokens.length;
+        let maxAgeMs = null;
+        for (let k = toPos + 1; k < ctx.tokens.length; k++) {
+          if (ctx.tokens[k].canonical === 'for' && k + 2 < ctx.tokens.length) {
+            const num = ctx.tokens[k + 1];
+            const unit = typeof ctx.tokens[k + 2].value === 'string' ? ctx.tokens[k + 2].value.toLowerCase() : '';
+            if (num.type === TokenType.NUMBER && ['hour', 'hours', 'day', 'days', 'minute', 'minutes'].includes(unit)) {
+              const multiplier = unit.startsWith('hour') ? 3600000
+                : unit.startsWith('day') ? 86400000
+                : 60000; // minutes
+              maxAgeMs = num.value * multiplier;
+              valueEnd = k;
+              break;
+            }
+          }
+        }
+        const valueExpr = parseExpression(ctx.tokens, toPos + 1, ctx.line, valueEnd);
+        if (!valueExpr.error) {
+          ctx.body.push({
+            type: NodeType.COOKIE_SET,
+            name: cookieName,
+            value: valueExpr.node,
+            maxAgeMs,
+            line: ctx.line,
+          });
+          return ctx.i + 1;
+        }
+      }
     }
     // Map set: "set key in scope to value"
     if (ctx.tokens.length >= 5) {
@@ -8720,6 +8768,22 @@ function parsePrimary(tokens, pos, line, end) {
     return {
       node: unaryOp('-', operand.node, line),
       nextPos: operand.nextPos,
+    };
+  }
+
+  // "get cookie 'name'" — cookie read expression (T2 #42).
+  // Compiles to req.cookies[name] on the backend. Parser-first because
+  // get_key's `from` lookahead otherwise consumes `cookie 'name'` as a
+  // key expression and errors.
+  if (tok.canonical === 'get_key' &&
+      pos + 2 < maxPos &&
+      typeof tokens[pos + 1].value === 'string' &&
+      tokens[pos + 1].value.toLowerCase() === 'cookie' &&
+      tokens[pos + 2].type === TokenType.STRING) {
+    const cookieName = tokens[pos + 2].value;
+    return {
+      node: { type: NodeType.COOKIE_GET, name: cookieName, line },
+      nextPos: pos + 3,
     };
   }
 

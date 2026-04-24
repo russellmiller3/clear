@@ -6,6 +6,29 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Cookies — `set cookie` / `get cookie` on JS backend (TIER 2 #42)
+
+Cookies were genuinely missing. `req.cookies` was always undefined because `cookie-parser` wasn't wired; `res.cookie` was unreachable from Clear source. Auth-via-cookie flows had to use raw `script:` escapes.
+
+**Fix (JS backend):** two new node types, `COOKIE_SET` and `COOKIE_GET`. Canonical syntax:
+
+```clear
+set cookie 'session' to token
+maybe_session = get cookie 'session'
+```
+
+Parser: `set cookie 'name' to value` routes in the `set` keyword handler; `get cookie 'name'` is a parsePrimary extension that runs before the `get_key ... from` dynamic-map path so it doesn't get eaten. Compiler: `res.cookie('name', String(value), { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' })` + `req.cookies['name']` reads. `cookie-parser` middleware auto-imported + installed ONLY when cookies are used — no dead code on apps that don't touch them.
+
+**Secure-by-default:** httpOnly blocks JS-readable session cookies (mitigates XSS session theft). sameSite='lax' blocks cross-site POST (mitigates CSRF). secure is gated on NODE_ENV so local HTTP dev still works. Not signed by default — keep it simple; can add `set signed cookie 'name' to value` later.
+
+**Python backend:** emits a TODO comment, not an error. Full Python parity needs Response dependency-injection in the endpoint signature — tracked as follow-up.
+
+5 new tests: middleware auto-import, res.cookie emission with all security defaults, req.cookies read, no-dead-code negative case, variable-value support. 2459 → 2464 green, zero regressions, all 8 core templates compile clean.
+
+Closes TIER 2 #42 for the JS path.
+
+---
+
 ## 2026-04-24 — `display X as bar chart` shorthand (TIER 2 #8)
 
 Meph kept writing `display sales as bar chart` expecting it to render a chart — natural English for "show this as a bar chart." The parser accepted the line (it looked like `display X as <format>` with format=bar), but the compiler had no `bar` display format, so nothing was emitted. No ECharts CDN, no chart DOM, no `echarts.init` call. Worst kind of silent drop — chart-less dashboards with zero compile errors.
