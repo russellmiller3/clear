@@ -7921,6 +7921,7 @@ ${pad}}`;
 
     // Nodes handled by dedicated loops in the reactive compiler -- skip here
     case NodeType.ON_PAGE_LOAD:
+    case NodeType.ON_SCROLL:
     case NodeType.ON_CHANGE:
     case NodeType.ASK_FOR:
     case NodeType.DISPLAY:
@@ -8656,6 +8657,8 @@ function isReactiveApp(body) {
       if (node.type === NodeType.DISPLAY && (node.format === 'table' || node.format === 'list' || node.format === 'cards' || node.format === 'chat' || node.format === 'gallery' || node.format === 'map' || node.format === 'calendar' || node.format === 'qr' || node.format === 'qrcode')) return true;
       // An on-page-load block with API calls requires the async IIFE + _recompute().
       if (node.type === NodeType.ON_PAGE_LOAD) return true;
+      // An on-scroll block needs the reactive path for the event listener emit.
+      if (node.type === NodeType.ON_SCROLL) return true;
       if (node.type === NodeType.PAGE || node.type === NodeType.SECTION) {
         if (check(node.body)) return true;
       }
@@ -9587,6 +9590,40 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(bodyCode);
       lines.push(`  _recompute();`);
       lines.push(`});`);
+    }
+  }
+
+  // 9. On-scroll handlers (T2 #33). Leading-edge throttle: fire
+  // immediately on first scroll, then suppress subsequent calls until
+  // the interval has passed. Trailing-edge would need a tail-recheck
+  // via setTimeout; leading-edge matches intuition for scroll-based
+  // infinite-loaders / sticky headers.
+  const scrollNodes = flatNodes.filter(n => n.type === NodeType.ON_SCROLL);
+  if (scrollNodes.length > 0) {
+    lines.push('');
+    lines.push('// --- On scroll handlers ---');
+    for (let i = 0; i < scrollNodes.length; i++) {
+      const sn = scrollNodes[i];
+      const scrollCtx = { lang: 'js', indent: 1, declared: new Set(recomputeDeclared), stateVars: stateVarNames, mode: 'web' };
+      const bodyCode = sn.body.map(n => compileNode(n, scrollCtx)).filter(Boolean).join('\n');
+      const hasApiCall = sn.body.some(n => n.type === NodeType.API_CALL);
+      const asyncKw = hasApiCall ? 'async ' : '';
+      const handlerId = `_scroll_${i}`;
+      if (sn.throttleMs && sn.throttleMs > 0) {
+        lines.push(`let ${handlerId}_lastFire = 0;`);
+        lines.push(`window.addEventListener('scroll', ${asyncKw}function() {`);
+        lines.push(`  const _now = Date.now();`);
+        lines.push(`  if (_now - ${handlerId}_lastFire < ${sn.throttleMs}) return;`);
+        lines.push(`  ${handlerId}_lastFire = _now;`);
+        lines.push(bodyCode);
+        lines.push(`  _recompute();`);
+        lines.push(`}, { passive: true });`);
+      } else {
+        lines.push(`window.addEventListener('scroll', ${asyncKw}function() {`);
+        lines.push(bodyCode);
+        lines.push(`  _recompute();`);
+        lines.push(`}, { passive: true });`);
+      }
     }
   }
 

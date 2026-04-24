@@ -6,6 +6,28 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Scroll handler with throttle: `on scroll every 100ms:` (TIER 2 #33)
+
+First-class scroll event handler. Optional `every N ms` / `every N seconds` suffix adds leading-edge throttle:
+
+```clear
+on scroll every 100ms:
+  load_more_if_near_bottom()
+
+on scroll:         # no throttle
+  track_position()
+```
+
+Parser: new `on_scroll` canonical with synonyms `on page scroll`, `on page scrolls`, `when page scrolls`, `when user scrolls`. Handler reads optional `every N (ms|seconds)` suffix into `throttleMs`.
+
+Compiler (reactive-web): `window.addEventListener('scroll', fn, { passive: true })` + inline leading-edge throttle via `lastFire` timestamp. `isReactiveApp` now treats ON_SCROLL as a trigger so the reactive pipeline fires even when the page has only a scroll handler.
+
+4 new tests + regression floor on passive:true perf flag. SYNONYM_VERSION bumped 0.31.0 → 0.32.0. 2476 → 2480 green, zero regressions, 8 templates clean.
+
+Closes TIER 2 #33.
+
+---
+
 ## 2026-04-24 — Transaction synonyms: `atomically:` / `transaction:` / `begin transaction:` (TIER 2 #48)
 
 Canonical `as one operation:` was the only transaction form that parsed. Three natural English alternatives that Meph (and humans) reach for added as synonyms — all route to the same `NodeType.TRANSACTION` node, identical semantics:

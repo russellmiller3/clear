@@ -13342,6 +13342,38 @@ describe('Security - sensitive data exposure', () => {
 // on type keywords like `amount is number`. Russell's call: Meph's
 // shorthand is natural English — treat it as a missing feature, add it
 // to the language.
+// T2 #33 — on-scroll handler with optional throttle.
+describe('TIER 2 #33 — on scroll [every Nms] event handler', () => {
+  it('on scroll: emits a window scroll listener', () => {
+    const src = "build for web\npage 'p' at '/':\n  on scroll:\n    show 'scrolled'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("addEventListener('scroll'");
+  });
+
+  it('on scroll every 100ms: emits leading-edge throttle', () => {
+    const src = "build for web\npage 'p' at '/':\n  on scroll every 100ms:\n    show 'scrolled'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain("addEventListener('scroll'");
+    expect(r.javascript).toContain('_scroll_0_lastFire');
+    expect(r.javascript).toContain('if (_now - _scroll_0_lastFire < 100)');
+  });
+
+  it('on scroll every 2 seconds: converts unit to ms', () => {
+    const src = "build for web\npage 'p' at '/':\n  on scroll every 2 seconds:\n    show 'scrolled'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('if (_now - _scroll_0_lastFire < 2000)');
+  });
+
+  it('on scroll listener uses passive:true for perf', () => {
+    const src = "build for web\npage 'p' at '/':\n  on scroll:\n    show 'scrolled'";
+    const r = compileProgram(src);
+    expect(r.javascript).toContain('{ passive: true }');
+  });
+});
+
 // T2 #48 — transaction synonyms. `as one operation:` was the canonical
 // form. Meph kept writing `atomically:`, `transaction:`, `begin
 // transaction:` because those are the English names he knows. All

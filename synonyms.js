@@ -310,6 +310,9 @@ const SYNONYM_TABLE = Object.freeze({
   sort_by: Object.freeze(['sort', 'order']),
 
   on_page_load: Object.freeze(['on page load', 'when page loads', 'on start']),
+  // T2 #33 — scroll event handler. Optional trailing `every Nms`
+  // becomes a throttle interval (handled in the parser handler).
+  on_scroll: Object.freeze(['on scroll', 'on page scroll', 'on page scrolls', 'when page scrolls', 'when user scrolls']),
   match_kw: Object.freeze(['match', 'switch']),
   get_key: Object.freeze(['get']),
   key_exists: Object.freeze(['exists in', 'is in']),
@@ -452,6 +455,6 @@ const MULTI_WORD_SYNONYMS = Object.freeze(
 );
 
 // Language version — bump this when synonyms change
-const SYNONYM_VERSION = '0.31.0';
+const SYNONYM_VERSION = '0.32.0';
 
 export { SYNONYM_TABLE, REVERSE_LOOKUP, MULTI_WORD_SYNONYMS, SYNONYM_VERSION };

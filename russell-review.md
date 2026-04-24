@@ -124,9 +124,31 @@ Format per item: **design choice** / **alternatives I considered** / **evidence 
 
 ## 6. Deferred from this pass — flagged for future
 
-**T2 #33 — `throttle` on scroll (deferred).** Scope expanded once I looked: Clear doesn't have a scroll-event handler at all today, so adding `throttle every 100ms:` needs both the event binding AND the time-gated dispatch. Debounce exists via `when X changes after 300:` — throttle could mirror that as `when X changes at most every 100:` but the scroll case is different enough to deserve its own scoping pass. Left in the queue.
+**T2 #33 — `on scroll every Nms:` (done after initial deferral).** Added a first-class scroll handler with optional leading-edge throttle. See entry #7 below.
 
 **T2 #11 — agent streaming display (design pass required).** SSE transport decision + how to express "this agent streams" at the call site.
 
 **Python parity for cookies + upsert (deferred).** JS path ships; Python paths emit TODO comments so programs compile but show the gap. Python Response dep-injection for cookies is the bigger ask.
+
+---
+
+## 7. Scroll event handler — `on scroll [every Nms]:` (T2 #33)
+
+**Design choice:** `on scroll:` as a block-level event handler, optional `every Nms:` / `every N seconds:` suffix for leading-edge throttle. Compiles to `window.addEventListener('scroll', fn, { passive: true })` with an inline time-gated dispatch. Added synonyms for `on page scroll`, `on page scrolls`, `when page scrolls`, `when user scrolls` — all canonicalize to `on_scroll`.
+
+**Alternatives I considered:**
+- **`throttle 100ms on scroll:`** (requests.md's suggested shape) — "throttle" leads the statement. Rejected: reads awkward; the event (`on scroll`) is the primary thing, throttle is the modifier.
+- **Trailing-edge throttle** (fire at end of each interval, not start) — better for stop-handlers but confusing for scroll (user doesn't scroll, then 100ms later a thing happens?). Leading-edge matches intuition for infinite-loaders / sticky headers: fire fast on first scroll, then suppress.
+- **Also support debounce** (`on scroll after 300ms:` = wait for scroll to pause) — would be natural given the `when X changes after 300:` debounce pattern. Didn't add; easy follow-up.
+- **Element-scoped scroll** (`when #sidebar scrolls:`) — requires selector syntax. Deferred.
+
+**Evidence it works:**
+- 4 new tests green: basic scroll listener, throttled with ms, throttled with seconds (unit conversion), passive:true perf flag.
+- 2476 → 2480 compiler tests, 8 templates clean.
+- Bumped SYNONYM_VERSION 0.31.0 → 0.32.0.
+
+**Where to change it if you disagree:**
+- Leading-vs-trailing throttle: `compiler.js` scroll emit. Currently stores `lastFire` timestamp and returns early if < throttleMs elapsed. Trailing-edge would pair with a tail setTimeout.
+- Synonyms: `synonyms.js` `on_scroll` list. Add element-scoped later if you want.
+- Debounce variant (`on scroll after 300ms:`) — follow-up.
 

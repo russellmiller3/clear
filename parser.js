@@ -288,6 +288,11 @@ export const NodeType = Object.freeze({
   LIST_SORT: 'list_sort',
 
   ON_PAGE_LOAD: 'on_page_load',
+  // T2 #33 — scroll handler with optional throttle. `on scroll:` fires
+  // every scroll event; `on scroll every 100ms:` dispatches at most
+  // once per N ms (leading-edge), so infinite-scroll / sticky-header
+  // logic doesn't flood the main thread.
+  ON_SCROLL: 'on_scroll',
   TRANSACTION: 'transaction',
   ON_CHANGE: 'on_change',
   RETRY: 'retry',
@@ -1056,6 +1061,37 @@ const CANONICAL_DISPATCH = new Map([
       ctx.errors.push({ line: ctx.line, message: "send error needs a message — what should the error say? Example: send error 'Order not found'" });
     }
     return ctx.i + 1;
+  }],
+  // T2 #33 — on scroll [every Nms]: block. Frontend-only; compiler
+  // emits a window scroll listener with optional leading-edge throttle.
+  ['on_scroll', (ctx) => {
+    // Optional throttle: `on scroll every 100ms:` or `on scroll every 100 ms:`
+    let throttleMs = null;
+    const rest = ctx.tokens.slice(1);
+    // Find `every` + number; ignore trailing `ms` / `milliseconds` / `seconds`
+    for (let k = 0; k < rest.length - 1; k++) {
+      if (typeof rest[k].value === 'string' && rest[k].value.toLowerCase() === 'every' &&
+          rest[k + 1].type === TokenType.NUMBER) {
+        const n = rest[k + 1].value;
+        // Unit: look at k+2; default ms
+        let unit = 'ms';
+        if (k + 2 < rest.length && typeof rest[k + 2].value === 'string') {
+          const u = rest[k + 2].value.toLowerCase();
+          if (u === 'ms' || u === 'milliseconds') unit = 'ms';
+          else if (u === 'second' || u === 'seconds' || u === 's') unit = 's';
+        }
+        throttleMs = unit === 's' ? n * 1000 : n;
+        break;
+      }
+    }
+    const { body: scrollBody, endIdx: scrollEnd } = parseBlock(ctx.lines, ctx.i + 1, ctx.indent, ctx.errors);
+    ctx.body.push({
+      type: NodeType.ON_SCROLL,
+      body: scrollBody,
+      throttleMs,
+      line: ctx.line,
+    });
+    return scrollEnd;
   }],
   ['on_page_load', (ctx) => {
     // Inline form: "on page load get todos from '/api/todos'"
