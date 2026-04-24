@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Friction batch 2b: type-keyword INTENT_HINTS (items #6 + #7)
+
+Factor DB friction ranking items #6 (`text`) and #7 (`number`) were both the "You used X but it hasn't been created yet" error firing on type keywords. Root cause from reading real sessions: Meph writes `amount is number` inside a table block thinking `is` is a type annotation, but Clear reads `is` as assignment — so `number` gets treated as an undefined variable. Same pattern for `text`, `boolean`, `timestamp`.
+
+**Fix:** four new entries in `validator.js` INTENT_HINTS. Each tells Meph the canonical comma-form field declaration AND when relevant the value-usage alternative:
+
+- `number` → `amount, number, required` (comma form); assignments use literals like `amount = 5`
+- `text` → `title, text, required` (comma form); values use quoted strings like `title is 'Welcome'`
+- `boolean` → `active, boolean` (comma form); values use `true` / `false` literals
+- `timestamp` → `created_at, timestamp` (comma form); auto-fills on insert
+
+5 new tests in `INTENT_HINTS — type keywords used as if they were values` — each type hint validates its message content PLUS a regression test that the canonical comma form still compiles clean. 2443 → 2448 tests green, zero regressions, all 8 core templates compile clean.
+
+Friction-driven like batch 1 and 2: picked the next-highest-cost errors from the ranker, didn't invent new syntax. Each entry is a ~1-line hint that ships globally forever at \$0.
+
+---
+
 ## 2026-04-24 — Regression net on compile-tool-source-on-error (TIER 2 #12)
 
 Audit of T2#12 (compile tool returns no source on error) found the fix was already in place at `playground/meph-tools.js:1234` — `const wantCompiled = r.errors.length > 0 || input.include_compiled === true`. Meph gets `javascript` / `serverJS` / `html` / `python` (truncated to 4-8KB each) auto-embedded whenever errors exist, plus a `note` field explaining why.

@@ -13333,6 +13333,59 @@ describe('Security - sensitive data exposure', () => {
   });
 });
 
+// Session 45 friction-batch-2: Meph writes `amount is number` inside table
+// blocks as if `is` were a type annotation — it's really assignment, so
+// `number` gets treated as an undefined variable. Friction items #6 + #7
+// (12 rows combined, 20min avg, 7 gave up). Add INTENT_HINTS entries for
+// the four type keywords so the error directs Meph to the comma form.
+describe('INTENT_HINTS — type keywords used as if they were values', () => {
+  // These tests drive a source shape that triggers the `X isn't a Clear keyword`
+  // path: Meph uses a type keyword at the statement-start position outside a
+  // proper table block, so the validator's suggestKeyword fires.
+  it('number: hint directs to comma-form field declaration', () => {
+    const src = "build for javascript backend with html frontend\n\ntable Sales:\n  amount is number\n  region is text";
+    const r = compileProgram(src);
+    const hint = r.errors.find(e => /number/.test(e.message) && /TYPE keyword/i.test(e.message));
+    expect(hint).toBeTruthy();
+    expect(hint.message).toContain('comma form');
+    expect(hint.message).toContain('amount, number');
+  });
+
+  it('text: hint directs to comma-form AND gives value-usage alternative', () => {
+    const src = "build for javascript backend with html frontend\n\ntable Items:\n  title is text";
+    const r = compileProgram(src);
+    const hint = r.errors.find(e => /text/.test(e.message) && /TYPE keyword/i.test(e.message));
+    expect(hint).toBeTruthy();
+    expect(hint.message).toContain('comma form');
+    expect(hint.message).toMatch(/quoted strings?/);
+  });
+
+  it('boolean: hint mentions true/false literals', () => {
+    const src = "build for javascript backend with html frontend\n\ntable Items:\n  active is boolean";
+    const r = compileProgram(src);
+    const hint = r.errors.find(e => /boolean/.test(e.message) && /TYPE keyword/i.test(e.message));
+    expect(hint).toBeTruthy();
+    expect(hint.message).toMatch(/true.*false/);
+  });
+
+  it('timestamp: hint mentions auto-fill behavior', () => {
+    const src = "build for javascript backend with html frontend\n\ntable Events:\n  happened_at is timestamp";
+    const r = compileProgram(src);
+    const hint = r.errors.find(e => /timestamp/.test(e.message) && /TYPE keyword/i.test(e.message));
+    expect(hint).toBeTruthy();
+    expect(hint.message).toContain('auto-fill');
+  });
+
+  it('valid usage: `create a Sales table:` with proper comma form still works', () => {
+    // Regression check: the INTENT_HINTS additions shouldn't change behavior
+    // when the canonical form is used. `amount, number` inside a proper
+    // `create a X table:` block compiles clean.
+    const src = "target: backend\ncreate a Sales table:\n  amount, number\n  region, text\non GET '/test':\n  send back 'ok'";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+  });
+});
+
 // Session 45 friction-score analysis: the "DELETE/PUT needs requires login"
 // hard error fired ~32 times with ~50% give-up rate on apps that had NO auth
 // scaffolding at all (toy K/V stores, demo scratch apps). `requires login`

@@ -577,6 +577,16 @@ function validateForwardReferences(body, errors) {
     // Common Meph misfires around POST-data access (often paired with `body`).
     request: "POST/PUT data doesn't live at `request` — name it in the `sends` phrase: `when user sends X to /api/...:` where X is whatever you want to call the incoming data.",
     incoming: "the POST body is NAMED in the `sends` phrase, not called `incoming`. Write `when user sends todo_data to /api/...:` then reference `todo_data` — no magic variables in Clear.",
+    // Session 45 friction-batch-2 additions (items #6 + #7 + #8 on the
+    // friction-score ranking). Meph writes `amount is number` inside a
+    // table block, expecting it to mean "amount is of type number" — but
+    // Clear reads `is` as assignment, so `number` (a type keyword) gets
+    // treated as an undefined variable. Same pattern for `text`, `boolean`,
+    // `timestamp`. The fix tells him the canonical type-annotation form.
+    number: "`number` is a Clear TYPE keyword, not a value. In a table/field declaration use the comma form: `amount, number, required` (not `amount is number`). In an assignment, a literal like `amount = 5` works — type is inferred.",
+    text: "`text` is a Clear TYPE keyword, not a value. In a table/field declaration use the comma form: `title, text, required` (not `title is text`). For a value, use quoted strings: `title is 'Welcome'`.",
+    boolean: "`boolean` is a Clear TYPE keyword, not a value. In a table/field declaration use the comma form: `active, boolean` (not `active is boolean`). For a value, use `true` or `false` literals.",
+    timestamp: "`timestamp` is a Clear TYPE keyword, not a value. In a table/field declaration use the comma form: `created_at, timestamp` (not `created_at is timestamp`). Clear auto-fills timestamps on insert when declared this way.",
   };
 
   // Reserved structural words. These are never variable names — they only
