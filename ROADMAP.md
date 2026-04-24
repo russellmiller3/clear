@@ -1,5 +1,56 @@
 # Clear Language — Roadmap
 
+---
+
+## Current Direction (2026-04-24) — Dave-First via Editor Integration + Compiler API
+
+> **Status:** strategic pivot under review. The "Marcus-first locked 2026-04-21" North Star below is being reassessed, not deleted. Hold judgement on Clear Cloud (CC-1..CC-5) until this top section lands or is rejected.
+
+### The Big Picture (pinned — read this before picking the next task)
+
+AI coding is roughly half of all frontier-model inference today, and it's growing fastest of any category. Every coding agent — Cursor, Copilot, Claude Code, Devin — burns the majority of its tokens on **retry loops**: write code, run, hit error, re-read context, fix, repeat. Clear's core bet is that a language designed for agents (deterministic compile, plain-English source, rich compile-time error messages, zero framework churn) cuts those loops 5-10x. That means per-feature inference cost drops by an order of magnitude. Jevons paradox says total inference still goes up because 20x more apps get built — but per-app cost collapses, and whoever owns the language agents prefer captures the wave.
+
+**Why Dave-first now, Marcus-second:**
+- Devs already use agents, already pay for coding tools, already find new languages on HN/X/GitHub. CAC ≈ 0.
+- "The language your coding agent writes without retries" is category creation. Marcus positioning ("no-code for business") is category entry against Bubble/Lovable/Retool — harder fight, higher support cost.
+- Marcus stays alive as the **viral proof** ("watch a non-dev build a full-stack app") — shown below the fold, not as the hero.
+
+**Why API not bundled compiler:**
+- Obfuscated/minified local compiler = reverse-engineerable in an afternoon. Not real IP protection.
+- API keeps `compileProgram()` on servers you control. Bonus side effects worth more than the IP protection itself: **usage telemetry** (which syntax, which errors, which features), **per-user gating** (free/paid tiers, kill switch), **instant patches** (fix a compiler bug, every user has it next compile — no extension update).
+- Devs are conditioned to network calls in the agent loop; an extra 100ms is invisible.
+
+**Audit ground truth (2026-04-24):** Architecture supports multi-file + components today (`use 'module'`, `define component X receiving Y:` — proven in `apps/crm-spa/`). Studio IDE does NOT — single-file only, no file tree, no autocomplete. That's why the wedge is **editor integration** (LSP + VSCode/Cursor extension), not Studio multi-file.
+
+### Priority Order — what to build next
+
+| # | Build | Scope | Why (ties to big picture) |
+|---|-------|-------|---------------------------|
+| **D-1** | Fix `ui's Card()` namespaced component crash in buildHTML | 2-3 days | Blocker for the entire module story. Can't pitch multi-file to Dave while qualified component calls crash the compiler. |
+| **D-2** | Compiler-as-API service (`compile.clearlang.dev`) on Cloudflare Workers + edge deploy | 1-2 weeks | IP protection + usage telemetry + monetization gate. Everything downstream is a thin client to this. Single source of truth for the compiler across Studio, CLI, LSP, extensions. |
+| **D-3** | `clear-lsp` — language server that calls the Compiler API for diagnostics, local syntax-only parser for autocomplete | 2 weeks | Autocomplete + inline diagnostics + go-to-def in every editor simultaneously (VSCode, Cursor, Zed, JetBrains). LSP is the standard protocol; one server unlocks them all. |
+| **D-4** | VSCode + Cursor extension (thin LSP wrapper) | 1 week | Distribution to Dave's turf. He doesn't switch editors; you meet him where he is. Cursor especially — puts Clear directly in the agent loop he already trusts. |
+| **D-5** | Landing hero rewrite: "The language your coding agent writes without retries." Side-by-side demo: JS+Cursor vs Clear, same feature, 1/5 tokens, 1/10 retries. Marcus demo moves below fold. | 2 days | Category-creation positioning. Anchors the dev wedge publicly. |
+| **D-6** | Public launch: HN Show HN post + X thread + one podcast with measurable receipt ("5 devs installed the extension in the first 48h") | 1 day prep + response | Cheapest possible CAC test. If this lands, Dave-first is validated. If it doesn't, cheap lesson. |
+
+**Total to a shippable Dave-first v1: ~5-6 weeks.**
+
+### What changes for the existing roadmap
+
+- **Clear Cloud (CC-1..CC-5) stays on the roadmap but demotes to P1** until D-1..D-6 ships and we see Dave-adoption signal. Marcus is the bigger long-term TAM but 10x higher CAC right now.
+- **Builder Mode (GTM-6) stays P1**, shipping parallel to D-5 (Marcus demo needs Builder Mode polish to be a credible proof point even below the fold).
+- **Live App Editing (LAE-*)** stays the flagship differentiator. Doesn't move.
+- **Factor DB / flywheel / re-ranker** stay research (P2/P4). Not on the Dave-first critical path.
+
+### Open decision points for Russell
+
+1. **Commit to D-1..D-6 ordering, or keep Marcus-first locked?** If yes, update the Vision section below to reflect the pivot.
+2. **Compiler API hosting:** Cloudflare Workers (recommended — edge latency, $0 cold start) vs Fly (already have infra from Phase 85)?
+3. **LSP open-source or closed?** The LSP *client* logic is commodity; the value is in the API it calls. Recommend: open-source the extension, keep the API proprietary.
+4. **Free tier for Compiler API** — what's the rate limit? Recommend: 1000 compiles/day free, unlimited on paid ($9/mo solo, $29/team).
+
+---
+
 ## Vision
 
 1. **AI builds things fast.** Clear is the language AI writes. Short programs, deterministic compiler. The faster the write->compile->run->fix loop, the more it ships.
