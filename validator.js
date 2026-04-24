@@ -117,7 +117,90 @@ export function validate(ast) {
   validateEvalReferences(ast.body, warnings);
   validateReceivingVarNames(ast.body, warnings);
   validateReservedEndpointPrefixes(ast.body, errors);
+  validateTermination(ast.body, warnings);
   return { errors, warnings };
+}
+
+/**
+ * Termination rules (Session 46 — PHILOSOPHY Rule 17 + "Total by default").
+ *
+ * Warnings (upgradable to errors once Meph/authors are used to them):
+ *   W-T1  naked `while` with no `, max N times`      → will use default 100000
+ *   W-T2  function that calls itself with no depth    → will use default 1000
+ *   W-T3  `send email` without `with timeout N sec`   → will use default 30s
+ *
+ * Each warning tells the author what the default is AND how to override.
+ * Declaring intent is still preferred over relying on defaults — the goal is
+ * to nudge toward explicit bounds without breaking valid code.
+ */
+function validateTermination(body, warnings) {
+  walkAll(body, (node, enclosingFnName) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'while' && node.maxIterations === undefined) {
+      warnings.push({
+        line: node.line || 0,
+        message: "This while-loop has no '— max N times' clause. It will stop after 100000 iterations to prevent hangs. Add a max if you want a different cap, e.g. 'while count is less than 10, max 100 times:'.",
+      });
+    }
+    if (node.type === 'function_def') {
+      // Self-reference check: any FUNCTION_CALL inside body with matching name.
+      if (node.maxDepth === undefined && bodyReferencesName(node.body, node.name)) {
+        warnings.push({
+          line: node.line || 0,
+          message: `Function '${node.name}' calls itself. Default depth cap is 1000 — deeper recursion will throw. Add 'max depth N' after the parameter list to override (parser support for the override is still pending).`,
+        });
+      }
+    }
+    if (node.type === 'send_email' && node.config && node.config.timeout === undefined) {
+      warnings.push({
+        line: node.line || 0,
+        message: "This 'send email' has no 'with timeout N seconds' — it will use the default 30s cap so a frozen SMTP server can't hang the request. Add an explicit timeout if you want a different limit.",
+      });
+    }
+  }, null);
+}
+
+function walkAll(nodes, visit, enclosing) {
+  if (!Array.isArray(nodes)) return;
+  for (const n of nodes) {
+    if (!n || typeof n !== 'object') continue;
+    visit(n, enclosing);
+    const nextEnclosing = n.type === 'function_def' ? n.name : enclosing;
+    for (const key of ['body', 'thenBody', 'elseBody', 'handleBody', 'steps']) {
+      if (Array.isArray(n[key])) walkAll(n[key], visit, nextEnclosing);
+    }
+    if (Array.isArray(n.handlers)) {
+      for (const h of n.handlers) if (Array.isArray(h.body)) walkAll(h.body, visit, nextEnclosing);
+    }
+  }
+}
+
+function bodyReferencesName(nodes, name) {
+  if (!Array.isArray(nodes)) return false;
+  for (const n of nodes) {
+    if (!n || typeof n !== 'object') continue;
+    if (n.type === 'function_call' && n.name === name) return true;
+    if (n.type === 'assign' && n.expression && exprReferencesName(n.expression, name)) return true;
+    for (const key of ['body', 'thenBody', 'elseBody', 'handleBody']) {
+      if (Array.isArray(n[key]) && bodyReferencesName(n[key], name)) return true;
+    }
+    if (Array.isArray(n.handlers)) {
+      for (const h of n.handlers) if (Array.isArray(h.body) && bodyReferencesName(h.body, name)) return true;
+    }
+  }
+  return false;
+}
+
+function exprReferencesName(expr, name) {
+  if (!expr || typeof expr !== 'object') return false;
+  if (expr.type === 'function_call' && expr.name === name) return true;
+  for (const key of ['left', 'right', 'operand', 'value', 'object']) {
+    if (expr[key] && exprReferencesName(expr[key], name)) return true;
+  }
+  if (Array.isArray(expr.args)) {
+    for (const a of expr.args) if (exprReferencesName(a, name)) return true;
+  }
+  return false;
 }
 
 /**

@@ -434,8 +434,10 @@ function forEachNode(variable, iterable, body, line, variable2) {
   return node;
 }
 
-function whileNode(condition, body, line) {
-  return { type: NodeType.WHILE, condition, body, line };
+function whileNode(condition, body, line, maxIterations) {
+  const node = { type: NodeType.WHILE, condition, body, line };
+  if (maxIterations !== undefined) node.maxIterations = maxIterations;
+  return node;
 }
 
 function breakNode(line) {
@@ -4359,8 +4361,24 @@ function parseWhileLoop(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
 
-  // Parse condition (everything after "while")
-  const condExpr = parseExpression(tokens, 1, line);
+  // Optional trailing `, max N times` — bounds the loop so it can't run forever.
+  // Mirrors the `repeat until X, max N times` pattern. Without it the loop is
+  // "accidentally non-total" (see PHILOSOPHY.md "Total by default").
+  let maxIterations;
+  let condEnd = tokens.length;
+  for (let t = tokens.length - 1; t >= 3; t--) {
+    if ((tokens[t].value === 'times' || tokens[t].canonical === 'times_op') &&
+        t >= 2 && tokens[t - 1].type === TokenType.NUMBER &&
+        tokens[t - 2].value === 'max') {
+      maxIterations = tokens[t - 1].value;
+      condEnd = t - 2;
+      if (condEnd > 0 && tokens[condEnd - 1].type === TokenType.COMMA) condEnd--;
+      break;
+    }
+  }
+
+  // Parse condition (everything after "while", up to the max-clause if present)
+  const condExpr = parseExpression(tokens, 1, line, condEnd);
   if (condExpr.error) {
     errors.push({ line, message: condExpr.error });
     return { node: null, endIdx: startIdx + 1 };
@@ -4370,10 +4388,10 @@ function parseWhileLoop(lines, startIdx, blockIndent, errors) {
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
 
   if (body.length === 0) {
-    errors.push({ line, message: 'The while loop is empty — it needs code inside to run. Indent some code below it. Example:\n  while count is less than 10:\n    increase count by 1' });
+    errors.push({ line, message: 'The while loop is empty — it needs code inside to run. Indent some code below it. Example:\n  while count is less than 10, max 100 times:\n    increase count by 1' });
   }
 
-  return { node: whileNode(condExpr.node, body, line), endIdx };
+  return { node: whileNode(condExpr.node, body, line, maxIterations), endIdx };
 }
 
 // Detects whether a "display" line has Phase 4 modifiers (as/called)

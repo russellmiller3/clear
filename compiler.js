@@ -6274,12 +6274,26 @@ function _compileNodeInner(node, ctx) {
 
     case NodeType.FUNCTION_DEF: {
       const params = node.params.map(p => sanitizeName(p.name)).join(', ');
+      const fnName = sanitizeName(node.name);
+      // Depth default: 1000. Safely below V8 stack (~10k) and covers realistic
+      // tree/JSON walks. Override via `define function X, max depth N:` (parser TBD).
+      // A recursive function without base case → clean "depth exceeded" error,
+      // not an opaque stack overflow. PHILOSOPHY Rule 17 + Total-by-default.
+      const maxDepth = node.maxDepth !== undefined ? node.maxDepth : 1000;
       if (ctx.lang === 'python') {
         const bodyCode = compileBody(node.body, ctx);
-        // Auto-detect async: `await` inside the body means the function must be `async def`.
-        // Mirrors the JS auto-detect below — needed for tool functions that call db.find_all, etc.
         const isAsync = bodyCode.includes('await ');
-        return `${pad}${isAsync ? 'async ' : ''}def ${sanitizeName(node.name)}(${params}):\n${bodyCode}`;
+        // Self-reference heuristic: bodyCode contains a call to fnName(
+        const recursesSelf = new RegExp(`\\b${fnName}\\s*\\(`).test(bodyCode);
+        if (recursesSelf) {
+          // Python: track depth via a function attribute (default 0, reset at top-of-call chain).
+          const depthCheck = `${pad}    ${fnName}._depth = getattr(${fnName}, '_depth', 0) + 1\n${pad}    if ${fnName}._depth > ${maxDepth}:\n${pad}        ${fnName}._depth = 0\n${pad}        raise Exception("${fnName} recursed more than ${maxDepth} levels — rewrite as a loop or add 'max depth N' for a higher cap")\n${pad}    try:\n`;
+          // Re-indent body two levels deeper (inside try:), restore depth on return/exception.
+          const reindent = bodyCode.split('\n').map(l => l ? '    ' + l : l).join('\n');
+          const finallyBlock = `\n${pad}    finally:\n${pad}        ${fnName}._depth -= 1`;
+          return `${pad}${isAsync ? 'async ' : ''}def ${fnName}(${params}):\n${depthCheck}${reindent}${finallyBlock}`;
+        }
+        return `${pad}${isAsync ? 'async ' : ''}def ${fnName}(${params}):\n${bodyCode}`;
       }
       // JS: emit JSDoc if any params have types or there's a returnType
       const _typeMap = { text: 'string', number: 'number', list: 'Array', boolean: 'boolean', map: 'Object', any: '*' };
@@ -6295,9 +6309,14 @@ function _compileNodeInner(node, ctx) {
       // insideFunction: true so that `send back` compiles to `return` instead of `res.json`
       const fnDeclared = new Set(node.params.map(p => sanitizeName(p.name)));
       const bodyCode = compileBody(node.body, ctx, { declared: fnDeclared, insideFunction: true });
-      // Auto-detect async: if body contains await (CRUD, API calls, agent calls), make function async
       const isAsync = bodyCode.includes('await ');
-      return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${sanitizeName(node.name)}(${params}) {\n${bodyCode}\n${pad}}`;
+      // Self-reference: wrap body in depth counter using function's _depth property.
+      const recursesSelf = new RegExp(`\\b${fnName}\\s*\\(`).test(bodyCode);
+      if (recursesSelf) {
+        const depthBody = `${pad}  ${fnName}._depth = (${fnName}._depth || 0) + 1;\n${pad}  if (${fnName}._depth > ${maxDepth}) { ${fnName}._depth = 0; throw new Error("${fnName} recursed more than ${maxDepth} levels — rewrite as a loop or add 'max depth N' for a higher cap"); }\n${pad}  try {\n${bodyCode}\n${pad}  } finally { ${fnName}._depth--; }`;
+        return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${depthBody}\n${pad}}`;
+      }
+      return `${_jsdoc}${pad}${isAsync ? 'async ' : ''}function ${fnName}(${params}) {\n${bodyCode}\n${pad}}`;
     }
 
     case NodeType.AGENT:
@@ -6414,14 +6433,22 @@ ${pad}}`;
     }
 
     case NodeType.WHILE: {
+      // Bounded-while: every while loop has a hard iteration cap. If the
+      // source declares `, max N times`, use N. Otherwise fall back to a
+      // default ceiling that stops runaway hallucinated loops before they
+      // eat a request timeout. PHILOSOPHY Rule 17 + "Total by default".
+      // 100000 is generous for real work (bulk iteration over large lists
+      // should use `for each`) and fast enough to fail loudly when a
+      // condition never flips.
       const cond = exprToCode(node.condition, ctx);
+      const max = node.maxIterations !== undefined ? node.maxIterations : 100000;
       if (ctx.lang === 'python') {
         const bodyCode = compileBody(node.body, ctx);
-        return `${pad}while ${cond}:\n${bodyCode}`;
+        return `${pad}_iter = 0\n${pad}while ${cond}:\n${pad}    _iter += 1\n${pad}    if _iter > ${max}: raise Exception("while-loop exceeded " + str(${max}) + " iterations — add ', max N times' if you need a higher cap")\n${bodyCode}`;
       }
       const loopDeclared = new Set(ctx.declared);
       const bodyCode = compileBody(node.body, ctx, { declared: loopDeclared });
-      return `${pad}while (${cond}) {\n${bodyCode}\n${pad}}`;
+      return `${pad}{ let _iter = 0; while (${cond}) { if (++_iter > ${max}) throw new Error("while-loop exceeded " + ${max} + " iterations — add ', max N times' if you need a higher cap");\n${bodyCode}\n${pad}} }`;
     }
 
     case NodeType.REPEAT_UNTIL: {
@@ -6814,10 +6841,17 @@ ${pad}}`;
       const toCode = node.config._inlineRecipient
         ? exprToCode(node.config._inlineRecipient, ctx)
         : exprVal('to');
+      // Default 30s timeout so a frozen SMTP server can't hang the request forever.
+      // Cross-target per PHILOSOPHY.md Rule 17 — SMTP hang protection applies on JS and Python backends.
+      // Author can override via `with timeout N seconds` on the send-email block (parser support TBD).
+      const timeoutMs = node.config.timeout
+        ? (node.config.timeout.unit === 'minutes' ? node.config.timeout.value * 60000 : node.config.timeout.value * 1000)
+        : 30000;
+      const timeoutSec = Math.max(1, Math.floor(timeoutMs / 1000));
       if (ctx.lang === 'python') {
-        return `${pad}_msg = MIMEText(str(${exprVal('body')}))\n${pad}_msg["Subject"] = str(${exprVal('subject')})\n${pad}_msg["To"] = str(${toCode})\n${pad}_msg["From"] = _email_config["user"]\n${pad}with smtplib.SMTP_SSL("smtp.gmail.com", 465) as _server:\n${pad}    _server.login(_email_config["user"], _email_config["password"])\n${pad}    _server.send_message(_msg)`;
+        return `${pad}_msg = MIMEText(str(${exprVal('body')}))\n${pad}_msg["Subject"] = str(${exprVal('subject')})\n${pad}_msg["To"] = str(${toCode})\n${pad}_msg["From"] = _email_config["user"]\n${pad}with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=${timeoutSec}) as _server:\n${pad}    _server.login(_email_config["user"], _email_config["password"])\n${pad}    _server.send_message(_msg)`;
       }
-      return `${pad}await _emailTransport.sendMail({ to: ${toCode}, subject: ${exprVal('subject')}, text: String(${exprVal('body')}) });`;
+      return `${pad}await Promise.race([_emailTransport.sendMail({ to: ${toCode}, subject: ${exprVal('subject')}, text: String(${exprVal('body')}) }), new Promise((_, _rej) => setTimeout(() => _rej(new Error("send email timed out after ${timeoutSec} seconds — add 'with timeout N seconds' for a higher cap")), ${timeoutMs}))]);`;
     }
 
     // Phase 45: External API calls
