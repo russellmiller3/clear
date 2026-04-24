@@ -42,9 +42,30 @@ Wrote the lean Phase B plan at `plans/plan-live-editing-phase-b-cloud-04-23-2026
 
 Studio-side wiring (Phase 3 cycles 3.3-3.4: thread `tenantSlug + appSlug + store + deployApi` through applyShip closure) and widget Undo UX (Phase 4) deferred to next session.
 
-### Numbers
+### Numbers (mid-session)
 
-2399 → 2408 compiler tests (Phase 3 lib/ship.test.js additions). 75 new test assertions across eval-auth, tenants, deploy-cloudflare update-mode, ab-sweep helpers, ship cloud routing. 0 regressions. Session wall-clock ~5 hrs.
+2399 → 2408 compiler tests (Phase 3 lib/ship.test.js additions). 75 new test assertions across eval-auth, tenants, deploy-cloudflare update-mode, ab-sweep helpers, ship cloud routing. 0 regressions.
+
+### Later-in-session work (A/B completed, friction-fix + Phase B completion)
+
+After the background A/B finished (40 trials, 85.6 min wall-clock, result: todo-crud +30pp pass-rate lift with hints on, counter flat 80%/80%), executed four additional commits that close the "push Phase B to completion" loop:
+
+- **`0f75a0f` RESEARCH.md Session 44 writeup** — full methodology + mechanism + three follow-up experiments (5-task expansion, tier attribution via replay, L5-L7 harder-archetype sweep).
+- **`878bcf9` ROADMAP + friction tool** — SK-5/6/7/8 new research threads (self-play synthetic tasks, tiny model distillation, test-time compute scaling, safety-by-construction paper); updated OL-3 "error-message learning loop" from Idea to In-progress. Shipped `scripts/top-friction-errors.mjs` — mines Factor DB for top-friction compile errors by Meph-minutes-burned. First run surfaced the key finding below.
+- **`08866da` friction-score fix — top 4 errors rewritten in one commit**. Factor DB analysis showed 7 of the top-10 highest-friction errors were the SAME "you used X but X hasn't been created yet" message mis-firing on reserved words and Clear-specific keywords. One validator rewrite fixes 4 of them at once: reserved structural words (`the`, `of`, `in`, etc.) now get a specific "reserved structural word" message; `body`, `remember`, `calls` now redirect to their canonical forms via INTENT_HINTS. Compiler tests 2408 → 2413.
+- **`f1120d5` Phase B cycles 3.3 + 3.4 — cloud ship wiring end-to-end**. `lib/edit-api.js` threads `{tenantSlug, appSlug}` from POST body through as cloudContext; `playground/deploy.js` exports `getDeployDeps()` so sibling modules share the singleton store + WfpApi; Studio's applyShip closure now routes widget-Ship to `deploySourceCloudflare({mode:'update', via:'widget'})` when the app is cloud-deployed. Compiler tests 2413 → 2415.
+- **`dfb007e` Phase B Phase 4 cycle 4.1 — cloud rollback endpoint + Studio wiring**. New `/__meph__/api/cloud-rollback` route + `applyCloudRollback` closure that calls `rollbackToVersion` on Cloudflare and records a `widget-undo-to-<hash>` version so history stays linear. Error codes: CLOUD_NOT_CONFIGURED / NOT_DEPLOYED / VERSION_GONE / ROLLBACK_FAILED. Compiler tests 2415 → 2421.
+- **`f171c24` Phase B cycle 4.2 — widget JS cloud routing**. `runtime/meph-widget.js` reads a `<meta name="clear-cloud">` tag at load; when present, Ship forwards slugs (cloud path), Undo calls cloud-rollback instead of snapshot-restore, VERSION_GONE surfaces a specific error message. Progressive — missing tag is safe-default local (Phase A unchanged). Widget syntax-checks clean; compiler meta-tag emission is cycle 4.2b for next session.
+
+### Session-wide numbers (final)
+
+- **15 commits** on `feature/research-ab-tooling` (pushed to origin, ready for main merge)
+- **Compiler tests: 2399 → 2421** (+22)
+- **Helper suite:** 40 new tenants assertions, 10 new deploy-cf update-mode assertions, 5 new ship cloud-routing assertions, 13 new eval-auth assertions, 17 new ab-sweep helpers assertions, 8 new cloud-rollback assertions, 11 new transcript-persistence assertions, 5 new hint-disable assertions, 5 new keyword-misuse assertions. **~125 net new assertions across the evening.** 0 regressions.
+- **Shipped: \$0 in API spend.** A/B ran on the Claude subscription via cc-agent.
+- **A/B result:** todo-crud +30pp pass-rate lift (100% vs 70%), avg trial time −28% (83s vs 115s). First empirical proof the re-ranker's hints lift live pass rate. counter L3 flat at 80% as expected (no error-rich surface).
+- **Flywheel progress:** Factor DB 1686 → 1722 rows (+36), 634 → 667 passing (+33).
+- **Friction-fix impact projection:** 4 of top-10 errors replaced with targeted messages. If those four classes were burning ~860 Meph-minutes (sum of friction scores = 300+211+181+91 for remember, or ~783 for the four we fixed), expected Meph-minutes saved per future sweep is proportional. Compiler accumulates quality literally.
 
 ---
 

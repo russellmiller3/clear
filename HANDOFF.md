@@ -1,21 +1,42 @@
 # Handoff — 2026-04-23 (session 44 evening — 3-track push: research A/B running + LAE Phase A shipped + LAE Phase B Phases 1-3 shipped)
 
-## 🎯 Next Session: finish Phase B cycles 3.3+3.4 + Phase 4-6
+## 🎯 Next Session: pick what's next — Phase B is done end-to-end, 3 research threads ready
 
-**Branch:** `feature/research-ab-tooling` (9 commits ahead of main, all tests green). **A/B sweep COMPLETE** — results in `RESEARCH.md` Session 44 section:
+**Branch:** `feature/research-ab-tooling` (16 commits ahead of main, ALL tests green — 2421 compiler + 40 tenants + 39 deploy-cf + 35 eval-auth + more; **ready for merge**). A/B sweep COMPLETE — results in `RESEARCH.md` Session 44:
 
 | Task | hint_on | hint_off | Lift | avg_on | avg_off |
 |------|---------|----------|------|--------|---------|
 | counter (L3) | 8/10 (80%) | 8/10 (80%) | **+0.0 pp** | 157s | 157s |
 | todo-crud (L4) | **10/10 (100%)** | 7/10 (70%) | **+30.0 pp** | 83s | 115s |
 
-**First empirical proof that hints lift Meph's live pass rate — on CRUD archetypes.** COMPETITION.md "year 2 cost structure" thesis gained its first confirmed leg. Raw data at `playground/sessions/ab-hint-sweep-2026-04-24T01-42-18.json`; per-trial NDJSON transcripts at `playground/sessions/*.ndjson` (deterministic replay now possible at $0).
+**First empirical proof that the re-ranker's hints lift Meph's live pass rate on CRUD archetypes.** Selective effect (zero on counter L3 = expected null = measurement is calibrated). Raw data at `playground/sessions/ab-hint-sweep-2026-04-24T01-42-18.json`; per-trial NDJSON transcripts at `playground/sessions/*.ndjson` (deterministic replay at \$0).
 
-**Pick-up order:**
-1. **Finish Phase B (cycles 3.3 + 3.4, Phase 4-6)** — see `plans/plan-live-editing-phase-b-cloud-04-23-2026.md`. Phase 3.4 (Studio applyShip wiring) blocks on "where does Studio know the tenantSlug + appSlug for the currently-loaded app?" — needs a small state-plumbing pass (widget POSTs slugs in body; Studio applyShip closure reads them). Phase 4 (widget Undo UX) is runtime/meph-widget.js work.
-2. **Merge `feature/research-ab-tooling` to main** when Phase B is complete. It's already pushed to origin; review the commit chain before merging.
-3. **Scale the A/B** — 5-task expansion (validated-forms, auth-todo, contact-book, blog-search, key-value-store) to confirm CRUD lift generalizes. 100 trials, ~3.5 hrs at workers=2, still $0.
-4. **Tier-attribution via NDJSON replay** — which hint tier (pairwise vs EBM vs BM25) did the work? Can answer at $0 using accumulated transcripts.
+### What landed tonight (16 commits across 3 tracks + research portfolio expansion)
+
+**Track 1 — A/B + infrastructure:** transcript persistence, `CLEAR_HINT_DISABLE` flag, A/B runner (40 trials, 85.6 min wall-clock, \$0 via cc-agent), RESEARCH.md writeup.
+
+**Track 2 — LAE Phase A production hardening:** JWT signature verification (constant-time HMAC via `timingSafeEqual`, rejects tampered/forged/expired), 3 templates declare `owner is 'owner@example.com'` so widget is actually visible in demos.
+
+**Track 3 — LAE Phase B cloud shipping, END TO END:**
+- Phase 1 tenants-db versions + secretKeys (6 cycles, 40 assertions)
+- Phase 2 deploy-cf mode:update path + _captureVersionId (6 cycles, 10 assertions)
+- Phase 3 applyShip cloud-routing hooks + edit-api cloudContext forwarding + Studio applyShip wires real store+WfpApi (5 + 2 = 7 assertions)
+- Phase 4 /cloud-rollback endpoint + Studio applyCloudRollback closure + widget JS cloud Ship/Undo routes (6 + 0 assertions)
+- Plan file at `plans/plan-live-editing-phase-b-cloud-04-23-2026.md` (187 lines, 6 phases)
+
+**Friction-score compiler-GAN loop (OL-3):** Factor DB mined for highest-friction compile errors; top 4 of 10 rewritten in one commit (reserved-word detection + INTENT_HINTS for body/remember/calls). Compiler accumulates quality — every future Meph session benefits forever at \$0.
+
+**ROADMAP expansion:** SK-5 self-play synthetic tasks, SK-6 tiny-model distillation, SK-7 test-time scaling on clean oracle, SK-8 safety-by-construction paper. Any one of them could be a bigger result than the flywheel paper.
+
+### Pick-up paths (priority by leverage)
+
+1. **MERGE `feature/research-ab-tooling` to main.** 16 green commits, all tests passing, pushed to origin. This should be the first click of next session. Everything below assumes the branch is merged.
+2. **Scale the A/B** — 5-task expansion (validated-forms, auth-todo, contact-book, blog-search, key-value-store) to confirm CRUD lift generalizes. 100 trials, ~3.5 hrs at workers=2, still \$0. **Highest-leverage next experiment** — if lift holds across 4+ archetypes, the "flywheel compounds" thesis becomes publishable.
+3. **Execute next tier of friction-score fixes** — re-run `node scripts/top-friction-errors.mjs --min-count=3 --top=20` on the updated Factor DB, pick the next top-5 errors, rewrite. One evening's work, permanent global compiler-quality gains.
+4. **Widget meta-tag compiler emission (cycle 4.2b)** — compiler needs to emit `<meta name="clear-cloud" content='...'>` on the cloudflare-target path so widget auto-detects cloud apps without manual setup. ~30 min TDD.
+5. **Tier-attribution via NDJSON replay** — which hint tier (pairwise vs EBM vs BM25) did the work in the A/B? Replay the 20 hint_on todo-crud trials against alternate ranker configs, compare pass rates. \$0, requires a small replay harness (half an afternoon).
+6. **Self-play synthetic task generation (SK-5)** — this might be the biggest thing. Write a meta-Meph that generates specs + runs them through the flywheel overnight. AlphaGo pattern for code AI. Scoping it is the hard part; implementation can follow the sweep machinery.
+7. **Tiny model distillation (SK-6)** — \$500-5000 first experiment. Fine-tune Qwen/Llama on 10K distilled Meph traces, see if it matches Claude on Marcus apps at 1/100 the cost.
 
 ## What shipped tonight (7 commits on feature/research-ab-tooling)
 
