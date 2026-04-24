@@ -6,6 +6,48 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-23 evening — Session 44 three-track push (research A/B + LAE hardening + LAE Phase B scaffolding)
+
+9 commits on `feature/research-ab-tooling` (pushed to origin; merge to main pending Phase B 3.3+3.4+4-6). Three simultaneous tracks in one long session: close the hint-effect measurement gap, production-harden Live App Editing Phase A, and build 60% of the cloud-shipping path for Phase B.
+
+### Track 1 — research A/B: hints measurably lift CRUD pass rate
+
+First empirical proof the re-ranker is load-bearing. 40-trial paired sweep (counter L3 + todo-crud L4, 10 trials per condition per task, cc-agent on the Claude subscription, $0). Result:
+
+| Task | hint_on | hint_off | Lift | avg_on | avg_off |
+|------|---------|----------|------|--------|---------|
+| counter (L3) | 8/10 (80%) | 8/10 (80%) | +0.0 pp | 157s | 157s |
+| todo-crud (L4) | **10/10 (100%)** | 7/10 (70%) | **+30 pp** | **83s** | 115s |
+
+CRUD shows +30 percentage points AND ~28% faster avg trial time. Single-endpoint counter shows flat — hints only earn their keep on error-rich archetypes. Full writeup with methodology, mechanism, and follow-up experiments in `RESEARCH.md` Session 44 evening section.
+
+Supporting infrastructure shipped for the A/B:
+- **Per-session NDJSON transcript persistence** — every cc-agent turn appends its raw claude stream-json to `playground/sessions/<session-id>.ndjson` with a turn-marker envelope. Replaces the GHOST_MEPH_CC_DEBUG tmpdir overwrite. Unlocks deterministic replay of any trial against alternate ranker/prompt/hint configurations at $0. (`8c53be1`)
+- **CLEAR_HINT_DISABLE=1 env flag** — short-circuits the entire Factor DB retrieval block in meph-tools.js compile tool. Keeps the hint-off A/B arm at zero DB-query cost so measurement is hint *effect*, not hint *compute overhead*. (`8c53be1`)
+- **AB sweep runner** — `playground/supervisor/ab-hint-sweep.js` with pure `expandTrials` + `summarizeAbResults` + `formatSummaryTable` helpers (17 test assertions). Spawns workers with the right env, interleaves trials, writes an audit-trail JSON artifact. (`6b6691b`)
+
+### Track 2 — LAE Phase A production hardening
+
+Closed the April-18 Security TODO that let anyone forge an `{"role":"owner"}` JWT and pass the live-edit owner gate. `liveEditAuth` in `playground/server.js` now runs every Bearer token through `verifyLegacyEvalAuthToken` — constant-time HMAC-SHA256 comparison via `crypto.timingSafeEqual`, expiry enforcement, rejection for every malformed shape (null, empty, 1-part, 3-part, non-string, signed-non-JSON-payload). 13 new assertions lock the contract.
+
+Also dropped `owner is 'owner@example.com'` into todo-fullstack, crm-pro, blog-fullstack. Before this, the compiler emitted the widget tag but no template declared an owner, so the widget was never actually visible in any demo. Now Marcus can open a template, log in as owner, see the widget immediately. (`39f2f0e`)
+
+### Track 3 — LAE Phase B cloud shipping scaffolding
+
+Wrote the lean Phase B plan at `plans/plan-live-editing-phase-b-cloud-04-23-2026.md` (187 lines, 6 phases, 16 cycles) cherry-picking cloud mechanics from the one-click-updates plan. Executed Phases 1-3:
+
+- **Phase 1 — tenants-db versions** (`a0b45ea`). `InMemoryTenantStore` grew `getAppRecord`, `recordVersion`, `updateSecretKeys` + `markAppDeployed` extended to seed `versions[]` with `secretKeys: string[]`. MAX_VERSIONS_PER_APP=20 with oldest-trim on insert. Security invariant: stores key NAMES only, never values. 40 new assertions across cycles 1.0-1.5.
+- **Phase 2 — deploy-cloudflare mode:update** (`b34ebfb`). `deploySource({mode:'update'})` routes to a new `_deployUpdate` helper that skips provisionD1/applyMigrations/attachDomain (permanent setup from first deploy), runs a filtered setSecrets (only keys not already in lastRecord.secretKeys), uploads the new script, resolves the versionId via `_captureVersionId` (fast-path uses uploadScript response; slow-path calls listVersions + newest-by-created_on), appends to versions via `recordVersion`. 10 new assertions including via-tag forwarding and DeployLockManager coverage.
+- **Phase 3 partial — applyShip cloud routing** (`9bd91f5`). `lib/ship.js` detects cloud-deployed apps via `io.getCloudRecord` + `io.shipToCloud` hooks; when both present AND getCloudRecord returns non-null, short-circuits local write/compile/spawn and delegates to shipToCloud. Safe defaults: any missing hook falls through to existing local path. 5 new assertions + regression floor.
+
+Studio-side wiring (Phase 3 cycles 3.3-3.4: thread `tenantSlug + appSlug + store + deployApi` through applyShip closure) and widget Undo UX (Phase 4) deferred to next session.
+
+### Numbers
+
+2399 → 2408 compiler tests (Phase 3 lib/ship.test.js additions). 75 new test assertions across eval-auth, tenants, deploy-cloudflare update-mode, ab-sweep helpers, ship cloud routing. 0 regressions. Session wall-clock ~5 hrs.
+
+---
+
 ## 2026-04-22 — GM-2 refactor finish + cc-agent tool mode + meph-helpers extraction
 
 13 commits on `feature/gm-2-tool-use-rest` (not merged to main yet — Russell reviews first). The "Ghost Meph cc-agent with tools" architecture lands in three layers: every Meph tool lives in one module behind one dispatcher, the MCP server exposes them all to Claude Code, and cc-agent.js can spawn Claude Code with MCP configured to translate stream-json events back into Anthropic SSE for /api/chat. Opt-in via `GHOST_MEPH_CC_TOOLS=1` until Russell validates the stream-json format against his real `claude` CLI.

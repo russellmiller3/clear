@@ -1,14 +1,21 @@
 # Handoff — 2026-04-23 (session 44 evening — 3-track push: research A/B running + LAE Phase A shipped + LAE Phase B Phases 1-3 shipped)
 
-## 🎯 Next Session: read A/B results, finish Phase B 3-6 + ship to main
+## 🎯 Next Session: finish Phase B cycles 3.3+3.4 + Phase 4-6
 
-**Branch:** `feature/research-ab-tooling` (7 commits ahead of main, all tests green). **A/B sweep RUNNING in background** (PID from `/tmp/ab-hint-sweep-session44.log` — 9/20 hint_on counter trials done, 8/9 passed = 89%). Expected completion ~1.5 hrs from last observed tail.
+**Branch:** `feature/research-ab-tooling` (9 commits ahead of main, all tests green). **A/B sweep COMPLETE** — results in `RESEARCH.md` Session 44 section:
+
+| Task | hint_on | hint_off | Lift | avg_on | avg_off |
+|------|---------|----------|------|--------|---------|
+| counter (L3) | 8/10 (80%) | 8/10 (80%) | **+0.0 pp** | 157s | 157s |
+| todo-crud (L4) | **10/10 (100%)** | 7/10 (70%) | **+30.0 pp** | 83s | 115s |
+
+**First empirical proof that hints lift Meph's live pass rate — on CRUD archetypes.** COMPETITION.md "year 2 cost structure" thesis gained its first confirmed leg. Raw data at `playground/sessions/ab-hint-sweep-2026-04-24T01-42-18.json`; per-trial NDJSON transcripts at `playground/sessions/*.ndjson` (deterministic replay now possible at $0).
 
 **Pick-up order:**
-1. **Read the A/B completion log** at `/tmp/ab-hint-sweep-session44.log` — tail shows full 40-trial table when done. Also dumped to `playground/sessions/ab-hint-sweep-<stamp>.json` as an artifact.
-2. **Write up result in `RESEARCH.md` Session 44 section** — the data-gap the whole evening was engineered to close. Positive, negative, or null — record it with numbers.
-3. **Finish Phase B (cycles 3.3 + 3.4, Phase 4-6)** — see `plans/plan-live-editing-phase-b-cloud-04-23-2026.md`. Phase 3.4 (Studio applyShip wiring) blocks on "where does Studio know the tenantSlug + appSlug for the currently-loaded app?" — needs a small state-plumbing pass. Phase 4 (widget Undo UX) is runtime/meph-widget.js work.
-4. **Merge + ship** when A/B is written up + Phase B is complete.
+1. **Finish Phase B (cycles 3.3 + 3.4, Phase 4-6)** — see `plans/plan-live-editing-phase-b-cloud-04-23-2026.md`. Phase 3.4 (Studio applyShip wiring) blocks on "where does Studio know the tenantSlug + appSlug for the currently-loaded app?" — needs a small state-plumbing pass (widget POSTs slugs in body; Studio applyShip closure reads them). Phase 4 (widget Undo UX) is runtime/meph-widget.js work.
+2. **Merge `feature/research-ab-tooling` to main** when Phase B is complete. It's already pushed to origin; review the commit chain before merging.
+3. **Scale the A/B** — 5-task expansion (validated-forms, auth-todo, contact-book, blog-search, key-value-store) to confirm CRUD lift generalizes. 100 trials, ~3.5 hrs at workers=2, still $0.
+4. **Tier-attribution via NDJSON replay** — which hint tier (pairwise vs EBM vs BM25) did the work? Can answer at $0 using accumulated transcripts.
 
 ## What shipped tonight (7 commits on feature/research-ab-tooling)
 
