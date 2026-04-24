@@ -1153,11 +1153,21 @@ const comp2 = JSON.parse(compileTool({ include_compiled: true }, cleanCtx, compi
 assert(comp2.serverJS !== undefined || comp2.javascript !== undefined,
   `compileTool include_compiled=true embeds compiled output even on clean compile (got keys: ${Object.keys(comp2).join(',')})`);
 
-// --- 3. Failing compile: errors present, compiled output included (errors imply debug)
-const brokenCtx = new MephContext({ source: 'database:\n  bogus syntax garbage line\n' });
+// --- 3. Failing compile: errors present, compiled output auto-included
+//       (TIER 2 #12 — Meph was debugging blind; now gets javascript/serverJS
+//       embedded whenever errors exist, without needing include_compiled=true)
+const brokenSrc = `target: backend
+when user calls GET /api/x:
+  foo = nonexistent_var
+  send back foo`;
+const brokenCtx = new MephContext({ source: brokenSrc });
 const comp3 = JSON.parse(compileTool({}, brokenCtx, compileHelpers));
 assert(comp3.errors.length > 0,
   `compileTool surfaces compile errors (got ${comp3.errors.length})`);
+assert(comp3.javascript !== undefined || comp3.serverJS !== undefined,
+  `compileTool AUTO-includes compiled source on errors so Meph can debug (got keys: ${Object.keys(comp3).join(',')})`);
+assert(typeof comp3.note === 'string' && /errors/i.test(comp3.note),
+  `compileTool annotates why compiled output is included on error (got note: ${JSON.stringify(comp3.note)})`);
 
 // --- 4. "Example:" stripping from error messages
 const brokenCtxEx = new MephContext({ source: 'database:\n  bogus syntax garbage line\n' });

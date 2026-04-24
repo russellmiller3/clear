@@ -226,7 +226,7 @@
 | 9 | ~~DB relationships — `belongs to` parses clean but no JOIN emitted on `get all X`~~ **[DONE 2026-04-24]** JS always auto-stitched; Python path gained `schemaMap` + FK stitching loop + pluralized `REFERENCES` | Both | ✅ |
 | 10 | ~~External APIs — `fetch from` compiles to `undefined`~~ **[DONE]** | Both | ✅ |
 | 11 | Agent streaming display not expressible in Clear | Both | open |
-| 12 | Compile tool returns no source on error (debug blind) | Tooling | open |
+| 12 | ~~Compile tool returns no source on error (debug blind)~~ **[DONE 2026-04-24]** Meph's compile tool auto-embeds `javascript` + `serverJS` + `html` + `python` (truncated to 4-8KB each) whenever `r.errors.length > 0`, plus annotation note explaining why. Explicit `include_compiled=true` override for clean compiles too. Regression test locks the "errors → auto-include" contract. | Tooling | ✅ |
 | 13 | ~~JS scheduled task — has `try/catch` + `setInterval` but NO `clearInterval`/cancellation handle~~ **[DONE 2026-04-24]** unified `_scheduledCancellers` registry, drained by SIGTERM + SIGINT; covers setInterval, HH:MM recursive setTimeout, and node-cron | JS | ✅ |
 | 14 | ~~[PYTHON] Scheduled task uses deprecated `@app.on_event`~~ **[DONE 2026-04-14]** (now `@asynccontextmanager` lifespan) | Python | ✅ |
 | 15 | ~~Server has no multipart/file upload middleware~~ **[DONE 2026-04-24]** compiler auto-detects `upload X to '/api/foo'` + matching POST endpoint, emits `require('multer')` + shared `_upload` with `memoryStorage`, injects `_upload.any()` only on matching POST endpoints (plain JSON POSTs untouched) | JS | ✅ |
@@ -3001,7 +3001,7 @@ Actual remaining backlog (everything else has been verified or moved to DONE):
 - **T2#8 Charts** — `display X as bar chart` is *silently dropped* (no ECharts CDN, no `echarts.init`, no chart DOM). Directive accepted, no codegen. **Real bug.**
 - ~~**T2#9 DB relationships**~~ **[DONE 2026-04-24]** JS had auto-stitching already; Python path now emits `for _item in rows: _item[fk] = db.query_one(...)` after every list lookup + fixed `REFERENCES <tbl>(id)` pluralization bug. 5 new compiler tests + runtime smoke.
 - **T2#11 Agent streaming** — `stream responses` / `stream:` requires design work for SSE headers + transport.
-- **T2#12 Compile tool returns no source on error** — tooling (playground/server.js compile endpoint).
+- ~~**T2#12 Compile tool returns no source on error**~~ **[DONE 2026-04-24]** Was fixed at some earlier point in the compileTool — auto-embeds compiled output whenever errors exist. Session 45 audit added a regression test so the "debug blind" behavior can't silently return.
 - ~~**T2#13 Scheduled task cancellation**~~ **[DONE 2026-04-24]** all timer handles now live in `_scheduledCancellers[]`; SIGTERM and SIGINT drain it before `server.close()`. HH:MM cron uses closure-over-mutable-var so the canceller always sees whichever _setTimeout is armed right now. 7 new compiler tests.
 - ~~**T2#15 Multipart middleware**~~ **[DONE 2026-04-24]** Compiler walks the AST for UPLOAD_TO + ACCEPT_FILE nodes, emits multer + `_upload` module-scoped, auto-injects `_upload.any()` on POST endpoints whose path is an upload target. 6 new tests; negative case (non-upload POSTs) + no-dead-code case both covered.
 - **T2#33 Throttle** — no `on scroll throttle` syntax recognized. Missing feature.

@@ -6,6 +6,20 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Regression net on compile-tool-source-on-error (TIER 2 #12)
+
+Audit of T2#12 (compile tool returns no source on error) found the fix was already in place at `playground/meph-tools.js:1234` — `const wantCompiled = r.errors.length > 0 || input.include_compiled === true`. Meph gets `javascript` / `serverJS` / `html` / `python` (truncated to 4-8KB each) auto-embedded whenever errors exist, plus a `note` field explaining why.
+
+But there was no REGRESSION TEST locking that contract in. The existing suite tested `include_compiled=true` on a clean compile, but not the "errors → auto-include" auto-behavior. One refactor aimed at token-cost reduction could have silently stripped the auto-embed and Meph would have gone blind on errors again.
+
+Added two assertions to `playground/meph-tools.test.js`:
+- Failing compile (undefined variable) → compile result MUST include `javascript` or `serverJS` in the returned JSON
+- The `note` field MUST mention "errors" when auto-embed fired
+
+Moves T2#12 from "open" to "done" with the regression floor in place. Nothing else shipped — the compiler and tool weren't touched.
+
+---
+
 ## 2026-04-24 — Friction batch 2: auth-capability gate on mutation security check
 
 Session 45 friction data showed the "DELETE/PUT needs `requires login`" security error accounted for 25 rows and ~50% give-up rate (items #2 and #5 on the ranked list). Root cause surfaced from reading real Meph sessions: the apps were toy K/V stores with NO auth set up at all — no Users table, no `allow signup and login`. The validator was demanding `requires login`, which needs a user system to check against, in programs that had none. Meph had no valid move.
