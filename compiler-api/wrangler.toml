@@ -1,0 +1,33 @@
+# Clear Compiler API — Cloudflare Worker config
+#
+# Local dev:  wrangler dev
+# Deploy:     wrangler deploy
+#
+# The worker imports ../index.js (the compiler) — wrangler bundles the whole
+# module graph automatically.
+
+name = "clear-compiler-api"
+main = "worker.js"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat_v2"]
+
+# Custom domain (configure in Cloudflare dashboard or uncomment after the
+# zone is added):
+# routes = [{ pattern = "compile.clearlang.dev/*", custom_domain = true }]
+
+[observability]
+enabled = true
+
+# Rate-limiting via KV. Run `wrangler kv namespace create RATE_LIMITER` once
+# and paste the returned id below before enabling.
+# [[kv_namespaces]]
+# binding = "RATE_LIMITER"
+# id = "PASTE_KV_ID_HERE"
+
+# Optional usage analytics. Same flow: `wrangler kv namespace create USAGE`.
+# [[kv_namespaces]]
+# binding = "USAGE"
+# id = "PASTE_KV_ID_HERE"
+
+[vars]
+VERSION = "1.0.0"
