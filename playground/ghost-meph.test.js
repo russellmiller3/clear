@@ -451,6 +451,74 @@ function parseSSE(text) {
   if (origTools === undefined) delete process.env.GHOST_MEPH_CC_TOOLS; else process.env.GHOST_MEPH_CC_TOOLS = origTools;
   _reset10();
 
+  // =========================================================================
+  // PHASE 11 — transcript persistence (Session 44, Track 1.1)
+  // =========================================================================
+  // Every cc-agent turn writes its raw claude stream-json NDJSON to
+  // playground/sessions/<session-id>.ndjson. Was previously gated behind
+  // GHOST_MEPH_CC_DEBUG=1 and overwrote a single tmpdir path every call —
+  // fine for one-off debugging, useless for deterministic replay of a
+  // sweep. The unconditional per-session persistence unblocks the hint
+  // A/B (replay past trials against new ranker/hint configurations at $0)
+  // and the broader research corpus (counterfactual analysis of Meph's
+  // tool use, future SFT data, etc.). ~40KB per task, trivial storage.
+  console.log('\n💾 Phase 11 — transcript persistence');
+  const { persistCcAgentTranscript } = await import('./ghost-meph/cc-agent.js');
+  const { readFileSync: _rfs11, unlinkSync: _rm11, existsSync: _exists11, mkdirSync: _mkdir11 } = await import('fs');
+  const { join: _join11 } = await import('path');
+  const _repoRoot11 = _join11(process.cwd());
+  const _sessDir11 = _join11(_repoRoot11, 'playground', 'sessions');
+  try { _mkdir11(_sessDir11, { recursive: true }); } catch {}
+
+  const _testSid = `test-transcript-${Date.now()}-${process.pid}`;
+  const _testPath = _join11(_sessDir11, `${_testSid}.ndjson`);
+  const _sample1 = '{"type":"system","subtype":"init"}\n{"type":"message","role":"assistant"}';
+  const _resultPath = persistCcAgentTranscript(_sample1, _testSid);
+  assert(_resultPath === _testPath,
+    `persistCcAgentTranscript returns playground/sessions/<sid>.ndjson path (got ${_resultPath})`);
+  assert(_exists11(_testPath),
+    `persistCcAgentTranscript creates the file at the returned path`);
+  const _contents1 = _rfs11(_testPath, 'utf8');
+  assert(_contents1.includes('cc_agent_turn_marker'),
+    'transcript prepends a turn-marker line so replay can split multi-turn sessions');
+  assert(_contents1.includes('system","subtype":"init"'),
+    'transcript includes the raw NDJSON body verbatim');
+  assert(_contents1.endsWith('\n'),
+    'transcript body ends with a newline (safe for subsequent append)');
+
+  // Second call with same sid — appends, preserves first turn's content.
+  const _sample2 = '{"type":"message","turn":2}';
+  persistCcAgentTranscript(_sample2, _testSid);
+  const _contents2 = _rfs11(_testPath, 'utf8');
+  assert(_contents2.length > _contents1.length,
+    'second call appends (file grows)');
+  assert(_contents2.includes('"turn":2'),
+    'second call appends the second turn body');
+  assert((_contents2.match(/cc_agent_turn_marker/g) || []).length === 2,
+    'each call adds exactly one turn-marker');
+  assert(_contents2.includes('system","subtype":"init"'),
+    'first turn content is preserved in the appended file');
+  try { _rm11(_testPath); } catch {}
+
+  // Fallback sid when MEPH_SESSION_ID unset and no explicit arg.
+  const _origSid11 = process.env.MEPH_SESSION_ID;
+  delete process.env.MEPH_SESSION_ID;
+  const _fallbackPath = persistCcAgentTranscript('{"type":"fallback"}');
+  assert(_fallbackPath && _fallbackPath.includes('cc-agent_'),
+    `fallback sid has cc-agent_ prefix when no env+arg (got ${_fallbackPath})`);
+  try { _rm11(_fallbackPath); } catch {}
+
+  // Env-supplied sid wins over fallback.
+  process.env.MEPH_SESSION_ID = `test-env-sid-${Date.now()}-${process.pid}`;
+  const _envPath = persistCcAgentTranscript('{"type":"from-env"}');
+  assert(_envPath.endsWith(`${process.env.MEPH_SESSION_ID}.ndjson`),
+    'persistCcAgentTranscript uses MEPH_SESSION_ID from env when no explicit sid passed');
+  try { _rm11(_envPath); } catch {}
+
+  // Restore env
+  if (_origSid11 === undefined) delete process.env.MEPH_SESSION_ID;
+  else process.env.MEPH_SESSION_ID = _origSid11;
+
   console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 })();

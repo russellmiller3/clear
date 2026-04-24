@@ -1264,6 +1264,60 @@ const comp9 = JSON.parse(compileTool({}, bm25Ctx, compileHelpers));
 assert(comp9.hints?.reranked_by === 'bm25',
   `compileTool reports reranked_by=bm25 when no reranker bundle (got ${comp9.hints?.reranked_by})`);
 
+// --- 9b. CLEAR_HINT_DISABLE=1 env flag short-circuits hint retrieval
+// Session 44 / Track 1.2: enables honest A/B measurement of hint effect on
+// Meph's live pass rate. Passive/observational data is confounded by
+// selection bias (hints fire on hard tasks), so observational "with hints
+// passes less" is uninterpretable. Forcing hint-off via env lets a sweep
+// control the variable cleanly. Must skip querySuggestions entirely so
+// the hint-off condition pays zero DB-query / ranker cost and the A/B
+// measures hint *effect*, not hint *compute overhead*.
+const origHintDisable = process.env.CLEAR_HINT_DISABLE;
+process.env.CLEAR_HINT_DISABLE = '1';
+let disabledQueryCalls = 0;
+const fdbDisabled = {
+  logAction: () => 900,
+  querySuggestions: () => { disabledQueryCalls++; return [hintRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const disabledCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbDisabled,
+  sessionId: 'sess-disabled',
+  pairwiseBundle: { weights: 'fake' },
+});
+const compDisabled = JSON.parse(compileTool({}, disabledCtx, compileHelpers));
+assert(!compDisabled.hints,
+  `CLEAR_HINT_DISABLE=1 strips hints from compile result (got ${compDisabled.hints ? JSON.stringify(compDisabled.hints).slice(0, 80) : 'none'})`);
+assert(disabledQueryCalls === 0,
+  `CLEAR_HINT_DISABLE=1 skips querySuggestions entirely (got ${disabledQueryCalls} calls; zero avoids ranker/DB load on hint-off condition)`);
+assert(disabledCtx.hintState.hintsInjectedRowId === null,
+  'CLEAR_HINT_DISABLE=1 leaves hintState clean (no injection recorded)');
+if (origHintDisable === undefined) delete process.env.CLEAR_HINT_DISABLE;
+else process.env.CLEAR_HINT_DISABLE = origHintDisable;
+
+// And: when the flag is back off (unset or != '1'), hints flow normally.
+// Guards against a regression where the flag check accidentally inverts.
+delete process.env.CLEAR_HINT_DISABLE;
+let renabledQueryCalls = 0;
+const fdbReenabled = {
+  logAction: () => 901,
+  querySuggestions: () => { renabledQueryCalls++; return [hintRow]; },
+  _db: { prepare: () => ({ get: () => null }) },
+};
+const renabledCtx = new MephContext({
+  source: 'database:\n  bogus garbage\n',
+  factorDB: fdbReenabled,
+  sessionId: 'sess-renabled',
+  pairwiseBundle: { weights: 'fake' },
+});
+const compReenabled = JSON.parse(compileTool({}, renabledCtx, compileHelpers));
+assert(renabledQueryCalls === 1,
+  `flag unset: querySuggestions called as normal (got ${renabledQueryCalls})`);
+assert(compReenabled.hints && compReenabled.hints.text,
+  'flag unset: hints flow through normally (no inversion regression)');
+if (origHintDisable !== undefined) process.env.CLEAR_HINT_DISABLE = origHintDisable;
+
 // --- 10. Inference fallback: postHintMinErrorCount tracks drops after hint-serve
 const dropCtx = new MephContext({
   source: 'database:\n  bogus garbage\n',
