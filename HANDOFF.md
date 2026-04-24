@@ -28,15 +28,42 @@
 
 **ROADMAP expansion:** SK-5 self-play synthetic tasks, SK-6 tiny-model distillation, SK-7 test-time scaling on clean oracle, SK-8 safety-by-construction paper. Any one of them could be a bigger result than the flywheel paper.
 
-### Pick-up paths (priority by leverage)
+### Pick-up paths — Russell's priority order (2026-04-24)
 
-1. **MERGE `feature/research-ab-tooling` to main.** 16 green commits, all tests passing, pushed to origin. This should be the first click of next session. Everything below assumes the branch is merged.
-2. **Scale the A/B** — 5-task expansion (validated-forms, auth-todo, contact-book, blog-search, key-value-store) to confirm CRUD lift generalizes. 100 trials, ~3.5 hrs at workers=2, still \$0. **Highest-leverage next experiment** — if lift holds across 4+ archetypes, the "flywheel compounds" thesis becomes publishable.
-3. **Execute next tier of friction-score fixes** — re-run `node scripts/top-friction-errors.mjs --min-count=3 --top=20` on the updated Factor DB, pick the next top-5 errors, rewrite. One evening's work, permanent global compiler-quality gains.
-4. **Widget meta-tag compiler emission (cycle 4.2b)** — compiler needs to emit `<meta name="clear-cloud" content='...'>` on the cloudflare-target path so widget auto-detects cloud apps without manual setup. ~30 min TDD.
-5. **Tier-attribution via NDJSON replay** — which hint tier (pairwise vs EBM vs BM25) did the work in the A/B? Replay the 20 hint_on todo-crud trials against alternate ranker configs, compare pass rates. \$0, requires a small replay harness (half an afternoon).
-6. **Self-play synthetic task generation (SK-5)** — this might be the biggest thing. Write a meta-Meph that generates specs + runs them through the flywheel overnight. AlphaGo pattern for code AI. Scoping it is the hard part; implementation can follow the sweep machinery.
-7. **Tiny model distillation (SK-6)** — \$500-5000 first experiment. Fine-tune Qwen/Llama on 10K distilled Meph traces, see if it matches Claude on Marcus apps at 1/100 the cost.
+**Main is shipped at `e49b048`.** Branch `feature/research-ab-tooling` still on origin as backup. Execute the queue below in order. Each item is additive, tests must stay green between them.
+
+**1. Fix all open requests.md errors in priority order (TIER 2 + residual TIER 3).** ~11 still-open items ranked by customer impact:
+
+   | Rank | Item | Impact | Est. size |
+   |------|------|--------|-----------|
+   | 1 | **`belongs to` JOIN emission (T2 #9)** | Silent-bug-worst: parses clean, runtime returns disconnected rows. Breaks every relational app (CRM, blog, helpdesk). | Medium — compiler CRUD-read path + runtime join |
+   | 2 | **Charts: `show X as bar chart` silently dropped (T2 #8)** | Every Marcus dashboard needs them; silent-drop is embarrassing on demos. | Medium — ECharts CDN + init + data-binding |
+   | 3 | **Multipart/file upload middleware on JS server (T2 #15)** | Client-side FormData already wired; server receiver is the gap. Blocks any upload app. | Small |
+   | 4 | **Cookies broken (T2 #42)** | No cookie-parser in JS emit; no Response import in Python. | Small |
+   | 5 | **`upsert` keyword (T2 #47)** | Genuinely missing; needs design pass (`save or update` / `upsert by email`). | Small TDD + design |
+   | 6 | **DB transactions (T2 #48)** | No `atomically`/`begin transaction` syntax. Missing feature, real production blocker. | Medium — design pass first |
+   | 7 | **`transform data:` / `pick X from Y` (T2 #44)** | Missing syntax. | Small |
+   | 8 | **JS scheduled task cancellation (T2 #13)** | Partial today — has setInterval but no clearInterval handle. | Small |
+   | 9 | **`throttle` on scroll (T2 #33)** | Missing syntax. | Small |
+   | 10 | **Agent streaming display (T2 #11)** | Not expressible in Clear. | Design first |
+   | 11 | **Compile tool returns no source on error (T2 #12)** | Tooling debug blind-spot. | Small |
+
+   Strategy: TDD each top-down. Top 2 (`belongs to` + charts) probably pay for the whole evening. After each fix, run `node clear.test.js` + compile all 8 core templates (per the Template Smoke Test rule).
+
+**2. 4.2b — compiler meta-tag emission for widget cloud-auto-detect.** Compiler emits `<meta name="clear-cloud" content='{"tenantSlug":"X","appSlug":"Y"}'>` on the `--target=cloudflare` path when the bundle is being deployed. Unblocks the LAE widget's cloud-Ship auto-routing without manual meta-tag injection. ~30 min TDD.
+
+**3. Friction-score fixes batch 2.** Re-run `node scripts/top-friction-errors.mjs --min-count=3 --top=20` on the updated Factor DB (now 1722 rows). Batch 1 (tonight) rewrote 4 of top-10 in one commit (reserved-word detection + `body`/`remember`/`calls` hints). Batch 2 should hit the next 3-5 highest-friction errors. Each fix ~30-60 min TDD; every fix ships globally forever at \$0.
+
+**4. A/B expansion — 5-task × 10 trials × 2 conditions = 100 trials, \$0 via cc-agent.** Tasks: `auth-todo, contact-book, validated-forms, blog-search, key-value-store`. Wall-clock ~3.5 hrs at workers=2 or ~4-5 hrs at workers=1 (honest grading). If the +30pp CRUD lift generalizes, the flywheel-compounds thesis becomes publishable. This is the experiment that moves Session 44's result from "suggestive" to "confirmed."
+
+**5. Self-play synthetic task generation (SK-5).** Scoping pass first: write `plans/plan-self-play-synthetic-tasks-DATE.md` that designs a meta-Meph agent that (a) generates app specs from a prompt library + archetype priors, (b) hands specs to Meph via the existing sweep machinery, (c) grades outcomes via the Factor DB's existing test-pass pipeline, (d) feeds failed specs back as next-level curriculum, (e) runs overnight unattended. AlphaGo-shaped — unlimited training data without humans. Implementation is ~a week; scoping is one evening. Execute only after (1)-(4) land.
+
+### Later (post-queue, still ranked)
+
+- **Tiny-model distillation (SK-6)** — ~\$500-5000 first experiment, fine-tune Qwen/Llama on 10K Meph traces. Frame for the company-moat result: "Clear runs at 1/100 the cost of frontier models." Unblock after self-play has generated enough training data.
+- **Tier-attribution via NDJSON replay** — which hint tier did the work in Session 44's A/B? Half an afternoon, \$0, requires small replay harness reading `playground/sessions/*.ndjson`.
+- **SK-7 test-time compute scaling** — one-afternoon \$20 experiment, publishes a scaling law nobody else can measure cleanly.
+- **SK-8 safety-by-construction paper** — zero code cost, alignment+enterprise-security audience.
 
 ## What shipped tonight (7 commits on feature/research-ab-tooling)
 
