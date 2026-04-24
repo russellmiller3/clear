@@ -403,13 +403,14 @@ function ifThenNode(condition, thenBranch, otherwiseBranch, line) {
   return { type: NodeType.IF_THEN, condition, thenBranch, otherwiseBranch, line };
 }
 
-function functionDefNode(name, params, body, line, returnType) {
+function functionDefNode(name, params, body, line, returnType, maxDepth) {
   // Normalize params: plain strings → {name, type: null}
   const normalizedParams = params.map(p =>
     typeof p === 'string' ? { name: p, type: null } : p
   );
   const node = { type: NodeType.FUNCTION_DEF, name, params: normalizedParams, body, line };
   if (returnType) node.returnType = returnType;
+  if (maxDepth !== undefined) node.maxDepth = maxDepth;
   return node;
 }
 
@@ -3302,6 +3303,18 @@ function parseFunctionDef(lines, startIdx, blockIndent, errors) {
     }
   }
 
+  // Optional ", max depth N" suffix — overrides the default 1000 recursion cap.
+  // PHILOSOPHY Rule 18 ("Total by default") — default is safe; override makes intent explicit.
+  let maxDepth;
+  if (pos < tokens.length && tokens[pos].type === TokenType.COMMA) pos++;
+  if (pos + 2 < tokens.length &&
+      tokens[pos].value === 'max' &&
+      tokens[pos + 1].value === 'depth' &&
+      tokens[pos + 2].type === TokenType.NUMBER) {
+    maxDepth = tokens[pos + 2].value;
+    pos += 3;
+  }
+
   // Parse indented body
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
 
@@ -3311,7 +3324,7 @@ function parseFunctionDef(lines, startIdx, blockIndent, errors) {
     show "hello"` });
   }
 
-  return { node: functionDefNode(name, params, body, line, returnType), endIdx };
+  return { node: functionDefNode(name, params, body, line, returnType, maxDepth), endIdx };
 }
 
 // Agent definit}

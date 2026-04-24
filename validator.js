@@ -147,7 +147,7 @@ function validateTermination(body, warnings) {
       if (node.maxDepth === undefined && bodyReferencesName(node.body, node.name)) {
         warnings.push({
           line: node.line || 0,
-          message: `Function '${node.name}' calls itself. Default depth cap is 1000 — deeper recursion will throw. Add 'max depth N' after the parameter list to override (parser support for the override is still pending).`,
+          message: `Function '${node.name}' calls itself. Default depth cap is 1000 — deeper recursion will throw. Override with 'define function ${node.name}(...), max depth N:' to declare a different cap.`,
         });
       }
     }

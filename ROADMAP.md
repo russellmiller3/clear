@@ -62,6 +62,15 @@ No terminal. No Dockerfile. No vendor name. One Stripe invoice.
 
 **Rule of thumb for session prioritization:** if you're working on something tagged P2 or lower while P0 items are incomplete, ask yourself whether this session is actually moving Marcus closer. If not, stop and pick a P0 task. Research is valuable — it's just not urgent.
 
+### Session 46 follow-ups (Decidable Core shipped)
+
+Decidable Core Phase 2+3 shipped on `feature/decidable-core`: every `while` is auto-capped, recursive functions get a depth counter, `send email` gets a 30s timeout default, `ask claude` / `call api` retry transient failures. PHILOSOPHY Rules 17 + 18 added. `scripts/cross-target-smoke.mjs` now gates cross-target emission (32/32 parse clean). Incremental pickups:
+
+1. **Parser support for `max depth N` on `define function`.** Today the runtime uses the default 1000 unless the author rewrites as a loop. Adding the parser suffix (similar to `while … max N times`) makes the override declarable. ~30 lines in parser.js + tests.
+2. **Port TEST_INTENT to Python target.** The Python emitter currently stubs all intent-based tests with `pytest.skip("not yet ported")`. Real port would add can-user/does-it-require-login test generators that emit `httpx` instead of JS `fetch`. ~200 lines, mirrors the JS generator.
+3. **Phase 7 measurement.** Replay past Factor DB failing transcripts through the new compiler, A/B on 5 curriculum tasks. Budget-capped at $10 per the CLAUDE.md Session-41 rule. Confirms the termination bounds help (or doesn't — in which case we park and move on).
+4. **Extend `cross-target-smoke.mjs` into a pre-push hook.** Currently runs manually. 5 min to wire into `.husky/pre-push` alongside `node clear.test.js`.
+
 ### Repo Readthrough Priorities (2026-04-19)
 
 These came out of a full readthrough of the repo/docs stack. They are not new feature ideas; they are leverage points that protect the thesis.
