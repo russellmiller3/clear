@@ -1,10 +1,19 @@
 #!/bin/sh
-# Pre-push: compiler + e2e + meph eval (when key set)
+# Pre-push: compiler + e2e + cross-target smoke + meph eval (when key set)
 echo "🔍 Running compiler tests..."
 node clear.test.js || exit 1
 
 echo "🎯 Running e2e tests (templates + curriculum)..."
 node playground/e2e.test.js || exit 1
+
+# Cross-target smoke: every template × every target, syntax-checks each
+# emission. Catches PHILOSOPHY Rule-17 drift (a change lands for Node
+# but silently regresses Python / Cloudflare / browser). ~10 seconds.
+# Zero API spend. Skip with SKIP_CROSS_TARGET_SMOKE=1 for emergencies.
+if [ "$SKIP_CROSS_TARGET_SMOKE" != "1" ]; then
+  echo "🧪 Running cross-target emission smoke-test (8 templates × 4 targets)..."
+  node scripts/cross-target-smoke.mjs || exit 1
+fi
 
 # Meph tool eval — runs only when ANTHROPIC_API_KEY is set. Catches
 # regressions in tools, schemas, or system prompt that compiler tests

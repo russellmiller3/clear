@@ -301,6 +301,34 @@ run_command("node cli/clear.js info temp-app.clear --json")
 - Possessive access: `person's name` (never person.name)
 - Colons signal blocks: anything with `:` at the end has an indented body below
 
+## Termination Rules (PHILOSOPHY Rule 18 — "Total by Default")
+
+Every loop, every recursion, every external call has a bound. The compiler emits them so you don't have to think about hangs.
+
+- **`while cond:`** — the compiler silently caps at 100 iterations and warns. 100 is tight on purpose: a hallucinated infinite loop fails in milliseconds instead of seconds. Declare `, max N times` when you legitimately need more (pagination with large cursors, state machines, parsers):
+  ```
+  while count is less than 10, max 50 times:
+    increase count by 1
+
+  while has_more_pages, max 1000 times:
+    page = fetch_next_page()
+  ```
+  If the loop exceeds the cap, the runtime throws `"while-loop exceeded N iterations"` with a copy-pasteable fix hint. Prefer `repeat until X, max N times:` or `for each item in items:` when you can — they're bounded by construction. Bulk iteration over a known collection should always be `for each`, never `while`.
+
+- **Recursive functions** — self-calls are auto-wrapped in a depth counter (default 1000). If your function recurses past 1000 levels, it throws `"X recursed more than 1000 levels — rewrite as a loop or add 'max depth N'"`. Most tree/JSON walks are fine at 1000; deep cases need the override (parser support for the suffix is pending — for now, rewrite as a loop).
+
+- **`send email`** — defaults to a 30-second SMTP timeout so a frozen mail server can't hang the request. Override with `with timeout N seconds` inside the block:
+  ```
+  send email to customer_email:
+    subject 'Order confirmation'
+    body order_receipt
+    with timeout 60 seconds
+  ```
+
+- **`ask claude` / `call api`** — already wrapped in retry + timeout at the runtime layer (1s/2s/4s exponential backoff on 429/5xx/network errors). You don't have to write retry logic yourself.
+
+If you see a compile warning about `while`, recursion, or `send email` — the warning is telling you the default the compiler is using. You can accept it or declare explicitly. Both options are fine; the warning is a nudge, not an error.
+
 ## File Structure (MANDATORY)
 
 Every Clear app follows this order:

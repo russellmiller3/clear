@@ -1521,3 +1521,53 @@ Concretely, this unlocks:
 1. **5-task sweep confirming the CRUD lift.** validated-forms, auth-todo, contact-book, blog-search, key-value-store. 10 trials per condition per task = 100 trials. ~3.5 hrs at workers=2. Still $0. Answers "does the CRUD lift generalize?"
 2. **Tier-attribution study via replay.** Take the 20 completed hint_on todo-crud trials, replay each against a "pairwise-only" vs "BM25-only" ranker. Measure how many would still have passed at each tier. Requires a replay harness that reads the NDJSON and drives a fake Meph that hallucinates from the transcript — an afternoon of engineering; then every future ranker change tests for free against the accumulated corpus.
 3. **L5-L7 expansion.** One agent-heavy task (agent-summary) + one rate-limited-api-style task. Test whether the lift survives the "harder task, smaller hint-able surface" regime.
+
+---
+
+## Cross-target emission verification — $0 deterministic eval (Session 46)
+
+**Problem.** PHILOSOPHY.md Rule 17 says safety properties must hold in every compile target (Node, Cloudflare Workers, browser, Python, future targets). The flywheel only measures Meph's Node-target behavior — no signal on whether Python / Workers / browser emission is correct or carries the same safety guarantees. Concrete example: the Python target emits agent-tool code as `const _tools = [...]` — a JS fragment inside a Python file (discovered Session 46 while adding retries). Nothing surfaces that bug because no sweep ever targets Python.
+
+**Free deterministic signal.** For any change that touches a runtime helper or an emission site, run the same Clear source through every target and syntax-check each output:
+
+```
+for each Clear source in {8 core templates, curriculum tasks, Factor DB replays}:
+  for each target in {node, cloudflare, browser, python}:
+    r = compileProgram(source, { target })
+    assert r.errors.length === 0
+    assert target-specific syntax-check passes:
+      - Node / CF / browser: `node --check <file>`
+      - Python:             `python3 -m py_compile <file>`
+    if the changed helper is invoked by this source:
+      assert retry/timeout/bound markers present in the emission
+```
+
+**Why this is a real signal.** It caught a concrete bug during Session 46. My hand-edit to the Python `_ask_ai_stream` emitter left orphan lines from the original flat body. A Node template smoke-test said "all 8 compile" — true for Node but missed because I wasn't checking Python. A `python3 -m py_compile` of the emitted code would have failed in under a second and pointed at the exact line. Cost: ~200 ms per target per template. Over 8 templates × 4 targets: under 10 seconds.
+
+**Proposed script** (`scripts/cross-target-smoke.mjs`, lands with Phase 6 docs of the decidable-core plan):
+
+```
+$ node scripts/cross-target-smoke.mjs
+  node       todo-fullstack        OK
+  node       crm-pro               OK
+  ...
+  python     helpdesk-agent        FAIL (line 444: const _tools — JS in Python)
+  python     ecom-agent            FAIL (...)
+  cloudflare todo-fullstack        OK
+  ...
+  exit 0 if all OK, 1 otherwise
+```
+
+**Where this fits in the flywheel.**
+
+- Not a *training* signal — it doesn't produce Factor DB rows. It's a *gate*: any change to a helper or emission site must pass cross-target smoke before the PR merges. Cheap insurance against Rule 17 drift.
+- Can become a PostToolUse hook that fires against the subset of templates exercising the edited code.
+- Long-term: every target's emission is itself a probabilistic model that should be evaluable. Today the Factor DB has ~1,600 Node-target rows and zero Python / CF / browser rows. That's a blind spot the audit just surfaced.
+
+**What this does NOT catch.**
+
+- Runtime bugs (Python that parses but behaves wrong). Still need real-LLM evals for those.
+- Semantic mismatches between targets (Node retries on 502, Python doesn't because we forgot). A parity spec ("all targets retry on the same status codes") would catch that — orthogonal to the syntax-check.
+- Target-specific performance regressions.
+
+**Next move.** Add `scripts/cross-target-smoke.mjs`, wire it into the pre-push hook alongside `node clear.test.js`. The first run will likely find 2-3 pre-existing Python/CF emission bugs that have been silently broken — each becomes a concrete GitHub issue with a tiny repro.

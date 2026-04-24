@@ -804,3 +804,34 @@ the debugging tool.
 
 Bad: `Error: Unexpected token at line 5`
 Good: `Line 5: 'send back' needs a value to return. Example: send back result — see Syntax Reference > Endpoints`
+
+## Rule 17: Safety Properties Are Cross-Target
+
+Any safety property Clear promises — timeouts, retries, bounded loops, depth caps, input validation, auth enforcement — must hold **in every compiled target**. Node, Python FastAPI, Cloudflare Workers, browser, and any future target ship with the same guarantee or the promise is hollow.
+
+An author writes a single Clear program. The compiler decides which backend it lands on. If `ask claude` retries transient failures on Node but silently gives up on Workers, the same program has two different reliability profiles — and the author has no way to know which one their deployment got. That's a foot-gun by target-routing. Worse: the author can't even test it because their dev machine hits one path and production hits another.
+
+**When adding or changing a runtime safety property:**
+- Update every target's emission in the same commit (search `compiler.js` for every `_askAI` / `_ask_ai` / `_clearError` / equivalent helper variant, plus the Workers twins and the browser-proxy twins).
+- If a target *can't* support the property (e.g. Workers has no `/tmp`), either find a target-native equivalent or document the gap explicitly in `intent.md` and surface a compile-time warning when that target is selected.
+- Never leave a target behind with "we'll add it to Python later" — that's how the promise drifts.
+- Tests assert the property in every target's emission, not just the most-used one.
+
+The 14-year-old reader doesn't know what target their program compiles to. They don't read about Workers vs Node. They read `ask claude 'hi'` and trust that it hangs-gracefully and retries-transient-errors everywhere. Clear's job is to make that trust correct.
+
+## Rule 18: Total by Default, Effects by Label
+
+Clear's pure core is provably terminating. Every loop is bounded, every recursion is depth-capped, every external call has a timeout. A program that hangs is a compiler bug, not an author bug.
+
+**What that means concretely:**
+
+- `while cond:` compiles to an iteration-counted loop. Default cap 100 — tight on purpose, so a hallucinated infinite loop fails in milliseconds, not seconds. Override with `, max N times` when you legitimately iterate more (pagination, state machines). Beyond the cap the loop throws with a copy-pasteable fix hint — it does not silently run forever.
+- A function that calls itself is wrapped in a depth counter. Default cap 1000, override with `max depth N`. Stack overflow becomes "recursed more than 1000 levels" — a legible error, not a V8 trace.
+- `send email` wraps the SMTP call in a 30-second timeout by default. A frozen mail server can't hang the request. Override via `with timeout N seconds`.
+- `ask claude`, `call api`, websocket subscribes, timers — every construct that talks to the world has a bound or a timeout. If a construct needs a new one, it gets one; the answer is never "authors should remember to add it."
+
+The constructs that look unbounded are unbounded *by design*: endpoints serve requests forever, `subscribe to` keeps connections alive, `every N seconds` fires on a schedule. Those are servers. Running forever is their job. The distinction — "accidentally non-total" vs "intentionally long-lived" — is what the compiler tracks for you.
+
+**Compiler-as-capital-investment.** Prevention compounds. Every foot-gun the compiler closes is one the author (human or AI) will never hit, across every future program, forever. Compute is cheap compared to the time a single hang costs a debug session. When in doubt, emit the counter, emit the timeout, emit the try/race. The 14-year-old shouldn't need to know what "total" means — they just need the compiler to refuse to emit a program that can hang.
+
+**Authors can still override.** Totality is a property the compiler maintains *on the author's behalf*. If an author genuinely wants a million iterations or a 10-minute SMTP timeout, they say so in the Clear source. The default is never "no bound at all" — it's "a bound generous enough for real work, loud enough to catch bugs."

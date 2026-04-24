@@ -414,13 +414,14 @@ function ifThenNode(condition, thenBranch, otherwiseBranch, line) {
   return { type: NodeType.IF_THEN, condition, thenBranch, otherwiseBranch, line };
 }
 
-function functionDefNode(name, params, body, line, returnType) {
+function functionDefNode(name, params, body, line, returnType, maxDepth) {
   // Normalize params: plain strings → {name, type: null}
   const normalizedParams = params.map(p =>
     typeof p === 'string' ? { name: p, type: null } : p
   );
   const node = { type: NodeType.FUNCTION_DEF, name, params: normalizedParams, body, line };
   if (returnType) node.returnType = returnType;
+  if (maxDepth !== undefined) node.maxDepth = maxDepth;
   return node;
 }
 
@@ -445,8 +446,10 @@ function forEachNode(variable, iterable, body, line, variable2) {
   return node;
 }
 
-function whileNode(condition, body, line) {
-  return { type: NodeType.WHILE, condition, body, line };
+function whileNode(condition, body, line, maxIterations) {
+  const node = { type: NodeType.WHILE, condition, body, line };
+  if (maxIterations !== undefined) node.maxIterations = maxIterations;
+  return node;
 }
 
 function breakNode(line) {
@@ -792,6 +795,20 @@ function parseConfigBlock(lines, startIdx, parentIndent) {
   let j = startIdx;
   while (j < lines.length && lines[j].indent > parentIndent) {
     const cfgTokens = lines[j].tokens;
+    // Recognize `with timeout N seconds|minutes` as a config sub-line.
+    // Emits { value: N, unit: 'seconds'|'minutes' } so compilers can compute ms.
+    // Mirrors the shape HTTP_REQUEST + scheduled-task parsers produce elsewhere.
+    if (cfgTokens.length >= 4 &&
+        cfgTokens[0].value === 'with' &&
+        cfgTokens[1].value === 'timeout' &&
+        cfgTokens[2].type === TokenType.NUMBER &&
+        (cfgTokens[3].value === 'seconds' || cfgTokens[3].value === 'second' ||
+         cfgTokens[3].value === 'minutes' || cfgTokens[3].value === 'minute')) {
+      const unit = cfgTokens[3].value.startsWith('minute') ? 'minutes' : 'seconds';
+      config.timeout = { value: cfgTokens[2].value, unit };
+      j++;
+      continue;
+    }
     if (cfgTokens.length >= 3) {
       const key = cfgTokens[0].value;
       const valExpr = parseExpression(cfgTokens, 2, cfgTokens[0].line);
@@ -3503,6 +3520,18 @@ function parseFunctionDef(lines, startIdx, blockIndent, errors) {
     }
   }
 
+  // Optional ", max depth N" suffix — overrides the default 1000 recursion cap.
+  // PHILOSOPHY Rule 18 ("Total by default") — default is safe; override makes intent explicit.
+  let maxDepth;
+  if (pos < tokens.length && tokens[pos].type === TokenType.COMMA) pos++;
+  if (pos + 2 < tokens.length &&
+      tokens[pos].value === 'max' &&
+      tokens[pos + 1].value === 'depth' &&
+      tokens[pos + 2].type === TokenType.NUMBER) {
+    maxDepth = tokens[pos + 2].value;
+    pos += 3;
+  }
+
   // Parse indented body
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
 
@@ -3512,7 +3541,7 @@ function parseFunctionDef(lines, startIdx, blockIndent, errors) {
     show "hello"` });
   }
 
-  return { node: functionDefNode(name, params, body, line, returnType), endIdx };
+  return { node: functionDefNode(name, params, body, line, returnType, maxDepth), endIdx };
 }
 
 // Agent definit}
@@ -4576,8 +4605,24 @@ function parseWhileLoop(lines, startIdx, blockIndent, errors) {
   const { tokens } = lines[startIdx];
   const line = tokens[0].line;
 
-  // Parse condition (everything after "while")
-  const condExpr = parseExpression(tokens, 1, line);
+  // Optional trailing `, max N times` — bounds the loop so it can't run forever.
+  // Mirrors the `repeat until X, max N times` pattern. Without it the loop is
+  // "accidentally non-total" (see PHILOSOPHY.md "Total by default").
+  let maxIterations;
+  let condEnd = tokens.length;
+  for (let t = tokens.length - 1; t >= 3; t--) {
+    if ((tokens[t].value === 'times' || tokens[t].canonical === 'times_op') &&
+        t >= 2 && tokens[t - 1].type === TokenType.NUMBER &&
+        tokens[t - 2].value === 'max') {
+      maxIterations = tokens[t - 1].value;
+      condEnd = t - 2;
+      if (condEnd > 0 && tokens[condEnd - 1].type === TokenType.COMMA) condEnd--;
+      break;
+    }
+  }
+
+  // Parse condition (everything after "while", up to the max-clause if present)
+  const condExpr = parseExpression(tokens, 1, line, condEnd);
   if (condExpr.error) {
     errors.push({ line, message: condExpr.error });
     return { node: null, endIdx: startIdx + 1 };
@@ -4587,10 +4632,10 @@ function parseWhileLoop(lines, startIdx, blockIndent, errors) {
   const { body, endIdx } = parseBlock(lines, startIdx + 1, blockIndent, errors);
 
   if (body.length === 0) {
-    errors.push({ line, message: 'The while loop is empty — it needs code inside to run. Indent some code below it. Example:\n  while count is less than 10:\n    increase count by 1' });
+    errors.push({ line, message: 'The while loop is empty — it needs code inside to run. Indent some code below it. Example:\n  while count is less than 10, max 100 times:\n    increase count by 1' });
   }
 
-  return { node: whileNode(condExpr.node, body, line), endIdx };
+  return { node: whileNode(condExpr.node, body, line, maxIterations), endIdx };
 }
 
 // Detects whether a "display" line has Phase 4 modifiers (as/called)

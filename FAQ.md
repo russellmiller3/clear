@@ -7,6 +7,21 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 ---
 
+## New Capabilities (Session 46 — plain English)
+
+**Total by default.** Every `while` loop, every recursive function, every `send email`, and every `ask claude` / `call api` now has a runtime bound. The compiler emits the counter / timeout for you. If a hallucinated bug hits the bound, you get a legible error with a copy-pasteable fix — not a silent hang.
+
+- `while cond:` silently caps at 100 iterations (warns). Override with `while cond, max N times:` for pagination or state machines that need more.
+- Recursive functions cap at 1000 depth. Override via `max depth N` (parser support pending).
+- `send email` defaults to 30s timeout. Override with `with timeout N seconds/minutes`.
+- `ask claude` retries 429/5xx/network transients with 1s/2s/4s exponential backoff.
+
+**Cross-target parity (PHILOSOPHY Rule 17).** Every safety property applies equally to Node, Cloudflare Workers, browser, and Python backends. A script at `scripts/cross-target-smoke.mjs` compiles every template × every target in 10s and syntax-checks each emission — catches drift where a runtime helper ships on Node but silently regresses on Python.
+
+**Python tool-agents work.** Fixed three pre-existing emission bugs: `const _tools = [...]` was emitting JS into Python files, `TEST_DEF` was emitting JS `fetch()` calls, and `FUNCTION_DEF` didn't auto-detect async from body-has-`await`. Tool-use agents now compile cleanly to Python with a real `_ask_ai_with_tools` runtime helper.
+
+---
+
 ## New Capabilities (Session 38 — plain English)
 
 **The flywheel closed the loop.** Session 37 plumbed the Factor DB + dashboard. Session 38 trained the first reranker on real data and wired it into `/api/chat`. Now every compile error triggers retrieval → reranker rescoring → top-3 hints injected into Meph's next turn. Boot log confirms: `EBM reranker loaded: 24 features, intercept=0.368`. Absent bundle falls back to raw BM25 (no regression).

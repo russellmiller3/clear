@@ -24817,6 +24817,114 @@ describe('Weak assertion lint — single assertion yellow flag', () => {
   });
 });
 
+describe('Termination bounds (Session 46 — Total by default)', () => {
+  it('emits WHILE iteration counter with default cap 100', () => {
+    const src = `database:\n  create a Count table:\n    value (number)\n\nbackend:\n  when user sends X to /api/go:\n    count_val = 0\n    while count_val is less than 10:\n      increase count_val by 1\n    send back count_val\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('let _iter = 0');
+    expect(r.javascript).toContain('_iter > 100');
+    expect(r.javascript).toContain('while-loop exceeded');
+  });
+  it('honors explicit max N times override (higher than default)', () => {
+    const src = `database:\n  create a Count table:\n    value (number)\n\nbackend:\n  when user sends X to /api/go:\n    count_val = 0\n    while count_val is less than 10, max 5000 times:\n      increase count_val by 1\n    send back count_val\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_iter > 5000');
+    expect(r.javascript).not.toContain('_iter > 100 ');
+  });
+  it('W-T1 warning: naked WHILE triggers warning', () => {
+    const src = `database:\n  create a Count table:\n    value (number)\n\nbackend:\n  when user sends X to /api/go:\n    count_val = 0\n    while count_val is less than 10:\n      increase count_val by 1\n    send back count_val\n`;
+    const r = compileProgram(src);
+    const w = r.warnings.find(w => {
+      const m = typeof w === 'string' ? w : w.message;
+      return m && m.includes('while-loop') && m.includes('max N times');
+    });
+    expect(w).toBeTruthy();
+  });
+  it('W-T1 silent: bounded WHILE does NOT trigger warning', () => {
+    const src = `database:\n  create a Count table:\n    value (number)\n\nbackend:\n  when user sends X to /api/go:\n    count_val = 0\n    while count_val is less than 10, max 50 times:\n      increase count_val by 1\n    send back count_val\n`;
+    const r = compileProgram(src);
+    const w = r.warnings.find(w => {
+      const m = typeof w === 'string' ? w : w.message;
+      return m && m.includes('while-loop') && m.includes('max N times');
+    });
+    expect(w).toBeFalsy();
+  });
+  it('recursion depth counter wraps self-recursive function (default 1000)', () => {
+    const src = `backend:\n  define function walk(n):\n    if n is greater than 0:\n      result = walk(n - 1)\n    send back n\n\n  when user sends X to /api/go:\n    total = walk(5)\n    send back total\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('_depth');
+    expect(r.javascript).toContain('recursed more than 1000 levels');
+  });
+  it('W-T2 warning: self-recursive function triggers warning', () => {
+    const src = `backend:\n  define function walk(n):\n    result = walk(n - 1)\n    send back n\n\n  when user sends X to /api/go:\n    total = walk(5)\n    send back total\n`;
+    const r = compileProgram(src);
+    const w = r.warnings.find(w => {
+      const m = typeof w === 'string' ? w : w.message;
+      return m && m.includes("calls itself");
+    });
+    expect(w).toBeTruthy();
+  });
+  it('non-recursive function does NOT emit depth counter', () => {
+    const src = `backend:\n  define function double(n):\n    result = n * 2\n    send back result\n\n  when user sends X to /api/go:\n    total = double(5)\n    send back total\n`;
+    const r = compileProgram(src);
+    expect(r.javascript).not.toContain('double._depth');
+  });
+  it('SEND_EMAIL wraps in Promise.race with default 30s timeout', () => {
+    const src = `database:\n  create a User table:\n    email, required\n\nconfigure email:\n  service 'gmail'\n  user 'a@b.c'\n  password 'x'\n\nbackend:\n  when user sends note to /api/notify:\n    send email to 'a@b.c':\n      subject 'hi'\n      body 'hi'\n    send back { ok: true }\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toContain('Promise.race');
+    expect(r.javascript).toContain('send email timed out after 30 seconds');
+  });
+  it('W-T3 warning: SEND_EMAIL without timeout triggers warning', () => {
+    const src = `database:\n  create a User table:\n    email, required\n\nconfigure email:\n  service 'gmail'\n  user 'a@b.c'\n  password 'x'\n\nbackend:\n  when user sends note to /api/notify:\n    send email to 'a@b.c':\n      subject 'hi'\n      body 'hi'\n    send back { ok: true }\n`;
+    const r = compileProgram(src);
+    const w = r.warnings.find(w => {
+      const m = typeof w === 'string' ? w : w.message;
+      return m && m.includes('send email') && m.includes('timeout');
+    });
+    expect(w).toBeTruthy();
+  });
+});
+
+describe('AI helpers — exponential-backoff retry (Session 46)', () => {
+  it('emits retry loop in _askAI (Node target)', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Three retry markers: the comment, the attempt loop, and the backoff math
+    expect(r.serverJS).toContain('exponential-backoff retry');
+    expect(r.serverJS).toContain('_attempt < 3');
+    expect(r.serverJS).toContain('Math.pow(2, _attempt)');
+  });
+  it('retry loop retries on 429 and 5xx but not on 4xx', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    // The retry gate: r.status === 429 || r.status >= 500
+    expect(r.serverJS).toMatch(/r\.status === 429 \|\| r\.status >= 500/);
+  });
+  it('retry loop caps backoff at 8 seconds', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    expect(r.serverJS).toContain('Math.min(1000 * Math.pow(2, _attempt), 8000)');
+  });
+  it('retry loop treats AbortError + network failures as transient', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    expect(r.serverJS).toMatch(/err\.name === 'AbortError'/);
+    expect(r.serverJS).toMatch(/fetch failed\|ECONNREFUSED\|ETIMEDOUT/);
+  });
+  it('compiled server JS is syntactically valid', () => {
+    const src = `database:\n  define a User:\n    name as text\n\nbackend:\n  when user sends X to /api/reply:\n    reply is ask claude 'hi'\n    send back reply\n`;
+    const r = compileProgram(src);
+    // Throws if invalid
+    new Function(r.serverJS);
+  });
+});
+
 // Live App Editing — Phase A test files
 await import('./lib/change-classifier.test.js');
 await import('./lib/live-edit-auth.test.js');

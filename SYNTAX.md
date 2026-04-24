@@ -207,9 +207,32 @@ for each item in items:
 for each key, value in settings:
   show '{key} = {value}'
 
-# While
+# While — always bounded
 while count is less than 10:
   increase count by 1
+# The compiler caps this at 100 iterations by default — tight so a
+# hallucinated infinite loop fails fast. Declare `, max N times` when
+# you need more (pagination, state machines, small simulations):
+
+while count is less than 10, max 50 times:
+  increase count by 1
+
+while has_more_pages, max 1000 times:
+  page = fetch_next_page()
+
+# Recursive functions are auto-depth-capped at 1000.
+# Example of one that IS recursive (the compiler notices and wraps it):
+define function walk(n):
+  if n is greater than 0:
+    walk(n - 1)
+  send back n
+
+# Sending email uses a 30-second default timeout so a frozen mail server
+# can't hang the request. Override with `with timeout N seconds` if needed.
+send email to 'user@example.com':
+  subject 'Hi'
+  body 'Hello'
+  with timeout 60 seconds
 ```
 
 ## Error Handling

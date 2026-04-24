@@ -33,7 +33,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `ASSIGN` | `x = 5` / `name is 'Alice'` / `define x as: expr` | `const x = 5` / `x = 5` |
 | `SHOW` | `show x` / `display x as dollars` | `console.log(x)` / `print(x)` |
 | `IF_THEN` | `if x is 5 then show 'yes'` / `if x is 5:` block | `if (x === 5) { ... }` |
-| `FUNCTION_DEF` | `define function greet(name):` / `define function add(a is number, b is number) returns number:` | `function greet(name) { ... }` — typed params emit JSDoc `@param`/`@returns` |
+| `FUNCTION_DEF` | `define function greet(name):` / `define function add(a is number, b is number) returns number:` | `function greet(name) { ... }` — typed params emit JSDoc `@param`/`@returns`. Self-recursive functions are auto-wrapped in a depth counter (default 1000; override via `max depth N`). |
 | `RETURN` | `return value` | `return value;` |
 | `REPEAT` | `repeat 5 times:` | `for (let _i = 0; _i < 5; _i++) { ... }` |
 | `FOR_EACH` | `for each item in items:` / `for each key, value in map:` | `for (const item of items)` / `for (const [key, value] of Object.entries(map))` |
@@ -42,7 +42,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `MAP_EXISTS` | `'key' exists in map` (expression) | `Object.prototype.hasOwnProperty.call(map, 'key')` |
 | `MAP_APPLY` | `apply fn to each in list` (expression) | `list.map(fn)` |
 | `FILTER_APPLY` | `filter list using fn` (expression) | `list.filter(fn)` |
-| `WHILE` | `while count is less than 10:` | `while (count < 10) { ... }` |
+| `WHILE` | `while count is less than 10, max 50 times:` (default cap 100 if `, max N times` omitted — tight so hangs fail fast) | `{ let _iter=0; while (count < 10) { if (++_iter > 50) throw ...; } }` |
 | `REPEAT_UNTIL` | `repeat until score is greater than 8, max 3 times:` | `for (let _i = 0; _i < 3; _i++) { ... if (score > 8) break; }` |
 | `BREAK` | `stop` / `break` | `break;` |
 | `CONTINUE` | `skip` / `continue` | `continue;` |
@@ -233,7 +233,7 @@ Field modifiers: `required`, `unique`, `default VALUE`, `auto` (timestamp), `hid
 | `CONNECT_DB` | `connect to database:` + config | `pg.Pool` | `asyncpg` |
 | `RAW_QUERY` | `query 'SQL' with params` | `pool.query` | `pool.fetch` |
 | `CONFIGURE_EMAIL` | `configure email:` + config | `nodemailer` | `smtplib` |
-| `SEND_EMAIL` | `send email:` + to/subject/body | `sendMail` | `send_message` |
+| `SEND_EMAIL` | `send email:` + to/subject/body (optional `with timeout N seconds`, default 30s) | `Promise.race(sendMail, setTimeout(reject))` | `smtplib.SMTP_SSL(..., timeout=30)` |
 | `FETCH_PAGE` | `fetch page 'url'` | `axios.get` | `requests.get` |
 | `FIND_ELEMENTS` | `find all/first 'selector' in html` | `cheerio` | `beautifulsoup` |
 | `CREATE_PDF` | `create pdf 'path':` + content elements | `pdfkit` | `reportlab` |

@@ -2805,6 +2805,73 @@ timer (timeout), and `Promise.race` with concurrent tasks (race). All three
 work in both JS and Python.
 
 
+## Termination Rules (Total by Default — PHILOSOPHY Rule 18)
+
+Every Clear program is provably terminating. The compiler enforces these
+bounds automatically so a hallucinated bug never hangs a request.
+
+**`while` must declare its max** (or accept the 100 default):
+
+```
+# Silent safety cap — compiler uses 100 if you say nothing, but warns.
+while count is less than 10:
+  increase count by 1
+
+# Explicit (no warning, clear intent):
+while count is less than 10, max 50 times:
+  increase count by 1
+
+# Override when you legitimately need more (pagination, state machine):
+while has_more_pages, max 1000 times:
+  page = fetch_next_page()
+```
+
+When the loop exceeds its cap the compiled program throws
+`"while-loop exceeded N iterations"` — a legible error, not a hang.
+Default 100 covers retry (3-10), polling (10-60), small state
+machines, and most tree walks. Bigger needs — cursor pagination
+with thousands of pages, parsers over large text — should
+declare `, max N times` explicitly. Bulk iteration over a known
+collection should use `for each` (bounded by collection size).
+
+**Recursive functions are auto-depth-capped at 1000.** The compiler
+detects self-reference and wraps the body in a depth counter:
+
+```
+define function walk(n):
+  if n is greater than 0:
+    walk(n - 1)
+  send back n
+# At runtime, walk(10000) throws "walk recursed more than 1000 levels"
+# instead of blowing the V8 stack.
+```
+
+Override the default with `max depth N` once the parser ships that
+suffix (today you can adjust by rewriting as a loop). Non-recursive
+functions are unaffected — no counter is emitted.
+
+**`send email` defaults to a 30-second timeout.** A frozen SMTP
+server can't hang your request forever:
+
+```
+send email to customer_email:
+  subject 'Order confirmation'
+  body order_receipt
+  with timeout 60 seconds   # override only when you need longer
+```
+
+**`ask claude` / `call api`** — the runtime helpers already retry
+transient failures (429, 5xx, network timeouts) with exponential
+backoff (1s/2s/4s/8s). You don't have to handle that yourself.
+
+**Why this exists.** Clear is written by AI (Meph) and read by
+humans. A naïve `while` or a missing base case used to mean a
+silent runtime hang that cost a debug session. Now the compiler
+closes the foot-gun for you. Declare your bounds explicitly when
+you want different defaults; otherwise trust the compiler to pick
+a sensible one.
+
+
 ## General-Purpose Language Features
 
 ### String Interpolation

@@ -69,3 +69,63 @@ internal-request-queue, support-triage) so sweeps produce realistic training dat
 1. **Suggestion injection into Meph** — the final loop closure. On compile error, query Factor DB, inject top-3 past fixes. Without this, the DB just accumulates; with it, Meph gets smarter every session.
 2. **Studio Supervisor panel** — SSE status already works; wire a UI tab.
 3. **Keep cranking sweeps** — each Marcus-focused sweep generates ~20 rows in queue_workflow / routing_engine / agent_workflow archetypes (the ones that matter for target users).
+
+---
+
+# Decidable Core — Progress (Session 2026-04-24)
+
+**Plan:** `plans/plan-decidable-core-04-24-2026.md`
+**Branch:** `feature/decidable-core`
+**Path A** = minimalist (3 validator rules + 3 runtime bounds). Path B = full effect fences, gated on Phase 7 measurement.
+
+## Phase 0 — Baseline + branch setup
+- [x] Create branch `feature/decidable-core`
+- [x] `PROGRESS.md` section created
+- [ ] Template inventory grep
+- [ ] Curriculum inventory grep
+- [ ] Stamp recon audit into `learnings.md`
+- [ ] Baseline Meph eval run (BUDGET-GATED — pending approval)
+- [ ] Baseline metrics → `plans/plan-decidable-core-baseline.md`
+- [ ] Commit: `chore(decidable-core): phase 0 — baseline metrics + recon archived`
+
+## Phase 1 — Syntax + semantics lock
+- [ ] Phone-test 5 example programs
+- [ ] `synonyms.js` grep for `max depth`, `max times`, `with timeout`, `max iterations`
+- [ ] Design doc → `plans/plan-decidable-core-syntax.md`
+
+## Phase 2 — Validator: warn-only mode
+- [ ] Parser: extend `whileNode` to accept `, max N times` suffix
+- [ ] Validator W-T1..W-T4 (warn severity)
+- [ ] Tests under new `describe('validator — termination')`
+- [ ] 8 template smoke-test
+
+## Phase 3 — Runtime bounds + compiler enforcement
+- [ ] compiler.js: WHILE counter, FUNCTION_DEF depth, SEND_EMAIL / ASK_AI timeout wrappers
+- [ ] runtime/db.js: query timeout
+- [ ] `playground/clear-compiler.min.js` rebuild
+- [ ] Pathological-app runtime tests
+
+## Phase 4 — Template migration (Path A)
+- [ ] Grep templates for constructs needing explicit bounds
+- [ ] 8 template smoke-test: 0 errors, 0 warnings
+
+## Phase 5 — Validator: error mode
+- [ ] Flip W-T1..W-T4 severities warn → error
+- [ ] Meph eval + friction ranker checks
+
+## Phase 6 — Docs propagation (13 surfaces + PHILOSOPHY.md)
+- [ ] intent.md / SYNTAX.md / AI-INSTRUCTIONS.md / USER-GUIDE.md
+- [ ] playground/system-prompt.md + ghost-meph MCP sync
+- [ ] ROADMAP.md / FEATURES.md / CHANGELOG.md / RESEARCH.md
+- [ ] landing/*.html
+- [ ] FAQ.md
+- [ ] **PHILOSOPHY.md — new rule "Total by default, effects by label"**
+- [ ] HANDOFF.md + learnings.md wrap-up
+
+## Phase 7 — Measurement (budget-capped $10)
+- [ ] Cost estimate posted in chat
+- [ ] Replay past failing transcripts (free)
+- [ ] A/B on 5 curriculum tasks (~$2-5)
+- [ ] Friction ranker post-intervention
+- [ ] Results → `plans/plan-decidable-core-results.md`
+- [ ] Go/no-go for Path B

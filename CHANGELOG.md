@@ -6,6 +6,35 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Decidable Core (Session 46): Total by default
+
+Major language-safety pass. Every construct that could previously hang silently now has a bound, and the bound applies on every compile target (Node, Cloudflare Workers, browser, Python) per the new PHILOSOPHY Rule 17.
+
+**Runtime bounds**
+- `while cond:` auto-caps at 100 iterations (tight — fail-fast on hallucinated hangs; real usage rarely exceeds it). Override with `while cond, max N times:`. Exceeding the cap throws a legible error, not a hang. Works on JS and Python targets.
+- Self-recursive functions auto-wrap in a depth counter (default 1000). JS uses `fnName._depth`, Python uses `getattr(fn, '_depth', 0)`. Non-recursive functions are unaffected (no counter emitted).
+- `send email` gets a 30-second default timeout (Promise.race on JS, `smtplib.SMTP_SSL(..., timeout=30)` on Python). Override with `with timeout N seconds/minutes` (parseConfigBlock now recognizes this form).
+- `ask claude` / `call api` runtime helpers retry on 429/5xx/network transient errors with 1s/2s/4s/8s exponential backoff. Applied across all 10 emission sites (Node, Cloudflare Workers, browser-proxy, Python `_ask_ai` + `_ask_ai_with_tools`).
+
+**Validator warnings (W-T1/W-T2/W-T3)**
+- W-T1: naked `while` → "will stop after 100 iterations. Add 'max N times' if you need more (pagination, state machines)."
+- W-T2: function calls itself → "Default depth cap is 1000. Add 'max depth N' to override."
+- W-T3: `send email` without `with timeout` → "will use the default 30s cap."
+- All three silence themselves when the author declares the bound explicitly.
+
+**Cross-target infrastructure**
+- `scripts/cross-target-smoke.mjs`: compiles all 8 core templates × 4 targets, syntax-checks every emission in ~10s. First run surfaced 3 pre-existing Python-target bugs (agent-tools preamble was JS syntax, TEST_DEF emitted JS fetch calls, FUNCTION_DEF didn't auto-detect async when body had `await`) — all three fixed in the same branch.
+- New PHILOSOPHY Rule 17 ("Safety Properties Are Cross-Target") + Rule 18 ("Total by default, effects by label") codify the principles driving this work.
+- New RESEARCH.md section on cross-target emission verification as a $0 deterministic eval (gate, not training signal).
+
+**Tests**
+- 14 new cases in `clear.test.js` under `describe('Termination bounds (Session 46 — Total by default)')` and `describe('AI helpers — exponential-backoff retry')`. Lock in the emission shape + warning firing/silence paths.
+
+**Findings along the way**
+- Factor DB check (1,599 Meph rows) showed `while` / `send email` / recursion have NEVER appeared in Meph output. The safety pass is preventive, not reactive — justified by the "compiler-as-capital-investment" framing: compute is cheap, foot-guns eliminated now compound across every future program forever.
+
+---
+
 ## 2026-04-24 — Cookie maxAge shorthand `for N days/hours/minutes` (T2 #42 continuation)
 
 Tiny fix for a tiny bug. The original cookies parser had a `for N days` scan hooked up but checked `tokens[k].canonical === 'for'` — which never fires because `for` canonicalizes to `for_target` in the synonym table. Result: `set cookie 'session' to token for 7 days` parsed but dropped the TTL silently.
