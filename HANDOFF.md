@@ -1,13 +1,14 @@
-# Handoff — 2026-04-24 (session 45 — two silent-bug fixes shipped while AFK)
+# Handoff — 2026-04-24 (session 45 — three silent-bug fixes shipped while AFK)
 
-## 🎯 Pickup: two fixes landed clean on main, queue items 1 and 8 closed
+## 🎯 Pickup: three fixes landed clean on main, queue items 1, 3, and 8 closed
 
-**Shipped tonight, both merged to main, both pushed:**
+**Shipped tonight, all merged to main, all pushed:**
 
 | Commit | What it does |
 |--------|--------------|
 | `0313b7c` | **TIER 2 #9 — Python `belongs to` JOIN emission.** Two silent bugs in one: (a) schema emitted `REFERENCES userss(id)` (double-s typo) so the referenced table didn't exist; (b) Python backend ctx was missing `schemaMap`, which meant `compileCrud`'s FK-stitching loop silently skipped on every Python compile. Fix: `pluralizeName(f.fk)` + populate `pySchemaMap` + mirror JS's stitching loop. Python `get all Posts` now returns `{author: {id:1, name:'Alice'}}` end-to-end. |
 | `8262ad5` | **TIER 2 #13 — scheduled-task cancellation.** Every Clear app with `background`, top-level `cron`, or `agent runs every` shipped anonymous timer handles; SIGTERM closed HTTP but timers pinned the event loop. Fix: unified `_scheduledCancellers = []` registry at module top (gated on `hasScheduled`, no dead code otherwise). Every emit site captures its handle in a named var and pushes a cancel closure. SIGTERM AND SIGINT drain the registry before `server.close()`. HH:MM recursive-setTimeout path solved via `let _curTimer` closure-over-mutable-var so the canceller sees whichever _tick is armed right now. |
+| `35039dd` | **TIER 2 #15 — multipart/file upload middleware auto-wired.** Client `upload X to '/api/foo'` always emitted FormData + fetch POST, but the matching server endpoint had only `express.json()` — multipart bodies arrived as `req.body = {}` and the handler saw nothing. Fix: AST walk (`walkForUploads`) recurses into page > button > body for UPLOAD_TO + ACCEPT_FILE; module-top emits `require('multer')` + shared `_upload` with memoryStorage; matching POST endpoints get `_upload.any()` injected as middleware (plain JSON POSTs untouched). |
 
 **Verification:** 2426 → 2432 compiler tests green (+6 belongs-to + 7 scheduled-cancel); 0 regressions; all 8 core templates compile clean; Python runtime smoke (`temp-py-stitch-smoke.py`) confirms embedded author record; emitted JS for a multi-timer app syntax-checks clean. Docs updated across CHANGELOG, FEATURES, requests.md (both items moved to DONE matrix + summary), learnings.md (Session 45 + 45b).
 
@@ -19,7 +20,7 @@ Both were **silent bugs** — no errors, no stack traces, just quietly wrong dat
 
 1. ~~**T2 #9 belongs-to JOIN**~~ **[DONE 2026-04-24 session 45]**
 2. **T2 #8 Charts** — `show X as bar chart` silently dropped. UI-heavy; benefits from Russell's eye on visual iteration. **Medium.**
-3. **T2 #15 Multipart/file upload middleware on JS** — client-side FormData already wired; server receiver is the gap. **Small.**
+3. ~~**T2 #15 Multipart middleware**~~ **[DONE 2026-04-24 session 45]**
 4. **T2 #42 Cookies** — no cookie-parser (JS), no Response import (Python). Needs design pass (signed vs unsigned, HttpOnly defaults, FastAPI Response injection). **Small + design.**
 5. **T2 #47 upsert keyword** — genuinely missing syntax; needs `save or update` / `upsert by email` design. **Small TDD + design.**
 6. **T2 #48 DB transactions** — `atomically` / `begin transaction` syntax missing. **Medium — design first.**
@@ -38,6 +39,7 @@ Both were **silent bugs** — no errors, no stack traces, just quietly wrong dat
 - Read HANDOFF.md, oriented on queue
 - Branched `fix/belongs-to-python-joins`, TDD'd 5 new tests, all red; fixed schema pluralize + added `pySchemaMap` + mirrored JS stitching; 2426 green; 8 templates clean; runtime Python smoke proves user-visible shape; docs updated; merged to main; pushed.
 - Branched `fix/scheduled-task-cancellation`, TDD'd 7 new tests (including HH:MM closure correctness); fixed 5 emit sites + unified registry + SIGINT parity; 2432 green; 8 templates clean; emitted JS syntax-checks; docs updated; merged to main; pushed.
+- Branched `fix/multipart-server-middleware`, TDD'd 6 new tests (module-top multer, shared `_upload`, middleware wiring on matching POST, negative case for non-upload POSTs, no-dead-code negative, body-guard preservation); added `walkForUploads` AST walker that recurses into page/button/conditional bodies; emitted server JS syntax-checks clean with multer on upload POST only; 2438 green; 8 templates clean; docs updated; merged to main; pushed.
 - Big-picture narration ended the session (per the Phase-Boundary Big Picture rule).
 
 ### What's still on origin (unchanged from session 44)
