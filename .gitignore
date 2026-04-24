@@ -33,3 +33,4 @@ apps/*/build/clear-runtime/
 tests/*/build/clear-runtime/
 tests/guard-bugs/*/build/clear-runtime/
 .claude/.hook-proposal-stamp
+.claude/.meta-learnings-updater-stamp

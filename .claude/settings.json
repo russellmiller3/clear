@@ -28,6 +28,12 @@
             "command": "node .claude/hooks/propose-new-hooks.mjs",
             "timeout": 10,
             "statusMessage": "Scanning learnings.md for new hook candidates..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/meta-learnings-updater.mjs",
+            "timeout": 10,
+            "statusMessage": "Refreshing meta-learnings.md inventory..."
           }
         ]
       }
