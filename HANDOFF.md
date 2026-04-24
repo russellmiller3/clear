@@ -125,6 +125,13 @@ Both were **silent bugs** — no errors, no stack traces, just quietly wrong dat
 
 **7. Periodic hook-miner (SessionStart, 7-day gate).** `.claude/hooks/propose-new-hooks.mjs` scans learnings.md for "bit us" / "gotcha-as-rule" / "cost us" language AND compares against already-installed hooks, surfaces the top N proposals. Automates the "what else should we hook?" question. **Already shipped in this commit chain — will self-propose additions going forward.**
 
+**8. Agent Self-Heal (ASH-1 through ASH-3) — test Browser Use's "Bitter Lesson of Agent Harnesses" on Meph's tool surface.** Prompted by the 2026-04 essay; queued in ROADMAP.md "Agent Self-Heal (ASH)" section. Three items, priority-ordered:
+   - **ASH-1 — Bash-re-enable A/B.** Run a 5-task curriculum-sweep with `--tools "Bash,Read,Edit,Write"` re-enabled side-by-side vs current `--tools ""`. Hypothesis: Meph's pass rate rises because he self-heals gaps in the 28 MCP tools (grep/cat/find/one-off-script workflows he currently can't do). \$0 via cc-agent, ~2 hours wall-clock, answers the empirical question.
+   - **ASH-2 — `meph_propose_tool(name, sketch)`.** New tool that lets Meph write a candidate addition to `.claude/meph-tool-proposals/` when he hits a gap. Russell reviews weekly, approves → next session inherits. Same pattern as `propose-new-hooks` applied one flywheel-level down.
+   - **ASH-3 — Principle-#5 audit of meph-tools.js.** If ASH-1 wins, prune wrappers that duplicate what re-enabled Bash/Read/Write already cover (candidates: `run_command`, `http_request`, `read_file`). Keep wrappers that carry real domain logic (compile → Factor DB + hints + classifier; run_tests → test parsing; edit_code → validated source mutation).
+
+   Why this matters: we built the "agent edits its own harness" flywheel TONIGHT for Claude-on-this-repo (propose-new-hooks + propose-new-tools + meta-learnings-updater). The exact same architecture is missing for Meph. Meph has a flywheel for *Clear output quality* (Factor DB → ranker → hints) but NOT one for *his own tool surface*. ASH fills the gap.
+
 ### Later (post-queue, still ranked)
 
 - **Tiny-model distillation (SK-6)** — ~\$500-5000 first experiment, fine-tune Qwen/Llama on 10K Meph traces. Frame for the company-moat result: "Clear runs at 1/100 the cost of frontier models." Unblock after self-play has generated enough training data.
