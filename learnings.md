@@ -48,6 +48,7 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 | [Session 44: cc-agent Windows stdin race + system-prompt size ceiling](#session-44-cc-agent-windows-stdin-race--system-prompt-size-ceiling-2026-04-23) | claude.exe 2.1.111 on Windows fails 100% of stdin-piped prompts (3s data-received check races Node's async pipe write); argv-only path hits 32KB Windows `CreateProcess` ceiling (ENAMETOOLONG) when Meph's 48KB system prompt is concatenated; fix uses `--system-prompt-file` for system + positional argv for user prompt + `stdio:['ignore',...]` to kill stdin entirely; 5.3% → ~60-75% pass rate; parallel-3 still flaky (separate ticket) |
 | [Session 45: Python `belongs to` JOIN silent bug](#session-45-python-belongs-to-join-silent-bug-2026-04-24) | Python schema emitter appended `s` to lowercased FK target (`userss(id)` for `belongs to Users`); Python backend ctx was missing `schemaMap` so `compileCrud` couldn't find FK fields to stitch; fix: use `pluralizeName(f.fk)` + populate `pySchemaMap` + mirror JS's stitching loop; runtime smoke confirms embedded record on read |
 | [Session 45b: Scheduled-task shutdown leak](#session-45b-scheduled-task-shutdown-leak-2026-04-24) | Every `background` / `cron` / `agent runs every` compiled to an anonymous `setInterval`/`setTimeout`, which kept the event loop alive after `server.close()`; unified `_scheduledCancellers[]` registry drained by SIGTERM and SIGINT; HH:MM recursive setTimeout solved by closure over a mutable `_curTimer` so the canceller always sees the currently-armed timer |
+| [Session 45c: Multipart upload middleware auto-wiring](#session-45c-multipart-upload-middleware-auto-wiring-2026-04-24) | Client-side `upload X to '/api/foo'` always worked; server half received empty `req.body` because only `express.json()` was wired; compiler now walks nested AST (page > button > body) for UPLOAD_TO/ACCEPT_FILE, emits module-top multer + memoryStorage, injects `_upload.any()` middleware only on POST endpoints whose path matches an upload target — plain JSON POSTs untouched |
 
 ---
 
@@ -1849,4 +1850,34 @@ Both `SIGTERM` and `SIGINT` drain the registry before `server.close()`.
 - **SIGINT and SIGTERM should share shutdown logic.** Production containers send SIGTERM; local dev sends SIGINT (ctrl-c). Having SIGTERM clean up and SIGINT exit dirty is a silent asymmetry — same cleanup, same symbol, both signals. When writing shutdown code, always wire both handlers to the same body.
 - **Gate dead code with capability detection.** The registry adds 3 lines at module top and is empty for the majority of apps. Guarding on `hasScheduled` avoids polluting 95% of compiled apps with plumbing they don't use. Same pattern as `usesAuth` / `usesRateLimit` / `hasAuthScaffold` detection higher up in the backend JS emitter.
 - **"Partial" in requests.md is a red flag, not a status.** T2#13 had sat as "partial" while new features shipped around it. Every "partial" means: it technically works in some dimension but silently fails in another. Audit all current "partial" entries — they're usually shutdown, error, or cancellation paths that look fine until production.
+
+---
+
+## Session 45c: Multipart upload middleware auto-wiring (2026-04-24)
+
+TIER 2 #15 had been sitting open with a misleading root-cause hypothesis ("server has no multer"). That was half-right: the module-level `require('multer')` DID appear when a program had `accept file:`, but nothing tied it to endpoints that received client uploads. And the more common case — client `upload X to '/api/foo'` with a plain `when user calls POST /api/foo sending data:` server-side — got no multer at all. The client sent a multipart body; the server had only `express.json()`; `req.body` was an empty object; the handler thought the client sent nothing.
+
+### The AST walk is the load-bearing part
+
+`UPLOAD_TO` nodes live deep in the tree: `page.body[].button.body[].upload_to`. The existing `hasFileUpload(nodes)` detector only recursed into `ENDPOINT.body` — it missed UPLOAD_TO entirely because that node is frontend, not server-side. Fix: a generic `walkForUploads(nodes, acc)` helper that recurses into every `body`, `thenBody`, and `elseBody` array on every node. This returns both `{ found: bool, urls: Set<string> }` — the boolean gates whether to emit multer plumbing, the Set drives per-endpoint middleware injection.
+
+### Why `_upload.any()` over `_upload.single('file')`
+
+`.any()` accepts any number of files under any field name, populating `req.files` as an array. The Clear source doesn't declare a specific field name for the file — `upload doc to '/api/foo'` tells the compiler "send the file input named doc via FormData under the field name `doc`," but the server doesn't have a reciprocal declaration. `.any()` sidesteps the coordination problem at the cost of mildly relaxed validation. If we later want stricter typing, we can add per-endpoint `.fields([{name: 'doc'}, ...])` emission; for now `.any()` matches the client side of any upload you can write.
+
+### Why memoryStorage is the right default
+
+Three footguns avoided:
+1. **`/tmp` permission issues.** Disk storage on Cloudflare Workers / App Runner / random Docker base images fails silently or loudly depending on the runtime. Memory storage works everywhere.
+2. **EPIPE on full disks.** A full disk during upload crashes the server at a hard-to-diagnose layer. Memory storage fails predictably at the `limits: { fileSize }` cap — a 400, not a crash.
+3. **"Where do files live in production?" footgun.** Disk storage silently creates `./uploads/` and the app author inherits an unmanaged-filesystem-state problem. Memory storage makes the file's lifecycle explicit — if you want to persist, you write it yourself to S3/R2/whatever with the buffer you got.
+
+10MB default is sized for the "normal" upload (avatar, PDF, image) without forcing every app author to tune it. The ceiling matches the old in-endpoint `accept file: max size is 10mb` default exactly.
+
+### Gotchas-as-rules
+
+- **Silent-bug test: does `req.body` ever equal `{}` when the client clearly sent something?** If yes, there's a body-parsing gap. For multipart, that's "no multer." For form-urlencoded, it'd be "no express.urlencoded()." Same class of bug, same symptom — "client POSTed, server saw nothing."
+- **When a frontend node generates a specific HTTP contract, the compiler must wire the server to match.** UPLOAD_TO → multipart/form-data; the matching POST endpoint needs the parser. Stream endpoints → SSE; client needs the EventSource reader. JSON POSTs → `express.json()`; already handled. The client-server pair must be consistent, and the compiler is the only place that knows both halves.
+- **AST walks for cross-cutting features need to recurse into all body-like arrays, not just `body`.** Conditional branches (`thenBody`, `elseBody`), loop bodies, nested page blocks — missing any of these means features silently fail inside them. Pattern: scan for `Array.isArray(n.body)`, `Array.isArray(n.thenBody)`, `Array.isArray(n.elseBody)` and recurse into each.
+- **Negative-case tests are as important as positive.** Auto-wiring middleware on EVERY POST endpoint (lazy approach) would have broken JSON POST parsing for every app that doesn't use uploads. The test "does NOT wire multer on POST endpoints that are not upload targets" locks the discrimination in. Without it, one refactor could add `_upload.any()` everywhere and no test would complain.
 

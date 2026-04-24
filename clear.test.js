@@ -4900,6 +4900,86 @@ on POST '/upload':
   });
 });
 
+// TIER 2 #15 — server-side multipart middleware.
+// Client-side `upload X to '/api/foo'` already emits FormData + fetch
+// POST. But the matching server endpoint uses only express.json(), which
+// can't parse multipart/form-data — req.body comes in EMPTY and the server
+// thinks the client sent nothing. This block tests the compiler auto-wires
+// multer whenever it detects an upload anywhere in the program.
+describe('TIER 2 #15 — multipart/file upload middleware auto-wired on server', () => {
+  // `build for web and javascript backend` splits output: frontend code goes
+  // to result.javascript, server code to result.serverJS. These tests target
+  // the server so reach for serverJS first. Falls back to javascript for the
+  // backend-only target variant below.
+  const serverOf = r => r.serverJS || r.javascript || '';
+
+  const UPLOAD_SRC = `
+build for web and javascript backend
+page 'home':
+  file input as 'doc'
+  button 'Upload':
+    upload doc to '/api/upload'
+when user calls POST /api/upload sending data:
+  send back 'ok'
+`;
+
+  it('imports multer at module top when program contains upload', () => {
+    expect(serverOf(compileProgram(UPLOAD_SRC))).toContain("require('multer')");
+  });
+
+  it('declares a shared _upload multer instance at module top', () => {
+    // memoryStorage so files arrive as req.files[i].buffer without writing
+    // to disk — safer default; callers that need disk storage can override.
+    const js = serverOf(compileProgram(UPLOAD_SRC));
+    expect(js).toMatch(/const _upload = multer\(/);
+    expect(js).toContain('memoryStorage');
+  });
+
+  it('wires _upload.any() middleware on POST endpoint matching upload URL', () => {
+    expect(serverOf(compileProgram(UPLOAD_SRC))).toMatch(/app\.post\('\/api\/upload',\s*_upload\.any\(\),/);
+  });
+
+  it('does NOT wire multer on POST endpoints that are not upload targets', () => {
+    // Mixed: one upload endpoint + one plain JSON POST → only the upload
+    // endpoint gets the middleware. Plain endpoints keep their existing
+    // signature so express.json() handling isn't disturbed.
+    const src = `
+build for web and javascript backend
+page 'home':
+  file input as 'doc'
+  button 'Upload':
+    upload doc to '/api/upload'
+when user calls POST /api/upload sending data:
+  send back 'ok'
+when user calls POST /api/note sending note:
+  send back note
+`;
+    const js = serverOf(compileProgram(src));
+    expect(js).toMatch(/app\.post\('\/api\/note',\s*async/);
+    expect(js).not.toMatch(/app\.post\('\/api\/note',\s*_upload/);
+  });
+
+  it('no multer import when program has no upload calls (no dead code)', () => {
+    const src = `
+build for web and javascript backend
+when user calls POST /api/items sending item:
+  send back item
+`;
+    const js = serverOf(compileProgram(src));
+    expect(js).not.toContain("require('multer')");
+    expect(js).not.toContain('_upload');
+  });
+
+  it('preserves the JSON-required body guard on upload endpoints', () => {
+    // The default handler prelude returns 400 if req.body is missing/non-object.
+    // Multer always populates req.body to {} for multipart (even with only
+    // files), so the `typeof === 'object'` check never false-positives —
+    // non-multipart mis-requests still 400 cleanly.
+    const js = serverOf(compileProgram(UPLOAD_SRC));
+    expect(js).toContain("typeof req.body !== 'object'");
+  });
+});
+
 // =============================================================================
 // PHASE 18: BILLING & PAYMENTS
 // =============================================================================

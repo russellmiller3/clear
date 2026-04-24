@@ -4068,7 +4068,17 @@ function compileEndpoint(node, ctx, pad) {
   const isSeedEndpoint = node.path.includes('/seed') || node.path.includes('/setup') || node.path.includes('/init');
   const bodyCode = compileBody(node.body, ctx, { indent: ctx.indent + 2, declared: epDeclared, endpointMethod: node.method, endpointHasId: hasIdParam, isSeedEndpoint });
   let epCode = `${pad}// clear:${node.line} — ${node.method.toUpperCase()} ${node.path}\n`;
-  epCode += `${pad}app.${node.method.toLowerCase()}('${node.path}', async (req, res) => {\n`;
+  // Auto-wire multer middleware on POST endpoints that are the target of a
+  // client-side `upload X to '<path>'`. Without this, the multipart body
+  // never reaches req.body and the handler sees nothing. _upload is declared
+  // at module scope (see walkForUploads in compileToJSBackend).
+  const wantsMultipart =
+    ctx.uploadUrls &&
+    ctx.uploadUrls.has(node.path) &&
+    node.method &&
+    node.method.toUpperCase() === 'POST';
+  const middlewareList = wantsMultipart ? '_upload.any(), ' : '';
+  epCode += `${pad}app.${node.method.toLowerCase()}('${node.path}', ${middlewareList}async (req, res) => {\n`;
   epCode += `${pad}  try {\n`;
   // Guard seed endpoints from running in production + auto-dedup
   if (isSeedEndpoint) {
@@ -11361,15 +11371,42 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   if (hasRunCommand(body)) {
     lines.push("const { execSync } = require('child_process');");
   }
-  // multer — emit if any endpoint has an ACCEPT_FILE node
-  function hasFileUpload(nodes) {
-    return nodes.some(n =>
-      n.type === NodeType.ACCEPT_FILE ||
-      (n.type === NodeType.ENDPOINT && n.body && hasFileUpload(n.body))
-    );
+  // multer — emit if ANY upload-related node exists anywhere in the tree.
+  // Two triggers:
+  //   1. Server-side `accept file:` (ACCEPT_FILE) — endpoint declares it
+  //      accepts multipart.
+  //   2. Client-side `upload X to '/api/foo'` (UPLOAD_TO) — frontend sends
+  //      FormData. The matching server endpoint needs middleware to parse
+  //      the multipart request, or req.body comes in empty.
+  // The walker recurses into any body-bearing node (PAGE, BUTTON, ENDPOINT,
+  // CRON, IF, etc.) — UPLOAD_TO typically lives 2-3 levels deep inside
+  // page → button → body.
+  function walkForUploads(nodes, acc) {
+    if (!Array.isArray(nodes)) return acc;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === NodeType.ACCEPT_FILE) acc.found = true;
+      if (n.type === NodeType.UPLOAD_TO) {
+        acc.found = true;
+        if (n.url) acc.urls.add(n.url);
+      }
+      if (Array.isArray(n.body)) walkForUploads(n.body, acc);
+      if (Array.isArray(n.thenBody)) walkForUploads(n.thenBody, acc);
+      if (Array.isArray(n.elseBody)) walkForUploads(n.elseBody, acc);
+    }
+    return acc;
   }
-  if (hasFileUpload(body)) {
+  const _uploadScan = walkForUploads(body, { found: false, urls: new Set() });
+  const hasAnyUpload = _uploadScan.found;
+  const uploadUrls = _uploadScan.urls;
+  if (hasAnyUpload) {
     lines.push("const multer = require('multer');");
+    // memoryStorage is the safe default — files arrive as req.files[i].buffer
+    // without writing anything to disk (avoids /tmp permission issues, EPIPE
+    // on full disks, and the "where do files live in production?" footgun).
+    // 10MB per-file limit matches the old in-endpoint default from
+    // `accept file:` → prevents runaway uploads from choking the server.
+    lines.push('const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });');
   }
   lines.push('const app = express();');
   lines.push('app.use(express.json());');
@@ -11546,7 +11583,7 @@ function compileToJSBackend(body, errors, sourceMap = false, streamingAgentNames
   // _c of agent_X(...))` — which would throw at runtime because agent_X
   // compiled as `async function` not `async function*`. Classic shape
   // mismatch bug surfaced on multi-agent-research's Polished Report.
-  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions, _userFunctions };
+  const ctx = { lang: 'js', indent: 0, declared, stateVars: null, mode: 'backend', sourceMap, schemaNames, schemaMap, dbBackend, streamingAgentNames, _astBody: body, _allNodes: body, _asyncFunctions, _userFunctions, uploadUrls };
 
   // Implicit tables for agent-memory features. Agents declared with
   // `remember conversation context` call db.findAll/insert/update on a

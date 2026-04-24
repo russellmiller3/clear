@@ -6,6 +6,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Multipart file upload server middleware (TIER 2 #15)
+
+The client half of file upload already worked: `upload X to '/api/foo'` emitted `FormData` + `fetch` POST. The server half didn't. Any endpoint that received the multipart request saw `req.body = {}` because only `express.json()` was wired — `multipart/form-data` went unparsed, the handler got nothing, the file vanished silently.
+
+**Fix:** auto-detect uploads anywhere in the AST (`UPLOAD_TO` or `ACCEPT_FILE` nodes, including deep-nested cases like `page > button > body > upload_to`). If any upload exists:
+- `const multer = require('multer')` + `const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10*1024*1024 } })` emitted at module top
+- Upload target URLs collected into a `uploadUrls` Set, passed through ctx
+- POST endpoints whose path appears in `uploadUrls` get `_upload.any()` injected as middleware: `app.post('/api/upload', _upload.any(), async (req, res) => {...})`
+- Endpoints not matched stay clean — plain JSON POSTs are untouched, so `express.json()` parsing keeps working
+
+Memory storage (not disk) is the default: files arrive as `req.files[i].buffer` — avoids `/tmp` permission issues, EPIPE on full disks, and the "where do files live in production?" footgun. Callers needing disk storage can override.
+
+6 new compiler tests: import presence, shared `_upload` instance, middleware wiring on matching POST, **negative case** (non-upload POST endpoints stay clean), **no dead code** (no multer import when no uploads exist), and body-guard preservation (the `typeof req.body !== 'object'` check stays — multer populates `req.body = {}` for multipart-only requests, so the guard never false-positives).
+
+2432 → 2438 tests green, zero regressions, all 8 core templates compile clean, emitted JS syntax-checks. Closes TIER 2 #15.
+
+---
+
 ## 2026-04-24 — Scheduled-task cancellation (TIER 2 #13)
 
 Every Clear app with `background`, top-level `cron`, or `agent ... runs every` shipped with anonymous timer handles. SIGTERM closed the HTTP server but `setInterval`/`setTimeout` loops kept running — which meant the Node process refused to exit, production deploys waited for the 30s grace-period kill, and local `ctrl-c` required a second press.
