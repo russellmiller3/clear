@@ -1058,6 +1058,22 @@ function deriveNamespace(moduleName) {
   return lastSegment.replace(/\.clear$/, '');
 }
 
+// Detect a component call in an expression. Returns { name, namespaceExpr, args } or null.
+// Bare: show Card(x) → { type: CALL, name: 'Card' }
+// Namespaced: show ui's Card(x) → { type: CALL, callee: { type: MEMBER_ACCESS, object, member: 'Card' } }
+// Component names start with uppercase; lowercase names are regular functions.
+function getComponentCall(expr) {
+  if (!expr || expr.type !== NodeType.CALL) return null;
+  if (expr.name && /^[A-Z]/.test(expr.name)) {
+    return { name: expr.name, namespaceExpr: null, args: expr.args || [] };
+  }
+  if (expr.callee && expr.callee.type === NodeType.MEMBER_ACCESS &&
+      expr.callee.member && /^[A-Z]/.test(expr.callee.member)) {
+    return { name: expr.callee.member, namespaceExpr: expr.callee.object, args: expr.args || [] };
+  }
+  return null;
+}
+
 // Resolve file-based module imports: parse imported files and attach to USE nodes
 // as namespace objects. Called BEFORE validation so the namespace variable is known.
 export function resolveModules(ast, moduleResolver, resolutionStack = []) {
@@ -6268,8 +6284,8 @@ function _compileNodeInner(node, ctx) {
       if (ctx.lang === 'python') return `${pad}print(${exprToCode(node.expression, ctx)})`;
       // Web mode inside a page: render to DOM element (matches show_N placeholder from HTML scaffold)
       if (ctx.insidePage && node.expression) {
-        // Component calls are handled separately (don't use show_N)
-        if (node.expression.type === NodeType.CALL && node.expression.name && /^[A-Z]/.test(node.expression.name)) {
+        // Component calls (bare Card() OR namespaced ui's Card()) are handled separately (don't use show_N)
+        if (getComponentCall(node.expression)) {
           return `${pad}console.log(${exprToCode(node.expression, ctx)});`;
         }
         if (ctx._showCounter == null) ctx._showCounter = 0;
@@ -8880,8 +8896,8 @@ function isReactiveApp(body) {
       if (node.type === NodeType.ASK_FOR || node.type === NodeType.BUTTON || node.type === NodeType.CHART || node.type === NodeType.ON_CHANGE || node.type === NodeType.COMPONENT_USE) return true;
       // Conditional blocks with UI content need reactive path for show/hide toggling
       if (node.type === NodeType.IF_THEN && node.isBlock) return true;
-      // Inline component call: show Card(name) — needs reactive path for DOM injection
-      if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL && /^[A-Z]/.test(node.expression.name)) return true;
+      // Inline component call: show Card(name) OR show ui's Card(name) — needs reactive path for DOM injection
+      if (node.type === NodeType.SHOW && getComponentCall(node.expression)) return true;
       if (node.type === NodeType.DISPLAY && node.actions && node.actions.length > 0) return true;
       // A table/list/cards/gallery/map/calendar/qr display requires _recompute() to render into the DOM.
       if (node.type === NodeType.DISPLAY && (node.format === 'table' || node.format === 'list' || node.format === 'cards' || node.format === 'chat' || node.format === 'gallery' || node.format === 'map' || node.format === 'calendar' || node.format === 'qr' || node.format === 'qrcode')) return true;
@@ -9185,15 +9201,19 @@ function compileToReactiveJS(body, errors, sourceMap = false, streamingAgentName
       lines.push(`  }`);
       continue;
     }
-    // SHOW with function call in reactive mode: render component to DOM
-    // Only uppercase names are components — lowercase are regular function calls
-    if (node.type === NodeType.SHOW && node.expression && node.expression.type === NodeType.CALL && /^[A-Z]/.test(node.expression.name)) {
-      const callExpr = node.expression;
+    // SHOW with component call in reactive mode: render component to DOM.
+    // Handles both bare (show Card(x)) and namespaced (show ui's Card(x)) forms.
+    // Only uppercase names are components — lowercase are regular function calls.
+    const _cc = node.type === NodeType.SHOW ? getComponentCall(node.expression) : null;
+    if (_cc) {
       const containerId = `comp_${componentCounter++}`;
-      const args = callExpr.args.map(a => exprToCode(a, reactiveCtx)).join(', ');
-      lines.push(`  // Render component: ${callExpr.name}`);
+      const args = _cc.args.map(a => exprToCode(a, reactiveCtx)).join(', ');
+      const callRef = _cc.namespaceExpr
+        ? `${exprToCode(_cc.namespaceExpr, reactiveCtx)}.${sanitizeName(_cc.name)}`
+        : sanitizeName(_cc.name);
+      lines.push(`  // Render component: ${_cc.name}`);
       lines.push(`  { const _el = document.getElementById('${containerId}');`);
-      lines.push(`    if (_el) _el.innerHTML = ${sanitizeName(callExpr.name)}(${args}); }`);
+      lines.push(`    if (_el) _el.innerHTML = ${callRef}(${args}); }`);
       continue;
     }
     // Block-form component use: show Panel: ... -> render to DOM
@@ -11005,9 +11025,9 @@ ${options}
         }
 
         case NodeType.SHOW: {
-          // Component call: show Card(name) -> container div for reactive rendering
-          // Only uppercase function names are components (lowercase are regular functions)
-          if (node.expression && node.expression.type === NodeType.CALL && node.expression.name && /^[A-Z]/.test(node.expression.name)) {
+          // Component call: show Card(name) OR show ui's Card(name) -> container div for reactive rendering
+          // Only uppercase component names match (bare or as the namespace's member).
+          if (getComponentCall(node.expression)) {
             const containerId = `comp_${compRenderCounter++}`;
             parts.push(`    <div id="${containerId}" class="clear-component"></div>`);
           } else if (node.expression) {

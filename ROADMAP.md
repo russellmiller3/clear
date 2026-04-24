@@ -26,7 +26,7 @@ AI coding is roughly half of all frontier-model inference today, and it's growin
 
 | # | Build | Scope | Why (ties to big picture) |
 |---|-------|-------|---------------------------|
-| **D-1** | Fix `ui's Card()` namespaced component crash in buildHTML | 2-3 days | Blocker for the entire module story. Can't pitch multi-file to Dave while qualified component calls crash the compiler. |
+| **D-1** | ~~Fix `ui's Card()` namespaced component crash in buildHTML~~ **SHIPPED 2026-04-24** | small | Blocker for the entire module story. Can't pitch multi-file to Dave while qualified component calls crash the compiler. Added `getComponentCall()` helper, updated 4 call sites in compiler.js, 3 new regression tests in clear.test.js cycles 9-11. All 8 core templates still green. |
 | **D-2** | Compiler-as-API service (`compile.clearlang.dev`) on Cloudflare Workers + edge deploy | 1-2 weeks | IP protection + usage telemetry + monetization gate. Everything downstream is a thin client to this. Single source of truth for the compiler across Studio, CLI, LSP, extensions. |
 | **D-3** | `clear-lsp` — language server that calls the Compiler API for diagnostics, local syntax-only parser for autocomplete | 2 weeks | Autocomplete + inline diagnostics + go-to-def in every editor simultaneously (VSCode, Cursor, Zed, JetBrains). LSP is the standard protocol; one server unlocks them all. |
 | **D-4** | VSCode + Cursor extension (thin LSP wrapper) | 1 week | Distribution to Dave's turf. He doesn't switch editors; you meet him where he is. Cursor especially — puts Clear directly in the agent loop he already trusts. |

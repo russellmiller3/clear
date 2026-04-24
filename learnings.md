@@ -53,6 +53,30 @@ Lessons learned during Clear compiler development. Scan the TOC before starting 
 
 ---
 
+## Session D-1: Namespaced component calls (2026-04-24)
+
+### The bug: `show ns's Card()` silently dropped the component
+`show Card('x')` worked. `show components's Card('x')` "compiled clean" (no errors) but emitted `<p id="show_N">` instead of `<div id="comp_N" class="clear-component">` — the placeholder for a plain dynamic expression, not a component container. Result: no container for reactive JS to fill; component never rendered.
+
+### Root cause: four call sites each did their own shape-check
+`compiler.js` had **four** places that asked "is this SHOW a component call?" — every one checked `node.expression.type === NodeType.CALL && /^[A-Z]/.test(node.expression.name)`. That only matches the bare form. Namespaced calls parse as `{ type: CALL, callee: { type: MEMBER_ACCESS, object, member: 'Card' }, args: [] }` — `.name` is undefined, check fails, fallthrough to the generic-expression branch.
+
+### Fix: one helper, four call-sites
+`getComponentCall(expr)` returns `{ name, namespaceExpr, args } | null`. Matches both bare and namespaced. The reactive JS emit path uses `exprToCode(namespaceExpr, ctx)` to compose `namespace.Card(args)` instead of `Card(args)`. buildHTML + needsReactive + compileNode's SHOW case all now use the helper.
+
+### Lesson: duplicated shape-checks rot in lockstep
+Four sites doing the same detection means one oversight (parser shape change) breaks all four identically. The fix wasn't to make the parser produce a flatter node — that would ripple — but to centralize the detection in a single helper so there's exactly one place to update when the shape evolves again. Cheap refactor, high leverage.
+
+### Regression coverage: cycles 9-11 in `clear.test.js`
+- **Cycle 9:** namespaced call emits `<div class="clear-component">` container.
+- **Cycle 10:** reactive JS emits `namespace.Card(args)` (not bare `Card(args)`).
+- **Cycle 11:** bare and namespaced coexist with correct comp_0/comp_1 IDs — verifies the counter stays synced between buildHTML and the reactive emit.
+
+### Side note: `Badge` is reserved
+First draft of Cycle 11 used `Badge` as the namespaced component name. Compile errored — `Badge` is on the reserved-component-name list (collides with built-in DaisyUI badge). SYNTAX.md line 585 documents the list: `Text, Heading, Subheading, Badge, Link, Divider, Image, Button, Display, Section`. Renamed to `StatusTag`.
+
+---
+
 ## Session 37: PERF-1 + PERF-2 pagination and server-side aggregates (2026-04-17)
 
 ### `from` tokenizes to `in` — parser must use raw value

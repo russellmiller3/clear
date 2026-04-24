@@ -319,7 +319,6 @@ Do all testing by running the app in Clear Studio — compile, run, click Run Te
 - Browser server may 404 on some routes (untested in real browser)
 - Playground styling needs visual verification
 - DaisyUI v5 themes use `--color-base-100: oklch(%)` format, not old v4 vars
-- `ui's Card()` in web target crashes buildHTML (namespaced component calls)
 
 ## Explain Your Thinking Rule
 When making compiler changes, explain decisions in plain English in the chat as you go. Don't just code silently — the human needs to follow the reasoning, not reverse-engineer it from diffs.
@@ -470,3 +469,14 @@ The Factor DB already knows which error messages cost Meph the most minutes — 
 - Re-run `node clear.test.js` + smoke-test all 8 core templates before commit.
 
 **Why this matters (the compounding story).** Ranker fixes help one Meph session at a time and cost inference every time. Compiler error fixes are permanent and global — rewrite once, every customer's every future session benefits forever at \$0. The friction script turns the Factor DB's accumulated waste heat into a sorted to-do list; treating it as the authoritative priority signal is how "the compiler accumulates quality" (PHILOSOPHY.md line 1) becomes mechanical rather than aspirational.
+
+## Agent Time Estimates: Divide Human Estimates by 10x (MANDATORY)
+
+**When an agent is doing the work, divide any human-time estimate by 10.** What takes a human "2 weeks" takes an agent 1-2 days. What takes a human "2-3 days" takes an agent 2-3 hours. Apply this to ROADMAP scoping, /pres scope decisions, priority-order tables, and any "this is ~N weeks of work" framing.
+
+**Why this rule exists:** agent throughput on code-gen / refactor / test-writing tasks is roughly 10x a senior human's (no context-switching, no meetings, parallel tool use, instant test runs). Quoting human-time estimates anchors decisions wrong — makes agents over-scope caution (splitting a 1-day job into 5 sessions) and makes Russell mis-plan what fits in a session.
+
+**How to apply:**
+- In ROADMAP tables, prefix estimates with "human:" and "agent:" when it matters, OR drop duration columns and use complexity tiers (small / medium / large) instead.
+- Before splitting a multi-feature /pres into "too big for one session," do the 10x division first — a "5-6 week human project" is a "3-5 day agent project," which IS one pres cycle.
+- Never cite unadjusted human estimates from external sources (LinkedIn, job postings, conventional wisdom) without applying the 10x divisor when scoping agent work.

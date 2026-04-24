@@ -6,6 +6,23 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — D-1: Namespaced component calls (`show ns's Card()`) now work
+
+Fixed the "`ui's Card()` crashes buildHTML" known issue. Unblocks the multi-file module story that D-2..D-5 depend on — you can now import a components module (`use 'ui'`) and call its components with qualified names (`show ui's Card('Revenue')`) instead of being forced to flat-import with `use everything from 'ui'`.
+
+**What changed**
+- New helper `getComponentCall(expr)` in `compiler.js` detects both bare (`Card(x)`) and namespaced (`ui's Card(x)`) component calls from a single predicate. Returns `{ name, namespaceExpr, args }` or null.
+- Four call sites that each did their own shape-check now use the helper: `compileNode` SHOW-in-page, `needsReactive`, reactive JS emit, `buildHTML` SHOW. Centralizing closes the drift risk that caused the original bug.
+- Reactive JS now emits `namespace.Card(args)` when the call is namespaced (matches the `const components = { Card: function(){...} }` namespace object compiled by `compileNamespaceObject`).
+
+**Tests**: 3 new regression cycles (9-11) in `clear.test.js` — container HTML, JS emit, and bare+namespaced coexistence. All 2,309 pre-existing tests still pass. All 8 core templates compile clean.
+
+**Docs**: SYNTAX.md Components section now shows the namespaced form. FAQ.md + CLAUDE.md known-issue rows removed. ROADMAP.md D-1 marked shipped.
+
+**Why this matters**: the Dave-first GTM pivot (editor integration + Compiler API) depends on Clear supporting the module pattern every senior dev reaches for. With D-1 landed, `use 'ui'` + `ui's Card()` works end-to-end — the first real acceptance test before building the LSP.
+
+---
+
 ## 2026-04-24 — Decidable Core (Session 46): Total by default
 
 Major language-safety pass. Every construct that could previously hang silently now has a bound, and the bound applies on every compile target (Node, Cloudflare Workers, browser, Python) per the new PHILOSOPHY Rule 17.
