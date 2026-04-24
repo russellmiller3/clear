@@ -5042,28 +5042,54 @@ function compileAgent(node, ctx, pad) {
         toolFnNames.push(sanitizeName(tool.name));
       }
       const toolsJson = JSON.stringify(toolDefs);
-      const toolFnsObj = toolFnNames.map(n => `${n}`).join(', ');
-      preamble += `${innerPad}const _tools = ${toolsJson};\n`;
-      preamble += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
-      // Replace _askAI calls with _askAIWithTools in bodyCode
-      // Can't use simple regex [^)]* because prompts may contain literal parentheses
-      // e.g. "explain the refund timeline (5-7 business days)"
-      // Instead: iteratively find each _askAI( call, count parens to find the matching ), splice
-      const marker = 'await _askAI(';
-      let searchFrom = 0;
-      while (true) {
-        const idx = bodyCode.indexOf(marker, searchFrom);
-        if (idx < 0) break;
-        let depth = 1, i = idx + marker.length;
-        while (i < bodyCode.length && depth > 0) {
-          if (bodyCode[i] === '(') depth++;
-          else if (bodyCode[i] === ')') depth--;
-          i++;
+      // Python branch: emit Python list/dict syntax + rewrite _ask_ai → _ask_ai_with_tools.
+      // Cross-target parity per PHILOSOPHY.md Rule 17 — tool-agents work on every backend.
+      if (ctx.lang === 'python') {
+        // Python function body is one indent level past innerPad (enclosing pad)
+        const pyPad = innerPad + '  ';
+        const pyFnsDict = toolFnNames.map(n => `"${n}": ${n}`).join(', ');
+        preamble += `${pyPad}_tools = ${toolsJson}\n`;
+        preamble += `${pyPad}_tool_fns = {${pyFnsDict}}\n`;
+        const marker = 'await _ask_ai(';
+        let searchFrom = 0;
+        while (true) {
+          const idx = bodyCode.indexOf(marker, searchFrom);
+          if (idx < 0) break;
+          let depth = 1, i = idx + marker.length;
+          while (i < bodyCode.length && depth > 0) {
+            if (bodyCode[i] === '(') depth++;
+            else if (bodyCode[i] === ')') depth--;
+            i++;
+          }
+          const args = bodyCode.substring(idx + marker.length, i - 1);
+          const replacement = `await _ask_ai_with_tools(${args}, _tools, _tool_fns)`;
+          bodyCode = bodyCode.substring(0, idx) + replacement + bodyCode.substring(i);
+          searchFrom = idx + replacement.length;
         }
-        const args = bodyCode.substring(idx + marker.length, i - 1);
-        const replacement = `await _askAIWithTools(${args}, _tools, _toolFns)`;
-        bodyCode = bodyCode.substring(0, idx) + replacement + bodyCode.substring(i);
-        searchFrom = idx + replacement.length;
+      } else {
+        const toolFnsObj = toolFnNames.map(n => `${n}`).join(', ');
+        preamble += `${innerPad}const _tools = ${toolsJson};\n`;
+        preamble += `${innerPad}const _toolFns = { ${toolFnsObj} };\n`;
+        // Replace _askAI calls with _askAIWithTools in bodyCode
+        // Can't use simple regex [^)]* because prompts may contain literal parentheses
+        // e.g. "explain the refund timeline (5-7 business days)"
+        // Instead: iteratively find each _askAI( call, count parens to find the matching ), splice
+        const marker = 'await _askAI(';
+        let searchFrom = 0;
+        while (true) {
+          const idx = bodyCode.indexOf(marker, searchFrom);
+          if (idx < 0) break;
+          let depth = 1, i = idx + marker.length;
+          while (i < bodyCode.length && depth > 0) {
+            if (bodyCode[i] === '(') depth++;
+            else if (bodyCode[i] === ')') depth--;
+            i++;
+          }
+          const args = bodyCode.substring(idx + marker.length, i - 1);
+          const replacement = `await _askAIWithTools(${args}, _tools, _toolFns)`;
+          bodyCode = bodyCode.substring(0, idx) + replacement + bodyCode.substring(i);
+          searchFrom = idx + replacement.length;
+        }
       }
     }
   }
@@ -6250,7 +6276,10 @@ function _compileNodeInner(node, ctx) {
       const params = node.params.map(p => sanitizeName(p.name)).join(', ');
       if (ctx.lang === 'python') {
         const bodyCode = compileBody(node.body, ctx);
-        return `${pad}def ${sanitizeName(node.name)}(${params}):\n${bodyCode}`;
+        // Auto-detect async: `await` inside the body means the function must be `async def`.
+        // Mirrors the JS auto-detect below — needed for tool functions that call db.find_all, etc.
+        const isAsync = bodyCode.includes('await ');
+        return `${pad}${isAsync ? 'async ' : ''}def ${sanitizeName(node.name)}(${params}):\n${bodyCode}`;
       }
       // JS: emit JSDoc if any params have types or there's a returnType
       const _typeMap = { text: 'string', number: 'number', list: 'Array', boolean: 'boolean', map: 'Object', any: '*' };
@@ -6938,8 +6967,12 @@ ${pad}}`;
       const mockNodes = node.body.filter(n => n.type === NodeType.MOCK_AI);
       const nonMockBody = node.body.filter(n => n.type !== NodeType.MOCK_AI);
       if (ctx.lang === 'python') {
-        const bodyCode = compileBody(nonMockBody, ctx);
-        return `${pad}def test_${sanitizeName(node.name)}():\n${bodyCode}`;
+        // TEST_INTENT compilation (can user create / view / delete / ...) currently
+        // emits JS-shaped fetch/assert — no Python equivalents yet. Rather than let
+        // invalid syntax escape (PHILOSOPHY Rule 17: "document the gap explicitly"),
+        // emit a pytest-compatible stub that marks the test as unimplemented for
+        // this target. Tracked as follow-up: port TEST_INTENT cases to Python.
+        return `${pad}def test_${sanitizeName(node.name)}():\n${pad}    import pytest\n${pad}    pytest.skip("Intent-based tests not yet ported to Python target")`;
       }
       const bodyCode = compileBody(nonMockBody, ctx, { declared: new Set() });
       if (mockNodes.length > 0) {
@@ -12406,6 +12439,68 @@ function compileToPythonBackend(body, errors, sourceMap = false) {
     lines.push('    if not m: raise Exception("AI did not return valid JSON")');
     lines.push('    return json.loads(m.group())');
     lines.push('');
+    // Emit _ask_ai_with_tools when any agent uses tools (mirrors JS target).
+    // Cross-target parity per PHILOSOPHY.md Rule 17: tool-agents must work on Python backend too.
+    const hasToolAgentsPy = body.some(n => n.type === NodeType.AGENT && n.tools && n.tools.length > 0);
+    if (hasToolAgentsPy) {
+    lines.push('async def _ask_ai_with_tools(prompt, context, tools, tool_fns, model=None):');
+    lines.push('    """Agentic loop — Claude calls tools until it returns final text. Max 10 turns."""');
+    lines.push('    # Exponential-backoff retry per call (PHILOSOPHY Rule 17). 1s/2s/4s (cap 8s).');
+    lines.push('    import asyncio, inspect');
+    lines.push('    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLEAR_AI_KEY")');
+    lines.push('    if not key: raise Exception("Set ANTHROPIC_API_KEY environment variable")');
+    lines.push('    endpoint = os.environ.get("CLEAR_AI_ENDPOINT", "https://api.anthropic.com/v1/messages")');
+    lines.push('    headers = {"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}');
+    lines.push('    _model = model or "claude-sonnet-4-20250514"');
+    lines.push('    user_content = prompt');
+    lines.push('    if context: user_content += "\\n\\nContext: " + (context if isinstance(context, str) else json.dumps(context))');
+    lines.push('    messages = [{"role": "user", "content": user_content}]');
+    lines.push('    async def _call_once(payload):');
+    lines.push('        last_err = None');
+    lines.push('        for _attempt in range(4):');
+    lines.push('            try:');
+    lines.push('                async with httpx.AsyncClient(timeout=60) as client:');
+    lines.push('                    r = await client.post(endpoint, json=payload, headers=headers)');
+    lines.push('                if r.status_code == 200:');
+    lines.push('                    return r.json()');
+    lines.push('                if _attempt < 3 and (r.status_code == 429 or r.status_code >= 500):');
+    lines.push('                    await asyncio.sleep(min(1 * (2 ** _attempt), 8))');
+    lines.push('                    continue');
+    lines.push('                r.raise_for_status()');
+    lines.push('            except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as err:');
+    lines.push('                last_err = err');
+    lines.push('                if _attempt < 3:');
+    lines.push('                    await asyncio.sleep(min(1 * (2 ** _attempt), 8))');
+    lines.push('                    continue');
+    lines.push('                raise');
+    lines.push('        raise last_err or Exception("AI request failed: retries exhausted")');
+    lines.push('    for _turn in range(10):');
+    lines.push('        payload = {"model": _model, "max_tokens": 4096, "messages": messages, "tools": tools}');
+    lines.push('        data = await _call_once(payload)');
+    lines.push('        msg = data["content"]');
+    lines.push('        messages.append({"role": "assistant", "content": msg})');
+    lines.push('        tool_uses = [b for b in msg if b.get("type") == "tool_use"]');
+    lines.push('        if not tool_uses:');
+    lines.push('            text_blocks = [b for b in msg if b.get("type") == "text"]');
+    lines.push('            return text_blocks[0]["text"] if text_blocks else ""');
+    lines.push('        results = []');
+    lines.push('        for tu in tool_uses:');
+    lines.push('            fn = tool_fns.get(tu["name"])');
+    lines.push('            if not fn:');
+    lines.push('                results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": json.dumps({"error": "Unknown tool: " + tu["name"]}), "is_error": True})');
+    lines.push('                continue');
+    lines.push('            try:');
+    lines.push('                if inspect.iscoroutinefunction(fn):');
+    lines.push('                    result = await fn(**tu["input"])');
+    lines.push('                else:');
+    lines.push('                    result = fn(**tu["input"])');
+    lines.push('                results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": json.dumps(result, default=str)})');
+    lines.push('            except Exception as tool_err:');
+    lines.push('                results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": json.dumps({"error": str(tool_err)}), "is_error": True})');
+    lines.push('        messages.append({"role": "user", "content": results})');
+    lines.push('    raise Exception("Agent exceeded maximum tool use turns (10)")');
+    lines.push('');
+    } // end hasToolAgentsPy
     const hasStreamingAgent = body.some(n => n.type === NodeType.AGENT && n.streamResponse === true);
     if (hasStreamingAgent) {
     lines.push('async def _ask_ai_stream(prompt, context=None, model=None):');
