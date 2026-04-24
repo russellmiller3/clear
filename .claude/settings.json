@@ -10,6 +10,12 @@
             "command": "node .claude/hooks/validator-friction.mjs",
             "timeout": 30,
             "statusMessage": "Friction-ranking validator errors..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/learnings-miner.mjs",
+            "timeout": 15,
+            "statusMessage": "Mining learnings.md for relevant gotchas..."
           }
         ]
       }
