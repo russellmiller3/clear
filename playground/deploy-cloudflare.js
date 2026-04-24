@@ -24,10 +24,65 @@
 //
 // Test-only hooks: _resetLockManagerForTest, ageing via _ageLockForTest.
 
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 import { compileProgram } from '../index.js';
 import { packageCloudflareBundle } from '../lib/packaging-cloudflare.js';
+
+// ──────────────────────────────────────────────────────────────────────
+// LAE Phase B / one-click-updates — helpers for the incremental-update path
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the versionId of the script version we just uploaded. Cloudflare's
+ * PUT /scripts/<name> USUALLY returns { result: { id: '<version-id>' } }, but
+ * the exact shape varies by CF version family. This helper tries the fast
+ * path first and falls back to listVersions + newest-by-created_on.
+ *
+ * Returns null if everything fails (CF hasn't indexed the version yet — rare
+ * race). Callers tolerate null by logging and using null in the version row;
+ * a subsequent listVersions fetch from UI can fill it in.
+ *
+ * Exported for unit tests.
+ */
+export async function _captureVersionId({ api, scriptName, lastUploadResult }) {
+	// Fast path: upload response had `result.id`.
+	if (lastUploadResult && typeof lastUploadResult.id === 'string' && lastUploadResult.id.length > 0) {
+		return lastUploadResult.id;
+	}
+	// Slow path: ask CF for the version list.
+	try {
+		const lv = await api.listVersions({ scriptName });
+		if (!lv || !lv.ok) return null;
+		const versions = Array.isArray(lv.versions) ? [...lv.versions] : [];
+		if (versions.length === 0) return null;
+		versions.sort((a, b) => {
+			const ta = Date.parse(a.created_on || '') || 0;
+			const tb = Date.parse(b.created_on || '') || 0;
+			return tb - ta;
+		});
+		return versions[0].id || null;
+	} catch {
+		return null;
+	}
+}
+
+function _hashSource(source) {
+	return createHash('sha256').update(String(source || '')).digest('hex');
+}
+
+function _hashMigrations(bundle) {
+	const migKeys = Object.keys(bundle || {}).filter((k) => k.startsWith('migrations/')).sort();
+	if (migKeys.length === 0) return null;
+	const h = createHash('sha256');
+	for (const k of migKeys) {
+		h.update(k);
+		h.update('\x00');
+		h.update(String(bundle[k] || ''));
+		h.update('\x00');
+	}
+	return h.digest('hex');
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // DeployLockManager — in-memory double-click guard
@@ -159,8 +214,11 @@ export async function deploySource({
 	deleteD1,
 	knowledgeBase,
 	knowledgeCache,
+	mode = 'deploy',
+	lastRecord = null,
+	via,
 }) {
-	// 0. Idempotency lock.
+	// 0. Idempotency lock — covers both deploy and update modes.
 	const lockKey = `${tenantSlug}:${appSlug}`;
 	const lock = _lockManager.acquire(lockKey);
 	if (!lock.acquired) {
@@ -173,6 +231,26 @@ export async function deploySource({
 	}
 
 	const jobId = lock.jobId;
+
+	// LAE Phase B: route to the incremental path when the caller has signaled
+	// "app already exists, just push the new bundle." Skips provisionD1,
+	// applyMigrations, attachDomain — all three are permanent setup from the
+	// first deploy. Keeps uploadScript (that IS the update) and the secrets
+	// step, but filters secrets to keys not already set. Records the new
+	// version via store.recordVersion, not markAppDeployed (which would
+	// clobber the history).
+	if (mode === 'update') {
+		try {
+			return await _deployUpdate({
+				source, tenantSlug, appSlug, secrets,
+				api, store, rootDomain,
+				lastRecord, via, jobId,
+				knowledgeBase, knowledgeCache,
+			});
+		} finally {
+			_lockManager.release(lockKey);
+		}
+	}
 	// Track what's actually run so rollback only undoes real state.
 	const state = {
 		d1Provisioned: null, // { d1_database_id }
@@ -293,6 +371,125 @@ export async function deploySource({
 	} finally {
 		_lockManager.release(lockKey);
 	}
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// LAE Phase B — incremental update path. Called from deploySource when
+// mode === 'update'. Caller holds the lock + will release it; we return
+// the outcome unchanged.
+//
+// Steps (fewer than initial deploy):
+//   1. compile                      — same as initial
+//   2. filter secrets               — only keys NOT in lastRecord.secretKeys
+//   3. setSecrets (skip if no new)  — only the filtered subset
+//   4. uploadScript                 — upsert; CF creates a new version
+//   5. _captureVersionId            — fast-path or listVersions fallback
+//   6. store.recordVersion          — append to versions[]; NOT markAppDeployed
+//   7. store.updateSecretKeys       — append any newly-set keys
+// Returns { ok, mode, versionId, url, jobId } on success; { ok:false, stage }
+// with the failing step on any error. No rollback ladder in update mode —
+// Cloudflare keeps the previous version live on any failure; we just don't
+// promote the new one.
+// ──────────────────────────────────────────────────────────────────────
+async function _deployUpdate({
+	source, tenantSlug, appSlug, secrets,
+	api, store, rootDomain,
+	lastRecord, via, jobId,
+	knowledgeBase, knowledgeCache,
+}) {
+	// 1. Compile.
+	const compileOpts = { target: 'cloudflare' };
+	if (knowledgeBase) compileOpts.knowledgeBase = knowledgeBase;
+	if (knowledgeCache) compileOpts.knowledgeCache = knowledgeCache;
+	const compiled = compileProgram(source, compileOpts);
+	if (compiled.errors && compiled.errors.length) {
+		return { ok: false, stage: 'compile', jobId, errors: compiled.errors, mode: 'update' };
+	}
+
+	// 2. Filter secrets — only set keys that aren't already on the record.
+	const existingKeys = new Set((lastRecord && Array.isArray(lastRecord.secretKeys)) ? lastRecord.secretKeys : []);
+	const newSecretEntries = Object.entries(secrets || {}).filter(([k]) => !existingKeys.has(k));
+	const newSecrets = Object.fromEntries(newSecretEntries);
+	const newKeys = Object.keys(newSecrets);
+
+	// 3. setSecrets only when there's something new. Skipping entirely avoids
+	// an unnecessary CF API call on a pure source-only update.
+	if (newKeys.length > 0) {
+		try {
+			const setR = await api.setSecrets({ scriptName: appSlug, secrets: newSecrets });
+			if (!setR.ok) {
+				return { ok: false, stage: 'secrets', jobId, mode: 'update', failed: setR.failed || [] };
+			}
+		} catch (e) {
+			return { ok: false, stage: 'secrets', jobId, mode: 'update', error: e.message };
+		}
+	}
+
+	// 4. Upload script — upsert. CF creates a new version automatically.
+	const bundle = { ...(compiled.workerBundle || {}) };
+	delete bundle['migrations/001-init.sql'];
+	delete bundle['wrangler.toml'];
+	const astBody = compiled.ast?.body || [];
+	const bindings = _deriveBindings(astBody, lastRecord && lastRecord.d1_database_id);
+	const scriptName = appSlug;
+	let uploadResult;
+	try {
+		const r = await api.uploadScript({
+			scriptName,
+			bundle,
+			bindings,
+			compatibilityDate: '2025-04-01',
+			compatibilityFlags: ['nodejs_compat_v2'],
+		});
+		uploadResult = r && r.result ? r.result : {};
+	} catch (e) {
+		return { ok: false, stage: 'upload', jobId, mode: 'update', status: e.status || 500, error: e.message };
+	}
+
+	// 5. Resolve versionId. null is tolerated — UI can backfill from listVersions.
+	const versionId = await _captureVersionId({ api, scriptName, lastUploadResult: uploadResult });
+	if (versionId === null) {
+		console.warn('[update] versionId-missing — CF listVersions returned no entries; recordVersion with null');
+	}
+
+	// 6. Append to versions[].
+	const uploadedAt = new Date().toISOString();
+	try {
+		await store.recordVersion({
+			tenantSlug, appSlug, versionId,
+			uploadedAt,
+			sourceHash: _hashSource(source),
+			migrationsHash: _hashMigrations(bundle),
+			...(via ? { via } : {}),
+		});
+	} catch (e) {
+		return {
+			ok: false,
+			stage: 'record',
+			jobId,
+			mode: 'update',
+			versionId,
+			reason: 'tenants-db recordVersion failed — CF has the new version but we lost the history entry',
+		};
+	}
+
+	// 7. Track newly-set secret key names. Best-effort; failure here doesn't fail the update.
+	if (newKeys.length > 0 && store && typeof store.updateSecretKeys === 'function') {
+		try {
+			await store.updateSecretKeys({ tenantSlug, appSlug, newKeys });
+		} catch (_e) { /* non-fatal */ }
+	}
+
+	const hostname = (lastRecord && lastRecord.hostname)
+		? lastRecord.hostname
+		: _defaultHostname({ tenantSlug, appSlug, rootDomain });
+	return {
+		ok: true,
+		mode: 'update',
+		versionId,
+		url: `https://${hostname}`,
+		jobId,
+	};
 }
 
 // ──────────────────────────────────────────────────────────────────────
