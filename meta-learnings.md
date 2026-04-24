@@ -16,6 +16,8 @@ The meta-claim: the same closed-loop self-improvement pattern Clear built for **
 
 **3. Every hook becomes a flywheel.** Once the harness is mechanically enforcing rules, you can USE the accumulated signal to improve the rules themselves. The Factor DB ranks the worst error messages; the friction script rewrites them in priority order; a periodic hook mines learnings for NEW hookable patterns; the next session inherits a sharper setup than the one before. No fine-tuning, no RLHF, no humans in the loop.
 
+**4. The AI contributor builds its own tools proactively.** Running the same 5-line bash pipeline three times in a session means a script should exist. Grepping the same subsystem for the same concept across sessions means a helper should exist. Investigating the same class of failure repeatedly means a diagnostic tool should exist. The AI shouldn't wait to be told "make a script for this" — it should notice the repeated pattern and build the tool, add it to `scripts/`, and note the addition. A periodic hook (see `propose-new-tools.mjs`) nudges the question weekly so nothing falls through.
+
 ## The Starter Kit — copy these to any new AI-first repo (2 hours)
 
 ### 1. `CLAUDE.md` at repo root

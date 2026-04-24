@@ -34,6 +34,12 @@
             "command": "node .claude/hooks/meta-learnings-updater.mjs",
             "timeout": 10,
             "statusMessage": "Refreshing meta-learnings.md inventory..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/propose-new-tools.mjs",
+            "timeout": 15,
+            "statusMessage": "Checking for new-tool-building opportunities..."
           }
         ]
       }
