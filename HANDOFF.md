@@ -1,4 +1,78 @@
-# Handoff — 2026-04-23 (session 44 — Cloudflare Phases 1–7 shipped + sweep flywheel: 2 root-cause fixes shipped to main)
+# Handoff — 2026-04-23 (session 44 evening — 3-track push: research A/B running + LAE Phase A shipped + LAE Phase B Phases 1-3 shipped)
+
+## 🎯 Next Session: read A/B results, finish Phase B 3-6 + ship to main
+
+**Branch:** `feature/research-ab-tooling` (7 commits ahead of main, all tests green). **A/B sweep RUNNING in background** (PID from `/tmp/ab-hint-sweep-session44.log` — 9/20 hint_on counter trials done, 8/9 passed = 89%). Expected completion ~1.5 hrs from last observed tail.
+
+**Pick-up order:**
+1. **Read the A/B completion log** at `/tmp/ab-hint-sweep-session44.log` — tail shows full 40-trial table when done. Also dumped to `playground/sessions/ab-hint-sweep-<stamp>.json` as an artifact.
+2. **Write up result in `RESEARCH.md` Session 44 section** — the data-gap the whole evening was engineered to close. Positive, negative, or null — record it with numbers.
+3. **Finish Phase B (cycles 3.3 + 3.4, Phase 4-6)** — see `plans/plan-live-editing-phase-b-cloud-04-23-2026.md`. Phase 3.4 (Studio applyShip wiring) blocks on "where does Studio know the tenantSlug + appSlug for the currently-loaded app?" — needs a small state-plumbing pass. Phase 4 (widget Undo UX) is runtime/meph-widget.js work.
+4. **Merge + ship** when A/B is written up + Phase B is complete.
+
+## What shipped tonight (7 commits on feature/research-ab-tooling)
+
+Each commit stands alone + tests stayed green across the chain. Numbers are all tests: 2408 compiler + 90 ghost-meph + 275 meph-tools + 35 eval-auth + 40 tenants + 10 deploy-cf update-mode = **2858 passing across the suite**.
+
+| Commit | Track | What it does |
+|--------|-------|--------------|
+| `8c53be1` | 1.1+1.2 | cc-agent NDJSON persistence per session + `CLEAR_HINT_DISABLE=1` env flag |
+| `6b6691b` | 1.3 | A/B harness — `expandTrials`, `summarizeAbResults`, `formatSummaryTable`, runner |
+| `39f2f0e` | 2 | liveEditAuth **verifies** HMAC (was parse-only); 3 templates declare `owner is 'owner@example.com'` |
+| `2d23bf8` | 3 plan | `plans/plan-live-editing-phase-b-cloud-04-23-2026.md` (187 lines, 6 phases, 16 cycles) |
+| `a0b45ea` | 3.P1 | `tenants-db` versions[] + secretKeys per app (6 cycles, 40 test assertions) |
+| `b34ebfb` | 3.P2 | `deploySource({mode:'update'})` + `_captureVersionId` + secrets-filter (6 cycles, 10 assertions) |
+| `9bd91f5` | 3.P3 | `applyShip` cloud routing via `io.getCloudRecord` + `io.shipToCloud` hooks (5 assertions) |
+
+**Big-picture framing (per the session rule):**
+- Track 1 closed the measurement gap that bothered us all week. Before tonight every "does hint help?" claim was observational and selection-biased. Now we have: transcript persistence for deterministic replay, hint-off env flag for controlled A/B, and a running 40-trial sweep producing the first unbiased numbers. Results pending.
+- Track 2 hardened Phase A's security hole (unsigned JWT) and made the widget actually discoverable (owner declared in templates). Production-safe now.
+- Track 3 built the scaffolding for Marcus's year-2 differentiator: "edit the LIVE CF-deployed site via chat, ~2s." Three load-bearing layers landed (tenants versions, deploy mode switch, ship cloud hook). Two more small pieces + widget UX + docs = done.
+
+## A/B sweep live status
+
+```
+Command: MEPH_BRAIN=cc-agent GHOST_MEPH_CC_TOOLS=1 \
+  node playground/supervisor/ab-hint-sweep.js \
+    --tasks=counter,todo-crud --trials=10 --workers=1 --strict
+
+Progress at session-end: 9/40 trials
+  hint_on counter:  ✅ ✅ ✅ ✅ ⏱️ ✅ ✅ ✅ ✅  (8/9 passing)
+  hint_on todo-crud: pending
+  hint_off counter:  pending
+  hint_off todo-crud: pending
+
+ETA: ~90 min from session-end. Output streaming to /tmp/ab-hint-sweep-session44.log.
+Artifact JSON at playground/sessions/ab-hint-sweep-<stamp>.json when done.
+```
+
+**Wall-clock calibration note:** estimated 20-40 min, actual running ~2.5 hrs. Counter L3 consistently hits the 180s per-trial cap even when it passes (DB-graded). Re-calibrate future A/B estimates against this: 40 trials × ~3-4 min avg = 2-3 hrs at workers=1.
+
+## Phase B remaining cycles (next session)
+
+**Phase 3 cycles 3.3 + 3.4** — Studio-side wiring of `applyShip(newSource, io)` to thread `tenantSlug + appSlug + store + deployApi + rootDomain` through. Three blockers to untangle:
+1. **Where does Studio know the currently-loaded app's `(tenantSlug, appSlug)`?** Today's applyShip closure in `playground/server.js` only gets `newSource`. Widget needs to pass `{newSource, tenantSlug, appSlug}` in the POST body, OR Studio tracks a per-browser "loaded app" state. Decision: widget POSTs the slugs — cleanest, avoids per-tab state.
+2. **Widget needs to know it's editing a CF-deployed app.** `/__meph__/widget.js` mount response could include `{cloudDeployed: boolean, tenantSlug?, appSlug?}` (derived from compiled app's env or a Studio call). Then widget sends slugs with Ship POST.
+3. **Who constructs the deploy `api` + `store` inside the applyShip closure?** Studio already has both in scope (`createEditApi(app, deps)` is called with Studio's closure). Passing them into `io.shipToCloud` is a one-liner.
+
+**Phase 4** — widget Undo UX for cloud (3 cycles, ~30-45 min).
+**Phase 5** — docs sync across the 11 surfaces from CLAUDE.md Documentation Rule (~20 min).
+**Phase 6** — merge to main, push, delete branch (~5 min).
+
+## Follow-ups captured tonight
+
+- **Russell's open question:** use Factor DB errors to IMPROVE the compiler (not just Meph's context). Three concrete angles captured in chat: friction-score bad error messages → rewrite top 10; detect syntactic patch patterns that repeat → add synonyms or quick-fixes; cluster error messages by size → surface missing language primitives. All $0 research projects, Factor DB has the data.
+- **A/B rate calibration:** counter L3 averages ~140s+ per trial. Next A/B with harder tasks (L5-L7) should budget 40 trials × ~150s = ~100 min at workers=1. Use workers=2 for pure pass-rate measurements where the grader's per-trial start-time-window works fine.
+
+## Active hooks + state (don't forget)
+
+- Feature branch `feature/research-ab-tooling` NOT merged. Main still at `33719c7`.
+- A/B sweep running; worker child on port 3500 (from `CLEAR_AB_PORT_BASE`). Should die cleanly on completion.
+- `playground/sessions/` has NDJSON transcripts from the A/B trials (new in this session's Track 1.1 work). ~40KB per turn × ~20 turns per trial × 9 trials = ~7MB accumulated so far. Gitignored.
+
+---
+
+# Previous: Handoff — 2026-04-23 morning (session 44 — Cloudflare Phases 1–7 shipped + sweep flywheel: 2 root-cause fixes shipped to main)
 
 ## 🎯 Next Session: Three Tracks, ALL in one long session (READ THIS FIRST)
 
