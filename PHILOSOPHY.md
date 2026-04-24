@@ -825,7 +825,7 @@ Clear's pure core is provably terminating. Every loop is bounded, every recursio
 
 **What that means concretely:**
 
-- `while cond:` compiles to an iteration-counted loop. Default cap 100000, override with `, max N times`. Beyond the cap the loop throws with a copy-pasteable fix hint — it does not silently run forever.
+- `while cond:` compiles to an iteration-counted loop. Default cap 100 — tight on purpose, so a hallucinated infinite loop fails in milliseconds, not seconds. Override with `, max N times` when you legitimately iterate more (pagination, state machines). Beyond the cap the loop throws with a copy-pasteable fix hint — it does not silently run forever.
 - A function that calls itself is wrapped in a depth counter. Default cap 1000, override with `max depth N`. Stack overflow becomes "recursed more than 1000 levels" — a legible error, not a V8 trace.
 - `send email` wraps the SMTP call in a 30-second timeout by default. A frozen mail server can't hang the request. Override via `with timeout N seconds`.
 - `ask claude`, `call api`, websocket subscribes, timers — every construct that talks to the world has a bound or a timeout. If a construct needs a new one, it gets one; the answer is never "authors should remember to add it."

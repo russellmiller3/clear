@@ -6435,13 +6435,24 @@ ${pad}}`;
     case NodeType.WHILE: {
       // Bounded-while: every while loop has a hard iteration cap. If the
       // source declares `, max N times`, use N. Otherwise fall back to a
-      // default ceiling that stops runaway hallucinated loops before they
-      // eat a request timeout. PHILOSOPHY Rule 17 + "Total by default".
-      // 100000 is generous for real work (bulk iteration over large lists
-      // should use `for each`) and fast enough to fail loudly when a
-      // condition never flips.
+      // default ceiling that stops runaway hallucinated loops FAST. The
+      // whole point is fail-fast on hallucinated bugs — not "accept any
+      // plausible ceiling." 100 iterations × ~10ms per body = ~1 second
+      // before the throw, which is the feel we want.
+      //
+      // Rationale for 100: real business-app while usage rarely exceeds
+      // it (retry 3-10, polling 10-60, cursor pagination 50-200, small
+      // state machines 100-300). The edge cases that legitimately need
+      // more — parsers, deep graph walks, Stripe-scale pagination —
+      // should declare `, max N times:` explicitly; that's good docs too.
+      // Bulk iteration over large collections should use `for each`
+      // (bounded by collection size), not `while`.
+      //
+      // The asymmetry: cost of too-tight = one "add max" edit per affected
+      // site (once). Cost of too-loose = every future hang waits longer
+      // to fail, forever. Total-by-default means default tight.
       const cond = exprToCode(node.condition, ctx);
-      const max = node.maxIterations !== undefined ? node.maxIterations : 100000;
+      const max = node.maxIterations !== undefined ? node.maxIterations : 100;
       if (ctx.lang === 'python') {
         const bodyCode = compileBody(node.body, ctx);
         return `${pad}_iter = 0\n${pad}while ${cond}:\n${pad}    _iter += 1\n${pad}    if _iter > ${max}: raise Exception("while-loop exceeded " + str(${max}) + " iterations — add ', max N times' if you need a higher cap")\n${bodyCode}`;

@@ -14,7 +14,7 @@ Capability reference for the Clear compiler. The authoritative node-type spec is
 | Variables | `x = 5` / `name is 'Alice'` | `=` for numbers, `is` for strings/booleans |
 | Functions | `define function greet(name):` | Typed params (`is number`), typed returns |
 | For-each loop | `for each item in items:` | Also `for each key, value in map:` |
-| While loop (auto-bounded) | `while count is less than 10:` / `while cond, max N times:` | Default cap 100000 iterations; overflow throws a legible error (PHILOSOPHY Rule 18) |
+| While loop (auto-bounded) | `while count is less than 10:` / `while cond, max N times:` | Default cap 100 iterations (tight — fail fast on hallucinated hangs); overflow throws a legible error (PHILOSOPHY Rule 18) |
 | Recursive function (depth-capped) | `define function walk(n): ... walk(n - 1) ...` | Default depth 1000; exceed → `"X recursed more than N levels"` throw |
 | Send email with timeout | `send email to 'x@y.c': subject 'hi' body 'hi' with timeout 60 seconds` | Default 30s; applies on JS (Promise.race) + Python (smtplib timeout) |
 | AI calls auto-retry | `reply is ask claude 'hi'` | Retries 429/5xx/network transients with 1s/2s/4s exponential backoff across Node/CF/browser/Python |

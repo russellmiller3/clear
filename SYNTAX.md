@@ -210,11 +210,15 @@ for each key, value in settings:
 # While — always bounded
 while count is less than 10:
   increase count by 1
-# The compiler caps this at 100000 iterations by default to prevent hangs.
-# Declare your intent explicitly when you need a different ceiling:
+# The compiler caps this at 100 iterations by default — tight so a
+# hallucinated infinite loop fails fast. Declare `, max N times` when
+# you need more (pagination, state machines, small simulations):
 
 while count is less than 10, max 50 times:
   increase count by 1
+
+while has_more_pages, max 1000 times:
+  page = fetch_next_page()
 
 # Recursive functions are auto-depth-capped at 1000.
 # Example of one that IS recursive (the compiler notices and wraps it):

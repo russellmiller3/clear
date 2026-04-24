@@ -24453,20 +24453,20 @@ describe('Weak assertion lint — single assertion yellow flag', () => {
 });
 
 describe('Termination bounds (Session 46 — Total by default)', () => {
-  it('emits WHILE iteration counter with default cap 100000', () => {
+  it('emits WHILE iteration counter with default cap 100', () => {
     const src = `database:\n  create a Count table:\n    value (number)\n\nbackend:\n  when user sends X to /api/go:\n    count_val = 0\n    while count_val is less than 10:\n      increase count_val by 1\n    send back count_val\n`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
     expect(r.javascript).toContain('let _iter = 0');
-    expect(r.javascript).toContain('_iter > 100000');
+    expect(r.javascript).toContain('_iter > 100');
     expect(r.javascript).toContain('while-loop exceeded');
   });
-  it('honors explicit max N times override', () => {
-    const src = `database:\n  create a Count table:\n    value (number)\n\nbackend:\n  when user sends X to /api/go:\n    count_val = 0\n    while count_val is less than 10, max 50 times:\n      increase count_val by 1\n    send back count_val\n`;
+  it('honors explicit max N times override (higher than default)', () => {
+    const src = `database:\n  create a Count table:\n    value (number)\n\nbackend:\n  when user sends X to /api/go:\n    count_val = 0\n    while count_val is less than 10, max 5000 times:\n      increase count_val by 1\n    send back count_val\n`;
     const r = compileProgram(src);
     expect(r.errors).toHaveLength(0);
-    expect(r.javascript).toContain('_iter > 50');
-    expect(r.javascript).not.toContain('_iter > 100000');
+    expect(r.javascript).toContain('_iter > 5000');
+    expect(r.javascript).not.toContain('_iter > 100 ');
   });
   it('W-T1 warning: naked WHILE triggers warning', () => {
     const src = `database:\n  create a Count table:\n    value (number)\n\nbackend:\n  when user sends X to /api/go:\n    count_val = 0\n    while count_val is less than 10:\n      increase count_val by 1\n    send back count_val\n`;

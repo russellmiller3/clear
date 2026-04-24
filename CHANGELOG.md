@@ -11,13 +11,13 @@ Newest entries at the top.
 Major language-safety pass. Every construct that could previously hang silently now has a bound, and the bound applies on every compile target (Node, Cloudflare Workers, browser, Python) per the new PHILOSOPHY Rule 17.
 
 **Runtime bounds**
-- `while cond:` auto-caps at 100000 iterations. Override with `while cond, max N times:`. Exceeding the cap throws a legible error, not a hang. Works on JS and Python targets.
+- `while cond:` auto-caps at 100 iterations (tight — fail-fast on hallucinated hangs; real usage rarely exceeds it). Override with `while cond, max N times:`. Exceeding the cap throws a legible error, not a hang. Works on JS and Python targets.
 - Self-recursive functions auto-wrap in a depth counter (default 1000). JS uses `fnName._depth`, Python uses `getattr(fn, '_depth', 0)`. Non-recursive functions are unaffected (no counter emitted).
 - `send email` gets a 30-second default timeout (Promise.race on JS, `smtplib.SMTP_SSL(..., timeout=30)` on Python). Override with `with timeout N seconds/minutes` (parseConfigBlock now recognizes this form).
 - `ask claude` / `call api` runtime helpers retry on 429/5xx/network transient errors with 1s/2s/4s/8s exponential backoff. Applied across all 10 emission sites (Node, Cloudflare Workers, browser-proxy, Python `_ask_ai` + `_ask_ai_with_tools`).
 
 **Validator warnings (W-T1/W-T2/W-T3)**
-- W-T1: naked `while` → "will stop after 100000 iterations. Add 'max N times' if you want a different cap."
+- W-T1: naked `while` → "will stop after 100 iterations. Add 'max N times' if you need more (pagination, state machines)."
 - W-T2: function calls itself → "Default depth cap is 1000. Add 'max depth N' to override."
 - W-T3: `send email` without `with timeout` → "will use the default 30s cap."
 - All three silence themselves when the author declares the bound explicitly.

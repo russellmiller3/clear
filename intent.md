@@ -42,7 +42,7 @@ Context object: `{ lang, indent, declared, stateVars, mode, filterItemPrefix, st
 | `MAP_EXISTS` | `'key' exists in map` (expression) | `Object.prototype.hasOwnProperty.call(map, 'key')` |
 | `MAP_APPLY` | `apply fn to each in list` (expression) | `list.map(fn)` |
 | `FILTER_APPLY` | `filter list using fn` (expression) | `list.filter(fn)` |
-| `WHILE` | `while count is less than 10, max 50 times:` (default cap 100000 if `, max N times` omitted) | `{ let _iter=0; while (count < 10) { if (++_iter > 50) throw ...; } }` |
+| `WHILE` | `while count is less than 10, max 50 times:` (default cap 100 if `, max N times` omitted — tight so hangs fail fast) | `{ let _iter=0; while (count < 10) { if (++_iter > 50) throw ...; } }` |
 | `REPEAT_UNTIL` | `repeat until score is greater than 8, max 3 times:` | `for (let _i = 0; _i < 3; _i++) { ... if (score > 8) break; }` |
 | `BREAK` | `stop` / `break` | `break;` |
 | `CONTINUE` | `skip` / `continue` | `continue;` |

@@ -125,7 +125,7 @@ export function validate(ast) {
  * Termination rules (Session 46 — PHILOSOPHY Rule 17 + "Total by default").
  *
  * Warnings (upgradable to errors once Meph/authors are used to them):
- *   W-T1  naked `while` with no `, max N times`      → will use default 100000
+ *   W-T1  naked `while` with no `, max N times`      → will use default 100
  *   W-T2  function that calls itself with no depth    → will use default 1000
  *   W-T3  `send email` without `with timeout N sec`   → will use default 30s
  *
@@ -139,7 +139,7 @@ function validateTermination(body, warnings) {
     if (node.type === 'while' && node.maxIterations === undefined) {
       warnings.push({
         line: node.line || 0,
-        message: "This while-loop has no '— max N times' clause. It will stop after 100000 iterations to prevent hangs. Add a max if you want a different cap, e.g. 'while count is less than 10, max 100 times:'.",
+        message: "This while-loop has no '— max N times' clause. It will stop after 100 iterations to prevent hangs. Add a max if you need more (pagination, state machines), e.g. 'while has_more_pages, max 500 times:'.",
       });
     }
     if (node.type === 'function_def') {

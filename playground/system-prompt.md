@@ -305,12 +305,15 @@ run_command("node cli/clear.js info temp-app.clear --json")
 
 Every loop, every recursion, every external call has a bound. The compiler emits them so you don't have to think about hangs.
 
-- **`while cond:`** — the compiler silently caps at 100000 iterations and warns. Declare intent explicitly when you want a different cap:
+- **`while cond:`** — the compiler silently caps at 100 iterations and warns. 100 is tight on purpose: a hallucinated infinite loop fails in milliseconds instead of seconds. Declare `, max N times` when you legitimately need more (pagination with large cursors, state machines, parsers):
   ```
   while count is less than 10, max 50 times:
     increase count by 1
+
+  while has_more_pages, max 1000 times:
+    page = fetch_next_page()
   ```
-  If the loop exceeds the cap, the runtime throws `"while-loop exceeded N iterations"` with a copy-pasteable fix hint. Prefer `repeat until X, max N times:` or `for each item in items:` when you can — they're bounded by construction.
+  If the loop exceeds the cap, the runtime throws `"while-loop exceeded N iterations"` with a copy-pasteable fix hint. Prefer `repeat until X, max N times:` or `for each item in items:` when you can — they're bounded by construction. Bulk iteration over a known collection should always be `for each`, never `while`.
 
 - **Recursive functions** — self-calls are auto-wrapped in a depth counter (default 1000). If your function recurses past 1000 levels, it throws `"X recursed more than 1000 levels — rewrite as a loop or add 'max depth N'"`. Most tree/JSON walks are fine at 1000; deep cases need the override (parser support for the suffix is pending — for now, rewrite as a loop).
 

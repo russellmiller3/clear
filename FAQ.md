@@ -11,7 +11,7 @@ Search this before grepping. If the answer isn't here, add it after you find it.
 
 **Total by default.** Every `while` loop, every recursive function, every `send email`, and every `ask claude` / `call api` now has a runtime bound. The compiler emits the counter / timeout for you. If a hallucinated bug hits the bound, you get a legible error with a copy-pasteable fix — not a silent hang.
 
-- `while cond:` silently caps at 100000 iterations (warns). Override with `while cond, max N times:`.
+- `while cond:` silently caps at 100 iterations (warns). Override with `while cond, max N times:` for pagination or state machines that need more.
 - Recursive functions cap at 1000 depth. Override via `max depth N` (parser support pending).
 - `send email` defaults to 30s timeout. Override with `with timeout N seconds/minutes`.
 - `ask claude` retries 429/5xx/network transients with 1s/2s/4s exponential backoff.

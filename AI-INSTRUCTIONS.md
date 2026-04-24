@@ -2780,20 +2780,29 @@ work in both JS and Python.
 Every Clear program is provably terminating. The compiler enforces these
 bounds automatically so a hallucinated bug never hangs a request.
 
-**`while` must declare its max** (or accept the 100000 default):
+**`while` must declare its max** (or accept the 100 default):
 
 ```
-# Silent safety cap — compiler uses 100000 if you say nothing, but warns.
+# Silent safety cap — compiler uses 100 if you say nothing, but warns.
 while count is less than 10:
   increase count by 1
 
 # Explicit (no warning, clear intent):
 while count is less than 10, max 50 times:
   increase count by 1
+
+# Override when you legitimately need more (pagination, state machine):
+while has_more_pages, max 1000 times:
+  page = fetch_next_page()
 ```
 
 When the loop exceeds its cap the compiled program throws
 `"while-loop exceeded N iterations"` — a legible error, not a hang.
+Default 100 covers retry (3-10), polling (10-60), small state
+machines, and most tree walks. Bigger needs — cursor pagination
+with thousands of pages, parsers over large text — should
+declare `, max N times` explicitly. Bulk iteration over a known
+collection should use `for each` (bounded by collection size).
 
 **Recursive functions are auto-depth-capped at 1000.** The compiler
 detects self-reference and wraps the body in a depth counter:
