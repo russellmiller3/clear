@@ -234,6 +234,46 @@ createEditApi(app, {
   },
   widgetScript: _liveEditWidgetSource,
   listSnapshots: async () => _listSnapshots(),
+  // LAE Phase B Phase 4 — cloud rollback. Widget sends {tenantSlug, appSlug,
+  // targetVersionId}; we call rollbackToVersion on Cloudflare and record
+  // a new 'widget-undo-v<N>' version row so history stays linear. Returns
+  // {ok, newVersionId} on success, {ok:false, code} for error paths the
+  // widget UI surfaces (VERSION_GONE, NOT_DEPLOYED, etc).
+  applyCloudRollback: async ({ tenantSlug, appSlug, targetVersionId }) => {
+    const deps = getDeployDeps();
+    if (!deps || !deps.store || !deps.api) {
+      return { ok: false, code: 'CLOUD_NOT_CONFIGURED', error: 'Cloudflare deploy infrastructure not wired on this server' };
+    }
+    const lastRecord = await deps.store.getAppRecord(tenantSlug, appSlug);
+    if (!lastRecord || !lastRecord.scriptName) {
+      return { ok: false, code: 'NOT_DEPLOYED', error: 'App has no deployed version to roll back to' };
+    }
+    try {
+      const r = await deps.api.rollbackToVersion({
+        scriptName: lastRecord.scriptName,
+        versionId: targetVersionId,
+      });
+      if (!r || !r.ok) {
+        // CF returns 404 when the version has been retention-purged.
+        const code = r && r.status === 404 ? 'VERSION_GONE' : 'ROLLBACK_FAILED';
+        return { ok: false, code, error: (r && r.error) || 'rollback failed' };
+      }
+      // Record the rollback as a new version entry so history stays linear
+      // rather than branching. Prior versions stay addressable on CF.
+      const noteSuffix = targetVersionId.slice(0, 8);
+      await deps.store.recordVersion({
+        tenantSlug,
+        appSlug,
+        versionId: targetVersionId,
+        uploadedAt: new Date().toISOString(),
+        note: `widget-undo-to-${noteSuffix}`,
+        via: 'widget',
+      });
+      return { ok: true, newVersionId: targetVersionId };
+    } catch (err) {
+      return { ok: false, code: 'ROLLBACK_FAILED', error: err.message };
+    }
+  },
   applyRollback: async (ref) => {
     // Rollback restores source + SQLite data to a prior snapshot.
     // Uses Studio's BUILD_DIR paths so Studio respawn sees the
