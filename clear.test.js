@@ -13342,6 +13342,45 @@ describe('Security - sensitive data exposure', () => {
 // on type keywords like `amount is number`. Russell's call: Meph's
 // shorthand is natural English — treat it as a missing feature, add it
 // to the language.
+// T2 #44 — field projection: `pick a, b from X`. Returns a new
+// record (or list of records) with only the named fields. Polymorphic
+// via Array.isArray at runtime — callers don't need to branch on shape.
+describe('TIER 2 #44 — pick A, B from X field projection', () => {
+  it('picks fields from a list, stripping others', () => {
+    const src = "target: backend\nwhen user calls GET /api/items:\n  items = [ { id: 1, name: 'a', secret: 'x' }, { id: 2, name: 'b', secret: 'y' } ]\n  slim = pick id, name from items\n  send back slim";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toMatch(/slim = \(Array\.isArray\(items\)/);
+    expect(r.javascript).toContain('{ id: _r.id, name: _r.name }');
+    // Should NOT pass secret through
+    const slimLine = (r.javascript.match(/slim = .*/) || [''])[0];
+    expect(slimLine).not.toContain('secret');
+  });
+
+  it('picks fields from a single object', () => {
+    const src = "target: backend\nwhen user calls GET /api/me:\n  profile = { id: 1, name: 'Alice', password: 'secret' }\n  safe = pick id, name from profile\n  send back safe";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    // Single-object branch: { id: profile.id, name: profile.name }
+    expect(r.javascript).toContain('{ id: profile.id, name: profile.name }');
+  });
+
+  it('accepts and in the field list (pick a, b, and c)', () => {
+    const src = "target: backend\nwhen user calls GET /api/x:\n  data = [{ a: 1, b: 2, c: 3, d: 4 }]\n  slim = pick a, b, and c from data\n  send back slim";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.javascript).toMatch(/{ a: _r\.a, b: _r\.b, c: _r\.c }/);
+  });
+
+  it('emits Python dict comprehension for Python backend', () => {
+    const src = "target: python backend\nwhen user calls GET /api/items:\n  items = [{'id': 1, 'name': 'a'}]\n  slim = pick id, name from items\n  send back slim";
+    const r = compileProgram(src);
+    expect(r.errors).toHaveLength(0);
+    expect(r.python).toContain("'id': _r.get('id')");
+    expect(r.python).toContain("'name': _r.get('name')");
+  });
+});
+
 // T2 #42 — cookies. `set cookie 'name' to value` + `get cookie 'name'`.
 // JS backend auto-wires cookie-parser middleware + emits res.cookie with
 // secure defaults (httpOnly, sameSite='lax', secure in prod). Python

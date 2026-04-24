@@ -6,6 +6,26 @@ Newest entries at the top.
 
 ---
 
+## 2026-04-24 — Field projection: `pick a, b from X` (TIER 2 #44)
+
+Missing syntax — requests.md asked for `transform X to include only a, b`. Shipped a cleaner expression form: `pick a, b, c from X` returns a new record (or list of records) with only those fields.
+
+Polymorphic at runtime: `Array.isArray(X)` branches to `.map(r => ({ a: r.a, b: r.b }))` for lists or `{ a: X.a, b: X.b }` for single objects — callers don't need to know the shape. Python backend emits the dict-comprehension equivalent.
+
+Usage:
+```clear
+slim_items = pick id, name, price from all_items   # list → list of slim records
+safe_user  = pick id, name, email from user        # record → slim record (mask password)
+```
+
+Parser: new PICK node-type + parsePrimary branch that reads field names until `from`, accepts comma + `and` separators. Compiler: both JS and Python backends.
+
+4 new tests: list projection strips unwanted fields, single-object projection, `and`-separator, Python dict-comp output. 2464 → 2468 green, zero regressions, 8 templates clean.
+
+Closes TIER 2 #44.
+
+---
+
 ## 2026-04-24 — Cookies — `set cookie` / `get cookie` on JS backend (TIER 2 #42)
 
 Cookies were genuinely missing. `req.cookies` was always undefined because `cookie-parser` wasn't wired; `res.cookie` was unreachable from Clear source. Auth-via-cookie flows had to use raw `script:` escapes.

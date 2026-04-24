@@ -300,6 +300,8 @@ export const NodeType = Object.freeze({
   // Cookies (T2 #42)
   COOKIE_SET: 'cookie_set',
   COOKIE_GET: 'cookie_get',
+  // Field projection (T2 #44): `pick a, b, c from X`
+  PICK: 'pick',
 
   // Frontend navigation + API calls (Phase 21)
   NAVIGATE: 'navigate',
@@ -8769,6 +8771,37 @@ function parsePrimary(tokens, pos, line, end) {
       node: unaryOp('-', operand.node, line),
       nextPos: operand.nextPos,
     };
+  }
+
+  // "pick a, b, c from X" — field projection expression (T2 #44).
+  // Returns a new record/list with only the named fields. Polymorphic:
+  // handles both single-object and list inputs at runtime.
+  if (typeof tok.value === 'string' && tok.value.toLowerCase() === 'pick' && tok.type !== TokenType.STRING) {
+    // Read field names until `from`
+    const fields = [];
+    let p = pos + 1;
+    while (p < maxPos) {
+      const t = tokens[p];
+      if (t.value === 'from' || t.canonical === 'in') break;
+      if (t.value === ',' || t.value === 'and') { p++; continue; }
+      if (t.type === TokenType.IDENTIFIER || t.type === TokenType.KEYWORD) {
+        fields.push(t.value);
+        p++;
+      } else {
+        break;
+      }
+    }
+    if (fields.length > 0 && p < maxPos &&
+        (tokens[p].value === 'from' || tokens[p].canonical === 'in')) {
+      // Parse the source expression after `from`
+      const srcExpr = parseExprPrec(tokens, p + 1, line, maxPos, 0);
+      if (!srcExpr.error) {
+        return {
+          node: { type: NodeType.PICK, fields, source: srcExpr.node, line },
+          nextPos: srcExpr.nextPos,
+        };
+      }
+    }
   }
 
   // "get cookie 'name'" — cookie read expression (T2 #42).

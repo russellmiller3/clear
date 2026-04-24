@@ -8017,6 +8017,23 @@ export function exprToCode(expr, ctx) {
       return `{ ${fields.join(', ')} }`;
     }
 
+    case NodeType.PICK: {
+      // T2 #44 — field projection. Polymorphic: Array.isArray check at
+      // runtime handles both single-object and list inputs, so callers
+      // don't need to know which they have. Picking an unknown field
+      // yields undefined (matches JS semantics + doesn't crash).
+      const src = exprToCode(expr.source, ctx);
+      const fields = expr.fields;
+      if (ctx.lang === 'python') {
+        const pyMap = fields.map(f => `'${f}': _r.get('${f}')`).join(', ');
+        const single = fields.map(f => `'${f}': ${src}.get('${f}')`).join(', ');
+        return `([{${pyMap}} for _r in ${src}] if isinstance(${src}, list) else {${single}})`;
+      }
+      const jsList = `${src}.map(_r => ({ ${fields.map(f => `${f}: _r.${f}`).join(', ')} }))`;
+      const jsSingle = `{ ${fields.map(f => `${f}: ${src}.${f}`).join(', ')} }`;
+      return `(Array.isArray(${src}) ? ${jsList} : ${jsSingle})`;
+    }
+
     case NodeType.COOKIE_GET: {
       // T2 #42 — cookie read expression. On the JS backend, cookies are
       // parsed by cookie-parser middleware (auto-wired at module top)

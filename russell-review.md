@@ -55,3 +55,24 @@ Format per item: **design choice** / **alternatives I considered** / **evidence 
 
 **Not checked:** signed cookies (defer), CSRF tokens (out of scope), cookie removal (`clear cookie 'session'` — should add), list-all-cookies. Meph can use the primitive; the ergonomics stubs are follow-ups.
 
+---
+
+## 3. Field projection — `pick A, B from X` (T2 #44)
+
+**Design choice:** `pick a, b, c from X` as an expression that returns a new record (or list of records) with only those fields. Polymorphic via runtime `Array.isArray(X)` check so the same syntax works whether X is a single object or a list. Comma + `and` both accepted in the field list (`pick a, b, and c from X`).
+
+**Alternatives I considered:**
+- **`transform X to include only a, b, c`** (requests.md's suggested syntax) — verbose, reads as a statement that mutates X. Rejected: `pick` as an expression composes better with other Clear forms (`slim = pick id, name from items`) and doesn't require mutation.
+- **Only handle lists (`.map`)** — simpler codegen. Rejected: Meph and users frequently pick from single records (sanitize before sending back, mask-password use case).
+- **Only handle single objects** — same rejection from the other side.
+- **Require the source to be a table name (`pick id, name from Orders`)** — could double as a SQL-like SELECT. Rejected: table reads go through `get all X` + stitch already; adding a second path to the same effect is two-ways-to-do-it.
+
+**Evidence it works:**
+- 4 new tests green: list projection strips extra fields (verified `secret` is absent from output); single-object projection; `and`-separated field list; Python emits a dict-comprehension form.
+- 2464 → 2468 compiler tests, 8 templates clean.
+
+**Where to change it if you disagree:**
+- Statement form: if you want `transform X to include only a, b, c` AS WELL, add a separate statement-handler that wraps pick. I didn't because two-ways-to-do-it.
+- Python emit: `compiler.js` PICK case — currently uses `_r.get('field')`. If your Python Meph apps use objects with attribute access instead, change to `_r.field`.
+- Unknown-field semantics: currently yields `undefined` (JS) / `None` via `.get()` (Python). Alternative: error at compile-time if the source type is statically known. Low priority — JS already handles undefined fine.
+
