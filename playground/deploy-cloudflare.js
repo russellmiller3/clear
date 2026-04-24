@@ -256,11 +256,20 @@ export async function deploySource({
 		}
 
 		// 7. Record in tenants-db. Record failure = orphan for reconcile.
+		// LAE Phase B: also seed secretKeys so incremental updates can
+		// skip setSecrets for already-set keys. versionId + sourceHash +
+		// migrationsHash come in Phase 2 (next plan phase) once _captureVersionId
+		// lands; for now they're null on the seed row — first widget-Ship
+		// will populate a real row via recordVersion.
 		try {
 			await store.markAppDeployed({
 				tenantSlug, appSlug, scriptName,
 				d1_database_id,
 				hostname: domainError ? _defaultHostname({ tenantSlug, appSlug, rootDomain }) : hostname,
+				versionId: null,
+				sourceHash: null,
+				migrationsHash: null,
+				secretKeys: Object.keys(secrets || {}),
 			});
 		} catch (e) {
 			// No rollback — the app IS live. Reconcile picks up the orphan.
