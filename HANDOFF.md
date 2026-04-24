@@ -1,11 +1,13 @@
-# Handoff — 2026-04-24 (session 45 — three silent-bug fixes shipped while AFK)
+# Handoff — 2026-04-24 (session 45 — five silent-bug fixes shipped while AFK)
 
-## 🎯 Pickup: three fixes landed clean on main, queue items 1, 3, and 8 closed
+## 🎯 Pickup: FIVE fixes landed clean on main, queue items 1, 3, 8, 11, 12 closed
 
-**Shipped tonight, all merged to main, all pushed:**
+**Shipped tonight, all merged to main, all pushed (most recent → oldest):**
 
 | Commit | What it does |
 |--------|--------------|
+| `da435af` | **TIER 2 #12 — compile-tool source-on-error regression net.** Audit found the fix was already in place (`meph-tools.js:1234` auto-embeds compiled source when `r.errors.length > 0`), but no regression test locked it in — a token-cost refactor could have silently stripped it. Added two assertions: failing compile must return javascript/serverJS + a note field mentioning "errors". |
+| `a2f1d90` | **Friction-batch-2 — auth-capability gate on mutation security check.** Session 45 friction data (items #2 + #5, combined 25 rows @ 50% give-up rate) surfaced a validator flaw: "DELETE/PUT needs `requires login`" fired as a hard error even on apps with NO auth scaffolding at all (toy K/V stores, webhook receivers). Meph had no valid move because `requires login` had nothing to check against. Fix: gate the error on capability presence (`allow signup and login` declaration OR a Users/users DATA_SHAPE with a password field). Capable apps still get hard errors; auth-less apps get ONE summary warning at file top listing every public mutation endpoint. |
 | `0313b7c` | **TIER 2 #9 — Python `belongs to` JOIN emission.** Two silent bugs in one: (a) schema emitted `REFERENCES userss(id)` (double-s typo) so the referenced table didn't exist; (b) Python backend ctx was missing `schemaMap`, which meant `compileCrud`'s FK-stitching loop silently skipped on every Python compile. Fix: `pluralizeName(f.fk)` + populate `pySchemaMap` + mirror JS's stitching loop. Python `get all Posts` now returns `{author: {id:1, name:'Alice'}}` end-to-end. |
 | `8262ad5` | **TIER 2 #13 — scheduled-task cancellation.** Every Clear app with `background`, top-level `cron`, or `agent runs every` shipped anonymous timer handles; SIGTERM closed HTTP but timers pinned the event loop. Fix: unified `_scheduledCancellers = []` registry at module top (gated on `hasScheduled`, no dead code otherwise). Every emit site captures its handle in a named var and pushes a cancel closure. SIGTERM AND SIGINT drain the registry before `server.close()`. HH:MM recursive-setTimeout path solved via `let _curTimer` closure-over-mutable-var so the canceller sees whichever _tick is armed right now. |
 | `35039dd` | **TIER 2 #15 — multipart/file upload middleware auto-wired.** Client `upload X to '/api/foo'` always emitted FormData + fetch POST, but the matching server endpoint had only `express.json()` — multipart bodies arrived as `req.body = {}` and the handler saw nothing. Fix: AST walk (`walkForUploads`) recurses into page > button > body for UPLOAD_TO + ACCEPT_FILE; module-top emits `require('multer')` + shared `_upload` with memoryStorage; matching POST endpoints get `_upload.any()` injected as middleware (plain JSON POSTs untouched). |
@@ -24,11 +26,12 @@ Both were **silent bugs** — no errors, no stack traces, just quietly wrong dat
 4. **T2 #42 Cookies** — no cookie-parser (JS), no Response import (Python). Needs design pass (signed vs unsigned, HttpOnly defaults, FastAPI Response injection). **Small + design.**
 5. **T2 #47 upsert keyword** — genuinely missing syntax; needs `save or update` / `upsert by email` design. **Small TDD + design.**
 6. **T2 #48 DB transactions** — `atomically` / `begin transaction` syntax missing. **Medium — design first.**
-7. **T2 #44 `transform data:` / `pick X from Y`** — missing syntax. **Small.**
+7. **T2 #44 `transform data:` / `pick X from Y`** — missing syntax. **Small.** Natural candidate when a small session opens up.
 8. ~~**T2 #13 scheduled cancellation**~~ **[DONE 2026-04-24 session 45]**
 9. **T2 #33 `throttle` on scroll** — missing. **Small.**
 10. **T2 #11 Agent streaming display** — not expressible in Clear. **Design first.**
-11. **T2 #12 Compile tool returns no source on error** — tooling debug blind-spot. **Small.**
+11. ~~**T2 #12 Compile tool returns no source on error**~~ **[DONE 2026-04-24 session 45]** (regression net only — fix was already in place)
+12. **Friction-batch-2 auth-capability gate** ~~— done tonight~~. Next pass: re-run `node scripts/top-friction-errors.mjs --min-count=3 --top=15` against the updated DB; the auth-capability win removes items #2 and #5 from the ranking, surfacing whatever was hidden below them.
 12. **Friction-score fixes batch 2** — re-run `node scripts/top-friction-errors.mjs --min-count=3 --top=20` on the updated Factor DB (now 1722 rows). Batch 1 rewrote 4 of top-10; batch 2 should hit the next 3-5. Each fix ~30-60 min TDD; ships globally forever at $0.
 13. **4.2b compiler meta-tag emission for widget cloud-auto-detect.** ~30 min TDD.
 14. **A/B expansion — 5 tasks × 10 trials × 2 conditions = 100 trials.** $0 via cc-agent.
@@ -40,7 +43,9 @@ Both were **silent bugs** — no errors, no stack traces, just quietly wrong dat
 - Branched `fix/belongs-to-python-joins`, TDD'd 5 new tests, all red; fixed schema pluralize + added `pySchemaMap` + mirrored JS stitching; 2426 green; 8 templates clean; runtime Python smoke proves user-visible shape; docs updated; merged to main; pushed.
 - Branched `fix/scheduled-task-cancellation`, TDD'd 7 new tests (including HH:MM closure correctness); fixed 5 emit sites + unified registry + SIGINT parity; 2432 green; 8 templates clean; emitted JS syntax-checks; docs updated; merged to main; pushed.
 - Branched `fix/multipart-server-middleware`, TDD'd 6 new tests (module-top multer, shared `_upload`, middleware wiring on matching POST, negative case for non-upload POSTs, no-dead-code negative, body-guard preservation); added `walkForUploads` AST walker that recurses into page/button/conditional bodies; emitted server JS syntax-checks clean with multer on upload POST only; 2438 green; 8 templates clean; docs updated; merged to main; pushed.
-- Big-picture narration ended the session (per the Phase-Boundary Big Picture rule).
+- Ran `node scripts/top-friction-errors.mjs` — top friction item #2 + #5 (25 combined rows, 50% give-up rate) was "DELETE/PUT needs `requires login`". Pulled 3 real Meph session sources from Factor DB — discovered the root cause was validator demanding auth in apps with NO auth scaffolding at all. Branched `fix/auth-capability-gated-security`, TDD'd 5 tests, implemented `hasAuthCapability` detection + batched-warning path; 2443 green; 8 templates clean; merged + pushed.
+- Audited T2#12 (compile tool source-on-error) — discovered it was already fixed but had no regression test. Added two assertions to `playground/meph-tools.test.js` locking the "errors → auto-include compiled source" contract. Shipped.
+- Big-picture narration delivered mid-session after the scheduled-cancellation fix (per the Phase-Boundary Big Picture rule).
 
 ### What's still on origin (unchanged from session 44)
 
